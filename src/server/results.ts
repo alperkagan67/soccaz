@@ -6,6 +6,8 @@ import { matchEvents, matchParticipants, matchResults, matches, teamMembers, tea
 import { confirmDeadline, isValidScore, minuteAt, phaseOf, scoreFromGoals } from "@/lib/result-rules";
 import { audit } from "./audit";
 import { onMatchPlayed } from "./finalize";
+import { teamName } from "./names";
+import { matchAdminIds, matchParticipantIds, notifyUsers, platformAdminIds, teamAdminIds } from "./notifications";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
@@ -255,6 +257,15 @@ async function finishMatch(tx: Tx, match: MatchRow, actorId: string | null) {
   await tx.update(matches).set({ status: "played" }).where(eq(matches.id, match.id));
   await audit(actorId, "match.played", "match", match.id, { before: { status: match.status }, after: { status: "played" } }, tx);
   await onMatchPlayed(tx, match.id, actorId);
+  const [result] = await tx.select().from(matchResults).where(eq(matchResults.matchId, match.id));
+  if (result) {
+    const [home, away] = [await teamName(tx, match.homeTeamId), await teamName(tx, match.awayTeamId)];
+    await notifyUsers(
+      [...(await matchParticipantIds(tx, match.id)), ...(await matchAdminIds(tx, match.id))],
+      { type: "result.final", title: "Endergebnis", body: `${home} ${result.homeScore} : ${result.awayScore} ${away}`, url: `/spiele/${match.id}` },
+      tx,
+    );
+  }
 }
 
 export function submitResult(userId: string, matchId: string, homeScore: number, awayScore: number) {
@@ -294,6 +305,13 @@ export function submitResult(userId: string, matchId: string, homeScore: number,
       await tx.insert(matchResults).values({ matchId, ...values });
     }
     await audit(userId, "result.submit", "match", matchId, { before: existing ?? null, after: { homeScore, awayScore, side, deadline } }, tx);
+    const otherTeamId = side === "home" ? match.awayTeamId : match.homeTeamId;
+    const [home, away] = [await teamName(tx, match.homeTeamId), await teamName(tx, match.awayTeamId)];
+    await notifyUsers(
+      await teamAdminIds(tx, otherTeamId),
+      { type: "result.confirm", title: "Bitte Ergebnis bestätigen", body: `Gemeldet: ${home} ${homeScore} : ${awayScore} ${away}. Ohne Antwort gilt es nach 48 Stunden automatisch.`, url: `/spiele/${matchId}` },
+      tx,
+    );
   });
 }
 
@@ -321,6 +339,17 @@ export function disputeResult(userId: string, matchId: string, reason: string) {
     await tx.update(matchResults).set({ disputed: true, disputeReason: text, updatedAt: new Date() }).where(eq(matchResults.matchId, matchId));
     await tx.update(matches).set({ status: "disputed" }).where(eq(matches.id, matchId));
     await audit(userId, "result.dispute", "match", matchId, { after: { reason: text } }, tx);
+    const submitterTeamId = submitter === "home" ? match.homeTeamId : match.awayTeamId;
+    await notifyUsers(
+      await teamAdminIds(tx, submitterTeamId),
+      { type: "result.disputed", title: "Ergebnis wurde bestritten", body: `Das andere Team widerspricht: ${text}`, url: `/spiele/${matchId}` },
+      tx,
+    );
+    await notifyUsers(
+      await platformAdminIds(tx),
+      { type: "admin.task", title: "Streitfall zu entscheiden", body: `${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)}: ${text}`, url: `/spiele/${matchId}` },
+      tx,
+    );
   });
 }
 

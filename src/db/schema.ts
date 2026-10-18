@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 ﻿import {
   boolean,
   index,
@@ -151,3 +152,60 @@ export const auditLog = pgTable(
   (t) => [index("audit_entity_idx").on(t.entity, t.entityId)],
 );
 
+
+// ---------------------------------------------------------------------------------------------
+// Benachrichtigungen
+// ---------------------------------------------------------------------------------------------
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    url: text("url"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  },
+  (t) => [index("notifications_user_idx").on(t.userId, t.createdAt), index("notifications_undelivered_idx").on(t.deliveredAt)],
+);
+
+export const notificationPrefs = pgTable("notification_prefs", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  push: boolean("push").notNull().default(true),
+  email: boolean("email").notNull().default(true),
+  disabledTypes: text("disabled_types").array().notNull().default(sql`'{}'::text[]`),
+});
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const deliveryLog = pgTable("delivery_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  notificationId: uuid("notification_id").notNull().references(() => notifications.id, { onDelete: "cascade" }),
+  channel: text("channel").notNull(), // push | email
+  status: text("status").notNull(), // sent | skipped | failed
+  detail: text("detail"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Verhindert, dass dieselbe Erinnerung (z. B. 24 h vor Anstoß) doppelt rausgeht. */
+export const remindersSent = pgTable(
+  "reminders_sent",
+  {
+    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.matchId, t.kind] })],
+);

@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { invites, teamMembers, teams, users } from "@/db/schema";
 import { slugify } from "@/lib/slug";
 import { audit } from "./audit";
+import { userName } from "./names";
+import { notifyUsers } from "./notifications";
 
 export const MAX_TEAMS_CREATED_PER_USER = 5;
 export const MAX_TEAM_MEMBERS = 20; // offene Entscheidung, bis dahin großzügig
@@ -125,6 +127,13 @@ export async function joinWithInvite(userId: string, token: string) {
   await db.transaction(async (tx) => {
     await tx.insert(teamMembers).values({ teamId: team.teamId, userId, role: "player" }).onConflictDoNothing();
     await audit(userId, "team.join", "team", team.teamId, { after: { via: "invite" } }, tx);
+    const adminRows = await tx.select({ id: teamMembers.userId }).from(teamMembers).where(and(eq(teamMembers.teamId, team.teamId), eq(teamMembers.role, "admin")));
+    await notifyUsers(
+      adminRows.map((r) => r.id),
+      { type: "team.joined", title: "Neues Teammitglied", body: `${await userName(tx, userId)} ist ${team.teamName} beigetreten.`, url: `/teams/${team.teamSlug}` },
+      tx,
+      userId,
+    );
   });
   return { teamSlug: team.teamSlug, alreadyMember: false };
 }

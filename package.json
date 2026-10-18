@@ -18,8 +18,10 @@
     "next": "16.4.2",
     "next-auth": "^5.0.0-beta.32",
     "pg": "^8.23.1",
+    "pg-boss": "^11.1.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "web-push": "^3.6.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -29,6 +31,7 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",

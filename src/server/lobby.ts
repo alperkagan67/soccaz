@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
 import { hasFreeSlot, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import { audit } from "./audit";
+import { teamName, userName } from "./names";
+import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
@@ -164,6 +166,13 @@ async function evaluateConfirmation(tx: Tx, match: MatchRow, actorId: string) {
   if (next !== current.status) {
     await tx.update(matches).set({ status: next }).where(eq(matches.id, match.id));
     await audit(actorId, "match.status", "match", match.id, { before: { status: current.status }, after: { status: next } }, tx);
+    if (next === "confirmed") {
+      await notifyUsers(
+        await matchParticipantIds(tx, match.id),
+        { type: "match.confirmed", title: "Spiel bestätigt", body: `Das Spiel ${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} findet statt.`, url: `/lobby/${match.id}` },
+        tx,
+      );
+    }
   }
 }
 
@@ -199,6 +208,12 @@ export function joinLobby(userId: string, matchId: string) {
     if (!hasFreeSlot(await teamCount(tx, matchId, teamId))) throw new DomainError("Dein Team ist voll (5 Spieler plus 1 Ersatz).");
     await tx.insert(matchParticipants).values({ matchId, userId, teamId });
     await audit(userId, "lobby.join", "match", matchId, { after: { teamId } }, tx);
+    await notifyUsers(
+      await teamAdminIds(tx, teamId),
+      { type: "lobby.joined", title: "Neuer Spieler in der Lobby", body: `${await userName(tx, userId)} ist dem Spiel beigetreten.`, url: `/lobby/${matchId}` },
+      tx,
+      userId,
+    );
   });
 }
 
@@ -255,6 +270,11 @@ export function joinAsSubstitute(userId: string, matchId: string) {
 
     await tx.insert(matchParticipants).values({ matchId, userId, teamId: null, isSubstitute: true });
     await audit(userId, "lobby.substitute.join", "match", matchId, {}, tx);
+    await notifyUsers(
+      [...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
+      { type: "lobby.substitute", title: "Ersatzspieler wartet", body: `${await userName(tx, userId)} bietet sich als Ersatzspieler an.`, url: `/lobby/${matchId}` },
+      tx,
+    );
   });
 }
 
@@ -297,9 +317,20 @@ export function cancelMatch(actorId: string, matchId: string, reason: string) {
   if (text.length > 200) throw new DomainError("Der Grund darf höchstens 200 Zeichen lang sein.");
   return mutateLobby(actorId, matchId, async (tx, match) => {
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur Team-Admins können das Spiel absagen.");
-    await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, matchId));
-    await audit(actorId, "match.cancel", "match", matchId, { before: { status: match.status }, after: { status: "cancelled", reason: text } }, tx);
+    await cancelMatchTx(tx, match, actorId, text);
   });
+}
+
+/** Sagt ein Spiel ab, protokolliert es und informiert alle Beteiligten. Wird auch von der automatischen Absage genutzt. */
+export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | null, reason: string) {
+  await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, match.id));
+  await audit(actorId, "match.cancel", "match", match.id, { before: { status: match.status }, after: { status: "cancelled", reason } }, tx);
+  await notifyUsers(
+    [...(await matchParticipantIds(tx, match.id)), ...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
+    { type: "match.cancelled", title: "Spiel abgesagt", body: `${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} wurde abgesagt. Grund: ${reason}`, url: `/lobby/${match.id}` },
+    tx,
+    actorId,
+  );
 }
 
 /** Spiele einer Person: als Teilnehmer oder als Mitglied eines der beiden Teams. */

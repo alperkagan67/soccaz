@@ -13,6 +13,8 @@ import { audit } from "./audit";
 import { requireLoggedIn, requireUser } from "./session";
 import * as lobby from "./lobby";
 import * as results from "./results";
+import { NOTIFICATION_TYPES } from "@/lib/notification-types";
+import { markAllRead, removePushSubscription, savePrefs, savePushSubscription } from "./notifications";
 import { acceptRequest, cancelRequest, createRequest } from "./requests";
 import { createInvite, createTeam, DomainError, joinWithInvite } from "./teams";
 
@@ -210,4 +212,37 @@ export async function disputeResultAction(matchId: string, reason: string) {
 }
 export async function decideResultAction(matchId: string, home: number, away: number, reason: string) {
   return matchAction(matchId, (id) => results.decideResult(id, matchId, home, away, reason));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Benachrichtigungen und Einstellungen
+// ---------------------------------------------------------------------------------------------
+
+export async function markNotificationsReadAction() {
+  const user = await requireUser("/app/benachrichtigungen");
+  await markAllRead(user.id);
+  revalidatePath("/app/benachrichtigungen");
+}
+
+export async function savePrefsAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const user = await requireUser("/app/einstellungen");
+  const optional = (Object.keys(NOTIFICATION_TYPES) as (keyof typeof NOTIFICATION_TYPES)[]).filter((t) => NOTIFICATION_TYPES[t].optional);
+  const disabledTypes = optional.filter((t) => formData.get(`type:${t}`) !== "on");
+  await savePrefs(user.id, { push: formData.get("push") === "on", email: formData.get("email") === "on", disabledTypes });
+  revalidatePath("/app/einstellungen");
+  return { error: undefined };
+}
+
+export async function savePushSubscriptionAction(sub: { endpoint: string; p256dh: string; auth: string }, userAgent: string | null) {
+  const user = await requireUser("/app/einstellungen");
+  if (!sub.endpoint.startsWith("https://")) return { error: "Ungültiges Push-Abo." };
+  await savePushSubscription(user.id, { ...sub, userAgent });
+  revalidatePath("/app/einstellungen");
+  return { error: undefined };
+}
+
+export async function removePushSubscriptionAction(endpoint: string) {
+  const user = await requireUser("/app/einstellungen");
+  await removePushSubscription(user.id, endpoint);
+  revalidatePath("/app/einstellungen");
 }

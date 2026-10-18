@@ -29,3 +29,15 @@ export async function callJob(baseURL: string, name: string): Promise<unknown> {
 export async function query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
   return (await testDb().query(sql, params)).rows as T[];
 }
+
+/** Verschiebt Anstoß und Erstellzeit eines Spiels relativ zu jetzt (in Stunden). */
+export async function setMatchTimes(matchId: string, startsInHours: number, createdHoursAgo = 1) {
+  await testDb().query(
+    "update matches set starts_at = now() + make_interval(secs => $2), created_at = now() - make_interval(secs => $3) where id = $1",
+    [matchId, startsInHours * 3600, createdHoursAgo * 3600],
+  );
+}
+
+export async function setSubmittedAgo(matchId: string, hoursAgo: number) {
+  await testDb().query("update match_results set submitted_at = now() - make_interval(hours => $2) where match_id = $1", [matchId, hoursAgo]);
+}

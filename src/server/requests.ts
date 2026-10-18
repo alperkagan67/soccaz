@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { matchParticipants, matchRequests, matches, teamMembers, teams } from "@/db/schema";
 import { berlinDayRange, toBerlinInputValue } from "@/lib/time";
 import { audit } from "./audit";
+import { teamName } from "./names";
+import { notifyUsers, teamAdminIds } from "./notifications";
 import { DomainError } from "./teams";
 
 export const MIN_LEAD_HOURS = 24; // Spiele müssen mindestens 24 Stunden vorher angesetzt werden
@@ -227,6 +229,13 @@ export async function acceptRequest(userId: string, requestId: string, teamId: s
 
     await tx.update(matchRequests).set({ status: "matched" }).where(eq(matchRequests.id, request.id));
     await audit(userId, "request.accept", "match_request", request.id, { after: { matchId: match.id, awayTeamId: teamId } }, tx);
+    const [homeName, awayName] = [await teamName(tx, request.teamId), await teamName(tx, teamId)];
+    await notifyUsers(
+      await teamAdminIds(tx, request.teamId),
+      { type: "request.accepted", title: "Dein Gegner steht fest", body: `${awayName} hat deine Spielsuche angenommen: ${homeName} gegen ${awayName}.`, url: `/lobby/${match.id}` },
+      tx,
+      userId,
+    );
     return match;
   });
 }
