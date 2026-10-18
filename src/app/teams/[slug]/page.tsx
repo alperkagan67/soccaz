@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import Image from "next/image";
+import { Comments } from "@/components/Comments";
+import { ImageUpload } from "@/components/ImageUpload";
 import { StatTile } from "@/components/Stats";
 import { formatDate, formatDateTime } from "@/lib/time";
 import { getTeamProfile } from "@/server/profiles";
@@ -51,6 +54,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
+        {team.logoUrl && <Image src={team.logoUrl} alt={`Logo von ${team.name}`} width={72} height={72} unoptimized className="mb-2 size-[72px] rounded-xl object-cover" />}
         <h1 className="text-3xl font-bold">
           {team.name}
           {team.isVerified && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 align-middle text-xs text-green">Verifiziert</span>}
@@ -78,6 +82,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
       </section>
 
       {admin && <InviteBox teamId={team.id} teamName={team.name} />}
+      {admin && <ImageUpload kind="team_logo" refId={team.id} label={team.logoUrl ? "Logo ändern" : "Logo hochladen"} />}
 
       {profile.upcoming.length > 0 && (
         <section className="space-y-2">
@@ -120,6 +125,8 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           ))}
         </ul>
       </section>
+
+      <Comments targetType="team" targetId={team.id} path={`/teams/${team.slug}`} title="Kommentare" />
     </div>
   );
 }

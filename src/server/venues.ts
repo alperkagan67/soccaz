@@ -1,4 +1,4 @@
-import { asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { priceRules, venues } from "@/db/schema-finance";
@@ -76,4 +76,25 @@ export async function addPriceRule(actorId: string, input: { venueId: string | n
   const [row] = await db.insert(priceRules).values({ venueId: input.venueId, durationMin: input.durationMin, priceCents: input.priceCents, costCents: input.costCents, validFrom }).returning();
   await audit(actorId, "price.add", input.venueId ? "venue" : "price_default", input.venueId ?? "default", { after: row });
   return row;
+}
+
+/** Öffentliche Hallenliste mit Durchschnittsbewertung (nur sichtbare Bewertungen). */
+export async function listPublicVenues(city?: string) {
+  await connection();
+  const rows = await db.execute<{ id: string; name: string; city: string; address: string | null; surface: string | null; has_showers: boolean; has_parking: boolean; is_partner: boolean; avg: string | null; n: number }>(
+    sql`select v.id, v.name, v.city, v.address, v.surface, v.has_showers, v.has_parking, v.is_partner,
+          (select round(avg(c.rating)::numeric, 1)::text from comments c where c.target_type = 'venue' and c.target_id = v.id and c.status = 'visible') as avg,
+          (select count(*)::int from comments c where c.target_type = 'venue' and c.target_id = v.id and c.status = 'visible') as n
+        from venues v where v.active ${city ? sql`and v.city = ${city}` : sql``} order by v.is_partner desc, v.city, v.name`,
+  );
+  return rows.rows;
+}
+
+export async function getPublicVenue(id: string) {
+  await connection();
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const [v] = await db.select().from(venues).where(and(eq(venues.id, id), eq(venues.active, true)));
+  if (!v) return null;
+  const [r] = (await db.execute<{ avg: string | null; n: number }>(sql`select round(avg(rating)::numeric, 1)::text as avg, count(*)::int as n from comments where target_type = 'venue' and target_id = ${id} and status = 'visible'`)).rows;
+  return { venue: { id: v.id, name: v.name, city: v.city, address: v.address, surface: v.surface, hasShowers: v.hasShowers, hasParking: v.hasParking, isPartner: v.isPartner }, avg: r.avg, n: r.n };
 }

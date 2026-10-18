@@ -4,8 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { formatDateTime } from "@/lib/time";
 import { PHASE_LABEL } from "@/lib/result-rules";
+import { listMatchPhotos } from "@/server/media";
 import { canViewMatch, getMatchPage } from "@/server/results";
 import { getCurrentUser } from "@/server/session";
+import { MatchPhotos } from "./MatchPhotos";
 import { ConfirmPanel, DecidePanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
 export const metadata: Metadata = { title: "Spiel" };
@@ -27,6 +29,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const shown = result && (match.status === "played" || result.confirmedHome || result.confirmedAway) ? { home: result.homeScore, away: result.awayScore } : live;
   const teamName = (teamId: string) => (teamId === match.homeId ? match.homeName : match.awayName);
   const goalsFromEvents = live;
+  const photos = (await listMatchPhotos(match.id)).map((p) => ({ id: p.id, mine: p.ownerId === user?.id }));
 
   return (
     <div className="space-y-4">
@@ -99,6 +102,8 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
           players={participants.filter((p) => p.teamId && page.noShowAdminTeams.includes(p.teamId)).map((p) => ({ userId: p.userId, name: p.name, noShow: p.noShow }))}
         />
       )}
+
+      <MatchPhotos matchId={match.id} photos={photos} canUpload={v?.canUploadPhoto ?? false} canModerate={v?.platformAdmin ?? false} />
 
       <section className="card space-y-2">
         <h2 className="font-semibold">Spielverlauf</h2>

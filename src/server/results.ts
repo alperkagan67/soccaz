@@ -122,6 +122,7 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
           canManage,
           mySide,
           membership,
+          canUploadPhoto: started && match.status !== "cancelled" && participants.some((p) => p.userId === viewer.id),
           canRecord: canManage && openForPlay && !result,
           canSubmit: canManage && openForPlay && (!result || submitterSide === mySide || platformAdmin),
           canConfirm: Boolean(result && !result.disputed && match.status !== "played" && mySide && submitterSide && mySide !== submitterSide),

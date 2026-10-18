@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Comments } from "@/components/Comments";
 import { OutcomeChip, StatTile } from "@/components/Stats";
 import { BADGES, type BadgeCode } from "@/lib/badges";
 import { formatDate } from "@/lib/time";
@@ -31,6 +33,7 @@ export default async function PlayerPage({ params }: PageProps<"/spieler/[id]">)
   return (
     <div className="space-y-6">
       <header className="space-y-1">
+        {user.avatarUrl && <Image src={user.avatarUrl} alt={`Profilbild von ${user.name}`} width={80} height={80} unoptimized className="mb-2 size-20 rounded-full object-cover" />}
         <h1 className="text-3xl font-bold">
           {user.name}
           {user.isVerifiedPro && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 align-middle text-xs text-green">Profi</span>}
@@ -126,6 +129,8 @@ export default async function PlayerPage({ params }: PageProps<"/spieler/[id]">)
           </ul>
         )}
       </section>
+
+      <Comments targetType="player" targetId={user.id} path={`/spieler/${user.id}`} title="Kommentare" canWrite={!p.isSelf} />
     </div>
   );
 }

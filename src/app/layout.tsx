@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Outfit, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/BottomNav";
+import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { InstallHint } from "@/components/InstallHint";
 import { PwaRegister } from "@/components/PwaRegister";
@@ -45,11 +46,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <Header />
         </Suspense>
         <Suspense fallback={<p className="mx-auto max-w-3xl p-6 text-muted">Lädt…</p>}>
-          <main className="mx-auto w-full max-w-3xl space-y-4 px-4 pb-24 pt-4 sm:px-6">
+          <main className="mx-auto w-full max-w-3xl space-y-4 px-4 pb-6 pt-4 sm:px-6">
             <InstallHint />
             {children}
           </main>
         </Suspense>
+        <Footer />
         <Suspense fallback={null}>
           <MobileNav />
         </Suspense>

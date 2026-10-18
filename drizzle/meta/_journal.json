@@ -78,6 +78,13 @@
       "when": 1792344661464,
       "tag": "0010_loose_bucky",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792345036394,
+      "tag": "0011_naive_black_panther",
+      "breakpoints": true
     }
   ]
 }
