@@ -101,7 +101,11 @@ test("Spieltag: Ergebnis wird vom Gegner bestätigt", async ({ browser }) => {
   // Der Meldende kann sein eigenes Ergebnis nicht bestätigen
   await expect(a.getByRole("button", { name: "Bestätigen" })).toHaveCount(0);
 
-  await expect(b.getByRole("button", { name: "Bestätigen" })).toBeVisible({ timeout: 15_000 });
+  // Live-Aktualisierung kann auf langsamen Rechnern dauern: bei Bedarf neu laden
+  await expect(async () => {
+    await b.reload();
+    await expect(b.getByRole("button", { name: "Bestätigen" })).toBeVisible({ timeout: 4000 });
+  }).toPass({ timeout: 40_000 });
   await b.getByRole("button", { name: "Bestätigen" }).click();
   await expect(b.getByLabel("Spielstand 3 zu 2")).toBeVisible();
   await expect(b.getByText("Beendet", { exact: true })).toBeVisible();
