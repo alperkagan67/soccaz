@@ -39,7 +39,9 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
         </form>
       ) : (
         <p className="card text-sm text-muted">
-          Google-Login ist noch nicht eingerichtet (AUTH_GOOGLE_ID fehlt). Lokal kannst du den Dev-Login nutzen.
+          {isDev
+            ? "Google-Login ist noch nicht eingerichtet (AUTH_GOOGLE_ID fehlt). Lokal kannst du den Dev-Login nutzen."
+            : "Die Anmeldung ist gerade nicht verfügbar. Bitte versuche es später noch einmal."}
         </p>
       )}
 

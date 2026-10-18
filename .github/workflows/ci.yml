@@ -5,8 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
+    name: Typen, Lint, Unit-Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,5 +21,55 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
-      - run: npx eslint src tests
+      - run: npx eslint src tests scripts
       - run: npm test
+
+  e2e:
+    name: Browser-Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: socaz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/socaz
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else
+      E2E_BASE_URL: http://127.0.0.1:3100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/migrate.mjs
+      - name: Entwicklungsserver starten
+        run: |
+          npm run dev -- -p 3100 > dev-server.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3100/api/health && exit 0
+            sleep 2
+          done
+          cat dev-server.log
+          exit 1
+      - run: npx playwright test
+      - name: Berichte sichern
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-fehler
+          path: |
+            test-results
+            dev-server.log
+          retention-days: 7

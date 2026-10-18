@@ -1,0 +1,26 @@
+# SITE_ADDRESS ist in Produktion die Domain (z. B. socaz.de), Caddy holt dann selbst ein HTTPS-Zertifikat.
+# Lokal zum Testen ":80".
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Live-Kanäle (SSE) dürfen nicht gepuffert werden
+	@sse path /api/lobby/*/events /api/spiele/*/events /api/spiele/stream
+	handle @sse {
+		reverse_proxy app:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy app:3000
+	}
+}
