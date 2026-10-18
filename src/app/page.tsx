@@ -4,10 +4,12 @@ import { and, asc, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { matchRequests, teams } from "@/db/schema";
 import { formatDateTime } from "@/lib/time";
+import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
 import { activeSponsors } from "@/server/sponsors";
 
 async function OpenRequests() {
+  const { t } = await getT();
   const open = await db
     .select({
       id: matchRequests.id,
@@ -23,7 +25,7 @@ async function OpenRequests() {
     .limit(10);
 
   if (open.length === 0) {
-    return <p className="card text-muted">Noch keine offenen Spielsuchen. Sei die Erste, die einen Gegner sucht.</p>;
+    return <p className="card text-muted">{t("home.noRequests")}</p>;
   }
   return (
     <ul className="space-y-2">
@@ -40,11 +42,11 @@ async function OpenRequests() {
 }
 
 async function Sponsors() {
-  const list = await activeSponsors("sponsor");
+  const [list, { t }] = await Promise.all([activeSponsors("sponsor"), getT()]);
   if (list.length === 0) return null;
   return (
-    <section className="space-y-2" aria-label="Partner">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Partner</h2>
+    <section className="space-y-2" aria-label={t("home.partners")}>
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{t("home.partners")}</h2>
       <ul className="flex flex-wrap gap-2">
         {list.map((s) => (
           <li key={s.id}>
@@ -60,7 +62,7 @@ async function Sponsors() {
 }
 
 export default async function Home() {
-  const user = await getCurrentUser();
+  const [user, { t }] = await Promise.all([getCurrentUser(), getT()]);
 
   return (
     <div className="space-y-8">
@@ -78,22 +80,22 @@ export default async function Home() {
         <div className="flex flex-col gap-3 bg-gradient-to-t from-bg via-bg/60 to-transparent p-5 pt-24 sm:p-8 sm:pt-28">
           <Image src="/brand/socca-logo.jpeg" alt="" width={56} height={56} className="rounded-lg" />
           <h1 className="text-3xl font-extrabold leading-tight sm:text-5xl">
-            Hallenfußball.<br />
-            <span className="text-green">Gegner finden. Spielen.</span>
+            {t("home.title1")}<br />
+            <span className="text-green">{t("home.title2")}</span>
           </h1>
-          <p className="max-w-md text-muted">Gründe dein Team, lade deine Jungs per Link ein und fordere andere Teams in NRW heraus.</p>
+          <p className="max-w-md text-muted">{t("home.lead")}</p>
           <div className="flex flex-wrap gap-2">
             <Link href={user ? "/app/teams/neu" : "/anmelden"} className="btn btn-primary">
-              {user ? "Team gründen" : "Jetzt starten"}
+              {user ? t("home.createTeam") : t("home.start")}
             </Link>
-            <Link href="/suche" className="btn btn-ghost">Spielsuchen ansehen</Link>
-            <Link href="/spiele" className="btn btn-ghost">Livescore</Link>
+            <Link href="/suche" className="btn btn-ghost">{t("home.viewRequests")}</Link>
+            <Link href="/spiele" className="btn btn-ghost">{t("home.livescore")}</Link>
           </div>
         </div>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Offene Spielsuchen</h2>
+        <h2 className="text-lg font-semibold">{t("home.openRequests")}</h2>
         <OpenRequests />
       </section>
       <Sponsors />

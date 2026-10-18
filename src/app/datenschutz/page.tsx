@@ -37,6 +37,10 @@ export default async function DatenschutzPage() {
         <p>Hosting-Anbieter, Google (Anmeldung), Stripe (Zahlungen), ein E-Mail-Dienst, ein Fehlerüberwachungsdienst. Mit allen Dienstleistern besteht oder wird ein Auftragsverarbeitungsvertrag geschlossen. Eine Weitergabe an Dritte zu Werbezwecken findet nicht statt.</p>
       </section>
       <section className="space-y-1">
+        <h2>Eingebettete Streams</h2>
+        <p>Bei manchen Spielen kann ein Live-Stream von Twitch, YouTube oder Kick eingebettet sein. Der Player wird erst nach deinem Klick geladen. Dabei werden Daten wie deine IP-Adresse an den jeweiligen Anbieter übertragen; dessen Datenschutzerklärung gilt.</p>
+      </section>
+      <section className="space-y-1">
         <h2>Speicherdauer</h2>
         <p>Solange das Konto besteht. Belege und Buchungen bewahren wir bis zu zehn Jahre auf, weil das Gesetz es verlangt. Beim Löschen des Kontos werden Name, E-Mail und Profilangaben entfernt; Spiele, Ergebnisse und Buchungen bleiben ohne Personenbezug erhalten.</p>
       </section>

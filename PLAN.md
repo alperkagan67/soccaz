@@ -27,11 +27,13 @@ Das ursprüngliche Sample (`socca-main`) bleibt unverändert als Referenz. Socca
 Phase 1 ohne Geld, Hallenabsprache im Freitext.
 
 ## Phasen
-1. **Fundament:** Auth, Profile, Teams, Einladungen, Spielsuche, Lobby, Ergebnis, Admin-Dashboard.
-2. **Geld und Halle:** Hallen und Preise (60 Min 80 €, 90 Min 110 €), Anteil pro Spieler, Guthaben (Ledger), Aufladung, PayPal, Rabattcodes, Stornoregeln, Buchungsaufträge (erst manuell, später Agent).
-3. **Profile und Community:** Statistiken, Historie, moderierte Kommentare unter Spielen/Teams, Meldefunktion.
-4. **Ligen und Turniere:** NRW-Ligen (Gelsenkirchen, Essen, NRW), Turniermodus, Tabellen.
-5. **Reichweite:** Stream-Einbettung (Twitch/Kick/YouTube), OBS-Overlay-Daten, International.
+Stand: alle fünf Phasen sind umgesetzt und getestet (siehe README).
+
+1. **Fundament (fertig):** Auth, Profile, Teams, Einladungen, Spielsuche, Lobby, Ergebnis, Admin-Dashboard.
+2. **Geld und Halle (fertig):** Hallen und Preise (60 Min 80 €, 90 Min 110 €), Anteil pro Spieler, Guthaben (Ledger), Aufladung, PayPal, Rabattcodes, Stornoregeln, Buchungsaufträge (erst manuell, später Agent).
+3. **Profile und Community (fertig):** Statistiken, Historie, moderierte Kommentare unter Spielen/Teams, Meldefunktion.
+4. **Ligen und Turniere (fertig):** NRW-Ligen (Gelsenkirchen, Essen, NRW), Turniermodus, Tabellen.
+5. **Reichweite (fertig, Store-Bau offen):** Stream-Einbettung (Twitch/Kick/YouTube), OBS-Overlay-Daten, International.
 
 ## Technik
 - Next.js (App Router) + TypeScript, Tailwind, shadcn/ui

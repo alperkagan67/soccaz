@@ -3,9 +3,11 @@ import Link from "next/link";
 import { signOut } from "@/auth";
 import { can } from "@/lib/roles";
 import { unreadCount } from "@/server/notifications";
+import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
 
 export async function Header() {
+  const { t } = await getT();
   const user = await getCurrentUser();
   const unread = user ? await unreadCount(user.id) : 0;
 
@@ -18,20 +20,20 @@ export async function Header() {
         </Link>
         <nav className="flex items-center gap-2 text-sm">
           <Link href="/suche" className="hidden px-2 text-muted hover:text-ink sm:inline">
-            Spielsuchen
+            {t("nav.requests")}
           </Link>
           <Link href="/spiele" className="hidden px-2 text-muted hover:text-ink sm:inline">
-            Livescore
+            {t("nav.live")}
           </Link>
           <Link href="/rangliste" className="hidden px-2 text-muted hover:text-ink sm:inline">
-            Rangliste
+            {t("nav.ranking")}
           </Link>
           {user ? (
             <>
               <Link
                 href="/app/benachrichtigungen"
                 className="relative px-2 text-muted hover:text-ink"
-                aria-label={unread > 0 ? `Benachrichtigungen, ${unread} ungelesen` : "Benachrichtigungen"}
+                aria-label={unread > 0 ? t("nav.notificationsUnread", { count: unread }) : t("nav.notifications")}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
@@ -45,7 +47,7 @@ export async function Header() {
               </Link>
               {can(user.role, "dashboard") && (
                 <Link href="/admin" className="hidden px-2 text-muted hover:text-ink sm:inline">
-                  Admin
+                  {t("nav.admin")}
                 </Link>
               )}
               <Link href="/app" className="btn btn-ghost !min-h-9 !px-3">
@@ -57,14 +59,14 @@ export async function Header() {
                   await signOut({ redirectTo: "/" });
                 }}
               >
-                <button className="px-2 text-muted hover:text-ink" aria-label="Abmelden">
-                  Abmelden
+                <button className="px-2 text-muted hover:text-ink" aria-label={t("nav.signOut")}>
+                  {t("nav.signOut")}
                 </button>
               </form>
             </>
           ) : (
             <Link href="/anmelden" className="btn btn-primary !min-h-9 !px-3">
-              Anmelden
+              {t("nav.signIn")}
             </Link>
           )}
         </nav>

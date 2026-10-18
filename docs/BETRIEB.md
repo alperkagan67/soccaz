@@ -14,6 +14,24 @@ Alles läuft mit Docker Compose: App, PostgreSQL, Caddy (HTTPS) und eine täglic
 
 Die Migrationen laufen automatisch bei jedem Start (`migrate`-Dienst).
 
+## Überwachung
+
+- **Fehler:** Sentry (`SENTRY_DSN` in der `.env`).
+- **Erreichbarkeit:** Uptime Kuma als optionaler Dienst: `docker compose --profile monitoring up -d`. Er lauscht nur auf dem Server (Port 3001) und ist per SSH-Tunnel erreichbar: `ssh -L 3001:127.0.0.1:3001 <server>`. Beim ersten Öffnen Konto anlegen, dann einen HTTP-Monitor auf `https://<domain>/api/health` (Antwort `{"status":"ok"}`) und Benachrichtigung per E-Mail oder Telegram einrichten.
+- **Geschäftszahlen** (Spiele, Umsatz, Guthaben, Auszahlungen) stehen im Admin-Bereich unter Finanzen. Prometheus und Grafana sind bewusst nicht dabei: Sie lohnen sich erst, wenn mehrere Server laufen.
+
+## Betreiberangaben
+
+Impressum und Datenschutzerklärung zeigen `OPERATOR_NAME`, `OPERATOR_ADDRESS` und `OPERATOR_EMAIL` aus der `.env`. Ohne diese Werte steht dort ein deutlicher Hinweis. Die Rechtstexte sind Entwürfe und müssen vor dem Start geprüft werden.
+
+## Turniere und Veranstalter
+
+Turniere dürfen nur freigeschaltete Veranstalter anlegen (Admin, Nutzer, „Als Turnier-Veranstalter freischalten“). Startgelder liegen bis zum Turnierende auf dem Konto `tournament`. Die Provision (Standard 10 Prozent) steht in der Tabelle `settings` unter `tournament_commission_percent`.
+
+## Monatsjob
+
+Am 1. jedes Monats schreibt `close-city-challenge` den Vormonat der Stadt-Challenge fest. Er ist mehrfach ausführbar und wirkt nur einmal. Alle Jobs: `src/server/jobs.ts`.
+
 ## Google-Anmeldung einrichten
 
 Google Cloud Console, Projekt anlegen, APIs und Dienste, Anmeldedaten, OAuth-Client-ID (Webanwendung).

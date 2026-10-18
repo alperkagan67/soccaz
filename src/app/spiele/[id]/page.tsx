@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { LiveIndicator } from "@/components/LiveIndicator";
+import { parseStreamUrl } from "@/lib/stream";
 import { formatDateTime } from "@/lib/time";
 import { PHASE_LABEL } from "@/lib/result-rules";
 import { listMatchPhotos } from "@/server/media";
 import { canViewMatch, getMatchPage } from "@/server/results";
 import { getCurrentUser } from "@/server/session";
 import { MatchPhotos } from "./MatchPhotos";
+import { StreamEmbed } from "./StreamEmbed";
+import { StreamForm } from "./StreamForm";
 import { ConfirmPanel, DecidePanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
 export const metadata: Metadata = { title: "Spiel" };
@@ -29,6 +33,8 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const shown = result && (match.status === "played" || result.confirmedHome || result.confirmedAway) ? { home: result.homeScore, away: result.awayScore } : live;
   const teamName = (teamId: string) => (teamId === match.homeId ? match.homeName : match.awayName);
   const goalsFromEvents = live;
+  const host = ((await headers()).get("host") ?? "localhost").split(":")[0];
+  const stream = match.streamUrl ? parseStreamUrl(match.streamUrl, host) : null;
   const photos = (await listMatchPhotos(match.id)).map((p) => ({ id: p.id, mine: p.ownerId === user?.id }));
 
   return (
@@ -64,6 +70,9 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
           </p>
         )}
       </header>
+
+      {stream && <StreamEmbed provider={stream.provider} embedUrl={stream.embedUrl} />}
+      {v?.canManage && match.status !== "cancelled" && <StreamForm matchId={match.id} current={match.streamUrl} />}
 
       {result && match.status !== "played" && !result.disputed && (
         <p className="card text-sm text-muted">

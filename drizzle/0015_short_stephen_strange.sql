@@ -1,0 +1,1 @@
+ALTER TABLE "matches" ADD COLUMN "stream_url" text;

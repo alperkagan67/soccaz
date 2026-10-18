@@ -7,6 +7,8 @@ import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { InstallHint } from "@/components/InstallHint";
 import { PwaRegister } from "@/components/PwaRegister";
+import { HtmlLang } from "@/components/HtmlLang";
+import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
 
 const outfit = Outfit({ subsets: ["latin"], variable: "--font-outfit" });
@@ -34,8 +36,13 @@ export const viewport: Viewport = {
 };
 
 async function MobileNav() {
-  const user = await getCurrentUser();
-  return <BottomNav signedIn={Boolean(user)} />;
+  const [user, { locale, t }] = await Promise.all([getCurrentUser(), getT()]);
+  return (
+    <>
+      <HtmlLang locale={locale} />
+      <BottomNav signedIn={Boolean(user)} labels={{ start: t("nav.start"), search: t("nav.search"), live: t("nav.liveShort"), ranking: t("nav.ranking"), mine: t("nav.mine"), main: t("nav.main") }} />
+    </>
+  );
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -51,7 +58,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             {children}
           </main>
         </Suspense>
-        <Footer />
+        <Suspense fallback={null}>
+          <Footer />
+        </Suspense>
         <Suspense fallback={null}>
           <MobileNav />
         </Suspense>

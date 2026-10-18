@@ -79,7 +79,19 @@ services:
       db:
         condition: service_healthy
 
+  # Optional: Verfügbarkeits-Überwachung. Start mit: docker compose --profile monitoring up -d
+  # Erreichbar nur auf dem Server selbst (http://127.0.0.1:3001), von außen per SSH-Tunnel: ssh -L 3001:127.0.0.1:3001 server
+  uptime:
+    profiles: ["monitoring"]
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - uptime-data:/app/data
+
 volumes:
+  uptime-data:
   db-data:
   caddy-data:
   caddy-config:

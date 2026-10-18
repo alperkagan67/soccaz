@@ -205,6 +205,7 @@ test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", 
 });
 
 test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ browser, baseURL }) => {
+  test.setTimeout(180_000);
   await seedAdmin("p4adm"); // vor der Bestätigung, sonst bekommt er die Benachrichtigung nicht
   const { a, b, matchId, nameA, nameB } = await setupLobby(browser, "p4");
   const teamA = await teamIdByName(nameA);

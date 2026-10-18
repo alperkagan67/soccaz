@@ -1,0 +1,22 @@
+{
+  "appId": "de.socaz.app",
+  "appName": "Socaz",
+  "webDir": "www",
+  "server": {
+    "url": "https://socaz.de",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "always"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#030806"
+    }
+  }
+}

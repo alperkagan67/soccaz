@@ -12,3 +12,4 @@ backups
 tests
 Dockerfile
 docker-compose*.yml
+mobile

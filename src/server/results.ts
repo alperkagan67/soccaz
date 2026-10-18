@@ -45,6 +45,7 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
       finalizedAt: matches.finalizedAt,
       mvpClosedAt: matches.mvpClosedAt,
       mvpUserId: matches.mvpUserId,
+      streamUrl: matches.streamUrl,
     })
     .from(matches)
     .innerJoin(home, eq(home.id, matches.homeTeamId))

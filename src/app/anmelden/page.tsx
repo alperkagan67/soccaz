@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
+import { getT } from "@/server/locale";
 import { getCurrentUser, isCurrentSessionBanned } from "@/server/session";
 
 export const metadata: Metadata = { title: "Anmelden" };
@@ -14,19 +15,20 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
   const next = safeNext(typeof params.next === "string" ? params.next : undefined);
   if (await getCurrentUser()) redirect(next);
   const banned = await isCurrentSessionBanned();
+  const { t } = await getT();
 
   const hasGoogle = Boolean(process.env.AUTH_GOOGLE_ID);
   const isDev = process.env.NODE_ENV !== "production";
 
   return (
     <section className="mx-auto mt-8 max-w-sm space-y-4">
-      <h1 className="text-2xl font-bold">Anmelden</h1>
+      <h1 className="text-2xl font-bold">{t("signin.title")}</h1>
       {banned && (
         <p className="card border-coral text-sm text-coral" role="alert">
-          Dein Konto ist gesperrt. Wenn du das für einen Fehler hältst, schreib uns über die Kontaktseite.
+          {t("signin.banned")}
         </p>
       )}
-      <p className="text-muted">Mit deinem Google-Konto. Kein Passwort nötig.</p>
+      <p className="text-muted">{t("signin.lead")}</p>
 
       {hasGoogle ? (
         <form
@@ -35,13 +37,13 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
             await signIn("google", { redirectTo: next });
           }}
         >
-          <button className="btn btn-primary w-full">Mit Google anmelden</button>
+          <button className="btn btn-primary w-full">{t("signin.google")}</button>
         </form>
       ) : (
         <p className="card text-sm text-muted">
           {isDev
             ? "Google-Login ist noch nicht eingerichtet (AUTH_GOOGLE_ID fehlt). Lokal kannst du den Dev-Login nutzen."
-            : "Die Anmeldung ist gerade nicht verfügbar. Bitte versuche es später noch einmal."}
+            : t("signin.unavailable")}
         </p>
       )}
 

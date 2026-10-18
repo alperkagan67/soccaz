@@ -1,20 +1,24 @@
 import Link from "next/link";
+import { getT } from "@/server/locale";
+import { LanguageSwitch } from "./LanguageSwitch";
 
-export function Footer() {
+export async function Footer() {
+  const { locale, t } = await getT();
   return (
-    <footer className="mx-auto w-full max-w-3xl px-4 pb-24 text-xs text-muted sm:px-6 sm:pb-8">
-      <nav aria-label="Rechtliches" className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-4">
-        <Link href="/impressum" className="hover:text-ink">Impressum</Link>
-        <Link href="/datenschutz" className="hover:text-ink">Datenschutz</Link>
-        <Link href="/agb" className="hover:text-ink">AGB</Link>
-        <Link href="/hausordnung" className="hover:text-ink">Hausordnung</Link>
-        <Link href="/ligen" className="hover:text-ink">Ligen</Link>
-        <Link href="/turniere" className="hover:text-ink">Turniere</Link>
-        <Link href="/profitag" className="hover:text-ink">Profi-Tag</Link>
-        <Link href="/spieler" className="hover:text-ink">Spieler</Link>
-        <Link href="/hallen" className="hover:text-ink">Hallen</Link>
-        <Link href="/mitspieler" className="hover:text-ink">Mitspieler gesucht</Link>
+    <footer className="mx-auto w-full max-w-3xl space-y-3 px-4 pb-24 text-xs text-muted sm:px-6 sm:pb-8">
+      <nav aria-label={t("footer.legal")} className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-4">
+        <Link href="/impressum" className="hover:text-ink">{t("footer.imprint")}</Link>
+        <Link href="/datenschutz" className="hover:text-ink">{t("footer.privacy")}</Link>
+        <Link href="/agb" className="hover:text-ink">{t("footer.terms")}</Link>
+        <Link href="/hausordnung" className="hover:text-ink">{t("footer.rules")}</Link>
+        <Link href="/ligen" className="hover:text-ink">{t("footer.leagues")}</Link>
+        <Link href="/turniere" className="hover:text-ink">{t("footer.tournaments")}</Link>
+        <Link href="/profitag" className="hover:text-ink">{t("footer.proDay")}</Link>
+        <Link href="/spieler" className="hover:text-ink">{t("footer.players")}</Link>
+        <Link href="/hallen" className="hover:text-ink">{t("footer.venues")}</Link>
+        <Link href="/mitspieler" className="hover:text-ink">{t("footer.freePlayers")}</Link>
       </nav>
+      <LanguageSwitch current={locale} label={t("footer.language")} />
     </footer>
   );
 }
