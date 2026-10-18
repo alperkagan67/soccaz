@@ -1,0 +1,119 @@
+@import "tailwindcss";
+
+/* Farben aus dem Sample (socaz): dunkles Schwarzgrün, Grün, Neon-Akzente */
+:root {
+  --bg: #030806;
+  --panel: #07110c;
+  --panel-2: #0b1a13;
+  --line: #12221b;
+  --ink: #ffffff;
+  --muted: #8ea299;
+  --green: #22c55e;
+  --green-dark: #15803d;
+  --green-soft: rgba(34, 197, 94, 0.12);
+  --lime: hsl(78, 96%, 56%);
+  --cyan: hsl(190, 93%, 52%);
+  --sky: hsl(211, 95%, 58%);
+  --violet: hsl(262, 86%, 64%);
+  --pink: hsl(327, 92%, 61%);
+  --coral: hsl(12, 95%, 62%);
+  --yellow: hsl(44, 98%, 58%);
+  --red: hsl(0, 75%, 55%);
+  --radius: 12px;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-green: var(--green);
+  --color-green-dark: var(--green-dark);
+  --color-green-soft: var(--green-soft);
+  --color-lime: var(--lime);
+  --color-cyan: var(--cyan);
+  --color-sky: var(--sky);
+  --color-violet: var(--violet);
+  --color-pink: var(--pink);
+  --color-coral: var(--coral);
+  --color-yellow: var(--yellow);
+  --color-red: var(--red);
+  --font-heading: var(--font-outfit), var(--font-jakarta), sans-serif;
+  --font-sans: var(--font-jakarta), system-ui, sans-serif;
+  --radius-card: var(--radius);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(circle at 15% 15%, hsla(146, 75%, 50%, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 85% 85%, hsla(190, 93%, 52%, 0.06) 0%, transparent 50%),
+    var(--bg);
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--pink);
+  color: #fff;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+}
+
+/* Wiederverwendbare Bausteine */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px; /* Touch-Ziel */
+  padding: 0 1.1rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.05s, background 0.15s, border-color 0.15s;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--green); color: #03120a; }
+.btn-primary:hover { background: #34d472; }
+.btn-ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+.btn-ghost:hover { border-color: var(--green); }
+.btn-danger { background: transparent; border-color: var(--red); color: var(--red); }
+
+.field {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 0.8rem;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+}
+.field:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+
+.label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.3rem; }
+.error { color: var(--coral); font-size: 0.9rem; }
+
+:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
