@@ -12,6 +12,7 @@ Alle geplanten Phasen sind gebaut und getestet. Was noch fehlt, kann nur der Bet
 | 2 Geld und Halle | Unveränderliches Buchungsjournal, Guthaben, Stripe-Checkout mit Webhook, Rabattcodes, Anteil pro Spieler, Erstattungsregeln, Belege (PDF), Buchungsaufträge, Finanzbereich mit Ausgaben und CSV | fertig |
 | 3 Community | Statistik, Elo (Teams und Spieler), Abzeichen, Zuverlässigkeit (privat), Spieler des Spiels, Profile, Teamseiten, Ranglisten, Kommentare und Hallenbewertungen mit Meldung und Moderation, Bilder, Mitspieler-Börse, Revanche, Spielbericht-Karten, Konto löschen und Datenexport, Rechtstexte | fertig |
 | 4 Wettbewerbe | Ligen mit Live-Tabelle, Stadt-Challenge, Profi-Tag mit Losverfahren, Turniere mit Startgeld und Treuhandkonto (Liga, K.-o., Gruppen mit K.-o.), Sponsoren und Trikot-Partner | fertig |
+| Matchmaking | Warteschlange wie bei Ranked (Stadt, Dauer, bis zu drei Zeitfenster, Paarung nach Elo mit wachsendem Bereich), Kader und Spielstärke beider Teams sichtbar, Termin und Ort wählen beide Teams gemeinsam aus Vorschlägen wie bei FACEIT (Einigung auf dieselbe Option, Frist 24 Stunden) | fertig |
 | 5 Reichweite | Stream-Einbettung (Twitch, YouTube, Kick, erst nach Klick), OBS-Overlay und JSON, Deutsch und Englisch für die Kernseiten, Capacitor-Konfiguration für die App | fertig, außer Store-Bau |
 | Betrieb | Docker Compose mit Caddy, Sicherung und Wiederherstellungstest, CI, Sentry, Health-Check | fertig |
 

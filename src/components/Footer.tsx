@@ -11,6 +11,7 @@ export async function Footer() {
         <Link href="/datenschutz" className="hover:text-ink">{t("footer.privacy")}</Link>
         <Link href="/agb" className="hover:text-ink">{t("footer.terms")}</Link>
         <Link href="/hausordnung" className="hover:text-ink">{t("footer.rules")}</Link>
+        <Link href="/matchmaking" className="hover:text-ink">{t("footer.matchmaking")}</Link>
         <Link href="/ligen" className="hover:text-ink">{t("footer.leagues")}</Link>
         <Link href="/turniere" className="hover:text-ink">{t("footer.tournaments")}</Link>
         <Link href="/profitag" className="hover:text-ink">{t("footer.proDay")}</Link>

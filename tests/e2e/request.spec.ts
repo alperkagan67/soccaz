@@ -78,8 +78,8 @@ test("Spielsuche erstellen, in der Liste finden, annehmen, Lobby", async ({ brow
   await b.getByRole("button", { name: "Spiel annehmen" }).click();
   await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
   await expect(b.getByRole("heading", { name: new RegExp(`${teamA}.*gegen.*${teamB}`) })).toBeVisible();
-  await expect(b.getByText("Spieler ra")).toBeVisible();
-  await expect(b.getByText("Spieler rb")).toBeVisible();
+  await expect(b.getByText("Spieler ra").first()).toBeVisible();
+  await expect(b.getByText("Spieler rb").first()).toBeVisible();
 
   // C war zu langsam
   await c.getByRole("button", { name: "Spiel annehmen" }).click();

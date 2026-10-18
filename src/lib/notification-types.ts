@@ -1,6 +1,8 @@
 export type NotificationType =
   | "request.accepted"
   | "request.challenge"
+  | "match.found"
+  | "match.scheduled"
   | "player.request"
   | "team.joined"
   | "lobby.joined"
@@ -20,6 +22,8 @@ export type NotificationType =
 export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email: boolean; optional: boolean }> = {
   "request.accepted": { label: "Deine Spielsuche wurde angenommen", email: true, optional: true },
   "player.request": { label: "Ein Team fragt dich als Mitspieler an", email: true, optional: true },
+  "match.found": { label: "Gegner im Matchmaking gefunden", email: true, optional: false },
+  "match.scheduled": { label: "Termin und Ort stehen fest", email: true, optional: false },
   "request.challenge": { label: "Dein Team wurde herausgefordert", email: true, optional: true },
   "team.joined": { label: "Neues Mitglied in deinem Team", email: false, optional: true },
   "lobby.joined": { label: "Spieler tritt der Lobby bei", email: false, optional: true },

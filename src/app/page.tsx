@@ -88,6 +88,7 @@ export default async function Home() {
             <Link href={user ? "/app/teams/neu" : "/anmelden"} className="btn btn-primary">
               {user ? t("home.createTeam") : t("home.start")}
             </Link>
+            <Link href="/matchmaking" className="btn btn-ghost">{t("home.matchmaking")}</Link>
             <Link href="/suche" className="btn btn-ghost">{t("home.viewRequests")}</Link>
             <Link href="/spiele" className="btn btn-ghost">{t("home.livescore")}</Link>
           </div>

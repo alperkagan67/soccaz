@@ -16,7 +16,7 @@ export async function sendMatchReminders(now: Date = new Date()): Promise<number
   const upcoming = await db
     .select()
     .from(matches)
-    .where(and(inArray(matches.status, ["lobby", "confirmed"]), sql`${matches.startsAt} > ${now}`, sql`${matches.startsAt} <= ${horizon}`));
+    .where(and(inArray(matches.status, ["lobby", "confirmed"]), eq(matches.schedulingOpen, false), sql`${matches.startsAt} > ${now}`, sql`${matches.startsAt} <= ${horizon}`));
 
   let sent = 0;
   for (const match of upcoming) {
@@ -47,7 +47,7 @@ export async function sendMatchReminders(now: Date = new Date()): Promise<number
 
 /** Sagt Lobbys ab, die ihre Frist erreicht haben, ohne dass beide Teams genug bereite Spieler hatten. */
 export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<number> {
-  const lobbies = await db.select().from(matches).where(and(eq(matches.status, "lobby"), sql`${matches.startsAt} > ${now}`));
+  const lobbies = await db.select().from(matches).where(and(eq(matches.status, "lobby"), eq(matches.schedulingOpen, false), sql`${matches.startsAt} > ${now}`));
   let cancelled = 0;
   for (const m of lobbies) {
     if (lobbyDeadline(m.startsAt, m.createdAt).getTime() > now.getTime()) continue;

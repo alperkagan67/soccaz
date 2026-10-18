@@ -17,6 +17,7 @@ import { onParticipantLeaves, refundOnCancel, reserveShare } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { reservationFor, shareFor } from "@/lib/money";
+import { teamRoster, teamStrength, type RosterMember } from "./roster";
 import { walletBalance } from "./ledger";
 
 type MatchRow = typeof matches.$inferSelect;
@@ -35,6 +36,8 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       startsAt: matches.startsAt,
       durationMin: matches.durationMin,
       venueText: matches.venueText,
+      schedulingOpen: matches.schedulingOpen,
+      schedulingDeadline: matches.schedulingDeadline,
       visibility: matches.visibility,
       status: matches.status,
       priceCents: matches.priceCents,
@@ -93,6 +96,12 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const active = (match.status === "lobby" || match.status === "confirmed") && match.startsAt.getTime() > Date.now();
   const pendingStrangers = participants.filter((p) => p.teamId === null);
 
+  const roster: Record<string, RosterMember[]> = {
+    [match.homeId]: await teamRoster(match.homeId),
+    [match.awayId]: await teamRoster(match.awayId),
+  };
+  const strength = { [match.homeId]: await teamStrength(match.homeId), [match.awayId]: await teamStrength(match.awayId) };
+
   const payEnabled = await paymentsEnabled();
   const minPaid = await minPaidPlayers();
   const priceCents = match.priceCents ?? (await priceFor(db, null, match.durationMin))?.priceCents ?? null;
@@ -110,6 +119,8 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   return {
     match,
     payments,
+    roster,
+    strength,
     participants,
     counts: { home: countFor(match.homeId), away: countFor(match.awayId), readyHome: readyFor(match.homeId), readyAway: readyFor(match.awayId) },
     pendingStrangers,
@@ -266,6 +277,7 @@ export function setReady(userId: string, matchId: string, ready: boolean) {
     const me = await findParticipant(tx, matchId, userId);
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
+    if (ready && match.schedulingOpen) throw new DomainError("Erst müssen die Teams Termin und Ort gemeinsam wählen.");
     if (ready) await reserveShare(tx, match, userId); // bucht den Anteil vom Guthaben (nur wenn Zahlungen eingeschaltet sind)
     await tx
       .update(matchParticipants)
@@ -278,6 +290,7 @@ export function setVenue(userId: string, matchId: string, venue: string) {
   const text = venue.trim();
   if (text.length > 120) throw new DomainError("Der Ort darf höchstens 120 Zeichen lang sein.");
   return mutateLobby(userId, matchId, async (tx, match) => {
+    if (match.schedulingOpen) throw new DomainError("Termin und Ort wählen die Teams gemeinsam (Vorschläge unten).");
     if (!(await canManageMatch(tx, userId, match))) throw new DomainError("Nur Team-Admins können den Ort festlegen.");
     await tx.update(matches).set({ venueText: text || null }).where(eq(matches.id, matchId));
     await audit(userId, "lobby.venue", "match", matchId, { before: { venue: match.venueText }, after: { venue: text || null } }, tx);

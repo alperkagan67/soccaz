@@ -106,6 +106,8 @@ export const matches = pgTable("matches", {
   finalizedAt: timestamp("finalized_at", { withTimezone: true }),
   mvpUserId: uuid("mvp_user_id"),
   mvpClosedAt: timestamp("mvp_closed_at", { withTimezone: true }),
+  schedulingOpen: boolean("scheduling_open").notNull().default(false), // Termin und Ort werden noch von den Teams gewählt
+  schedulingDeadline: timestamp("scheduling_deadline", { withTimezone: true }),
   streamUrl: text("stream_url"), // Twitch, YouTube oder Kick (wird beim Anzeigen erneut geprüft)
   status: matchStatus("status").notNull().default("lobby"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

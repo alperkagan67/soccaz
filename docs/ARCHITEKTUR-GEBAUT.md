@@ -231,3 +231,27 @@ flowchart LR
   AP --> LB
   LB --> GU
 ```
+
+## Matchmaking und gemeinsame Terminwahl (gebaut)
+
+Teams stellen sich mit Zeitfenstern in die Warteschlange. Alle 60 Sekunden und bei jedem Beitritt werden passende Teams gepaart. Danach wählen beide Teams Termin und Ort aus Vorschlägen; stimmen beide für dieselbe Option, steht das Spiel.
+
+```mermaid
+flowchart TD
+  A[Team-Admin: Stadt, Dauer, bis zu 3 Zeitfenster] --> B{{Warteschlange: wartet}}
+  B --> C[Matcher: bei Beitritt und jede Minute]
+  C --> D{gleiche Stadt und Dauer?<br/>Elo-Abstand im Bereich?<br/>gemeinsame Zeit?}
+  D -- nein --> B
+  D -- ja --> E[Spiel anlegen, Terminwahl offen<br/>Vorschlaege aus der Ueberschneidung x Hallen]
+  E --> F[Beide Teams sehen Kader und Elo]
+  F --> G{Beide Teams stimmen fuer dieselbe Option?}
+  G -- nein --> H[Eigene Vorschlaege, Stimme aendern]
+  H --> G
+  G -- ja --> I[Termin, Ort und Preis stehen fest, Lobby: Bereit]
+  F --> J{Frist 24 h abgelaufen?}
+  J -- ja --> K[Spiel abgesagt, beide informiert]
+  B --> L{48 h ohne Gegner?}
+  L -- ja --> M[Eintrag abgelaufen]
+```
+
+Elo-Bereich: 100 am Anfang, alle 5 Minuten Wartezeit +50, höchstens 600. Es zählt der größere der beiden Bereiche.

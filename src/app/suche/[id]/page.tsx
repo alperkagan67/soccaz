@@ -8,6 +8,7 @@ import { getRequest, myAdminTeams } from "@/server/requests";
 import { db } from "@/db";
 import { teams } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { teamRoster, teamStrength } from "@/server/roster";
 import { AcceptForm } from "./AcceptForm";
 import { CancelButton } from "./CancelButton";
 
@@ -25,6 +26,8 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
     ? (await db.select({ id: teams.id, name: teams.name, slug: teams.slug }).from(teams).where(eq(teams.id, request.targetTeamId)))[0]
     : null;
   const acceptTeams = adminTeams.filter((t) => t.id !== request.teamId && (!challenge || t.id === challenge.id));
+
+  const [roster, strength] = await Promise.all([teamRoster(request.teamId), teamStrength(request.teamId)]);
 
   const closedText =
     request.status === "matched"
@@ -58,6 +61,21 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
         <div><dt className="text-muted">Gesuchte Stärke</dt><dd className="font-semibold">{strengthText(request.strength)}</dd></div>
         {request.note && <div className="col-span-2"><dt className="text-muted">Hinweis</dt><dd>{request.note}</dd></div>}
       </dl>
+
+      <section className="card space-y-2" aria-label="Kader des suchenden Teams" data-testid="request-roster">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-semibold">Kader von {request.teamName}</h2>
+          <span className="text-xs text-muted">Elo {strength.elo}{strength.matches === 0 ? " (geschätzt)" : ""}</span>
+        </div>
+        <ul className="space-y-1 text-sm">
+          {roster.map((m) => (
+            <li key={m.userId} className="flex items-center justify-between gap-2">
+              <Link href={`/spieler/${m.userId}`} className="hover:text-green">{m.name}</Link>
+              <span className="text-xs text-muted">{[m.position, m.elo ? `Elo ${m.elo}` : null, m.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       {!request.isOpen ? (
         <p className="card text-muted">{closedText}</p>
