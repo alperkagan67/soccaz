@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
 import { hasFreeSlot, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
+import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
 import { teamName, userName } from "./names";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
@@ -12,7 +13,7 @@ import type { Tx } from "./tx";
 
 type MatchRow = typeof matches.$inferSelect;
 
-export type Viewer = { id: string; role: "player" | "admin" };
+export type Viewer = { id: string; role: Role };
 
 export async function getLobby(matchId: string, viewer?: Viewer | null) {
   await connection();

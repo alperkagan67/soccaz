@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import type { Role } from "@/lib/roles";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -67,7 +68,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.uid as string;
-        session.user.role = token.role as "player" | "admin";
+        session.user.role = token.role as Role;
       }
       return session;
     },

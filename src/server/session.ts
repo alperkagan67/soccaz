@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import { can, type Permission } from "@/lib/roles";
 
 export type CurrentUser = typeof users.$inferSelect;
 
@@ -38,4 +39,21 @@ export async function requireAdmin(): Promise<CurrentUser> {
   const user = await requireUser();
   if (user.role !== "admin") redirect("/app");
   return user;
+}
+
+/** Verlangt eine Berechtigung (Plattform-Admins haben alle, Teilrollen nur ihren Bereich). Sonst Weiterleitung. */
+export async function requirePermission(permission: Permission, next = "/admin"): Promise<CurrentUser> {
+  const user = await requireUser(next);
+  if (!can(user.role, permission)) redirect("/app");
+  return user;
+}
+
+/** Ist das Konto der aktuellen Sitzung gesperrt? Für einen verständlichen Hinweis statt stiller Abmeldung. */
+export async function isCurrentSessionBanned(): Promise<boolean> {
+  await connection();
+  const session = await auth();
+  const id = session?.user?.id;
+  if (!id) return false;
+  const [user] = await db.select({ bannedAt: users.bannedAt }).from(users).where(eq(users.id, id));
+  return Boolean(user?.bannedAt);
 }

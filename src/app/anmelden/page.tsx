@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
-import { getCurrentUser } from "@/server/session";
+import { getCurrentUser, isCurrentSessionBanned } from "@/server/session";
 
 export const metadata: Metadata = { title: "Anmelden" };
 
@@ -13,6 +13,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
   const params = await searchParams;
   const next = safeNext(typeof params.next === "string" ? params.next : undefined);
   if (await getCurrentUser()) redirect(next);
+  const banned = await isCurrentSessionBanned();
 
   const hasGoogle = Boolean(process.env.AUTH_GOOGLE_ID);
   const isDev = process.env.NODE_ENV !== "production";
@@ -20,6 +21,11 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
   return (
     <section className="mx-auto mt-8 max-w-sm space-y-4">
       <h1 className="text-2xl font-bold">Anmelden</h1>
+      {banned && (
+        <p className="card border-coral text-sm text-coral" role="alert">
+          Dein Konto ist gesperrt. Wenn du das für einen Fehler hältst, schreib uns über die Kontaktseite.
+        </p>
+      )}
       <p className="text-muted">Mit deinem Google-Konto. Kein Passwort nötig.</p>
 
       {hasGoogle ? (

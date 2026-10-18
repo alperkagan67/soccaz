@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "@/auth";
+import { can } from "@/lib/roles";
 import { unreadCount } from "@/server/notifications";
 import { getCurrentUser } from "@/server/session";
 
@@ -39,6 +40,11 @@ export async function Header() {
                   </span>
                 )}
               </Link>
+              {can(user.role, "dashboard") && (
+                <Link href="/admin" className="hidden px-2 text-muted hover:text-ink sm:inline">
+                  Admin
+                </Link>
+              )}
               <Link href="/app" className="btn btn-ghost !min-h-9 !px-3">
                 {user.name.split(" ")[0]}
               </Link>

@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { matchEvents, matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
 import { confirmDeadline, isValidScore, minuteAt, phaseOf, scoreFromGoals } from "@/lib/result-rules";
+import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
 import { onMatchPlayed } from "./finalize";
 import { teamName } from "./names";
@@ -12,7 +13,7 @@ import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
 type MatchRow = typeof matches.$inferSelect;
-export type Viewer = { id: string; role: "player" | "admin" };
+export type Viewer = { id: string; role: Role };
 
 // ---------------------------------------------------------------------------------------------
 // Lesen

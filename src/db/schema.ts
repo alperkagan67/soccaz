@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm";
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const userRole = pgEnum("user_role", ["player", "admin"]);
+export const userRole = pgEnum("user_role", ["player", "admin", "moderator", "finance", "booking"]);
 export const teamRole = pgEnum("team_role", ["admin", "player"]);
 export const visibility = pgEnum("visibility", ["public", "private"]);
 export const requestStatus = pgEnum("request_status", ["open", "matched", "cancelled", "expired"]);
@@ -43,7 +43,9 @@ export const teams = pgTable("teams", {
   slug: text("slug").notNull().unique(),
   city: text("city").notNull(),
   logoUrl: text("logo_url"),
-  strength: integer("strength").notNull().default(3), // 1-5 SelbsteinschÃ¤tzung, spÃ¤ter Elo
+  strength: integer("strength").notNull().default(3), // 1-5 Selbsteinschätzung, später Elo
+  isVerified: boolean("is_verified").notNull().default(false),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

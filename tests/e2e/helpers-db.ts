@@ -15,6 +15,16 @@ export async function seedAdmin(key: string, name = `Admin ${key}`): Promise<str
   return rows[0].id;
 }
 
+/** Legt einen Nutzer mit beliebiger Rolle an (ohne Login). */
+export async function seedUserRole(key: string, role: string, name = `${role} ${key}`): Promise<string> {
+  const { rows } = await testDb().query(
+    `insert into users (email, name, role, city, position, onboarded_at, age_confirmed_at, terms_accepted_at)
+     values ($1, $2, $3, 'Essen', 'Flexibel', now(), now(), now()) returning id`,
+    [`${key}-${run}@test.local`, name, role],
+  );
+  return rows[0].id;
+}
+
 export async function setConfirmDeadline(matchId: string, hoursFromNow: number) {
   await testDb().query("update match_results set confirm_deadline = now() + make_interval(hours => $2) where match_id = $1", [matchId, hoursFromNow]);
 }
