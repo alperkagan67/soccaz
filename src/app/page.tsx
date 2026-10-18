@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { and, asc, eq, gte } from "drizzle-orm";
+import { and, asc, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { matchRequests, teams } from "@/db/schema";
 import { formatDateTime } from "@/lib/time";
@@ -17,7 +17,7 @@ async function OpenRequests() {
     })
     .from(matchRequests)
     .innerJoin(teams, eq(teams.id, matchRequests.teamId))
-    .where(and(eq(matchRequests.status, "open"), gte(matchRequests.startsAt, new Date())))
+    .where(and(eq(matchRequests.status, "open"), eq(matchRequests.visibility, "public"), isNull(matchRequests.targetTeamId), gte(matchRequests.startsAt, new Date())))
     .orderBy(asc(matchRequests.startsAt))
     .limit(10);
 

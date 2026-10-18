@@ -5,6 +5,9 @@ import { formatDateTime } from "@/lib/time";
 import { strengthText } from "@/lib/labels";
 import { getCurrentUser } from "@/server/session";
 import { getRequest, myAdminTeams } from "@/server/requests";
+import { db } from "@/db";
+import { teams } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import { AcceptForm } from "./AcceptForm";
 import { CancelButton } from "./CancelButton";
 
@@ -18,7 +21,10 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
   const user = await getCurrentUser();
   const adminTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
   const isOwner = adminTeams.some((t) => t.id === request.teamId);
-  const acceptTeams = adminTeams.filter((t) => t.id !== request.teamId);
+  const challenge = request.targetTeamId
+    ? (await db.select({ id: teams.id, name: teams.name, slug: teams.slug }).from(teams).where(eq(teams.id, request.targetTeamId)))[0]
+    : null;
+  const acceptTeams = adminTeams.filter((t) => t.id !== request.teamId && (!challenge || t.id === challenge.id));
 
   const closedText =
     request.status === "matched"
@@ -31,10 +37,17 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
     <div className="space-y-4">
       <header>
         <p className="text-sm text-muted">
-          {request.visibility === "private" ? "Private Spielsuche (nur über Link)" : "Öffentliche Spielsuche"}
+          {challenge ? "Herausforderung" : request.visibility === "private" ? "Private Spielsuche (nur über Link)" : "Öffentliche Spielsuche"}
         </p>
         <h1 className="text-2xl font-bold">
-          <Link href={`/teams/${request.teamSlug}`} className="hover:text-green">{request.teamName}</Link> sucht einen Gegner
+          <Link href={`/teams/${request.teamSlug}`} className="hover:text-green">{request.teamName}</Link>{" "}
+          {challenge ? (
+            <>
+              fordert <Link href={`/teams/${challenge.slug}`} className="hover:text-green">{challenge.name}</Link> heraus
+            </>
+          ) : (
+            "sucht einen Gegner"
+          )}
         </h1>
       </header>
 
@@ -54,6 +67,8 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
         <Link href={`/anmelden?next=${encodeURIComponent(`/suche/${request.id}`)}`} className="btn btn-primary w-full">
           Anmelden und annehmen
         </Link>
+      ) : challenge && acceptTeams.length === 0 ? (
+        <p className="card text-muted">Diese Herausforderung gilt {challenge.name}. Nur deren Team-Admins können sie annehmen.</p>
       ) : acceptTeams.length > 0 ? (
         <AcceptForm requestId={request.id} teams={acceptTeams.map((t) => ({ id: t.id, name: t.name }))} />
       ) : (

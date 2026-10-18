@@ -17,6 +17,7 @@ import * as results from "./results";
 import { NOTIFICATION_TYPES } from "@/lib/notification-types";
 import { markAllRead, removePushSubscription, savePrefs, savePushSubscription } from "./notifications";
 import { acceptRequest, cancelRequest, createRequest } from "./requests";
+import { castMvpVote, markNoShow } from "./stats";
 import { createInvite, createTeam, DomainError, joinWithInvite } from "./teams";
 
 function safeNext(value: FormDataEntryValue | null): string {
@@ -247,4 +248,30 @@ export async function removePushSubscriptionAction(endpoint: string) {
   const user = await requireUser("/app/einstellungen");
   await removePushSubscription(user.id, endpoint);
   revalidatePath("/app/einstellungen");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Nach dem Spiel: Spieler des Spiels, nicht erschienen
+// ---------------------------------------------------------------------------------------------
+
+export async function castMvpVoteAction(matchId: string, candidateId: string): Promise<ActionState> {
+  const user = await requireUser(`/spiele/${matchId}`);
+  try {
+    await castMvpVote(user.id, matchId, candidateId);
+  } catch (error) {
+    if (error instanceof DomainError) return { error: error.message };
+    throw error;
+  }
+  revalidatePath(`/spiele/${matchId}`);
+}
+
+export async function markNoShowAction(matchId: string, userId: string, value: boolean): Promise<ActionState> {
+  const user = await requireUser(`/spiele/${matchId}`);
+  try {
+    await markNoShow(user.id, matchId, userId, value);
+  } catch (error) {
+    if (error instanceof DomainError) return { error: error.message };
+    throw error;
+  }
+  revalidatePath(`/spiele/${matchId}`);
 }

@@ -42,6 +42,7 @@ export const requestSchema = z.object({
   strength: z.coerce.number().int().min(1).max(5),
   visibility: z.enum(["public", "private"]),
   note: z.string().trim().max(200, "Maximal 200 Zeichen.").optional(),
+  targetTeamId: z.string().uuid().optional().catch(undefined),
 });
 
 export const filterSchema = z.object({

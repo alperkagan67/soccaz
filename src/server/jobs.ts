@@ -1,6 +1,7 @@
 import { deliverPending } from "./notifications";
 import { autoConfirmOverdueResults } from "./results";
 import { runBookingAgent } from "./booking";
+import { closeMvpVoting } from "./stats";
 import { cancelUnderfilledLobbies, cleanup, expireOldRequests, expireStalePayments, notifyFinanceAlerts, sendMatchReminders, sendResultReminders, settleDueMatches } from "./scheduled";
 
 /** Alle Hintergrundjobs als einfache Funktionen. Zeitplaner und Test-Schnittstelle rufen sie über den Namen auf. */
@@ -16,6 +17,7 @@ export const JOBS: Record<string, () => Promise<unknown>> = {
   "expire-payments": () => expireStalePayments(),
   "booking-agent": () => runBookingAgent(),
   "finance-alerts": () => notifyFinanceAlerts(),
+  "close-mvp": () => closeMvpVoting(),
 };
 
 /** Zeitplan (Cron, UTC). Läuft über pg-boss, siehe instrumentation.ts. */
@@ -31,6 +33,7 @@ export const SCHEDULE: Record<string, string> = {
   "expire-payments": "*/30 * * * *",
   "booking-agent": "*/5 * * * *",
   "finance-alerts": "5 6 * * *",
+  "close-mvp": "10 * * * *",
 };
 
 export async function runJob(name: string): Promise<unknown> {

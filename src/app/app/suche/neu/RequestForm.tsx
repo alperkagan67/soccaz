@@ -8,16 +8,25 @@ import { useFormAction } from "@/components/useFormAction";
 
 type TeamOption = { id: string; name: string; city: string; strength: number };
 
-export function RequestForm({ teams, min }: { teams: TeamOption[]; min: string }) {
+export function RequestForm({ teams, min, target }: { teams: TeamOption[]; min: string; target?: { id: string; name: string; city: string; strength: number } }) {
   const { state, pending, onSubmit } = useFormAction(createRequestAction);
   const fe = state?.fieldErrors ?? {};
+  const ownTeams = target ? teams.filter((t) => t.id !== target.id) : teams;
 
   return (
     <form onSubmit={onSubmit} className="card space-y-4">
+      {target && (
+        <>
+          <input type="hidden" name="targetTeamId" value={target.id} />
+          <p className="rounded-lg bg-green-soft p-3 text-sm text-green" data-testid="challenge-banner">
+            Du forderst <strong>{target.name}</strong> heraus. Nur dieses Team kann die Herausforderung annehmen.
+          </p>
+        </>
+      )}
       <div>
         <label className="label" htmlFor="teamId">Team</label>
         <select id="teamId" name="teamId" required className="field">
-          {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          {ownTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
         <FieldError message={fe.teamId} />
       </div>
@@ -40,7 +49,7 @@ export function RequestForm({ teams, min }: { teams: TeamOption[]; min: string }
         </div>
         <div>
           <label className="label" htmlFor="city">Stadt</label>
-          <select id="city" name="city" defaultValue={teams[0]?.city} className="field">
+          <select id="city" name="city" defaultValue={target?.city ?? teams[0]?.city} className="field">
             {CITIES.map((c) => <option key={c}>{c}</option>)}
           </select>
           <FieldError message={fe.city} />
@@ -49,18 +58,21 @@ export function RequestForm({ teams, min }: { teams: TeamOption[]; min: string }
 
       <div>
         <label className="label" htmlFor="strength">Gesuchte Spielstärke des Gegners</label>
-        <select id="strength" name="strength" defaultValue={String(teams[0]?.strength ?? 3)} className="field">
+        <select id="strength" name="strength" defaultValue={String(target?.strength ?? teams[0]?.strength ?? 3)} className="field">
           {Object.entries(STRENGTH_LABELS).map(([v, l]) => <option key={v} value={v}>{v} – {l}</option>)}
         </select>
       </div>
 
-      <div>
-        <label className="label" htmlFor="visibility">Sichtbarkeit</label>
-        <select id="visibility" name="visibility" defaultValue="public" className="field">
-          <option value="public">Öffentlich (in der Liste)</option>
-          <option value="private">Privat (nur über Link)</option>
-        </select>
-      </div>
+      {!target && (
+        <div>
+          <label className="label" htmlFor="visibility">Sichtbarkeit</label>
+          <select id="visibility" name="visibility" defaultValue="public" className="field">
+            <option value="public">Öffentlich (in der Liste)</option>
+            <option value="private">Privat (nur über Link)</option>
+          </select>
+        </div>
+      )}
+      {target && <input type="hidden" name="visibility" value="private" />}
 
       <div>
         <label className="label" htmlFor="note">Hinweis (optional)</label>
@@ -68,7 +80,7 @@ export function RequestForm({ teams, min }: { teams: TeamOption[]; min: string }
         <FieldError message={fe.note} />
       </div>
 
-      <SubmitButton pending={pending}>Spielsuche erstellen</SubmitButton>
+      <SubmitButton pending={pending}>{target ? "Herausfordern" : "Spielsuche erstellen"}</SubmitButton>
       {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

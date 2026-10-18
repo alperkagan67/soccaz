@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { and, asc, between, count, eq, gt, gte, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, between, count, eq, gt, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matchRequests, matches, teamMembers, teams } from "@/db/schema";
 import { berlinDayRange, toBerlinInputValue } from "@/lib/time";
@@ -29,6 +29,7 @@ export type RequestInput = {
   strength: number;
   visibility: "public" | "private";
   note?: string;
+  targetTeamId?: string; // Herausforderung: nur dieses Team kann annehmen
 };
 
 async function isAdmin(tx: Pick<typeof db, "select">, userId: string, teamId: string) {
@@ -86,6 +87,12 @@ export async function createRequest(userId: string, input: RequestInput) {
       throw new DomainError("Dein Team hat um diese Zeit schon eine Spielsuche oder ein Spiel.");
     }
 
+    if (input.targetTeamId) {
+      if (input.targetTeamId === input.teamId) throw new DomainError("Du kannst dein eigenes Team nicht herausfordern.");
+      const [target] = await tx.select({ id: teams.id, archivedAt: teams.archivedAt }).from(teams).where(eq(teams.id, input.targetTeamId));
+      if (!target || target.archivedAt) throw new DomainError("Dieses Team gibt es nicht mehr.");
+    }
+
     const [request] = await tx
       .insert(matchRequests)
       .values({
@@ -94,11 +101,20 @@ export async function createRequest(userId: string, input: RequestInput) {
         startsAt: input.startsAt,
         durationMin: input.durationMin,
         strength: input.strength,
-        visibility: input.visibility,
+        visibility: input.targetTeamId ? "private" : input.visibility, // Herausforderungen stehen nie in der öffentlichen Liste
         note: input.note || null,
+        targetTeamId: input.targetTeamId ?? null,
       })
       .returning();
     await audit(userId, "request.create", "match_request", request.id, { after: request }, tx);
+    if (input.targetTeamId) {
+      await notifyUsers(
+        await teamAdminIds(tx, input.targetTeamId),
+        { type: "request.challenge", title: "Ihr wurdet herausgefordert", body: `${await teamName(tx, input.teamId)} fordert euch heraus.`, url: `/suche/${request.id}` },
+        tx,
+        userId,
+      );
+    }
     return request;
   });
 }
@@ -132,6 +148,7 @@ export async function listOpenRequests(filter: RequestFilter = {}) {
       and(
         eq(matchRequests.status, "open"),
         eq(matchRequests.visibility, "public"),
+        isNull(matchRequests.targetTeamId),
         gt(matchRequests.startsAt, new Date()),
         filter.city ? eq(matchRequests.city, filter.city) : undefined,
         filter.durationMin ? eq(matchRequests.durationMin, filter.durationMin) : undefined,
@@ -161,6 +178,7 @@ export async function getRequest(id: string) {
       visibility: matchRequests.visibility,
       status: matchRequests.status,
       note: matchRequests.note,
+      targetTeamId: matchRequests.targetTeamId,
     })
     .from(matchRequests)
     .innerJoin(teams, eq(teams.id, matchRequests.teamId))
@@ -199,6 +217,7 @@ export async function acceptRequest(userId: string, requestId: string, teamId: s
       throw new DomainError("Diese Spielsuche liegt zu nah am Anstoß und kann nicht mehr angenommen werden.");
     }
     if (request.teamId === teamId) throw new DomainError("Du kannst deine eigene Spielsuche nicht annehmen.");
+    if (request.targetTeamId && request.targetTeamId !== teamId) throw new DomainError("Diese Herausforderung gilt einem anderen Team.");
     if (!(await isAdmin(tx, userId, teamId))) throw new DomainError("Nur Team-Admins können Spielsuchen annehmen.");
     if (await hasConflict(tx, teamId, request.startsAt)) {
       throw new DomainError("Dein Team hat um diese Zeit schon eine Spielsuche oder ein Spiel.");

@@ -58,3 +58,16 @@ export function toBerlinInputValue(date: Date): string {
   const p = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date);
   return p.replace(" ", "T");
 }
+
+/** Grenzen (UTC) eines Berliner Kalendermonats "YYYY-MM". Ohne Angabe: der aktuelle Monat. */
+export function berlinMonthRange(month?: string, now = new Date()): { month: string; from: Date; to: Date; label: string } {
+  const valid = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+  const key = valid ? month : toBerlinInputValue(now).slice(0, 7);
+  const y = +key.slice(0, 4);
+  const m = +key.slice(5, 7);
+  const next = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 7);
+  const from = parseBerlinLocal(`${key}-01T00:00`)!;
+  const to = parseBerlinLocal(`${next}-01T00:00`)!;
+  const label = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("de-DE", { timeZone: "UTC", month: "long", year: "numeric" });
+  return { month: key, from, to, label };
+}

@@ -6,7 +6,7 @@ import { formatDateTime } from "@/lib/time";
 import { PHASE_LABEL } from "@/lib/result-rules";
 import { canViewMatch, getMatchPage } from "@/server/results";
 import { getCurrentUser } from "@/server/session";
-import { ConfirmPanel, DecidePanel, Recorder, SubmitResultForm } from "./MatchClient";
+import { ConfirmPanel, DecidePanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
 export const metadata: Metadata = { title: "Spiel" };
 
@@ -79,6 +79,27 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
         <DecidePanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} disputeReason={result?.disputeReason} />
       )}
 
+      {page.mvp && (
+        <p className="card text-sm" data-testid="mvp-winner">
+          Spieler des Spiels: <Link href={`/spieler/${page.mvp.id}`} className="font-semibold text-green">{page.mvp.name}</Link>
+        </p>
+      )}
+      {page.voting.canVote && (
+        <MvpPanel
+          matchId={match.id}
+          candidates={participants.filter((p) => p.teamId && !p.noShow && p.userId !== v?.id).map((p) => ({ userId: p.userId, name: p.name }))}
+          myVote={page.voting.myVote}
+          closesText={`Abstimmung bis ${page.voting.closesAt ? formatDateTime(page.voting.closesAt) : "–"} Uhr.`}
+        />
+      )}
+      {page.noShowAdminTeams.length > 0 && v && (
+        <NoShowList
+          matchId={match.id}
+          selfId={v.id}
+          players={participants.filter((p) => p.teamId && page.noShowAdminTeams.includes(p.teamId)).map((p) => ({ userId: p.userId, name: p.name, noShow: p.noShow }))}
+        />
+      )}
+
       <section className="card space-y-2">
         <h2 className="font-semibold">Spielverlauf</h2>
         {events.length === 0 ? (
@@ -90,7 +111,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
                 <span className="w-9 text-right tabular-nums text-muted">{e.minute}&apos;</span>
                 <span className={`size-2.5 rounded-full ${EVENT_TONE[e.type]}`} aria-hidden />
                 <span>
-                  <strong>{EVENT_LABEL[e.type]}</strong> {e.scorer ?? "Unbekannt"} <span className="text-muted">({teamName(e.teamId)})</span>
+                  <strong>{EVENT_LABEL[e.type]}</strong> {e.userId && e.scorer ? <Link href={`/spieler/${e.userId}`} className="hover:text-green">{e.scorer}</Link> : (e.scorer ?? "Unbekannt")} <span className="text-muted">({teamName(e.teamId)})</span>
                 </span>
               </li>
             ))}

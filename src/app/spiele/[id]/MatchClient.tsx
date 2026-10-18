@@ -2,9 +2,11 @@
 
 import { useState, useTransition } from "react";
 import {
+  castMvpVoteAction,
   confirmResultAction,
   decideResultAction,
   disputeResultAction,
+  markNoShowAction,
   recordEventAction,
   submitResultAction,
   undoLastEventAction,
@@ -198,5 +200,66 @@ export function DecidePanel({ matchId, home, away, homeScore, awayScore, dispute
       <button className="btn btn-danger w-full disabled:opacity-60" disabled={pending}>Endgültig entscheiden</button>
       <ErrorText message={error} />
     </form>
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Nach dem Spiel
+// ---------------------------------------------------------------------------------------------
+
+type Candidate = { userId: string; name: string };
+
+/** Spieler des Spiels: eine Stimme pro Mitspieler, änderbar bis zum Ende der Abstimmung. */
+export function MvpPanel({ matchId, candidates, myVote, closesText }: { matchId: string; candidates: Candidate[]; myVote: string | null; closesText: string }) {
+  const { error, pending, run } = useRun();
+  const [choice, setChoice] = useState<string | null>(myVote);
+  return (
+    <section className="card space-y-3" aria-label="Spieler des Spiels">
+      <div>
+        <h2 className="font-semibold">Wer war Spieler des Spiels?</h2>
+        <p className="text-xs text-muted">{closesText} Du kannst nicht für dich selbst stimmen.</p>
+      </div>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {candidates.map((c) => (
+          <li key={c.userId}>
+            <button
+              className={`btn w-full justify-between ${choice === c.userId ? "btn-primary" : "btn-ghost"}`}
+              disabled={pending}
+              aria-pressed={choice === c.userId}
+              onClick={() => {
+                setChoice(c.userId);
+                run(() => castMvpVoteAction(matchId, c.userId));
+              }}
+            >
+              <span>{c.name}</span>
+              {choice === c.userId && <span aria-hidden>✓</span>}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <ErrorText message={error} />
+    </section>
+  );
+}
+
+/** Team-Admin markiert, wer nicht erschienen ist (wirkt nur auf die Zuverlässigkeit, nicht auf Ergebnis oder Geld). */
+export function NoShowList({ matchId, players, selfId }: { matchId: string; players: { userId: string; name: string; noShow: boolean }[]; selfId: string }) {
+  const { error, pending, run } = useRun();
+  return (
+    <details className="card space-y-2">
+      <summary className="cursor-pointer font-semibold">Nicht erschienen markieren</summary>
+      <p className="mt-2 text-xs text-muted">Nur sichtbar für Team-Admins. Das fließt in die private Zuverlässigkeit ein und lässt sich innerhalb von 7 Tagen zurücknehmen.</p>
+      <ul className="space-y-2">
+        {players.filter((p) => p.userId !== selfId).map((p) => (
+          <li key={p.userId} className="flex items-center justify-between gap-2 text-sm">
+            <span className={p.noShow ? "text-coral line-through" : ""}>{p.name}</span>
+            <button className="btn btn-ghost !min-h-9 !px-3 text-xs" disabled={pending} onClick={() => run(() => markNoShowAction(matchId, p.userId, !p.noShow))}>
+              {p.noShow ? "Doch da" : "Nicht erschienen"}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <ErrorText message={error} />
+    </details>
   );
 }

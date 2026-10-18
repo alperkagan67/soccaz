@@ -23,6 +23,12 @@ export async function Header() {
           <Link href="/spiele" className="hidden px-2 text-muted hover:text-ink sm:inline">
             Livescore
           </Link>
+          <Link href="/rangliste" className="hidden px-2 text-muted hover:text-ink sm:inline">
+            Rangliste
+          </Link>
+          <Link href="/spieler" className="hidden px-2 text-muted hover:text-ink md:inline">
+            Spieler
+          </Link>
           {user ? (
             <>
               <Link

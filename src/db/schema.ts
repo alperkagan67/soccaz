@@ -29,6 +29,7 @@ export const users = pgTable("users", {
   city: text("city"),
   position: text("position"),
   isVerifiedPro: boolean("is_verified_pro").notNull().default(false),
+  profilePublic: boolean("profile_public").notNull().default(true),
   locale: text("locale").notNull().default("de"),
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   ageConfirmedAt: timestamp("age_confirmed_at", { withTimezone: true }),
@@ -80,6 +81,7 @@ export const matchRequests = pgTable(
     visibility: visibility("visibility").notNull().default("public"),
     status: requestStatus("status").notNull().default("open"),
     note: text("note"),
+    targetTeamId: uuid("target_team_id").references(() => teams.id, { onDelete: "cascade" }), // Herausforderung an genau dieses Team
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("match_requests_open_idx").on(t.status, t.city, t.startsAt)],
@@ -100,6 +102,9 @@ export const matches = pgTable("matches", {
   costCents: integer("cost_cents"),
   finalShareCents: integer("final_share_cents"),
   settledAt: timestamp("settled_at", { withTimezone: true }),
+  finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+  mvpUserId: uuid("mvp_user_id"),
+  mvpClosedAt: timestamp("mvp_closed_at", { withTimezone: true }),
   status: matchStatus("status").notNull().default("lobby"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -113,6 +118,7 @@ export const matchParticipants = pgTable(
     isSubstitute: boolean("is_substitute").notNull().default(false),
     readyAt: timestamp("ready_at", { withTimezone: true }),
     paidCents: integer("paid_cents").notNull().default(0),
+    noShow: boolean("no_show").notNull().default(false),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   },

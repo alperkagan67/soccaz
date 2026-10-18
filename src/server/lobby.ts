@@ -11,6 +11,7 @@ import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications"
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
+import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
 import { onParticipantLeaves, refundOnCancel, reserveShare } from "./wallet";
 import { priceFor } from "./pricing";
@@ -249,6 +250,8 @@ export function leaveLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match) => {
     if (!(await findParticipant(tx, matchId, userId))) throw new DomainError("Du bist nicht in dieser Lobby.");
     await onParticipantLeaves(tx, match, userId, { removedByAdmin: false, actorId: userId });
+    const me = await findParticipant(tx, matchId, userId);
+    if (me?.readyAt && match.startsAt.getTime() - Date.now() < 24 * 3_600_000) await recordLateCancel(tx, userId, matchId);
     const removed = await tx
       .delete(matchParticipants)
       .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)))

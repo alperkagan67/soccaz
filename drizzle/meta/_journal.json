@@ -64,6 +64,20 @@
       "when": 1792342168102,
       "tag": "0008_easy_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792344171553,
+      "tag": "0009_tough_eddie_brock",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792344661464,
+      "tag": "0010_loose_bucky",
+      "breakpoints": true
     }
   ]
 }

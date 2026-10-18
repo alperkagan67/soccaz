@@ -2,10 +2,13 @@ import { and, asc, count, desc, eq, inArray, isNotNull, lt, or, sql } from "driz
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
+import { mvpVotes } from "@/db/schema-community";
+import { MVP_WINDOW_HOURS, NO_SHOW_WINDOW_DAYS } from "./stats";
 import { matchEvents, matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
 import { confirmDeadline, isValidScore, minuteAt, phaseOf, scoreFromGoals } from "@/lib/result-rules";
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
+import "./finalizers"; // registriert Statistik, Elo und alles, was nach dem Spiel berechnet wird
 import { onMatchPlayed } from "./finalize";
 import { teamName } from "./names";
 import { matchAdminIds, matchParticipantIds, notifyUsers, platformAdminIds, teamAdminIds } from "./notifications";
@@ -39,6 +42,9 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
       awayId: away.id,
       awayName: away.name,
       awaySlug: away.slug,
+      finalizedAt: matches.finalizedAt,
+      mvpClosedAt: matches.mvpClosedAt,
+      mvpUserId: matches.mvpUserId,
     })
     .from(matches)
     .innerJoin(home, eq(home.id, matches.homeTeamId))
@@ -67,7 +73,7 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
   const phase = phaseOf({ status: match.status, startsAt: match.startsAt, hasPendingResult: Boolean(result) });
 
   const participants = await db
-    .select({ userId: users.id, name: users.name, teamId: matchParticipants.teamId })
+    .select({ userId: users.id, name: users.name, teamId: matchParticipants.teamId, noShow: matchParticipants.noShow })
     .from(matchParticipants)
     .innerJoin(users, eq(users.id, matchParticipants.userId))
     .where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId)))
@@ -92,9 +98,19 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
   const mySide: "home" | "away" | null = adminOf.includes(match.homeId) ? "home" : adminOf.includes(match.awayId) ? "away" : null;
   const submitterSide: "home" | "away" | null = result ? (result.confirmedHome && !result.confirmedAway ? "home" : result.confirmedAway && !result.confirmedHome ? "away" : null) : null;
 
+  // Spieler des Spiels: 24 Stunden nach Abschluss, nur für Mitspieler, nie für sich selbst
+  const votingOpen = match.status === "played" && Boolean(match.finalizedAt) && !match.mvpClosedAt && Date.now() - match.finalizedAt!.getTime() <= MVP_WINDOW_HOURS * 3_600_000;
+  const iPlayed = viewer ? participants.some((p) => p.userId === viewer.id && !p.noShow) : false;
+  const [myVoteRow] = viewer && votingOpen && iPlayed ? await db.select({ candidateId: mvpVotes.candidateId }).from(mvpVotes).where(and(eq(mvpVotes.matchId, matchId), eq(mvpVotes.voterId, viewer.id))) : [];
+  const [mvp] = match.mvpUserId ? await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, match.mvpUserId)) : [];
+  const noShowOpen = match.status === "played" && Date.now() - match.startsAt.getTime() <= NO_SHOW_WINDOW_DAYS * 86_400_000;
+
   return {
     match,
     events,
+    mvp: mvp ?? null,
+    voting: { open: votingOpen, canVote: votingOpen && iPlayed, myVote: myVoteRow?.candidateId ?? null, closesAt: match.finalizedAt ? new Date(match.finalizedAt.getTime() + MVP_WINDOW_HOURS * 3_600_000) : null },
+    noShowAdminTeams: noShowOpen ? (platformAdmin ? [match.homeId, match.awayId] : adminOf) : [],
     live,
     result: result ?? null,
     phase,

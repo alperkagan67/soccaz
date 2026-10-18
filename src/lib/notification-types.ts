@@ -1,5 +1,6 @@
 export type NotificationType =
   | "request.accepted"
+  | "request.challenge"
   | "team.joined"
   | "lobby.joined"
   | "lobby.substitute"
@@ -17,6 +18,7 @@ export type NotificationType =
 /** Beschreibung jeder Benachrichtigungsart: Anzeigename, ob zusätzlich eine E-Mail rausgeht, ob sie abschaltbar ist. */
 export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email: boolean; optional: boolean }> = {
   "request.accepted": { label: "Deine Spielsuche wurde angenommen", email: true, optional: true },
+  "request.challenge": { label: "Dein Team wurde herausgefordert", email: true, optional: true },
   "team.joined": { label: "Neues Mitglied in deinem Team", email: false, optional: true },
   "lobby.joined": { label: "Spieler tritt der Lobby bei", email: false, optional: true },
   "lobby.substitute": { label: "Ersatzspieler wartet auf Zuweisung", email: false, optional: true },
