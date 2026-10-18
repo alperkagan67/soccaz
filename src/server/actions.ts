@@ -12,6 +12,7 @@ import { parseBerlinLocal } from "@/lib/time";
 import { audit } from "./audit";
 import { requireLoggedIn, requireUser } from "./session";
 import * as lobby from "./lobby";
+import * as results from "./results";
 import { acceptRequest, cancelRequest, createRequest } from "./requests";
 import { createInvite, createTeam, DomainError, joinWithInvite } from "./teams";
 
@@ -174,4 +175,39 @@ export async function removeParticipantAction(matchId: string, targetUserId: str
 }
 export async function cancelMatchAction(matchId: string, reason: string) {
   return lobbyAction(matchId, (id) => lobby.cancelMatch(id, matchId, reason));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Spieltag: Ereignisse und Ergebnis
+// ---------------------------------------------------------------------------------------------
+
+async function matchAction(matchId: string, fn: (userId: string) => Promise<void>): Promise<ActionState> {
+  const user = await requireUser(`/spiele/${matchId}`);
+  try {
+    await fn(user.id);
+  } catch (error) {
+    if (error instanceof DomainError) return { error: error.message };
+    throw error;
+  }
+  revalidatePath(`/spiele/${matchId}`);
+  revalidatePath(`/lobby/${matchId}`);
+}
+
+export async function recordEventAction(matchId: string, input: results.EventInput) {
+  return matchAction(matchId, (id) => results.recordEvent(id, matchId, input));
+}
+export async function undoLastEventAction(matchId: string) {
+  return matchAction(matchId, (id) => results.undoLastEvent(id, matchId));
+}
+export async function submitResultAction(matchId: string, home: number, away: number) {
+  return matchAction(matchId, (id) => results.submitResult(id, matchId, home, away));
+}
+export async function confirmResultAction(matchId: string) {
+  return matchAction(matchId, (id) => results.confirmResult(id, matchId));
+}
+export async function disputeResultAction(matchId: string, reason: string) {
+  return matchAction(matchId, (id) => results.disputeResult(id, matchId, reason));
+}
+export async function decideResultAction(matchId: string, home: number, away: number, reason: string) {
+  return matchAction(matchId, (id) => results.decideResult(id, matchId, home, away, reason));
 }

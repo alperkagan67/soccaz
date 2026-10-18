@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import {
   assignSubstituteAction,
@@ -29,30 +28,6 @@ function useRun() {
 
 function ErrorText({ message }: { message?: string }) {
   return message ? <p className="error" role="alert">{message}</p> : null;
-}
-
-/** Hört auf Änderungen der Lobby (SSE) und lädt die Seite neu. Zusätzlich alle 30 Sekunden als Absicherung. */
-export function LobbyLive({ matchId }: { matchId: string }) {
-  const router = useRouter();
-  const [online, setOnline] = useState(false);
-
-  useEffect(() => {
-    const source = new EventSource(`/api/lobby/${matchId}/events`);
-    source.onopen = () => setOnline(true);
-    source.onerror = () => setOnline(false);
-    source.addEventListener("update", () => router.refresh());
-    const poll = setInterval(() => router.refresh(), 30_000);
-    return () => {
-      source.close();
-      clearInterval(poll);
-    };
-  }, [matchId, router]);
-
-  return (
-    <span className={`text-xs ${online ? "text-green" : "text-muted"}`} title={online ? "Live verbunden" : "Verbinde…"}>
-      {online ? "● Live" : "○ Verbinde…"}
-    </span>
-  );
 }
 
 export function Countdown({ startsAtIso }: { startsAtIso: string }) {

@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { formatDateTime } from "@/lib/time";
+import { phaseOf, PHASE_LABEL } from "@/lib/result-rules";
+import { myMatches } from "@/server/lobby";
 import { listMyTeams } from "@/server/teams";
 import { requireUser } from "@/server/session";
 
@@ -7,7 +10,8 @@ export const metadata: Metadata = { title: "Mein Bereich" };
 
 export default async function DashboardPage() {
   const user = await requireUser("/app");
-  const myTeams = await listMyTeams(user.id);
+  const [myTeams, games] = await Promise.all([listMyTeams(user.id), myMatches(user.id)]);
+  const now = new Date();
 
   return (
     <div className="space-y-6">
@@ -20,6 +24,33 @@ export default async function DashboardPage() {
         <Link href="/app/suche/neu" className="btn btn-primary">Gegner suchen</Link>
         <Link href="/suche" className="btn btn-ghost">Spielsuchen ansehen</Link>
       </div>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Meine Spiele</h2>
+        {games.length === 0 ? (
+          <p className="card text-muted">Noch keine Spiele. Suche einen Gegner oder nimm eine Spielsuche an.</p>
+        ) : (
+          <ul className="space-y-2">
+            {games.map((g) => {
+              const phase = phaseOf({ status: g.status, startsAt: g.startsAt, hasPendingResult: false, now });
+              const href = phase === "upcoming" && (g.status === "lobby" || g.status === "confirmed") ? `/lobby/${g.id}` : `/spiele/${g.id}`;
+              return (
+                <li key={g.id}>
+                  <Link href={href} className="card flex items-center justify-between gap-3 hover:border-green">
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">{g.homeName} <span className="text-muted">gegen</span> {g.awayName}</span>
+                      <span className="block text-sm text-muted">{formatDateTime(g.startsAt)} Uhr · {g.durationMin} Min</span>
+                    </span>
+                    <span className={`shrink-0 text-xs ${g.status === "confirmed" ? "text-green" : g.status === "cancelled" || g.status === "disputed" ? "text-coral" : "text-muted"}`}>
+                      {g.status === "confirmed" && phase === "upcoming" ? "Bestätigt" : g.status === "lobby" && phase === "upcoming" ? "Wartet auf Spieler" : PHASE_LABEL[phase]}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">

@@ -4,6 +4,7 @@ import { Client } from "pg";
 // Eine einzige Datenbankverbindung hört auf den Kanal "lobby" und verteilt Ereignisse im Prozess
 // an alle offenen SSE-Verbindungen. Ohne Redis, passend zu einem einzelnen Server.
 const CHANNEL = "lobby";
+export const ALL_MATCHES = "*"; // Abo-Schlüssel für alle Spiele (Livescore-Übersicht)
 
 type Hub = { emitter: EventEmitter; starting?: Promise<void>; client?: Client };
 const globalForHub = globalThis as unknown as { __lobbyHub?: Hub };
@@ -19,7 +20,10 @@ function reset() {
 async function start() {
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   client.on("notification", (msg) => {
-    if (msg.channel === CHANNEL && msg.payload) hub.emitter.emit(msg.payload);
+    if (msg.channel === CHANNEL && msg.payload) {
+      hub.emitter.emit(msg.payload);
+      hub.emitter.emit(ALL_MATCHES);
+    }
   });
   const retry = () => {
     reset();

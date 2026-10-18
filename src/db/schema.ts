@@ -116,6 +116,7 @@ export const matchEvents = pgTable("match_events", {
   userId: uuid("user_id").references(() => users.id),
   teamId: uuid("team_id").notNull().references(() => teams.id),
   minute: integer("minute"),
+  createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -126,6 +127,12 @@ export const matchResults = pgTable("match_results", {
   confirmedHome: boolean("confirmed_home").notNull().default(false),
   confirmedAway: boolean("confirmed_away").notNull().default(false),
   disputed: boolean("disputed").notNull().default(false),
+  submittedBy: uuid("submitted_by").references(() => users.id),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+  confirmDeadline: timestamp("confirm_deadline", { withTimezone: true }),
+  disputeReason: text("dispute_reason"),
+  decidedBy: uuid("decided_by").references(() => users.id),
+  autoConfirmed: boolean("auto_confirmed").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

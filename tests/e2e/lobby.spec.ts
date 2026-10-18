@@ -1,13 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { clickWhenReady, setupLobby } from "./flows";
 import {
   addParticipant,
   addTeamMember,
   closeContexts,
   closeTestDb,
-  createTeam,
   devLogin,
-  futureLocal,
-  matchIdFromUrl,
   newUser,
   run,
   seedUser,
@@ -22,39 +20,6 @@ test.afterEach(async ({ browser }) => {
 test.afterAll(async () => {
   await closeTestDb();
 });
-
-/** Zwei Teams, A sucht, B nimmt an. Gibt beide Seiten (jeweils in der Lobby) und die Match-ID zurück. */
-async function setupLobby(browser: import("@playwright/test").Browser, key: string, visibility: "public" | "private" = "public") {
-  const a = await (await browser.newContext()).newPage();
-  const b = await (await browser.newContext()).newPage();
-  await newUser(a, `${key}a`);
-  await newUser(b, `${key}b`);
-  const nameA = `${key.toUpperCase()}-Heim ${run}`;
-  const nameB = `${key.toUpperCase()}-Gast ${run}`;
-  await createTeam(a, nameA);
-  await createTeam(b, nameB);
-
-  await a.goto("/app/suche/neu");
-  await a.getByLabel("Team", { exact: true }).selectOption({ label: nameA });
-  await a.getByLabel(/Anstoß/).fill(futureLocal(20));
-  await a.getByLabel("Sichtbarkeit").selectOption(visibility);
-  await a.getByRole("button", { name: "Spielsuche erstellen" }).click();
-  await expect(a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
-
-  await b.goto(a.url());
-  await b.getByRole("button", { name: "Spiel annehmen" }).click();
-  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
-  const matchId = matchIdFromUrl(b.url());
-  await a.goto(`/lobby/${matchId}`);
-  return { a, b, matchId, nameA, nameB };
-}
-
-async function clickWhenReady(page: Page, name: string | RegExp) {
-  // Klick wiederholen, bis die Seite hydriert ist (der Button verschwindet oder ändert sich nach dem Klick)
-  const button = page.getByRole("button", { name });
-  await expect(button).toBeVisible();
-  await button.click();
-}
 
 test("Lobby: Ort live, Bereit, automatische Bestätigung, Rücknahme, Absage", async ({ browser }) => {
   const { a, b, matchId, nameA, nameB } = await setupLobby(browser, "l1");

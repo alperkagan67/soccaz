@@ -51,7 +51,7 @@ import { existsSync } from "node:fs";
 import { Pool } from "pg";
 
 let pool: Pool | undefined;
-function testDb(): Pool {
+export function testDb(): Pool {
   if (!pool) {
     if (existsSync(".env.local")) process.loadEnvFile(".env.local");
     const url = process.env.DATABASE_URL!;

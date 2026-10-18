@@ -66,6 +66,7 @@ export default async function Home() {
               {user ? "Team gründen" : "Jetzt starten"}
             </Link>
             <Link href="/suche" className="btn btn-ghost">Spielsuchen ansehen</Link>
+            <Link href="/spiele" className="btn btn-ghost">Livescore</Link>
           </div>
         </div>
       </section>

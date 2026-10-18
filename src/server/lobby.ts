@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
@@ -6,8 +6,8 @@ import { matchParticipants, matches, teamMembers, teams, users } from "@/db/sche
 import { hasFreeSlot, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import { audit } from "./audit";
 import { DomainError } from "./teams";
+import type { Tx } from "./tx";
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type MatchRow = typeof matches.$inferSelect;
 
 export type Viewer = { id: string; role: "player" | "admin" };
@@ -300,4 +300,31 @@ export function cancelMatch(actorId: string, matchId: string, reason: string) {
     await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, matchId));
     await audit(actorId, "match.cancel", "match", matchId, { before: { status: match.status }, after: { status: "cancelled", reason: text } }, tx);
   });
+}
+
+/** Spiele einer Person: als Teilnehmer oder als Mitglied eines der beiden Teams. */
+export async function myMatches(userId: string) {
+  await connection();
+  const home = alias(teams, "home");
+  const away = alias(teams, "away");
+  const rows = await db
+    .select({
+      id: matches.id,
+      startsAt: matches.startsAt,
+      status: matches.status,
+      durationMin: matches.durationMin,
+      homeName: home.name,
+      awayName: away.name,
+    })
+    .from(matches)
+    .innerJoin(home, eq(home.id, matches.homeTeamId))
+    .innerJoin(away, eq(away.id, matches.awayTeamId))
+    .where(
+      sql`${matches.id} in (select match_id from match_participants where user_id = ${userId})
+        or ${matches.homeTeamId} in (select team_id from team_members where user_id = ${userId})
+        or ${matches.awayTeamId} in (select team_id from team_members where user_id = ${userId})`,
+    )
+    .orderBy(desc(matches.startsAt))
+    .limit(30);
+  return rows;
 }

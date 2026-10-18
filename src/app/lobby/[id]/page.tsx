@@ -5,7 +5,8 @@ import { formatDateTime } from "@/lib/time";
 import { hasFreeSlot, MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { requireUser } from "@/server/session";
 import { canViewLobby, getLobby } from "@/server/lobby";
-import { CancelForm, Countdown, LobbyLive, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
+import { LiveIndicator } from "@/components/LiveIndicator";
+import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
 
 export const metadata: Metadata = { title: "Lobby", robots: { index: false } };
 
@@ -54,7 +55,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
       <header className="space-y-1">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted">Lobby</p>
-          <LobbyLive matchId={match.id} />
+          <LiveIndicator eventsUrl={`/api/lobby/${match.id}/events`} />
         </div>
         <h1 className="text-2xl font-bold">
           {match.homeName} <span className="text-muted">gegen</span> {match.awayName}
@@ -64,6 +65,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           {active && <> · <span className="text-ink"><Countdown startsAtIso={match.startsAt.toISOString()} /></span></>}
         </p>
         <p className={`text-sm font-semibold ${status.tone}`}>{status.label}</p>
+        {!active && match.status !== "cancelled" && (
+          <Link href={`/spiele/${match.id}`} className="btn btn-primary mt-2">Zur Spielseite</Link>
+        )}
       </header>
 
       {match.status === "lobby" && active && (

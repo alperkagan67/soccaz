@@ -17,6 +17,9 @@ export async function Header() {
           <Link href="/suche" className="hidden px-2 text-muted hover:text-ink sm:inline">
             Spielsuchen
           </Link>
+          <Link href="/spiele" className="hidden px-2 text-muted hover:text-ink sm:inline">
+            Livescore
+          </Link>
           {user ? (
             <>
               <Link href="/app" className="btn btn-ghost !min-h-9 !px-3">
