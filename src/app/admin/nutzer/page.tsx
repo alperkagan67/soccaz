@@ -4,6 +4,8 @@ import { formatDateTime } from "@/lib/time";
 import { ALL_ROLES, ROLE_LABEL } from "@/lib/roles";
 import { listUsers } from "@/server/admin";
 import { requirePermission } from "@/server/session";
+import { ActionButton } from "@/components/ActionButton";
+import { setOrganizerAction } from "@/server/tournament-actions";
 import { UserActions } from "./UserActions";
 
 export const metadata: Metadata = { title: "Admin: Nutzer" };
@@ -54,6 +56,7 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
                 <p className="text-sm text-muted">{u.email} · {u.city ?? "–"} · seit {formatDateTime(u.createdAt)}</p>
               </div>
               <UserActions userId={u.id} role={u.role} banned={Boolean(u.bannedAt)} pro={u.isVerifiedPro} isSelf={u.id === me.id} />
+              <ActionButton action={setOrganizerAction.bind(null, u.id, !u.isOrganizer)} label={u.isOrganizer ? "Veranstalter-Recht entziehen" : "Als Turnier-Veranstalter freischalten"} />
             </li>
           ))}
         </ul>

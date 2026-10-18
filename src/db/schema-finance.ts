@@ -20,8 +20,8 @@ import { matches, users } from "./schema";
 // Phase 2: Geld und Halle
 // ---------------------------------------------------------------------------------------------
 
-export const ledgerAccount = pgEnum("ledger_account", ["wallet", "clearing", "bank", "revenue", "venue_cost", "fees", "promo", "chargeback"]);
-export const ledgerKind = pgEnum("ledger_kind", ["topup", "fee", "promo_credit", "match_share", "refund", "venue_cost", "adjustment", "chargeback"]);
+export const ledgerAccount = pgEnum("ledger_account", ["wallet", "clearing", "bank", "revenue", "venue_cost", "fees", "promo", "chargeback", "tournament"]);
+export const ledgerKind = pgEnum("ledger_kind", ["topup", "fee", "promo_credit", "match_share", "refund", "venue_cost", "adjustment", "chargeback", "tournament_entry", "tournament_refund", "tournament_payout", "tournament_commission"]);
 export const paymentProvider = pgEnum("payment_provider", ["dev", "stripe"]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "canceled"]);
 export const bookingStatus = pgEnum("booking_status", ["open", "in_progress", "booked", "unavailable", "confirmed", "withdrawn", "done"]);
@@ -123,6 +123,7 @@ export const ledgerEntries = pgTable(
     kind: ledgerKind("kind").notNull(),
     matchId: uuid("match_id").references(() => matches.id),
     paymentId: uuid("payment_id").references(() => payments.id),
+    tournamentId: uuid("tournament_id"), // Turniergelder (Fremdschlüssel in der Migration, um Importschleifen zu vermeiden)
     reversesEntryId: uuid("reverses_entry_id"),
     reason: text("reason"),
     idempotencyKey: text("idempotency_key").notNull().unique(),

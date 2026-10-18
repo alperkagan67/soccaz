@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { berlinMonthRange } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
+import { cityChallenge, pastChampions } from "@/server/city-challenge";
 import { leaderboards } from "@/server/profiles";
 
 export const metadata: Metadata = { title: "Rangliste" };
@@ -10,7 +11,7 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
   const sp = await searchParams;
   const city = typeof sp.city === "string" && (CITIES as readonly string[]).includes(sp.city) ? sp.city : undefined;
   const range = berlinMonthRange(typeof sp.monat === "string" ? sp.monat : undefined);
-  const data = await leaderboards({ city, monthStart: range.from, monthEnd: range.to });
+  const [data, cities, champions] = await Promise.all([leaderboards({ city, monthStart: range.from, monthEnd: range.to }), cityChallenge(range.from, range.to), pastChampions(3)]);
 
   return (
     <div className="space-y-8">
@@ -27,6 +28,24 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
           <button className="btn btn-primary">Anzeigen</button>
         </form>
       </header>
+
+      <section className="space-y-2" aria-labelledby="stadt-h">
+        <h2 id="stadt-h" className="text-lg font-semibold">Stadt-Challenge im {range.label}</h2>
+        <p className="text-xs text-muted">Siege von Teams einer Stadt gegen Teams anderer Städte. Spiele innerhalb einer Stadt zählen nicht.</p>
+        {cities.length === 0 ? (
+          <p className="text-sm text-muted">Noch keine Spiele zwischen Städten.</p>
+        ) : (
+          <ol className="space-y-2" data-testid="city-challenge">
+            {cities.map((c, i) => (
+              <li key={c.city} className="card flex items-center justify-between">
+                <span><span className="mr-2 text-muted">{i + 1}.</span><span className="font-semibold">{c.city}</span></span>
+                <span className="font-bold">{c.wins} <span className="text-xs font-normal text-muted">Siege in {c.games} Spielen</span></span>
+              </li>
+            ))}
+          </ol>
+        )}
+        {champions.length > 0 && <p className="text-xs text-muted">Frühere Sieger: {champions.map((c) => `${c.month}: ${c.city}`).join(" · ")}</p>}
+      </section>
 
       <section className="space-y-2" aria-labelledby="monat-h">
         <h2 id="monat-h" className="text-lg font-semibold">

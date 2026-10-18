@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { matchRequests, teams } from "@/db/schema";
 import { formatDateTime } from "@/lib/time";
 import { getCurrentUser } from "@/server/session";
+import { activeSponsors } from "@/server/sponsors";
 
 async function OpenRequests() {
   const open = await db
@@ -35,6 +36,26 @@ async function OpenRequests() {
         </li>
       ))}
     </ul>
+  );
+}
+
+async function Sponsors() {
+  const list = await activeSponsors("sponsor");
+  if (list.length === 0) return null;
+  return (
+    <section className="space-y-2" aria-label="Partner">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Partner</h2>
+      <ul className="flex flex-wrap gap-2">
+        {list.map((s) => (
+          <li key={s.id}>
+            <a href={`/api/sponsor/${s.id}`} rel="sponsored noopener" target="_blank" className="card block !py-2 text-sm hover:border-green/50">
+              <span className="font-semibold">{s.name}</span>
+              {s.tagline && <span className="block text-xs text-muted">{s.tagline}</span>}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -75,6 +96,7 @@ export default async function Home() {
         <h2 className="text-lg font-semibold">Offene Spielsuchen</h2>
         <OpenRequests />
       </section>
+      <Sponsors />
     </div>
   );
 }

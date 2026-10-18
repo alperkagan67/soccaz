@@ -9,6 +9,8 @@ import { formatDate, formatDateTime } from "@/lib/time";
 import { getTeamProfile } from "@/server/profiles";
 import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
+import { leaguesOfTeam } from "@/server/leagues";
+import { sponsorsOfTeam } from "@/server/sponsors";
 import { getTeamMembers, isTeamAdmin } from "@/server/teams";
 import { InviteBox } from "./InviteBox";
 
@@ -47,7 +49,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   if (!profile) notFound();
   const { team, stats } = profile;
 
-  const [members, user] = await Promise.all([getTeamMembers(team.id), getCurrentUser()]);
+  const [members, user, leagues, jerseys] = await Promise.all([getTeamMembers(team.id), getCurrentUser(), leaguesOfTeam(team.id), sponsorsOfTeam(team.id)]);
   const admin = user ? await isTeamAdmin(user.id, team.id) : false;
   const canChallenge = user?.onboardedAt ? (await myAdminTeams(user.id)).some((t) => t.id !== team.id) : false;
 
@@ -74,12 +76,39 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         )}
       </header>
 
+      {jerseys.length > 0 && (
+        <p className="text-sm text-muted">
+          Trikot-Partner:{" "}
+          {jerseys.map((j, i) => (
+            <span key={j.id}>
+              {i > 0 && ", "}
+              <a href={`/api/sponsor/${j.id}`} rel="sponsored noopener" target="_blank" className="font-semibold text-ink hover:text-green">{j.name}</a>
+            </span>
+          ))}
+        </p>
+      )}
+
       <section aria-label="Statistik" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Spiele" value={stats.matches} />
         <StatTile label="S-U-N" value={`${stats.wins}-${stats.draws}-${stats.losses}`} />
         <StatTile label="Tore" value={`${stats.goalsFor}:${stats.goalsAgainst}`} />
         <StatTile label="Elo" value={profile.hasStats ? stats.elo : "–"} hint={profile.cityRank ? `Platz ${profile.cityRank} in ${team.city}` : "Rang ab 5 Spielen"} />
       </section>
+
+      {leagues.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">Ligen</h2>
+          <ul className="flex flex-wrap gap-2">
+            {leagues.map((l) => (
+              <li key={l.id}>
+                <Link href={`/ligen/${l.id}`} className="rounded-full border border-line px-3 py-1 text-sm hover:border-green/50">
+                  {l.name}{l.champion === team.id ? " 🏆" : ""}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {admin && <InviteBox teamId={team.id} teamName={team.name} />}
       {admin && <ImageUpload kind="team_logo" refId={team.id} label={team.logoUrl ? "Logo ändern" : "Logo hochladen"} />}

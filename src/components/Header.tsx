@@ -26,9 +26,6 @@ export async function Header() {
           <Link href="/rangliste" className="hidden px-2 text-muted hover:text-ink sm:inline">
             Rangliste
           </Link>
-          <Link href="/spieler" className="hidden px-2 text-muted hover:text-ink md:inline">
-            Spieler
-          </Link>
           {user ? (
             <>
               <Link
@@ -52,7 +49,7 @@ export async function Header() {
                 </Link>
               )}
               <Link href="/app" className="btn btn-ghost !min-h-9 !px-3">
-                {user.name.split(" ")[0]}
+                <span className="block max-w-[7rem] truncate">{user.name.split(" ")[0]}</span>
               </Link>
               <form
                 action={async () => {

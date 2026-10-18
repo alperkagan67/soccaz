@@ -65,6 +65,18 @@ export function RequestForm({ teams, min, target }: { teams: TeamOption[]; min: 
 
       {!target && (
         <div>
+          <label className="label" htmlFor="repeatWeeks">Wiederholen</label>
+          <select id="repeatWeeks" name="repeatWeeks" defaultValue="1" className="field">
+            <option value="1">Nur dieses Spiel</option>
+            <option value="2">2 Wochen hintereinander</option>
+            <option value="3">3 Wochen hintereinander</option>
+            <option value="4">4 Wochen hintereinander</option>
+          </select>
+          <p className="mt-1 text-xs text-muted">Legt für dieselbe Uhrzeit in den Folgewochen weitere Spielsuchen an.</p>
+        </div>
+      )}
+      {!target && (
+        <div>
           <label className="label" htmlFor="visibility">Sichtbarkeit</label>
           <select id="visibility" name="visibility" defaultValue="public" className="field">
             <option value="public">Öffentlich (in der Liste)</option>

@@ -8,8 +8,8 @@ import type { Tx } from "./tx";
 
 type Exec = Pick<typeof db, "insert" | "select">;
 
-export type Account = "wallet" | "clearing" | "bank" | "revenue" | "venue_cost" | "fees" | "promo" | "chargeback";
-export type LedgerKind = "topup" | "fee" | "promo_credit" | "match_share" | "refund" | "venue_cost" | "adjustment" | "chargeback";
+export type Account = "wallet" | "clearing" | "bank" | "revenue" | "venue_cost" | "fees" | "promo" | "chargeback" | "tournament";
+export type LedgerKind = "topup" | "fee" | "promo_credit" | "match_share" | "refund" | "venue_cost" | "adjustment" | "chargeback" | "tournament_entry" | "tournament_refund" | "tournament_payout" | "tournament_commission";
 
 export type Posting = {
   debit: { account: Account; userId?: string };
@@ -19,6 +19,7 @@ export type Posting = {
   idempotencyKey: string;
   matchId?: string | null;
   paymentId?: string | null;
+  tournamentId?: string | null;
   reversesEntryId?: string | null;
   reason?: string | null;
   actorId?: string | null;
@@ -53,6 +54,7 @@ export async function post(exec: Exec, p: Posting): Promise<{ id: string; create
       kind: p.kind,
       matchId: p.matchId ?? null,
       paymentId: p.paymentId ?? null,
+      tournamentId: p.tournamentId ?? null,
       reversesEntryId: p.reversesEntryId ?? null,
       reason: p.reason ?? null,
       idempotencyKey: p.idempotencyKey,

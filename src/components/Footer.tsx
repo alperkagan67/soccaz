@@ -8,7 +8,12 @@ export function Footer() {
         <Link href="/datenschutz" className="hover:text-ink">Datenschutz</Link>
         <Link href="/agb" className="hover:text-ink">AGB</Link>
         <Link href="/hausordnung" className="hover:text-ink">Hausordnung</Link>
+        <Link href="/ligen" className="hover:text-ink">Ligen</Link>
+        <Link href="/turniere" className="hover:text-ink">Turniere</Link>
+        <Link href="/profitag" className="hover:text-ink">Profi-Tag</Link>
+        <Link href="/spieler" className="hover:text-ink">Spieler</Link>
         <Link href="/hallen" className="hover:text-ink">Hallen</Link>
+        <Link href="/mitspieler" className="hover:text-ink">Mitspieler gesucht</Link>
       </nav>
     </footer>
   );

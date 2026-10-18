@@ -131,6 +131,7 @@ export async function listUsers(filter: { q?: string; role?: string; banned?: bo
       role: users.role,
       city: users.city,
       isVerifiedPro: users.isVerifiedPro,
+      isOrganizer: users.isOrganizer,
       bannedAt: users.bannedAt,
       createdAt: users.createdAt,
     })

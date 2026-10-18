@@ -48,6 +48,16 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
         <p className={`text-center text-sm font-semibold ${phase === "live" ? "text-green" : phase === "disputed" || phase === "cancelled" ? "text-coral" : "text-muted"}`}>
           {PHASE_LABEL[phase]}
         </p>
+        {match.status === "played" && match.visibility === "public" && (
+          <p className="text-center text-sm">
+            <a href={`/api/karte/${match.id}`} className="text-green underline" download>Spielbericht als Bild</a>
+          </p>
+        )}
+        {v?.mySide && match.status === "played" && (
+          <p className="text-center text-sm">
+            <Link href={`/app/suche/neu?gegner=${v.mySide === "home" ? match.awaySlug : match.homeSlug}`} className="text-green underline">Revanche anfragen</Link>
+          </p>
+        )}
         {user && (
           <p className="text-center text-xs">
             <Link href={`/lobby/${match.id}`} className="text-muted underline">Zur Lobby</Link>

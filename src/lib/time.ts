@@ -71,3 +71,10 @@ export function berlinMonthRange(month?: string, now = new Date()): { month: str
   const label = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("de-DE", { timeZone: "UTC", month: "long", year: "numeric" });
   return { month: key, from, to, label };
 }
+
+/** Gleiche Berliner Uhrzeit n Tage später (über Sommer-/Winterzeit hinweg). */
+export function addBerlinDays(date: Date, days: number): Date {
+  const local = toBerlinInputValue(date); // "YYYY-MM-DDTHH:mm"
+  const d = new Date(Date.UTC(+local.slice(0, 4), +local.slice(5, 7) - 1, +local.slice(8, 10) + days));
+  return parseBerlinLocal(`${d.toISOString().slice(0, 10)}${local.slice(10)}`) ?? new Date(date.getTime() + days * 86_400_000);
+}

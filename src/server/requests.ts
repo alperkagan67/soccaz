@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import { and, asc, between, count, eq, gt, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matchRequests, matches, teamMembers, teams } from "@/db/schema";
-import { berlinDayRange, toBerlinInputValue } from "@/lib/time";
+import { addBerlinDays, berlinDayRange, toBerlinInputValue } from "@/lib/time";
 import { audit } from "./audit";
 import { teamName } from "./names";
 import { priceFor } from "./pricing";
@@ -30,6 +30,7 @@ export type RequestInput = {
   visibility: "public" | "private";
   note?: string;
   targetTeamId?: string; // Herausforderung: nur dieses Team kann annehmen
+  repeatWeeks?: number; // Serie: gleiche Zeit in den folgenden Wochen (1 = nur dieses Spiel, höchstens 4)
 };
 
 async function isAdmin(tx: Pick<typeof db, "select">, userId: string, teamId: string) {
@@ -80,11 +81,15 @@ export async function createRequest(userId: string, input: RequestInput) {
       .select({ open: count() })
       .from(matchRequests)
       .where(and(eq(matchRequests.teamId, input.teamId), eq(matchRequests.status, "open")));
-    if (open >= MAX_OPEN_REQUESTS_PER_TEAM) {
-      throw new DomainError(`Dein Team hat schon ${MAX_OPEN_REQUESTS_PER_TEAM} offene Spielsuchen.`);
+    const weeks = input.targetTeamId ? 1 : Math.min(Math.max(Math.trunc(input.repeatWeeks ?? 1), 1), 4);
+    if (open + weeks > MAX_OPEN_REQUESTS_PER_TEAM) {
+      throw new DomainError(weeks > 1 ? `Das wären mehr als ${MAX_OPEN_REQUESTS_PER_TEAM} offene Spielsuchen für dein Team.` : `Dein Team hat schon ${MAX_OPEN_REQUESTS_PER_TEAM} offene Spielsuchen.`);
     }
-    if (await hasConflict(tx, input.teamId, input.startsAt)) {
-      throw new DomainError("Dein Team hat um diese Zeit schon eine Spielsuche oder ein Spiel.");
+    const dates = Array.from({ length: weeks }, (_, i) => addBerlinDays(input.startsAt, 7 * i));
+    for (const date of dates) {
+      if (await hasConflict(tx, input.teamId, date)) {
+        throw new DomainError(weeks > 1 ? "Dein Team hat in einer dieser Wochen schon eine Spielsuche oder ein Spiel." : "Dein Team hat um diese Zeit schon eine Spielsuche oder ein Spiel.");
+      }
     }
 
     if (input.targetTeamId) {
@@ -93,20 +98,23 @@ export async function createRequest(userId: string, input: RequestInput) {
       if (!target || target.archivedAt) throw new DomainError("Dieses Team gibt es nicht mehr.");
     }
 
-    const [request] = await tx
+    const created = await tx
       .insert(matchRequests)
-      .values({
-        teamId: input.teamId,
-        city: input.city,
-        startsAt: input.startsAt,
-        durationMin: input.durationMin,
-        strength: input.strength,
-        visibility: input.targetTeamId ? "private" : input.visibility, // Herausforderungen stehen nie in der öffentlichen Liste
-        note: input.note || null,
-        targetTeamId: input.targetTeamId ?? null,
-      })
+      .values(
+        dates.map((startsAt) => ({
+          teamId: input.teamId,
+          city: input.city,
+          startsAt,
+          durationMin: input.durationMin,
+          strength: input.strength,
+          visibility: input.targetTeamId ? ("private" as const) : input.visibility, // Herausforderungen stehen nie in der öffentlichen Liste
+          note: input.note || null,
+          targetTeamId: input.targetTeamId ?? null,
+        })),
+      )
       .returning();
-    await audit(userId, "request.create", "match_request", request.id, { after: request }, tx);
+    const request = created[0];
+    for (const r of created) await audit(userId, "request.create", "match_request", r.id, { after: r }, tx);
     if (input.targetTeamId) {
       await notifyUsers(
         await teamAdminIds(tx, input.targetTeamId),

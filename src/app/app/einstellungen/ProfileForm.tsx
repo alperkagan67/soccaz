@@ -40,7 +40,7 @@ export function ProfileForm({ name, city, position, profilePublic }: { name: str
           <span className="block text-xs text-muted">Andere sehen Name, Statistik, Abzeichen und Teams. Dein Geburtsdatum und deine E-Mail sieht niemand.</span>
         </span>
       </label>
-      <SubmitButton pending={pending}>Speichern</SubmitButton>
+      <SubmitButton pending={pending}>Profil speichern</SubmitButton>
       {state?.error && <FieldError message={state.error} />}
       {state?.ok && <p className="text-sm text-green" role="status">Gespeichert.</p>}
     </form>

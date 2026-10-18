@@ -66,7 +66,7 @@ test("Benachrichtigungen: abgeschaltete Art kommt nicht an", async ({ browser })
   await admin.goto("/app/einstellungen");
   await expect(admin.getByLabel("Neues Mitglied in deinem Team")).toBeChecked();
   await admin.getByLabel("Neues Mitglied in deinem Team").uncheck();
-  await admin.getByRole("button", { name: "Speichern" }).click();
+  await admin.getByRole("button", { name: "Speichern", exact: true }).click();
   await expect(admin.getByText("Gespeichert.")).toBeVisible();
 
   // neues Mitglied tritt per Einladung bei

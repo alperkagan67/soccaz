@@ -4,6 +4,7 @@ import * as schema from "./schema";
 import * as finance from "./schema-finance";
 import * as community from "./schema-community";
 import * as content from "./schema-content";
+import * as league from "./schema-league";
 
 const globalForDb = globalThis as unknown as { pool?: Pool };
 
@@ -12,4 +13,4 @@ const pool =
   new Pool({ connectionString: process.env.DATABASE_URL });
 if (process.env.NODE_ENV !== "production") globalForDb.pool = pool;
 
-export const db = drizzle(pool, { schema: { ...schema, ...finance, ...community, ...content } });
+export const db = drizzle(pool, { schema: { ...schema, ...finance, ...community, ...content, ...league } });

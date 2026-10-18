@@ -74,3 +74,18 @@ export const media = pgTable(
   },
   (t) => [index("media_ref_idx").on(t.kind, t.refId, t.createdAt)],
 );
+
+/** "Ich suche ein Spiel": Spieler ohne Team (oder mit freiem Abend) tragen sich für einen Tag ein, Team-Admins können sie anfragen. */
+export const freePlayerPosts = pgTable(
+  "free_player_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    city: text("city").notNull(),
+    day: text("day").notNull(), // YYYY-MM-DD, Berliner Datum
+    note: text("note"),
+    status: text("status").$type<"open" | "closed">().notNull().default("open"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("free_player_posts_open_idx").on(t.status, t.city, t.day), uniqueIndex("free_player_one_per_day").on(t.userId, t.day).where(sql`${t.status} = 'open'`)],
+);
