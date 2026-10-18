@@ -34,6 +34,24 @@ export const teamSchema = z.object({
   strength: z.coerce.number().int().min(1).max(5),
 });
 
+export const requestSchema = z.object({
+  teamId: z.string().uuid("Bitte wähle ein Team."),
+  city: z.enum(CITIES, { message: "Bitte wähle eine Stadt." }),
+  startsAt: z.string().min(1, "Bitte wähle Datum und Uhrzeit."),
+  durationMin: z.coerce.number().refine((v) => v === 60 || v === 90, "Dauer: 60 oder 90 Minuten."),
+  strength: z.coerce.number().int().min(1).max(5),
+  visibility: z.enum(["public", "private"]),
+  note: z.string().trim().max(200, "Maximal 200 Zeichen.").optional(),
+});
+
+export const filterSchema = z.object({
+  city: z.enum(CITIES).optional().catch(undefined),
+  durationMin: z.coerce.number().refine((v) => v === 60 || v === 90).optional().catch(undefined),
+  minStrength: z.coerce.number().int().min(1).max(5).optional().catch(undefined),
+  maxStrength: z.coerce.number().int().min(1).max(5).optional().catch(undefined),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
+});
+
 export type ActionState = { error?: string; fieldErrors?: Record<string, string> } | undefined;
 
 export function zodToState(error: z.ZodError): ActionState {

@@ -16,6 +16,11 @@ export default async function DashboardPage() {
         <p className="text-muted">{user.position} · {user.city}</p>
       </div>
 
+      <div className="grid grid-cols-2 gap-3">
+        <Link href="/app/suche/neu" className="btn btn-primary">Gegner suchen</Link>
+        <Link href="/suche" className="btn btn-ghost">Spielsuchen ansehen</Link>
+      </div>
+
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Meine Teams</h2>

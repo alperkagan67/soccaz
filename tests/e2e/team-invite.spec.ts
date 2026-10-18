@@ -1,22 +1,9 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { devLogin, onboard, run, closeContexts } from "./helpers";
 
-const run = Date.now().toString(36);
-
-async function devLogin(page: Page, email: string, name: string, next?: string) {
-  await page.goto(next ? `/anmelden?next=${encodeURIComponent(next)}` : "/anmelden");
-  await page.getByLabel("E-Mail").fill(email);
-  await page.getByLabel("Name").fill(name);
-  await page.getByRole("button", { name: "Als Dev-Nutzer anmelden" }).click();
-}
-
-async function onboard(page: Page, birthDate: string) {
-  await expect(page).toHaveURL(/\/willkommen/);
-  await page.getByLabel("Stadt").selectOption("Gelsenkirchen");
-  await page.getByLabel("Position").selectOption("Angriff");
-  await page.getByLabel("Geburtsdatum").fill(birthDate);
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Los geht's" }).click();
-}
+test.afterEach(async ({ browser }) => {
+  await closeContexts(browser);
+});
 
 test("Team gründen, Link erzeugen, zweiter Spieler tritt bei", async ({ browser }) => {
   // Spieler A

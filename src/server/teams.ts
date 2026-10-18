@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { connection } from "next/server";
 import { and, count, desc, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, teamMembers, teams, users } from "@/db/schema";
@@ -88,6 +89,7 @@ export async function createInvite(userId: string, teamId: string) {
 }
 
 export async function getInvitePreview(token: string) {
+  await connection();
   const [row] = await db
     .select({
       teamId: teams.id,

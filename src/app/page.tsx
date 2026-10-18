@@ -3,6 +3,7 @@ import Link from "next/link";
 import { and, asc, eq, gte } from "drizzle-orm";
 import { db } from "@/db";
 import { matchRequests, teams } from "@/db/schema";
+import { formatDateTime } from "@/lib/time";
 import { getCurrentUser } from "@/server/session";
 
 async function OpenRequests() {
@@ -10,7 +11,6 @@ async function OpenRequests() {
     .select({
       id: matchRequests.id,
       team: teams.name,
-      slug: teams.slug,
       city: matchRequests.city,
       startsAt: matchRequests.startsAt,
       durationMin: matchRequests.durationMin,
@@ -28,9 +28,9 @@ async function OpenRequests() {
     <ul className="space-y-2">
       {open.map((r) => (
         <li key={r.id} className="card">
-          <Link href={`/teams/${r.slug}`} className="font-semibold hover:text-green">{r.team}</Link>
+          <Link href={`/suche/${r.id}`} className="font-semibold hover:text-green">{r.team}</Link>
           <span className="block text-sm text-muted">
-            {r.city} · {r.startsAt.toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })} · {r.durationMin} Min
+            {r.city} · {formatDateTime(r.startsAt)} Uhr · {r.durationMin} Min
           </span>
         </li>
       ))}
