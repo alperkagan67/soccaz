@@ -47,8 +47,3 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 
-# Medien aus dem Sample (Rechte ungeklärt): nur lokal, nicht im Repo
-/public/videos/
-/public/brand/socca-reel-*.jpg
-/public/brand/stadium-hero.png
-/public/brand/socaz-logo.jpg

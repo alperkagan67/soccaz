@@ -5,7 +5,7 @@ Matchmaking-Plattform für Hobby-Hallenfußball (Start: NRW). Teams und Einzelsp
 Später: Ligen, Turniere, Livestreams, International, Profis als Zugpferde.
 
 Vorbild für das Gefühl: FACEIT / Steam-Profil, aber für echte Hallenspiele.
-Das Sample von Michael (`socca-main`) bleibt unverändert als Referenz. SoccaV2 wird komplett neu geschrieben.
+Das ursprüngliche Sample (`socca-main`) bleibt unverändert als Referenz. SoccaV2 wird komplett neu geschrieben.
 
 ## Rollen
 | Rolle | Rechte |

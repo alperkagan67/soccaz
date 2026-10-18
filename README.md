@@ -4,8 +4,6 @@ Matchmaking für Hobby-Hallenfußball. Team gründen, Spieler per Link einladen,
 
 > Status: Phase 1 im Aufbau. Fertig: Login, Onboarding (ab 16), Team gründen, Einladungslinks, Teamseite. Als Nächstes: Spielsuche und Lobby.
 
-> Hinweis: Hero-Video und Fotos der Startseite stammen aus einem privaten Sample und liegen nicht im Repo (`public/videos`, `public/brand`). Ohne sie zeigt die Startseite nur das Logo auf dunklem Grund.
-
 ## Technik
 
 Next.js 16 (App Router, Cache Components), React 19, TypeScript, Tailwind 4, PostgreSQL, Drizzle ORM, Auth.js (Google), Zod, Vitest, Playwright.
