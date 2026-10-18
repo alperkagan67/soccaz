@@ -1,14 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
 import { joinTeamAction } from "@/server/actions";
 import { SubmitButton } from "@/components/FormBits";
+import { useFormAction } from "@/components/useFormAction";
 
 export function JoinForm({ token }: { token: string }) {
-  const [state, action] = useActionState(() => joinTeamAction(token), undefined);
+  const { state, pending, onSubmit } = useFormAction(() => joinTeamAction(token));
   return (
-    <form action={action} className="space-y-3">
-      <SubmitButton>Team beitreten</SubmitButton>
+    <form onSubmit={onSubmit} className="space-y-3">
+      <SubmitButton pending={pending}>Team beitreten</SubmitButton>
       {state?.error && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

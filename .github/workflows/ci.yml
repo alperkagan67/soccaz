@@ -45,6 +45,7 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/socaz
       AUTH_SECRET: ci-only-secret-not-used-anywhere-else
       E2E_BASE_URL: http://127.0.0.1:3100
+      STRIPE_WEBHOOK_SECRET: whsec_e2e_lokaler_testschluessel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,6 +55,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: node scripts/migrate.mjs
+      - run: npm run test:integration
       - name: Entwicklungsserver starten
         run: |
           npm run dev -- -p 3100 > dev-server.log 2>&1 &

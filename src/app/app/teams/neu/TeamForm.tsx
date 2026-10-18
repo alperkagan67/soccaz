@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
 import { createTeamAction } from "@/server/actions";
 import { CITIES } from "@/lib/validation";
 import { FieldError, SubmitButton } from "@/components/FormBits";
+import { useFormAction } from "@/components/useFormAction";
 
 const STRENGTH = [
   [1, "1 – Locker, Spaß steht im Vordergrund"],
@@ -14,11 +14,11 @@ const STRENGTH = [
 ] as const;
 
 export function TeamForm({ defaultCity }: { defaultCity: string }) {
-  const [state, action] = useActionState(createTeamAction, undefined);
+  const { state, pending, onSubmit } = useFormAction(createTeamAction);
   const fe = state?.fieldErrors ?? {};
 
   return (
-    <form action={action} className="card space-y-4">
+    <form onSubmit={onSubmit} className="card space-y-4">
       <div>
         <label className="label" htmlFor="name">Teamname</label>
         <input id="name" name="name" required minLength={3} maxLength={40} className="field" />
@@ -38,7 +38,7 @@ export function TeamForm({ defaultCity }: { defaultCity: string }) {
         </select>
         <p className="mt-1 text-xs text-muted">Das ist deine Einschätzung. Später ergibt sich die Stärke aus euren Ergebnissen.</p>
       </div>
-      <SubmitButton>Team gründen</SubmitButton>
+      <SubmitButton pending={pending}>Team gründen</SubmitButton>
     </form>
   );
 }

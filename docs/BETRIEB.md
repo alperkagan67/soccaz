@@ -60,3 +60,18 @@ curl -X POST -H "x-job-secret: $JOB_SECRET" https://deine-domain/api/jobs/send-r
 - **Lokal:** `npm run dev` mit Postgres (siehe README).
 - **Staging:** zweite Compose-Installation auf einem kleinen Server mit eigener Domain und Test-Zugangsdaten. Das Geld-System wird nie gegen die Produktion getestet.
 - **Produktion:** wie oben.
+
+## Zahlungen einschalten
+
+1. Rechtliches klären (Gewerbe, Steuer, AGB, Widerruf, Guthaben-Regeln). Siehe PLAN.md. Erst danach echtes Geld annehmen.
+2. Stripe-Konto anlegen, Zahlungsmethoden (Karte, PayPal, SEPA) aktivieren.
+3. In `.env`: `STRIPE_SECRET_KEY` und `STRIPE_WEBHOOK_SECRET` eintragen, Webhook-Endpunkt `https://deine-domain/api/webhooks/stripe` mit den Ereignissen aus `.env.production.example` anlegen.
+4. `docker compose up -d --build`, dann im Admin-Bereich unter **Einstellungen** den Zahlungsanbieter prüfen (muss "Stripe" zeigen) und **Zahlungen einschalten**.
+5. Testen mit Stripe-Testschlüsseln (`sk_test_...`, Testkarte 4242 4242 4242 4242), bevor die Live-Schlüssel eingetragen werden.
+6. Preise stehen unter **Hallen** (Standardpreise: 60 Minuten 80 Euro, 90 Minuten 110 Euro). Hallenkosten und Marge sind dort pro Regel einstellbar.
+
+Hinweise: Das Buchungsjournal ist unveränderlich (Datenbank-Trigger). Korrekturen sind Gegenbuchungen. Die Zahlungsgebühr wird beim Verbuchen **geschätzt** (Einstellung oben); die echten Gebühren stehen im Stripe-Dashboard und sollten monatlich abgeglichen werden.
+
+## Hallen-Buchung
+
+Sobald ein bezahltes Spiel bestätigt ist, entsteht im Admin-Bereich unter **Buchungen** ein Auftrag. Es gibt noch keinen automatischen Buchungs-Agenten: Die Halle wird per Telefon, Mail oder Webseite gebucht und im Auftrag eingetragen. Für einen späteren Agenten gibt es die Schnittstelle `src/server/booking-agent.ts`.

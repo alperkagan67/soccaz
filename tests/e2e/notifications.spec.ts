@@ -83,6 +83,7 @@ test("Benachrichtigungen: abgeschaltete Art kommt nicht an", async ({ browser })
 });
 
 test("Zeitplan: Erinnerung genau einmal, automatische Absage, Ergebnis-Erinnerung, abgelaufene Suche", async ({ browser, baseURL }) => {
+  test.setTimeout(180_000); // fünf komplette Lobbys hintereinander
   // --- Erinnerung 2 Stunden vorher
   const r = await setupLobby(browser, "n3");
   await setMatchTimes(r.matchId, 1.5, 30);

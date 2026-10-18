@@ -5,12 +5,16 @@ import { phaseOf, PHASE_LABEL } from "@/lib/result-rules";
 import { myMatches } from "@/server/lobby";
 import { listMyTeams } from "@/server/teams";
 import { requireUser } from "@/server/session";
+import { walletBalance } from "@/server/ledger";
+import { paymentsEnabled } from "@/server/settings";
+import { formatEuro } from "@/lib/money";
+import { db } from "@/db";
 
 export const metadata: Metadata = { title: "Mein Bereich" };
 
 export default async function DashboardPage() {
   const user = await requireUser("/app");
-  const [myTeams, games] = await Promise.all([listMyTeams(user.id), myMatches(user.id)]);
+  const [myTeams, games, payOn, balance] = await Promise.all([listMyTeams(user.id), myMatches(user.id), paymentsEnabled(), walletBalance(db, user.id)]);
   const now = new Date();
 
   return (
@@ -24,6 +28,13 @@ export default async function DashboardPage() {
         <Link href="/app/suche/neu" className="btn btn-primary">Gegner suchen</Link>
         <Link href="/suche" className="btn btn-ghost">Spielsuchen ansehen</Link>
       </div>
+
+      {(payOn || balance > 0) && (
+        <Link href="/app/guthaben" className="card flex items-center justify-between hover:border-green" data-testid="wallet-card">
+          <span className="text-muted">Guthaben</span>
+          <span className="font-heading text-xl font-bold tabular-nums">{formatEuro(balance)}</span>
+        </Link>
+      )}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Meine Spiele</h2>

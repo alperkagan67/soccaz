@@ -1,0 +1,79 @@
+import { asc, desc, eq, isNull } from "drizzle-orm";
+import { connection } from "next/server";
+import { db } from "@/db";
+import { priceRules, venues } from "@/db/schema-finance";
+import { audit } from "./audit";
+import { DomainError } from "./teams";
+
+export type VenueInput = {
+  name: string;
+  city: string;
+  address?: string | null;
+  contact?: string | null;
+  surface?: string | null;
+  hasShowers?: boolean;
+  hasParking?: boolean;
+  isPartner?: boolean;
+};
+
+function clean(input: VenueInput): VenueInput {
+  const name = input.name.trim();
+  const city = input.city.trim();
+  if (name.length < 2 || name.length > 80) throw new DomainError("Der Name braucht 2 bis 80 Zeichen.");
+  if (city.length < 2 || city.length > 60) throw new DomainError("Bitte eine Stadt angeben.");
+  return { ...input, name, city, address: input.address?.trim() || null, contact: input.contact?.trim() || null, surface: input.surface?.trim() || null };
+}
+
+export async function listVenues(includeInactive = true) {
+  await connection();
+  return db.select().from(venues).where(includeInactive ? undefined : eq(venues.active, true)).orderBy(asc(venues.city), asc(venues.name));
+}
+
+export async function createVenue(actorId: string, input: VenueInput) {
+  const v = clean(input);
+  const [row] = await db
+    .insert(venues)
+    .values({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false })
+    .returning();
+  await audit(actorId, "venue.create", "venue", row.id, { after: row });
+  return row;
+}
+
+export async function updateVenue(actorId: string, id: string, input: VenueInput & { active?: boolean }) {
+  const v = clean(input);
+  const [before] = await db.select().from(venues).where(eq(venues.id, id));
+  if (!before) throw new DomainError("Halle nicht gefunden.");
+  const [row] = await db
+    .update(venues)
+    .set({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false, active: input.active ?? before.active })
+    .where(eq(venues.id, id))
+    .returning();
+  await audit(actorId, "venue.update", "venue", id, { before, after: row });
+  return row;
+}
+
+/** Aktuelle Preisregeln: je Dauer die jüngste gültige. venueId null = Standardpreise. */
+export async function listPriceRules(venueId: string | null) {
+  await connection();
+  const rows = await db
+    .select()
+    .from(priceRules)
+    .where(venueId ? eq(priceRules.venueId, venueId) : isNull(priceRules.venueId))
+    .orderBy(asc(priceRules.durationMin), desc(priceRules.validFrom));
+  return rows;
+}
+
+export async function addPriceRule(actorId: string, input: { venueId: string | null; durationMin: number; priceCents: number; costCents: number; validFrom?: string }) {
+  if (input.durationMin !== 60 && input.durationMin !== 90) throw new DomainError("Die Dauer ist 60 oder 90 Minuten.");
+  for (const [label, cents] of [["Preis", input.priceCents], ["Kosten", input.costCents]] as const) {
+    if (!Number.isInteger(cents) || cents <= 0 || cents > 100_000) throw new DomainError(`${label}: bitte einen Betrag zwischen 0,01 und 1.000,00 Euro angeben.`);
+  }
+  const validFrom = input.validFrom && /^\d{4}-\d{2}-\d{2}$/.test(input.validFrom) ? input.validFrom : new Date().toISOString().slice(0, 10);
+  if (input.venueId) {
+    const [v] = await db.select({ id: venues.id }).from(venues).where(eq(venues.id, input.venueId));
+    if (!v) throw new DomainError("Halle nicht gefunden.");
+  }
+  const [row] = await db.insert(priceRules).values({ venueId: input.venueId, durationMin: input.durationMin, priceCents: input.priceCents, costCents: input.costCents, validFrom }).returning();
+  await audit(actorId, "price.add", input.venueId ? "venue" : "price_default", input.venueId ?? "default", { after: row });
+  return row;
+}

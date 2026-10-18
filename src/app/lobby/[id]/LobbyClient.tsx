@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import {
   assignSubstituteAction,
@@ -12,18 +13,22 @@ import {
   setVenueAction,
 } from "@/server/actions";
 import { countdownText } from "@/lib/lobby-rules";
+import { formatEuro } from "@/lib/money";
 
-type Result = { error?: string } | undefined;
+type Result = { error?: string; needsTopupCents?: number } | undefined;
 
 /** Führt eine Server-Aktion aus und zeigt einen Fehler an. Die Seite wird danach vom Server neu geladen. */
 function useRun() {
-  const [error, setError] = useState<string>();
+  const [state, setState] = useState<{ error?: string; needsTopupCents?: number }>({});
   const [pending, start] = useTransition();
   const run = (fn: () => Promise<Result>) => {
-    setError(undefined);
-    start(async () => setError((await fn())?.error));
+    setState({});
+    start(async () => {
+      const result = await fn();
+      setState({ error: result?.error, needsTopupCents: result?.needsTopupCents });
+    });
   };
-  return { error, pending, run };
+  return { error: state.error, needsTopupCents: state.needsTopupCents, pending, run };
 }
 
 function ErrorText({ message }: { message?: string }) {
@@ -46,10 +51,12 @@ type MyActionsProps = {
   mode: "participant" | "join" | "substitute" | "full" | "guest" | "none";
   ready: boolean;
   hasTeam: boolean;
+  /** Nur gesetzt, wenn Zahlungen eingeschaltet sind. */
+  pay?: { reserveCents: number; balanceCents: number; paid: boolean; backTo: string } | null;
 };
 
-export function MyActions({ matchId, mode, ready, hasTeam }: MyActionsProps) {
-  const { error, pending, run } = useRun();
+export function MyActions({ matchId, mode, ready, hasTeam, pay }: MyActionsProps) {
+  const { error, needsTopupCents, pending, run } = useRun();
   const busy = pending ? "opacity-60" : "";
 
   return (
@@ -57,9 +64,17 @@ export function MyActions({ matchId, mode, ready, hasTeam }: MyActionsProps) {
       {mode === "participant" && (
         <>
           {hasTeam ? (
-            <button className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`} disabled={pending} onClick={() => run(() => setReadyAction(matchId, !ready))}>
-              {ready ? "Nicht mehr bereit" : "Ich bin bereit"}
-            </button>
+            <>
+              {pay && !pay.paid && !ready && (
+                <p className="text-sm text-muted" data-testid="pay-hint">
+                  Beim Bereitmachen werden {formatEuro(pay.reserveCents)} von deinem Guthaben ({formatEuro(pay.balanceCents)}) reserviert. Was nach der Abrechnung übrig ist, bekommst du zurück.
+                </p>
+              )}
+              {pay?.paid && <p className="text-sm text-green">Dein Anteil ist bezahlt.</p>}
+              <button className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`} disabled={pending} onClick={() => run(() => setReadyAction(matchId, !ready))}>
+                {ready ? "Nicht mehr bereit" : pay && !pay.paid ? `Bereit und ${formatEuro(pay.reserveCents)} zahlen` : "Ich bin bereit"}
+              </button>
+            </>
           ) : (
             <p className="text-sm text-muted">Du wartest auf die Zuweisung durch einen Team-Admin.</p>
           )}
@@ -82,6 +97,11 @@ export function MyActions({ matchId, mode, ready, hasTeam }: MyActionsProps) {
         </>
       )}
       {mode === "full" && <p className="text-sm text-muted">Dein Team ist voll (5 Spieler plus 1 Ersatz).</p>}
+      {needsTopupCents ? (
+        <Link href={`/app/guthaben?betrag=${Math.ceil(needsTopupCents / 500) * 500}&zurueck=${encodeURIComponent(pay?.backTo ?? "/app")}`} className="btn btn-primary w-full">
+          Guthaben aufladen
+        </Link>
+      ) : null}
       {mode === "guest" && <p className="text-sm text-muted">Melde dich an, um mitzuspielen.</p>}
       {mode === "none" && <p className="text-sm text-muted">Dieses Spiel nimmt keine weiteren Spieler auf.</p>}
       <ErrorText message={error} />

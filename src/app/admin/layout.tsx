@@ -7,7 +7,12 @@ const NAV: { href: string; label: string; permission: Permission }[] = [
   { href: "/admin/spiele", label: "Spiele", permission: "admin" },
   { href: "/admin/nutzer", label: "Nutzer", permission: "admin" },
   { href: "/admin/teams", label: "Teams", permission: "admin" },
+  { href: "/admin/finanzen", label: "Finanzen", permission: "finance" },
+  { href: "/admin/buchungen", label: "Buchungen", permission: "booking" },
+  { href: "/admin/hallen", label: "Hallen", permission: "booking" },
+  { href: "/admin/codes", label: "Codes", permission: "finance" },
   { href: "/admin/protokoll", label: "Protokoll", permission: "admin" },
+  { href: "/admin/einstellungen", label: "Einstellungen", permission: "admin" },
 ];
 
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {

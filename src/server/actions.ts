@@ -11,6 +11,7 @@ import { ActionState, onboardingSchema, requestSchema, teamSchema, zodToState } 
 import { parseBerlinLocal } from "@/lib/time";
 import { audit } from "./audit";
 import { requireLoggedIn, requireUser } from "./session";
+import { InsufficientFunds } from "./ledger";
 import * as lobby from "./lobby";
 import * as results from "./results";
 import { NOTIFICATION_TYPES } from "@/lib/notification-types";
@@ -148,6 +149,7 @@ async function lobbyAction(matchId: string, fn: (userId: string) => Promise<void
   try {
     await fn(user.id);
   } catch (error) {
+    if (error instanceof InsufficientFunds) return { error: error.message, needsTopupCents: error.neededCents - error.balanceCents };
     if (error instanceof DomainError) return { error: error.message };
     throw error;
   }

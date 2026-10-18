@@ -1,19 +1,19 @@
 "use client";
 
-import { useActionState } from "react";
 import { createRequestAction } from "@/server/actions";
 import { CITIES } from "@/lib/validation";
 import { STRENGTH_LABELS } from "@/lib/labels";
 import { FieldError, SubmitButton } from "@/components/FormBits";
+import { useFormAction } from "@/components/useFormAction";
 
 type TeamOption = { id: string; name: string; city: string; strength: number };
 
 export function RequestForm({ teams, min }: { teams: TeamOption[]; min: string }) {
-  const [state, action] = useActionState(createRequestAction, undefined);
+  const { state, pending, onSubmit } = useFormAction(createRequestAction);
   const fe = state?.fieldErrors ?? {};
 
   return (
-    <form action={action} className="card space-y-4">
+    <form onSubmit={onSubmit} className="card space-y-4">
       <div>
         <label className="label" htmlFor="teamId">Team</label>
         <select id="teamId" name="teamId" required className="field">
@@ -68,7 +68,7 @@ export function RequestForm({ teams, min }: { teams: TeamOption[]; min: string }
         <FieldError message={fe.note} />
       </div>
 
-      <SubmitButton>Spielsuche erstellen</SubmitButton>
+      <SubmitButton pending={pending}>Spielsuche erstellen</SubmitButton>
       {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

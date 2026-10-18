@@ -95,6 +95,11 @@ export const matches = pgTable("matches", {
   venueText: text("venue_text"),
   visibility: visibility("visibility").notNull().default("public"),
   minPlayers: integer("min_players").notNull().default(8),
+  venueId: uuid("venue_id"),
+  priceCents: integer("price_cents"),
+  costCents: integer("cost_cents"),
+  finalShareCents: integer("final_share_cents"),
+  settledAt: timestamp("settled_at", { withTimezone: true }),
   status: matchStatus("status").notNull().default("lobby"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -107,6 +112,8 @@ export const matchParticipants = pgTable(
     teamId: uuid("team_id").references(() => teams.id), // null = freier Ersatzspieler
     isSubstitute: boolean("is_substitute").notNull().default(false),
     readyAt: timestamp("ready_at", { withTimezone: true }),
+    paidCents: integer("paid_cents").notNull().default(0),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.matchId, t.userId] })],

@@ -2,7 +2,11 @@ import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
 import { dueReminders, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
+import { users } from "@/db/schema";
+import { payments } from "@/db/schema-finance";
+import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
+import { settleMatch } from "./wallet";
 import { teamName } from "./names";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 
@@ -110,4 +114,50 @@ export async function cleanup(now: Date = new Date()): Promise<{ invites: number
   const oldInvites = await db.delete(invites).where(lt(invites.expiresAt, inviteCutoff)).returning({ t: invites.token });
   const oldNotes = await db.delete(notifications).where(and(isNotNull(notifications.readAt), lt(notifications.createdAt, noteCutoff))).returning({ id: notifications.id });
   return { invites: oldInvites.length, notifications: oldNotes.length };
+}
+
+/** Rechnet bestätigte Spiele ab, sobald ihre Lobby-Frist erreicht ist: Hallenpreis geteilt durch die zahlenden Spieler. */
+export async function settleDueMatches(now: Date = new Date()): Promise<number> {
+  const candidates = await db.select().from(matches).where(and(eq(matches.status, "confirmed"), sql`${matches.settledAt} is null`));
+  let settled = 0;
+  for (const m of candidates) {
+    if (lobbyDeadline(m.startsAt, m.createdAt).getTime() > now.getTime()) continue;
+    await db.transaction(async (tx) => {
+      const [fresh] = await tx.select().from(matches).where(eq(matches.id, m.id)).for("update");
+      if (!fresh || fresh.settledAt || fresh.status !== "confirmed") return;
+      if (await settleMatch(tx, fresh)) {
+        await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
+        settled += 1;
+      }
+    });
+  }
+  return settled;
+}
+
+/** Offene Zahlungen, die nach 24 Stunden nicht abgeschlossen wurden, gelten als abgebrochen. */
+export async function expireStalePayments(now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - 24 * 3_600_000);
+  const rows = await db
+    .update(payments)
+    .set({ status: "canceled", failureReason: "Nicht abgeschlossen (24 Stunden)", completedAt: now })
+    .where(and(eq(payments.status, "pending"), lt(payments.createdAt, cutoff)))
+    .returning({ id: payments.id });
+  return rows.length;
+}
+
+/** Meldet Finanz-Alarme einmal pro Tag an Plattform-Admins und Finanz-Rolle. */
+export async function notifyFinanceAlerts(): Promise<number> {
+  const alerts = await getAlerts();
+  if (alerts.length === 0) return 0;
+  const staff = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "finance"]));
+  const since = new Date(Date.now() - 20 * 3_600_000);
+  const already = await db
+    .select({ userId: notifications.userId })
+    .from(notifications)
+    .where(and(eq(notifications.title, "Finanz-Alarme"), sql`${notifications.createdAt} > ${since}`));
+  const done = new Set(already.map((r) => r.userId));
+  const targets = staff.map((u) => u.id).filter((id) => !done.has(id));
+  const high = alerts.filter((a) => a.severity === "high").length;
+  await notifyUsers(targets, { type: "admin.task", title: "Finanz-Alarme", body: `${alerts.length} Auffälligkeit(en)${high ? `, davon ${high} dringend` : ""}. ${alerts[0].title}`, url: "/admin/finanzen" });
+  return targets.length;
 }

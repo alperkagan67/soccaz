@@ -1,13 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
 import { acceptRequestAction } from "@/server/actions";
 import { SubmitButton } from "@/components/FormBits";
+import { useFormAction } from "@/components/useFormAction";
 
 export function AcceptForm({ requestId, teams }: { requestId: string; teams: { id: string; name: string }[] }) {
-  const [state, action] = useActionState(acceptRequestAction.bind(null, requestId), undefined);
+  const { state, pending, onSubmit } = useFormAction(acceptRequestAction.bind(null, requestId));
   return (
-    <form action={action} className="card space-y-3">
+    <form onSubmit={onSubmit} className="card space-y-3">
       <h2 className="font-semibold">Herausforderung annehmen</h2>
       {teams.length > 1 ? (
         <div>
@@ -22,7 +22,7 @@ export function AcceptForm({ requestId, teams }: { requestId: string; teams: { i
           <p className="text-sm text-muted">Dein Team: {teams[0].name}</p>
         </>
       )}
-      <SubmitButton>Spiel annehmen</SubmitButton>
+      <SubmitButton pending={pending}>Spiel annehmen</SubmitButton>
       {state?.error && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

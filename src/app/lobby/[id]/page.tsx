@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { formatDateTime } from "@/lib/time";
+import { formatEuro } from "@/lib/money";
 import { hasFreeSlot, MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { requireUser } from "@/server/session";
 import { canViewLobby, getLobby } from "@/server/lobby";
@@ -25,7 +26,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   if (!view) notFound();
   if (!canViewLobby(view)) redirect("/app");
 
-  const { match, participants, counts, pendingStrangers, active } = view;
+  const { match, payments, participants, counts, pendingStrangers, active } = view;
   const v = view.viewer!;
   const status = STATUS[match.status] ?? STATUS.lobby;
 
@@ -86,7 +87,32 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         )}
       </section>
 
-      {active && <MyActions matchId={match.id} mode={mode} ready={v.participant?.ready ?? false} hasTeam={Boolean(v.participant?.teamId)} />}
+      {payments.enabled && payments.priceCents !== null && (
+        <section className="card space-y-1 text-sm" aria-label="Kosten">
+          <h2 className="font-semibold">Kosten</h2>
+          <p>
+            Halle {match.durationMin} Minuten: <strong>{formatEuro(payments.priceCents)}</strong>, geteilt durch alle zahlenden Spieler.
+          </p>
+          {payments.settled && payments.finalShareCents ? (
+            <p className="text-muted">Abgerechnet: <strong className="text-ink">{formatEuro(payments.finalShareCents)}</strong> pro Spieler.</p>
+          ) : (
+            <p className="text-muted">
+              Dein Anteil liegt zwischen {formatEuro(payments.lowestShareCents ?? 0)} (12 Spieler) und {formatEuro(payments.reservationCents ?? 0)} (nur {payments.minPaid} Spieler).
+              Beim Bereitmachen wird der höchste Betrag reserviert, die Differenz kommt bei der Abrechnung zurück.
+            </p>
+          )}
+        </section>
+      )}
+
+      {active && (
+        <MyActions
+          matchId={match.id}
+          mode={mode}
+          ready={v.participant?.ready ?? false}
+          hasTeam={Boolean(v.participant?.teamId)}
+          pay={payments.enabled && payments.reservationCents !== null ? { reserveCents: payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid), backTo: `/lobby/${match.id}` } : null}
+        />
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         {teamsView.map((t) => (
@@ -107,6 +133,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                     {p.userId === user.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                   </span>
                   <span className="flex items-center gap-2">
+                    {payments.enabled && p.paid && <span className="text-xs text-muted" title="Anteil bezahlt">bezahlt</span>}
                     <span className={p.ready ? "text-green" : "text-muted"}>{p.ready ? "Bereit" : "Offen"}</span>
                     {active && p.userId !== user.id && canAdminTeam(t.id) && (
                       <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} />

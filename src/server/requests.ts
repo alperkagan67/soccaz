@@ -5,6 +5,7 @@ import { matchParticipants, matchRequests, matches, teamMembers, teams } from "@
 import { berlinDayRange, toBerlinInputValue } from "@/lib/time";
 import { audit } from "./audit";
 import { teamName } from "./names";
+import { priceFor } from "./pricing";
 import { notifyUsers, teamAdminIds } from "./notifications";
 import { DomainError } from "./teams";
 
@@ -203,9 +204,12 @@ export async function acceptRequest(userId: string, requestId: string, teamId: s
       throw new DomainError("Dein Team hat um diese Zeit schon eine Spielsuche oder ein Spiel.");
     }
 
+    const price = await priceFor(tx, null, request.durationMin);
     const [match] = await tx
       .insert(matches)
       .values({
+        priceCents: price?.priceCents ?? null,
+        costCents: price?.costCents ?? null,
         requestId: request.id,
         homeTeamId: request.teamId,
         awayTeamId: teamId,

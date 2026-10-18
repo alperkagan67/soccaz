@@ -52,7 +52,7 @@ export const filterSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().catch(undefined),
 });
 
-export type ActionState = { error?: string; fieldErrors?: Record<string, string> } | undefined;
+export type ActionState = { error?: string; fieldErrors?: Record<string, string>; needsTopupCents?: number; ok?: boolean } | undefined;
 
 export function zodToState(error: z.ZodError): ActionState {
   const fieldErrors: Record<string, string> = {};

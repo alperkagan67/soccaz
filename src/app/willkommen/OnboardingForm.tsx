@@ -1,16 +1,16 @@
 "use client";
 
-import { useActionState } from "react";
 import { completeOnboardingAction } from "@/server/actions";
 import { CITIES, POSITIONS } from "@/lib/validation";
 import { FieldError, SubmitButton } from "@/components/FormBits";
+import { useFormAction } from "@/components/useFormAction";
 
 export function OnboardingForm({ defaultName, next }: { defaultName: string; next: string }) {
-  const [state, action] = useActionState(completeOnboardingAction, undefined);
+  const { state, pending, onSubmit } = useFormAction(completeOnboardingAction);
   const fe = state?.fieldErrors ?? {};
 
   return (
-    <form action={action} className="card space-y-4">
+    <form onSubmit={onSubmit} className="card space-y-4">
       <input type="hidden" name="next" value={next} />
 
       <div>
@@ -52,7 +52,7 @@ export function OnboardingForm({ defaultName, next }: { defaultName: string; nex
         <FieldError message={fe.terms} />
       </div>
 
-      <SubmitButton>Los geht&apos;s</SubmitButton>
+      <SubmitButton pending={pending}>Los geht&apos;s</SubmitButton>
     </form>
   );
 }

@@ -10,6 +10,13 @@ import { teamName, userName } from "./names";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
+import { createBookingJob, withdrawBookingJob } from "./booking";
+import { paymentsEnabled } from "./settings";
+import { onParticipantLeaves, refundOnCancel, reserveShare } from "./wallet";
+import { priceFor } from "./pricing";
+import { minPaidPlayers } from "./settings";
+import { reservationFor, shareFor } from "@/lib/money";
+import { walletBalance } from "./ledger";
 
 type MatchRow = typeof matches.$inferSelect;
 
@@ -29,6 +36,9 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       venueText: matches.venueText,
       visibility: matches.visibility,
       status: matches.status,
+      priceCents: matches.priceCents,
+      finalShareCents: matches.finalShareCents,
+      settledAt: matches.settledAt,
       homeId: home.id,
       homeName: home.name,
       homeSlug: home.slug,
@@ -50,6 +60,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       teamId: matchParticipants.teamId,
       fromOutside: matchParticipants.isSubstitute,
       readyAt: matchParticipants.readyAt,
+      paidCents: matchParticipants.paidCents,
     })
     .from(matchParticipants)
     .innerJoin(users, eq(users.id, matchParticipants.userId))
@@ -60,7 +71,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const participants = rows.map((p) => {
     const rank = p.teamId ? (rankInTeam.get(p.teamId) ?? 0) : 0;
     if (p.teamId) rankInTeam.set(p.teamId, rank + 1);
-    return { ...p, isSubstitute: isSubstituteByRank(rank, p.fromOutside), ready: p.readyAt !== null };
+    return { ...p, isSubstitute: isSubstituteByRank(rank, p.fromOutside), ready: p.readyAt !== null, paid: p.paidCents > 0 };
   });
 
   const countFor = (teamId: string) => participants.filter((p) => p.teamId === teamId).length;
@@ -81,8 +92,23 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const active = (match.status === "lobby" || match.status === "confirmed") && match.startsAt.getTime() > Date.now();
   const pendingStrangers = participants.filter((p) => p.teamId === null);
 
+  const payEnabled = await paymentsEnabled();
+  const minPaid = await minPaidPlayers();
+  const priceCents = match.priceCents ?? (await priceFor(db, null, match.durationMin))?.priceCents ?? null;
+  const payments = {
+    enabled: payEnabled,
+    priceCents,
+    minPaid,
+    reservationCents: priceCents ? (match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid)) : null,
+    lowestShareCents: priceCents ? shareFor(priceCents, 12) : null,
+    finalShareCents: match.finalShareCents,
+    settled: Boolean(match.settledAt),
+    balanceCents: viewer && payEnabled ? await walletBalance(db, viewer.id) : null,
+  };
+
   return {
     match,
+    payments,
     participants,
     counts: { home: countFor(match.homeId), away: countFor(match.awayId), readyHome: readyFor(match.homeId), readyAway: readyFor(match.awayId) },
     pendingStrangers,
@@ -168,6 +194,7 @@ async function evaluateConfirmation(tx: Tx, match: MatchRow, actorId: string) {
     await tx.update(matches).set({ status: next }).where(eq(matches.id, match.id));
     await audit(actorId, "match.status", "match", match.id, { before: { status: current.status }, after: { status: next } }, tx);
     if (next === "confirmed") {
+      if (await paymentsEnabled(tx)) await createBookingJob(tx, match);
       await notifyUsers(
         await matchParticipantIds(tx, match.id),
         { type: "match.confirmed", title: "Spiel bestätigt", body: `Das Spiel ${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} findet statt.`, url: `/lobby/${match.id}` },
@@ -219,7 +246,9 @@ export function joinLobby(userId: string, matchId: string) {
 }
 
 export function leaveLobby(userId: string, matchId: string) {
-  return mutateLobby(userId, matchId, async (tx) => {
+  return mutateLobby(userId, matchId, async (tx, match) => {
+    if (!(await findParticipant(tx, matchId, userId))) throw new DomainError("Du bist nicht in dieser Lobby.");
+    await onParticipantLeaves(tx, match, userId, { removedByAdmin: false, actorId: userId });
     const removed = await tx
       .delete(matchParticipants)
       .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)))
@@ -230,10 +259,11 @@ export function leaveLobby(userId: string, matchId: string) {
 }
 
 export function setReady(userId: string, matchId: string, ready: boolean) {
-  return mutateLobby(userId, matchId, async (tx) => {
+  return mutateLobby(userId, matchId, async (tx, match) => {
     const me = await findParticipant(tx, matchId, userId);
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
+    if (ready) await reserveShare(tx, match, userId); // bucht den Anteil vom Guthaben (nur wenn Zahlungen eingeschaltet sind)
     await tx
       .update(matchParticipants)
       .set({ readyAt: ready ? new Date() : null })
@@ -305,6 +335,7 @@ export function removeParticipant(actorId: string, matchId: string, targetUserId
       (await isPlatformAdmin(tx, actorId)) ||
       (target.teamId ? await isAdminOf(tx, actorId, target.teamId) : await canManageMatch(tx, actorId, match));
     if (!allowed) throw new DomainError("Dazu hast du keine Berechtigung.");
+    await onParticipantLeaves(tx, match, targetUserId, { removedByAdmin: true, actorId });
     await tx
       .delete(matchParticipants)
       .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, targetUserId)));
@@ -325,6 +356,8 @@ export function cancelMatch(actorId: string, matchId: string, reason: string) {
 /** Sagt ein Spiel ab, protokolliert es und informiert alle Beteiligten. Wird auch von der automatischen Absage genutzt. */
 export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | null, reason: string) {
   await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, match.id));
+  await refundOnCancel(tx, match, actorId);
+  await withdrawBookingJob(tx, match.id);
   await audit(actorId, "match.cancel", "match", match.id, { before: { status: match.status }, after: { status: "cancelled", reason } }, tx);
   await notifyUsers(
     [...(await matchParticipantIds(tx, match.id)), ...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
