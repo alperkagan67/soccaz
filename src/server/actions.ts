@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -10,6 +11,7 @@ import { ActionState, onboardingSchema, requestSchema, teamSchema, zodToState } 
 import { parseBerlinLocal } from "@/lib/time";
 import { audit } from "./audit";
 import { requireLoggedIn, requireUser } from "./session";
+import * as lobby from "./lobby";
 import { acceptRequest, cancelRequest, createRequest } from "./requests";
 import { createInvite, createTeam, DomainError, joinWithInvite } from "./teams";
 
@@ -132,4 +134,44 @@ export async function cancelRequestAction(requestId: string): Promise<ActionStat
     throw error;
   }
   redirect("/app");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Lobby
+// ---------------------------------------------------------------------------------------------
+
+async function lobbyAction(matchId: string, fn: (userId: string) => Promise<void>): Promise<ActionState> {
+  const user = await requireUser(`/lobby/${matchId}`);
+  try {
+    await fn(user.id);
+  } catch (error) {
+    if (error instanceof DomainError) return { error: error.message };
+    throw error;
+  }
+  revalidatePath(`/lobby/${matchId}`);
+}
+
+export async function joinLobbyAction(matchId: string) {
+  return lobbyAction(matchId, (id) => lobby.joinLobby(id, matchId));
+}
+export async function leaveLobbyAction(matchId: string) {
+  return lobbyAction(matchId, (id) => lobby.leaveLobby(id, matchId));
+}
+export async function setReadyAction(matchId: string, ready: boolean) {
+  return lobbyAction(matchId, (id) => lobby.setReady(id, matchId, ready));
+}
+export async function setVenueAction(matchId: string, venue: string) {
+  return lobbyAction(matchId, (id) => lobby.setVenue(id, matchId, venue));
+}
+export async function joinAsSubstituteAction(matchId: string) {
+  return lobbyAction(matchId, (id) => lobby.joinAsSubstitute(id, matchId));
+}
+export async function assignSubstituteAction(matchId: string, targetUserId: string, teamId: string) {
+  return lobbyAction(matchId, (id) => lobby.assignSubstitute(id, matchId, targetUserId, teamId));
+}
+export async function removeParticipantAction(matchId: string, targetUserId: string) {
+  return lobbyAction(matchId, (id) => lobby.removeParticipant(id, matchId, targetUserId));
+}
+export async function cancelMatchAction(matchId: string, reason: string) {
+  return lobbyAction(matchId, (id) => lobby.cancelMatch(id, matchId, reason));
 }
