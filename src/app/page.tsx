@@ -4,6 +4,7 @@ import { and, asc, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { matchRequests, teams } from "@/db/schema";
 import { formatDateTime } from "@/lib/time";
+import { HowItWorks } from "@/components/HowItWorks";
 import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
 import { activeSponsors } from "@/server/sponsors";
@@ -94,6 +95,8 @@ export default async function Home() {
           </div>
         </div>
       </section>
+
+      <HowItWorks />
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">{t("home.openRequests")}</h2>

@@ -24,17 +24,42 @@ export default async function DashboardPage() {
         <p className="text-muted">{user.position} · {user.city}</p>
       </div>
 
+      {myTeams.length === 0 && games.length === 0 && (
+        <section className="card space-y-3 border-green/50" aria-label="So startest du" data-testid="first-steps">
+          <h2 className="font-semibold">So startest du</h2>
+          <ol className="space-y-2 text-sm text-muted">
+            <li><strong className="text-ink">1. Team gründen</strong> oder den Einladungslink deines Teams öffnen.</li>
+            <li><strong className="text-ink">2. Mitspieler einladen</strong> (Link per WhatsApp).</li>
+            <li><strong className="text-ink">3. Gegner finden</strong> über Matchmaking oder eine Spielsuche.</li>
+          </ol>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/app/teams/neu" className="btn btn-primary">Team gründen</Link>
+            <Link href="/hilfe" className="btn btn-ghost">Wie funktioniert das?</Link>
+          </div>
+        </section>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <Link href="/app/suche/neu" className="btn btn-primary">Gegner suchen</Link>
         <Link href="/suche" className="btn btn-ghost">Spielsuchen ansehen</Link>
       </div>
 
-      {(payOn || balance > 0) && (
-        <Link href="/app/guthaben" className="card flex items-center justify-between hover:border-green" data-testid="wallet-card">
-          <span className="text-muted">Guthaben</span>
-          <span className="font-heading text-xl font-bold tabular-nums">{formatEuro(balance)}</span>
-        </Link>
-      )}
+      <Link href="/app/guthaben" className="card flex items-center justify-between hover:border-green" data-testid="wallet-card">
+        <span>
+          <span className="block text-muted">Guthaben</span>
+          <span className="block text-xs text-muted">{payOn ? "Aufladen, Verlauf und Belege" : "Zahlungen sind noch nicht aktiv, Spiele sind kostenlos"}</span>
+        </span>
+        <span className="font-heading text-xl font-bold tabular-nums">{formatEuro(balance)}</span>
+      </Link>
+
+      <nav aria-label="Schnellzugriff" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
+        <Link href="/matchmaking" className="card text-center hover:border-green">Matchmaking</Link>
+        <Link href={`/spieler/${user.id}`} className="card text-center hover:border-green">Mein Profil</Link>
+        <Link href="/rangliste" className="card text-center hover:border-green">Rangliste</Link>
+        <Link href="/turniere" className="card text-center hover:border-green">Turniere</Link>
+        <Link href="/app/einstellungen" className="card text-center hover:border-green">Einstellungen</Link>
+        <Link href="/hilfe" className="card text-center hover:border-green">Hilfe</Link>
+      </nav>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Meine Spiele</h2>

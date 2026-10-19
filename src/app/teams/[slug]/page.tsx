@@ -13,6 +13,7 @@ import { leaguesOfTeam } from "@/server/leagues";
 import { sponsorsOfTeam } from "@/server/sponsors";
 import { getTeamMembers, isTeamAdmin } from "@/server/teams";
 import { InviteBox } from "./InviteBox";
+import { LeaveTeam, MemberControls, TeamSettings } from "./TeamManage";
 
 export async function generateMetadata({ params }: PageProps<"/teams/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -141,19 +142,23 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         <h2 className="text-lg font-semibold">Kader ({members.length})</h2>
         <ul className="space-y-2">
           {members.map((m) => (
-            <li key={m.userId}>
-              <Link href={`/spieler/${m.userId}`} className="card flex items-center justify-between hover:border-green/50">
-                <span>
+            <li key={m.userId} className="card space-y-2" data-testid="member">
+              <div className="flex items-center justify-between gap-2">
+                <Link href={`/spieler/${m.userId}`} className="min-w-0 hover:text-green">
                   <span className="font-semibold">{m.name}</span>
                   {m.isVerifiedPro && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Profi</span>}
                   <span className="block text-sm text-muted">{m.position ?? "Position offen"}</span>
-                </span>
+                </Link>
                 {m.role === "admin" && <span className="text-xs text-muted">Team-Admin</span>}
-              </Link>
+              </div>
+              {admin && <MemberControls teamId={team.id} userId={m.userId} isAdmin={m.role === "admin"} isSelf={m.userId === user?.id} />}
             </li>
           ))}
         </ul>
       </section>
+
+      {admin && <TeamSettings teamId={team.id} name={team.name} city={team.city} strength={team.strength} />}
+      {user && members.some((m) => m.userId === user.id) && <LeaveTeam teamId={team.id} />}
 
       <Comments targetType="team" targetId={team.id} path={`/teams/${team.slug}`} title="Kommentare" />
     </div>

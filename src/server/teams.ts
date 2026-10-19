@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { connection } from "next/server";
-import { and, count, desc, eq, gt, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, teamMembers, teams, users } from "@/db/schema";
 import { slugify } from "@/lib/slug";
@@ -69,7 +69,7 @@ export async function listMyTeams(userId: string) {
     .select({ id: teams.id, name: teams.name, slug: teams.slug, city: teams.city, role: teamMembers.role })
     .from(teamMembers)
     .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-    .where(eq(teamMembers.userId, userId))
+    .where(and(eq(teamMembers.userId, userId), isNull(teams.archivedAt)))
     .orderBy(desc(teamMembers.joinedAt));
 }
 

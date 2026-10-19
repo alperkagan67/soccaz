@@ -7,6 +7,7 @@ import { walletBalance, walletStatement } from "@/server/ledger";
 import { activeProvider, getPaymentFor } from "@/server/payments";
 import { listReceipts } from "@/server/receipts";
 import { requireUser } from "@/server/session";
+import { paymentsEnabled } from "@/server/settings";
 import { db } from "@/db";
 import { TopUpForm } from "./TopUpForm";
 
@@ -41,6 +42,7 @@ export default async function WalletPage({ searchParams }: PageProps<"/app/gutha
   const payment = paymentId ? await getPaymentFor(user.id, paymentId) : null;
   const waiting = Boolean(payment && payment.status === "pending" && status === "ok");
   const provider = activeProvider();
+  const payOn = await paymentsEnabled();
 
   return (
     <div className="space-y-6">
@@ -49,6 +51,18 @@ export default async function WalletPage({ searchParams }: PageProps<"/app/gutha
         <h1 className="text-2xl font-bold">Guthaben</h1>
         <p className="font-heading text-4xl font-extrabold tabular-nums" aria-label="Aktuelles Guthaben" data-testid="balance">{formatEuro(balance)}</p>
       </div>
+
+      <section className="card space-y-1 text-sm text-muted" aria-label="So funktioniert dein Guthaben">
+        <h2 className="font-semibold text-ink">So funktioniert dein Guthaben</h2>
+        <ol className="list-decimal space-y-1 pl-5">
+          <li>Du lädst Geld auf (ab 5 Euro).</li>
+          <li>Wenn du dich in einer Lobby „Bereit“ machst, wird dein Anteil an der Hallenmiete reserviert.</li>
+          <li>Nach der Frist rechnen wir ab. Was zu viel reserviert war, kommt zurück.</li>
+          <li>Meldest du dich bis 24 Stunden vorher ab, bekommst du alles sofort zurück.</li>
+        </ol>
+        {!payOn && <p className="text-yellow">Gerade sind Zahlungen noch nicht eingeschaltet. Spiele kosten daher nichts, dein Guthaben bleibt aber erhalten.</p>}
+        <Link href="/hilfe#geld" className="text-green underline">Mehr zu Kosten und Erstattung</Link>
+      </section>
 
       {payment && (
         <p className={`card text-sm ${payment.status === "succeeded" ? "border-green text-green" : payment.status === "pending" ? "text-muted" : "text-coral"}`} role="status" data-testid="payment-status">
@@ -67,7 +81,7 @@ export default async function WalletPage({ searchParams }: PageProps<"/app/gutha
           <TopUpForm initialAmount={initialAmount} back={back} />
         </section>
       ) : (
-        <p className="card text-muted">Aufladen ist gerade nicht möglich.</p>
+        <p className="card text-muted">Aufladen ist hier noch nicht eingerichtet (Zahlungsanbieter fehlt). Sobald der Betreiber Stripe verbunden hat, kannst du hier per Karte oder PayPal aufladen.</p>
       )}
 
       <section className="space-y-2">

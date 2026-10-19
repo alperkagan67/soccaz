@@ -37,6 +37,10 @@ export default async function DatenschutzPage() {
         <p>Hosting-Anbieter, Google (Anmeldung), Stripe (Zahlungen), ein E-Mail-Dienst, ein Fehlerüberwachungsdienst. Mit allen Dienstleistern besteht oder wird ein Auftragsverarbeitungsvertrag geschlossen. Eine Weitergabe an Dritte zu Werbezwecken findet nicht statt.</p>
       </section>
       <section className="space-y-1">
+        <h2>Cookies</h2>
+        <p>Wir setzen nur notwendige Cookies: das Anmelde-Cookie (Sitzung) und, wenn du die Sprache wählst, ein Cookie mit deiner Sprache. Es gibt keine Werbe- oder Analyse-Cookies. Deshalb brauchen wir kein Cookie-Banner.</p>
+      </section>
+      <section className="space-y-1">
         <h2>Eingebettete Streams</h2>
         <p>Bei manchen Spielen kann ein Live-Stream von Twitch, YouTube oder Kick eingebettet sein. Der Player wird erst nach deinem Klick geladen. Dabei werden Daten wie deine IP-Adresse an den jeweiligen Anbieter übertragen; dessen Datenschutzerklärung gilt.</p>
       </section>

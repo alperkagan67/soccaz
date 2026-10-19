@@ -7,6 +7,9 @@ export async function Footer() {
   return (
     <footer className="mx-auto w-full max-w-3xl space-y-3 px-4 pb-24 text-xs text-muted sm:px-6 sm:pb-8">
       <nav aria-label={t("footer.legal")} className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-4">
+        <Link href="/hilfe" className="hover:text-ink">{t("footer.help")}</Link>
+        <Link href="/kontakt" className="hover:text-ink">{t("footer.contact")}</Link>
+        <Link href="/teams" className="hover:text-ink">{t("footer.teams")}</Link>
         <Link href="/impressum" className="hover:text-ink">{t("footer.imprint")}</Link>
         <Link href="/datenschutz" className="hover:text-ink">{t("footer.privacy")}</Link>
         <Link href="/agb" className="hover:text-ink">{t("footer.terms")}</Link>

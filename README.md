@@ -14,6 +14,7 @@ Alle geplanten Phasen sind gebaut und getestet. Was noch fehlt, kann nur der Bet
 | 4 Wettbewerbe | Ligen mit Live-Tabelle, Stadt-Challenge, Profi-Tag mit Losverfahren, Turniere mit Startgeld und Treuhandkonto (Liga, K.-o., Gruppen mit K.-o.), Sponsoren und Trikot-Partner | fertig |
 | Matchmaking | Warteschlange wie bei Ranked (Stadt, Dauer, bis zu drei Zeitfenster, Paarung nach Elo mit wachsendem Bereich), Kader und Spielstärke beider Teams sichtbar, Termin und Ort wählen beide Teams gemeinsam aus Vorschlägen wie bei FACEIT (Einigung auf dieselbe Option, Frist 24 Stunden) | fertig |
 | 5 Reichweite | Stream-Einbettung (Twitch, YouTube, Kick, erst nach Klick), OBS-Overlay und JSON, Deutsch und Englisch für die Kernseiten, Capacitor-Konfiguration für die App | fertig, außer Store-Bau |
+| Basics | Startseite mit "So funktioniert Socaz" in vier Schritten (Preis aus den Preisregeln, Plattform-Zahlen), Hilfe und Fragen, Kontakt, Teamverzeichnis, Starthilfe für neue Nutzer, Guthaben immer erreichbar (Kopfleiste, Mein Bereich), Teamverwaltung (bearbeiten, Admins ernennen, Mitglieder entfernen, verlassen, auflösen, Einladungen widerrufen) | fertig |
 | Betrieb | Docker Compose mit Caddy, Sicherung und Wiederherstellungstest, CI, Sentry, Health-Check | fertig |
 
 ## Technik
