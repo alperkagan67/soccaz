@@ -77,10 +77,14 @@ export const invites = pgTable("invites", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
 
+/** Laufende Spielnummer für alles, was Teams ausmachen (Suche, Matchmaking, Spiel). Ein Spiel behält die Nummer seiner Suche. */
+export const gameNumber = (name: string) => integer(name).notNull().default(sql`nextval('game_number_seq')`);
+
 export const matchRequests = pgTable(
   "match_requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    number: gameNumber("number"),
     teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
     city: text("city").notNull(),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
@@ -97,6 +101,7 @@ export const matchRequests = pgTable(
 
 export const matches = pgTable("matches", {
   id: uuid("id").primaryKey().defaultRandom(),
+  number: gameNumber("number"),
   requestId: uuid("request_id").references(() => matchRequests.id),
   homeTeamId: uuid("home_team_id").notNull().references(() => teams.id),
   awayTeamId: uuid("away_team_id").notNull().references(() => teams.id),

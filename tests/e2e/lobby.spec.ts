@@ -56,8 +56,8 @@ test("Lobby: Ort live, Bereit, automatische Bestätigung, Rücknahme, Absage", a
 
   // B wird bereit: beide Teams 4, Spiel ist bestätigt, auch bei A ohne Neuladen
   await clickWhenReady(b, "Ich bin bereit");
-  await expect(b.getByText("Bestätigt", { exact: true })).toBeVisible();
-  await expect(a.getByText("Bestätigt", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(b.getByTestId("match-status").filter({ hasText: "Bestätigt" })).toBeVisible();
+  await expect(a.getByTestId("match-status").filter({ hasText: "Bestätigt" })).toBeVisible({ timeout: 15_000 });
 
   // B nimmt Bereit zurück: wieder Wartet auf Spieler
   await clickWhenReady(b, "Nicht mehr bereit");

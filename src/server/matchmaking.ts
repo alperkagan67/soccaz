@@ -98,6 +98,7 @@ export async function runMatchmaker(now: Date = new Date()): Promise<number> {
       }
       const entries: QueueEntry[] = rows.map((r) => ({
         id: r.id,
+        number: r.number,
         teamId: r.teamId,
         city: r.city,
         durationMin: r.durationMin,
@@ -126,6 +127,7 @@ async function createPairedMatch(tx: Tx, pair: Pair, now: Date) {
   const [match] = await tx
     .insert(matches)
     .values({
+      ...(pair.a.number ? { number: pair.a.number } : {}),
       homeTeamId: pair.a.teamId,
       awayTeamId: pair.b.teamId,
       startsAt: pair.slots[0],
@@ -190,6 +192,7 @@ export async function queueOverview(userId: string | null) {
 
 export type OpenSearch = {
   id: string;
+  number: number;
   teamId: string;
   teamName: string;
   teamSlug: string;
@@ -214,6 +217,7 @@ export async function listOpenSearches(filter: { city?: string; durationMin?: nu
   const rows = await db
     .select({
       id: matchmakingQueue.id,
+      number: matchmakingQueue.number,
       teamId: teams.id,
       teamName: teams.name,
       teamSlug: teams.slug,
@@ -267,7 +271,7 @@ export async function acceptSearch(userId: string, entryId: string, teamId: stri
       .values({ teamId, createdBy: userId, city: entry.city, durationMin: entry.durationMin, windows: entry.windows, status: "waiting", expiresAt: entry.expiresAt })
       .returning();
     const [eloA, eloB] = [await teamElo(entry.teamId), await teamElo(teamId)];
-    const a: QueueEntry = { id: entry.id, teamId: entry.teamId, city: entry.city, durationMin: entry.durationMin, elo: eloA, createdAt: entry.createdAt, windows };
+    const a: QueueEntry = { id: entry.id, number: entry.number, teamId: entry.teamId, city: entry.city, durationMin: entry.durationMin, elo: eloA, createdAt: entry.createdAt, windows };
     const b: QueueEntry = { id: own.id, teamId, city: entry.city, durationMin: entry.durationMin, elo: eloB, createdAt: now, windows };
     await createPairedMatch(tx, { a, b, eloDiff: Math.abs(eloA - eloB), slots }, now);
     await audit(userId, "matchmaking.accept", "team", teamId, { after: { entryId, opponent: entry.teamId } }, tx);

@@ -236,6 +236,7 @@ export async function acceptRequest(userId: string, requestId: string, teamId: s
     const [match] = await tx
       .insert(matches)
       .values({
+        number: request.number, // das Spiel behält die Nummer der Suche
         priceCents: price?.priceCents ?? null,
         costCents: price?.costCents ?? null,
         requestId: request.id,

@@ -239,10 +239,10 @@ test("Startseite zeigt offene Matchmaking-Suchen für alle, mit Anmelden zum Ant
 
   const anon = await (await browser.newContext()).newPage();
   await anon.goto("/");
-  const card = anon.getByTestId("home-searches").getByTestId("open-search").filter({ hasText: nameA });
+  const card = anon.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: nameA });
   await expect(card).toBeVisible();
   await expect(card).toContainText("Elo");
   await expect(card).toContainText("Locker, bitte pünktlich");
-  await expect(card.getByRole("link", { name: "Anmelden und antreten" })).toBeVisible();
+  await expect(card.getByRole("link", { name: "Anmelden und Team herausfordern" })).toBeVisible();
   await query("update matchmaking_queue set status = 'cancelled' where team_id = $1", [teamId]);
 });

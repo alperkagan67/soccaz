@@ -33,6 +33,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const [match] = await db
     .select({
       id: matches.id,
+      number: matches.number,
       startsAt: matches.startsAt,
       durationMin: matches.durationMin,
       venueText: matches.venueText,

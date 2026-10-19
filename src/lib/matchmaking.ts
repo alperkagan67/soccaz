@@ -15,6 +15,7 @@ export type QueueEntry = {
   elo: number;
   createdAt: Date;
   windows: Window[];
+  number?: number; // Spielnummer der Suche, das Spiel übernimmt sie
   strength?: number; // Selbsteinschätzung des Teams (1 bis 5)
   wantMin?: number | null; // gesuchte Spielstärke des Gegners
   wantMax?: number | null;

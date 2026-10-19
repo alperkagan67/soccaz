@@ -227,7 +227,7 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   await expect(a.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
   await b.getByRole("button", { name: euro("Bereit und 10,00 € zahlen") }).click();
   await expect(b.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
-  await expect(b.getByText("Bestätigt", { exact: true })).toBeVisible();
+  await expect(b.getByTestId("match-status").filter({ hasText: "Bestätigt" })).toBeVisible();
 
   // Der Buchungsauftrag ist entstanden und die Admins wurden informiert
   const jobs = await query<{ status: string }>("select status from booking_jobs where match_id = $1", [matchId]);

@@ -183,12 +183,12 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
 
   // B findet sie unter "Spielsuchen" und im Matchmaking, mit allen Angaben
   await b.goto("/suche");
-  const card = b.getByTestId("flex-searches").getByTestId("open-search").filter({ hasText: nameA });
+  const card = b.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: nameA });
   await expect(card).toBeVisible();
   await expect(card).toContainText("Elo 1000");
   await expect(card).toContainText("Stufe 2 bis 4");
-  await expect(card).toContainText("60 Minuten");
-  await expect(card).toContainText("Kader");
+  await expect(card).toContainText("60 Min");
+  await expect(card).toContainText("im Kader");
   await expect(card).toContainText(`Mixed-Team, locker ${run}`);
   await expect(card).toContainText("18:00 bis 21:00"); // Zeitfenster
   await b.goto("/matchmaking");
@@ -205,5 +205,5 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
 
   // die Suche ist weg
   await a.goto("/suche");
-  await expect(a.getByTestId("flex-searches").getByTestId("open-search")).toHaveCount(0);
+  await expect(a.locator('[data-kind="search"]').filter({ hasText: nameA })).toHaveCount(0); // die Suche ist zur Lobby geworden
 });

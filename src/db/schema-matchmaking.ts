@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { matches, teams, users } from "./schema";
+import { gameNumber, matches, teams, users } from "./schema";
 
 // ---------------------------------------------------------------------------------------------
 // Matchmaking-Warteschlange (wie bei Ranked) und gemeinsame Wahl von Termin und Ort (wie bei FACEIT)
@@ -13,6 +13,7 @@ export const matchmakingQueue = pgTable(
   "matchmaking_queue",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    number: gameNumber("number"),
     teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     city: text("city").notNull(),

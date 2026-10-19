@@ -4,7 +4,9 @@ import { notFound, redirect } from "next/navigation";
 import { formatDateTime } from "@/lib/time";
 import { formatEuro } from "@/lib/money";
 import { hasFreeSlot, MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
-import { requireUser } from "@/server/session";
+import { getCurrentUser } from "@/server/session";
+import { lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
+import { expectedScore } from "@/lib/elo";
 import { canViewLobby, getLobby } from "@/server/lobby";
 import { getScheduling } from "@/server/scheduling";
 import { getVeto } from "@/server/veto";
@@ -25,13 +27,15 @@ const STATUS: Record<string, { label: string; tone: string }> = {
 
 export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const { id } = await params;
-  const user = await requireUser(`/lobby/${id}`);
-  const view = await getLobby(id, { id: user.id, role: user.role });
+  const user = await getCurrentUser(); // Öffentliche Lobbys kann jeder ansehen
+  const view = await getLobby(id, user ? { id: user.id, role: user.role } : null);
   if (!view) notFound();
-  if (!canViewLobby(view)) redirect("/app");
+  if (!canViewLobby(view)) redirect(user ? "/app" : `/anmelden?next=${encodeURIComponent(`/lobby/${id}`)}`);
 
   const { match, payments, participants, counts, pendingStrangers, active, roster, strength } = view;
-  const v = view.viewer!;
+  const v = view.viewer ?? { id: "", platformAdmin: false, membershipTeamId: null, adminOf: [] as string[], participant: null, canManage: false, canJoin: false, teamFull: false, canJoinAsSubstitute: false };
+  const confirmed = match.status === "confirmed";
+  const winChanceHome = Math.round(expectedScore(strength[match.homeId].elo, strength[match.awayId].elo) * 100);
   const status = STATUS[match.status] ?? STATUS.lobby;
   const scheduling = await getScheduling(match);
   const veto = await getVeto(match.id, match.vetoStatus, match.vetoTurnTeamId, match.vetoTurnDeadline);
@@ -64,7 +68,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     <div className="space-y-4">
       <header className="space-y-1">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted">Lobby</p>
+          <p className="text-sm text-muted" data-testid="game-number">Spiel #{match.number} · Lobby</p>
           <LiveIndicator eventsUrl={`/api/lobby/${match.id}/events`} />
         </div>
         <h1 className="text-2xl font-bold">
@@ -74,7 +78,15 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           {open ? `${match.durationMin} Minuten · ${match.vetoStatus === "running" ? "Hallen-Veto läuft" : "Termin wird noch gewählt"}` : `${formatDateTime(match.startsAt)} Uhr · ${match.durationMin} Minuten`}
           {active && !open && <> · <span className="text-ink"><Countdown startsAtIso={match.startsAt.toISOString()} /></span></>}
         </p>
-        <p className={`text-sm font-semibold ${status.tone}`}>{status.label}</p>
+        <p className={`text-sm font-semibold ${status.tone}`} data-testid="match-status">{status.label}</p>
+        <p className="text-xs text-muted" data-testid="win-chance">
+          Spielstärke: {match.homeName} Elo {strength[match.homeId].elo}, {match.awayName} Elo {strength[match.awayId].elo} · Siegchance {winChanceHome} % zu {100 - winChanceHome} %
+        </p>
+        {!user && (
+          <p className="text-sm">
+            <Link href={`/anmelden?next=${encodeURIComponent(`/lobby/${match.id}`)}`} className="text-green underline">Anmelden</Link>, um beizutreten oder dein Team herauszufordern.
+          </p>
+        )}
         {!active && match.status !== "cancelled" && (
           <Link href={`/spiele/${match.id}`} className="btn btn-primary mt-2">Zur Spielseite</Link>
         )}
@@ -148,6 +160,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
+      <LightLegend paymentsOn={payments.enabled} />
       <div className="grid gap-3 sm:grid-cols-2">
         {teamsView.map((t) => (
           <section key={t.id} className="card space-y-2">
@@ -164,12 +177,11 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                     {p.name}
                     {p.isVerifiedPro && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Profi</span>}
                     {p.isSubstitute && <span className="ml-2 text-xs text-muted">Ersatz</span>}
-                    {p.userId === user.id && <span className="ml-2 text-xs text-muted">(du)</span>}
+                    {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                   </span>
                   <span className="flex items-center gap-2">
-                    {payments.enabled && p.paid && <span className="text-xs text-muted" title="Anteil bezahlt">bezahlt</span>}
-                    <span className={p.ready ? "text-green" : "text-muted"}>{p.ready ? "Bereit" : "Offen"}</span>
-                    {active && p.userId !== user.id && canAdminTeam(t.id) && (
+                    <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel />
+                    {active && p.userId !== user?.id && canAdminTeam(t.id) && (
                       <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} />
                     )}
                   </span>
@@ -200,8 +212,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <ul className="space-y-2 text-sm">
             {pendingStrangers.map((p) => (
               <li key={p.userId} className="flex items-center justify-between gap-2">
-                <span>{p.name}{p.userId === user.id && <span className="ml-2 text-xs text-muted">(du)</span>}</span>
-                {active && v.canManage && p.userId !== user.id && (
+                <span>{p.name}{p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}</span>
+                {active && v.canManage && p.userId !== user?.id && (
                   <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={assignTargets} />
                 )}
               </li>

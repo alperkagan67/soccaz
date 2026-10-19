@@ -87,7 +87,7 @@ test("Spielsuche erstellen, in der Liste finden, annehmen, Lobby", async ({ brow
 
   // Liste zeigt die Suche nicht mehr
   await c.goto("/suche");
-  await expect(c.getByText(teamA)).toHaveCount(0);
+  await expect(c.locator('[data-kind="search"]').filter({ hasText: teamA })).toHaveCount(0); // aus der Suche ist die Lobby geworden
 });
 
 test("zwei Teams nehmen gleichzeitig an: genau eines gewinnt", async ({ browser }) => {

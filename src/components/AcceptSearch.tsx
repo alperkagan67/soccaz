@@ -6,7 +6,7 @@ import { acceptSearchAction } from "@/server/matchmaking-actions";
 type Team = { id: string; name: string; elo: number; strength: number };
 
 /** Eine offene Suche mit dem eigenen Team annehmen. Zeigt vorher den Elo-Unterschied und ob die Spielstärke passt. */
-export function AcceptSearch({ entryId, teams, opponent }: { entryId: string; teams: Team[]; opponent: { name: string; elo: number; wantMin: number | null; wantMax: number | null } }) {
+export function AcceptSearch({ entryId, teams, opponent, label }: { entryId: string; teams: Team[]; opponent: { name: string; elo: number; wantMin: number | null; wantMax: number | null }; label?: string }) {
   const [teamId, setTeamId] = useState(teams[0].id);
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
@@ -41,7 +41,7 @@ export function AcceptSearch({ entryId, teams, opponent }: { entryId: string; te
             });
           }}
         >
-          {pending ? "Bitte warten…" : `Gegen ${opponent.name} antreten`}
+          {pending ? "Bitte warten…" : (label ?? `Gegen ${opponent.name} antreten`)}
         </button>
       </div>
       <p className="text-xs text-muted">

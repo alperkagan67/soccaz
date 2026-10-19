@@ -1,64 +1,13 @@
 import Image from "next/image";
 import Link from "next/link";
-import { and, asc, eq, gte, isNull } from "drizzle-orm";
-import { db } from "@/db";
-import { matchRequests, teams } from "@/db/schema";
-import { formatDateTime } from "@/lib/time";
+import { BoardSection } from "@/components/BoardSection";
 import { HowItWorks } from "@/components/HowItWorks";
 import { getT } from "@/server/locale";
-import { OpenSearches } from "@/components/OpenSearches";
-import { listOpenSearches, teamElo } from "@/server/matchmaking";
-import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 import { activeSponsors } from "@/server/sponsors";
 
-async function OpenRequests() {
-  const { t } = await getT();
-  const user = await getCurrentUser();
-  const searches = await listOpenSearches();
-  const adminTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
-  const mine = await Promise.all(adminTeams.map(async (x) => ({ id: x.id, name: x.name, elo: await teamElo(x.id), strength: x.strength })));
-  const open = await db
-    .select({
-      id: matchRequests.id,
-      team: teams.name,
-      city: matchRequests.city,
-      startsAt: matchRequests.startsAt,
-      durationMin: matchRequests.durationMin,
-    })
-    .from(matchRequests)
-    .innerJoin(teams, eq(teams.id, matchRequests.teamId))
-    .where(and(eq(matchRequests.status, "open"), eq(matchRequests.visibility, "public"), isNull(matchRequests.targetTeamId), gte(matchRequests.startsAt, new Date())))
-    .orderBy(asc(matchRequests.startsAt))
-    .limit(10);
-
-  if (open.length === 0 && searches.length === 0) {
-    return <p className="card text-muted">{t("home.noRequests")}</p>;
-  }
-  return (
-    <div className="space-y-4">
-      {searches.length > 0 && (
-        <div className="space-y-2" data-testid="home-searches">
-          <h3 className="text-sm font-semibold text-muted">Teams mit flexibler Zeit suchen einen Gegner</h3>
-          <OpenSearches searches={searches.slice(0, 6)} mine={mine} myWaitingTeamIds={adminTeams.map((x) => x.id)} loggedIn={Boolean(user)} />
-          {searches.length > 6 && <Link href="/matchmaking#offen" className="text-sm text-green underline">Alle {searches.length} offenen Suchen ansehen</Link>}
-        </div>
-      )}
-      {open.length > 0 && <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-muted">Spielsuchen mit festem Termin</h3>
-    <ul className="space-y-2">
-      {open.map((r) => (
-        <li key={r.id} className="card">
-          <Link href={`/suche/${r.id}`} className="font-semibold hover:text-green">{r.team}</Link>
-          <span className="block text-sm text-muted">
-            {r.city} · {formatDateTime(r.startsAt)} Uhr · {r.durationMin} Min
-          </span>
-        </li>
-      ))}
-    </ul>
-      </div>}
-    </div>
-  );
+function OpenRequests() {
+  return <BoardSection limit={6} />;
 }
 
 async function Sponsors() {
