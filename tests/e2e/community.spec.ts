@@ -47,6 +47,16 @@ test("Herausforderung: nur das Zielteam kann annehmen, nie in der öffentlichen 
   await expect(c.getByText(/gilt .* Nur deren Team-Admins/)).toBeVisible();
   await expect(c.getByRole("button", { name: "Spiel annehmen" })).toHaveCount(0);
 
+  // Die Herausforderung steht bei B in "Mein Bereich" und unter Spielsuchen, bei A als ausgehende; bei C nirgends
+  await b.goto("/app");
+  await expect(b.getByTestId("challenge-incoming")).toContainText(teamA);
+  await b.goto("/suche");
+  await expect(b.getByTestId("challenge-incoming")).toContainText(teamA);
+  await a.goto("/app");
+  await expect(a.getByTestId("challenge-outgoing")).toContainText(teamB);
+  await c.goto("/app");
+  await expect(c.getByTestId("challenges")).toHaveCount(0);
+
   // Team B wurde benachrichtigt und nimmt an
   await b.goto("/app/benachrichtigungen");
   await expect(b.getByText("Ihr wurdet herausgefordert")).toBeVisible();

@@ -3,9 +3,10 @@ import Link from "next/link";
 import { CITIES, filterSchema } from "@/lib/validation";
 import { formatDateTime } from "@/lib/time";
 import { strengthText } from "@/lib/labels";
+import { Challenges } from "@/components/Challenges";
 import { OpenSearches } from "@/components/OpenSearches";
 import { listOpenSearches, teamElo } from "@/server/matchmaking";
-import { listOpenRequests, myAdminTeams } from "@/server/requests";
+import { listOpenRequests, myAdminTeams, myChallenges } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 
 export const metadata: Metadata = { title: "Spielsuchen" };
@@ -19,6 +20,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
   const active = Object.values(filter).some((v) => v !== undefined);
   const user = await getCurrentUser();
   const adminTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
+  const challenges = user?.onboardedAt ? await myChallenges(user.id) : { incoming: [], outgoing: [] };
   const searches = await listOpenSearches({ city: filter.city, durationMin: filter.durationMin });
   const mine = await Promise.all(adminTeams.map(async (t) => ({ id: t.id, name: t.name, elo: await teamElo(t.id), strength: t.strength })));
 
@@ -28,6 +30,8 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
         <h1 className="text-2xl font-bold">Spielsuchen</h1>
         <Link href="/app/suche/neu" className="btn btn-primary !min-h-9">Gegner suchen</Link>
       </div>
+
+      <Challenges incoming={challenges.incoming} outgoing={challenges.outgoing} />
 
       <form className="card grid grid-cols-2 gap-3" method="get">
         <div className="col-span-2 sm:col-span-1">

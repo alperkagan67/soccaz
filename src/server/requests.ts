@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { and, asc, between, count, eq, gt, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { alias } from "drizzle-orm/pg-core";
 import { matchParticipants, matchRequests, matches, teamMembers, teams } from "@/db/schema";
 import { addBerlinDays, berlinDayRange, toBerlinInputValue } from "@/lib/time";
 import { audit } from "./audit";
@@ -269,4 +270,46 @@ export async function acceptRequest(userId: string, requestId: string, teamId: s
     );
     return match;
   });
+}
+
+export type ChallengeRow = { id: string; startsAt: Date; durationMin: number; city: string; fromTeam: string; fromSlug: string; toTeam: string; toSlug: string; myTeamId: string; note: string | null };
+
+/** Herausforderungen, die dein Team bekommen hat (eingehend) und die ihr verschickt habt (ausgehend). Nur offene, nur für Team-Admins. */
+export async function myChallenges(userId: string): Promise<{ incoming: ChallengeRow[]; outgoing: ChallengeRow[] }> {
+  await connection();
+  const from = alias(teams, "from_team");
+  const to = alias(teams, "to_team");
+  const rows = await db
+    .select({
+      id: matchRequests.id,
+      startsAt: matchRequests.startsAt,
+      durationMin: matchRequests.durationMin,
+      city: matchRequests.city,
+      note: matchRequests.note,
+      fromId: from.id,
+      fromTeam: from.name,
+      fromSlug: from.slug,
+      toId: to.id,
+      toTeam: to.name,
+      toSlug: to.slug,
+    })
+    .from(matchRequests)
+    .innerJoin(from, eq(from.id, matchRequests.teamId))
+    .innerJoin(to, eq(to.id, matchRequests.targetTeamId))
+    .innerJoin(teamMembers, and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), or(eq(teamMembers.teamId, from.id), eq(teamMembers.teamId, to.id))))
+    .where(and(eq(matchRequests.status, "open"), gt(matchRequests.startsAt, new Date())))
+    .orderBy(asc(matchRequests.startsAt));
+  const seen = new Set<string>();
+  const incoming: ChallengeRow[] = [];
+  const outgoing: ChallengeRow[] = [];
+  for (const r of rows) {
+    const key = r.id;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // admin des Zielteams: eingehend; sonst ausgehend
+    const isTarget = (await isAdmin(db, userId, r.toId)) === true;
+    const row: ChallengeRow = { id: r.id, startsAt: r.startsAt, durationMin: r.durationMin, city: r.city, fromTeam: r.fromTeam, fromSlug: r.fromSlug, toTeam: r.toTeam, toSlug: r.toSlug, myTeamId: isTarget ? r.toId : r.fromId, note: r.note };
+    (isTarget ? incoming : outgoing).push(row);
+  }
+  return { incoming, outgoing };
 }

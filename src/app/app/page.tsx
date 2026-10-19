@@ -3,6 +3,8 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/time";
 import { phaseOf, PHASE_LABEL } from "@/lib/result-rules";
 import { myMatches } from "@/server/lobby";
+import { Challenges } from "@/components/Challenges";
+import { myChallenges } from "@/server/requests";
 import { listMyTeams } from "@/server/teams";
 import { requireUser } from "@/server/session";
 import { walletBalance } from "@/server/ledger";
@@ -14,7 +16,7 @@ export const metadata: Metadata = { title: "Mein Bereich" };
 
 export default async function DashboardPage() {
   const user = await requireUser("/app");
-  const [myTeams, games, payOn, balance] = await Promise.all([listMyTeams(user.id), myMatches(user.id), paymentsEnabled(), walletBalance(db, user.id)]);
+  const [myTeams, games, payOn, balance, challenges] = await Promise.all([listMyTeams(user.id), myMatches(user.id), paymentsEnabled(), walletBalance(db, user.id), myChallenges(user.id)]);
   const now = new Date();
 
   return (
@@ -23,6 +25,8 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-bold">Hey {user.name.split(" ")[0]}</h1>
         <p className="text-muted">{user.position} · {user.city}</p>
       </div>
+
+      <Challenges incoming={challenges.incoming} outgoing={challenges.outgoing} />
 
       {myTeams.length === 0 && games.length === 0 && (
         <section className="card space-y-3 border-green/50" aria-label="So startest du" data-testid="first-steps">
