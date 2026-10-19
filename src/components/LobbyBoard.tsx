@@ -119,7 +119,9 @@ function MatchCard({ m, loggedIn, mine, shareBase }: { m: BoardMatch; loggedIn: 
 }
 
 function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: BoardSearch; loggedIn: boolean; mine: Mine[]; myWaitingTeamIds: string[]; shareBase: string }) {
-  const own = myWaitingTeamIds.includes(s.team.id);
+  const challenge = s.sub === "challenge";
+  const own = myWaitingTeamIds.includes(s.team.id) || (challenge && mine.some((t) => t.id === s.team.id));
+  const forMe = challenge && s.target ? mine.some((t) => t.id === s.target!.id) : false;
   const candidates = mine.filter((t) => t.id !== s.team.id);
   const target = s.sub === "queue" ? `${shareBase}/matchmaking#offen` : `${shareBase}/suche/${s.id}`;
   return (
@@ -127,7 +129,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2">
           <GameNumber n={s.number} />
-          <span className="text-sm font-semibold text-yellow">Gegner gesucht</span>
+          <span className="text-sm font-semibold text-yellow">{challenge ? "Herausforderung" : "Gegner gesucht"}</span>
           {own && <span className="rounded bg-white/10 px-1.5 py-0.5 text-xs text-muted">Euer Team</span>}
         </span>
         <span className="text-sm text-muted">
@@ -153,6 +155,18 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
             ))}
           </ul>
         </div>
+        {challenge && s.target ? (
+          <div className="space-y-1 rounded-lg border border-dashed border-line p-3 text-sm" data-testid="challenge-target">
+            <p className="text-xs text-muted">Herausgefordert wird</p>
+            <Link href={`/teams/${s.target.slug}`} className="font-semibold hover:text-green">{s.target.name}</Link>
+            <p className="text-xs text-muted">
+              Elo {s.target.elo}
+              {s.target.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {s.target.strength}/5 · {s.target.members} im Kader
+            </p>
+            {s.note && <p className="whitespace-pre-line text-xs">{s.note}</p>}
+            <p className="text-xs text-muted">Nur das herausgeforderte Team kann annehmen.</p>
+          </div>
+        ) : (
         <div className="space-y-2 rounded-lg border border-dashed border-line p-3 text-sm">
           <p className="font-semibold">Gesucht wird ein Gegner</p>
           <dl className="space-y-1 text-xs">
@@ -181,9 +195,16 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
           </dl>
           <p className="text-xs text-muted">Sucht seit {formatDateTime(s.createdAt)} Uhr</p>
         </div>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {!loggedIn && (
+        {forMe && (
+          <Link href={`/suche/${s.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm" data-testid="accept-challenge">
+            Herausforderung annehmen
+          </Link>
+        )}
+        {challenge && !forMe && !own && <Link href={`/suche/${s.id}`} className="text-xs text-green underline">Details</Link>}
+        {!loggedIn && !challenge && (
           <Link href={`/anmelden?next=${encodeURIComponent(s.sub === "queue" ? "/matchmaking#offen" : `/suche/${s.id}`)}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
             Anmelden und Team herausfordern
           </Link>
@@ -193,8 +214,8 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
             Team herausfordern
           </Link>
         )}
-        {loggedIn && !own && candidates.length === 0 && <span className="text-xs text-muted">Um anzutreten, brauchst du ein Team, bei dem du Admin bist.</span>}
-        <a href={`https://wa.me/?text=${encodeURIComponent(`Spiel #${s.number}: ${s.team.name} sucht einen Gegner auf Socaz ${target}`)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted underline">
+        {loggedIn && !own && !challenge && candidates.length === 0 && <span className="text-xs text-muted">Um anzutreten, brauchst du ein Team, bei dem du Admin bist.</span>}
+        <a href={`https://wa.me/?text=${encodeURIComponent(`Spiel #${s.number}: ${s.team.name} ${challenge && s.target ? `fordert ${s.target.name} heraus` : "sucht einen Gegner"} auf Socaz ${target}`)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted underline">
           Teilen
         </a>
       </div>

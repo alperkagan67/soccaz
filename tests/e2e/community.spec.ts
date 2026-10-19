@@ -13,7 +13,7 @@ async function slugOf(teamName: string) {
   return (await query<{ slug: string }>("select slug from teams where name = $1", [teamName]))[0].slug;
 }
 
-test("Herausforderung: nur das Zielteam kann annehmen, nie in der öffentlichen Liste", async ({ browser }) => {
+test("Herausforderung: für alle sichtbar in den offenen Lobbys, nur das Zielteam kann annehmen", async ({ browser }) => {
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
   const c = await (await browser.newContext()).newPage();
@@ -36,11 +36,16 @@ test("Herausforderung: nur das Zielteam kann annehmen, nie in der öffentlichen 
   const url = a.url();
   await expect(a.getByRole("heading", { name: new RegExp(`${teamA}.*fordert.*${teamB}.*heraus`) })).toBeVisible();
 
-  // nicht in der öffentlichen Liste, auch nicht auf der Startseite
+  // öffentlich sichtbar (Startseite und Liste), aber annehmen darf nur das herausgeforderte Team
   await c.goto("/suche");
-  await expect(c.getByText(teamA)).toHaveCount(0);
+  const card = c.getByTestId("board-entry").filter({ hasText: teamA });
+  await expect(card).toContainText("Herausforderung");
+  await expect(card.getByTestId("challenge-target")).toContainText(teamB);
+  await expect(card.getByTestId("accept-challenge")).toHaveCount(0);
   await c.goto("/");
-  await expect(c.getByText(teamA)).toHaveCount(0);
+  await expect(c.getByTestId("board-entry").filter({ hasText: teamA })).toBeVisible();
+  await b.goto("/suche");
+  await expect(b.getByTestId("board-entry").filter({ hasText: teamA }).getByTestId("accept-challenge")).toBeVisible();
 
   // Team C darf nicht annehmen
   await c.goto(url);

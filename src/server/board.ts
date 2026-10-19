@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matchRequests, matches, teams, users } from "@/db/schema";
@@ -38,7 +38,8 @@ export type BoardMatch = {
 
 export type BoardSearch = {
   kind: "search";
-  sub: "queue" | "request";
+  sub: "queue" | "request" | "challenge";
+  target: BoardTeam | null; // bei Herausforderungen das herausgeforderte Team
   number: number;
   id: string;
   team: BoardTeam;
@@ -151,23 +152,23 @@ export async function listBoard(filter: BoardFilter = {}): Promise<BoardEntry[]>
   if (filter.kind !== "match") {
     const queue = await listOpenSearches({ city: filter.city, durationMin: filter.durationMin });
     const requests = await db
-      .select({ id: matchRequests.id, number: matchRequests.number, teamId: matchRequests.teamId, city: matchRequests.city, startsAt: matchRequests.startsAt, durationMin: matchRequests.durationMin, note: matchRequests.note, createdAt: matchRequests.createdAt, strength: matchRequests.strength })
+      .select({ id: matchRequests.id, number: matchRequests.number, teamId: matchRequests.teamId, targetTeamId: matchRequests.targetTeamId, city: matchRequests.city, startsAt: matchRequests.startsAt, durationMin: matchRequests.durationMin, note: matchRequests.note, createdAt: matchRequests.createdAt, strength: matchRequests.strength })
       .from(matchRequests)
-      .where(and(eq(matchRequests.status, "open"), eq(matchRequests.visibility, "public"), isNull(matchRequests.targetTeamId), gt(matchRequests.startsAt, new Date()), day ? and(gte(matchRequests.startsAt, day.from), lt(matchRequests.startsAt, day.to)) : undefined, filter.city ? eq(matchRequests.city, filter.city) : undefined, filter.durationMin ? eq(matchRequests.durationMin, filter.durationMin) : undefined))
+      .where(and(eq(matchRequests.status, "open"), or(and(eq(matchRequests.visibility, "public"), isNull(matchRequests.targetTeamId)), isNotNull(matchRequests.targetTeamId)), gt(matchRequests.startsAt, new Date()), day ? and(gte(matchRequests.startsAt, day.from), lt(matchRequests.startsAt, day.to)) : undefined, filter.city ? eq(matchRequests.city, filter.city) : undefined, filter.durationMin ? eq(matchRequests.durationMin, filter.durationMin) : undefined))
       .orderBy(asc(matchRequests.startsAt))
       .limit(60);
-    const info = await teamInfo([...new Set([...queue.map((q) => q.teamId), ...requests.map((r) => r.teamId)])]);
+    const info = await teamInfo([...new Set([...queue.map((q) => q.teamId), ...requests.flatMap((r) => (r.targetTeamId ? [r.teamId, r.targetTeamId] : [r.teamId]))])]);
     const rosterOf = async (teamId: string): Promise<RosterEntry[]> => (await teamRoster(teamId)).map((m) => ({ userId: m.userId, name: m.name, position: m.position, elo: m.elo, isAdmin: m.isAdmin }));
     for (const q of queue) {
       const team = info.get(q.teamId)!;
       if (!strengthOk(team.strength)) continue;
       if (day && !q.windows.some((w) => new Date(w.from) < day.to && new Date(w.to) > day.from)) continue;
-      out.push({ kind: "search", sub: "queue", number: q.number, id: q.id, team, roster: await rosterOf(q.teamId), city: q.city, durationMin: q.durationMin, startsAt: null, windows: q.windows, note: q.note, wantStrengthMin: q.wantStrengthMin, wantStrengthMax: q.wantStrengthMax, createdAt: q.createdAt });
+      out.push({ kind: "search", sub: "queue", target: null, number: q.number, id: q.id, team, roster: await rosterOf(q.teamId), city: q.city, durationMin: q.durationMin, startsAt: null, windows: q.windows, note: q.note, wantStrengthMin: q.wantStrengthMin, wantStrengthMax: q.wantStrengthMax, createdAt: q.createdAt });
     }
     for (const r of requests) {
       const team = info.get(r.teamId)!;
       if (!strengthOk(r.strength)) continue;
-      out.push({ kind: "search", sub: "request", number: r.number, id: r.id, team, roster: await rosterOf(r.teamId), city: r.city, durationMin: r.durationMin, startsAt: r.startsAt, windows: [], note: r.note, wantStrengthMin: r.strength, wantStrengthMax: r.strength, createdAt: r.createdAt });
+      out.push({ kind: "search", sub: r.targetTeamId ? "challenge" : "request", target: r.targetTeamId ? (info.get(r.targetTeamId) ?? null) : null, number: r.number, id: r.id, team, roster: await rosterOf(r.teamId), city: r.city, durationMin: r.durationMin, startsAt: r.startsAt, windows: [], note: r.note, wantStrengthMin: r.strength, wantStrengthMax: r.strength, createdAt: r.createdAt });
     }
   }
 
