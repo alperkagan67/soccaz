@@ -215,20 +215,24 @@ test("Sponsoren: anlegen, auf der Startseite, Klick zählt und leitet weiter", a
 });
 
 test("Stadt-Challenge und Ligenübersicht auf der Rangliste", async ({ browser }) => {
-  const essen = await seedTeam("cc1", `Challenge Essen ${run}`, "Essen");
-  const bochum = await seedTeam("cc2", `Challenge Bochum ${run}`, "Bochum");
-  await playedGame(essen.id, bochum.id, 3, 0, 0);
-  await playedGame(bochum.id, essen.id, 2, 1, 0);
-  await playedGame(bochum.id, essen.id, 1, 0, 0);
+  // eigene Städte pro Lauf, damit andere Testdaten im Monat das Ergebnis nicht verändern
+  const cityA = `Teststadt A ${run}`;
+  const cityB = `Teststadt B ${run}`;
+  const teamA = await seedTeam("cc1", `Challenge A ${run}`, cityA);
+  const teamB = await seedTeam("cc2", `Challenge B ${run}`, cityB);
+  await playedGame(teamA.id, teamB.id, 3, 0, 0);
+  await playedGame(teamB.id, teamA.id, 2, 1, 0);
+  await playedGame(teamB.id, teamA.id, 1, 0, 0);
 
   const page = await (await browser.newContext()).newPage();
   await page.goto("/rangliste");
   const list = page.getByTestId("city-challenge");
-  await expect(list).toContainText("Bochum");
-  await expect(list).toContainText("Essen");
-  // Bochum (2 Siege) steht vor Essen (1 Sieg); andere Testdaten im Monat dürfen dazwischen stehen
+  const rowB = list.getByRole("listitem").filter({ hasText: cityB });
+  const rowA = list.getByRole("listitem").filter({ hasText: cityA });
+  await expect(rowB).toContainText("2 Siege in 3 Spielen");
+  await expect(rowA).toContainText("1 Siege in 3 Spielen");
   const texts = await list.getByRole("listitem").allInnerTexts();
-  expect(texts.findIndex((t) => t.includes("Bochum"))).toBeLessThan(texts.findIndex((t) => t.includes("Essen")));
+  expect(texts.findIndex((t) => t.includes(cityB))).toBeLessThan(texts.findIndex((t) => t.includes(cityA)));
   await page.goto("/ligen");
   await expect(page.getByRole("heading", { name: "Ligen" })).toBeVisible();
   await page.goto("/turniere");
