@@ -12,6 +12,9 @@ import { setReady, setVenue } from "@/server/lobby";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 beforeAll(async () => {
+  // Das Veto braucht mindestens zwei Hallen, auf einer frischen Datenbank (CI) gibt es keine
+  await db.delete(venues).where(sql`${venues.name} like 'E2E Veto-Halle%'`);
+  await db.insert(venues).values([1, 2, 3].map((i) => ({ name: `E2E Veto-Halle ${i}`, city: "Essen" })));
   await db.update(matchmakingQueue).set({ status: "cancelled" }).where(eq(matchmakingQueue.status, "waiting")); // nur unsere Teams sollen in der Warteschlange sein
 });
 afterEach(async () => {

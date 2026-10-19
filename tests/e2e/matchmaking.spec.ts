@@ -9,12 +9,18 @@ test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
 });
 
+async function seedHalls() {
+  // Das Veto braucht mindestens zwei Hallen; auf einer frischen Datenbank (CI) gibt es keine
+  await query("insert into venues (name, city) select 'E2E Veto-Halle ' || g || ' ' || $1, 'Gelsenkirchen' from generate_series(1, 3) g", [run]);
+}
+
 async function cancelWaiting() {
   await query("update matchmaking_queue set status = 'cancelled' where status = 'waiting'");
 }
 
 test("Matchmaking: Warteschlange, Gegner mit Kader sehen, Termin und Ort gemeinsam wählen", async ({ browser }) => {
   await cancelWaiting();
+  await seedHalls();
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
   await newUser(a, "mma");
