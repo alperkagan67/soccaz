@@ -9,7 +9,7 @@ import { createPromo, setPromoActive } from "./promo";
 import { requirePermission } from "./session";
 import { setSetting } from "./settings";
 import { DomainError } from "./teams";
-import { addPriceRule, createVenue, listVenues, updateVenue } from "./venues";
+import { addPriceRule, createVenue, listVenues, setVenueVerified, updateVenue } from "./venues";
 
 type Permission = Parameters<typeof requirePermission>[0];
 
@@ -128,6 +128,13 @@ export async function toggleVenueAction(venueId: string, active: boolean, _prev:
     const v = (await listVenues()).find((x) => x.id === venueId);
     if (!v) throw new DomainError("Halle nicht gefunden.");
     await updateVenue(actor, venueId, { name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers, hasParking: v.hasParking, isPartner: v.isPartner, active });
+  });
+}
+
+export async function verifyVenueAction(venueId: string, verified: boolean, _prev: ActionState, _fd: FormData): Promise<ActionState> {
+  void _fd;
+  return guarded("booking", "/admin/hallen", async (actor) => {
+    await setVenueVerified(actor, venueId, verified);
   });
 }
 

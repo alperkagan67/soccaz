@@ -7,6 +7,7 @@ import { CITIES } from "@/lib/validation";
 import { audit } from "./audit";
 import { userName } from "./names";
 import { notifyUsers } from "./notifications";
+import { cleanBio } from "./account";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
@@ -47,7 +48,8 @@ async function inUpcomingLobby(tx: Tx, teamId: string, userId: string) {
 }
 
 /** Name, Stadt und Selbsteinschätzung ändern. Die Adresse (slug) bleibt gleich, damit Links nicht brechen. */
-export async function updateTeam(userId: string, teamId: string, input: { name: string; city: string; strength: number }) {
+export async function updateTeam(userId: string, teamId: string, input: { name: string; city: string; strength: number; bio?: string }) {
+  const bio = cleanBio(input.bio);
   const name = input.name.replace(/\s+/g, " ").trim();
   if (name.length < 3 || name.length > 40) throw new DomainError("Der Teamname braucht 3 bis 40 Zeichen.");
   if (slugify(name).length < 3) throw new DomainError("Der Teamname enthält zu wenige gültige Zeichen.");
@@ -58,7 +60,7 @@ export async function updateTeam(userId: string, teamId: string, input: { name: 
     await requireAdmin(tx, teamId, userId);
     const [taken] = await tx.select({ id: teams.id }).from(teams).where(and(ne(teams.id, teamId), sql`lower(${teams.name}) = lower(${name})`));
     if (taken) throw new DomainError("Dieser Teamname ist bereits vergeben.");
-    await tx.update(teams).set({ name, city: input.city, strength: input.strength }).where(eq(teams.id, teamId));
+    await tx.update(teams).set({ name, city: input.city, strength: input.strength, bio }).where(eq(teams.id, teamId));
     await audit(userId, "team.update", "team", teamId, { before: { name: team.name, city: team.city, strength: team.strength }, after: input }, tx);
   });
 }

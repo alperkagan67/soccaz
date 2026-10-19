@@ -14,6 +14,7 @@ const profileSchema = z.object({
   city: z.string(),
   position: z.string(),
   profilePublic: z.string().optional(),
+  bio: z.string().max(2000).optional(),
 });
 
 export async function updateProfileAction(_prev: ActionState, formData: FormData): Promise<ActionState> {

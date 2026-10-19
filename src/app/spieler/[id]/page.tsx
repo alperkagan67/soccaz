@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Comments } from "@/components/Comments";
+import { FormChips, Sparkline } from "@/components/Sparkline";
 import { OutcomeChip, StatTile } from "@/components/Stats";
 import { BADGES, type BadgeCode } from "@/lib/badges";
 import { formatDate } from "@/lib/time";
@@ -41,6 +42,8 @@ export default async function PlayerPage({ params }: PageProps<"/spieler/[id]">)
         <p className="text-muted">
           {[user.city, user.position].filter(Boolean).join(" · ") || "Keine Angaben"} · dabei seit {formatDate(user.createdAt)}
         </p>
+        {p.bio && <p className="whitespace-pre-line pt-1 text-sm" data-testid="bio">{p.bio}</p>}
+        <FormChips form={p.form} />
         {p.isSelf && !user.profilePublic && <p className="text-sm text-pink">Dein Profil ist privat – nur du siehst diese Seite.</p>}
         {p.isSelf && (
           <Link href="/app/einstellungen" className="text-sm text-green underline">
@@ -58,7 +61,11 @@ export default async function PlayerPage({ params }: PageProps<"/spieler/[id]">)
         <StatTile label="Gelbe Karten" value={stats.yellowCards} />
         <StatTile label="Rote Karten" value={stats.redCards} />
         <StatTile label="Siegesserie" value={stats.winStreak} />
+        <StatTile label="Siegquote" value={p.winRate === null ? "–" : `${p.winRate} %`} />
+        <StatTile label="Tore pro Spiel" value={p.goalsPerGame ?? "–"} />
       </section>
+
+      <Sparkline values={p.eloHistory} label="Elo-Verlauf" />
 
       {p.reliability !== undefined && (
         <section className="card text-sm" data-testid="reliability">

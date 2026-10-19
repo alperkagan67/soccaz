@@ -29,7 +29,7 @@ async function guarded(teamId: string, fn: () => Promise<void>): Promise<ActionS
 
 export async function updateTeamAction(teamId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
   const user = await requireUser("/app");
-  return guarded(teamId, () => updateTeam(user.id, teamId, { name: String(f.get("name") ?? ""), city: String(f.get("city") ?? ""), strength: Number(f.get("strength")) }));
+  return guarded(teamId, () => updateTeam(user.id, teamId, { name: String(f.get("name") ?? ""), city: String(f.get("city") ?? ""), strength: Number(f.get("strength")), bio: String(f.get("bio") ?? "") }));
 }
 
 export async function setMemberRoleAction(teamId: string, targetId: string, role: "admin" | "player"): Promise<ActionState> {

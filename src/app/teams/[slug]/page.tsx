@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import { Comments } from "@/components/Comments";
 import { ImageUpload } from "@/components/ImageUpload";
+import { FormChips, Sparkline } from "@/components/Sparkline";
 import { StatTile } from "@/components/Stats";
 import { formatDate, formatDateTime } from "@/lib/time";
 import { getTeamProfile } from "@/server/profiles";
@@ -46,13 +47,15 @@ function MatchRow({ m, teamId, homeId }: { m: Row; teamId: string; homeId: strin
 
 export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   const { slug } = await params;
-  const profile = await getTeamProfile(slug);
+  const user = await getCurrentUser();
+  const myTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
+  const profile = await getTeamProfile(slug, myTeams.find((t) => t.slug !== slug)?.id ?? null);
   if (!profile) notFound();
   const { team, stats } = profile;
 
-  const [members, user, leagues, jerseys] = await Promise.all([getTeamMembers(team.id), getCurrentUser(), leaguesOfTeam(team.id), sponsorsOfTeam(team.id)]);
+  const [members, leagues, jerseys] = await Promise.all([getTeamMembers(team.id), leaguesOfTeam(team.id), sponsorsOfTeam(team.id)]);
   const admin = user ? await isTeamAdmin(user.id, team.id) : false;
-  const canChallenge = user?.onboardedAt ? (await myAdminTeams(user.id)).some((t) => t.id !== team.id) : false;
+  const canChallenge = myTeams.some((t) => t.id !== team.id);
 
   return (
     <div className="space-y-6">
@@ -63,8 +66,10 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           {team.isVerified && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 align-middle text-xs text-green">Verifiziert</span>}
         </h1>
         <p className="text-muted">
-          {team.city} · Spielstärke {team.strength} von 5
+          {team.city} · Spielstärke {team.strength} von 5 · gegründet {formatDate(team.createdAt)}
         </p>
+        {team.bio && <p className="whitespace-pre-line pt-1 text-sm" data-testid="bio">{team.bio}</p>}
+        <FormChips form={profile.form} />
         {!admin && !canChallenge && user === null && (
           <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${team.slug}`)}`} className="text-sm text-green underline">
             Anmelden, um dieses Team herauszufordern
@@ -108,6 +113,33 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      <section aria-label="Kennzahlen" className="grid grid-cols-3 gap-3">
+        <StatTile label="Siegquote" value={profile.winRate === null ? "–" : `${profile.winRate} %`} />
+        <StatTile label="Tore pro Spiel" value={profile.goalsPerGame ?? "–"} />
+        <StatTile label="Mitglieder" value={members.length} />
+      </section>
+      <Sparkline values={profile.eloHistory} label="Elo-Verlauf" />
+
+      {profile.vs && profile.vs.games > 0 && (
+        <p className="card text-sm" data-testid="head-to-head">
+          Direktvergleich mit deinem Team: <strong>{profile.vs.wins} Siege, {profile.vs.draws} Remis, {profile.vs.losses} Niederlagen</strong> ({profile.vs.gf}:{profile.vs.ga} Tore) aus {profile.vs.games} Spielen.
+        </p>
+      )}
+
+      {profile.topScorers.length > 0 && (
+        <section className="space-y-2" aria-label="Torjäger">
+          <h2 className="text-lg font-semibold">Torjäger</h2>
+          <ol className="space-y-1 text-sm">
+            {profile.topScorers.map((s, i) => (
+              <li key={s.id} className="flex justify-between">
+                <span><span className="mr-2 text-muted">{i + 1}.</span><Link href={`/spieler/${s.id}`} className="hover:text-green">{s.name}</Link></span>
+                <span className="font-semibold">{s.goals} Tore</span>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
 
@@ -157,7 +189,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         </ul>
       </section>
 
-      {admin && <TeamSettings teamId={team.id} name={team.name} city={team.city} strength={team.strength} />}
+      {admin && <TeamSettings teamId={team.id} name={team.name} city={team.city} strength={team.strength} bio={team.bio ?? null} />}
       {user && members.some((m) => m.userId === user.id) && <LeaveTeam teamId={team.id} />}
 
       <Comments targetType="team" targetId={team.id} path={`/teams/${team.slug}`} title="Kommentare" />

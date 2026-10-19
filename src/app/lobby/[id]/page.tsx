@@ -7,6 +7,8 @@ import { hasFreeSlot, MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules
 import { requireUser } from "@/server/session";
 import { canViewLobby, getLobby } from "@/server/lobby";
 import { getScheduling } from "@/server/scheduling";
+import { getVeto } from "@/server/veto";
+import { VetoPanel } from "./VetoPanel";
 import { SchedulingPanel } from "./SchedulingPanel";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
@@ -32,6 +34,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const v = view.viewer!;
   const status = STATUS[match.status] ?? STATUS.lobby;
   const scheduling = await getScheduling(match);
+  const veto = await getVeto(match.id, match.vetoStatus, match.vetoTurnTeamId, match.vetoTurnDeadline);
   const open = Boolean(scheduling);
   const myAdminTeam = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null;
   const nameOfTeam = (id: string | null) => (id === match.homeId ? match.homeName : id === match.awayId ? match.awayName : "");
@@ -68,7 +71,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           {match.homeName} <span className="text-muted">gegen</span> {match.awayName}
         </h1>
         <p className="text-muted">
-          {open ? `${match.durationMin} Minuten · Termin und Ort werden noch gewählt` : `${formatDateTime(match.startsAt)} Uhr · ${match.durationMin} Minuten`}
+          {open ? `${match.durationMin} Minuten · ${match.vetoStatus === "running" ? "Hallen-Veto läuft" : "Termin wird noch gewählt"}` : `${formatDateTime(match.startsAt)} Uhr · ${match.durationMin} Minuten`}
           {active && !open && <> · <span className="text-ink"><Countdown startsAtIso={match.startsAt.toISOString()} /></span></>}
         </p>
         <p className={`text-sm font-semibold ${status.tone}`}>{status.label}</p>
@@ -77,7 +80,19 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         )}
       </header>
 
-      {scheduling && (
+      {veto && (
+        <VetoPanel
+          matchId={match.id}
+          halls={veto.halls}
+          teams={[{ id: match.homeId, name: match.homeName }, { id: match.awayId, name: match.awayName }]}
+          turnTeamId={veto.turnTeamId}
+          myTeamId={myAdminTeam}
+          deadlineText={veto.deadline ? `${formatDateTime(veto.deadline)} Uhr` : "–"}
+          done={veto.status === "done"}
+        />
+      )}
+
+      {scheduling && match.vetoStatus !== "running" && (
         <SchedulingPanel
           matchId={match.id}
           teams={[{ id: match.homeId, name: match.homeName }, { id: match.awayId, name: match.awayName }]}
@@ -85,6 +100,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           deadlineText={match.schedulingDeadline ? `${formatDateTime(match.schedulingDeadline)} Uhr` : "–"}
           minStart={scheduling.minStart}
           venues={scheduling.venues}
+          venueLocked={match.vetoStatus === "done"}
           options={scheduling.options.map((o) => ({ id: o.id, label: `${formatDateTime(o.startsAt)} Uhr`, venue: o.venueText, proposedBy: o.proposedByTeam ? nameOfTeam(o.proposedByTeam) : "system", proposedByTeamId: o.proposedByTeam, votedTeamIds: o.votedTeamIds }))}
         />
       )}

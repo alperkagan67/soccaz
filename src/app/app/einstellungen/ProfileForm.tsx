@@ -7,7 +7,7 @@ import { deleteAccountAction, updateProfileAction } from "@/server/account-actio
 
 const POSITIONS = ["Torwart", "Abwehr", "Mittelfeld", "Angriff", "Flexibel"];
 
-export function ProfileForm({ name, city, position, profilePublic }: { name: string; city: string | null; position: string | null; profilePublic: boolean }) {
+export function ProfileForm({ name, city, position, profilePublic, bio }: { name: string; city: string | null; position: string | null; profilePublic: boolean; bio: string | null }) {
   const { state, pending, onSubmit } = useFormAction(updateProfileAction);
   return (
     <form onSubmit={onSubmit} className="card space-y-3">
@@ -32,6 +32,10 @@ export function ProfileForm({ name, city, position, profilePublic }: { name: str
             ))}
           </select>
         </div>
+      </div>
+      <div>
+        <label className="label" htmlFor="bio">Steckbrief (optional)</label>
+        <textarea id="bio" name="bio" rows={3} maxLength={280} defaultValue={bio ?? ""} className="field" placeholder="z. B. Spiele seit 10 Jahren Hallenfußball, am liebsten im Sturm." />
       </div>
       <label className="flex items-start gap-2 text-sm">
         <input type="checkbox" name="profilePublic" defaultChecked={profilePublic} className="mt-1" />

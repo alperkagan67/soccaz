@@ -51,7 +51,9 @@ export default async function HelpPage() {
           <p><strong>Spielsuche:</strong> Du legst selbst ein Spiel mit festem Termin an. Andere Teams sehen es und nehmen es an. Oder du forderst ein bestimmtes Team direkt heraus.</p>
         </Q>
         <Q q="Wer legt Termin und Ort fest?">
-          <p>Beim Matchmaking beide Teams gemeinsam: Wir machen Vorschläge aus euren Zeitfenstern und Hallen. Ihr könnt selbst welche hinzufügen. Stimmen beide Teams für denselben Vorschlag, steht das Spiel. Einigt ihr euch nicht innerhalb von 24 Stunden, wird es abgesagt.</p>
+          <p><strong>Hallen-Veto:</strong> Wie bei Counter-Strike oder FACEIT. Wir stellen bis zu 7 Hallen zur Wahl (zuerst aus eurer Stadt, dann die nächstgelegenen in NRW). Ein Münzwurf entscheidet, wer anfängt. Abwechselnd bannt jedes Team eine Halle, die es nicht spielen will. Die letzte übrige Halle wird gespielt. Pro Zug habt ihr 2 Stunden, danach bannt das System zufällig für euch.</p>
+          <p><strong>Termin:</strong> Danach machen wir Vorschläge aus euren Zeitfenstern. Ihr könnt eigene hinzufügen. Stimmen beide Teams für denselben, steht das Spiel. Einigt ihr euch nicht rechtzeitig, wird es abgesagt.</p>
+          <p className="text-xs">Die Hallenliste stammt zunächst aus OpenStreetMap und ist nicht geprüft: Ob eine Halle frei und buchbar ist und was sie kostet, bestätigt die Buchung. Fehlt eine Halle, schreib uns über die Kontaktseite.</p>
         </Q>
         <Q q="Was ist die Lobby?">
           <p>Die Seite zu eurem Spiel. Dort trägt sich jeder Spieler ein und klickt „Bereit“. Fünf Spieler pro Team plus ein Ersatz. Sind in beiden Teams genug Spieler bereit, ist das Spiel bestätigt. Klappt das nicht, sagen wir es 24 Stunden vorher automatisch ab.</p>

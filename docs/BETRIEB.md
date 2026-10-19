@@ -14,6 +14,16 @@ Alles läuft mit Docker Compose: App, PostgreSQL, Caddy (HTTPS) und eine täglic
 
 Die Migrationen laufen automatisch bei jedem Start (`migrate`-Dienst).
 
+## Hallenliste
+
+Die Datei `data/nrw-hallen-osm.json` enthält Soccer- und Fußballhallen in NRW aus OpenStreetMap (ODbL, ungeprüft). Einspielen (mehrfach ausführbar, überschreibt keine geprüften Hallen):
+
+```
+docker compose run --rm migrate node scripts/import-venues.mjs
+```
+
+Neu abrufen: `node scripts/fetch-venues-osm.mjs` (braucht Internet, dauert eine Minute). Im Admin-Bereich unter Hallen markierst du eine Halle als geprüft, sobald Buchbarkeit, Adresse und Preis stimmen. Geprüfte und Partnerhallen kommen im Veto zuerst.
+
 ## Überwachung
 
 - **Fehler:** Sentry (`SENTRY_DSN` in der `.env`).

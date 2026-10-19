@@ -21,6 +21,7 @@ async function lockOpenMatch(tx: Tx, matchId: string): Promise<MatchRow> {
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
   if (!match) throw new DomainError("Spiel nicht gefunden.");
   if (match.status !== "lobby" || !match.schedulingOpen) throw new DomainError("Termin und Ort stehen schon fest oder das Spiel läuft nicht mehr.");
+  if (match.vetoStatus === "running") throw new DomainError("Erst muss das Hallen-Veto abgeschlossen sein.");
   return match;
 }
 
@@ -51,7 +52,11 @@ export async function proposeOption(userId: string, matchId: string, input: { st
     const text = input.venueText?.trim().slice(0, 120) || null;
     let venueName: string | null = text;
     let venueId: string | null = null;
-    if (input.venueId) {
+    if (match.vetoStatus === "done" && match.venueId) {
+      // Die Halle wurde im Veto gewählt: Vorschläge betreffen nur noch die Zeit
+      venueId = match.venueId;
+      venueName = match.venueText;
+    } else if (input.venueId) {
       const [v] = await tx.select({ id: venues.id, name: venues.name, active: venues.active }).from(venues).where(eq(venues.id, input.venueId));
       if (!v || !v.active) throw new DomainError("Diese Halle gibt es nicht.");
       venueId = v.id;

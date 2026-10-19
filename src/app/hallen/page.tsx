@@ -42,6 +42,9 @@ export default async function VenuesPage({ searchParams }: PageProps<"/hallen">)
           ))}
         </ul>
       )}
+      <p className="text-xs text-muted">
+        Die Liste startet mit Hallendaten von OpenStreetMap (© OpenStreetMap-Mitwirkende, ODbL). Ob eine Halle frei und buchbar ist und was sie kostet, ist nicht geprüft. Fehlt eine Halle? <a href="/kontakt" className="text-green underline">Schreib uns</a>.
+      </p>
     </div>
   );
 }

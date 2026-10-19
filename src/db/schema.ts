@@ -30,6 +30,7 @@ export const users = pgTable("users", {
   position: text("position"),
   isVerifiedPro: boolean("is_verified_pro").notNull().default(false),
   profilePublic: boolean("profile_public").notNull().default(true),
+  bio: text("bio"), // kurzer Steckbrief, höchstens 280 Zeichen
   isOrganizer: boolean("is_organizer").notNull().default(false), // darf Turniere gegen Startgeld veranstalten
   locale: text("locale").notNull().default("de"),
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
@@ -45,6 +46,7 @@ export const teams = pgTable("teams", {
   slug: text("slug").notNull().unique(),
   city: text("city").notNull(),
   logoUrl: text("logo_url"),
+  bio: text("bio"), // "Über uns", höchstens 280 Zeichen
   strength: integer("strength").notNull().default(3), // 1-5 Selbsteinschätzung, später Elo
   isVerified: boolean("is_verified").notNull().default(false),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -106,6 +108,9 @@ export const matches = pgTable("matches", {
   finalizedAt: timestamp("finalized_at", { withTimezone: true }),
   mvpUserId: uuid("mvp_user_id"),
   mvpClosedAt: timestamp("mvp_closed_at", { withTimezone: true }),
+  vetoStatus: text("veto_status").$type<"none" | "running" | "done">().notNull().default("none"), // Hallen-Veto vor der Terminwahl
+  vetoTurnTeamId: uuid("veto_turn_team_id"),
+  vetoTurnDeadline: timestamp("veto_turn_deadline", { withTimezone: true }),
   schedulingOpen: boolean("scheduling_open").notNull().default(false), // Termin und Ort werden noch von den Teams gewählt
   schedulingDeadline: timestamp("scheduling_deadline", { withTimezone: true }),
   streamUrl: text("stream_url"), // Twitch, YouTube oder Kick (wird beim Anzeigen erneut geprüft)

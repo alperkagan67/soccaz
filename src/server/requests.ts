@@ -197,7 +197,7 @@ export async function getRequest(id: string) {
 
 export async function myAdminTeams(userId: string) {
   return db
-    .select({ id: teams.id, name: teams.name, city: teams.city, strength: teams.strength })
+    .select({ id: teams.id, name: teams.name, slug: teams.slug, city: teams.city, strength: teams.strength })
     .from(teamMembers)
     .innerJoin(teams, eq(teams.id, teamMembers.teamId))
     .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin")))

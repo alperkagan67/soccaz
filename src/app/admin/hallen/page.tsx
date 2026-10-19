@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/ActionForm";
 import { CITIES } from "@/lib/validation";
 import { formatEuro } from "@/lib/money";
-import { addPriceRuleAction, createVenueAction, toggleVenueAction } from "@/server/admin-finance-actions";
+import { addPriceRuleAction, createVenueAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
 import { can } from "@/lib/roles";
 import { requirePermission } from "@/server/session";
 import { listPriceRules, listVenues } from "@/server/venues";
@@ -80,9 +80,8 @@ export default async function VenuesPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label" htmlFor="city">Stadt</label>
-              <select id="city" name="city" className="field" defaultValue="Gelsenkirchen">
-                {CITIES.map((c) => <option key={c}>{c}</option>)}
-              </select>
+              <input id="city" name="city" className="field" list="city-list" defaultValue="Gelsenkirchen" required />
+              <datalist id="city-list">{CITIES.map((c) => <option key={c} value={c} />)}</datalist>
             </div>
             <div>
               <label className="label" htmlFor="surface">Boden</label>
@@ -117,9 +116,13 @@ export default async function VenuesPage() {
                   <span className="font-semibold">{v.name} <span className="text-sm font-normal text-muted">{v.city}</span></span>
                   <span className={`text-xs ${v.active ? "text-green" : "text-muted"}`}>{v.active ? (v.isPartner ? "Partnerhalle" : "aktiv") : "inaktiv"}</span>
                 </div>
+                {!v.verified && (
+                  <p className="text-xs text-yellow">Ungeprüft: Angaben stammen aus OpenStreetMap. Buchbarkeit, Adresse und Preis bitte prüfen.{v.website ? " " : ""}{v.website && <a href={v.website} target="_blank" rel="noopener noreferrer nofollow" className="underline">Webseite</a>}</p>
+                )}
                 <p className="text-xs text-muted">{[v.address, v.surface, v.contact, v.hasShowers && "Duschen", v.hasParking && "Parkplätze"].filter(Boolean).join(" · ")}</p>
                 <Rules venueId={v.id} />
                 <PriceForm venueId={v.id} canEdit={canPrices} />
+                {!v.verified && <ActionForm action={verifyVenueAction.bind(null, v.id, true)} submit="Als geprüft markieren" className="space-y-2" keepOnSuccess />}
                 <ActionForm action={toggleVenueAction.bind(null, v.id, !v.active)} submit={v.active ? "Deaktivieren" : "Aktivieren"} className="space-y-2" keepOnSuccess danger={v.active} />
               </li>
             ))}

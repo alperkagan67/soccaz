@@ -7,7 +7,7 @@ import { STRENGTH_LABELS } from "@/lib/labels";
 import { dissolveTeamAction, leaveTeamAction, removeMemberAction, revokeInvitesAction, setMemberRoleAction, updateTeamAction } from "@/server/team-admin-actions";
 
 /** Verwaltung für Team-Admins: bearbeiten, Einladungen widerrufen, auflösen. */
-export function TeamSettings({ teamId, name, city, strength }: { teamId: string; name: string; city: string; strength: number }) {
+export function TeamSettings({ teamId, name, city, strength, bio }: { teamId: string; name: string; city: string; strength: number; bio: string | null }) {
   return (
     <details className="card space-y-3" data-testid="team-settings">
       <summary className="cursor-pointer font-semibold">Team verwalten</summary>
@@ -34,6 +34,10 @@ export function TeamSettings({ teamId, name, city, strength }: { teamId: string;
               ))}
             </select>
           </div>
+        </div>
+        <div>
+          <label className="label" htmlFor="tm-bio">Über uns (optional)</label>
+          <textarea id="tm-bio" name="bio" rows={3} maxLength={280} defaultValue={bio ?? ""} className="field" placeholder="Wer wir sind, wann wir spielen, was wir suchen." />
         </div>
       </ActionForm>
       <div className="flex flex-wrap gap-2 border-t border-line pt-3">

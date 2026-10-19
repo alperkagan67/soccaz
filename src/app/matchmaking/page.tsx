@@ -21,14 +21,15 @@ export default async function MatchmakingPage() {
       <header className="space-y-1">
         <h1 className="text-3xl font-bold">Matchmaking</h1>
         <p className="text-muted">
-          Sag uns, wann ihr könnt. Wir suchen ein Team mit ähnlicher Spielstärke (Elo) und gemeinsamer Zeit. Danach wählen beide Teams gemeinsam Termin und Ort aus Vorschlägen.
+          Sag uns, wann ihr könnt. Wir suchen ein Team mit ähnlicher Spielstärke (Elo) und gemeinsamer Zeit. Danach bannen beide Teams abwechselnd Hallen (wie die Map-Veto-Phase bei Counter-Strike) und wählen gemeinsam den Termin.
         </p>
       </header>
 
       <ol className="card space-y-1 text-sm text-muted">
         <li><strong className="text-ink">1.</strong> Zeitfenster eintragen und in die Warteschlange.</li>
         <li><strong className="text-ink">2.</strong> Wir paaren Teams mit ähnlichem Elo. Je länger ihr wartet, desto größer wird der erlaubte Abstand.</li>
-        <li><strong className="text-ink">3.</strong> Beide Teams sehen Kader und Spielstärke des Gegners und wählen Termin und Ort. Stimmen beide für denselben Vorschlag, steht das Spiel.</li>
+        <li><strong className="text-ink">3.</strong> Beide Teams sehen Kader und Spielstärke des Gegners. Dann beginnt das <strong className="text-ink">Hallen-Veto</strong>: Abwechselnd bannt jedes Team Hallen, die es nicht spielen will. Die letzte Halle wird gespielt.</li>
+        <li><strong className="text-ink">4.</strong> Zum Schluss wählt ihr gemeinsam die Uhrzeit aus Vorschlägen. Stimmen beide für denselben, steht das Spiel.</li>
       </ol>
 
       {waiting.length > 0 && (

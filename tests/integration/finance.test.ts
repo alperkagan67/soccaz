@@ -10,6 +10,7 @@ import { exportLedgerCsv, getAlerts, listMatchFinance, manualRefund, matchEntrie
 import { settleMatch } from "@/server/wallet";
 import { addPlayer, cleanup, makeMatch, reloadMatch } from "./helpers";
 
+let base: Awaited<ReturnType<typeof overview>>;
 const wide = { from: new Date("2020-01-01"), to: new Date("2100-01-01") };
 const key = () => `f-${Math.random().toString(36).slice(2)}`;
 const fund = (userId: string, cents: number) => creditWallet(db, userId, { from: "clearing", amountCents: cents, kind: "topup", idempotencyKey: key() });
@@ -30,6 +31,7 @@ beforeAll(async () => {
   await cleanup(); // sauberer Stand: keine Testdaten aus früheren Läufen
   await setSetting(null, "payments_enabled", true);
   await setSetting(null, "min_paid_players", 8);
+  base = await overview(wide); // echte Entwicklungsdaten (z. B. eine Test-Aufladung) bleiben unberührt und zählen nicht mit
 });
 afterAll(cleanup);
 
@@ -44,9 +46,9 @@ describe("Finanz-Reporting", () => {
     expect(o.revenueCents).toBe(8000);
     expect(o.venueCostCents).toBe(8000);
     expect(o.marginCents).toBe(0);
-    expect(o.topupsCents).toBe(20_000);
+    expect(o.topupsCents - base.topupsCents).toBe(20_000);
     expect(o.refundsCents).toBe(2000); // 10 x 2,00 EUR Abrechnungsdifferenz
-    expect(o.liabilityCents).toBe(12_000); // 10 x 12,00 EUR Restguthaben
+    expect(o.liabilityCents - base.liabilityCents).toBe(12_000); // 10 x 12,00 EUR Restguthaben
     expect(o.feesCents).toBe(0);
     expect(o.promoCents).toBe(0);
   });

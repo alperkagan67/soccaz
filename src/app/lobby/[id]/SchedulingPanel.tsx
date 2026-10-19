@@ -15,6 +15,7 @@ export function SchedulingPanel({
   deadlineText,
   minStart,
   venues,
+  venueLocked,
 }: {
   matchId: string;
   options: OptionView[];
@@ -23,15 +24,16 @@ export function SchedulingPanel({
   deadlineText: string;
   minStart: string;
   venues: { id: string; name: string; city: string }[];
+  venueLocked: boolean;
 }) {
   const myVote = options.find((o) => myTeamId && o.votedTeamIds.includes(myTeamId))?.id;
   const nameOf = (id: string) => teams.find((t) => t.id === id)?.name ?? "?";
   return (
     <section className="card space-y-3" aria-label="Termin und Ort wählen" data-testid="scheduling">
       <div>
-        <h2 className="font-semibold">Termin und Ort wählen</h2>
+        <h2 className="font-semibold">{venueLocked ? "Termin wählen" : "Termin und Ort wählen"}</h2>
         <p className="text-sm text-muted">
-          Beide Teams wählen einen Vorschlag. Stimmen beide für denselben, steht das Spiel. Du kannst auch eigene Vorschläge machen. Frist: {deadlineText}.
+          Beide Teams wählen einen Vorschlag. Stimmen beide für denselben, steht das Spiel. Du kannst auch eigene Vorschläge machen. {venueLocked ? "Die Halle steht seit dem Veto fest. " : ""}Frist: {deadlineText}.
         </p>
       </div>
       {options.length === 0 ? (
@@ -76,6 +78,7 @@ export function SchedulingPanel({
               <label className="label" htmlFor="opt-start">Anstoß (deutsche Zeit)</label>
               <input id="opt-start" name="startsAt" type="datetime-local" min={minStart} step={900} required className="field" />
             </div>
+            {!venueLocked && (
             <div>
               <label className="label" htmlFor="opt-venue">Halle</label>
               <select id="opt-venue" name="venueId" className="field" defaultValue="">
@@ -87,11 +90,14 @@ export function SchedulingPanel({
                 ))}
               </select>
             </div>
+            )}
           </div>
-          <div>
-            <label className="label" htmlFor="opt-text">Anderer Ort (nur wenn keine Halle gewählt)</label>
-            <input id="opt-text" name="venueText" maxLength={120} className="field" placeholder="z. B. Sporthalle Nord" />
-          </div>
+          {!venueLocked && (
+            <div>
+              <label className="label" htmlFor="opt-text">Anderer Ort (nur wenn keine Halle gewählt)</label>
+              <input id="opt-text" name="venueText" maxLength={120} className="field" placeholder="z. B. Sporthalle Nord" />
+            </div>
+          )}
         </ActionForm>
       )}
     </section>

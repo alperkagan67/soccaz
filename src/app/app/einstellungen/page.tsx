@@ -35,7 +35,7 @@ export default async function SettingsPage() {
             </Link>
           </div>
         </div>
-        <ProfileForm name={user.name} city={user.city ?? null} position={user.position ?? null} profilePublic={user.profilePublic} />
+        <ProfileForm name={user.name} city={user.city ?? null} position={user.position ?? null} profilePublic={user.profilePublic} bio={user.bio ?? null} />
       </section>
 
       <section className="space-y-2">

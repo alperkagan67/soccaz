@@ -52,6 +52,13 @@ export async function updateVenue(actorId: string, id: string, input: VenueInput
   return row;
 }
 
+/** Admin hat die Angaben einer Halle (Buchbarkeit, Adresse, Preis) geprüft. Ungeprüfte Hallen kommen im Veto nach den geprüften. */
+export async function setVenueVerified(actorId: string, id: string, verified: boolean) {
+  const [row] = await db.update(venues).set({ verified }).where(eq(venues.id, id)).returning({ id: venues.id });
+  if (!row) throw new DomainError("Halle nicht gefunden.");
+  await audit(actorId, verified ? "venue.verify" : "venue.unverify", "venue", id, {});
+}
+
 /** Aktuelle Preisregeln: je Dauer die jüngste gültige. venueId null = Standardpreise. */
 export async function listPriceRules(venueId: string | null) {
   await connection();

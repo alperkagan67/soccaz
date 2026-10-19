@@ -13,6 +13,7 @@ import { audit } from "./audit";
 import { teamName } from "./names";
 import { notifyUsers, teamAdminIds } from "./notifications";
 import { insertOptions } from "./scheduling";
+import { startVeto } from "./veto";
 import { DomainError } from "./teams";
 
 const DAY = 86_400_000;
@@ -105,17 +106,19 @@ export async function runMatchmaker(now: Date = new Date()): Promise<number> {
           durationMin: pair.a.durationMin,
           visibility: "public",
           schedulingOpen: true,
-          schedulingDeadline: new Date(now.getTime() + 24 * 3_600_000),
+          schedulingDeadline: new Date(now.getTime() + 36 * 3_600_000), // Hallen-Veto (bis zu 12 Stunden) plus Terminwahl
         })
         .returning();
 
-      const partnerVenues = await tx
+      // Erst das Hallen-Veto; gibt es zu wenige Hallen, schlagen wir Zeiten mit den vorhandenen Hallen vor
+      const vetoStarted = await startVeto(tx, match, pair.a.city, now);
+      const partnerVenues = vetoStarted ? [] : await tx
         .select({ id: venues.id, name: venues.name })
         .from(venues)
         .where(and(eq(venues.active, true), eq(venues.city, pair.a.city)))
         .orderBy(desc(venues.isPartner), asc(venues.name))
         .limit(2);
-      await insertOptions(
+      if (!vetoStarted) await insertOptions(
         tx,
         match.id,
         combineOptions(pair.slots, partnerVenues).map((o) => ({ startsAt: o.startsAt, venueId: o.venue?.id ?? null, venueText: o.venue?.name ?? null })),
@@ -131,8 +134,8 @@ export async function runMatchmaker(now: Date = new Date()): Promise<number> {
       await audit(null, "matchmaking.matched", "match", match.id, { after: { home: pair.a.teamId, away: pair.b.teamId, eloDiff: pair.eloDiff } }, tx);
 
       const [nameA, nameB] = [await teamName(tx, pair.a.teamId), await teamName(tx, pair.b.teamId)];
-      await notifyUsers(await teamAdminIds(tx, pair.a.teamId), { type: "match.found", title: "Gegner gefunden", body: `${nameB} (Elo ${pair.b.elo}) wartet auf euch. Wählt jetzt gemeinsam Termin und Ort.`, url: `/lobby/${match.id}` }, tx);
-      await notifyUsers(await teamAdminIds(tx, pair.b.teamId), { type: "match.found", title: "Gegner gefunden", body: `${nameA} (Elo ${pair.a.elo}) wartet auf euch. Wählt jetzt gemeinsam Termin und Ort.`, url: `/lobby/${match.id}` }, tx);
+      await notifyUsers(await teamAdminIds(tx, pair.a.teamId), { type: "match.found", title: "Gegner gefunden", body: `${nameB} (Elo ${pair.b.elo}) wartet auf euch. Als Nächstes folgt das Hallen-Veto.`, url: `/lobby/${match.id}` }, tx);
+      await notifyUsers(await teamAdminIds(tx, pair.b.teamId), { type: "match.found", title: "Gegner gefunden", body: `${nameA} (Elo ${pair.a.elo}) wartet auf euch. Als Nächstes folgt das Hallen-Veto.`, url: `/lobby/${match.id}` }, tx);
       return true;
     });
     if (!made) break;

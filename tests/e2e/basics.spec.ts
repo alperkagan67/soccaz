@@ -13,7 +13,7 @@ test("Startseite erklärt die Plattform in vier Schritten mit Preis und Zahlen",
   await page.goto("/");
   const how = page.getByTestId("how-it-works");
   await expect(how.getByRole("heading", { name: "So funktioniert Socaz" })).toBeVisible();
-  for (const step of ["Team gründen", "Gegner finden", "Termin und Ort wählen", "Spielen und zählen"]) await expect(how.getByText(step, { exact: true })).toBeVisible();
+  for (const step of ["Team gründen", "Gegner finden", "Hallen bannen, Termin wählen", "Spielen und zählen"]) await expect(how.getByText(step, { exact: true })).toBeVisible();
   await expect(how.getByText(/80,00/)).toBeVisible(); // Hallenpreis aus den Preisregeln
   await expect(page.getByTestId("platform-stats")).toContainText("Teams");
   await how.getByRole("link", { name: /Hilfe und Fragen/ }).click();
@@ -96,4 +96,65 @@ test("Teamverwaltung: Admin ernennen, bearbeiten, Mitglied verlässt, Auflösen"
   await expect(member).toHaveURL(/\/app$/, { timeout: 30_000 });
   await member.goto(teamUrl);
   await expect(member.getByRole("heading", { name: "Seite nicht gefunden" })).toBeVisible();
+});
+
+test("Profile: Steckbrief, Form, Elo-Verlauf, Direktvergleich", async ({ browser }) => {
+  const a = await (await browser.newContext()).newPage();
+  const b = await (await browser.newContext()).newPage();
+  await newUser(a, "pfa");
+  await newUser(b, "pfb");
+  const nameA = `Profil A ${run}`;
+  const nameB = `Profil B ${run}`;
+  await createTeam(a, nameA);
+  await createTeam(b, nameB);
+  const idA = (await query<{ id: string }>("select id from users where email = $1", [`pfa-${run}@test.local`]))[0].id;
+  const teamA = (await query<{ id: string; slug: string }>("select id, slug from teams where name = $1", [nameA]))[0];
+  const teamB = (await query<{ id: string }>("select id from teams where name = $1", [nameB]))[0];
+
+  // Steckbrief des Spielers und des Teams
+  await a.goto("/app/einstellungen");
+  await a.waitForLoadState("networkidle");
+  await a.getByLabel("Steckbrief (optional)").fill(`Spiele seit zehn Jahren ${run}`);
+  await a.getByRole("button", { name: "Profil speichern" }).click();
+  await expect(a.getByText("Gespeichert.").first()).toBeVisible();
+  await a.goto(`/teams/${teamA.slug}`);
+  await a.waitForLoadState("networkidle");
+  await a.getByText("Team verwalten").click();
+  await a.getByLabel("Über uns (optional)").fill(`Wir spielen dienstags ${run}`);
+  await a.getByRole("button", { name: "Änderungen speichern" }).click();
+  await expect(a.getByText("Gespeichert.")).toBeVisible();
+  await a.reload();
+  await expect(a.getByTestId("bio")).toContainText(`Wir spielen dienstags ${run}`);
+
+  // zwei gespielte Spiele: A gewinnt 3:1 und verliert 0:1; dazu Elo-Verlauf
+  const game = async (home: string, away: string, hs: number, as: number) => {
+    const m = (await query<{ id: string }>("insert into matches (home_team_id, away_team_id, starts_at, duration_min, status, finalized_at) values ($1, $2, now() - interval '2 days', 60, 'played', now()) returning id", [home, away]))[0];
+    await query("insert into match_results (match_id, home_score, away_score, confirmed_home, confirmed_away) values ($1, $2, $3, true, true)", [m.id, hs, as]);
+    return m.id;
+  };
+  const m1 = await game(teamA.id, teamB.id, 3, 1);
+  const m2 = await game(teamB.id, teamA.id, 1, 0);
+  await query("insert into team_stats (team_id, matches, wins, losses, goals_for, goals_against, elo) values ($1, 2, 1, 1, 3, 2, 1010)", [teamA.id]);
+  await query("insert into player_stats (user_id, matches, wins, losses, goals, elo) values ($1, 2, 1, 1, 3, 1012)", [idA]);
+  for (const [i, mid] of [m1, m2].entries()) {
+    await query("insert into rating_history (kind, subject_id, match_id, elo_before, elo_after, at) values ('team', $1, $2, $3, $4, now() - make_interval(hours => $5))", [teamA.id, mid, i === 0 ? 1000 : 1016, i === 0 ? 1016 : 1010, 5 - i]);
+    await query("insert into rating_history (kind, subject_id, match_id, elo_before, elo_after, at) values ('user', $1, $2, $3, $4, now() - make_interval(hours => $5))", [idA, mid, i === 0 ? 1000 : 1016, i === 0 ? 1016 : 1012, 5 - i]);
+  }
+  await query("insert into match_participants (match_id, user_id, team_id) values ($1, $2, $3), ($4, $2, $3)", [m1, idA, teamA.id, m2]);
+
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto(`/spieler/${idA}`);
+  await expect(anon.getByTestId("bio")).toContainText(`Spiele seit zehn Jahren ${run}`);
+  await expect(anon.getByTestId("sparkline")).toContainText("1000 → 1012");
+  await expect(anon.getByTestId("form")).toBeVisible();
+  await expect(anon.getByText("Siegquote")).toBeVisible();
+
+  await anon.goto(`/teams/${teamA.slug}`);
+  await expect(anon.getByTestId("sparkline")).toContainText("Elo-Verlauf");
+  await expect(anon.getByTestId("form").locator("span")).toHaveCount(2);
+  await expect(anon.getByText("Tore pro Spiel").first()).toBeVisible();
+
+  // Der Admin des anderen Teams sieht den Direktvergleich
+  await b.goto(`/teams/${teamA.slug}`);
+  await expect(b.getByTestId("head-to-head")).toContainText("1 Siege, 0 Remis, 1 Niederlagen");
 });

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { matches, teams, users } from "./schema";
 
 // ---------------------------------------------------------------------------------------------
@@ -52,4 +52,19 @@ export const matchOptionVotes = pgTable(
     votedAt: timestamp("voted_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.matchId, t.teamId] })],
+);
+
+/** Die Hallen im Veto eines Spiels. Abwechselnd werden Hallen gebannt, die letzte übrige ist die gewählte. */
+export const matchVetoHalls = pgTable(
+  "match_veto_halls",
+  {
+    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    venueId: uuid("venue_id").notNull(),
+    position: integer("position").notNull(),
+    bannedByTeam: uuid("banned_by_team").references(() => teams.id, { onDelete: "set null" }),
+    bannedAuto: boolean("banned_auto").notNull().default(false), // Zeit abgelaufen, das System hat gebannt
+    banOrder: integer("ban_order"),
+    picked: boolean("picked").notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.matchId, t.venueId] })],
 );

@@ -5,6 +5,7 @@ import { closeMvpVoting } from "./stats";
 import { closeCityChallenge } from "./city-challenge";
 import { runMatchmaker } from "./matchmaking";
 import { expireScheduling } from "./scheduling";
+import { advanceVetos } from "./veto";
 import { cancelUnderfilledLobbies, cleanup, expireOldRequests, expireStalePayments, notifyFinanceAlerts, sendMatchReminders, sendResultReminders, settleDueMatches } from "./scheduled";
 
 /** Alle Hintergrundjobs als einfache Funktionen. Zeitplaner und Test-Schnittstelle rufen sie über den Namen auf. */
@@ -24,6 +25,7 @@ export const JOBS: Record<string, () => Promise<unknown>> = {
   "close-city-challenge": () => closeCityChallenge(),
   "run-matchmaker": () => runMatchmaker(),
   "expire-scheduling": () => expireScheduling(),
+  "advance-vetos": () => advanceVetos(),
 };
 
 /** Zeitplan (Cron, UTC). Läuft über pg-boss, siehe instrumentation.ts. */
@@ -42,6 +44,7 @@ export const SCHEDULE: Record<string, string> = {
   "close-mvp": "10 * * * *",
   "run-matchmaker": "* * * * *",
   "expire-scheduling": "*/5 * * * *",
+  "advance-vetos": "* * * * *",
   "close-city-challenge": "30 5 1 * *", // am 1. jedes Monats den Vormonat festschreiben
 };
 

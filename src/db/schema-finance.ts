@@ -46,6 +46,10 @@ export const venues = pgTable("venues", {
   hasShowers: boolean("has_showers").notNull().default(false),
   hasParking: boolean("has_parking").notNull().default(false),
   isPartner: boolean("is_partner").notNull().default(false),
+  source: text("source").notNull().default("manual"), // manual | osm
+  osmId: text("osm_id").unique(),
+  website: text("website"),
+  verified: boolean("verified").notNull().default(true), // false = Angaben aus OpenStreetMap, Buchbarkeit und Preis ungeprüft
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

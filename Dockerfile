@@ -20,6 +20,7 @@ RUN npm run build
 FROM deps AS tools
 COPY drizzle ./drizzle
 COPY scripts ./scripts
+COPY data ./data
 CMD ["node", "scripts/migrate.mjs"]
 
 FROM base AS runner

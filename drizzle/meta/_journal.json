@@ -120,6 +120,20 @@
       "when": 1792355541076,
       "tag": "0016_bumpy_bloodaxe",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792415901139,
+      "tag": "0017_ambitious_blob",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792416516925,
+      "tag": "0018_charming_loki",
+      "breakpoints": true
     }
   ]
 }

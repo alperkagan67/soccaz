@@ -255,3 +255,25 @@ flowchart TD
 ```
 
 Elo-Bereich: 100 am Anfang, alle 5 Minuten Wartezeit +50, höchstens 600. Es zählt der größere der beiden Bereiche.
+
+## Hallen-Veto (gebaut)
+
+Nach der Paarung bannen die Teams abwechselnd Hallen. Die letzte übrige Halle wird gespielt; erst danach wird der Termin gewählt.
+
+```mermaid
+flowchart TD
+  A[Paarung steht] --> B[Pool: bis zu 7 Hallen<br/>erst Spielstadt, dann nächstgelegene in NRW<br/>Partner und geprüfte zuerst]
+  B --> C[Muenzwurf: Team am Zug]
+  C --> D{Team am Zug bannt<br/>innerhalb von 2 Stunden?}
+  D -- ja --> E[Halle gebannt]
+  D -- nein --> F[System bannt zufaellig fuer dieses Team]
+  E --> G{Nur noch 1 Halle?}
+  F --> G
+  G -- nein --> H[Anderes Team ist dran, Benachrichtigung]
+  H --> D
+  G -- ja --> I[Halle steht fest, Preis aus der Preisregel der Halle]
+  I --> J[Terminvorschlaege aus den Zeitfenstern beider Teams]
+  J --> K{Beide Teams waehlen denselben Termin?}
+  K -- ja --> L[Spiel steht: Lobby, Bereit]
+  K -- nein, Frist 24 h --> M[Abgesagt]
+```

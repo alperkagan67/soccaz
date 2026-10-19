@@ -11,19 +11,26 @@ import { DomainError } from "./teams";
 
 const POSITIONS = ["Torwart", "Abwehr", "Mittelfeld", "Angriff", "Flexibel"];
 
-export async function updateProfile(userId: string, input: { name: string; city: string; position: string; profilePublic: boolean }) {
+export function cleanBio(value: string | undefined | null): string | null {
+  const text = (value ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/\r\n?/g, "\n").trim();
+  if (text.length > 280) throw new DomainError("Der Steckbrief darf höchstens 280 Zeichen lang sein.");
+  return text || null;
+}
+
+export async function updateProfile(userId: string, input: { name: string; city: string; position: string; profilePublic: boolean; bio?: string }) {
+  const bio = cleanBio(input.bio);
   const name = input.name.replace(/\s+/g, " ").trim();
   if (name.length < 2 || name.length > 60) throw new DomainError("Der Name braucht 2 bis 60 Zeichen.");
   if (!(CITIES as readonly string[]).includes(input.city)) throw new DomainError("Bitte wähle eine Stadt.");
   if (!POSITIONS.includes(input.position)) throw new DomainError("Bitte wähle eine Position.");
-  await db.update(users).set({ name, city: input.city, position: input.position, profilePublic: input.profilePublic }).where(eq(users.id, userId));
+  await db.update(users).set({ name, city: input.city, position: input.position, profilePublic: input.profilePublic, bio }).where(eq(users.id, userId));
   await audit(userId, "profile.update", "user", userId, { after: { city: input.city, position: input.position, profilePublic: input.profilePublic } });
 }
 
 /** Alle Daten, die zu dieser Person gespeichert sind (Auskunft und Datenübertragbarkeit nach DSGVO). */
 export async function exportMyData(userId: string) {
   const [user] = await db
-    .select({ id: users.id, email: users.email, name: users.name, city: users.city, position: users.position, profilePublic: users.profilePublic, locale: users.locale, createdAt: users.createdAt, onboardedAt: users.onboardedAt, termsAcceptedAt: users.termsAcceptedAt })
+    .select({ id: users.id, email: users.email, name: users.name, bio: users.bio, city: users.city, position: users.position, profilePublic: users.profilePublic, locale: users.locale, createdAt: users.createdAt, onboardedAt: users.onboardedAt, termsAcceptedAt: users.termsAcceptedAt })
     .from(users)
     .where(eq(users.id, userId));
   const [memberships, participations, myComments, stats, badges, reliability, ledger, myPayments, myReceipts, myNotifications, votes] = await Promise.all([
@@ -91,6 +98,7 @@ export async function deleteAccount(userId: string) {
         googleId: null,
         avatarUrl: null,
         city: null,
+        bio: null,
         position: null,
         isVerifiedPro: false,
         profilePublic: false,

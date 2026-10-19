@@ -7,6 +7,7 @@ import { MAX_WINDOWS } from "@/lib/matchmaking";
 import { joinQueue, leaveQueue } from "./matchmaking";
 import { proposeOption, voteOption, withdrawOption } from "./scheduling";
 import { requireUser } from "./session";
+import { banHall } from "./veto";
 import { DomainError } from "./teams";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
@@ -65,6 +66,13 @@ export async function voteOptionAction(matchId: string, optionId: string): Promi
 export async function withdrawOptionAction(matchId: string, optionId: string): Promise<ActionState> {
   const user = await requireUser(`/lobby/${matchId}`);
   const result = await guarded(() => withdrawOption(user.id, matchId, optionId));
+  revalidatePath(`/lobby/${matchId}`);
+  return result;
+}
+
+export async function banHallAction(matchId: string, venueId: string): Promise<ActionState> {
+  const user = await requireUser(`/lobby/${matchId}`);
+  const result = await guarded(() => banHall(user.id, matchId, venueId));
   revalidatePath(`/lobby/${matchId}`);
   return result;
 }

@@ -3,10 +3,39 @@ import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { matchEvents, matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
-import { playerStats, teamStats, userBadges, userReliability } from "@/db/schema-community";
+import { playerStats, ratingHistory, teamStats, userBadges, userReliability } from "@/db/schema-community";
 import { reliabilityPercent } from "@/lib/badges";
 import { ELO_MIN_GAMES_FOR_RANKING } from "@/lib/elo";
 import type { Role } from "@/lib/roles";
+
+/** Elo-Verlauf einer Person oder eines Teams: Startwert plus Wert nach jedem der letzten Spiele (älteste zuerst). */
+export async function eloSeries(kind: "user" | "team", subjectId: string, limit = 20): Promise<number[]> {
+  const rows = await db
+    .select({ before: ratingHistory.eloBefore, after: ratingHistory.eloAfter })
+    .from(ratingHistory)
+    .where(and(eq(ratingHistory.kind, kind), eq(ratingHistory.subjectId, subjectId)))
+    .orderBy(desc(ratingHistory.at))
+    .limit(limit);
+  if (rows.length === 0) return [];
+  const asc = rows.reverse();
+  return [asc[0].before, ...asc.map((r) => r.after)];
+}
+
+/** Direktvergleich zweier Teams aus allen gespielten, öffentlichen Spielen. */
+export async function headToHead(teamId: string, otherId: string) {
+  const r = rows<{ wins: number; draws: number; losses: number; gf: number; ga: number }>(
+    await db.execute(sql`
+      select coalesce(sum(case when (m.home_team_id = ${teamId} and r.home_score > r.away_score) or (m.away_team_id = ${teamId} and r.away_score > r.home_score) then 1 else 0 end), 0)::int as wins,
+             coalesce(sum(case when r.home_score = r.away_score then 1 else 0 end), 0)::int as draws,
+             coalesce(sum(case when (m.home_team_id = ${teamId} and r.home_score < r.away_score) or (m.away_team_id = ${teamId} and r.away_score < r.home_score) then 1 else 0 end), 0)::int as losses,
+             coalesce(sum(case when m.home_team_id = ${teamId} then r.home_score else r.away_score end), 0)::int as gf,
+             coalesce(sum(case when m.home_team_id = ${teamId} then r.away_score else r.home_score end), 0)::int as ga
+      from matches m join match_results r on r.match_id = m.id
+      where m.status = 'played' and m.visibility = 'public'
+        and ((m.home_team_id = ${teamId} and m.away_team_id = ${otherId}) or (m.home_team_id = ${otherId} and m.away_team_id = ${teamId}))`),
+  )[0];
+  return { ...r, games: r.wins + r.draws + r.losses };
+}
 
 export type Viewer = { id: string; role: Role } | null;
 const rows = <T>(r: { rows: unknown[] }) => r.rows as T[];
@@ -83,8 +112,15 @@ export async function getPlayerProfile(userId: string, viewer: Viewer) {
     reliability = rel ? reliabilityPercent(rel) : null;
   }
 
+  const form = results.slice(0, 5).map((r) => r.outcome);
+  const played = stats?.matches ?? 0;
   return {
     hidden: false as const,
+    bio: user.bio,
+    form,
+    eloHistory: await eloSeries("user", userId),
+    winRate: played ? Math.round(((stats?.wins ?? 0) / played) * 100) : null,
+    goalsPerGame: played ? Math.round(((stats?.goals ?? 0) / played) * 10) / 10 : null,
     user: { id: user.id, name: user.name, city: user.city, position: user.position, avatarUrl: user.avatarUrl, isVerifiedPro: user.isVerifiedPro, createdAt: user.createdAt, profilePublic: user.profilePublic },
     stats: stats ?? { matches: 0, wins: 0, draws: 0, losses: 0, goals: 0, yellowCards: 0, redCards: 0, mvps: 0, elo: 1000, cleanStreak: 0, winStreak: 0 },
     badges,
@@ -110,7 +146,7 @@ export async function listPlayers(filter: { q?: string; city?: string; page?: nu
   return { rows: list.slice(0, 30), hasMore: list.length > 30, page };
 }
 
-export async function getTeamProfile(slug: string) {
+export async function getTeamProfile(slug: string, vsTeamId?: string | null) {
   await connection();
   const [team] = await db.select().from(teams).where(eq(teams.slug, slug));
   if (!team || team.archivedAt) return null;
@@ -150,8 +186,28 @@ export async function getTeamProfile(slug: string) {
     .orderBy(asc(matches.startsAt))
     .limit(5);
 
+  const form = recent.slice(0, 5).map((m) => {
+    const home = m.homeId === team.id;
+    const gf = (home ? m.homeScore : m.awayScore) ?? 0;
+    const ga = (home ? m.awayScore : m.homeScore) ?? 0;
+    return (gf > ga ? "W" : gf === ga ? "D" : "L") as "W" | "D" | "L";
+  });
+  const topScorers = rows<{ id: string; name: string; goals: number }>(
+    await db.execute(sql`
+      select u.id, u.name, count(*)::int as goals
+      from match_events e join users u on u.id = e.user_id join matches m on m.id = e.match_id
+      where e.type = 'goal' and e.team_id = ${team.id} and m.status = 'played' and m.visibility = 'public' and u.profile_public
+      group by u.id, u.name order by goals desc, u.name limit 3`),
+  );
+  const played = stats?.matches ?? 0;
   return {
     team,
+    form,
+    topScorers,
+    eloHistory: await eloSeries("team", team.id),
+    winRate: played ? Math.round(((stats?.wins ?? 0) / played) * 100) : null,
+    goalsPerGame: played ? Math.round(((stats?.goalsFor ?? 0) / played) * 10) / 10 : null,
+    vs: vsTeamId && vsTeamId !== team.id ? await headToHead(vsTeamId, team.id) : null,
     stats: stats ?? { matches: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, elo: 0 },
     hasStats: Boolean(stats),
     cityRank,
