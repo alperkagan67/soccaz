@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agreedOption, combineOptions, eloRange, findPairs, optionStillValid, overlap, suggestSlots, usableWindows, type QueueEntry, type Window } from "@/lib/matchmaking";
+import { agreedOption, combineOptions, eloRange, findPairs, optionStillValid, overlap, strengthOk, suggestSlots, usableWindows, type QueueEntry, type Window } from "@/lib/matchmaking";
 
 const now = new Date("2026-11-01T10:00:00Z");
 const at = (iso: string) => new Date(iso);
@@ -121,5 +121,23 @@ describe("Vorschläge und Einigung", () => {
     expect(agreedOption([{ teamId: "h", optionId: "o1" }, { teamId: "g", optionId: "o2" }], "h", "g")).toBeNull();
     expect(agreedOption([{ teamId: "h", optionId: "o1" }, { teamId: "g", optionId: "o1" }], "h", "g")).toBe("o1");
     expect(agreedOption([{ teamId: "x", optionId: "o1" }, { teamId: "y", optionId: "o1" }], "h", "g")).toBeNull();
+  });
+});
+
+describe("Gesuchte Spielstärke", () => {
+  it("Wunsch von/bis wirkt in beide Richtungen", () => {
+    expect(strengthOk({}, 3)).toBe(true);
+    expect(strengthOk({ wantMin: 3 }, 2)).toBe(false);
+    expect(strengthOk({ wantMin: 3 }, 5)).toBe(true);
+    expect(strengthOk({ wantMax: 3 }, 4)).toBe(false);
+    expect(strengthOk({ wantMin: 2, wantMax: 4 }, 3)).toBe(true);
+    expect(strengthOk({ wantMin: 2, wantMax: 4 }, undefined)).toBe(true);
+
+    const picky = entry({ strength: 3, wantMin: 4 });
+    expect(findPairs([picky, entry({ strength: 3 })], now)).toHaveLength(0); // der andere ist zu schwach
+    expect(findPairs([picky, entry({ strength: 4 })], now)).toHaveLength(1);
+    // der andere wünscht sich Teams bis Stufe 2, wir sind Stufe 3
+    expect(findPairs([entry({ strength: 3 }), entry({ strength: 2, wantMax: 2 })], now)).toHaveLength(0);
+    expect(findPairs([entry({ strength: 2 }), entry({ strength: 2, wantMax: 2 })], now)).toHaveLength(1);
   });
 });

@@ -3,18 +3,25 @@ import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { formatDateTime } from "@/lib/time";
 import { leaveQueueAction } from "@/server/matchmaking-actions";
-import { queueOverview } from "@/server/matchmaking";
+import { CITIES } from "@/lib/validation";
+import { OpenSearches } from "@/components/OpenSearches";
+import { listOpenSearches, queueOverview, teamElo } from "@/server/matchmaking";
 import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 import { QueueForm } from "./QueueForm";
 
 export const metadata: Metadata = { title: "Matchmaking" };
 
-export default async function MatchmakingPage() {
+export default async function MatchmakingPage({ searchParams }: PageProps<"/matchmaking">) {
+  const sp = await searchParams;
+  const city = typeof sp.city === "string" && (CITIES as readonly string[]).includes(sp.city) ? sp.city : undefined;
+  const durationMin = sp.dauer === "60" ? 60 : sp.dauer === "90" ? 90 : undefined;
   const user = await getCurrentUser();
   const [{ waiting, mine, minDay }, adminTeams] = await Promise.all([queueOverview(user?.id ?? null), user?.onboardedAt ? myAdminTeams(user.id) : Promise.resolve([])]);
   const waitingIds = new Set(mine.filter((m) => m.status === "waiting").map((m) => m.teamId));
   const free = adminTeams.filter((t) => !waitingIds.has(t.id));
+  const searches = await listOpenSearches({ city, durationMin });
+  const mineForAccept = await Promise.all(adminTeams.map(async (t) => ({ id: t.id, name: t.name, elo: await teamElo(t.id), strength: t.strength })));
 
   return (
     <div className="space-y-5">
@@ -37,6 +44,28 @@ export default async function MatchmakingPage() {
           Gerade warten: {waiting.map((w) => `${w.city} ${w.n} ${w.n === 1 ? "Team" : "Teams"}`).join(", ")}.
         </p>
       )}
+
+      <section className="space-y-3" aria-labelledby="open-h" id="offen">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 id="open-h" className="text-xl font-bold">Offene Suchen ({searches.length})</h2>
+          <form className="flex gap-2" role="search" aria-label="Offene Suchen filtern">
+            <select name="city" defaultValue={city ?? ""} aria-label="Stadt" className="field !w-auto !min-h-9 !py-1 text-sm">
+              <option value="">Alle Städte</option>
+              {CITIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
+            </select>
+            <select name="dauer" defaultValue={durationMin ? String(durationMin) : ""} aria-label="Dauer" className="field !w-auto !min-h-9 !py-1 text-sm">
+              <option value="">Alle Dauern</option>
+              <option value="60">60 Min</option>
+              <option value="90">90 Min</option>
+            </select>
+            <button className="btn btn-ghost !min-h-9 !px-3 text-sm">Filtern</button>
+          </form>
+        </div>
+        <p className="text-sm text-muted">Diese Teams suchen gerade einen Gegner. Passt eine Suche zu euch, könnt ihr sie direkt annehmen, ohne auf die automatische Paarung zu warten.</p>
+        <OpenSearches searches={searches} mine={mineForAccept} myWaitingTeamIds={[...waitingIds]} />
+      </section>
 
       {mine.map((m) => (
         <section key={m.id} className="card space-y-2" data-testid="my-queue">

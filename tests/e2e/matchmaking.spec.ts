@@ -155,3 +155,55 @@ test("Spielsuche zeigt den Kader des suchenden Teams, Lobby auch den Rest des ge
 async function slugOf(name: string) {
   return (await query<{ slug: string }>("select slug from teams where name = $1", [name]))[0].slug;
 }
+
+test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async ({ browser }) => {
+  await cancelWaiting();
+  await seedHalls();
+  const a = await (await browser.newContext()).newPage();
+  const b = await (await browser.newContext()).newPage();
+  await newUser(a, "osa");
+  await newUser(b, "osb");
+  const nameA = `Offen A ${run}`;
+  const nameB = `Offen B ${run}`;
+  await createTeam(a, nameA);
+  await createTeam(b, nameB);
+
+  await a.goto("/matchmaking");
+  await a.waitForLoadState("networkidle");
+  await a.getByLabel("Gesuchte Stärke des Gegners von").selectOption("2");
+  await a.getByLabel("bis", { exact: true }).first().selectOption("4");
+  await a.getByLabel("Hinweis für andere Teams (optional)").fill(`Mixed-Team, locker ${run}`);
+  await a.getByLabel("Tag 1").fill(futureLocal(3).slice(0, 10));
+  await a.getByLabel("Von", { exact: true }).first().fill("18:00");
+  await a.getByLabel("Bis", { exact: true }).first().fill("21:00");
+  await a.getByRole("button", { name: "Gegner suchen", exact: true }).click();
+  await expect(a.getByTestId("my-queue")).toContainText("Sucht einen Gegner");
+  // die eigene Suche steht auch in der offenen Liste, ohne Annehmen
+  await expect(a.getByTestId("open-search").filter({ hasText: nameA })).toContainText("Euer Team");
+
+  // B findet sie unter "Spielsuchen" und im Matchmaking, mit allen Angaben
+  await b.goto("/suche");
+  const card = b.getByTestId("flex-searches").getByTestId("open-search").filter({ hasText: nameA });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Elo 1000");
+  await expect(card).toContainText("Stufe 2 bis 4");
+  await expect(card).toContainText("60 Minuten");
+  await expect(card).toContainText("Kader");
+  await expect(card).toContainText(`Mixed-Team, locker ${run}`);
+  await expect(card).toContainText("18:00 bis 21:00"); // Zeitfenster
+  await b.goto("/matchmaking");
+  await expect(b.getByTestId("open-search").filter({ hasText: nameA })).toBeVisible();
+  await expect(b.getByRole("heading", { name: /Offene Suchen \(1\)/ })).toBeVisible();
+
+  // direkt annehmen
+  b.on("dialog", (d) => void d.accept());
+  await b.waitForLoadState("networkidle");
+  await b.getByRole("button", { name: `Gegen ${nameA} antreten` }).click();
+  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+  await expect(b.getByTestId("veto")).toBeVisible();
+  await expect(b.getByText(/Hallen-Veto läuft/)).toBeVisible();
+
+  // die Suche ist weg
+  await a.goto("/suche");
+  await expect(a.getByTestId("flex-searches").getByTestId("open-search")).toHaveCount(0);
+});

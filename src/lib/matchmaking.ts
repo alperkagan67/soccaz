@@ -7,7 +7,18 @@ export const MAX_WINDOW_DAYS_AHEAD = 14;
 export const SUGGESTED_OPTIONS = 3;
 
 export type Window = { from: Date; to: Date };
-export type QueueEntry = { id: string; teamId: string; city: string; durationMin: number; elo: number; createdAt: Date; windows: Window[] };
+export type QueueEntry = {
+  id: string;
+  teamId: string;
+  city: string;
+  durationMin: number;
+  elo: number;
+  createdAt: Date;
+  windows: Window[];
+  strength?: number; // Selbsteinschätzung des Teams (1 bis 5)
+  wantMin?: number | null; // gesuchte Spielstärke des Gegners
+  wantMax?: number | null;
+};
 export type Pair = { a: QueueEntry; b: QueueEntry; eloDiff: number; slots: Date[] };
 
 /** Erlaubter Elo-Abstand: startet eng und wird mit der Wartezeit weiter (alle 5 Minuten +50, höchstens 600). */
@@ -18,6 +29,14 @@ export function eloRange(waitedMs: number): number {
 
 const quarter = 15 * 60_000;
 const ceilQuarter = (ms: number) => Math.ceil(ms / quarter) * quarter;
+
+/** Passt die Spielstärke des Gegners zum Wunsch dieses Eintrags? Ohne Wunsch oder ohne Angabe immer. */
+export function strengthOk(want: { wantMin?: number | null; wantMax?: number | null }, otherStrength: number | undefined): boolean {
+  if (otherStrength === undefined) return true;
+  if (want.wantMin != null && otherStrength < want.wantMin) return false;
+  if (want.wantMax != null && otherStrength > want.wantMax) return false;
+  return true;
+}
 
 /** Zeitfenster bereinigen: nur Zukunft (mit Vorlauf), ausreichend lang, zusammengeführt. */
 export function usableWindows(windows: Window[], durationMin: number, now: Date): Window[] {
@@ -88,6 +107,7 @@ export function findPairs(entries: QueueEntry[], now: Date): Pair[] {
     let best: { b: QueueEntry; diff: number; slots: Date[] } | null = null;
     for (const b of free) {
       if (b.id === a.id || used.has(b.id) || b.teamId === a.teamId || b.city !== a.city || b.durationMin !== a.durationMin) continue;
+      if (!strengthOk(a, b.strength) || !strengthOk(b, a.strength)) continue;
       const diff = Math.abs(a.elo - b.elo);
       const range = Math.max(eloRange(now.getTime() - a.createdAt.getTime()), eloRange(now.getTime() - b.createdAt.getTime()));
       if (diff > range) continue;

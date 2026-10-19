@@ -50,6 +50,9 @@ export default async function HelpPage() {
           <p><strong>Matchmaking:</strong> Du gibst Stadt, Dauer und bis zu drei Zeitfenster an. Wir suchen ein Team mit ähnlicher Spielstärke und gemeinsamer Zeit. Wartet ihr länger, darf der Unterschied größer werden.</p>
           <p><strong>Spielsuche:</strong> Du legst selbst ein Spiel mit festem Termin an. Andere Teams sehen es und nehmen es an. Oder du forderst ein bestimmtes Team direkt heraus.</p>
         </Q>
+        <Q q="Wo sehe ich, wer gerade einen Gegner sucht?">
+          <p>Unter „Spielsuchen“ (oben) und im Matchmaking steht die Liste aller offenen Suchen: Team, Stadt, Dauer, Elo und Spielstärke, Kadergröße, gesuchte Stärke des Gegners, Zeitfenster und Hinweis. Passt eine Suche, nimmst du sie mit einem Klick an. Ihr legt euch dann auf die Zeitfenster dieser Suche fest, danach folgt das Hallen-Veto.</p>
+        </Q>
         <Q q="Wer legt Termin und Ort fest?">
           <p><strong>Hallen-Veto:</strong> Wie bei Counter-Strike oder FACEIT. Wir stellen bis zu 7 Hallen zur Wahl (zuerst aus eurer Stadt, dann die nächstgelegenen in NRW). Ein Münzwurf entscheidet, wer anfängt. Abwechselnd bannt jedes Team eine Halle, die es nicht spielen will. Die letzte übrige Halle wird gespielt. Pro Zug habt ihr 2 Stunden, danach bannt das System zufällig für euch.</p>
           <p><strong>Termin:</strong> Danach machen wir Vorschläge aus euren Zeitfenstern. Ihr könnt eigene hinzufügen. Stimmen beide Teams für denselben, steht das Spiel. Einigt ihr euch nicht rechtzeitig, wird es abgesagt.</p>

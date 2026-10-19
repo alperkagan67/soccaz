@@ -18,6 +18,9 @@ export const matchmakingQueue = pgTable(
     city: text("city").notNull(),
     durationMin: integer("duration_min").notNull(),
     windows: jsonb("windows").$type<QueueWindow[]>().notNull(),
+    note: text("note"), // freier Hinweis an mögliche Gegner
+    wantStrengthMin: integer("want_strength_min"), // gesuchte Spielstärke des Gegners (Selbsteinschätzung 1 bis 5), leer = egal
+    wantStrengthMax: integer("want_strength_max"),
     status: text("status").$type<QueueStatus>().notNull().default("waiting"),
     matchId: uuid("match_id").references(() => matches.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

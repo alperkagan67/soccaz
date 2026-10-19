@@ -5,7 +5,7 @@ import { matchParticipants, matches, notifications } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { matchmakingQueue, matchOptions, matchOptionVotes, matchVetoHalls } from "@/db/schema-matchmaking";
 import { venues } from "@/db/schema-finance";
-import { joinQueue, leaveQueue, runMatchmaker } from "@/server/matchmaking";
+import { acceptSearch, joinQueue, leaveQueue, listOpenSearches, runMatchmaker } from "@/server/matchmaking";
 import { advanceVetos, banHall } from "@/server/veto";
 import { proposeOption, voteOption, withdrawOption, expireScheduling } from "@/server/scheduling";
 import { setReady, setVenue } from "@/server/lobby";
@@ -264,5 +264,58 @@ describe("Termin und Ort gemeinsam wählen", () => {
     const after = (await db.select().from(matches).where(eq(matches.id, m.match.id)))[0];
     expect(after).toMatchObject({ status: "cancelled", schedulingOpen: false });
     expect((await db.select().from(notifications).where(eq(notifications.userId, m.a.id))).some((n) => n.title === "Spiel abgesagt")).toBe(true);
+  });
+});
+
+describe("Offene Suchen und direktes Annehmen", () => {
+  it("die Liste zeigt alles Wichtige, nach Stadt und Dauer filterbar", async () => {
+    const t = await twoTeams();
+    await joinQueue(t.a.id, { teamId: t.ta.id, city: "Essen", durationMin: 90, windows: evening(), note: "Wir spielen locker", wantStrengthMin: 2, wantStrengthMax: 4 });
+    const mine = (await listOpenSearches()).find((s) => s.teamId === t.ta.id)!;
+    expect(mine).toMatchObject({ city: "Essen", durationMin: 90, note: "Wir spielen locker", wantStrengthMin: 2, wantStrengthMax: 4, members: 1, strength: 3, elo: 1000, playedMatches: 0 });
+    expect(mine.windows).toHaveLength(1);
+    expect((await listOpenSearches({ city: "Bochum" })).some((s) => s.teamId === t.ta.id)).toBe(false);
+    expect((await listOpenSearches({ durationMin: 60 })).some((s) => s.teamId === t.ta.id)).toBe(false);
+    expect((await listOpenSearches({ city: "Essen", durationMin: 90 })).some((s) => s.teamId === t.ta.id)).toBe(true);
+    await expect(joinQueue(t.b.id, { teamId: t.tb.id, city: "Essen", durationMin: 60, windows: evening(), wantStrengthMin: 4, wantStrengthMax: 2 })).rejects.toThrow(/umgekehrt/);
+  });
+
+  it("Team nimmt eine Suche direkt an: Spiel mit Veto, beide Einträge gepaart, Termine aus den Fenstern der Suche", async () => {
+    const t = await twoTeams();
+    await joinQueue(t.a.id, { teamId: t.ta.id, city: "Essen", durationMin: 60, windows: evening(), wantStrengthMin: 1, wantStrengthMax: 5 });
+    // das Team von b sucht selbst: die eigene Suche endet mit dem Annehmen
+    await joinQueue(t.b.id, { teamId: t.tb.id, city: "Dortmund", durationMin: 90, windows: evening(5) });
+    const [entry] = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.teamId, t.ta.id));
+    const matchId = await acceptSearch(t.b.id, entry.id, t.tb.id);
+    const [match] = await db.select().from(matches).where(eq(matches.id, matchId));
+    expect([match.homeTeamId, match.awayTeamId].sort()).toEqual([t.ta.id, t.tb.id].sort());
+    expect(match).toMatchObject({ status: "lobby", vetoStatus: "running", durationMin: 60 });
+    const rows = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.matchId, matchId));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.status === "matched")).toBe(true);
+    // die frühere eigene Suche von b (Dortmund) ist beendet
+    expect((await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.teamId, t.tb.id))).filter((r) => r.status === "waiting")).toHaveLength(0);
+    expect((await listOpenSearches()).some((s) => s.teamId === t.ta.id)).toBe(false);
+    // nach dem Veto gibt es Termine aus den Zeitfenstern der Suche
+    const m = { ...t, match };
+    for (let i = 0; i < 20; i++) {
+      const [cur] = await db.select().from(matches).where(eq(matches.id, matchId));
+      if (cur.vetoStatus !== "running") break;
+      const free = (await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, matchId)).orderBy(matchVetoHalls.position)).find((h) => !h.bannedByTeam)!;
+      await banHall(turnAdmin(m as never, cur.vetoTurnTeamId).id, matchId, free.venueId);
+    }
+    expect((await db.select().from(matchOptions).where(eq(matchOptions.matchId, matchId))).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("Regeln: nur Admins, nicht die eigene Suche, nur offene Suchen, Wunsch zur Spielstärke gilt", async () => {
+    const t = await twoTeams();
+    await joinQueue(t.a.id, { teamId: t.ta.id, city: "Essen", durationMin: 60, windows: evening(), wantStrengthMin: 4 });
+    const [entry] = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.teamId, t.ta.id));
+    await expect(acceptSearch(t.a.id, entry.id, t.ta.id)).rejects.toThrow(/eigene Suche/);
+    await expect(acceptSearch((await makeUser("fremd")).id, entry.id, t.tb.id)).rejects.toThrow(/Team-Admins/);
+    await expect(acceptSearch(t.b.id, entry.id, t.tb.id)).rejects.toThrow(/andere Spielstärke/); // tb ist Stufe 3, gesucht ab 4
+    await expect(acceptSearch(t.b.id, crypto.randomUUID(), t.tb.id)).rejects.toThrow(/nicht mehr offen/);
+    await leaveQueue(t.a.id, t.ta.id);
+    await expect(acceptSearch(t.b.id, entry.id, t.tb.id)).rejects.toThrow(/nicht mehr offen/);
   });
 });

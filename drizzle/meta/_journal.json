@@ -134,6 +134,13 @@
       "when": 1792416516925,
       "tag": "0018_charming_loki",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792422400180,
+      "tag": "0019_wonderful_imperial_guard",
+      "breakpoints": true
     }
   ]
 }

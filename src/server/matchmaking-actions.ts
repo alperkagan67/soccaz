@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import type { ActionState } from "@/lib/validation";
 import { parseBerlinLocal } from "@/lib/time";
 import { MAX_WINDOWS } from "@/lib/matchmaking";
-import { joinQueue, leaveQueue } from "./matchmaking";
+import { redirect } from "next/navigation";
+import { acceptSearch, joinQueue, leaveQueue } from "./matchmaking";
 import { proposeOption, voteOption, withdrawOption } from "./scheduling";
 import { requireUser } from "./session";
 import { banHall } from "./veto";
@@ -35,7 +36,7 @@ export async function joinQueueAction(_prev: ActionState, f: FormData): Promise<
     if (!a || !b) return { error: `Zeitfenster ${i}: Bitte Tag, Von und Bis angeben.` };
     windows.push({ from: a, to: b });
   }
-  const result = await guarded(async () => void (await joinQueue(user.id, { teamId: str(f, "teamId"), city: str(f, "city"), durationMin: Number(str(f, "durationMin")), windows })));
+  const result = await guarded(async () => void (await joinQueue(user.id, { teamId: str(f, "teamId"), city: str(f, "city"), durationMin: Number(str(f, "durationMin")), windows, note: str(f, "note"), wantStrengthMin: str(f, "wantMin") ? Number(str(f, "wantMin")) : null, wantStrengthMax: str(f, "wantMax") ? Number(str(f, "wantMax")) : null })));
   revalidatePath("/matchmaking");
   return result;
 }
@@ -75,4 +76,19 @@ export async function banHallAction(matchId: string, venueId: string): Promise<A
   const result = await guarded(() => banHall(user.id, matchId, venueId));
   revalidatePath(`/lobby/${matchId}`);
   return result;
+}
+
+/** Nimmt eine offene Suche an und führt bei Erfolg direkt in die Lobby. */
+export async function acceptSearchAction(entryId: string, teamId: string): Promise<ActionState> {
+  const user = await requireUser("/matchmaking");
+  let matchId: string;
+  try {
+    matchId = await acceptSearch(user.id, entryId, teamId);
+  } catch (error) {
+    if (error instanceof DomainError) return { error: error.message };
+    throw error;
+  }
+  revalidatePath("/matchmaking");
+  revalidatePath("/suche");
+  redirect(`/lobby/${matchId}`);
 }

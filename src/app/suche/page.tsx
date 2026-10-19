@@ -3,7 +3,10 @@ import Link from "next/link";
 import { CITIES, filterSchema } from "@/lib/validation";
 import { formatDateTime } from "@/lib/time";
 import { strengthText } from "@/lib/labels";
-import { listOpenRequests } from "@/server/requests";
+import { OpenSearches } from "@/components/OpenSearches";
+import { listOpenSearches, teamElo } from "@/server/matchmaking";
+import { listOpenRequests, myAdminTeams } from "@/server/requests";
+import { getCurrentUser } from "@/server/session";
 
 export const metadata: Metadata = { title: "Spielsuchen" };
 
@@ -14,6 +17,10 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
   );
   const results = await listOpenRequests(filter);
   const active = Object.values(filter).some((v) => v !== undefined);
+  const user = await getCurrentUser();
+  const adminTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
+  const searches = await listOpenSearches({ city: filter.city, durationMin: filter.durationMin });
+  const mine = await Promise.all(adminTeams.map(async (t) => ({ id: t.id, name: t.name, elo: await teamElo(t.id), strength: t.strength })));
 
   return (
     <div className="space-y-4">
@@ -64,6 +71,16 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
         </div>
       </form>
 
+      <section className="space-y-3" aria-labelledby="flex-h" data-testid="flex-searches">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 id="flex-h" className="text-lg font-semibold">Teams mit flexibler Zeit ({searches.length})</h2>
+          <Link href="/matchmaking" className="text-sm text-green underline">Zum Matchmaking</Link>
+        </div>
+        <p className="text-sm text-muted">Diese Teams haben Zeitfenster angegeben und warten im Matchmaking. Ihr könnt direkt gegen sie antreten.</p>
+        <OpenSearches searches={searches} mine={mine} myWaitingTeamIds={[]} />
+      </section>
+
+      <h2 className="text-lg font-semibold">Spielsuchen mit festem Termin ({results.length})</h2>
       {results.length === 0 ? (
         <p className="card text-muted">
           {active ? "Keine Spielsuche passt zu deinen Filtern." : "Noch keine offenen Spielsuchen. Erstelle die erste."}

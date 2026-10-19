@@ -1,6 +1,7 @@
 "use client";
 
 import { ActionForm } from "@/components/ActionForm";
+import { STRENGTH_LABELS } from "@/lib/labels";
 import { CITIES } from "@/lib/validation";
 import { joinQueueAction } from "@/server/matchmaking-actions";
 
@@ -32,6 +33,30 @@ export function QueueForm({ teams, minDay }: { teams: { id: string; name: string
             <option value="90">90 Min</option>
           </select>
         </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor="q-wmin">Gesuchte Stärke des Gegners von</label>
+          <select id="q-wmin" name="wantMin" defaultValue="" className="field">
+            <option value="">egal</option>
+            {Object.entries(STRENGTH_LABELS).map(([v, l]) => (
+              <option key={v} value={v}>{v} – {l}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="q-wmax">bis</label>
+          <select id="q-wmax" name="wantMax" defaultValue="" className="field">
+            <option value="">egal</option>
+            {Object.entries(STRENGTH_LABELS).map(([v, l]) => (
+              <option key={v} value={v}>{v} – {l}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="label" htmlFor="q-note">Hinweis für andere Teams (optional)</label>
+        <input id="q-note" name="note" maxLength={200} className="field" placeholder="z. B. Mixed-Team, wir spielen locker, Revanche erwünscht" />
       </div>
       <p className="text-sm text-muted">Wann könnt ihr? Bis zu drei Zeitfenster. Wir suchen ein Team mit ähnlicher Spielstärke und gemeinsamer Zeit.</p>
       {[1, 2, 3].map((i) => (
