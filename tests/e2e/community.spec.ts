@@ -42,6 +42,10 @@ test("Herausforderung: für alle sichtbar in den offenen Lobbys, nur das Zieltea
   await expect(card).toContainText("Herausforderung");
   await expect(card.getByTestId("challenge-target")).toContainText(teamB);
   await expect(card.getByTestId("accept-challenge")).toHaveCount(0);
+  // Dritte Teams können eines der beiden Teams selbst herausfordern
+  await expect(card.getByTestId("challenge-team")).toContainText(`${teamA} herausfordern`);
+  await card.getByTestId("challenge-team").click();
+  await expect(c.getByTestId("challenge-banner")).toContainText(teamA);
   await c.goto("/");
   await expect(c.getByTestId("board-entry").filter({ hasText: teamA })).toBeVisible();
   await b.goto("/suche");

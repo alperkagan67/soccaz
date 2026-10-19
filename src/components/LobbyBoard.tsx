@@ -145,6 +145,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
               Elo {s.team.elo}
               {s.team.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {s.team.strength}/5 · {s.team.members} im Kader
             </p>
+            {!own && !forMe && <ChallengeLink team={s.team} loggedIn={loggedIn} mine={mine} />}
           </div>
           <ul className="space-y-1 text-sm">
             {s.roster.map((p) => (
@@ -203,6 +204,17 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
             Herausforderung annehmen
           </Link>
         )}
+        {challenge && !forMe && !own && loggedIn && candidates.length > 0 && (
+          <Link href={`/app/suche/neu?gegner=${s.team.slug}`} className="btn btn-primary !min-h-9 !px-3 text-sm" data-testid="challenge-team">
+            {s.team.name} herausfordern
+          </Link>
+        )}
+        {challenge && !forMe && !own && !loggedIn && (
+          <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${s.team.slug}`)}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
+            Anmelden und {s.team.name} herausfordern
+          </Link>
+        )}
+        {challenge && !forMe && !own && loggedIn && candidates.length === 0 && <span className="text-xs text-muted">Um herauszufordern, brauchst du ein Team, bei dem du Admin bist.</span>}
         {challenge && !forMe && !own && <Link href={`/suche/${s.id}`} className="text-xs text-green underline">Details</Link>}
         {!loggedIn && !challenge && (
           <Link href={`/anmelden?next=${encodeURIComponent(s.sub === "queue" ? "/matchmaking#offen" : `/suche/${s.id}`)}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
