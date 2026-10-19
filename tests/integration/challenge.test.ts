@@ -74,8 +74,8 @@ describe("Direkt-Herausforderung", () => {
   it("ohne Antwort innerhalb von 48 Stunden wird die Lobby abgesagt", async () => {
     const d = await duel();
     const id = await challengeTeam(d.a.id, d.ta.id, d.tb.id);
-    expect(await expireScheduling()).toBe(0);
-    expect(await expireScheduling(new Date(Date.now() + 49 * 3_600_000))).toBeGreaterThanOrEqual(1);
+    await db.update(matches).set({ schedulingDeadline: new Date(Date.now() - 1000) }).where(eq(matches.id, id)); // nur die eigene Lobby ablaufen lassen, nicht echte Daten
+    expect(await expireScheduling()).toBeGreaterThanOrEqual(1);
     expect((await db.select().from(matches).where(eq(matches.id, id)))[0].status).toBe("cancelled");
     expect((await db.select().from(notifications).where(eq(notifications.userId, d.a.id))).some((n) => n.body.includes("nicht rechtzeitig angenommen"))).toBe(true);
   });

@@ -41,7 +41,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const scheduling = await getScheduling(match);
   const veto = await getVeto(match.id, match.vetoStatus, match.vetoTurnTeamId, match.vetoTurnDeadline);
   const open = Boolean(scheduling);
-  const challengePending = match.challengeStatus === "pending";
+  const challengePending = match.challengeStatus === "pending" && match.status === "lobby";
   const myAdminTeam = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null;
   const nameOfTeam = (id: string | null) => (id === match.homeId ? match.homeName : id === match.awayId ? match.awayName : "");
 
