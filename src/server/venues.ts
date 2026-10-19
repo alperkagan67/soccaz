@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
+import { users } from "@/db/schema";
 import { priceRules, venues } from "@/db/schema-finance";
 import { audit } from "./audit";
 import { DomainError } from "./teams";
@@ -27,6 +28,18 @@ function clean(input: VenueInput): VenueInput {
 export async function listVenues(includeInactive = true) {
   await connection();
   return db.select().from(venues).where(includeInactive ? undefined : eq(venues.active, true)).orderBy(asc(venues.city), asc(venues.name));
+}
+
+/** Weist einer Halle ein Betreiber-Konto zu (leer = entfernen). Das Konto muss existieren. */
+export async function setVenueManager(actorId: string, venueId: string, email: string) {
+  let userId: string | null = null;
+  if (email.trim()) {
+    const [u] = await db.select({ id: users.id }).from(users).where(eq(users.email, email.trim().toLowerCase()));
+    if (!u) throw new DomainError("Zu dieser E-Mail gibt es kein Konto. Der Betreiber muss sich zuerst anmelden.");
+    userId = u.id;
+  }
+  await db.update(venues).set({ managerUserId: userId }).where(eq(venues.id, venueId));
+  await audit(actorId, "venue.manager", "venue", venueId, { after: { managerUserId: userId } });
 }
 
 export async function createVenue(actorId: string, input: VenueInput) {

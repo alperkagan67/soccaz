@@ -7,7 +7,6 @@ import { teamName } from "./names";
 import { notifyUsers, teamAdminIds } from "./notifications";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
-import { startVeto } from "./veto";
 
 export const CHALLENGE_REPLY_HOURS = 48;
 const MAX_OPEN_CHALLENGES_PER_TEAM = 5;
@@ -68,19 +67,17 @@ async function lockPending(tx: Tx, matchId: string) {
   return m;
 }
 
-/** Das herausgeforderte Team nimmt an: Das Hallen-Veto beginnt. */
+/** Das herausgeforderte Team nimmt an: Beide Teams einigen sich auf Tag und Uhrzeit, danach folgen Hallen-Anfrage und Veto. */
 export async function acceptChallenge(userId: string, matchId: string) {
   await db.transaction(async (tx) => {
     const m = await lockPending(tx, matchId);
     const [admin] = await tx.select({ role: teamMembers.role }).from(teamMembers).where(and(eq(teamMembers.teamId, m.awayTeamId), eq(teamMembers.userId, userId), eq(teamMembers.role, "admin")));
     if (!admin) throw new DomainError("Nur Team-Admins des herausgeforderten Teams können annehmen.");
-    const [city] = await tx.select({ city: teams.city }).from(teams).where(eq(teams.id, m.awayTeamId));
-    await tx.update(matches).set({ challengeStatus: "accepted", schedulingDeadline: new Date(Date.now() + 36 * 3_600_000) }).where(eq(matches.id, matchId));
-    const started = await startVeto(tx, { ...m, challengeStatus: "accepted" }, city?.city ?? "Andere (NRW)");
-    await audit(userId, "challenge.accept", "match", matchId, { after: { veto: started } }, tx);
+    await tx.update(matches).set({ challengeStatus: "accepted", schedulingDeadline: new Date(Date.now() + 48 * 3_600_000) }).where(eq(matches.id, matchId));
+    await audit(userId, "challenge.accept", "match", matchId, {}, tx);
     await notifyUsers(
       await teamAdminIds(tx, m.homeTeamId),
-      { type: "match.found", title: "Herausforderung angenommen", body: `${await teamName(tx, m.awayTeamId)} hat angenommen.${started ? " Als Nächstes folgt das Hallen-Veto." : " Schlagt jetzt einen Termin und Ort vor."}`, url: `/lobby/${matchId}` },
+      { type: "match.found", title: "Herausforderung angenommen", body: `${await teamName(tx, m.awayTeamId)} hat angenommen. Einigt euch jetzt auf Tag und Uhrzeit, danach folgen die Halle und das Veto.`, url: `/lobby/${matchId}` },
       tx,
       userId,
     );

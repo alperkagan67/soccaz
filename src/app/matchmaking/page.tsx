@@ -35,8 +35,8 @@ export default async function MatchmakingPage({ searchParams }: PageProps<"/matc
       <ol className="card space-y-1 text-sm text-muted">
         <li><strong className="text-ink">1.</strong> Zeitfenster eintragen und in die Warteschlange.</li>
         <li><strong className="text-ink">2.</strong> Wir paaren Teams mit ähnlichem Elo. Je länger ihr wartet, desto größer wird der erlaubte Abstand.</li>
-        <li><strong className="text-ink">3.</strong> Beide Teams sehen Kader und Spielstärke des Gegners. Dann beginnt das <strong className="text-ink">Hallen-Veto</strong>: Abwechselnd bannt jedes Team Hallen, die es nicht spielen will. Die letzte Halle wird gespielt.</li>
-        <li><strong className="text-ink">4.</strong> Zum Schluss wählt ihr gemeinsam die Uhrzeit aus Vorschlägen. Stimmen beide für denselben, steht das Spiel.</li>
+        <li><strong className="text-ink">3.</strong> Beide Teams sehen Kader und Spielstärke des Gegners und wählen gemeinsam <strong className="text-ink">Tag und Uhrzeit</strong> aus Vorschlägen. Stimmen beide für denselben, steht der Termin.</li>
+        <li><strong className="text-ink">4.</strong> Dann bestätigen die Hallen, ob sie frei sind, und das <strong className="text-ink">Hallen-Veto</strong> beginnt: Abwechselnd bannt jedes Team Hallen, die es nicht spielen will. Die letzte Halle wird gespielt.</li>
       </ol>
 
       {waiting.length > 0 && (

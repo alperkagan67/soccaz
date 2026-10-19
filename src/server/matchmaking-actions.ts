@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { acceptSearch, joinQueue, leaveQueue } from "./matchmaking";
 import { proposeOption, voteOption, withdrawOption } from "./scheduling";
 import { requireUser } from "./session";
-import { banHall } from "./veto";
+import { answerHallRequest, banHall } from "./veto";
 import { acceptChallenge, challengeTeam, declineChallenge } from "./challenges";
 import { DomainError } from "./teams";
 
@@ -53,7 +53,7 @@ export async function proposeOptionAction(matchId: string, _prev: ActionState, f
   const user = await requireUser(`/lobby/${matchId}`);
   const startsAt = parseBerlinLocal(str(f, "startsAt"));
   if (!startsAt) return { error: "Bitte gib Datum und Uhrzeit an." };
-  const result = await guarded(() => proposeOption(user.id, matchId, { startsAt, venueId: str(f, "venueId") || null, venueText: str(f, "venueText") }));
+  const result = await guarded(() => proposeOption(user.id, matchId, { startsAt }));
   revalidatePath(`/lobby/${matchId}`);
   return result;
 }
@@ -121,5 +121,14 @@ export async function declineChallengeAction(matchId: string): Promise<ActionSta
   const result = await guarded(() => declineChallenge(user.id, matchId));
   revalidatePath(`/lobby/${matchId}`);
   revalidatePath("/suche");
+  return result;
+}
+
+/** Hallenbetreiber: Anfrage bestätigen (frei) oder ablehnen (belegt). */
+export async function answerHallAction(matchId: string, venueId: string, accept: boolean): Promise<ActionState> {
+  const user = await requireUser("/halle");
+  const result = await guarded(() => answerHallRequest(user.id, matchId, venueId, accept));
+  revalidatePath("/halle");
+  revalidatePath(`/lobby/${matchId}`);
   return result;
 }

@@ -3,17 +3,15 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
-import { venues } from "@/db/schema-finance";
 import { matchmakingQueue, type QueueWindow } from "@/db/schema-matchmaking";
 import { initialTeamElo } from "@/lib/elo";
-import { combineOptions, findPairs, overlap, suggestSlots, strengthOk, type Pair, MAX_WINDOW_DAYS_AHEAD, MAX_WINDOWS, MIN_LEAD_MS, QUEUE_LIFETIME_MS, usableWindows, type QueueEntry } from "@/lib/matchmaking";
+import { findPairs, overlap, suggestSlots, strengthOk, type Pair, MAX_WINDOW_DAYS_AHEAD, MAX_WINDOWS, MIN_LEAD_MS, QUEUE_LIFETIME_MS, usableWindows, type QueueEntry } from "@/lib/matchmaking";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
 import { audit } from "./audit";
 import { teamName } from "./names";
 import { notifyUsers, teamAdminIds } from "./notifications";
 import { insertOptions } from "./scheduling";
-import { startVeto } from "./veto";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
@@ -134,23 +132,12 @@ async function createPairedMatch(tx: Tx, pair: Pair, now: Date) {
       durationMin: pair.a.durationMin,
       visibility: "public",
       schedulingOpen: true,
-      schedulingDeadline: new Date(now.getTime() + 36 * 3_600_000), // Hallen-Veto (bis zu 12 Stunden) plus Terminwahl
+      schedulingDeadline: new Date(now.getTime() + 48 * 3_600_000), // Terminwahl; danach Hallen-Anfrage und Veto
     })
     .returning();
 
-  // Erst das Hallen-Veto; gibt es zu wenige Hallen, schlagen wir Zeiten mit den vorhandenen Hallen vor
-  const vetoStarted = await startVeto(tx, match, pair.a.city, now);
-  const partnerVenues = vetoStarted ? [] : await tx
-    .select({ id: venues.id, name: venues.name })
-    .from(venues)
-    .where(and(eq(venues.active, true), eq(venues.city, pair.a.city)))
-    .orderBy(desc(venues.isPartner), asc(venues.name))
-    .limit(2);
-  if (!vetoStarted) await insertOptions(
-    tx,
-    match.id,
-    combineOptions(pair.slots, partnerVenues).map((o) => ({ startsAt: o.startsAt, venueId: o.venue?.id ?? null, venueText: o.venue?.name ?? null })),
-  );
+  // Erst der Termin (aus der Überschneidung der Zeitfenster); danach werden die Hallen angefragt und das Veto beginnt
+  await insertOptions(tx, match.id, pair.slots.map((startsAt) => ({ startsAt })));
 
   const admins = await tx
     .select({ userId: teamMembers.userId, teamId: teamMembers.teamId })
@@ -162,8 +149,8 @@ async function createPairedMatch(tx: Tx, pair: Pair, now: Date) {
   await audit(null, "matchmaking.matched", "match", match.id, { after: { home: pair.a.teamId, away: pair.b.teamId, eloDiff: pair.eloDiff } }, tx);
 
   const [nameA, nameB] = [await teamName(tx, pair.a.teamId), await teamName(tx, pair.b.teamId)];
-  await notifyUsers(await teamAdminIds(tx, pair.a.teamId), { type: "match.found", title: "Gegner gefunden", body: `${nameB} (Elo ${pair.b.elo}) wartet auf euch. Als Nächstes folgt das Hallen-Veto.`, url: `/lobby/${match.id}` }, tx);
-  await notifyUsers(await teamAdminIds(tx, pair.b.teamId), { type: "match.found", title: "Gegner gefunden", body: `${nameA} (Elo ${pair.a.elo}) wartet auf euch. Als Nächstes folgt das Hallen-Veto.`, url: `/lobby/${match.id}` }, tx);
+  await notifyUsers(await teamAdminIds(tx, pair.a.teamId), { type: "match.found", title: "Gegner gefunden", body: `${nameB} (Elo ${pair.b.elo}) wartet auf euch. Einigt euch auf Tag und Uhrzeit, danach folgen Halle und Veto.`, url: `/lobby/${match.id}` }, tx);
+  await notifyUsers(await teamAdminIds(tx, pair.b.teamId), { type: "match.found", title: "Gegner gefunden", body: `${nameA} (Elo ${pair.a.elo}) wartet auf euch. Einigt euch auf Tag und Uhrzeit, danach folgen Halle und Veto.`, url: `/lobby/${match.id}` }, tx);
 }
 
 export const MIN_LEAD_HOURS_QUEUE = MIN_LEAD_MS / 3_600_000;

@@ -54,8 +54,9 @@ export default async function HelpPage() {
           <p>Unter „Spielsuchen“ (oben) und im Matchmaking steht die Liste aller offenen Suchen: Team, Stadt, Dauer, Elo und Spielstärke, Kadergröße, gesuchte Stärke des Gegners, Zeitfenster und Hinweis. Passt eine Suche, nimmst du sie mit einem Klick an. Ihr legt euch dann auf die Zeitfenster dieser Suche fest, danach folgt das Hallen-Veto.</p>
         </Q>
         <Q q="Wer legt Termin und Ort fest?">
-          <p><strong>Hallen-Veto:</strong> Wie bei Counter-Strike oder FACEIT. Wir stellen bis zu 7 Hallen zur Wahl (zuerst aus eurer Stadt, dann die nächstgelegenen in NRW). Ein Münzwurf entscheidet, wer anfängt. Abwechselnd bannt jedes Team eine Halle, die es nicht spielen will. Die letzte übrige Halle wird gespielt. Pro Zug habt ihr 2 Stunden, danach bannt das System zufällig für euch.</p>
-          <p><strong>Termin:</strong> Danach machen wir Vorschläge aus euren Zeitfenstern. Ihr könnt eigene hinzufügen. Stimmen beide Teams für denselben, steht das Spiel. Einigt ihr euch nicht rechtzeitig, wird es abgesagt.</p>
+          <p><strong>1. Termin:</strong> Zuerst einigt ihr euch auf Tag und Uhrzeit. Wir machen Vorschläge aus euren Zeitfenstern, ihr könnt eigene hinzufügen. Stimmen beide Teams für denselben, steht der Termin. Einigt ihr euch nicht rechtzeitig, wird das Spiel abgesagt.</p>
+          <p><strong>2. Hallen-Anfrage:</strong> Dann fragen wir bis zu 7 Hallen an (zuerst aus eurer Stadt, dann die nächstgelegenen in NRW). Partnerhallen bestätigen, ob sie zu diesem Termin frei sind. Ist eine Halle belegt, scheidet sie aus. Ist keine frei, wählt ihr einen neuen Termin.</p>
+          <p><strong>3. Hallen-Veto:</strong> Wie bei Counter-Strike oder FACEIT. Ein Münzwurf entscheidet, wer anfängt. Abwechselnd bannt jedes Team eine Halle, die es nicht spielen will. Die letzte übrige Halle wird gespielt. Pro Zug habt ihr 2 Stunden, danach bannt das System zufällig für euch.</p>
           <p className="text-xs">Die Hallenliste stammt zunächst aus OpenStreetMap und ist nicht geprüft: Ob eine Halle frei und buchbar ist und was sie kostet, bestätigt die Buchung. Fehlt eine Halle, schreib uns über die Kontaktseite.</p>
         </Q>
         <Q q="Was ist die Lobby?">

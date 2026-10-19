@@ -256,24 +256,24 @@ flowchart TD
 
 Elo-Bereich: 100 am Anfang, alle 5 Minuten Wartezeit +50, höchstens 600. Es zählt der größere der beiden Bereiche.
 
-## Hallen-Veto (gebaut)
+## Termin, Hallen-Anfrage und Hallen-Veto (gebaut)
 
-Nach der Paarung bannen die Teams abwechselnd Hallen. Die letzte übrige Halle wird gespielt; erst danach wird der Termin gewählt.
+Reihenfolge: erst einigen sich beide Teams auf Tag und Uhrzeit. Danach werden die Hallen angefragt. Erst wenn alle Antworten da sind, beginnt das Veto unter den freien Hallen.
 
 ```mermaid
 flowchart TD
-  A[Paarung steht] --> B[Pool: bis zu 7 Hallen<br/>erst Spielstadt, dann nächstgelegene in NRW<br/>Partner und geprüfte zuerst]
-  B --> C[Muenzwurf: Team am Zug]
-  C --> D{Team am Zug bannt<br/>innerhalb von 2 Stunden?}
-  D -- ja --> E[Halle gebannt]
-  D -- nein --> F[System bannt zufaellig fuer dieses Team]
-  E --> G{Nur noch 1 Halle?}
-  F --> G
-  G -- nein --> H[Anderes Team ist dran, Benachrichtigung]
-  H --> D
-  G -- ja --> I[Halle steht fest, Preis aus der Preisregel der Halle]
-  I --> J[Terminvorschlaege aus den Zeitfenstern beider Teams]
-  J --> K{Beide Teams waehlen denselben Termin?}
-  K -- ja --> L[Spiel steht: Lobby, Bereit]
-  K -- nein, Frist 24 h --> M[Abgesagt]
+  A[Paarung oder angenommene Herausforderung] --> B[Terminwahl: Vorschlaege, jedes Team eine Stimme]
+  B --> C{Beide Teams waehlen denselben Termin?}
+  C -- nein, Frist 48 h --> Z[Abgesagt]
+  C -- ja --> D[Pool: bis zu 7 Hallen<br/>erst Spielstadt, dann nächstgelegene in NRW]
+  D --> E[Hallen mit Betreiber-Konto: Anfrage unter /halle<br/>Hallen ohne Konto: bleiben im Rennen, ungeprueft]
+  E --> F{Alle Antworten da<br/>oder 12 Stunden um?}
+  F -- nein --> E
+  F -- ja --> G{Mindestens eine Halle frei?}
+  G -- nein --> H[Termin und Stimmen verfallen, neue Terminwahl 48 h]
+  H --> B
+  G -- "genau eine" --> L[Halle steht fest]
+  G -- "mehrere" --> M[Muenzwurf, abwechselnd bannen<br/>2 Stunden pro Zug, sonst zufaelliger Bann]
+  M --> L
+  L --> N[Preis aus der Preisregel der Halle, Lobby: Bereit und Zahlen]
 ```

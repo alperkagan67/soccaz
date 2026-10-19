@@ -36,7 +36,7 @@ export function VetoPanel({
           <p className="text-sm text-green" data-testid="veto-result">Gewählt: {picked?.name}{picked?.city ? ` (${picked.city})` : ""}</p>
         ) : (
           <p className="text-sm text-muted">
-            Abwechselnd bannt jedes Team Hallen, die es nicht spielen will. Die letzte Halle wird gespielt. Noch {left} Hallen im Rennen.
+            Alle Hallen hier sind zum Termin frei oder ungeprüft. Abwechselnd bannt jedes Team Hallen, die es nicht spielen will. Die letzte Halle wird gespielt. Noch {left} Hallen im Rennen.
           </p>
         )}
         {!done && (

@@ -9,7 +9,7 @@ import { lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
 import { expectedScore } from "@/lib/elo";
 import { canViewLobby, getLobby } from "@/server/lobby";
 import { getScheduling } from "@/server/scheduling";
-import { getVeto } from "@/server/veto";
+import { getHallCheck, getVeto } from "@/server/veto";
 import { ChallengePanel } from "./ChallengePanel";
 import { VetoPanel } from "./VetoPanel";
 import { SchedulingPanel } from "./SchedulingPanel";
@@ -40,7 +40,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const status = STATUS[match.status] ?? STATUS.lobby;
   const scheduling = await getScheduling(match);
   const veto = await getVeto(match.id, match.vetoStatus, match.vetoTurnTeamId, match.vetoTurnDeadline);
-  const open = Boolean(scheduling);
+  const hallCheck = await getHallCheck(match.id, match.vetoStatus);
+  const planning = match.status === "lobby" && (match.vetoStatus === "halls" || match.vetoStatus === "running");
+  const open = Boolean(scheduling) || planning;
   const challengePending = match.challengeStatus === "pending" && match.status === "lobby";
   const myAdminTeam = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null;
   const nameOfTeam = (id: string | null) => (id === match.homeId ? match.homeName : id === match.awayId ? match.awayName : "");
@@ -79,7 +81,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <span>{match.awayName}</span>
         </h1>
         <p className="text-muted">
-          {open ? `${match.durationMin} Minuten · ${challengePending ? "Wartet auf Annahme" : match.vetoStatus === "running" ? "Hallen-Veto läuft" : "Termin wird noch gewählt"}` : `${formatDateTime(match.startsAt)} Uhr · ${match.durationMin} Minuten`}
+          {scheduling ? `${match.durationMin} Minuten · ${challengePending ? "Wartet auf Annahme" : "Termin wird noch gewählt"}` : `${formatDateTime(match.startsAt)} Uhr · ${match.durationMin} Minuten${match.vetoStatus === "halls" ? " · Hallen werden angefragt" : match.vetoStatus === "running" ? " · Hallen-Veto läuft" : ""}`}
           {active && !open && <> · <span className="text-ink"><Countdown startsAtIso={match.startsAt.toISOString()} /></span></>}
         </p>
         <p className={`text-sm font-semibold ${status.tone}`} data-testid="match-status">{status.label}</p>
@@ -106,6 +108,23 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
+      {hallCheck && (
+        <section className="card space-y-2" aria-label="Hallen-Anfrage" data-testid="hall-check">
+          <h2 className="font-semibold">Hallen werden angefragt</h2>
+          <p className="text-sm text-muted">Der Termin steht. Die Hallen bestätigen, ob sie zu diesem Termin frei sind. Ist eine Halle belegt, scheidet sie aus. Danach folgt das Veto{match.vetoTurnDeadline ? ` (Antwort bis ${formatDateTime(match.vetoTurnDeadline)} Uhr)` : ""}.</p>
+          <ul className="grid gap-1 text-sm sm:grid-cols-2">
+            {hallCheck.map((h) => (
+              <li key={h.venueId} className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2" data-testid="hall-request" data-state={h.status}>
+                <span>{h.name} <span className="text-xs text-muted">{h.city}</span></span>
+                <span className={`text-xs font-semibold ${h.status === "confirmed" ? "text-green" : h.status === "declined" ? "text-coral" : "text-yellow"}`}>
+                  {h.status === "confirmed" ? "Frei" : h.status === "declined" ? "Belegt" : h.status === "pending" ? "Wartet auf Antwort" : "Ohne Bestätigung"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {veto && (
         <VetoPanel
           matchId={match.id}
@@ -118,16 +137,14 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
-      {scheduling && !challengePending && match.vetoStatus !== "running" && (
+      {scheduling && !challengePending && (
         <SchedulingPanel
           matchId={match.id}
           teams={[{ id: match.homeId, name: match.homeName }, { id: match.awayId, name: match.awayName }]}
           myTeamId={myAdminTeam}
           deadlineText={match.schedulingDeadline ? `${formatDateTime(match.schedulingDeadline)} Uhr` : "–"}
           minStart={scheduling.minStart}
-          venues={scheduling.venues}
-          venueLocked={match.vetoStatus === "done"}
-          options={scheduling.options.map((o) => ({ id: o.id, label: `${formatDateTime(o.startsAt)} Uhr`, venue: o.venueText, proposedBy: o.proposedByTeam ? nameOfTeam(o.proposedByTeam) : "system", proposedByTeamId: o.proposedByTeam, votedTeamIds: o.votedTeamIds }))}
+          options={scheduling.options.map((o) => ({ id: o.id, label: `${formatDateTime(o.startsAt)} Uhr`, proposedBy: o.proposedByTeam ? nameOfTeam(o.proposedByTeam) : "system", proposedByTeamId: o.proposedByTeam, votedTeamIds: o.votedTeamIds }))}
         />
       )}
 

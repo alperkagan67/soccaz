@@ -68,10 +68,11 @@ test("Herausforderung mit einem Klick: sofort die Lobby, für alle sichtbar, nur
   await expect(b).toHaveURL(new RegExp(lobbyUrl.split("/").pop()!));
   await b.waitForLoadState("networkidle");
   await b.getByRole("button", { name: "Herausforderung annehmen" }).click();
-  await expect(b.getByTestId("veto")).toBeVisible({ timeout: 30_000 }); // jetzt beginnt das Hallen-Veto
+  await expect(b.getByTestId("scheduling")).toBeVisible({ timeout: 30_000 }); // jetzt wählen beide Teams Tag und Uhrzeit, danach folgt das Veto
   await expect(b.getByTestId("challenge-panel")).toHaveCount(0);
+  await expect(b.getByTestId("veto")).toHaveCount(0);
   await a.goto(lobbyUrl);
-  await expect(a.getByTestId("veto")).toBeVisible();
+  await expect(a.getByTestId("scheduling")).toBeVisible();
 });
 
 test("Spielerprofil, Teamseite, Rangliste und Spieler des Spiels", async ({ browser }) => {

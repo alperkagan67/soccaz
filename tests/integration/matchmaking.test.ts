@@ -62,8 +62,17 @@ async function runVeto(m: Awaited<ReturnType<typeof matchedRaw>>) {
   throw new Error("Veto endet nicht");
 }
 
-async function matched() {
+/** Beide Teams stimmen für den ersten Terminvorschlag: der Termin steht, die Hallen werden angefragt, das Veto beginnt. */
+async function scheduled() {
   const m = await matchedRaw();
+  const [first] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, m.match.id)).orderBy(matchOptions.startsAt);
+  await voteOption(m.a.id, m.match.id, first.id);
+  await voteOption(m.b.id, m.match.id, first.id);
+  return { ...m, first, match: (await db.select().from(matches).where(eq(matches.id, m.match.id)))[0] };
+}
+
+async function matched() {
+  const m = await scheduled();
   await runVeto(m);
   return { ...m, match: (await db.select().from(matches).where(eq(matches.id, m.match.id)))[0] };
 }
@@ -97,18 +106,17 @@ describe("Warteschlange", () => {
   it("zwei passende Teams werden sofort gepaart: Spiel mit offener Terminwahl, Vorschläge, Admins in der Lobby, Benachrichtigung", async () => {
     const [venue] = await db.insert(venues).values({ name: "E2E Matchmaking-Halle", city: "Essen", isPartner: true }).returning();
     const { a, b, ta, tb, match } = await matchedRaw();
-    expect(match).toMatchObject({ status: "lobby", schedulingOpen: true, visibility: "public", durationMin: 60, vetoStatus: "running" });
+    expect(match).toMatchObject({ status: "lobby", schedulingOpen: true, visibility: "public", durationMin: 60, vetoStatus: "none" });
     expect([match.homeTeamId, match.awayTeamId].sort()).toEqual([ta.id, tb.id].sort());
     expect(match.schedulingDeadline!.getTime()).toBeGreaterThan(Date.now() + 23 * 3_600_000);
 
-    // Erst das Hallen-Veto, Termine gibt es danach
-    expect(await db.select().from(matchOptions).where(eq(matchOptions.matchId, match.id))).toHaveLength(0);
-    const pool = await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, match.id));
-    expect(pool.length).toBeGreaterThanOrEqual(2);
-    expect(pool.length).toBeLessThanOrEqual(7);
-    expect(pool.some((h) => h.venueId === venue.id)).toBe(true); // Hallen der Spielstadt sind im Pool
-    expect([ta.id, tb.id]).toContain(match.vetoTurnTeamId);
-    expect(match.vetoTurnDeadline!.getTime()).toBeGreaterThan(Date.now() + 119 * 60_000);
+    // Erst der Termin: Vorschläge ohne Halle, noch kein Veto
+    const options = await db.select().from(matchOptions).where(eq(matchOptions.matchId, match.id));
+    expect(options.length).toBeGreaterThanOrEqual(1);
+    expect(options.every((o) => o.venueId === null && o.venueText === null)).toBe(true);
+    expect(await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, match.id))).toHaveLength(0);
+    expect(match.vetoTurnTeamId).toBeNull();
+    void venue;
     const admins = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
     expect(admins.map((p) => p.userId).sort()).toEqual([a.id, b.id].sort());
     for (const u of [a, b]) expect((await db.select().from(notifications).where(eq(notifications.userId, u.id))).some((n) => n.title === "Gegner gefunden")).toBe(true);
@@ -136,20 +144,21 @@ describe("Warteschlange", () => {
 });
 
 describe("Hallen-Veto", () => {
-  it("abwechselnd bannen, nur wer dran ist, die letzte Halle wird gewählt und bekommt Termine", async () => {
-    const m = await matchedRaw();
+  it("abwechselnd bannen, nur wer dran ist, die letzte Halle wird gewählt; der Termin steht schon", async () => {
+    const m = await scheduled();
     const [start] = await db.select().from(matches).where(eq(matches.id, m.match.id));
+    expect(start.vetoStatus).toBe("running");
+    expect(start.startsAt.getTime()).toBe(m.first.startsAt.getTime());
     const pool = await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, m.match.id)).orderBy(matchVetoHalls.position);
+    expect(pool.length).toBeGreaterThanOrEqual(2);
+    expect(pool.length).toBeLessThanOrEqual(7);
+    expect(start.vetoTurnDeadline!.getTime()).toBeGreaterThan(Date.now() + 119 * 60_000);
     const first = turnAdmin(m, start.vetoTurnTeamId);
     const second = first.id === m.a.id ? m.b : m.a;
 
     await expect(banHall(second.id, m.match.id, pool[0].venueId)).rejects.toThrow(/nicht dran/);
     await expect(banHall((await makeUser("fremd")).id, m.match.id, pool[0].venueId)).rejects.toThrow(/nicht dran/);
     await expect(banHall(first.id, m.match.id, crypto.randomUUID())).rejects.toThrow(/nicht zur Wahl/);
-    // Terminwahl ist gesperrt, solange das Veto läuft
-    const opt = await db.select().from(matchOptions).where(eq(matchOptions.matchId, m.match.id));
-    expect(opt).toHaveLength(0);
-    await expect(proposeOption(first.id, m.match.id, { startsAt: day(5, 18), venueText: "X" })).rejects.toThrow(/Hallen-Veto/);
 
     await banHall(first.id, m.match.id, pool[0].venueId);
     await expect(banHall(first.id, m.match.id, pool[1].venueId)).rejects.toThrow(/nicht dran/); // jetzt der Gegner
@@ -160,6 +169,7 @@ describe("Hallen-Veto", () => {
     const done = await runVeto(m);
     expect(done.vetoStatus).toBe("done");
     expect(done.vetoTurnTeamId).toBeNull();
+    expect(done.startsAt.getTime()).toBe(m.first.startsAt.getTime()); // der Termin ändert sich nicht mehr
     const halls = await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, m.match.id));
     expect(halls.filter((h) => h.picked)).toHaveLength(1);
     expect(halls.filter((h) => h.bannedByTeam)).toHaveLength(pool.length - 1);
@@ -167,21 +177,15 @@ describe("Hallen-Veto", () => {
     expect(done.venueId).toBe(picked.venueId);
     expect(done.venueText).toBeTruthy();
     expect(done.priceCents).not.toBeNull();
-    // Banns wechselten sich ab
     const bans = halls.filter((h) => h.banOrder).sort((x, y) => x.banOrder! - y.banOrder!);
     bans.forEach((h, i) => expect(h.bannedByTeam).toBe(i % 2 === 0 ? start.vetoTurnTeamId : [m.ta.id, m.tb.id].find((t) => t !== start.vetoTurnTeamId)));
-    // Termine nur noch für die gewählte Halle, Vorschläge können die Halle nicht mehr ändern
-    const options = await db.select().from(matchOptions).where(eq(matchOptions.matchId, m.match.id));
-    expect(options.length).toBeGreaterThanOrEqual(1);
-    expect(options.every((o) => o.venueId === picked.venueId)).toBe(true);
-    await proposeOption(first.id, m.match.id, { startsAt: day(6, 18), venueText: "Andere Halle" });
-    const mine = (await db.select().from(matchOptions).where(eq(matchOptions.matchId, m.match.id))).find((o) => o.proposedByTeam === first.id || o.proposedByTeam === (first.id === m.a.id ? m.ta.id : m.tb.id));
-    expect(mine?.venueId).toBe(picked.venueId);
     await expect(banHall(first.id, m.match.id, pool[2].venueId)).rejects.toThrow(/läuft nicht/);
+    // keine Terminwahl mehr
+    await expect(proposeOption(first.id, m.match.id, { startsAt: day(6, 18) })).rejects.toThrow(/schon fest/);
   });
 
   it("läuft die Zeit ab, bannt das System zufällig für das Team am Zug", async () => {
-    const m = await matchedRaw();
+    const m = await scheduled();
     expect(await advanceVetos()).toBe(0); // Zeit läuft noch
     const [before] = await db.select().from(matches).where(eq(matches.id, m.match.id));
     expect(await advanceVetos(new Date(Date.now() + 3 * 3_600_000))).toBeGreaterThanOrEqual(1);
@@ -195,8 +199,8 @@ describe("Hallen-Veto", () => {
 });
 
 describe("Termin und Ort gemeinsam wählen", () => {
-  it("beide Teams wählen dieselbe Option: Termin, Ort und Preis stehen fest", async () => {
-    const m = await matched();
+  it("beide Teams wählen dieselbe Option: der Termin steht, danach beginnt das Veto", async () => {
+    const m = await matchedRaw();
     const options = await db.select().from(matchOptions).where(eq(matchOptions.matchId, m.match.id));
     const [first, second] = options;
 
@@ -216,22 +220,23 @@ describe("Termin und Ort gemeinsam wählen", () => {
     expect(locked.schedulingOpen).toBe(false);
     expect(locked.schedulingDeadline).toBeNull();
     expect(locked.startsAt.getTime()).toBe(chosen.startsAt.getTime());
-    expect(locked.priceCents).not.toBeNull();
-    for (const u of [m.a, m.b]) expect((await db.select().from(notifications).where(eq(notifications.userId, u.id))).some((n) => n.title === "Termin und Ort stehen fest")).toBe(true);
+    expect(locked.vetoStatus).toBe("running"); // die Hallen ohne Betreiber-Konto bleiben im Rennen
+    expect(locked.venueId).toBeNull();
+    for (const u of [m.a, m.b]) expect((await db.select().from(notifications).where(eq(notifications.userId, u.id))).some((n) => n.title === "Termin steht fest")).toBe(true);
     // danach keine Änderung mehr
     await expect(voteOption(m.a.id, m.match.id, first.id)).rejects.toThrow(/schon fest/);
   });
 
   it("eigener Vorschlag: Regeln, automatische Stimme, Rückzug, Obergrenze", async () => {
-    const m = await matched();
+    const m = await matchedRaw();
     const when = day(5, 18);
-    await expect(proposeOption(m.a.id, m.match.id, { startsAt: new Date(Date.now() + 3_600_000), venueText: "Halle X" })).rejects.toThrow(/24 Stunden/);
-    await expect(proposeOption((await makeUser("o")).id, m.match.id, { startsAt: when, venueText: "Halle X" })).rejects.toThrow(/Team-Admins/);
-    await proposeOption(m.a.id, m.match.id, { startsAt: when, venueText: "Sporthalle Nord" });
-    await expect(proposeOption(m.a.id, m.match.id, { startsAt: when, venueText: "Sporthalle Nord" })).rejects.toThrow(/gibt es schon/);
+    await expect(proposeOption(m.a.id, m.match.id, { startsAt: new Date(Date.now() + 3_600_000) })).rejects.toThrow(/24 Stunden/);
+    await expect(proposeOption((await makeUser("o")).id, m.match.id, { startsAt: when })).rejects.toThrow(/Team-Admins/);
+    await proposeOption(m.a.id, m.match.id, { startsAt: when });
+    await expect(proposeOption(m.a.id, m.match.id, { startsAt: when })).rejects.toThrow(/gibt es schon/);
 
     const mine = (await db.select().from(matchOptions).where(eq(matchOptions.matchId, m.match.id))).find((o) => o.proposedByTeam === m.ta.id)!;
-    expect(mine.venueId).toBe(m.match.venueId); // die Halle steht seit dem Veto fest
+    expect(mine.venueId).toBeNull(); // die Halle kommt erst nach dem Termin
     expect(mine.proposedByTeam).toBe(m.ta.id);
     const votes = await db.select().from(matchOptionVotes).where(eq(matchOptionVotes.matchId, m.match.id));
     expect(votes.find((v) => v.teamId === m.ta.id)?.optionId).toBe(mine.id); // eigene Stimme automatisch
@@ -240,27 +245,27 @@ describe("Termin und Ort gemeinsam wählen", () => {
     await withdrawOption(m.a.id, m.match.id, mine.id);
     expect(await db.select().from(matchOptionVotes).where(eq(matchOptionVotes.optionId, mine.id))).toHaveLength(0);
 
-    for (let i = 0; i < 4; i++) await proposeOption(m.a.id, m.match.id, { startsAt: day(6 + i, 18), venueText: `Ort ${i}` });
-    await expect(proposeOption(m.a.id, m.match.id, { startsAt: day(12, 18), venueText: "Zu viel" })).rejects.toThrow(/höchstens 4/);
+    for (let i = 0; i < 4; i++) await proposeOption(m.a.id, m.match.id, { startsAt: day(6 + i, 18) });
+    await expect(proposeOption(m.a.id, m.match.id, { startsAt: day(12, 18) })).rejects.toThrow(/höchstens 4/);
   });
 
   it("Vorschlag des Gegners annehmen: Termin steht, sobald beide dafür sind", async () => {
-    const m = await matched();
-    await proposeOption(m.b.id, m.match.id, { startsAt: day(7, 19), venueText: "wird ignoriert" });
+    const m = await matchedRaw();
+    await proposeOption(m.b.id, m.match.id, { startsAt: day(7, 19) });
     const o = (await db.select().from(matchOptions).where(eq(matchOptions.matchId, m.match.id))).find((x) => x.proposedByTeam === m.tb.id)!;
     await voteOption(m.a.id, m.match.id, o.id);
     const after = (await db.select().from(matches).where(eq(matches.id, m.match.id)))[0];
     expect(after.schedulingOpen).toBe(false);
-    expect(after.venueText).toBe(m.match.venueText); // die im Veto gewählte Halle
+    expect(after.vetoStatus).toBe("running");
     expect(after.startsAt.getTime()).toBe(o.startsAt.getTime());
   });
 
   it("solange offen: kein Bereit, kein Ort von Hand; nach der Frist wird abgesagt", async () => {
-    const m = await matched();
+    const m = await matchedRaw();
     await expect(setReady(m.a.id, m.match.id, true)).rejects.toThrow(/gemeinsam wählen/);
     await expect(setVenue(m.a.id, m.match.id, "Irgendwo")).rejects.toThrow(/gemeinsam/);
-    expect(await expireScheduling()).toBe(0); // Frist läuft noch
-    expect(await expireScheduling(new Date(Date.now() + 25 * 3_600_000))).toBeGreaterThanOrEqual(1);
+    await db.update(matches).set({ schedulingDeadline: new Date(Date.now() - 1000) }).where(eq(matches.id, m.match.id)); // nur die eigene Lobby ablaufen lassen, nicht echte Daten
+    expect(await expireScheduling()).toBeGreaterThanOrEqual(1);
     const after = (await db.select().from(matches).where(eq(matches.id, m.match.id)))[0];
     expect(after).toMatchObject({ status: "cancelled", schedulingOpen: false });
     expect((await db.select().from(notifications).where(eq(notifications.userId, m.a.id))).some((n) => n.title === "Spiel abgesagt")).toBe(true);
@@ -280,7 +285,7 @@ describe("Offene Suchen und direktes Annehmen", () => {
     await expect(joinQueue(t.b.id, { teamId: t.tb.id, city: "Essen", durationMin: 60, windows: evening(), wantStrengthMin: 4, wantStrengthMax: 2 })).rejects.toThrow(/umgekehrt/);
   });
 
-  it("Team nimmt eine Suche direkt an: Spiel mit Veto, beide Einträge gepaart, Termine aus den Fenstern der Suche", async () => {
+  it("Team nimmt eine Suche direkt an: Spiel mit Terminwahl, beide Einträge gepaart, Termine aus den Fenstern der Suche", async () => {
     const t = await twoTeams();
     await joinQueue(t.a.id, { teamId: t.ta.id, city: "Essen", durationMin: 60, windows: evening(), wantStrengthMin: 1, wantStrengthMax: 5 });
     // das Team von b sucht selbst: die eigene Suche endet mit dem Annehmen
@@ -289,21 +294,14 @@ describe("Offene Suchen und direktes Annehmen", () => {
     const matchId = await acceptSearch(t.b.id, entry.id, t.tb.id);
     const [match] = await db.select().from(matches).where(eq(matches.id, matchId));
     expect([match.homeTeamId, match.awayTeamId].sort()).toEqual([t.ta.id, t.tb.id].sort());
-    expect(match).toMatchObject({ status: "lobby", vetoStatus: "running", durationMin: 60 });
+    expect(match).toMatchObject({ status: "lobby", vetoStatus: "none", schedulingOpen: true, durationMin: 60 });
     const rows = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.matchId, matchId));
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.status === "matched")).toBe(true);
     // die frühere eigene Suche von b (Dortmund) ist beendet
     expect((await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.teamId, t.tb.id))).filter((r) => r.status === "waiting")).toHaveLength(0);
     expect((await listOpenSearches()).some((s) => s.teamId === t.ta.id)).toBe(false);
-    // nach dem Veto gibt es Termine aus den Zeitfenstern der Suche
-    const m = { ...t, match };
-    for (let i = 0; i < 20; i++) {
-      const [cur] = await db.select().from(matches).where(eq(matches.id, matchId));
-      if (cur.vetoStatus !== "running") break;
-      const free = (await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, matchId)).orderBy(matchVetoHalls.position)).find((h) => !h.bannedByTeam)!;
-      await banHall(turnAdmin(m as never, cur.vetoTurnTeamId).id, matchId, free.venueId);
-    }
+    // zuerst gibt es Termine aus den Zeitfenstern der Suche
     expect((await db.select().from(matchOptions).where(eq(matchOptions.matchId, matchId))).length).toBeGreaterThanOrEqual(1);
   });
 

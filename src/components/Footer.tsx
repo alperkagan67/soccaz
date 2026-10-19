@@ -15,12 +15,10 @@ export async function Footer() {
         <Link href="/agb" className="hover:text-ink">{t("footer.terms")}</Link>
         <Link href="/hausordnung" className="hover:text-ink">{t("footer.rules")}</Link>
         <Link href="/matchmaking" className="hover:text-ink">{t("footer.matchmaking")}</Link>
-        <Link href="/ligen" className="hover:text-ink">{t("footer.leagues")}</Link>
-        <Link href="/turniere" className="hover:text-ink">{t("footer.tournaments")}</Link>
-        <Link href="/profitag" className="hover:text-ink">{t("footer.proDay")}</Link>
         <Link href="/spieler" className="hover:text-ink">{t("footer.players")}</Link>
         <Link href="/hallen" className="hover:text-ink">{t("footer.venues")}</Link>
         <Link href="/mitspieler" className="hover:text-ink">{t("footer.freePlayers")}</Link>
+        <Link href="/halle" className="hover:text-ink">Für Hallenbetreiber</Link>
       </nav>
       <LanguageSwitch current={locale} label={t("footer.language")} />
     </footer>

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/ActionForm";
 import { CITIES } from "@/lib/validation";
 import { formatEuro } from "@/lib/money";
-import { addPriceRuleAction, createVenueAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
+import { addPriceRuleAction, createVenueAction, setVenueManagerAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
 import { can } from "@/lib/roles";
 import { requirePermission } from "@/server/session";
 import { listPriceRules, listVenues } from "@/server/venues";
@@ -122,6 +122,12 @@ export default async function VenuesPage() {
                 <p className="text-xs text-muted">{[v.address, v.surface, v.contact, v.hasShowers && "Duschen", v.hasParking && "Parkplätze"].filter(Boolean).join(" · ")}</p>
                 <Rules venueId={v.id} />
                 <PriceForm venueId={v.id} canEdit={canPrices} />
+                <ActionForm action={setVenueManagerAction.bind(null, v.id)} submit={v.managerUserId ? "Betreiber ändern" : "Betreiber zuweisen"} className="flex items-end gap-2" keepOnSuccess>
+                  <div className="flex-1">
+                    <label className="label" htmlFor={`mgr-${v.id}`}>Betreiber (E-Mail des Kontos){v.managerUserId ? ", zugewiesen" : ""}</label>
+                    <input id={`mgr-${v.id}`} name="email" type="email" className="field" placeholder="halle@beispiel.de (leer = entfernen)" />
+                  </div>
+                </ActionForm>
                 {!v.verified && <ActionForm action={verifyVenueAction.bind(null, v.id, true)} submit="Als geprüft markieren" className="space-y-2" keepOnSuccess />}
                 <ActionForm action={toggleVenueAction.bind(null, v.id, !v.active)} submit={v.active ? "Deaktivieren" : "Aktivieren"} className="space-y-2" keepOnSuccess danger={v.active} />
               </li>

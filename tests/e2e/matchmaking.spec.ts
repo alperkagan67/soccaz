@@ -18,7 +18,7 @@ async function cancelWaiting() {
   await query("update matchmaking_queue set status = 'cancelled' where status = 'waiting'");
 }
 
-test("Matchmaking: Warteschlange, Gegner mit Kader sehen, Termin und Ort gemeinsam wählen", async ({ browser }) => {
+test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam wählen, dann Hallen-Veto", async ({ browser }) => {
   await cancelWaiting();
   await seedHalls();
   const a = await (await browser.newContext()).newPage();
@@ -54,18 +54,45 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, Termin und Ort gemeins
   await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
   const lobbyUrl = b.url();
 
-  // Beide Teams sehen Spielstärke, das Hallen-Veto läuft, Bereit gibt es noch nicht
+  // Beide Teams sehen Spielstärke; zuerst wird der Termin gewählt, Veto und Bereit gibt es noch nicht
   a.on("dialog", (d) => void d.accept());
   b.on("dialog", (d) => void d.accept());
-  await expect(b.getByText(/Hallen-Veto läuft/)).toBeVisible();
+  const matchId = lobbyUrl.split("/").pop()!;
+  await expect(b.getByText(/Termin wird noch gewählt/)).toBeVisible();
   await expect(b.getByText(/Elo \d+/).first()).toBeVisible();
   await expect(b.getByRole("button", { name: "Bereit" })).toHaveCount(0);
+  await expect(b.getByTestId("veto")).toHaveCount(0);
+  await expect(b.getByTestId("scheduling")).toBeVisible();
+  await expect(b.getByLabel("Halle", { exact: true })).toHaveCount(0); // Vorschläge betreffen nur Tag und Uhrzeit
+
+  // A stimmt für die erste Option
+  await a.goto(lobbyUrl);
+  await a.waitForLoadState("networkidle");
+  const options = a.getByTestId("option");
+  expect(await options.count()).toBeGreaterThanOrEqual(1);
+  await options.first().getByRole("button", { name: "Dafür stimmen" }).click();
+  await expect(options.first()).toContainText("Deine Wahl");
+  await expect(a.getByTestId("scheduling")).toBeVisible(); // Gegner hat noch nicht gewählt
+
+  // B schlägt einen eigenen Termin vor, A stimmt zu: der Termin steht
+  await b.goto(lobbyUrl);
+  await b.waitForLoadState("networkidle");
+  await b.getByLabel("Anstoß (deutsche Zeit)").fill(futureLocal(5, "19:00"));
+  await b.getByRole("button", { name: "Vorschlag machen" }).click();
+  await expect.poll(async () => (await query("select 1 from match_options where match_id = $1 and proposed_by_team is not null", [matchId])).length).toBe(1);
+
+  await a.reload();
+  await a.waitForLoadState("networkidle");
+  const mine = a.getByTestId("option").filter({ hasText: "Vorschlag von" });
+  await mine.getByRole("button", { name: "Dafür stimmen" }).click();
+  await expect.poll(async () => (await query<{ scheduling_open: boolean }>("select scheduling_open from matches where id = $1", [matchId]))[0]?.scheduling_open).toBe(false);
+
+  // Jetzt das Hallen-Veto (Hallen ohne Betreiber-Konto bleiben im Rennen); nur wer dran ist, sieht Bannen-Knöpfe
+  await b.reload();
+  await expect(b.getByTestId("scheduling")).toHaveCount(0);
   await expect(b.getByTestId("veto")).toBeVisible();
   expect(await b.getByTestId("hall").count()).toBeGreaterThanOrEqual(2);
-  await expect(b.getByTestId("scheduling")).toHaveCount(0); // Termine erst nach dem Veto
-
-  // Abwechselnd bannen, bis eine Halle übrig ist (nur wer dran ist, sieht Bannen-Knöpfe)
-  const matchId = lobbyUrl.split("/").pop()!;
+  await expect(b.getByRole("button", { name: "Bereit" })).toHaveCount(0);
   for (let i = 0; i < 12; i++) {
     const done = (await query<{ veto_status: string }>("select veto_status from matches where id = $1", [matchId]))[0].veto_status === "done";
     if (done) break;
@@ -89,33 +116,11 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, Termin und Ort gemeins
   await expect(a.getByTestId("hall").and(a.locator('[data-state="picked"]'))).toHaveCount(1);
   expect(await a.getByTestId("hall").and(a.locator('[data-state="banned"]')).count()).toBeGreaterThanOrEqual(1);
 
-  // Jetzt der Termin: A stimmt für die erste Option
-  await a.waitForLoadState("networkidle");
-  const options = a.getByTestId("option");
-  expect(await options.count()).toBeGreaterThanOrEqual(1);
-  await options.first().getByRole("button", { name: "Dafür stimmen" }).click();
-  await expect(options.first()).toContainText("Deine Wahl");
-  await expect(a.getByTestId("scheduling")).toBeVisible(); // Gegner hat noch nicht gewählt
-
-  // B schlägt einen eigenen Termin vor (die Halle steht fest, es gibt kein Hallenfeld mehr), A stimmt zu
+  // Danach ist alles klar: Bereitmachen ist möglich
   await b.goto(lobbyUrl);
-  await b.waitForLoadState("networkidle");
-  await expect(b.getByLabel("Halle", { exact: true })).toHaveCount(0);
-  await b.getByLabel("Anstoß (deutsche Zeit)").fill(futureLocal(5, "19:00"));
-  await b.getByRole("button", { name: "Vorschlag machen" }).click();
-  await expect.poll(async () => (await query("select 1 from match_options where match_id = $1 and proposed_by_team is not null", [matchId])).length).toBe(1);
-
-  await a.reload();
-  await a.waitForLoadState("networkidle");
-  const mine = a.getByTestId("option").filter({ hasText: "Vorschlag von" });
-  await mine.getByRole("button", { name: "Dafür stimmen" }).click();
-  await expect.poll(async () => (await query<{ scheduling_open: boolean }>("select scheduling_open from matches where id = $1", [matchId]))[0]?.scheduling_open).toBe(false);
-
-  await b.reload();
-  await expect(b.getByTestId("scheduling")).toHaveCount(0);
   await expect(b.getByRole("button", { name: "Bereit" }).first()).toBeVisible();
   await b.goto("/app/benachrichtigungen");
-  await expect(b.getByText("Termin und Ort stehen fest")).toBeVisible();
+  await expect(b.getByText("Termin steht fest")).toBeVisible();
   await expect(b.getByText(/Halle steht fest/).first()).toBeVisible();
 });
 
@@ -200,8 +205,8 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
   await b.waitForLoadState("networkidle");
   await b.getByRole("button", { name: `Gegen ${nameA} antreten` }).click();
   await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
-  await expect(b.getByTestId("veto")).toBeVisible();
-  await expect(b.getByText(/Hallen-Veto läuft/)).toBeVisible();
+  await expect(b.getByTestId("scheduling")).toBeVisible(); // zuerst Tag und Uhrzeit, das Veto folgt danach
+  await expect(b.getByText(/Termin wird noch gewählt/)).toBeVisible();
 
   // die Suche ist weg
   await a.goto("/suche");

@@ -2,9 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matchRequests, matches, notifications } from "@/db/schema";
+import { matchOptions } from "@/db/schema-matchmaking";
 import { venues } from "@/db/schema-finance";
 import { acceptChallenge, challengeTeam, convertLegacyChallenges, declineChallenge, pendingChallengeMatches } from "@/server/challenges";
-import { expireScheduling, proposeOption } from "@/server/scheduling";
+import { expireScheduling, proposeOption, voteOption } from "@/server/scheduling";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 beforeAll(async () => {
@@ -42,17 +43,23 @@ describe("Direkt-Herausforderung", () => {
     expect((await pendingChallengeMatches(d.b.id)).map((x) => x.id)).toContain(id);
   });
 
-  it("solange nicht angenommen: keine Terminwahl; nur das Zielteam nimmt an, dann beginnt das Hallen-Veto", async () => {
+  it("solange nicht angenommen: keine Terminwahl; nur das Zielteam nimmt an, dann einigen sich beide auf den Termin, danach folgen Hallen und Veto", async () => {
     const d = await duel();
     const id = await challengeTeam(d.a.id, d.ta.id, d.tb.id);
-    await expect(proposeOption(d.a.id, id, { startsAt: new Date(Date.now() + 5 * 86_400_000), venueText: "X" })).rejects.toThrow(/herausgeforderte Team annehmen/);
+    await expect(proposeOption(d.a.id, id, { startsAt: new Date(Date.now() + 5 * 86_400_000) })).rejects.toThrow(/herausgeforderte Team annehmen/);
     await expect(acceptChallenge(d.a.id, id)).rejects.toThrow(/herausgeforderten Teams/); // der Absender kann nicht selbst annehmen
     await expect(acceptChallenge((await makeUser("fremd")).id, id)).rejects.toThrow(/herausgeforderten Teams/);
 
     await acceptChallenge(d.b.id, id);
     const [m] = await db.select().from(matches).where(eq(matches.id, id));
-    expect(m).toMatchObject({ challengeStatus: "accepted", vetoStatus: "running" });
-    expect([d.ta.id, d.tb.id]).toContain(m.vetoTurnTeamId);
+    expect(m).toMatchObject({ challengeStatus: "accepted", vetoStatus: "none", schedulingOpen: true }); // zuerst der Termin
+    const when = new Date(Date.now() + 5 * 86_400_000);
+    await proposeOption(d.a.id, id, { startsAt: when });
+    const [opt] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, id));
+    await voteOption(d.b.id, id, opt.id);
+    const [locked] = await db.select().from(matches).where(eq(matches.id, id));
+    expect(locked).toMatchObject({ schedulingOpen: false, vetoStatus: "running" });
+    expect([d.ta.id, d.tb.id]).toContain(locked.vetoTurnTeamId);
     expect((await db.select().from(notifications).where(eq(notifications.userId, d.a.id))).some((n) => n.title === "Herausforderung angenommen")).toBe(true);
     await expect(acceptChallenge(d.b.id, id)).rejects.toThrow(/nicht mehr offen/);
   });
@@ -89,6 +96,6 @@ describe("Direkt-Herausforderung", () => {
     expect((await db.select().from(matchRequests).where(eq(matchRequests.id, r.id)))[0].status).toBe("matched");
     expect(await convertLegacyChallenges()).toBe(0);
     await acceptChallenge(d.b.id, m.id);
-    expect((await db.select().from(matches).where(eq(matches.id, m.id)))[0].vetoStatus).toBe("running");
+    expect((await db.select().from(matches).where(eq(matches.id, m.id)))[0].vetoStatus).toBe("none");
   });
 });

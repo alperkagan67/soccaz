@@ -1,6 +1,6 @@
 import { and, asc, count, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { matches, teamMembers } from "@/db/schema";
+import { matches, teamMembers, teams } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { matchOptions, matchOptionVotes } from "@/db/schema-matchmaking";
 import { agreedOption, optionStillValid } from "@/lib/matchmaking";
@@ -8,9 +8,9 @@ import { audit } from "./audit";
 import { cancelMatchTx } from "./lobby";
 import { teamName } from "./names";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
-import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { DomainError } from "./teams";
+import { startHallCheck } from "./veto";
 import type { Tx } from "./tx";
 
 export const MAX_OPTIONS_PER_TEAM = 4;
@@ -22,7 +22,6 @@ async function lockOpenMatch(tx: Tx, matchId: string): Promise<MatchRow> {
   if (!match) throw new DomainError("Spiel nicht gefunden.");
   if (match.status !== "lobby" || !match.schedulingOpen) throw new DomainError("Termin und Ort stehen schon fest oder das Spiel läuft nicht mehr.");
   if (match.challengeStatus === "pending") throw new DomainError("Erst muss das herausgeforderte Team annehmen.");
-  if (match.vetoStatus === "running") throw new DomainError("Erst muss das Hallen-Veto abgeschlossen sein.");
   return match;
 }
 
@@ -45,40 +44,26 @@ export async function insertOptions(tx: Tx, matchId: string, items: { startsAt: 
     .returning();
 }
 
-export async function proposeOption(userId: string, matchId: string, input: { startsAt: Date; venueId?: string | null; venueText?: string }) {
+export async function proposeOption(userId: string, matchId: string, input: { startsAt: Date }) {
   await db.transaction(async (tx) => {
     const match = await lockOpenMatch(tx, matchId);
     const teamId = await adminTeam(tx, userId, match);
     if (!optionStillValid(input.startsAt, new Date())) throw new DomainError("Der Termin muss mindestens 24 Stunden in der Zukunft liegen.");
-    const text = input.venueText?.trim().slice(0, 120) || null;
-    let venueName: string | null = text;
-    let venueId: string | null = null;
-    if (match.vetoStatus === "done" && match.venueId) {
-      // Die Halle wurde im Veto gewählt: Vorschläge betreffen nur noch die Zeit
-      venueId = match.venueId;
-      venueName = match.venueText;
-    } else if (input.venueId) {
-      const [v] = await tx.select({ id: venues.id, name: venues.name, active: venues.active }).from(venues).where(eq(venues.id, input.venueId));
-      if (!v || !v.active) throw new DomainError("Diese Halle gibt es nicht.");
-      venueId = v.id;
-      venueName = v.name;
-    }
-    if (!venueName) throw new DomainError("Bitte wähle eine Halle oder gib einen Ort an.");
     const [{ n }] = await tx.select({ n: count() }).from(matchOptions).where(and(eq(matchOptions.matchId, matchId), eq(matchOptions.proposedByTeam, teamId)));
     if (n >= MAX_OPTIONS_PER_TEAM) throw new DomainError(`Ihr könnt höchstens ${MAX_OPTIONS_PER_TEAM} Vorschläge machen.`);
     const dup = await tx
       .select({ id: matchOptions.id })
       .from(matchOptions)
-      .where(and(eq(matchOptions.matchId, matchId), eq(matchOptions.startsAt, input.startsAt), venueId ? eq(matchOptions.venueId, venueId) : eq(matchOptions.venueText, venueName)));
+      .where(and(eq(matchOptions.matchId, matchId), eq(matchOptions.startsAt, input.startsAt)));
     if (dup.length > 0) throw new DomainError("Diesen Vorschlag gibt es schon.");
 
-    const [option] = await insertOptions(tx, matchId, [{ startsAt: input.startsAt, venueId, venueText: venueName, teamId }]);
+    const [option] = await insertOptions(tx, matchId, [{ startsAt: input.startsAt, teamId }]);
     // Wer noch nicht gewählt hat, stimmt mit dem eigenen Vorschlag
     await tx.insert(matchOptionVotes).values({ matchId, teamId, optionId: option.id, votedBy: userId }).onConflictDoNothing();
-    await audit(userId, "scheduling.propose", "match", matchId, { after: { optionId: option.id, startsAt: input.startsAt, venue: venueName } }, tx);
+    await audit(userId, "scheduling.propose", "match", matchId, { after: { optionId: option.id, startsAt: input.startsAt } }, tx);
     await notifyUsers(
       await teamAdminIds(tx, teamId === match.homeTeamId ? match.awayTeamId : match.homeTeamId),
-      { type: "match.found", title: "Neuer Terminvorschlag", body: `${await teamName(tx, teamId)} schlägt einen Termin und Ort vor. Bitte wählt gemeinsam.`, url: `/lobby/${matchId}` },
+      { type: "match.found", title: "Neuer Terminvorschlag", body: `${await teamName(tx, teamId)} schlägt einen Termin vor. Bitte wählt gemeinsam.`, url: `/lobby/${matchId}` },
       tx,
     );
     await lockIfAgreed(tx, match);
@@ -131,18 +116,16 @@ async function lockIfAgreed(tx: Tx, match: MatchRow): Promise<boolean> {
   const [o] = await tx.select().from(matchOptions).where(eq(matchOptions.id, id));
   if (!o || !optionStillValid(o.startsAt, new Date())) return false;
 
-  const price = await priceFor(tx, o.venueId, match.durationMin);
-  await tx
-    .update(matches)
-    .set({ startsAt: o.startsAt, venueId: o.venueId, venueText: o.venueText, priceCents: price?.priceCents ?? null, costCents: price?.costCents ?? null, schedulingOpen: false, schedulingDeadline: null })
-    .where(eq(matches.id, match.id));
-  await audit(null, "scheduling.locked", "match", match.id, { after: { optionId: id, startsAt: o.startsAt, venue: o.venueText } }, tx);
+  await tx.update(matches).set({ startsAt: o.startsAt, schedulingOpen: false, schedulingDeadline: null }).where(eq(matches.id, match.id));
+  await audit(null, "scheduling.locked", "match", match.id, { after: { optionId: id, startsAt: o.startsAt } }, tx);
   const when = o.startsAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   await notifyUsers(
     [...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId)), ...(await matchParticipantIds(tx, match.id))],
-    { type: "match.scheduled", title: "Termin und Ort stehen fest", body: `${when} Uhr${o.venueText ? `, ${o.venueText}` : ""}. Macht euch in der Lobby bereit.`, url: `/lobby/${match.id}` },
+    { type: "match.scheduled", title: "Termin steht fest", body: `${when} Uhr. Als Nächstes fragen wir die Hallen an, danach folgt das Veto.`, url: `/lobby/${match.id}` },
     tx,
   );
+  const [home] = await tx.select({ city: teams.city }).from(teams).where(eq(teams.id, match.homeTeamId));
+  await startHallCheck(tx, { ...match, startsAt: o.startsAt, schedulingOpen: false }, home?.city ?? "Andere (NRW)");
   return true;
 }
 

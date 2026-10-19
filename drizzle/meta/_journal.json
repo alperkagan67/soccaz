@@ -162,6 +162,13 @@
       "when": 1792436924474,
       "tag": "0022_empty_guardsmen",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792439712903,
+      "tag": "0023_swift_omega_red",
+      "breakpoints": true
     }
   ]
 }

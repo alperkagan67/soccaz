@@ -13,7 +13,7 @@ test("Startseite erklärt die Plattform in vier Schritten mit Preis und Zahlen",
   await page.goto("/");
   const how = page.getByTestId("how-it-works");
   await expect(how.getByRole("heading", { name: "So funktioniert Socaz" })).toBeVisible();
-  for (const step of ["Team gründen", "Gegner finden", "Hallen bannen, Termin wählen", "Spielen und zählen"]) await expect(how.getByText(step, { exact: true })).toBeVisible();
+  for (const step of ["Team gründen", "Gegner finden", "Termin wählen, Halle bannen", "Spielen und zählen"]) await expect(how.getByText(step, { exact: true })).toBeVisible();
   await expect(how.getByText(/80,00/)).toBeVisible(); // Hallenpreis aus den Preisregeln
   await expect(page.getByTestId("platform-stats")).toContainText("Teams");
   await how.getByRole("link", { name: /Hilfe und Fragen/ }).click();

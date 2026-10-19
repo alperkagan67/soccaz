@@ -72,3 +72,18 @@ export const matchVetoHalls = pgTable(
   },
   (t) => [primaryKey({ columns: [t.matchId, t.venueId] })],
 );
+
+/** Anfrage an eine Halle, ob sie zum vereinbarten Termin frei ist. Hallen ohne Betreiber-Konto (unmanaged) können nicht antworten und bleiben im Rennen. */
+export const matchHallRequests = pgTable(
+  "match_hall_requests",
+  {
+    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    venueId: uuid("venue_id").notNull(),
+    position: integer("position").notNull(),
+    status: text("status").$type<"pending" | "confirmed" | "declined" | "unmanaged">().notNull(),
+    answeredBy: uuid("answered_by").references(() => users.id, { onDelete: "set null" }),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.matchId, t.venueId] })],
+);

@@ -51,6 +51,7 @@ export const venues = pgTable("venues", {
   website: text("website"),
   verified: boolean("verified").notNull().default(true), // false = Angaben aus OpenStreetMap, Buchbarkeit und Preis ungeprüft
   active: boolean("active").notNull().default(true),
+  managerUserId: uuid("manager_user_id"), // Hallenbetreiber: bestätigt Spielanfragen für diese Halle
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

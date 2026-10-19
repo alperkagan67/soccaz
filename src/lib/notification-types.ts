@@ -3,6 +3,7 @@ export type NotificationType =
   | "request.challenge"
   | "match.found"
   | "veto.turn"
+  | "hall.request"
   | "match.scheduled"
   | "player.request"
   | "team.joined"
@@ -23,6 +24,7 @@ export type NotificationType =
 export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email: boolean; optional: boolean }> = {
   "request.accepted": { label: "Deine Spielsuche wurde angenommen", email: true, optional: true },
   "player.request": { label: "Ein Team fragt dich als Mitspieler an", email: true, optional: true },
+  "hall.request": { label: "Neue Spielanfrage für deine Halle", email: true, optional: false },
   "veto.turn": { label: "Du bist beim Hallen-Veto dran", email: true, optional: false },
   "match.found": { label: "Gegner im Matchmaking gefunden", email: true, optional: false },
   "match.scheduled": { label: "Termin und Ort stehen fest", email: true, optional: false },
