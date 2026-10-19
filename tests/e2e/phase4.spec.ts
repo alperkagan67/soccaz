@@ -140,7 +140,7 @@ test("Turnier: Veranstalter legt an, Teams melden sich an, K.-o.-System bis zum 
   await org.getByLabel("Tag").fill(futureLocal(5).slice(0, 10));
   await org.getByLabel("Höchstens Teams").fill("4");
   await org.getByRole("button", { name: "Turnier anlegen" }).click();
-  await expect(org).toHaveURL(/\/turniere\/[0-9a-f-]{36}$/);
+  await expect(org).toHaveURL(/\/turniere\/[0-9a-f-]{36}$/, { timeout: 40_000 }); // erste Kompilierung der Seite kann dauern
   const url = org.url();
 
   // vier Teams melden sich an
