@@ -6,11 +6,18 @@ import { matchRequests, teams } from "@/db/schema";
 import { formatDateTime } from "@/lib/time";
 import { HowItWorks } from "@/components/HowItWorks";
 import { getT } from "@/server/locale";
+import { OpenSearches } from "@/components/OpenSearches";
+import { listOpenSearches, teamElo } from "@/server/matchmaking";
+import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 import { activeSponsors } from "@/server/sponsors";
 
 async function OpenRequests() {
   const { t } = await getT();
+  const user = await getCurrentUser();
+  const searches = await listOpenSearches();
+  const adminTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
+  const mine = await Promise.all(adminTeams.map(async (x) => ({ id: x.id, name: x.name, elo: await teamElo(x.id), strength: x.strength })));
   const open = await db
     .select({
       id: matchRequests.id,
@@ -25,10 +32,20 @@ async function OpenRequests() {
     .orderBy(asc(matchRequests.startsAt))
     .limit(10);
 
-  if (open.length === 0) {
+  if (open.length === 0 && searches.length === 0) {
     return <p className="card text-muted">{t("home.noRequests")}</p>;
   }
   return (
+    <div className="space-y-4">
+      {searches.length > 0 && (
+        <div className="space-y-2" data-testid="home-searches">
+          <h3 className="text-sm font-semibold text-muted">Teams mit flexibler Zeit suchen einen Gegner</h3>
+          <OpenSearches searches={searches.slice(0, 6)} mine={mine} myWaitingTeamIds={adminTeams.map((x) => x.id)} loggedIn={Boolean(user)} />
+          {searches.length > 6 && <Link href="/matchmaking#offen" className="text-sm text-green underline">Alle {searches.length} offenen Suchen ansehen</Link>}
+        </div>
+      )}
+      {open.length > 0 && <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-muted">Spielsuchen mit festem Termin</h3>
     <ul className="space-y-2">
       {open.map((r) => (
         <li key={r.id} className="card">
@@ -39,6 +56,8 @@ async function OpenRequests() {
         </li>
       ))}
     </ul>
+      </div>}
+    </div>
   );
 }
 

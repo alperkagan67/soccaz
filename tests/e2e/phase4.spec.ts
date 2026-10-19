@@ -58,7 +58,7 @@ test("Liga: anlegen, Teams treten bei, Tabelle, Meister", async ({ browser }) =>
   // Team A tritt selbst bei, Team B wird vom Admin hinzugefügt
   await a.goto(`/ligen/${leagueId}`);
   await a.getByRole("button", { name: "Anmelden" }).click();
-  await expect(a.getByRole("button", { name: "Abmelden" })).toBeVisible();
+  await expect(a.getByRole("main").getByRole("button", { name: "Abmelden" })).toBeVisible();
   await card.getByLabel(/Team \(Name aus der Adresse/).fill(await slugOf(nameB));
   await card.getByRole("button", { name: "Team hinzufügen" }).click();
   await expect(card.getByText("Gespeichert.")).toBeVisible();
@@ -226,7 +226,9 @@ test("Stadt-Challenge und Ligenübersicht auf der Rangliste", async ({ browser }
   const list = page.getByTestId("city-challenge");
   await expect(list).toContainText("Bochum");
   await expect(list).toContainText("Essen");
-  await expect(list.getByRole("listitem").first()).toContainText("Bochum"); // 2 Siege gegen 1
+  // Bochum (2 Siege) steht vor Essen (1 Sieg); andere Testdaten im Monat dürfen dazwischen stehen
+  const texts = await list.getByRole("listitem").allInnerTexts();
+  expect(texts.findIndex((t) => t.includes("Bochum"))).toBeLessThan(texts.findIndex((t) => t.includes("Essen")));
   await page.goto("/ligen");
   await expect(page.getByRole("heading", { name: "Ligen" })).toBeVisible();
   await page.goto("/turniere");

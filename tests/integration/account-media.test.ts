@@ -90,6 +90,19 @@ describe("Profil, Export und Konto löschen", () => {
     expect((await db.select().from(users).where(eq(users.id, u.id)))[0]).toMatchObject({ name: "Neuer Name", position: "Angriff", profilePublic: false });
   });
 
+  it("Spielerprofil: Spitzname, Nummer, Fuß, Verein, Farbe werden geprüft und gespeichert", async () => {
+    const u = await makeUser("gamer");
+    const base = { name: "Gamer Test", city: "Essen", position: "Angriff", profilePublic: true };
+    await expect(updateProfile(u.id, { ...base, shirtNumber: 100 })).rejects.toThrow(/1 und 99/);
+    await expect(updateProfile(u.id, { ...base, nickname: "x".repeat(25) })).rejects.toThrow(/Spitzname/);
+    await expect(updateProfile(u.id, { ...base, favoriteClub: "x".repeat(41) })).rejects.toThrow(/Lieblingsverein/);
+    await updateProfile(u.id, { ...base, nickname: "  Der   Hammer ", shirtNumber: "10", strongFoot: "links", favoriteClub: "FC Schalke", accentColor: "violet" });
+    expect((await db.select().from(users).where(eq(users.id, u.id)))[0]).toMatchObject({ nickname: "Der Hammer", shirtNumber: 10, strongFoot: "links", favoriteClub: "FC Schalke", accentColor: "violet" });
+    // ungültige Auswahl wird ignoriert statt gespeichert
+    await updateProfile(u.id, { ...base, accentColor: "neon", strongFoot: "hinten" });
+    expect((await db.select().from(users).where(eq(users.id, u.id)))[0]).toMatchObject({ accentColor: null, strongFoot: null, nickname: null, shirtNumber: null });
+  });
+
   it("Datenexport enthält die eigenen Daten, nicht die anderer", async () => {
     const u = await makeUser("export");
     const v = await makeUser("export-other");

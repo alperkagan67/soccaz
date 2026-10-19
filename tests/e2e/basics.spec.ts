@@ -158,3 +158,91 @@ test("Profile: Steckbrief, Form, Elo-Verlauf, Direktvergleich", async ({ browser
   await b.goto(`/teams/${teamA.slug}`);
   await expect(b.getByTestId("head-to-head")).toContainText("1 Siege, 0 Remis, 1 Niederlagen");
 });
+
+test("Kopfleiste: Konto-Menü mit Profil, Einstellungen und Abmelden", async ({ browser }) => {
+  const p = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
+  await newUser(p, "menu");
+  const id = (await query<{ id: string }>("select id from users where email = $1", [`menu-${run}@test.local`]))[0].id;
+  await p.waitForLoadState("networkidle");
+  await p.getByTestId("user-menu-button").click();
+  const menu = p.getByTestId("user-menu");
+  for (const item of ["Mein Profil", "Mein Bereich", "Guthaben", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"]) await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Mein Profil" }).click();
+  await expect(p).toHaveURL(new RegExp(`/spieler/${id}$`));
+  // Escape schließt das Menü
+  await p.getByTestId("user-menu-button").click();
+  await expect(p.getByTestId("user-menu")).toBeVisible();
+  await p.keyboard.press("Escape");
+  await expect(p.getByTestId("user-menu")).toHaveCount(0);
+  await p.getByTestId("user-menu-button").click();
+  await p.getByTestId("user-menu").getByRole("menuitem", { name: "Abmelden" }).click();
+  await expect(p.getByRole("link", { name: "Anmelden" }).first()).toBeVisible({ timeout: 30_000 });
+});
+
+test("Spielerprofil wie ein Gamer-Profil: Spitzname, Nummer, Farbe, kommende und vergangene Spiele", async ({ browser }) => {
+  const a = await (await browser.newContext()).newPage();
+  await newUser(a, "gam");
+  const nameA = `Gamer Team ${run}`;
+  await createTeam(a, nameA);
+  const id = (await query<{ id: string }>("select id from users where email = $1", [`gam-${run}@test.local`]))[0].id;
+  const team = (await query<{ id: string }>("select id from teams where name = $1", [nameA]))[0].id;
+  const rival = (await query<{ id: string }>("insert into teams (name, slug, city, created_by) values ($1, $2, 'Essen', $3) returning id", [`Gamer Rivale ${run}`, `e2e-gamer-${run}`, id]))[0].id;
+
+  await a.goto("/app/einstellungen");
+  await a.waitForLoadState("networkidle");
+  await a.getByLabel("Spitzname").fill("Der Hammer");
+  await a.getByLabel("Rückennummer").fill("10");
+  await a.getByLabel("Starker Fuß").selectOption("links");
+  await a.getByLabel("Lieblingsverein").fill("FC Schalke");
+  await a.getByText("Violett").evaluate((el) => (el.closest("label")!.querySelector("input") as HTMLInputElement).click());
+  await a.getByRole("button", { name: "Profil speichern" }).click();
+  await expect(a.getByText("Gespeichert.").first()).toBeVisible();
+
+  // ein kommendes Spiel und zwölf gespielte (zwei Seiten Verlauf)
+  const upcoming = (await query<{ id: string }>("insert into matches (home_team_id, away_team_id, starts_at, duration_min, status) values ($1, $2, now() + interval '3 days', 60, 'confirmed') returning id", [team, rival]))[0].id;
+  await query("insert into match_participants (match_id, user_id, team_id) values ($1, $2, $3)", [upcoming, id, team]);
+  for (let i = 0; i < 12; i++) {
+    const m = (await query<{ id: string }>("insert into matches (home_team_id, away_team_id, starts_at, duration_min, status, finalized_at) values ($1, $2, now() - make_interval(days => $3), 60, 'played', now()) returning id", [team, rival, i + 1]))[0].id;
+    await query("insert into match_results (match_id, home_score, away_score, confirmed_home, confirmed_away) values ($1, $2, 1, true, true)", [m, i]);
+    await query("insert into match_participants (match_id, user_id, team_id) values ($1, $2, $3)", [m, id, team]);
+  }
+
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto(`/spieler/${id}`);
+  await expect(anon.getByTestId("nickname")).toContainText("Der Hammer");
+  const card = anon.getByTestId("gamer-card");
+  await expect(card).toContainText("Nr. 10");
+  await expect(card).toContainText("Starker Fuß: links");
+  await expect(card).toContainText("Lieblingsverein: FC Schalke");
+  await expect(card).toHaveCSS("border-top-color", /./);
+  await expect(anon.getByTestId("upcoming-match")).toHaveCount(1);
+  await expect(anon.getByTestId("upcoming-match")).toContainText(`${nameA} gegen Gamer Rivale ${run}`);
+  await expect(anon.getByTestId("past-match")).toHaveCount(10);
+  await anon.getByRole("link", { name: "Ältere" }).click();
+  await expect(anon).toHaveURL(/seite=2/);
+  await expect(anon.getByTestId("past-match")).toHaveCount(2);
+  await expect(anon.getByRole("link", { name: "Neuere" })).toBeVisible();
+});
+
+test("Startseite zeigt offene Matchmaking-Suchen für alle, mit Anmelden zum Antreten", async ({ browser }) => {
+  const a = await (await browser.newContext()).newPage();
+  await newUser(a, "hom");
+  const nameA = `Home Suche ${run}`;
+  await createTeam(a, nameA);
+  const teamId = (await query<{ id: string }>("select id from teams where name = $1", [nameA]))[0].id;
+  const userId = (await query<{ id: string }>("select id from users where email = $1", [`hom-${run}@test.local`]))[0].id;
+  await query("update matchmaking_queue set status = 'cancelled' where status = 'waiting'");
+  const from = new Date(Date.now() + 3 * 86_400_000);
+  from.setUTCHours(17, 0, 0, 0);
+  const to = new Date(from.getTime() + 3 * 3_600_000);
+  await query("insert into matchmaking_queue (team_id, created_by, city, duration_min, windows, note, expires_at) values ($1, $2, 'Essen', 60, $3::jsonb, 'Locker, bitte pünktlich', now() + interval '2 days')", [teamId, userId, JSON.stringify([{ from: from.toISOString(), to: to.toISOString() }])]);
+
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto("/");
+  const card = anon.getByTestId("home-searches").getByTestId("open-search").filter({ hasText: nameA });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Elo");
+  await expect(card).toContainText("Locker, bitte pünktlich");
+  await expect(card.getByRole("link", { name: "Anmelden und antreten" })).toBeVisible();
+  await query("update matchmaking_queue set status = 'cancelled' where team_id = $1", [teamId]);
+});

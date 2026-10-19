@@ -121,6 +121,7 @@ export async function getPlayerProfile(userId: string, viewer: Viewer) {
     eloHistory: await eloSeries("user", userId),
     winRate: played ? Math.round(((stats?.wins ?? 0) / played) * 100) : null,
     goalsPerGame: played ? Math.round(((stats?.goals ?? 0) / played) * 10) / 10 : null,
+    gamer: { nickname: user.nickname, accentColor: user.accentColor, shirtNumber: user.shirtNumber, favoriteClub: user.favoriteClub, strongFoot: user.strongFoot },
     user: { id: user.id, name: user.name, city: user.city, position: user.position, avatarUrl: user.avatarUrl, isVerifiedPro: user.isVerifiedPro, createdAt: user.createdAt, profilePublic: user.profilePublic },
     stats: stats ?? { matches: 0, wins: 0, draws: 0, losses: 0, goals: 0, yellowCards: 0, redCards: 0, mvps: 0, elo: 1000, cleanStreak: 0, winStreak: 0 },
     badges,
@@ -130,6 +131,72 @@ export async function getPlayerProfile(userId: string, viewer: Viewer) {
     reliability,
     isSelf,
   };
+}
+
+export type ScheduleRow = {
+  matchId: string;
+  startsAt: Date;
+  status: string;
+  teamName: string;
+  opponentName: string;
+  venue: string | null;
+  schedulingOpen: boolean;
+  goalsFor: number | null;
+  goalsAgainst: number | null;
+  outcome: "W" | "D" | "L" | null;
+  goals: number;
+  yellow: number;
+  red: number;
+  mvp: boolean;
+  isPrivate: boolean;
+};
+
+const HISTORY_PAGE = 10;
+
+/**
+ * Spiele einer Person: kommende (Lobby oder bestätigt) und vergangene (gespielt), neueste zuerst, seitenweise.
+ * Fremde sehen nur öffentliche Spiele, die Person selbst und Plattform-Admins alle.
+ */
+export async function playerSchedule(userId: string, seesPrivate: boolean, page = 1) {
+  await connection();
+  const privacy = seesPrivate ? sql`true` : sql`m.visibility = 'public'`;
+  const base = (statusFilter: ReturnType<typeof sql>, order: ReturnType<typeof sql>, limit: number, offset: number) =>
+    db.execute(sql`
+      select m.id as match_id, m.starts_at, m.status, m.venue_text as venue, m.scheduling_open, m.visibility = 'private' as is_private, m.mvp_user_id = ${userId} as mvp,
+        t.name as team_name, o.name as opponent_name,
+        case when mp.team_id = m.home_team_id then r.home_score else r.away_score end as goals_for,
+        case when mp.team_id = m.home_team_id then r.away_score else r.home_score end as goals_against,
+        (select count(*)::int from match_events e where e.match_id = m.id and e.user_id = ${userId} and e.type = 'goal') as goals,
+        (select count(*)::int from match_events e where e.match_id = m.id and e.user_id = ${userId} and e.type = 'yellow_card') as yellow,
+        (select count(*)::int from match_events e where e.match_id = m.id and e.user_id = ${userId} and e.type = 'red_card') as red
+      from match_participants mp
+      join matches m on m.id = mp.match_id
+      join teams t on t.id = mp.team_id
+      join teams o on o.id = case when mp.team_id = m.home_team_id then m.away_team_id else m.home_team_id end
+      left join match_results r on r.match_id = m.id
+      where mp.user_id = ${userId} and mp.team_id is not null and mp.no_show = false and ${statusFilter} and ${privacy}
+      order by ${order} limit ${limit} offset ${offset}`);
+  type Raw = { match_id: string; starts_at: Date; status: string; venue: string | null; scheduling_open: boolean; is_private: boolean; mvp: boolean; team_name: string; opponent_name: string; goals_for: number | null; goals_against: number | null; goals: number; yellow: number; red: number };
+  const map = (r: Raw): ScheduleRow => ({
+    matchId: r.match_id,
+    startsAt: new Date(r.starts_at),
+    status: r.status,
+    teamName: r.team_name,
+    opponentName: r.opponent_name,
+    venue: r.venue,
+    schedulingOpen: r.scheduling_open,
+    goalsFor: r.goals_for,
+    goalsAgainst: r.goals_against,
+    outcome: r.goals_for === null || r.goals_against === null ? null : r.goals_for > r.goals_against ? "W" : r.goals_for === r.goals_against ? "D" : "L",
+    goals: r.goals,
+    yellow: r.yellow,
+    red: r.red,
+    mvp: r.mvp,
+    isPrivate: r.is_private,
+  });
+  const upcoming = (await base(sql`m.status in ('lobby', 'confirmed') and m.starts_at > now()`, sql`m.starts_at asc`, 10, 0)).rows as Raw[];
+  const past = (await base(sql`m.status = 'played'`, sql`m.starts_at desc`, HISTORY_PAGE + 1, (page - 1) * HISTORY_PAGE)).rows as Raw[];
+  return { upcoming: upcoming.map(map), past: past.slice(0, HISTORY_PAGE).map(map), hasMorePast: past.length > HISTORY_PAGE, page };
 }
 
 export async function listPlayers(filter: { q?: string; city?: string; page?: number }) {

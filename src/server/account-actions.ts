@@ -15,6 +15,11 @@ const profileSchema = z.object({
   position: z.string(),
   profilePublic: z.string().optional(),
   bio: z.string().max(2000).optional(),
+  nickname: z.string().max(200).optional(),
+  accentColor: z.string().max(20).optional(),
+  shirtNumber: z.string().max(5).optional(),
+  favoriteClub: z.string().max(200).optional(),
+  strongFoot: z.string().max(20).optional(),
 });
 
 export async function updateProfileAction(_prev: ActionState, formData: FormData): Promise<ActionState> {

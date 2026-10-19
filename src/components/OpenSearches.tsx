@@ -17,7 +17,7 @@ function wanted(min: number | null, max: number | null): string {
  * Offene Suchen im Matchmaking mit allen Angaben, die ein anderes Team für die Entscheidung braucht.
  * `mine` sind die Teams der angemeldeten Person (als Admin), mit denen sie annehmen kann.
  */
-export function OpenSearches({ searches, mine, myWaitingTeamIds }: { searches: OpenSearch[]; mine: { id: string; name: string; elo: number; strength: number }[]; myWaitingTeamIds: string[] }) {
+export function OpenSearches({ searches, mine, myWaitingTeamIds, loggedIn = true }: { searches: OpenSearch[]; mine: { id: string; name: string; elo: number; strength: number }[]; myWaitingTeamIds: string[]; loggedIn?: boolean }) {
   if (searches.length === 0) {
     return (
       <p className="card text-sm text-muted" data-testid="open-searches-empty">
@@ -86,6 +86,14 @@ export function OpenSearches({ searches, mine, myWaitingTeamIds }: { searches: O
               Sucht seit {formatDateTime(s.createdAt)} Uhr · die Suche läuft bis {formatDateTime(s.expiresAt)} Uhr
             </p>
 
+            {!loggedIn && (
+              <Link href={`/anmelden?next=${encodeURIComponent("/matchmaking#offen")}`} className="btn btn-primary w-full sm:w-auto">
+                Anmelden und antreten
+              </Link>
+            )}
+            {loggedIn && !own && candidates.length === 0 && (
+              <p className="border-t border-line pt-3 text-xs text-muted">Um anzutreten, brauchst du ein Team, bei dem du Admin bist.</p>
+            )}
             {!own && candidates.length > 0 && (
               <AcceptSearch entryId={s.id} teams={candidates} opponent={{ name: s.teamName, elo: s.elo, wantMin: s.wantStrengthMin, wantMax: s.wantStrengthMax }} />
             )}

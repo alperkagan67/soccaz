@@ -31,6 +31,11 @@ export const users = pgTable("users", {
   isVerifiedPro: boolean("is_verified_pro").notNull().default(false),
   profilePublic: boolean("profile_public").notNull().default(true),
   bio: text("bio"), // kurzer Steckbrief, höchstens 280 Zeichen
+  nickname: text("nickname"), // Spitzname / Gamertag, höchstens 24 Zeichen
+  accentColor: text("accent_color"), // Profilfarbe (green, cyan, violet, pink, coral, yellow, sky)
+  shirtNumber: integer("shirt_number"), // 1 bis 99
+  favoriteClub: text("favorite_club"),
+  strongFoot: text("strong_foot"), // links | rechts | beidfüßig
   isOrganizer: boolean("is_organizer").notNull().default(false), // darf Turniere gegen Startgeld veranstalten
   locale: text("locale").notNull().default("de"),
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),

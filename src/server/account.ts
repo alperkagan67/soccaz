@@ -5,6 +5,7 @@ import { ledgerEntries, payments, receipts } from "@/db/schema-finance";
 import { comments, media } from "@/db/schema-content";
 import { mvpVotes, playerStats, userBadges, userReliability } from "@/db/schema-community";
 import { CITIES } from "@/lib/validation";
+import { ACCENTS, FEET } from "@/lib/profile-options";
 import { audit } from "./audit";
 import { walletBalance } from "./ledger";
 import { DomainError } from "./teams";
@@ -17,13 +18,27 @@ export function cleanBio(value: string | undefined | null): string | null {
   return text || null;
 }
 
-export async function updateProfile(userId: string, input: { name: string; city: string; position: string; profilePublic: boolean; bio?: string }) {
+const cleanLine = (v: string | undefined, max: number, label: string) => {
+  const t = (v ?? "").replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
+  if (t.length > max) throw new DomainError(`${label}: höchstens ${max} Zeichen.`);
+  return t || null;
+};
+
+export type ProfileInput = { name: string; city: string; position: string; profilePublic: boolean; bio?: string; nickname?: string; accentColor?: string; shirtNumber?: string | number | null; favoriteClub?: string; strongFoot?: string };
+
+export async function updateProfile(userId: string, input: ProfileInput) {
   const bio = cleanBio(input.bio);
+  const nickname = cleanLine(input.nickname, 24, "Spitzname");
+  const favoriteClub = cleanLine(input.favoriteClub, 40, "Lieblingsverein");
+  const accentColor = input.accentColor && input.accentColor in ACCENTS ? input.accentColor : null;
+  const strongFoot = input.strongFoot && (FEET as readonly string[]).includes(input.strongFoot) ? input.strongFoot : null;
+  const rawNumber = input.shirtNumber === undefined || input.shirtNumber === null || input.shirtNumber === "" ? null : Number(input.shirtNumber);
+  if (rawNumber !== null && (!Number.isInteger(rawNumber) || rawNumber < 1 || rawNumber > 99)) throw new DomainError("Die Rückennummer liegt zwischen 1 und 99.");
   const name = input.name.replace(/\s+/g, " ").trim();
   if (name.length < 2 || name.length > 60) throw new DomainError("Der Name braucht 2 bis 60 Zeichen.");
   if (!(CITIES as readonly string[]).includes(input.city)) throw new DomainError("Bitte wähle eine Stadt.");
   if (!POSITIONS.includes(input.position)) throw new DomainError("Bitte wähle eine Position.");
-  await db.update(users).set({ name, city: input.city, position: input.position, profilePublic: input.profilePublic, bio }).where(eq(users.id, userId));
+  await db.update(users).set({ name, city: input.city, position: input.position, profilePublic: input.profilePublic, bio, nickname, accentColor, shirtNumber: rawNumber, favoriteClub, strongFoot }).where(eq(users.id, userId));
   await audit(userId, "profile.update", "user", userId, { after: { city: input.city, position: input.position, profilePublic: input.profilePublic } });
 }
 
@@ -99,6 +114,11 @@ export async function deleteAccount(userId: string) {
         avatarUrl: null,
         city: null,
         bio: null,
+        nickname: null,
+        accentColor: null,
+        shirtNumber: null,
+        favoriteClub: null,
+        strongFoot: null,
         position: null,
         isVerifiedPro: false,
         profilePublic: false,

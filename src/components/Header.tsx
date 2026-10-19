@@ -3,6 +3,7 @@ import Link from "next/link";
 import { signOut } from "@/auth";
 import { can } from "@/lib/roles";
 import { formatEuro } from "@/lib/money";
+import { UserMenu } from "./UserMenu";
 import { walletBalance } from "@/server/ledger";
 import { db } from "@/db";
 import { unreadCount } from "@/server/notifications";
@@ -52,24 +53,19 @@ export async function Header() {
               <Link href="/app/guthaben" className="hidden px-2 text-muted hover:text-ink sm:inline" title={t("nav.wallet")} data-testid="header-wallet">
                 {formatEuro(balance)}
               </Link>
-              {can(user.role, "dashboard") && (
-                <Link href="/admin" className="hidden px-2 text-muted hover:text-ink sm:inline">
-                  {t("nav.admin")}
-                </Link>
-              )}
-              <Link href="/app" className="btn btn-ghost !min-h-9 !px-3">
-                <span className="block max-w-[7rem] truncate">{user.name.split(" ")[0]}</span>
-              </Link>
-              <form
-                action={async () => {
+              <UserMenu
+                name={user.name}
+                userId={user.id}
+                avatarUrl={user.avatarUrl ?? null}
+                balanceText={formatEuro(balance)}
+                unread={unread}
+                showAdmin={can(user.role, "dashboard")}
+                labels={{ profile: t("menu.profile"), area: t("menu.area"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help") }}
+                signOut={async () => {
                   "use server";
                   await signOut({ redirectTo: "/" });
                 }}
-              >
-                <button className="px-2 text-muted hover:text-ink" aria-label={t("nav.signOut")}>
-                  {t("nav.signOut")}
-                </button>
-              </form>
+              />
             </>
           ) : (
             <Link href="/anmelden" className="btn btn-primary !min-h-9 !px-3">
