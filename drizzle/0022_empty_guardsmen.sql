@@ -1,0 +1,1 @@
+ALTER TABLE "matches" ADD COLUMN "challenge_status" text DEFAULT 'none' NOT NULL;

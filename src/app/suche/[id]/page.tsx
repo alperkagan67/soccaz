@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { formatDateTime } from "@/lib/time";
 import { strengthText } from "@/lib/labels";
 import { getCurrentUser } from "@/server/session";
 import { getRequest, myAdminTeams } from "@/server/requests";
 import { db } from "@/db";
-import { teams } from "@/db/schema";
+import { matches, teams } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { teamRoster, teamStrength } from "@/server/roster";
 import { AcceptForm } from "./AcceptForm";
@@ -18,6 +18,12 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
   const { id } = await params;
   const request = await getRequest(id);
   if (!request) notFound();
+
+  // Herausforderungen sind jetzt Lobbys: alte Links führen dorthin
+  if (request.targetTeamId) {
+    const [lobby] = await db.select({ id: matches.id }).from(matches).where(eq(matches.requestId, request.id));
+    if (lobby) redirect(`/lobby/${lobby.id}`);
+  }
 
   const user = await getCurrentUser();
   const adminTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];

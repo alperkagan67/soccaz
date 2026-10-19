@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addParticipant, addTeamMember, closeContexts, createTeam, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
+import { addParticipant, addTeamMember, closeContexts, createTeam, newUser, run, seedUser, testDb } from "./helpers";
 import { query, userIdByEmail } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
@@ -13,7 +13,9 @@ async function slugOf(teamName: string) {
   return (await query<{ slug: string }>("select slug from teams where name = $1", [teamName]))[0].slug;
 }
 
-test("Herausforderung: für alle sichtbar in den offenen Lobbys, nur das Zielteam kann annehmen", async ({ browser }) => {
+test("Herausforderung mit einem Klick: sofort die Lobby, für alle sichtbar, nur das Zielteam nimmt an", async ({ browser }) => {
+  // das Hallen-Veto braucht mindestens zwei Hallen (auf frischer Datenbank gibt es keine)
+  await query("insert into venues (name, city) select 'E2E Duell-Halle ' || g || ' ' || $1, 'Gelsenkirchen' from generate_series(1, 3) g", [run]);
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
   const c = await (await browser.newContext()).newPage();
@@ -26,52 +28,50 @@ test("Herausforderung: für alle sichtbar in den offenen Lobbys, nur das Zieltea
   await createTeam(a, teamA);
   await createTeam(b, teamB);
   await createTeam(c, teamC);
+  b.on("dialog", (d) => void d.accept());
 
+  // ein Klick auf der Teamseite: kein Formular, sondern sofort die Lobby "A VS. B"
   await a.goto(`/teams/${await slugOf(teamB)}`);
-  await a.getByRole("link", { name: "Herausfordern" }).click();
-  await expect(a.getByTestId("challenge-banner")).toContainText(teamB);
-  await a.getByLabel(/Anstoß/).fill(futureLocal(9));
-  await a.getByRole("button", { name: "Herausfordern" }).click();
-  await expect(a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
-  const url = a.url();
-  await expect(a.getByRole("heading", { name: new RegExp(`${teamA}.*fordert.*${teamB}.*heraus`) })).toBeVisible();
+  await a.waitForLoadState("networkidle");
+  await a.getByRole("button", { name: `${teamB} herausfordern` }).click();
+  await expect(a).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+  const lobbyUrl = a.url();
+  await expect(a.getByRole("heading", { name: `${teamA} gegen ${teamB}` })).toBeVisible();
+  await expect(a.getByText("VS.", { exact: true })).toBeVisible();
+  await expect(a.getByTestId("challenge-panel")).toContainText("wartet auf Annahme");
+  await expect(a.getByRole("button", { name: "Herausforderung zurückziehen" })).toBeVisible();
+  await expect(a.getByTestId("light-legend")).toBeVisible(); // Ampel wie in jeder Lobby
 
-  // öffentlich sichtbar (Startseite und Liste), aber annehmen darf nur das herausgeforderte Team
+  // öffentlich sichtbar (Startseite und Liste); ein drittes Team kann annehmen nicht, aber selbst herausfordern
   await c.goto("/suche");
   const card = c.getByTestId("board-entry").filter({ hasText: teamA });
-  await expect(card).toContainText("Herausforderung");
-  await expect(card.getByTestId("challenge-target")).toContainText(teamB);
+  await expect(card).toContainText("Herausforderung: wartet auf Annahme");
   await expect(card.getByTestId("accept-challenge")).toHaveCount(0);
-  // Dritte Teams können eines der beiden Teams selbst herausfordern
-  await expect(card.getByTestId("challenge-team")).toContainText(`${teamA} herausfordern`);
-  await card.getByTestId("challenge-team").click();
-  await expect(c.getByTestId("challenge-banner")).toContainText(teamA);
+  await expect(card.getByRole("button", { name: `${teamA} herausfordern` })).toBeVisible();
   await c.goto("/");
   await expect(c.getByTestId("board-entry").filter({ hasText: teamA })).toBeVisible();
-  await b.goto("/suche");
-  await expect(b.getByTestId("board-entry").filter({ hasText: teamA }).getByTestId("accept-challenge")).toBeVisible();
+  await c.goto(lobbyUrl);
+  await expect(c.getByTestId("challenge-panel")).toContainText(`Nur die Admins von ${teamB}`);
+  await expect(c.getByRole("button", { name: "Herausforderung annehmen" })).toHaveCount(0);
 
-  // Team C darf nicht annehmen
-  await c.goto(url);
-  await expect(c.getByText(/gilt .* Nur deren Team-Admins/)).toBeVisible();
-  await expect(c.getByRole("button", { name: "Spiel annehmen" })).toHaveCount(0);
-
-  // Die Herausforderung steht bei B in "Mein Bereich" und unter Spielsuchen, bei A als ausgehende; bei C nirgends
+  // B: Karte in Mein Bereich, Benachrichtigung, Annehmen in der Lobby
   await b.goto("/app");
-  await expect(b.getByTestId("challenge-incoming")).toContainText(teamA);
-  await b.goto("/suche");
   await expect(b.getByTestId("challenge-incoming")).toContainText(teamA);
   await a.goto("/app");
   await expect(a.getByTestId("challenge-outgoing")).toContainText(teamB);
   await c.goto("/app");
   await expect(c.getByTestId("challenges")).toHaveCount(0);
-
-  // Team B wurde benachrichtigt und nimmt an
   await b.goto("/app/benachrichtigungen");
   await expect(b.getByText("Ihr wurdet herausgefordert")).toBeVisible();
-  await b.goto(url);
-  await b.getByRole("button", { name: "Spiel annehmen" }).click();
-  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
+  await b.goto("/suche");
+  await b.getByTestId("board-entry").filter({ hasText: teamA }).getByTestId("accept-challenge").click();
+  await expect(b).toHaveURL(new RegExp(lobbyUrl.split("/").pop()!));
+  await b.waitForLoadState("networkidle");
+  await b.getByRole("button", { name: "Herausforderung annehmen" }).click();
+  await expect(b.getByTestId("veto")).toBeVisible({ timeout: 30_000 }); // jetzt beginnt das Hallen-Veto
+  await expect(b.getByTestId("challenge-panel")).toHaveCount(0);
+  await a.goto(lobbyUrl);
+  await expect(a.getByTestId("veto")).toBeVisible();
 });
 
 test("Spielerprofil, Teamseite, Rangliste und Spieler des Spiels", async ({ browser }) => {

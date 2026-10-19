@@ -118,6 +118,7 @@ export const matches = pgTable("matches", {
   finalizedAt: timestamp("finalized_at", { withTimezone: true }),
   mvpUserId: uuid("mvp_user_id"),
   mvpClosedAt: timestamp("mvp_closed_at", { withTimezone: true }),
+  challengeStatus: text("challenge_status").$type<"none" | "pending" | "accepted">().notNull().default("none"), // Direkt-Herausforderung: Lobby steht, das Zielteam muss noch annehmen
   vetoStatus: text("veto_status").$type<"none" | "running" | "done">().notNull().default("none"), // Hallen-Veto vor der Terminwahl
   vetoTurnTeamId: uuid("veto_turn_team_id"),
   vetoTurnDeadline: timestamp("veto_turn_deadline", { withTimezone: true }),

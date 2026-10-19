@@ -63,13 +63,13 @@ test("Spielsuche erstellen, in der Liste finden, annehmen, Lobby", async ({ brow
 
   // Liste zeigt die Suche, Filter greifen
   await b.goto("/suche");
-  await expect(b.getByText(teamA)).toBeVisible();
+  await expect(b.getByText(teamA).first()).toBeVisible();
   await b.goto("/suche?durationMin=60");
   await expect(b.getByText(teamA)).toHaveCount(0);
   await b.goto("/suche?durationMin=90");
-  await expect(b.getByText(teamA)).toBeVisible();
+  await expect(b.getByText(teamA).first()).toBeVisible();
   await b.goto(`/suche?date=${futureLocal(10).slice(0, 10)}`);
-  await expect(b.getByText(teamA)).toBeVisible();
+  await expect(b.getByText(teamA).first()).toBeVisible();
 
   // Team B und C öffnen die Seite; B nimmt an
   await b.goto(requestUrl);

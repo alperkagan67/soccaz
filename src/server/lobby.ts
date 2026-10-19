@@ -38,6 +38,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       durationMin: matches.durationMin,
       venueText: matches.venueText,
       schedulingOpen: matches.schedulingOpen,
+      challengeStatus: matches.challengeStatus,
       vetoStatus: matches.vetoStatus,
       vetoTurnTeamId: matches.vetoTurnTeamId,
       vetoTurnDeadline: matches.vetoTurnDeadline,

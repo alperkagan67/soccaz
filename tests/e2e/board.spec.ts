@@ -65,8 +65,8 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   await newUser(c, "bch");
   await createTeam(c, `Board Dritte ${run}`);
   await c.goto("/suche");
-  const link = c.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: `Board Heim ${run}` }).getByTestId("challenge-link").first();
-  await expect(link).toHaveAttribute("href", `/app/suche/neu?gegner=${home.slug}`);
+  // Ein Klick statt Formular: der Button steht auf der Karte
+  await expect(c.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: `Board Heim ${run}` }).getByRole("button", { name: `Board Heim ${run} herausfordern` })).toBeVisible();
 
   // auch auf der Startseite
   await anon.goto("/");

@@ -24,6 +24,7 @@ export type BoardMatch = {
   durationMin: number;
   venue: string | null;
   confirmed: boolean;
+  challengePending: boolean;
   home: BoardTeam;
   away: BoardTeam;
   homePlayers: BoardPlayer[];
@@ -135,6 +136,7 @@ export async function listBoard(filter: BoardFilter = {}): Promise<BoardEntry[]>
         durationMin: m.durationMin,
         venue: m.venueText,
         confirmed,
+        challengePending: m.challengeStatus === "pending",
         home,
         away,
         homePlayers,

@@ -5,6 +5,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { matchParticipants, matchRequests, matches, teamMembers, teams } from "@/db/schema";
 import { addBerlinDays, berlinDayRange, toBerlinInputValue } from "@/lib/time";
 import { audit } from "./audit";
+import { pendingChallengeMatches } from "./challenges";
 import { teamName } from "./names";
 import { priceFor } from "./pricing";
 import { notifyUsers, teamAdminIds } from "./notifications";
@@ -273,7 +274,7 @@ export async function acceptRequest(userId: string, requestId: string, teamId: s
   });
 }
 
-export type ChallengeRow = { id: string; startsAt: Date; durationMin: number; city: string; fromTeam: string; fromSlug: string; toTeam: string; toSlug: string; myTeamId: string; note: string | null };
+export type ChallengeRow = { href?: string; id: string; startsAt: Date; durationMin: number; city: string; fromTeam: string; fromSlug: string; toTeam: string; toSlug: string; myTeamId: string; note: string | null };
 
 /** Herausforderungen, die dein Team bekommen hat (eingehend) und die ihr verschickt habt (ausgehend). Nur offene, nur für Team-Admins. */
 export async function myChallenges(userId: string): Promise<{ incoming: ChallengeRow[]; outgoing: ChallengeRow[] }> {
@@ -311,6 +312,17 @@ export async function myChallenges(userId: string): Promise<{ incoming: Challeng
     const isTarget = (await isAdmin(db, userId, r.toId)) === true;
     const row: ChallengeRow = { id: r.id, startsAt: r.startsAt, durationMin: r.durationMin, city: r.city, fromTeam: r.fromTeam, fromSlug: r.fromSlug, toTeam: r.toTeam, toSlug: r.toSlug, myTeamId: isTarget ? r.toId : r.fromId, note: r.note };
     (isTarget ? incoming : outgoing).push(row);
+  }
+  // Direkt-Herausforderungen (Lobby wartet auf Annahme)
+  const pending = await pendingChallengeMatches(userId);
+  const names = new Map((await db.select({ id: teams.id, name: teams.name, slug: teams.slug }).from(teams)).map((x) => [x.id, x]));
+  for (const m of pending) {
+    const from = names.get(m.home);
+    const to = names.get(m.away);
+    if (!from || !to) continue;
+    const isTarget = (await isAdmin(db, userId, m.away)) === true;
+    const row: ChallengeRow = { href: `/lobby/${m.id}`, id: m.id, startsAt: m.deadline ?? m.startsAt, durationMin: 60, city: "", fromTeam: from.name, fromSlug: from.slug, toTeam: to.name, toSlug: to.slug, myTeamId: isTarget ? m.away : m.home, note: null };
+    (isTarget ? incoming : outgoing).unshift(row);
   }
   return { incoming, outgoing };
 }

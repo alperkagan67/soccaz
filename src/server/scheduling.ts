@@ -21,6 +21,7 @@ async function lockOpenMatch(tx: Tx, matchId: string): Promise<MatchRow> {
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
   if (!match) throw new DomainError("Spiel nicht gefunden.");
   if (match.status !== "lobby" || !match.schedulingOpen) throw new DomainError("Termin und Ort stehen schon fest oder das Spiel läuft nicht mehr.");
+  if (match.challengeStatus === "pending") throw new DomainError("Erst muss das herausgeforderte Team annehmen.");
   if (match.vetoStatus === "running") throw new DomainError("Erst muss das Hallen-Veto abgeschlossen sein.");
   return match;
 }
@@ -176,7 +177,7 @@ export async function expireScheduling(now: Date = new Date()): Promise<number> 
       const [m] = await tx.select().from(matches).where(eq(matches.id, id)).for("update");
       if (!m || !m.schedulingOpen || m.status !== "lobby") return;
       await tx.update(matches).set({ schedulingOpen: false }).where(eq(matches.id, id));
-      await cancelMatchTx(tx, m, null, "Die Teams haben sich nicht rechtzeitig auf Termin und Ort geeinigt.");
+      await cancelMatchTx(tx, m, null, m.challengeStatus === "pending" ? "Die Herausforderung wurde nicht rechtzeitig angenommen." : "Die Teams haben sich nicht rechtzeitig auf Termin und Ort geeinigt.");
       n += 1;
     });
   }

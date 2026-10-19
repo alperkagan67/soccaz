@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import { Comments } from "@/components/Comments";
+import { ChallengeNow } from "@/components/ChallengeNow";
 import { ImageUpload } from "@/components/ImageUpload";
 import { FormChips, Sparkline } from "@/components/Sparkline";
 import { StatTile } from "@/components/Stats";
@@ -76,9 +77,9 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           </Link>
         )}
         {canChallenge && (
-          <Link href={`/app/suche/neu?gegner=${team.slug}`} className="btn btn-primary mt-2">
-            Herausfordern
-          </Link>
+          <div className="pt-2" data-testid="team-challenge">
+            <ChallengeNow target={{ id: team.id, name: team.name }} teams={myTeams.filter((x) => x.id !== team.id).map((x) => ({ id: x.id, name: x.name }))} />
+          </div>
         )}
       </header>
 

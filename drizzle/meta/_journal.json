@@ -155,6 +155,13 @@
       "when": 1792431459195,
       "tag": "0021_new_havok",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792436924474,
+      "tag": "0022_empty_guardsmen",
+      "breakpoints": true
     }
   ]
 }

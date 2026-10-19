@@ -3,6 +3,7 @@ import { STRENGTH_LABELS } from "@/lib/labels";
 import { formatDateTime } from "@/lib/time";
 import type { BoardEntry, BoardMatch, BoardPlayer, BoardSearch, BoardTeam } from "@/server/board";
 import { AcceptSearch } from "./AcceptSearch";
+import { ChallengeNow } from "./ChallengeNow";
 import { LightLegend, PlayerLight } from "./PlayerLight";
 
 type Mine = { id: string; name: string; elo: number; strength: number };
@@ -25,7 +26,8 @@ function wanted(min: number | null, max: number | null): string {
 }
 
 function ChallengeLink({ team, loggedIn, mine }: { team: BoardTeam; loggedIn: boolean; mine: Mine[] }) {
-  const can = mine.some((m) => m.id !== team.id);
+  const others = mine.filter((m) => m.id !== team.id);
+  const can = others.length > 0;
   if (!loggedIn) {
     return (
       <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${team.slug}`)}`} className="text-xs text-green underline">
@@ -34,11 +36,7 @@ function ChallengeLink({ team, loggedIn, mine }: { team: BoardTeam; loggedIn: bo
     );
   }
   if (!can) return null;
-  return (
-    <Link href={`/app/suche/neu?gegner=${team.slug}`} className="text-xs text-green underline" data-testid="challenge-link">
-      Team herausfordern
-    </Link>
-  );
+  return <ChallengeNow target={{ id: team.id, name: team.name }} teams={others.map((m) => ({ id: m.id, name: m.name }))} variant="link" />;
 }
 
 function TeamColumn({ team, players, ready, free, loggedIn, mine }: { team: BoardTeam; players: BoardPlayer[]; ready: number; free: number; loggedIn: boolean; mine: Mine[] }) {
@@ -79,7 +77,8 @@ function TeamColumn({ team, players, ready, free, loggedIn, mine }: { team: Boar
 }
 
 function MatchCard({ m, loggedIn, mine, shareBase }: { m: BoardMatch; loggedIn: boolean; mine: Mine[]; shareBase: string }) {
-  const status = m.vetoRunning ? "Hallen-Veto läuft" : m.schedulingOpen ? "Termin wird gewählt" : m.confirmed ? "Bestätigt" : "Wartet auf Spieler";
+  const targetAdmin = m.challengePending && mine.some((t) => t.id === m.away.id);
+  const status = m.challengePending ? "Herausforderung: wartet auf Annahme" : m.vetoRunning ? "Hallen-Veto läuft" : m.schedulingOpen ? "Termin wird gewählt" : m.confirmed ? "Bestätigt" : "Wartet auf Spieler";
   const tone = m.confirmed ? "text-green" : "text-yellow";
   const url = `${shareBase}/lobby/${m.id}`;
   return (
@@ -106,7 +105,12 @@ function MatchCard({ m, loggedIn, mine, shareBase }: { m: BoardMatch; loggedIn: 
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={`/lobby/${m.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
+        {targetAdmin && (
+          <Link href={`/lobby/${m.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm" data-testid="accept-challenge">
+            Herausforderung annehmen
+          </Link>
+        )}
+        <Link href={`/lobby/${m.id}`} className={targetAdmin ? "btn btn-ghost !min-h-9 !px-3 text-sm" : "btn btn-primary !min-h-9 !px-3 text-sm"}>
           Zur Lobby
         </Link>
         {m.strangers > 0 && <span className="text-xs text-muted">{m.strangers} Ersatzspieler warten auf Zuweisung</span>}
@@ -145,7 +149,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
               Elo {s.team.elo}
               {s.team.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {s.team.strength}/5 · {s.team.members} im Kader
             </p>
-            {!own && !forMe && <ChallengeLink team={s.team} loggedIn={loggedIn} mine={mine} />}
+            {!own && !forMe && !challenge && <ChallengeLink team={s.team} loggedIn={loggedIn} mine={mine} />}
           </div>
           <ul className="space-y-1 text-sm">
             {s.roster.map((p) => (
@@ -204,11 +208,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
             Herausforderung annehmen
           </Link>
         )}
-        {challenge && !forMe && !own && loggedIn && candidates.length > 0 && (
-          <Link href={`/app/suche/neu?gegner=${s.team.slug}`} className="btn btn-primary !min-h-9 !px-3 text-sm" data-testid="challenge-team">
-            {s.team.name} herausfordern
-          </Link>
-        )}
+        {challenge && !forMe && !own && loggedIn && candidates.length > 0 && <ChallengeNow target={{ id: s.team.id, name: s.team.name }} teams={candidates.map((t) => ({ id: t.id, name: t.name }))} />}
         {challenge && !forMe && !own && !loggedIn && (
           <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${s.team.slug}`)}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
             Anmelden und {s.team.name} herausfordern

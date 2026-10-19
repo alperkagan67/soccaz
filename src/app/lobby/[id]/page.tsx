@@ -10,6 +10,7 @@ import { expectedScore } from "@/lib/elo";
 import { canViewLobby, getLobby } from "@/server/lobby";
 import { getScheduling } from "@/server/scheduling";
 import { getVeto } from "@/server/veto";
+import { ChallengePanel } from "./ChallengePanel";
 import { VetoPanel } from "./VetoPanel";
 import { SchedulingPanel } from "./SchedulingPanel";
 import { LiveIndicator } from "@/components/LiveIndicator";
@@ -40,6 +41,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const scheduling = await getScheduling(match);
   const veto = await getVeto(match.id, match.vetoStatus, match.vetoTurnTeamId, match.vetoTurnDeadline);
   const open = Boolean(scheduling);
+  const challengePending = match.challengeStatus === "pending";
   const myAdminTeam = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null;
   const nameOfTeam = (id: string | null) => (id === match.homeId ? match.homeName : id === match.awayId ? match.awayName : "");
 
@@ -71,11 +73,13 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <p className="text-sm text-muted" data-testid="game-number">Spiel #{match.number} · Lobby</p>
           <LiveIndicator eventsUrl={`/api/lobby/${match.id}/events`} />
         </div>
-        <h1 className="text-2xl font-bold">
-          {match.homeName} <span className="text-muted">gegen</span> {match.awayName}
+        <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-bold sm:text-3xl" aria-label={`${match.homeName} gegen ${match.awayName}`}>
+          <span>{match.homeName}</span>
+          <span className="rounded-md bg-green px-2 py-0.5 font-heading text-lg font-extrabold text-black" aria-hidden>VS.</span>
+          <span>{match.awayName}</span>
         </h1>
         <p className="text-muted">
-          {open ? `${match.durationMin} Minuten · ${match.vetoStatus === "running" ? "Hallen-Veto läuft" : "Termin wird noch gewählt"}` : `${formatDateTime(match.startsAt)} Uhr · ${match.durationMin} Minuten`}
+          {open ? `${match.durationMin} Minuten · ${challengePending ? "Wartet auf Annahme" : match.vetoStatus === "running" ? "Hallen-Veto läuft" : "Termin wird noch gewählt"}` : `${formatDateTime(match.startsAt)} Uhr · ${match.durationMin} Minuten`}
           {active && !open && <> · <span className="text-ink"><Countdown startsAtIso={match.startsAt.toISOString()} /></span></>}
         </p>
         <p className={`text-sm font-semibold ${status.tone}`} data-testid="match-status">{status.label}</p>
@@ -92,6 +96,16 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         )}
       </header>
 
+      {challengePending && (
+        <ChallengePanel
+          matchId={match.id}
+          homeName={match.homeName}
+          awayName={match.awayName}
+          role={v.adminOf.includes(match.awayId) ? "target" : v.adminOf.includes(match.homeId) ? "challenger" : "viewer"}
+          deadlineText={match.schedulingDeadline ? `${formatDateTime(match.schedulingDeadline)} Uhr` : "–"}
+        />
+      )}
+
       {veto && (
         <VetoPanel
           matchId={match.id}
@@ -104,7 +118,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
-      {scheduling && match.vetoStatus !== "running" && (
+      {scheduling && !challengePending && match.vetoStatus !== "running" && (
         <SchedulingPanel
           matchId={match.id}
           teams={[{ id: match.homeId, name: match.homeName }, { id: match.awayId, name: match.awayName }]}

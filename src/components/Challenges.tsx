@@ -16,11 +16,11 @@ export function Challenges({ incoming, outgoing }: { incoming: ChallengeRow[]; o
                 <span>
                   <Link href={`/teams/${c.fromSlug}`} className="font-semibold hover:text-green">{c.fromTeam}</Link> fordert <span className="font-semibold">{c.toTeam}</span> heraus
                   <span className="block text-sm text-muted">
-                    {formatDateTime(c.startsAt)} Uhr · {c.durationMin} Min · {c.city}
+                    {c.href ? `Antwort bis ${formatDateTime(c.startsAt)} Uhr` : `${formatDateTime(c.startsAt)} Uhr · ${c.durationMin} Min · ${c.city}`}
                   </span>
                   {c.note && <span className="block text-xs text-muted">{c.note}</span>}
                 </span>
-                <Link href={`/suche/${c.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm">Ansehen und annehmen</Link>
+                <Link href={c.href ?? `/suche/${c.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm">Ansehen und annehmen</Link>
               </li>
             ))}
           </ul>
@@ -35,10 +35,10 @@ export function Challenges({ incoming, outgoing }: { incoming: ChallengeRow[]; o
                 <span>
                   <span className="font-semibold">{c.fromTeam}</span> fordert <Link href={`/teams/${c.toSlug}`} className="font-semibold hover:text-green">{c.toTeam}</Link> heraus
                   <span className="block text-sm text-muted">
-                    {formatDateTime(c.startsAt)} Uhr · {c.durationMin} Min · wartet auf Antwort
+                    {c.href ? `Antwort bis ${formatDateTime(c.startsAt)} Uhr` : `${formatDateTime(c.startsAt)} Uhr · ${c.durationMin} Min`} · wartet auf Antwort
                   </span>
                 </span>
-                <Link href={`/suche/${c.id}`} className="btn btn-ghost !min-h-9 !px-3 text-sm">Öffnen</Link>
+                <Link href={c.href ?? `/suche/${c.id}`} className="btn btn-ghost !min-h-9 !px-3 text-sm">Öffnen</Link>
               </li>
             ))}
           </ul>
