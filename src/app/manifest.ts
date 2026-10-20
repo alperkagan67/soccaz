@@ -19,7 +19,7 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "Gegner suchen", url: "/app/suche/neu" },
+      { name: "Lobby aufmachen", url: "/matchmaking" },
       { name: "Livescore", url: "/spiele" },
       { name: "Meine Spiele", url: "/app" },
     ],

@@ -30,6 +30,8 @@ const day = (offset: number, hour: number) => {
   d.setUTCHours(hour, 0, 0, 0);
   return d;
 };
+/** n-te Viertelstunde im Abendfenster (17 bis 21 Uhr UTC, 3 Tage voraus), für Vorschläge innerhalb des Zeitfensters. */
+const inWindow = (n: number) => new Date(day(3, 17).getTime() + n * 15 * 60_000);
 const evening = (offset = 3) => [{ from: day(offset, 17), to: day(offset, 21) }];
 
 async function twoTeams() {
@@ -42,9 +44,9 @@ async function twoTeams() {
 async function matchedRaw() {
   const t = await twoTeams();
   await joinQueue(t.a.id, { teamId: t.ta.id, city: "Essen", durationMin: 60, windows: evening() });
-  expect(await joinQueue(t.b.id, { teamId: t.tb.id, city: "Essen", durationMin: 60, windows: evening() })).toBeGreaterThanOrEqual(1);
-  const [q] = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.teamId, t.ta.id));
-  const [match] = await db.select().from(matches).where(eq(matches.id, q.matchId!));
+  const [entry] = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.teamId, t.ta.id));
+  const matchId = await acceptSearch(t.b.id, entry.id, t.tb.id); // Team B tritt an: keine automatische Paarung mehr
+  const [match] = await db.select().from(matches).where(eq(matches.id, matchId));
   return { ...t, match };
 }
 
@@ -69,12 +71,6 @@ async function scheduled() {
   await voteOption(m.a.id, m.match.id, first.id);
   await voteOption(m.b.id, m.match.id, first.id);
   return { ...m, first, match: (await db.select().from(matches).where(eq(matches.id, m.match.id)))[0] };
-}
-
-async function matched() {
-  const m = await scheduled();
-  await runVeto(m);
-  return { ...m, match: (await db.select().from(matches).where(eq(matches.id, m.match.id)))[0] };
 }
 
 describe("Warteschlange", () => {
@@ -103,12 +99,13 @@ describe("Warteschlange", () => {
     await leaveQueue(a.id, ta.id);
   });
 
-  it("zwei passende Teams werden sofort gepaart: Spiel mit offener Terminwahl, Vorschläge, Admins in der Lobby, Benachrichtigung", async () => {
+  it("ein Team tritt an: Spiel mit offener Terminwahl im Zeitfenster, Vorschläge, Admins in der Lobby, Benachrichtigung", async () => {
     const [venue] = await db.insert(venues).values({ name: "E2E Matchmaking-Halle", city: "Essen", isPartner: true }).returning();
     const { a, b, ta, tb, match } = await matchedRaw();
     expect(match).toMatchObject({ status: "lobby", schedulingOpen: true, visibility: "public", durationMin: 60, vetoStatus: "none" });
     expect([match.homeTeamId, match.awayTeamId].sort()).toEqual([ta.id, tb.id].sort());
     expect(match.schedulingDeadline!.getTime()).toBeGreaterThan(Date.now() + 23 * 3_600_000);
+    expect(match.timeWindows).toHaveLength(1); // der Tag steht fest, gewählt wird nur die Uhrzeit
 
     // Erst der Termin: Vorschläge ohne Halle, noch kein Veto
     const options = await db.select().from(matchOptions).where(eq(matchOptions.matchId, match.id));
@@ -130,9 +127,10 @@ describe("Warteschlange", () => {
     await db.insert(teamStats).values({ teamId: t.tb.id, elo: 900 });
     await joinQueue(t.a.id, { teamId: t.ta.id, city: "Essen", durationMin: 60, windows: evening() });
     expect(await joinQueue(t.b.id, { teamId: t.tb.id, city: "Essen", durationMin: 60, windows: evening() })).toBe(0);
+    expect(await runMatchmaker(new Date(), true)).toBe(0); // die automatische Paarung gibt es nur auf Wunsch, hier passt der Abstand nicht
     // nach langer Wartezeit wird der Bereich weit genug (Zeit simuliert)
     const later = new Date(Date.now() + 2 * 3_600_000);
-    expect(await runMatchmaker(later)).toBeGreaterThanOrEqual(1);
+    expect(await runMatchmaker(later, true)).toBeGreaterThanOrEqual(1);
   });
 
   it("abgelaufene Einträge werden beendet", async () => {
@@ -229,7 +227,7 @@ describe("Termin und Ort gemeinsam wählen", () => {
 
   it("eigener Vorschlag: Regeln, automatische Stimme, Rückzug, Obergrenze", async () => {
     const m = await matchedRaw();
-    const when = day(5, 18);
+    const when = inWindow(5);
     await expect(proposeOption(m.a.id, m.match.id, { startsAt: new Date(Date.now() + 3_600_000) })).rejects.toThrow(/24 Stunden/);
     await expect(proposeOption((await makeUser("o")).id, m.match.id, { startsAt: when })).rejects.toThrow(/Team-Admins/);
     await proposeOption(m.a.id, m.match.id, { startsAt: when });
@@ -245,13 +243,14 @@ describe("Termin und Ort gemeinsam wählen", () => {
     await withdrawOption(m.a.id, m.match.id, mine.id);
     expect(await db.select().from(matchOptionVotes).where(eq(matchOptionVotes.optionId, mine.id))).toHaveLength(0);
 
-    for (let i = 0; i < 4; i++) await proposeOption(m.a.id, m.match.id, { startsAt: day(6 + i, 18) });
-    await expect(proposeOption(m.a.id, m.match.id, { startsAt: day(12, 18) })).rejects.toThrow(/höchstens 4/);
+    for (const n of [1, 2, 3, 6]) await proposeOption(m.a.id, m.match.id, { startsAt: inWindow(n) });
+    await expect(proposeOption(m.a.id, m.match.id, { startsAt: inWindow(7) })).rejects.toThrow(/höchstens 4/);
+    await expect(proposeOption(m.b.id, m.match.id, { startsAt: day(9, 18) })).rejects.toThrow(/Zeitfenster/); // außerhalb des vereinbarten Tages
   });
 
   it("Vorschlag des Gegners annehmen: Termin steht, sobald beide dafür sind", async () => {
     const m = await matchedRaw();
-    await proposeOption(m.b.id, m.match.id, { startsAt: day(7, 19) });
+    await proposeOption(m.b.id, m.match.id, { startsAt: inWindow(6) });
     const o = (await db.select().from(matchOptions).where(eq(matchOptions.matchId, m.match.id))).find((x) => x.proposedByTeam === m.tb.id)!;
     await voteOption(m.a.id, m.match.id, o.id);
     const after = (await db.select().from(matches).where(eq(matches.id, m.match.id)))[0];

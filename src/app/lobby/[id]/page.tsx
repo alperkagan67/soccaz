@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { formatDateTime } from "@/lib/time";
+import { formatDateTime, formatTime, toBerlinInputValue } from "@/lib/time";
 import { formatEuro } from "@/lib/money";
 import { hasFreeSlot, MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { getCurrentUser } from "@/server/session";
@@ -12,6 +12,8 @@ import { getScheduling } from "@/server/scheduling";
 import { getHallCheck, getVeto } from "@/server/veto";
 import { ChallengePanel } from "./ChallengePanel";
 import { VetoPanel } from "./VetoPanel";
+import { Steps, type StepDecision } from "./Steps";
+import { windowSlots } from "@/lib/matchmaking";
 import { SchedulingPanel } from "./SchedulingPanel";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
@@ -44,6 +46,29 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const planning = match.status === "lobby" && (match.vetoStatus === "halls" || match.vetoStatus === "running");
   const open = Boolean(scheduling) || planning;
   const challengePending = match.challengeStatus === "pending" && match.status === "lobby";
+  const teamIds = [match.homeId, match.awayId];
+  const teamLabel = (id: string) => (id === match.homeId ? match.homeName : match.awayName);
+  const step: 1 | 2 | 3 | 4 | null = challengePending || match.status === "cancelled" ? null : scheduling ? 1 : planning ? 2 : confirmed ? 4 : active ? 3 : null;
+  const decisions: StepDecision[] =
+    step === 1 && scheduling
+      ? teamIds.map((id) => {
+          const o = scheduling.options.find((x) => x.votedTeamIds.includes(id));
+          return { teamId: id, teamName: teamLabel(id), done: Boolean(o), text: o ? `Captain wählt ${formatDateTime(o.startsAt)} Uhr` : "Captain hat noch nicht gewählt" };
+        })
+      : step === 2 && veto
+        ? teamIds.map((id) => {
+            const bans = veto.halls.filter((h) => h.bannedByTeam === id).sort((a, b) => (a.banOrder ?? 0) - (b.banOrder ?? 0));
+            const turn = veto.status === "running" && veto.turnTeamId === id;
+            return { teamId: id, teamName: teamLabel(id), done: !turn && veto.status === "done", active: turn, text: turn ? `Captain ist dran${bans.length ? `, gebannt: ${bans.map((b) => b.name).join(", ")}` : ""}` : bans.length ? `Gebannt: ${bans.map((b) => b.name).join(", ")}` : "Noch keine Halle gebannt" };
+          })
+        : step === 2
+          ? teamIds.map((id) => ({ teamId: id, teamName: teamLabel(id), done: true, text: "Uhrzeit bestätigt, wartet auf die Hallen" }))
+          : step === 3 || step === 4
+            ? [{ id: match.homeId, name: match.homeName, ready: counts.readyHome }, { id: match.awayId, name: match.awayName, ready: counts.readyAway }].map((t) => ({ teamId: t.id, teamName: t.name, done: t.ready >= MIN_READY_PER_TEAM, text: `${t.ready} von ${MIN_READY_PER_TEAM} Spielern bereit` }))
+            : [];
+  const decisionTitle = step === 1 ? "Die Captains stimmen ab. Hier siehst du live, wer schon gewählt hat." : step === 2 ? "Die Captains bannen abwechselnd Hallen." : "Jedes Team macht seine Spieler bereit und bezahlt.";
+  const slots = scheduling ? windowSlots(scheduling.windows, match.durationMin, new Date()).map((d) => ({ value: toBerlinInputValue(d), label: `${formatTime(d)} Uhr` })) : [];
+  const dayText = scheduling && scheduling.windows.length ? scheduling.windows.map((w) => new Date(w.from).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", weekday: "long", day: "2-digit", month: "2-digit" })).filter((d, i, a) => a.indexOf(d) === i).join(" oder ") : null;
   const myAdminTeam = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null;
   const nameOfTeam = (id: string | null) => (id === match.homeId ? match.homeName : id === match.awayId ? match.awayName : "");
 
@@ -108,6 +133,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
+      {step && <Steps current={step} decisions={decisions} title={decisionTitle} />}
+
       {hallCheck && (
         <section className="card space-y-2" aria-label="Hallen-Anfrage" data-testid="hall-check">
           <h2 className="font-semibold">Hallen werden angefragt</h2>
@@ -144,6 +171,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           myTeamId={myAdminTeam}
           deadlineText={match.schedulingDeadline ? `${formatDateTime(match.schedulingDeadline)} Uhr` : "–"}
           minStart={scheduling.minStart}
+          slots={slots}
+          dayText={dayText}
           options={scheduling.options.map((o) => ({ id: o.id, label: `${formatDateTime(o.startsAt)} Uhr`, proposedBy: o.proposedByTeam ? nameOfTeam(o.proposedByTeam) : "system", proposedByTeamId: o.proposedByTeam, votedTeamIds: o.votedTeamIds }))}
         />
       )}

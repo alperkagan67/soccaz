@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { MyGames } from "@/components/MyGames";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/time";
 import { phaseOf, PHASE_LABEL } from "@/lib/result-rules";
@@ -26,6 +27,8 @@ export default async function DashboardPage() {
         <p className="text-muted">{user.position} · {user.city}</p>
       </div>
 
+      <MyGames userId={user.id} />
+
       <Challenges incoming={challenges.incoming} outgoing={challenges.outgoing} />
 
       {myTeams.length === 0 && games.length === 0 && (
@@ -34,7 +37,7 @@ export default async function DashboardPage() {
           <ol className="space-y-2 text-sm text-muted">
             <li><strong className="text-ink">1. Team gründen</strong> oder den Einladungslink deines Teams öffnen.</li>
             <li><strong className="text-ink">2. Mitspieler einladen</strong> (Link per WhatsApp).</li>
-            <li><strong className="text-ink">3. Gegner finden</strong> über Matchmaking oder eine Spielsuche.</li>
+            <li><strong className="text-ink">3. Lobby aufmachen</strong> und auf ein Team warten, das antritt.</li>
           </ol>
           <div className="flex flex-wrap gap-2">
             <Link href="/app/teams/neu" className="btn btn-primary">Team gründen</Link>
@@ -44,8 +47,8 @@ export default async function DashboardPage() {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Link href="/app/suche/neu" className="btn btn-primary">Gegner suchen</Link>
-        <Link href="/suche" className="btn btn-ghost">Spielsuchen ansehen</Link>
+        <Link href="/matchmaking" className="btn btn-primary">Lobby aufmachen</Link>
+        <Link href="/suche" className="btn btn-ghost">Offene Lobbys ansehen</Link>
       </div>
 
       <Link href="/app/guthaben" className="card flex items-center justify-between hover:border-green" data-testid="wallet-card">
@@ -57,10 +60,9 @@ export default async function DashboardPage() {
       </Link>
 
       <nav aria-label="Schnellzugriff" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-        <Link href="/matchmaking" className="card text-center hover:border-green">Matchmaking</Link>
+        <Link href="/matchmaking" className="card text-center hover:border-green">Lobby aufmachen</Link>
         <Link href={`/spieler/${user.id}`} className="card text-center hover:border-green">Mein Profil</Link>
         <Link href="/rangliste" className="card text-center hover:border-green">Rangliste</Link>
-        <Link href="/turniere" className="card text-center hover:border-green">Turniere</Link>
         <Link href="/app/einstellungen" className="card text-center hover:border-green">Einstellungen</Link>
         <Link href="/hilfe" className="card text-center hover:border-green">Hilfe</Link>
       </nav>

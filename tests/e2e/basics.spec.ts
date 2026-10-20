@@ -36,7 +36,7 @@ test("Guthaben ist immer erreichbar, auch wenn Zahlungen noch aus sind", async (
   await expect(p.getByRole("heading", { name: "So funktioniert dein Guthaben" })).toBeVisible();
   await expect(p.getByRole("heading", { name: "Aufladen" })).toBeVisible();
   await p.goto("/app");
-  for (const link of ["Matchmaking", "Mein Profil", "Rangliste", "Turniere", "Einstellungen", "Hilfe"]) await expect(p.getByRole("navigation", { name: "Schnellzugriff" }).getByRole("link", { name: link })).toBeVisible();
+  for (const link of ["Lobby aufmachen", "Mein Profil", "Rangliste", "Einstellungen", "Hilfe"]) await expect(p.getByRole("navigation", { name: "Schnellzugriff" }).getByRole("link", { name: link })).toBeVisible();
 });
 
 test("Teamverzeichnis mit Suche", async ({ browser }) => {
@@ -166,6 +166,7 @@ test("Kopfleiste: Konto-Menü mit Profil, Einstellungen und Abmelden", async ({ 
   await p.waitForLoadState("networkidle");
   await p.getByTestId("user-menu-button").click();
   const menu = p.getByTestId("user-menu");
+  await expect(menu.getByTestId("user-menu-name")).toContainText("menu"); // der Name steht ganz oben im Menü
   for (const item of ["Mein Profil", "Mein Bereich", "Guthaben", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"]) await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
   await menu.getByRole("menuitem", { name: "Mein Profil" }).click();
   await expect(p).toHaveURL(new RegExp(`/spieler/${id}$`));

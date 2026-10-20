@@ -42,7 +42,7 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   expect(lights.sort()).toEqual(["orange", "red", "red"]);
   await expect(card.getByTestId("board-team").first()).toContainText("1 von 2 bereit");
   await expect(anon.getByTestId("light-legend")).toBeVisible();
-  await expect(card.getByRole("link", { name: "Team herausfordern" }).first()).toHaveAttribute("href", /anmelden/); // Gäste melden sich an
+  await expect(card.getByRole("link", { name: "Zur Lobby" })).toBeVisible(); // in einer Lobby stehen schon beide Teams: kein Herausfordern mehr
 
   // Bestätigtes Spiel: die Bereiten werden grün
   await testDb().query("update matches set status = 'confirmed' where id = $1", [matchId]);
@@ -60,13 +60,12 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   await expect(anon.locator('[data-light="green"]').locator("visible=true").first()).toBeVisible();
   await expect(anon.getByRole("link", { name: "Anmelden" }).locator("visible=true").first()).toBeVisible();
 
-  // Ein angemeldeter Team-Admin sieht den Herausfordern-Link zum Teamprofil
+  // Eine Lobby mit zwei Teams kann niemand mehr herausfordern
   const c = await (await browser.newContext()).newPage();
   await newUser(c, "bch");
   await createTeam(c, `Board Dritte ${run}`);
   await c.goto("/suche");
-  // Ein Klick statt Formular: der Button steht auf der Karte
-  await expect(c.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: `Board Heim ${run}` }).getByRole("button", { name: `Board Heim ${run} herausfordern` })).toBeVisible();
+  await expect(c.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: `Board Heim ${run}` }).getByRole("button", { name: `Board Heim ${run} herausfordern` })).toHaveCount(0);
 
   // auch auf der Startseite
   await anon.goto("/");

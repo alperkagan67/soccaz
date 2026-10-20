@@ -15,6 +15,12 @@ import type { Tx } from "./tx";
 
 export const MAX_OPTIONS_PER_TEAM = 4;
 
+/** Liegt das ganze Spiel (Anstoß bis Abpfiff) in einem der vereinbarten Zeitfenster? */
+export function inWindows(startsAt: Date, durationMin: number, windows: { from: string; to: string }[]): boolean {
+  const end = startsAt.getTime() + durationMin * 60_000;
+  return windows.some((w) => startsAt.getTime() >= new Date(w.from).getTime() && end <= new Date(w.to).getTime());
+}
+
 type MatchRow = typeof matches.$inferSelect;
 
 async function lockOpenMatch(tx: Tx, matchId: string): Promise<MatchRow> {
@@ -49,6 +55,7 @@ export async function proposeOption(userId: string, matchId: string, input: { st
     const match = await lockOpenMatch(tx, matchId);
     const teamId = await adminTeam(tx, userId, match);
     if (!optionStillValid(input.startsAt, new Date())) throw new DomainError("Der Termin muss mindestens 24 Stunden in der Zukunft liegen.");
+    if (match.timeWindows?.length && !inWindows(input.startsAt, match.durationMin, match.timeWindows)) throw new DomainError("Die Uhrzeit muss im vereinbarten Zeitfenster liegen.");
     const [{ n }] = await tx.select({ n: count() }).from(matchOptions).where(and(eq(matchOptions.matchId, matchId), eq(matchOptions.proposedByTeam, teamId)));
     if (n >= MAX_OPTIONS_PER_TEAM) throw new DomainError(`Ihr könnt höchstens ${MAX_OPTIONS_PER_TEAM} Vorschläge machen.`);
     const dup = await tx
@@ -131,19 +138,21 @@ async function lockIfAgreed(tx: Tx, match: MatchRow): Promise<boolean> {
 
 export type SchedulingView = {
   open: boolean;
+  windows: { from: string; to: string }[];
   deadline: Date | null;
   minStart: string;
   options: { id: string; startsAt: Date; venueId: string | null; venueText: string | null; proposedByTeam: string | null; votedTeamIds: string[] }[];
   venues: { id: string; name: string; city: string }[];
 };
 
-export async function getScheduling(match: { id: string; schedulingOpen: boolean; schedulingDeadline: Date | null }, city?: string): Promise<SchedulingView | null> {
+export async function getScheduling(match: { id: string; schedulingOpen: boolean; schedulingDeadline: Date | null; timeWindows: { from: string; to: string }[] | null }, city?: string): Promise<SchedulingView | null> {
   if (!match.schedulingOpen) return null;
   const options = await db.select().from(matchOptions).where(eq(matchOptions.matchId, match.id)).orderBy(asc(matchOptions.startsAt), asc(matchOptions.createdAt));
   const votes = await db.select({ teamId: matchOptionVotes.teamId, optionId: matchOptionVotes.optionId }).from(matchOptionVotes).where(eq(matchOptionVotes.matchId, match.id));
   const list = await db.select({ id: venues.id, name: venues.name, city: venues.city }).from(venues).where(eq(venues.active, true)).orderBy(asc(venues.city), asc(venues.name));
   return {
     open: true,
+    windows: match.timeWindows ?? [],
     deadline: match.schedulingDeadline,
     minStart: toBerlinInputValue(new Date(Math.ceil((Date.now() + 25 * 3_600_000) / 900_000) * 900_000)), // auf die Viertelstunde, passend zum Raster des Feldes
     options: options.map((o) => ({ id: o.id, startsAt: o.startsAt, venueId: o.venueId, venueText: o.venueText, proposedByTeam: o.proposedByTeam, votedTeamIds: votes.filter((v) => v.optionId === o.id).map((v) => v.teamId) })),

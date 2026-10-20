@@ -37,33 +37,42 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
     await page.getByLabel("Tag 1").fill(day);
     await page.getByLabel("Von", { exact: true }).first().fill("18:00");
     await page.getByLabel("Bis", { exact: true }).first().fill("21:00");
-    await page.getByRole("button", { name: "Gegner suchen", exact: true }).click();
+    await page.getByRole("button", { name: "Lobby aufmachen", exact: true }).click();
   };
 
   await enter(a);
-  await expect(a.getByTestId("my-queue")).toContainText("Sucht einen Gegner");
+  await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
   // Abbrechen und wieder anstellen funktioniert
   await a.getByRole("button", { name: "Suche abbrechen" }).click();
   await expect(a.getByTestId("my-queue")).toHaveCount(0);
   await enter(a);
-  await expect(a.getByTestId("my-queue")).toContainText("Sucht einen Gegner");
+  await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
 
-  await enter(b);
-  await expect(b.getByRole("link", { name: "Zur Lobby" })).toBeVisible({ timeout: 30_000 });
-  await b.getByRole("link", { name: "Zur Lobby" }).click();
-  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
+  // Team B sieht die offene Lobby und tritt an (keine automatische Paarung)
+  b.on("dialog", (d) => void d.accept());
+  await b.goto("/matchmaking");
+  await b.waitForLoadState("networkidle");
+  await b.getByRole("button", { name: `Gegen ${nameA} antreten` }).click();
+  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
   const lobbyUrl = b.url();
 
   // Beide Teams sehen Spielstärke; zuerst wird der Termin gewählt, Veto und Bereit gibt es noch nicht
   a.on("dialog", (d) => void d.accept());
-  b.on("dialog", (d) => void d.accept());
   const matchId = lobbyUrl.split("/").pop()!;
+  // Mein aktuelles Spiel: eigene, auffällige Sektion über den offenen Lobbys anderer
+  await a.goto("/suche");
+  await expect(a.getByTestId("my-games")).toContainText("Uhrzeit");
+  await expect(a.getByTestId("my-game")).toContainText(nameB);
+  await a.getByTestId("my-game").getByRole("link", { name: "Zur Lobby" }).click();
+  await expect(a).toHaveURL(new RegExp(matchId));
   await expect(b.getByText(/Termin wird noch gewählt/)).toBeVisible();
   await expect(b.getByText(/Elo \d+/).first()).toBeVisible();
   await expect(b.getByRole("button", { name: "Bereit" })).toHaveCount(0);
   await expect(b.getByTestId("veto")).toHaveCount(0);
   await expect(b.getByTestId("scheduling")).toBeVisible();
-  await expect(b.getByLabel("Halle", { exact: true })).toHaveCount(0); // Vorschläge betreffen nur Tag und Uhrzeit
+  await expect(b.getByLabel("Halle", { exact: true })).toHaveCount(0); // Vorschläge betreffen nur die Uhrzeit, der Tag steht fest
+  await expect(b.getByTestId("steps")).toHaveAttribute("data-step", "1");
+  await expect(b.getByTestId("team-decision")).toHaveCount(2); // beide Captains getrennt sichtbar
 
   // A stimmt für die erste Option
   await a.goto(lobbyUrl);
@@ -77,7 +86,7 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   // B schlägt einen eigenen Termin vor, A stimmt zu: der Termin steht
   await b.goto(lobbyUrl);
   await b.waitForLoadState("networkidle");
-  await b.getByLabel("Anstoß (deutsche Zeit)").fill(futureLocal(5, "19:00"));
+  await b.getByLabel("Anstoß (deutsche Zeit)").selectOption({ label: "19:15 Uhr" });
   await b.getByRole("button", { name: "Vorschlag machen" }).click();
   await expect.poll(async () => (await query("select 1 from match_options where match_id = $1 and proposed_by_team is not null", [matchId])).length).toBe(1);
 
@@ -91,6 +100,7 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   await b.reload();
   await expect(b.getByTestId("scheduling")).toHaveCount(0);
   await expect(b.getByTestId("veto")).toBeVisible();
+  await expect(b.getByTestId("steps")).toHaveAttribute("data-step", "2");
   expect(await b.getByTestId("hall").count()).toBeGreaterThanOrEqual(2);
   await expect(b.getByRole("button", { name: "Bereit" })).toHaveCount(0);
   for (let i = 0; i < 12; i++) {
@@ -181,8 +191,8 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
   await a.getByLabel("Tag 1").fill(futureLocal(3).slice(0, 10));
   await a.getByLabel("Von", { exact: true }).first().fill("18:00");
   await a.getByLabel("Bis", { exact: true }).first().fill("21:00");
-  await a.getByRole("button", { name: "Gegner suchen", exact: true }).click();
-  await expect(a.getByTestId("my-queue")).toContainText("Sucht einen Gegner");
+  await a.getByRole("button", { name: "Lobby aufmachen", exact: true }).click();
+  await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
   // die eigene Suche steht auch in der offenen Liste, ohne Annehmen
   await expect(a.getByTestId("open-search").filter({ hasText: nameA })).toContainText("Euer Team");
 

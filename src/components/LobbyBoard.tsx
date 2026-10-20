@@ -25,21 +25,7 @@ function wanted(min: number | null, max: number | null): string {
   return lo === hi ? `Stufe ${lo} (${STRENGTH_LABELS[lo]})` : `Stufe ${lo} bis ${hi}`;
 }
 
-function ChallengeLink({ team, loggedIn, mine }: { team: BoardTeam; loggedIn: boolean; mine: Mine[] }) {
-  const others = mine.filter((m) => m.id !== team.id);
-  const can = others.length > 0;
-  if (!loggedIn) {
-    return (
-      <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${team.slug}`)}`} className="text-xs text-green underline">
-        Team herausfordern
-      </Link>
-    );
-  }
-  if (!can) return null;
-  return <ChallengeNow target={{ id: team.id, name: team.name }} teams={others.map((m) => ({ id: m.id, name: m.name }))} variant="link" />;
-}
-
-function TeamColumn({ team, players, ready, free, loggedIn, mine }: { team: BoardTeam; players: BoardPlayer[]; ready: number; free: number; loggedIn: boolean; mine: Mine[] }) {
+function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: BoardPlayer[]; ready: number; free: number }) {
   return (
     <div className="space-y-2" data-testid="board-team">
       <div>
@@ -51,7 +37,6 @@ function TeamColumn({ team, players, ready, free, loggedIn, mine }: { team: Boar
           Elo {team.elo}
           {team.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {team.strength}/5 · {team.members} im Kader
         </p>
-        <ChallengeLink team={team} loggedIn={loggedIn} mine={mine} />
       </div>
       {players.length === 0 ? (
         <p className="text-xs text-muted">Noch niemand in der Lobby.</p>
@@ -76,7 +61,7 @@ function TeamColumn({ team, players, ready, free, loggedIn, mine }: { team: Boar
   );
 }
 
-function MatchCard({ m, loggedIn, mine, shareBase }: { m: BoardMatch; loggedIn: boolean; mine: Mine[]; shareBase: string }) {
+function MatchCard({ m, mine, shareBase }: { m: BoardMatch; mine: Mine[]; shareBase: string }) {
   const targetAdmin = m.challengePending && mine.some((t) => t.id === m.away.id);
   const status = m.challengePending ? "Herausforderung: wartet auf Annahme" : m.vetoRunning ? "Hallen-Veto läuft" : m.schedulingOpen ? "Termin wird gewählt" : m.confirmed ? "Bestätigt" : "Wartet auf Spieler";
   const tone = m.confirmed ? "text-green" : "text-yellow";
@@ -93,8 +78,8 @@ function MatchCard({ m, loggedIn, mine, shareBase }: { m: BoardMatch; loggedIn: 
         </span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <TeamColumn team={m.home} players={m.homePlayers} ready={m.readyHome} free={m.freeHome} loggedIn={loggedIn} mine={mine} />
-        <TeamColumn team={m.away} players={m.awayPlayers} ready={m.readyAway} free={m.freeAway} loggedIn={loggedIn} mine={mine} />
+        <TeamColumn team={m.home} players={m.homePlayers} ready={m.readyHome} free={m.freeHome} />
+        <TeamColumn team={m.away} players={m.awayPlayers} ready={m.readyAway} free={m.freeAway} />
       </div>
       <div aria-label="Siegchance">
         <div className="flex h-2 overflow-hidden rounded-full bg-white/10">
@@ -149,7 +134,6 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
               Elo {s.team.elo}
               {s.team.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {s.team.strength}/5 · {s.team.members} im Kader
             </p>
-            {!own && !forMe && !challenge && <ChallengeLink team={s.team} loggedIn={loggedIn} mine={mine} />}
           </div>
           <ul className="space-y-1 text-sm">
             {s.roster.map((p) => (
@@ -243,7 +227,7 @@ export function LobbyBoard({ entries, mine, myWaitingTeamIds, loggedIn, shareBas
   if (entries.length === 0) {
     return (
       <p className="card text-sm text-muted" data-testid="board-empty">
-        Gerade ist keine Lobby offen. Stell dein Team ins Matchmaking oder lege eine Spielsuche an, dann erscheint sie hier für alle.
+        Gerade ist keine Lobby offen. Mach eine Lobby für dein Team auf, dann erscheint sie hier für alle.
       </p>
     );
   }
@@ -253,7 +237,7 @@ export function LobbyBoard({ entries, mine, myWaitingTeamIds, loggedIn, shareBas
       <ul className="space-y-3">
         {entries.map((e) =>
           e.kind === "match" ? (
-            <MatchCard key={`m-${e.id}`} m={e} loggedIn={loggedIn} mine={mine} shareBase={shareBase} />
+            <MatchCard key={`m-${e.id}`} m={e} mine={mine} shareBase={shareBase} />
           ) : (
             <SearchCard key={`${e.sub}-${e.id}`} s={e} loggedIn={loggedIn} mine={mine} myWaitingTeamIds={myWaitingTeamIds} shareBase={shareBase} />
           ),

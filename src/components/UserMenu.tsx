@@ -59,6 +59,7 @@ export function UserMenu({
       </button>
       {open && (
         <div role="menu" className="absolute right-0 top-11 z-30 w-60 space-y-1 rounded-xl border border-line bg-panel p-2 text-sm shadow-xl" data-testid="user-menu">
+          <p className="truncate border-b border-line px-3 pb-2 pt-1 font-semibold" data-testid="user-menu-name">{name}</p>
           <Link role="menuitem" href={`/spieler/${userId}`} className={item} onClick={close}>
             {labels.profile}
           </Link>

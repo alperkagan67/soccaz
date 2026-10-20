@@ -73,9 +73,13 @@ export async function leaveQueue(userId: string, teamId: string) {
  * Läuft bei jedem Beitritt und jede Minute (Job): beendet abgelaufene Einträge, paart passende Teams und legt für jedes Paar
  * ein Spiel an, dessen Termin und Ort die Teams anschließend gemeinsam wählen. Gibt die Zahl neuer Spiele zurück.
  */
-export async function runMatchmaker(now: Date = new Date()): Promise<number> {
+/** Teams suchen sich ihren Gegner selbst aus den offenen Lobbys aus. Die automatische Paarung nach Elo ist vorerst aus (Tests und später möglich). */
+export const AUTO_PAIRING = false;
+
+export async function runMatchmaker(now: Date = new Date(), autoPair: boolean = AUTO_PAIRING): Promise<number> {
   await db.update(matchmakingQueue).set({ status: "expired" }).where(and(eq(matchmakingQueue.status, "waiting"), lt(matchmakingQueue.expiresAt, now)));
   let created = 0;
+  if (!autoPair) return 0;
   // Es kann mehrere Paarungen geben; jede läuft in einer eigenen Transaktion mit Zeilensperre.
   for (let round = 0; round < 20; round++) {
     const made = await db.transaction(async (tx) => {
@@ -122,9 +126,11 @@ export async function runMatchmaker(now: Date = new Date()): Promise<number> {
 
 /** Legt für ein Paar das Spiel an: Hallen-Veto (oder Zeitvorschläge), Admins in die Lobby, Einträge auf "gepaart", Benachrichtigungen. */
 async function createPairedMatch(tx: Tx, pair: Pair, now: Date) {
+  const common = overlap(usableWindows(pair.a.windows, pair.a.durationMin, now), usableWindows(pair.b.windows, pair.b.durationMin, now), pair.a.durationMin);
   const [match] = await tx
     .insert(matches)
     .values({
+      timeWindows: common.map((w) => ({ from: w.from.toISOString(), to: w.to.toISOString() })),
       ...(pair.a.number ? { number: pair.a.number } : {}),
       homeTeamId: pair.a.teamId,
       awayTeamId: pair.b.teamId,

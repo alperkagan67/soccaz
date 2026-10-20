@@ -14,6 +14,8 @@ export function SchedulingPanel({
   myTeamId,
   deadlineText,
   minStart,
+  slots,
+  dayText,
 }: {
   matchId: string;
   options: OptionView[];
@@ -21,15 +23,17 @@ export function SchedulingPanel({
   myTeamId: string | null;
   deadlineText: string;
   minStart: string;
+  slots: { value: string; label: string }[]; // Uhrzeiten im vereinbarten Fenster; leer = Tag und Uhrzeit frei wählbar
+  dayText: string | null;
 }) {
   const myVote = options.find((o) => myTeamId && o.votedTeamIds.includes(myTeamId))?.id;
   const nameOf = (id: string) => teams.find((t) => t.id === id)?.name ?? "?";
   return (
-    <section className="card space-y-3" aria-label="Tag und Uhrzeit wählen" data-testid="scheduling">
+    <section className="card space-y-3" aria-label="Uhrzeit wählen" data-testid="scheduling">
       <div>
-        <h2 className="font-semibold">Tag und Uhrzeit wählen</h2>
+        <h2 className="font-semibold">{slots.length > 0 ? "Uhrzeit wählen" : "Tag und Uhrzeit wählen"}</h2>
         <p className="text-sm text-muted">
-          Beide Teams wählen einen Vorschlag. Stimmen beide für denselben, steht der Termin. Danach fragen wir die Hallen an und ihr bannt per Veto, wo ihr nicht spielen wollt. Frist: {deadlineText}.
+          {dayText ? `Gespielt wird ${dayText}. ` : ""}Nur die Captains stimmen ab. Stimmen beide für dieselbe Uhrzeit, steht der Termin. Danach wählt ihr die Halle. Frist: {deadlineText}.
         </p>
       </div>
       {options.length === 0 ? (
@@ -69,10 +73,22 @@ export function SchedulingPanel({
         <ActionForm action={proposeOptionAction.bind(null, matchId)} submit="Vorschlag machen" className="space-y-2 border-t border-line pt-3" successText="Vorschlag gemacht.">
           <h3 className="text-sm font-semibold">Eigener Vorschlag</h3>
           <div>
-            <div>
-              <label className="label" htmlFor="opt-start">Anstoß (deutsche Zeit)</label>
-              <input id="opt-start" name="startsAt" type="datetime-local" min={minStart} step={900} required className="field" />
-            </div>
+            {slots.length > 0 ? (
+              <>
+                <label className="label" htmlFor="opt-start">Anstoß (deutsche Zeit)</label>
+                <select id="opt-start" name="startsAt" required className="field" defaultValue="">
+                  <option value="" disabled>Uhrzeit wählen</option>
+                  {slots.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <>
+                <label className="label" htmlFor="opt-start">Anstoß (deutsche Zeit)</label>
+                <input id="opt-start" name="startsAt" type="datetime-local" min={minStart} step={900} required className="field" />
+              </>
+            )}
           </div>
         </ActionForm>
       )}

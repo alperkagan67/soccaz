@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { BoardSection } from "@/components/BoardSection";
+import { MyGames } from "@/components/MyGames";
 import { HowItWorks } from "@/components/HowItWorks";
 import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
@@ -35,6 +36,8 @@ export default async function Home() {
 
   return (
     <div className="space-y-8">
+      {user?.onboardedAt && <MyGames userId={user.id} />}
+
       <section className="relative isolate flex min-h-[30rem] flex-col justify-end overflow-hidden rounded-2xl border border-line sm:min-h-[26rem]">
         <video
           className="absolute inset-0 -z-10 h-full w-full object-cover opacity-60"

@@ -7,8 +7,8 @@ import { joinQueueAction } from "@/server/matchmaking-actions";
 
 export function QueueForm({ teams, minDay }: { teams: { id: string; name: string; city: string }[]; minDay: string }) {
   return (
-    <ActionForm action={joinQueueAction} submit="Gegner suchen" successText="Du bist in der Warteschlange. Wir melden uns, sobald ein Gegner passt.">
-      <h2 className="font-semibold">Gegner suchen</h2>
+    <ActionForm action={joinQueueAction} submit="Lobby aufmachen" successText="Eure Lobby ist offen. Sobald ein Team antritt, melden wir uns.">
+      <h2 className="font-semibold">Neue Lobby für dein Team</h2>
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className="label" htmlFor="q-team">Team</label>

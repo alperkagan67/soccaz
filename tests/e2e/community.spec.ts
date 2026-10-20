@@ -47,7 +47,7 @@ test("Herausforderung mit einem Klick: sofort die Lobby, für alle sichtbar, nur
   const card = c.getByTestId("board-entry").filter({ hasText: teamA });
   await expect(card).toContainText("Herausforderung: wartet auf Annahme");
   await expect(card.getByTestId("accept-challenge")).toHaveCount(0);
-  await expect(card.getByRole("button", { name: `${teamA} herausfordern` })).toBeVisible();
+  await expect(card.getByRole("button", { name: `${teamA} herausfordern` })).toHaveCount(0); // beide Teams stehen schon in der Lobby
   await c.goto("/");
   await expect(c.getByTestId("board-entry").filter({ hasText: teamA })).toBeVisible();
   await c.goto(lobbyUrl);

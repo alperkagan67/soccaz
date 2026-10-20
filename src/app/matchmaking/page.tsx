@@ -10,7 +10,7 @@ import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 import { QueueForm } from "./QueueForm";
 
-export const metadata: Metadata = { title: "Matchmaking" };
+export const metadata: Metadata = { title: "Lobby aufmachen" };
 
 export default async function MatchmakingPage({ searchParams }: PageProps<"/matchmaking">) {
   const sp = await searchParams;
@@ -26,16 +26,16 @@ export default async function MatchmakingPage({ searchParams }: PageProps<"/matc
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-3xl font-bold">Matchmaking</h1>
+        <h1 className="text-3xl font-bold">Lobby aufmachen</h1>
         <p className="text-muted">
-          Sag uns, wann ihr könnt. Wir suchen ein Team mit ähnlicher Spielstärke (Elo) und gemeinsamer Zeit. Danach bannen beide Teams abwechselnd Hallen (wie die Map-Veto-Phase bei Counter-Strike) und wählen gemeinsam den Termin.
+          Du bist Captain und willst mit deinem Team spielen? Sag uns Tag und Zeitfenster, dann steht eure Lobby für alle sichtbar auf der Seite „Offene Lobbys“. Ein anderes Team tritt an, danach geht es Schritt für Schritt weiter.
         </p>
       </header>
 
       <ol className="card space-y-1 text-sm text-muted">
-        <li><strong className="text-ink">1.</strong> Zeitfenster eintragen und in die Warteschlange.</li>
-        <li><strong className="text-ink">2.</strong> Wir paaren Teams mit ähnlichem Elo. Je länger ihr wartet, desto größer wird der erlaubte Abstand.</li>
-        <li><strong className="text-ink">3.</strong> Beide Teams sehen Kader und Spielstärke des Gegners und wählen gemeinsam <strong className="text-ink">Tag und Uhrzeit</strong> aus Vorschlägen. Stimmen beide für denselben, steht der Termin.</li>
+        <li><strong className="text-ink">1.</strong> Tag und Zeitfenster eintragen: Eure Lobby ist offen.</li>
+        <li><strong className="text-ink">2.</strong> Ein anderes Team tritt an. Beide Teams sehen Kader und Spielstärke des Gegners.</li>
+        <li><strong className="text-ink">3.</strong> Die beiden Captains einigen sich auf die <strong className="text-ink">Uhrzeit</strong> (der Tag steht schon).</li>
         <li><strong className="text-ink">4.</strong> Dann bestätigen die Hallen, ob sie frei sind, und das <strong className="text-ink">Hallen-Veto</strong> beginnt: Abwechselnd bannt jedes Team Hallen, die es nicht spielen will. Die letzte Halle wird gespielt.</li>
       </ol>
 
@@ -71,7 +71,7 @@ export default async function MatchmakingPage({ searchParams }: PageProps<"/matc
         <section key={m.id} className="card space-y-2" data-testid="my-queue">
           <div className="flex items-center justify-between gap-2">
             <span className="font-semibold">{m.teamName}</span>
-            {m.status === "waiting" ? <span className="text-sm text-yellow">Sucht einen Gegner …</span> : <span className="text-sm text-green">Gegner gefunden</span>}
+            {m.status === "waiting" ? <span className="text-sm text-yellow">Eure Lobby ist offen: wartet auf einen Gegner</span> : <span className="text-sm text-green">Gegner gefunden</span>}
           </div>
           <p className="text-sm text-muted">
             {m.city} · {m.durationMin} Min · seit {formatDateTime(m.createdAt)} Uhr
@@ -92,7 +92,7 @@ export default async function MatchmakingPage({ searchParams }: PageProps<"/matc
       ))}
 
       {!user ? (
-        <Link href="/anmelden?next=/matchmaking" className="btn btn-primary w-full">Anmelden und Gegner suchen</Link>
+        <Link href="/anmelden?next=/matchmaking" className="btn btn-primary w-full">Anmelden und Lobby aufmachen</Link>
       ) : adminTeams.length === 0 ? (
         <p className="card text-sm text-muted">Nur Team-Admins können nach Gegnern suchen. <Link href="/app/teams/neu" className="text-green underline">Team gründen</Link></p>
       ) : free.length > 0 ? (

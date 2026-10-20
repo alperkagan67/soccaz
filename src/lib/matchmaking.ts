@@ -147,3 +147,14 @@ export function agreedOption(votes: { teamId: string; optionId: string }[], home
   const away = votes.find((v) => v.teamId === awayTeamId);
   return home && away && home.optionId === away.optionId ? home.optionId : null;
 }
+
+/** Mögliche Anstoßzeiten im vereinbarten Zeitfenster: alle 15 Minuten, das Spiel muss ganz ins Fenster passen, mit 24 Stunden Vorlauf. */
+export function windowSlots(windows: { from: string; to: string }[], durationMin: number, now: Date): Date[] {
+  const need = durationMin * 60_000;
+  const out: Date[] = [];
+  for (const w of windows) {
+    const from = Math.max(new Date(w.from).getTime(), now.getTime() + MIN_LEAD_MS);
+    for (let t = ceilQuarter(from); t + need <= new Date(w.to).getTime(); t += quarter) out.push(new Date(t));
+  }
+  return out;
+}

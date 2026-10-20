@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { BoardSection } from "@/components/BoardSection";
+import { MyGames } from "@/components/MyGames";
 import { Challenges } from "@/components/Challenges";
 import { CITIES, filterSchema } from "@/lib/validation";
 import { myChallenges } from "@/server/requests";
@@ -22,11 +23,13 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold">Offene Lobbys <LiveIndicator eventsUrl="/api/spiele/stream" /></h1>
+          <h1 className="text-2xl font-bold">Offene Lobbys anderer Teams <LiveIndicator eventsUrl="/api/spiele/stream" /></h1>
           <p className="text-sm text-muted">Alles öffentlich: Wer spielt gegen wen, wer sucht einen Gegner, wer ist schon in der Lobby. Jedes Spiel hat eine Nummer.</p>
         </div>
-        <Link href="/matchmaking" className="btn btn-primary !min-h-9">Gegner suchen</Link>
+        <Link href="/matchmaking" className="btn btn-primary !min-h-9">Lobby aufmachen</Link>
       </div>
+
+      {user?.onboardedAt && <MyGames userId={user.id} />}
 
       <Challenges incoming={challenges.incoming} outgoing={challenges.outgoing} />
 
