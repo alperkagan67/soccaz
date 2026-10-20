@@ -176,6 +176,13 @@
       "when": 1792503655797,
       "tag": "0024_useful_thunderbolt",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792506531647,
+      "tag": "0025_sloppy_the_stranger",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
 import { creditWallet, walletBalance } from "@/server/ledger";
-import { setReady } from "@/server/lobby";
+import { payShare, setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
 import { recordExpense } from "@/server/booking";
 import { exportLedgerCsv, getAlerts, listMatchFinance, manualRefund, matchEntries, monthPeriod, overview, playerFinance } from "@/server/finance";
@@ -21,6 +21,7 @@ async function settledMatch(priceCents: number) {
   for (let i = 0; i < 4; i++) players.push(await addPlayer(m.match.id, m.home.id), await addPlayer(m.match.id, m.away.id));
   for (const p of players) {
     await fund(p.id, 2000);
+    await payShare(p.id, m.match.id);
     await setReady(p.id, m.match.id, true);
   }
   await db.transaction(async (tx) => settleMatch(tx, await reloadMatch(m.match.id)));
@@ -103,6 +104,7 @@ describe("Finanz-Reporting", () => {
     const c = await makeMatch();
     const p = c.adminA;
     await fund(p.id, 2000);
+    await payShare(p.id, c.match.id);
     await setReady(p.id, c.match.id, true);
     await db.update(matches).set({ status: "confirmed", startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, c.match.id));
     const alerts = await getAlerts();

@@ -87,3 +87,14 @@ export const matchHallRequests = pgTable(
   },
   (t) => [primaryKey({ columns: [t.matchId, t.venueId] })],
 );
+
+/** Spieler eines Teams, die einer offenen Lobby (Queue-Eintrag) schon beigetreten sind. Beim Antreten eines Gegners werden sie in das Spiel übernommen. */
+export const queueParticipants = pgTable(
+  "queue_participants",
+  {
+    queueId: uuid("queue_id").notNull().references(() => matchmakingQueue.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.queueId, t.userId] })],
+);

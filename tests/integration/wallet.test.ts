@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { matchParticipants } from "@/db/schema";
 import { bookingJobs, ledgerEntries, pendingRefunds, receipts } from "@/db/schema-finance";
 import { creditWallet, trialBalance, walletBalance, InsufficientFunds } from "@/server/ledger";
-import { cancelMatch, leaveLobby, removeParticipant, setReady } from "@/server/lobby";
+import { cancelMatch, leaveLobby, removeParticipant, payShare, setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
 import { settleMatch } from "@/server/wallet";
 import { addPlayer, cleanup, makeMatch, reloadMatch } from "./helpers";
@@ -30,6 +30,7 @@ async function confirmedMatch(hoursAhead = 72, durationMin = 60, priceCents = 80
   for (let i = 0; i < 4; i++) players.push(await addPlayer(m.match.id, m.home.id), await addPlayer(m.match.id, m.away.id));
   for (const p of players) {
     await fund(p.id, 2000);
+    await payShare(p.id, m.match.id);
     await setReady(p.id, m.match.id, true);
   }
   return { ...m, players };
@@ -39,6 +40,7 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   it("ohne eingeschaltete Zahlungen wird nichts gebucht", async () => {
     await setSetting(null, "payments_enabled", false);
     const m = await makeMatch();
+    await payShare(m.adminA.id, m.match.id);
     await setReady(m.adminA.id, m.match.id, true);
     expect(await walletBalance(db, m.adminA.id)).toBe(0);
     expect((await participant(m.match.id, m.adminA.id)).readyAt).not.toBeNull();
@@ -48,7 +50,7 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   it("zu wenig Guthaben: nicht bereit, nichts gebucht, Fehler nennt den Betrag", async () => {
     const m = await makeMatch();
     await fund(m.adminA.id, 500);
-    await expect(setReady(m.adminA.id, m.match.id, true)).rejects.toBeInstanceOf(InsufficientFunds);
+    await expect(payShare(m.adminA.id, m.match.id)).rejects.toBeInstanceOf(InsufficientFunds);
     const p = await participant(m.match.id, m.adminA.id);
     expect(p.readyAt).toBeNull();
     expect(p.paidCents).toBe(0);
@@ -58,12 +60,14 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   it("60 Minuten: reserviert 10,00 EUR, 90 Minuten: 13,75 EUR", async () => {
     const a = await makeMatch({ durationMin: 60, priceCents: 8000 });
     await fund(a.adminA.id, 5000);
+    await payShare(a.adminA.id, a.match.id);
     await setReady(a.adminA.id, a.match.id, true);
     expect(await walletBalance(db, a.adminA.id)).toBe(4000);
     expect((await participant(a.match.id, a.adminA.id)).paidCents).toBe(1000);
 
     const b = await makeMatch({ durationMin: 90, priceCents: 11000 });
     await fund(b.adminA.id, 5000);
+    await payShare(b.adminA.id, b.match.id);
     await setReady(b.adminA.id, b.match.id, true);
     expect((await participant(b.match.id, b.adminA.id)).paidCents).toBe(1375);
   });
@@ -71,8 +75,10 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   it("wieder bereit nach Zurücknehmen kostet nicht doppelt", async () => {
     const m = await makeMatch();
     await fund(m.adminA.id, 3000);
+    await payShare(m.adminA.id, m.match.id);
     await setReady(m.adminA.id, m.match.id, true);
     await setReady(m.adminA.id, m.match.id, false);
+    await payShare(m.adminA.id, m.match.id);
     await setReady(m.adminA.id, m.match.id, true);
     expect(await walletBalance(db, m.adminA.id)).toBe(2000);
     expect(await db.select().from(ledgerEntries).where(and(eq(ledgerEntries.matchId, m.match.id), eq(ledgerEntries.kind, "match_share")))).toHaveLength(1);
@@ -81,7 +87,7 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   it("Preis wird bei fehlender Regel verständlich abgelehnt", async () => {
     const m = await makeMatch({ durationMin: 75, priceCents: null, costCents: null });
     await fund(m.adminA.id, 3000);
-    await expect(setReady(m.adminA.id, m.match.id, true)).rejects.toThrow(/kein Preis hinterlegt/);
+    await expect(payShare(m.adminA.id, m.match.id)).rejects.toThrow(/kein Preis hinterlegt/);
   });
 });
 
@@ -129,6 +135,7 @@ describe("Bestätigung, Buchungsauftrag und Abrechnung", () => {
     await db.transaction(async (tx) => settleMatch(tx, await reloadMatch(m.match.id)));
     const late = await addPlayer(m.match.id, m.home.id);
     await fund(late.id, 2000);
+    await payShare(late.id, m.match.id);
     await setReady(late.id, m.match.id, true);
     expect((await participant(m.match.id, late.id)).paidCents).toBe(800);
     expect(await walletBalance(db, late.id)).toBe(1200);
@@ -140,6 +147,7 @@ describe("Abmelden, Entfernen und Absage", () => {
     const m = await makeMatch({ hoursAhead: 72 });
     const p = await addPlayer(m.match.id, m.home.id);
     await fund(p.id, 2000);
+    await payShare(p.id, m.match.id);
     await setReady(p.id, m.match.id, true);
     expect(await walletBalance(db, p.id)).toBe(1000);
     await leaveLobby(p.id, m.match.id);
@@ -151,6 +159,7 @@ describe("Abmelden, Entfernen und Absage", () => {
     const m = await makeMatch({ hoursAhead: 10 });
     const leaver = await addPlayer(m.match.id, m.home.id);
     await fund(leaver.id, 2000);
+    await payShare(leaver.id, m.match.id);
     await setReady(leaver.id, m.match.id, true);
     await leaveLobby(leaver.id, m.match.id);
     expect(await walletBalance(db, leaver.id)).toBe(1000); // Geld bleibt vorerst weg
@@ -159,6 +168,7 @@ describe("Abmelden, Entfernen und Absage", () => {
     // Ersatz zahlt: Erstattung für den Ausgestiegenen
     const sub = await addPlayer(m.match.id, m.home.id);
     await fund(sub.id, 2000);
+    await payShare(sub.id, m.match.id);
     await setReady(sub.id, m.match.id, true);
     expect(await walletBalance(db, leaver.id)).toBe(2000);
     expect(await db.select().from(pendingRefunds).where(eq(pendingRefunds.matchId, m.match.id))).toHaveLength(0);
@@ -166,6 +176,7 @@ describe("Abmelden, Entfernen und Absage", () => {
     // ein weiterer Zahler löst keine zweite Erstattung aus
     const extra = await addPlayer(m.match.id, m.away.id);
     await fund(extra.id, 2000);
+    await payShare(extra.id, m.match.id);
     await setReady(extra.id, m.match.id, true);
     expect(await walletBalance(db, leaver.id)).toBe(2000);
   });
@@ -174,6 +185,7 @@ describe("Abmelden, Entfernen und Absage", () => {
     const m = await makeMatch({ hoursAhead: 5 });
     const p = await addPlayer(m.match.id, m.home.id);
     await fund(p.id, 2000);
+    await payShare(p.id, m.match.id);
     await setReady(p.id, m.match.id, true);
     await removeParticipant(m.adminA.id, m.match.id, p.id);
     expect(await walletBalance(db, p.id)).toBe(2000);
@@ -186,6 +198,7 @@ describe("Abmelden, Entfernen und Absage", () => {
     const leaver = await addPlayer(m.match.id, m.home.id);
     for (const p of [a, b, leaver]) {
       await fund(p.id, 2000);
+      await payShare(p.id, m.match.id);
       await setReady(p.id, m.match.id, true);
     }
     await leaveLobby(leaver.id, m.match.id); // zu spät: Erstattung offen

@@ -11,6 +11,7 @@ import { canViewLobby, getLobby } from "@/server/lobby";
 import { getScheduling } from "@/server/scheduling";
 import { getHallCheck, getVeto } from "@/server/veto";
 import { ChallengePanel } from "./ChallengePanel";
+import { InviteBox } from "@/app/teams/[slug]/InviteBox";
 import { VetoPanel } from "./VetoPanel";
 import { Steps, type StepDecision } from "./Steps";
 import { windowSlots } from "@/lib/matchmaking";
@@ -224,6 +225,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
           pay={payments.enabled && payments.reservationCents !== null ? { reserveCents: payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid), backTo: `/lobby/${match.id}` } : null}
+          teamPaid={{ paid: participants.filter((p) => p.teamId === v.participant?.teamId && p.paid).length, total: participants.filter((p) => p.teamId === v.participant?.teamId).length }}
         />
       )}
 
@@ -254,7 +256,12 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                   </span>
                 </li>
               ))}
-              {t.count === 0 && <li className="text-muted">Noch niemand.</li>}
+              {Array.from({ length: Math.max(MAX_PER_TEAM - t.count, 0) }, (_, i) => (
+                <li key={`free-${i}`} className="flex items-center justify-between gap-2 text-muted" data-testid="free-slot">
+                  <span>Wartet auf Spieler {t.count + i + 1}</span>
+                  <span className="text-xs">frei</span>
+                </li>
+              ))}
             </ul>
             {roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
               <div className="border-t border-line pt-2" data-testid={`roster-${t.slug}`}>
@@ -269,6 +276,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                 </ul>
               </div>
             )}
+            {active && v.adminOf.includes(t.id) && <InviteBox teamId={t.id} teamName={t.name} />}
           </section>
         ))}
       </div>

@@ -1,9 +1,10 @@
 import { and, asc, count, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matchParticipants, matches, teamMembers, teams } from "@/db/schema";
+import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
+import { MAX_PER_TEAM } from "@/lib/lobby-rules";
 import { teamStats } from "@/db/schema-community";
-import { matchmakingQueue, type QueueWindow } from "@/db/schema-matchmaking";
+import { queueParticipants, matchmakingQueue, type QueueWindow } from "@/db/schema-matchmaking";
 import { initialTeamElo } from "@/lib/elo";
 import { findPairs, overlap, suggestSlots, strengthOk, type Pair, MAX_WINDOW_DAYS_AHEAD, MAX_WINDOWS, MIN_LEAD_MS, QUEUE_LIFETIME_MS, usableWindows, type QueueEntry } from "@/lib/matchmaking";
 import { toBerlinInputValue } from "@/lib/time";
@@ -51,7 +52,8 @@ export async function joinQueue(userId: string, input: QueueInput) {
 
   const windows: QueueWindow[] = input.windows.map((w) => ({ from: w.from.toISOString(), to: w.to.toISOString() }));
   try {
-    await db.insert(matchmakingQueue).values({ teamId: input.teamId, createdBy: userId, city: input.city, durationMin: input.durationMin, windows, note, wantStrengthMin: wantMin, wantStrengthMax: wantMax, expiresAt: new Date(now.getTime() + QUEUE_LIFETIME_MS) });
+    const [entry] = await db.insert(matchmakingQueue).values({ teamId: input.teamId, createdBy: userId, city: input.city, durationMin: input.durationMin, windows, note, wantStrengthMin: wantMin, wantStrengthMax: wantMax, expiresAt: new Date(now.getTime() + QUEUE_LIFETIME_MS) }).returning({ id: matchmakingQueue.id });
+    await db.insert(queueParticipants).values({ queueId: entry.id, userId }); // der Captain ist als Erster in der Lobby
   } catch (error) {
     const code = (error as { code?: string; cause?: { code?: string } }).cause?.code ?? (error as { code?: string }).code;
     if (code === "23505") throw new DomainError("Dein Team wartet schon auf einen Gegner.");
@@ -150,6 +152,10 @@ async function createPairedMatch(tx: Tx, pair: Pair, now: Date) {
     .from(teamMembers)
     .where(and(inArray(teamMembers.teamId, [pair.a.teamId, pair.b.teamId]), eq(teamMembers.role, "admin")));
   if (admins.length) await tx.insert(matchParticipants).values(admins.map((a) => ({ matchId: match.id, userId: a.userId, teamId: a.teamId }))).onConflictDoNothing();
+
+  // Wer der offenen Lobby schon beigetreten war, ist jetzt im Spiel
+  const joined = await tx.select({ userId: queueParticipants.userId }).from(queueParticipants).where(eq(queueParticipants.queueId, pair.a.id));
+  if (joined.length) await tx.insert(matchParticipants).values(joined.map((j) => ({ matchId: match.id, userId: j.userId, teamId: pair.a.teamId }))).onConflictDoNothing();
 
   await tx.update(matchmakingQueue).set({ status: "matched", matchId: match.id }).where(inArray(matchmakingQueue.id, [pair.a.id, pair.b.id]));
   await audit(null, "matchmaking.matched", "match", match.id, { after: { home: pair.a.teamId, away: pair.b.teamId, eloDiff: pair.eloDiff } }, tx);
@@ -271,4 +277,68 @@ export async function acceptSearch(userId: string, entryId: string, teamId: stri
     const [match] = await tx.select({ matchId: matchmakingQueue.matchId }).from(matchmakingQueue).where(eq(matchmakingQueue.id, entry.id));
     return match.matchId!;
   });
+}
+
+export type OpenLobbyView = {
+  id: string;
+  number: number;
+  status: "waiting" | "matched" | "cancelled" | "expired";
+  matchId: string | null;
+  team: { id: string; name: string; slug: string };
+  city: string;
+  durationMin: number;
+  windows: { from: string; to: string }[];
+  note: string | null;
+  members: { userId: string; name: string; isAdmin: boolean; joined: boolean }[];
+  slots: number; // so viele Plätze hat das Team (Startspieler plus Ersatz)
+  viewer: { isMember: boolean; isAdmin: boolean; joined: boolean };
+};
+
+/** Die Übersicht einer offenen Lobby: das Team mit allen Mitgliedern, wer schon beigetreten ist, und wie viele Plätze noch frei sind. */
+export async function getOpenLobby(entryId: string, viewerId: string | null): Promise<OpenLobbyView | null> {
+  await connection();
+  const [e] = await db
+    .select({ id: matchmakingQueue.id, number: matchmakingQueue.number, status: matchmakingQueue.status, matchId: matchmakingQueue.matchId, city: matchmakingQueue.city, durationMin: matchmakingQueue.durationMin, windows: matchmakingQueue.windows, note: matchmakingQueue.note, teamId: teams.id, teamName: teams.name, teamSlug: teams.slug })
+    .from(matchmakingQueue)
+    .innerJoin(teams, eq(teams.id, matchmakingQueue.teamId))
+    .where(eq(matchmakingQueue.id, entryId));
+  if (!e) return null;
+  const rows = await db
+    .select({ userId: users.id, name: sql<string>`coalesce(${users.nickname}, ${users.name})`, role: teamMembers.role })
+    .from(teamMembers)
+    .innerJoin(users, eq(users.id, teamMembers.userId))
+    .where(eq(teamMembers.teamId, e.teamId))
+    .orderBy(asc(teamMembers.role), asc(users.name));
+  const joined = new Set((await db.select({ userId: queueParticipants.userId }).from(queueParticipants).where(eq(queueParticipants.queueId, e.id))).map((j) => j.userId));
+  const mine = viewerId ? rows.find((r) => r.userId === viewerId) : undefined;
+  return {
+    id: e.id,
+    number: e.number,
+    status: e.status,
+    matchId: e.matchId,
+    team: { id: e.teamId, name: e.teamName, slug: e.teamSlug },
+    city: e.city,
+    durationMin: e.durationMin,
+    windows: e.windows,
+    note: e.note,
+    members: rows.map((r) => ({ userId: r.userId, name: r.name, isAdmin: r.role === "admin", joined: joined.has(r.userId) })),
+    slots: MAX_PER_TEAM,
+    viewer: { isMember: Boolean(mine), isAdmin: mine?.role === "admin", joined: viewerId ? joined.has(viewerId) : false },
+  };
+}
+
+/** Ein Teammitglied tritt der offenen Lobby seines Teams bei (oder verlässt sie wieder). */
+export async function setOpenLobbyJoined(userId: string, entryId: string, join: boolean) {
+  const [e] = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.id, entryId));
+  if (!e || e.status !== "waiting") throw new DomainError("Diese Lobby ist nicht mehr offen.");
+  const [m] = await db.select({ role: teamMembers.role }).from(teamMembers).where(and(eq(teamMembers.teamId, e.teamId), eq(teamMembers.userId, userId)));
+  if (!m) throw new DomainError("Nur Mitglieder des Teams können der Lobby beitreten.");
+  if (!join) {
+    await db.delete(queueParticipants).where(and(eq(queueParticipants.queueId, entryId), eq(queueParticipants.userId, userId)));
+    return;
+  }
+  const [{ n }] = await db.select({ n: count() }).from(queueParticipants).where(eq(queueParticipants.queueId, entryId));
+  if (n >= MAX_PER_TEAM) throw new DomainError("Die Lobby ist voll.");
+  await db.insert(queueParticipants).values({ queueId: entryId, userId }).onConflictDoNothing();
+  await audit(userId, "matchmaking.lobby.join", "team", e.teamId, {});
 }

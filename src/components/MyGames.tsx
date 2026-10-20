@@ -31,7 +31,7 @@ export async function MyGames({ userId }: { userId: string }) {
               </span>
               <span className="block text-sm font-semibold text-yellow">Eure Lobby ist offen und wartet auf einen Gegner</span>
             </span>
-            <Link href="/matchmaking" className="btn btn-ghost !min-h-9 !px-4 text-sm">Verwalten</Link>
+            <Link href={`/lobby/offen/${o.id}`} className="btn btn-primary !min-h-9 !px-4 text-sm">Zur Lobby</Link>
           </li>
         ))}
       </ul>

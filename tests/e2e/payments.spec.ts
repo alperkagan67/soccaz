@@ -172,8 +172,8 @@ test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", 
   await expect(costs).toContainText(euro("6,67 €"));
   await expect(a.getByTestId("pay-hint")).toContainText(euro("10,00 €"));
 
-  // ohne Guthaben: nicht bereit, Hinweis zum Aufladen
-  await a.getByRole("button", { name: euro("Bereit und 10,00 € zahlen") }).click();
+  // ohne Guthaben: nicht bezahlt, Hinweis zum Aufladen
+  await a.getByRole("button", { name: euro("10,00 € bezahlen") }).click();
   await expect(a.getByText(/Dein Guthaben reicht nicht/)).toBeVisible();
   await expect(a.getByText("Bereit", { exact: true })).toHaveCount(0);
   await a.getByRole("link", { name: "Guthaben aufladen" }).click();
@@ -185,14 +185,16 @@ test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", 
   await a.getByRole("link", { name: "Zurück zum Spiel" }).click();
   await expect(a).toHaveURL(new RegExp(`/lobby/${matchId}`));
 
-  // jetzt reicht das Guthaben
-  await a.getByRole("button", { name: euro("Bereit und 10,00 € zahlen") }).click();
+  // jetzt reicht das Guthaben: erst bezahlen, dann bereit
+  await a.getByRole("button", { name: euro("10,00 € bezahlen") }).click();
   await expect(a.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
+  expect(await walletBalanceOf(userId)).toBe(0);
+  await a.getByRole("button", { name: "Bereit machen" }).click();
   await expect(a.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
   expect(await walletBalanceOf(userId)).toBe(0);
   // zurücknehmen und wieder bereit: kostet nicht doppelt
   await a.getByRole("button", { name: "Nicht mehr bereit" }).click();
-  await a.getByRole("button", { name: "Ich bin bereit" }).click();
+  await a.getByRole("button", { name: "Bereit machen" }).click();
   await expect(a.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
   expect(await walletBalanceOf(userId)).toBe(0);
 
@@ -223,10 +225,12 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   await fundWallet(adminB, 2000);
   await a.goto(`/lobby/${matchId}`);
   await b.goto(`/lobby/${matchId}`);
-  await a.getByRole("button", { name: euro("Bereit und 10,00 € zahlen") }).click();
+  await a.getByRole("button", { name: euro("10,00 € bezahlen") }).click();
   await expect(a.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
-  await b.getByRole("button", { name: euro("Bereit und 10,00 € zahlen") }).click();
+  await a.getByRole("button", { name: "Bereit machen" }).click();
+  await b.getByRole("button", { name: euro("10,00 € bezahlen") }).click();
   await expect(b.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
+  await b.getByRole("button", { name: "Bereit machen" }).click();
   await expect(b.getByTestId("match-status").filter({ hasText: "Bestätigt" })).toBeVisible();
 
   // Der Buchungsauftrag ist entstanden und die Admins wurden informiert

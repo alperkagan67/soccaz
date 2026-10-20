@@ -1,11 +1,11 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, notifications } from "@/db/schema";
+import { matchParticipants, matches, notifications, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { matchmakingQueue, matchOptions, matchOptionVotes, matchVetoHalls } from "@/db/schema-matchmaking";
 import { venues } from "@/db/schema-finance";
-import { acceptSearch, joinQueue, leaveQueue, listOpenSearches, runMatchmaker } from "@/server/matchmaking";
+import { acceptSearch, getOpenLobby, joinQueue, leaveQueue, listOpenSearches, runMatchmaker, setOpenLobbyJoined } from "@/server/matchmaking";
 import { advanceVetos, banHall } from "@/server/veto";
 import { proposeOption, voteOption, withdrawOption, expireScheduling } from "@/server/scheduling";
 import { setReady, setVenue } from "@/server/lobby";
@@ -314,5 +314,31 @@ describe("Offene Suchen und direktes Annehmen", () => {
     await expect(acceptSearch(t.b.id, crypto.randomUUID(), t.tb.id)).rejects.toThrow(/nicht mehr offen/);
     await leaveQueue(t.a.id, t.ta.id);
     await expect(acceptSearch(t.b.id, entry.id, t.tb.id)).rejects.toThrow(/nicht mehr offen/);
+  });
+});
+
+describe("Offene Lobby: Übersicht und Beitritt", () => {
+  it("der Captain ist sofort drin, Teammitglieder treten bei, beim Antreten eines Gegners kommen alle ins Spiel", async () => {
+    const t = await twoTeams();
+    const member = await makeUser("qm");
+    await db.insert(teamMembers).values({ teamId: t.ta.id, userId: member.id, role: "player" });
+    await joinQueue(t.a.id, { teamId: t.ta.id, city: "Essen", durationMin: 60, windows: evening() });
+    const [entry] = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.teamId, t.ta.id));
+    let view = (await getOpenLobby(entry.id, member.id))!;
+    expect(view.members.filter((x) => x.joined).map((x) => x.userId)).toEqual([t.a.id]);
+    expect(view.viewer).toMatchObject({ isMember: true, isAdmin: false, joined: false });
+
+    await expect(setOpenLobbyJoined(t.b.id, entry.id, true)).rejects.toThrow(/Mitglieder des Teams/);
+    await setOpenLobbyJoined(member.id, entry.id, true);
+    view = (await getOpenLobby(entry.id, member.id))!;
+    expect(view.members.filter((x) => x.joined)).toHaveLength(2);
+    await setOpenLobbyJoined(member.id, entry.id, false);
+    await setOpenLobbyJoined(member.id, entry.id, true);
+
+    const matchId = await acceptSearch(t.b.id, entry.id, t.tb.id);
+    const parts = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, matchId));
+    expect(parts.filter((p) => p.teamId === t.ta.id).map((p) => p.userId).sort()).toEqual([t.a.id, member.id].sort());
+    expect((await getOpenLobby(entry.id, null))?.status).toBe("matched");
+    await expect(setOpenLobbyJoined(member.id, entry.id, true)).rejects.toThrow(/nicht mehr offen/);
   });
 });

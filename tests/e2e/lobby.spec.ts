@@ -36,7 +36,7 @@ test("Lobby: Ort live, Bereit, automatische Bestätigung, Rücknahme, Absage", a
   }
   await a.reload();
   await b.reload();
-  await expect(a.getByText("Wartet auf Spieler")).toBeVisible();
+  await expect(a.getByTestId("match-status").filter({ hasText: "Wartet auf Spieler" })).toBeVisible();
   // Live-Verbindung (SSE) steht bei beiden
   await expect(a.getByText("● Live")).toBeVisible({ timeout: 15_000 });
   await expect(b.getByText("● Live")).toBeVisible({ timeout: 15_000 });
@@ -52,7 +52,7 @@ test("Lobby: Ort live, Bereit, automatische Bestätigung, Rücknahme, Absage", a
   // A wird bereit: 4/4 Heim, 3/4 Gast, noch nicht bestätigt
   await clickWhenReady(a, "Ich bin bereit");
   await expect(a.getByText("Nicht mehr bereit")).toBeVisible();
-  await expect(a.getByText("Wartet auf Spieler")).toBeVisible();
+  await expect(a.getByTestId("match-status").filter({ hasText: "Wartet auf Spieler" })).toBeVisible();
 
   // B wird bereit: beide Teams 4, Spiel ist bestätigt, auch bei A ohne Neuladen
   await clickWhenReady(b, "Ich bin bereit");
@@ -61,8 +61,8 @@ test("Lobby: Ort live, Bereit, automatische Bestätigung, Rücknahme, Absage", a
 
   // B nimmt Bereit zurück: wieder Wartet auf Spieler
   await clickWhenReady(b, "Nicht mehr bereit");
-  await expect(b.getByText("Wartet auf Spieler")).toBeVisible();
-  await expect(a.getByText("Wartet auf Spieler")).toBeVisible({ timeout: 15_000 });
+  await expect(b.getByTestId("match-status").filter({ hasText: "Wartet auf Spieler" })).toBeVisible();
+  await expect(a.getByTestId("match-status").filter({ hasText: "Wartet auf Spieler" })).toBeVisible({ timeout: 15_000 });
 
   // Absagen mit Grund
   await clickWhenReady(a, "Spiel absagen");

@@ -9,6 +9,7 @@ import {
   joinLobbyAction,
   leaveLobbyAction,
   removeParticipantAction,
+  payShareAction,
   setReadyAction,
   setVenueAction,
 } from "@/server/actions";
@@ -53,9 +54,11 @@ type MyActionsProps = {
   hasTeam: boolean;
   /** Nur gesetzt, wenn Zahlungen eingeschaltet sind. */
   pay?: { reserveCents: number; balanceCents: number; paid: boolean; backTo: string } | null;
+  /** Wie viele Spieler des eigenen Teams haben schon bezahlt? Bereit geht erst, wenn alle bezahlt haben. */
+  teamPaid?: { paid: number; total: number };
 };
 
-export function MyActions({ matchId, mode, ready, hasTeam, pay }: MyActionsProps) {
+export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid }: MyActionsProps) {
   const { error, needsTopupCents, pending, run } = useRun();
   const busy = pending ? "opacity-60" : "";
 
@@ -65,15 +68,31 @@ export function MyActions({ matchId, mode, ready, hasTeam, pay }: MyActionsProps
         <>
           {hasTeam ? (
             <>
-              {pay && !pay.paid && !ready && (
-                <p className="text-sm text-muted" data-testid="pay-hint">
-                  Beim Bereitmachen werden {formatEuro(pay.reserveCents)} von deinem Guthaben ({formatEuro(pay.balanceCents)}) reserviert. Was nach der Abrechnung übrig ist, bekommst du zurück.
-                </p>
+              {pay && !pay.paid && (
+                <>
+                  <p className="text-sm text-muted" data-testid="pay-hint">
+                    Schritt 1: Bezahlen. Es werden {formatEuro(pay.reserveCents)} von deinem Guthaben ({formatEuro(pay.balanceCents)}) reserviert. Was nach der Abrechnung übrig ist, bekommst du zurück.
+                  </p>
+                  <button className={`btn btn-primary w-full ${busy}`} disabled={pending} onClick={() => run(() => payShareAction(matchId))}>
+                    {formatEuro(pay.reserveCents)} bezahlen
+                  </button>
+                </>
               )}
               {pay?.paid && <p className="text-sm text-green">Dein Anteil ist bezahlt.</p>}
-              <button className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`} disabled={pending} onClick={() => run(() => setReadyAction(matchId, !ready))}>
-                {ready ? "Nicht mehr bereit" : pay && !pay.paid ? `Bereit und ${formatEuro(pay.reserveCents)} zahlen` : "Ich bin bereit"}
-              </button>
+              {(!pay || pay.paid) && (
+                <>
+                  {pay && teamPaid && teamPaid.paid < teamPaid.total && !ready && (
+                    <p className="text-sm text-muted" data-testid="team-pay-hint">Bereit machen geht, sobald alle in deinem Team bezahlt haben ({teamPaid.paid} von {teamPaid.total}).</p>
+                  )}
+                  <button
+                    className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`}
+                    disabled={pending || (!ready && Boolean(pay && teamPaid && teamPaid.paid < teamPaid.total))}
+                    onClick={() => run(() => setReadyAction(matchId, !ready))}
+                  >
+                    {ready ? "Nicht mehr bereit" : pay ? "Bereit machen" : "Ich bin bereit"}
+                  </button>
+                </>
+              )}
             </>
           ) : (
             <p className="text-sm text-muted">Du wartest auf die Zuweisung durch einen Team-Admin.</p>

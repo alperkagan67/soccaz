@@ -41,11 +41,20 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   };
 
   await enter(a);
+  // direkt weiter zur Übersicht der eigenen Lobby: Team mit freien Plätzen, Einladungslink, noch kein Gegner
+  await expect(a).toHaveURL(/\/lobby\/offen\/[0-9a-f-]{36}$/, { timeout: 30_000 });
+  await expect(a.getByTestId("open-lobby-status")).toContainText("wartet auf einen Gegner");
+  await expect(a.getByTestId("open-lobby-player")).toHaveCount(1); // der Captain
+  await expect(a.getByTestId("open-lobby-free").first()).toContainText("Wartet auf Spieler 2");
+  await expect(a.getByRole("button", { name: "Einladungslink erstellen" })).toBeVisible();
+  await a.goto("/matchmaking");
   await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
   // Abbrechen und wieder anstellen funktioniert
   await a.getByRole("button", { name: "Suche abbrechen" }).click();
   await expect(a.getByTestId("my-queue")).toHaveCount(0);
   await enter(a);
+  await expect(a).toHaveURL(/\/lobby\/offen\//, { timeout: 30_000 });
+  await a.goto("/matchmaking");
   await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
 
   // Team B sieht die offene Lobby und tritt an (keine automatische Paarung)
@@ -193,6 +202,8 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
   await a.getByLabel("Von", { exact: true }).first().fill("18:00");
   await a.getByLabel("Bis", { exact: true }).first().fill("21:00");
   await a.getByRole("button", { name: "Lobby aufmachen", exact: true }).click();
+  await expect(a).toHaveURL(/\/lobby\/offen\//, { timeout: 30_000 });
+  await a.goto("/matchmaking");
   await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
   // die eigene Suche steht auch in der offenen Liste, ohne Annehmen
   await expect(a.getByTestId("open-search").filter({ hasText: nameA })).toContainText("Euer Team");

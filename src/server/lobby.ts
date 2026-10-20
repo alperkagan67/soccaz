@@ -65,7 +65,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const rows = await db
     .select({
       userId: users.id,
-      name: users.name,
+      name: sql<string>`coalesce(${users.nickname}, ${users.name})`, // Spitzname, sonst Name
       isVerifiedPro: users.isVerifiedPro,
       teamId: matchParticipants.teamId,
       fromOutside: matchParticipants.isSubstitute,
@@ -278,13 +278,24 @@ export function leaveLobby(userId: string, matchId: string) {
   });
 }
 
+/** Erst bezahlen, dann bereit: Bucht den Anteil vom Guthaben (nur wenn Zahlungen eingeschaltet sind). */
+export function payShare(userId: string, matchId: string) {
+  return mutateLobby(userId, matchId, async (tx, match) => {
+    const me = await findParticipant(tx, matchId, userId);
+    if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
+    if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
+    if (match.schedulingOpen || match.vetoStatus === "halls" || match.vetoStatus === "running") throw new DomainError("Bezahlen geht, sobald Uhrzeit und Halle feststehen.");
+    await reserveShare(tx, match, userId);
+  });
+}
+
 export function setReady(userId: string, matchId: string, ready: boolean) {
   return mutateLobby(userId, matchId, async (tx, match) => {
     const me = await findParticipant(tx, matchId, userId);
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
     if (ready && match.schedulingOpen) throw new DomainError("Erst müssen die Teams Termin und Ort gemeinsam wählen.");
-    if (ready) await reserveShare(tx, match, userId); // bucht den Anteil vom Guthaben (nur wenn Zahlungen eingeschaltet sind)
+    if (ready && (await paymentsEnabled(tx)) && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil.");
     await tx
       .update(matchParticipants)
       .set({ readyAt: ready ? new Date() : null })

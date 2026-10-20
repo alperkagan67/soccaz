@@ -5,7 +5,10 @@ import type { ActionState } from "@/lib/validation";
 import { parseBerlinLocal } from "@/lib/time";
 import { MAX_WINDOWS } from "@/lib/matchmaking";
 import { redirect } from "next/navigation";
-import { acceptSearch, joinQueue, leaveQueue } from "./matchmaking";
+import { acceptSearch, joinQueue, leaveQueue, setOpenLobbyJoined } from "./matchmaking";
+import { db } from "@/db";
+import { and, desc, eq } from "drizzle-orm";
+import { matchmakingQueue } from "@/db/schema-matchmaking";
 import { proposeOption, voteOption, withdrawOption } from "./scheduling";
 import { requireUser } from "./session";
 import { answerHallRequest, banHall } from "./veto";
@@ -39,6 +42,15 @@ export async function joinQueueAction(_prev: ActionState, f: FormData): Promise<
   }
   const result = await guarded(async () => void (await joinQueue(user.id, { teamId: str(f, "teamId"), city: str(f, "city"), durationMin: Number(str(f, "durationMin")), windows, note: str(f, "note"), wantStrengthMin: str(f, "wantMin") ? Number(str(f, "wantMin")) : null, wantStrengthMax: str(f, "wantMax") ? Number(str(f, "wantMax")) : null })));
   revalidatePath("/matchmaking");
+  if (result?.error) return result;
+  // Weiter zur Übersicht der eigenen offenen Lobby
+  const [entry] = await db
+    .select({ id: matchmakingQueue.id })
+    .from(matchmakingQueue)
+    .where(and(eq(matchmakingQueue.teamId, str(f, "teamId")), eq(matchmakingQueue.status, "waiting")))
+    .orderBy(desc(matchmakingQueue.createdAt))
+    .limit(1);
+  if (entry) redirect(`/lobby/offen/${entry.id}`);
   return result;
 }
 
@@ -130,5 +142,13 @@ export async function answerHallAction(matchId: string, venueId: string, accept:
   const result = await guarded(() => answerHallRequest(user.id, matchId, venueId, accept));
   revalidatePath("/halle");
   revalidatePath(`/lobby/${matchId}`);
+  return result;
+}
+
+/** Teammitglied tritt der offenen Lobby bei oder verlässt sie. */
+export async function openLobbyJoinAction(entryId: string, join: boolean): Promise<ActionState> {
+  const user = await requireUser(`/lobby/offen/${entryId}`);
+  const result = await guarded(() => setOpenLobbyJoined(user.id, entryId, join));
+  revalidatePath(`/lobby/offen/${entryId}`);
   return result;
 }

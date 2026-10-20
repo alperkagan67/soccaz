@@ -166,6 +166,9 @@ export async function leaveLobbyAction(matchId: string) {
 export async function setReadyAction(matchId: string, ready: boolean) {
   return lobbyAction(matchId, (id) => lobby.setReady(id, matchId, ready));
 }
+export async function payShareAction(matchId: string) {
+  return lobbyAction(matchId, (id) => lobby.payShare(id, matchId));
+}
 export async function setVenueAction(matchId: string, venue: string) {
   return lobbyAction(matchId, (id) => lobby.setVenue(id, matchId, venue));
 }
