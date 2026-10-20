@@ -40,6 +40,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       venueText: matches.venueText,
       venueName: venues.name,
       venueAddress: venues.address,
+      venueContact: venues.contact,
       venueCity: venues.city,
       venueLat: venues.lat,
       venueLng: venues.lng,

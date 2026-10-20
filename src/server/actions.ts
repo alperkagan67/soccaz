@@ -213,8 +213,15 @@ export async function undoLastEventAction(matchId: string) {
 export async function submitResultAction(matchId: string, home: number, away: number) {
   return matchAction(matchId, (id) => results.submitResult(id, matchId, home, away));
 }
+export async function submitScoreAction(matchId: string, goals: results.GoalInput[]) {
+  const state = await matchAction(matchId, (id) => results.submitScore(id, matchId, goals));
+  revalidatePath(`/lobby/${matchId}/uebersicht`);
+  return state;
+}
 export async function confirmResultAction(matchId: string) {
-  return matchAction(matchId, (id) => results.confirmResult(id, matchId));
+  const state = await matchAction(matchId, (id) => results.confirmResult(id, matchId));
+  revalidatePath(`/lobby/${matchId}/uebersicht`);
+  return state;
 }
 export async function disputeResultAction(matchId: string, reason: string) {
   return matchAction(matchId, (id) => results.disputeResult(id, matchId, reason));

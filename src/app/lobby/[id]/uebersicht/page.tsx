@@ -11,6 +11,9 @@ import { CancelForm } from "../LobbyClient";
 import { VenueBox } from "../VenueBox";
 import { KickoffCountdown } from "@/components/KickoffCountdown";
 import { ClipForm, DeleteClip } from "./ClipForm";
+import { ScoreDialog } from "./ScoreDialog";
+import { ConfirmPanel } from "@/app/spiele/[id]/MatchClient";
+import { getMatchPage } from "@/server/results";
 
 export const metadata: Metadata = { title: "Spielübersicht", robots: { index: false } };
 
@@ -25,7 +28,10 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
   const allowed = Boolean(v.participant || v.membershipTeamId || v.platformAdmin);
   if (!allowed || !canViewLobby(view) || !(match.homeFinalAt && match.awayFinalAt)) redirect(`/lobby/${id}`);
 
-  const [phone, clips] = await Promise.all([getSetting<string>("emergency_phone", ""), listClips(id)]);
+  const [phone, clips, page] = await Promise.all([getSetting<string>("emergency_phone", ""), listClips(id), getMatchPage(id, { id: user.id, role: user.role })]);
+  const result = page?.result ?? null;
+  const pv = page?.viewer ?? null;
+  const played = match.status === "played";
   const cancelled = match.status === "cancelled";
   const started = !view.active && !cancelled; // Anstoß erreicht oder gespielt
   const teams = [
@@ -51,13 +57,52 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
 
       {venueName && <VenueBox name={venueName} address={match.venueAddress} city={match.venueCity} when={formatDateTime(match.startsAt)} lat={match.venueLat} lng={match.venueLng} />}
 
-      <section className="card space-y-1" aria-label="Notfall" data-testid="emergency">
+      {!cancelled && (played || started) && (
+        <section className="card space-y-3" aria-label="Ergebnis" data-testid="result-box">
+          <h2 className="font-semibold">Ergebnis</h2>
+          {played && result ? (
+            <>
+              <p className="text-center font-heading text-4xl font-extrabold tabular-nums" data-testid="final-score">{result.homeScore} : {result.awayScore}</p>
+              <p className="text-center text-sm text-green">{result.autoConfirmed ? "Ergebnis nach Ablauf der Frist automatisch bestätigt." : "Beide Captains haben das Ergebnis bestätigt."}</p>
+            </>
+          ) : result && result.disputed ? (
+            <p className="text-sm text-coral">Das Ergebnis ist strittig. Ein Plattform-Admin entscheidet.</p>
+          ) : result ? (
+            <>
+              <p className="text-center font-heading text-3xl font-extrabold tabular-nums" data-testid="reported-score">{result.homeScore} : {result.awayScore}</p>
+              {pv?.canConfirm ? (
+                <ConfirmPanel matchId={match.id} summary={`${match.homeName} ${result.homeScore} : ${result.awayScore} ${match.awayName}`} deadlineText={`Ohne Antwort gilt das Ergebnis ab ${result.confirmDeadline ? formatDateTime(result.confirmDeadline) : "–"} Uhr automatisch.`} />
+              ) : (
+                <p className="text-center text-sm text-muted" data-testid="waiting-confirm">Gemeldet. Der Captain des anderen Teams muss noch bestätigen.</p>
+              )}
+            </>
+          ) : pv?.canSubmit ? (
+            <ScoreDialog
+              matchId={match.id}
+              home={{ id: match.homeId, name: match.homeName }}
+              away={{ id: match.awayId, name: match.awayName }}
+              players={page!.participants}
+              existing={page!.events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))}
+            />
+          ) : (
+            <p className="text-sm text-muted">Die Captains tragen nach dem Spiel das Ergebnis ein und bestätigen es beide.</p>
+          )}
+        </section>
+      )}
+
+      <section className="card space-y-2" aria-label="Notfall" data-testid="emergency">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Notfall</h2>
         <p className="text-sm text-muted">Falls am Spieltag etwas schiefgeht (Halle zu, Verspätung, Streit), erreicht ihr den Socaz-Betreiber hier:</p>
         {phone ? (
           <a href={`tel:${phone.replace(/[^+0-9]/g, "")}`} className="btn btn-primary w-full text-lg" data-testid="emergency-phone">{phone}</a>
         ) : (
           <p className="text-sm text-muted">Die Notfallnummer wird noch nachgetragen. Bis dahin: <Link href="/kontakt" className="text-green underline">Kontaktseite</Link>.</p>
+        )}
+        {match.venueContact && (
+          <p className="text-sm" data-testid="venue-contact">
+            <span className="text-muted">Probleme mit der Halle? Kontakt der Halle{match.venueName ? ` (${match.venueName})` : ""}: </span>
+            {/^[+0-9\s()/-]{6,}$/.test(match.venueContact) ? <a href={`tel:${match.venueContact.replace(/[^+0-9]/g, "")}`} className="text-green underline">{match.venueContact}</a> : <span>{match.venueContact}</span>}
+          </p>
         )}
       </section>
 

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, notifications } from "@/db/schema";
+import { matchEvents, matchParticipants, matchResults, matches, notifications } from "@/db/schema";
+import { confirmResult, submitScore } from "@/server/results";
 import { addClip, cleanClipUrl, deleteClip, listClips, MAX_CLIPS_PER_USER } from "@/server/clips";
 import { finalConfirm, setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
@@ -91,5 +92,23 @@ describe("Clips", () => {
     await deleteClip(m.adminA.id, clip.id, false);
     expect(await listClips(m.match.id)).toHaveLength(MAX_CLIPS_PER_USER - 1);
     expect(cleanClipUrl(" https://example.com/a?b=1 ")).toBe("https://example.com/a?b=1");
+  });
+});
+
+describe("Ergebnis per Pop-up", () => {
+  it("Tore mit Torschütze eintragen meldet das Ergebnis, nur der andere Captain bestätigt", async () => {
+    const m = await makeMatch();
+    const scorer = await addPlayer(m.match.id, m.home.id, "tor");
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m.match.id));
+    await expect(submitScore(m.adminA.id, m.match.id, [{ teamId: m.home.id, scorerId: m.adminB.id }])).rejects.toThrow(/nicht zum Team/); // Torschütze aus dem anderen Team
+    await submitScore(m.adminA.id, m.match.id, [{ teamId: m.home.id, scorerId: scorer.id }, { teamId: m.home.id }, { teamId: m.away.id }]);
+    const events = await db.select().from(matchEvents).where(eq(matchEvents.matchId, m.match.id));
+    expect(events.filter((e) => e.type === "goal")).toHaveLength(3);
+    expect(events.some((e) => e.userId === scorer.id)).toBe(true);
+    const [r] = await db.select().from(matchResults).where(eq(matchResults.matchId, m.match.id));
+    expect(r).toMatchObject({ homeScore: 2, awayScore: 1, confirmedHome: true, confirmedAway: false });
+    await expect(confirmResult(m.adminA.id, m.match.id)).rejects.toThrow(/andere Team/); // der Melder kann nicht selbst bestätigen
+    await confirmResult(m.adminB.id, m.match.id);
+    expect((await reloadMatch(m.match.id)).status).toBe("played");
   });
 });

@@ -437,3 +437,16 @@ export async function countDisputed(): Promise<number> {
   const [{ n }] = await db.select({ n: count() }).from(matches).where(eq(matches.status, "disputed"));
   return n;
 }
+
+export type GoalInput = { teamId: string; scorerId?: string | null; minute?: number | null };
+const MAX_GOALS_PER_SUBMIT = 30;
+
+/** Der Captain trägt Tore (mit optionalem Torschützen) ein und meldet damit das Endergebnis. Das andere Team bestätigt. */
+export async function submitScore(userId: string, matchId: string, goals: GoalInput[]) {
+  if (goals.length > MAX_GOALS_PER_SUBMIT) throw new DomainError(`Bitte höchstens ${MAX_GOALS_PER_SUBMIT} Tore auf einmal eintragen.`);
+  for (const g of goals) await recordEvent(userId, matchId, { type: "goal", teamId: g.teamId, scorerId: g.scorerId ?? null, minute: g.minute ?? null });
+  const [m] = await db.select({ home: matches.homeTeamId, away: matches.awayTeamId }).from(matches).where(eq(matches.id, matchId));
+  if (!m) throw new DomainError("Spiel nicht gefunden.");
+  const events = await db.select({ teamId: matchEvents.teamId }).from(matchEvents).where(and(eq(matchEvents.matchId, matchId), eq(matchEvents.type, "goal")));
+  await submitResult(userId, matchId, events.filter((e) => e.teamId === m.home).length, events.filter((e) => e.teamId === m.away).length);
+}
