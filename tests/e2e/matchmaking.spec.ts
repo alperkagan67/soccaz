@@ -11,7 +11,7 @@ test.afterEach(async ({ browser }) => {
 
 async function seedHalls() {
   // Das Veto braucht mindestens zwei Hallen; auf einer frischen Datenbank (CI) gibt es keine
-  await query("insert into venues (name, city) select 'E2E Veto-Halle ' || g || ' ' || $1, 'Gelsenkirchen' from generate_series(1, 3) g", [run]);
+  await query("insert into venues (name, city, address) select 'E2E Veto-Halle ' || g || ' ' || $1, 'Gelsenkirchen', 'Teststraße ' || g from generate_series(1, 3) g", [run]);
 }
 
 async function cancelWaiting() {
@@ -138,6 +138,14 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
 
   // Danach ist alles klar: Bereitmachen ist möglich
   await b.goto(lobbyUrl);
+  // Spielort-Box: Halle, Adresse, Uhrzeit und Karten-Links statt Eingabefeld
+  const venue = b.getByTestId("venue-box");
+  await expect(venue.getByTestId("venue-name")).not.toBeEmpty(); // je nach Veto eine der Hallen
+  await expect(venue.getByTestId("venue-address")).toBeVisible();
+  await expect(venue.getByTestId("venue-time")).toContainText("Uhr");
+  await expect(venue.getByRole("link", { name: "Google Maps" })).toHaveAttribute("href", /google\.com\/maps/);
+  await expect(venue.getByRole("link", { name: "Apple Maps" })).toHaveAttribute("href", /maps\.apple\.com/);
+  await expect(b.getByRole("button", { name: "Speichern" })).toHaveCount(0);
   await expect(b.getByRole("button", { name: "Bereit" }).first()).toBeVisible();
   await b.goto("/app/benachrichtigungen");
   await expect(b.getByText("Termin steht fest")).toBeVisible();

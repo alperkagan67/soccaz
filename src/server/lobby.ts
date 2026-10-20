@@ -3,6 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
+import { venues } from "@/db/schema-finance";
 import { hasFreeSlot, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
@@ -37,6 +38,11 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       startsAt: matches.startsAt,
       durationMin: matches.durationMin,
       venueText: matches.venueText,
+      venueName: venues.name,
+      venueAddress: venues.address,
+      venueCity: venues.city,
+      venueLat: venues.lat,
+      venueLng: venues.lng,
       schedulingOpen: matches.schedulingOpen,
       challengeStatus: matches.challengeStatus,
       vetoStatus: matches.vetoStatus,
@@ -59,6 +65,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
     .from(matches)
     .innerJoin(home, eq(home.id, matches.homeTeamId))
     .innerJoin(away, eq(away.id, matches.awayTeamId))
+    .leftJoin(venues, eq(venues.id, matches.venueId))
     .where(eq(matches.id, matchId));
   if (!match) return null;
 

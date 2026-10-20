@@ -11,6 +11,7 @@ import { canViewLobby, getLobby } from "@/server/lobby";
 import { getScheduling } from "@/server/scheduling";
 import { getHallCheck, getVeto } from "@/server/veto";
 import { ChallengePanel } from "./ChallengePanel";
+import { VenueBox } from "./VenueBox";
 import { InviteBox } from "@/app/teams/[slug]/InviteBox";
 import { VetoPanel } from "./VetoPanel";
 import { Steps, type StepDecision } from "./Steps";
@@ -185,14 +186,14 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
       )}
       {match.status === "cancelled" && <p className="card text-sm text-coral">Dieses Spiel wurde abgesagt.</p>}
 
-      {!open && <section className="card space-y-2">
-        <h2 className="font-semibold">Ort</h2>
-        {active && v.canManage ? (
+      {!open && match.venueName && <VenueBox name={match.venueName} address={match.venueAddress} city={match.venueCity} when={formatDateTime(match.startsAt)} lat={match.venueLat} lng={match.venueLng} />}
+      {!open && !match.venueName && active && v.canManage && (
+        <section className="card space-y-2">
+          <h2 className="font-semibold">Spielort</h2>
           <VenueForm matchId={match.id} venue={match.venueText ?? ""} />
-        ) : (
-          <p className={match.venueText ? "" : "text-muted"}>{match.venueText ?? "Noch nicht festgelegt. Die Team-Admins legen den Ort fest."}</p>
-        )}
-      </section>}
+        </section>
+      )}
+      {!open && !match.venueName && !(active && v.canManage) && (match.venueText ? <VenueBox name={match.venueText} address={null} city={null} when={formatDateTime(match.startsAt)} lat={null} lng={null} /> : <p className="card text-muted">Spielort noch nicht festgelegt. Die Team-Admins legen den Ort fest.</p>)}
 
       {payments.enabled && payments.priceCents !== null && (
         <section className="card space-y-1 text-sm" aria-label="Kosten">
