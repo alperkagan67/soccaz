@@ -275,7 +275,11 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   const venueText = await query<{ venue_text: string }>("select venue_text from matches where id = $1", [matchId]);
   expect(venueText[0].venue_text).toContain(venueName);
   await a.reload();
-  await expect(a.getByLabel("Ort / Halle")).toHaveValue(new RegExp(venueName));
+  await expect(async () => {
+    // Spielort: Box mit Name (Halle aus der Liste) oder Eingabefeld (freier Text)
+    if (await a.getByLabel("Ort / Halle").count()) await expect(a.getByLabel("Ort / Halle")).toHaveValue(new RegExp(venueName));
+    else await expect(a.getByTestId("venue-name")).toContainText(venueName);
+  }).toPass({ timeout: 10_000 });
 
   // --- Admin: Finanzen zum Spiel
   await adm.goto(`/admin/finanzen/spiel/${matchId}`);

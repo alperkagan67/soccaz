@@ -3,13 +3,13 @@ import { ActionForm } from "@/components/ActionForm";
 import { activeProvider } from "@/server/payments";
 import { requirePermission } from "@/server/session";
 import { savePlatformSettingsAction } from "@/server/admin-finance-actions";
-import { minPaidPlayers, paymentsEnabled } from "@/server/settings";
+import { getSetting, minPaidPlayers, paymentsEnabled } from "@/server/settings";
 
 export const metadata: Metadata = { title: "Admin: Einstellungen" };
 
 export default async function SettingsAdminPage() {
   await requirePermission("admin", "/admin/einstellungen");
-  const [enabled, minPaid] = await Promise.all([paymentsEnabled(), minPaidPlayers()]);
+  const [enabled, minPaid, emergency] = await Promise.all([paymentsEnabled(), minPaidPlayers(), getSetting<string>("emergency_phone", "")]);
   const provider = activeProvider();
 
   return (
@@ -30,6 +30,11 @@ export default async function SettingsAdminPage() {
           <label className="label" htmlFor="minPaid">Mindestzahl zahlender Spieler</label>
           <input id="minPaid" name="minPaid" type="number" min={2} max={12} defaultValue={minPaid} className="field" />
           <p className="mt-1 text-xs text-muted">Der Hallenpreis wird höchstens durch diese Zahl geteilt. Beim Bereitmachen wird dieser höchste Anteil reserviert.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="emergencyPhone">Notfallnummer des Betreibers</label>
+          <input id="emergencyPhone" name="emergencyPhone" type="tel" maxLength={40} defaultValue={emergency} className="field" placeholder="+49 …" />
+          <p className="mt-1 text-xs text-muted">Steht in der Spielübersicht beider Teams, falls am Spieltag etwas schiefgeht.</p>
         </div>
       </ActionForm>
       <p className="card text-sm text-muted">

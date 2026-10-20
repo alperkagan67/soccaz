@@ -98,3 +98,17 @@ export const queueParticipants = pgTable(
   },
   (t) => [primaryKey({ columns: [t.queueId, t.userId] })],
 );
+
+/** Clips zu einem Spiel (Links), von Spielern nach dem Anstoß eingestellt. */
+export const matchClips = pgTable(
+  "match_clips",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    title: text("title").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("match_clips_match_idx").on(t.matchId)],
+);

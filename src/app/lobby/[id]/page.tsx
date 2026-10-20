@@ -12,6 +12,7 @@ import { getScheduling } from "@/server/scheduling";
 import { getHallCheck, getVeto } from "@/server/veto";
 import { ChallengePanel } from "./ChallengePanel";
 import { VenueBox } from "./VenueBox";
+import { FinalConfirm } from "./FinalConfirm";
 import { InviteBox } from "@/app/teams/[slug]/InviteBox";
 import { VetoPanel } from "./VetoPanel";
 import { Steps, type StepDecision } from "./Steps";
@@ -40,6 +41,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const { match, payments, participants, counts, pendingStrangers, active, roster, strength } = view;
   const v = view.viewer ?? { id: "", platformAdmin: false, membershipTeamId: null, adminOf: [] as string[], participant: null, canManage: false, canJoin: false, teamFull: false, canJoinAsSubstitute: false };
   const confirmed = match.status === "confirmed";
+  const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
+  // Haben beide Captains bestätigt, ist die Spielübersicht die Hauptseite für alle Beteiligten
+  if (finalDone && match.status !== "cancelled" && user && (v.participant || v.membershipTeamId || v.platformAdmin)) redirect(`/lobby/${match.id}/uebersicht`);
   const winChanceHome = Math.round(expectedScore(strength[match.homeId].elo, strength[match.awayId].elo) * 100);
   const status = STATUS[match.status] ?? STATUS.lobby;
   const scheduling = await getScheduling(match);
@@ -296,6 +300,24 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             ))}
           </ul>
         </section>
+      )}
+
+      {active && !open && (
+        <FinalConfirm
+          matchId={match.id}
+          paymentsOn={payments.enabled}
+          minPlayers={MIN_READY_PER_TEAM}
+          myTeamId={[match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null}
+          teams={[
+            { id: match.homeId, name: match.homeName, final: match.homeFinalAt },
+            { id: match.awayId, name: match.awayName, final: match.awayFinalAt },
+          ].map((t) => {
+            const list = participants.filter((p) => p.teamId === t.id);
+            const paid = list.filter((p) => p.paid).length;
+            const ready = list.filter((p) => p.ready).length;
+            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (!payments.enabled || paid === list.length) };
+          })}
+        />
       )}
 
       {active && v.canManage && <CancelForm matchId={match.id} />}

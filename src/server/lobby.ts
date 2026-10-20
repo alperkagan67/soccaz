@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
-import { hasFreeSlot, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
+import { MIN_READY_PER_TEAM, hasFreeSlot, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
 import { teamName, userName } from "./names";
@@ -50,6 +50,8 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       vetoTurnDeadline: matches.vetoTurnDeadline,
       schedulingDeadline: matches.schedulingDeadline,
       timeWindows: matches.timeWindows,
+      homeFinalAt: matches.homeFinalAt,
+      awayFinalAt: matches.awayFinalAt,
       visibility: matches.visibility,
       status: matches.status,
       priceCents: matches.priceCents,
@@ -237,7 +239,49 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
     if (match.startsAt.getTime() <= Date.now()) throw new DomainError("Der Anstoß ist schon erreicht.");
     await fn(tx, match);
     await evaluateConfirmation(tx, match, userId);
+    await revalidateFinal(tx, match.id);
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);
+  });
+}
+
+/** Ist das Team komplett? Mindestens so viele Spieler wie nötig, alle bereit und (bei eingeschalteten Zahlungen) alle bezahlt. */
+export async function teamComplete(tx: Tx, matchId: string, teamId: string): Promise<boolean> {
+  const rows = await tx.select({ ready: matchParticipants.readyAt, paid: matchParticipants.paidCents }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.teamId, teamId)));
+  const pay = await paymentsEnabled(tx);
+  return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (!pay || r.paid > 0));
+}
+
+/** Wird jemand wieder unbereit oder verlässt die Lobby, gilt die Bestätigung seines Captains nicht mehr. */
+async function revalidateFinal(tx: Tx, matchId: string) {
+  const [m] = await tx.select().from(matches).where(eq(matches.id, matchId));
+  if (!m) return;
+  if (m.homeFinalAt && !(await teamComplete(tx, matchId, m.homeTeamId))) await tx.update(matches).set({ homeFinalAt: null }).where(eq(matches.id, matchId));
+  if (m.awayFinalAt && !(await teamComplete(tx, matchId, m.awayTeamId))) await tx.update(matches).set({ awayFinalAt: null }).where(eq(matches.id, matchId));
+}
+
+/** Der Captain bestätigt zum Schluss: Alle in meinem Team sind bereit und haben bezahlt. Bestätigen beide Captains, steht das Spiel endgültig. */
+export function finalConfirm(userId: string, matchId: string) {
+  return mutateLobby(userId, matchId, async (tx, match) => {
+    if (match.schedulingOpen || match.vetoStatus === "halls" || match.vetoStatus === "running") throw new DomainError("Erst müssen Uhrzeit und Halle feststehen.");
+    const [admin] = await tx
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), inArray(teamMembers.teamId, [match.homeTeamId, match.awayTeamId])));
+    if (!admin) throw new DomainError("Nur der Captain kann die Lobby zum Schluss bestätigen.");
+    if (!(await teamComplete(tx, matchId, admin.teamId))) throw new DomainError(`Es müssen mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle in deinem Team bereit und bezahlt.`);
+    const home = admin.teamId === match.homeTeamId;
+    await tx.update(matches).set(home ? { homeFinalAt: new Date() } : { awayFinalAt: new Date() }).where(eq(matches.id, matchId));
+    await audit(userId, "lobby.final", "match", matchId, { after: { teamId: admin.teamId } }, tx);
+    const [fresh] = await tx.select().from(matches).where(eq(matches.id, matchId));
+    const bothDone = Boolean(fresh.homeFinalAt && fresh.awayFinalAt);
+    await notifyUsers(
+      [...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
+      bothDone
+        ? { type: "match.confirmed", title: "Spiel steht endgültig", body: "Beide Captains haben bestätigt. Alle Infos findet ihr in der Spielübersicht.", url: `/lobby/${matchId}/uebersicht` }
+        : { type: "match.found", title: "Captain hat bestätigt", body: `${await teamName(tx, admin.teamId)} ist komplett. Bestätigt jetzt auch für euer Team.`, url: `/lobby/${matchId}` },
+      tx,
+      userId,
+    );
   });
 }
 

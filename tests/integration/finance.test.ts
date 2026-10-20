@@ -44,18 +44,18 @@ describe("Finanz-Reporting", () => {
     await recordExpense(a.adminA.id, { matchId: a.match.id, kind: "venue", amountCents: 8000, note: "Hallenmiete" });
 
     const o = await overview(wide);
-    expect(o.revenueCents).toBe(8000);
-    expect(o.venueCostCents).toBe(8000);
-    expect(o.marginCents).toBe(0);
+    expect(o.revenueCents - base.revenueCents).toBe(8000);
+    expect(o.venueCostCents - base.venueCostCents).toBe(8000);
+    expect(o.marginCents - base.marginCents).toBe(0);
     expect(o.topupsCents - base.topupsCents).toBe(20_000);
-    expect(o.refundsCents).toBe(2000); // 10 x 2,00 EUR Abrechnungsdifferenz
+    expect(o.refundsCents - base.refundsCents).toBe(2000); // 10 x 2,00 EUR Abrechnungsdifferenz
     expect(o.liabilityCents - base.liabilityCents).toBe(12_000); // 10 x 12,00 EUR Restguthaben
     expect(o.feesCents).toBe(0);
     expect(o.promoCents).toBe(0);
   });
 
   it("Spieleliste zeigt Zahler, Einnahmen, Kosten und Marge", async () => {
-    const rows = await listMatchFinance(wide);
+    const rows = (await listMatchFinance(wide)).filter((x) => x.id === a.match.id); // echte Entwicklungsdaten zählen nicht mit
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: a.match.id, payers: 10, revenueCents: 8000, costCents: 8000, marginCents: 0, finalShareCents: 800, priceCents: 8000 });
   });

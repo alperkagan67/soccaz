@@ -161,5 +161,6 @@ export async function savePlatformSettingsAction(_prev: ActionState, fd: FormDat
   return guarded("admin", "/admin/einstellungen", async (actor) => {
     await setSetting(actor, "payments_enabled", fd.get("paymentsEnabled") === "on");
     await setSetting(actor, "min_paid_players", minPaid);
+    await setSetting(actor, "emergency_phone", String(fd.get("emergencyPhone") ?? "").trim().slice(0, 40));
   });
 }
