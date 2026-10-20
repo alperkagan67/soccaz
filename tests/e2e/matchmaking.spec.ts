@@ -67,11 +67,12 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   await expect(a).toHaveURL(new RegExp(matchId));
   await expect(b.getByText(/Termin wird noch gewählt/)).toBeVisible();
   await expect(b.getByText(/Elo \d+/).first()).toBeVisible();
-  await expect(b.getByRole("button", { name: "Bereit" })).toHaveCount(0);
+  await expect(b.getByRole("button", { name: "Bereit machen" })).toBeDisabled(); // noch nicht aktiv
   await expect(b.getByTestId("veto")).toHaveCount(0);
   await expect(b.getByTestId("scheduling")).toBeVisible();
   await expect(b.getByLabel("Halle", { exact: true })).toHaveCount(0); // Vorschläge betreffen nur die Uhrzeit, der Tag steht fest
   await expect(b.getByTestId("steps")).toHaveAttribute("data-step", "1");
+  await expect(b.getByTestId("ready-later")).toContainText("Bereit machen"); // der Knopf ist da, aber erst nach Uhrzeit und Halle aktiv
   await expect(b.getByTestId("team-decision")).toHaveCount(2); // beide Captains getrennt sichtbar
 
   // A stimmt für die erste Option
@@ -102,7 +103,7 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   await expect(b.getByTestId("veto")).toBeVisible();
   await expect(b.getByTestId("steps")).toHaveAttribute("data-step", "2");
   expect(await b.getByTestId("hall").count()).toBeGreaterThanOrEqual(2);
-  await expect(b.getByRole("button", { name: "Bereit" })).toHaveCount(0);
+  await expect(b.getByRole("button", { name: "Bereit machen" })).toBeDisabled(); // noch nicht aktiv
   for (let i = 0; i < 12; i++) {
     const done = (await query<{ veto_status: string }>("select veto_status from matches where id = $1", [matchId]))[0].veto_status === "done";
     if (done) break;

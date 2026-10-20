@@ -56,7 +56,8 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
 
   const [members, leagues, jerseys] = await Promise.all([getTeamMembers(team.id), leaguesOfTeam(team.id), sponsorsOfTeam(team.id)]);
   const admin = user ? await isTeamAdmin(user.id, team.id) : false;
-  const canChallenge = myTeams.some((t) => t.id !== team.id);
+  const isMyTeam = myTeams.some((t) => t.id === team.id); // das eigene Team kann man nicht herausfordern
+  const canChallenge = !isMyTeam && myTeams.length > 0;
 
   return (
     <div className="space-y-6">
@@ -75,6 +76,12 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${team.slug}`)}`} className="text-sm text-green underline">
             Anmelden, um dieses Team herauszufordern
           </Link>
+        )}
+        {isMyTeam && (
+          <div className="pt-2" data-testid="team-open-lobby">
+            <Link href="/matchmaking" className="btn btn-primary">Lobby aufmachen</Link>
+            <p className="mt-1 text-xs text-muted">Tag und Zeitfenster festlegen, dann sehen alle Teams eure offene Lobby und können antreten.</p>
+          </div>
         )}
         {canChallenge && (
           <div className="pt-2" data-testid="team-challenge">

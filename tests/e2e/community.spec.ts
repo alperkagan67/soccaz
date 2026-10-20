@@ -30,6 +30,11 @@ test("Herausforderung mit einem Klick: sofort die Lobby, für alle sichtbar, nur
   await createTeam(c, teamC);
   b.on("dialog", (d) => void d.accept());
 
+  // auf der eigenen Teamseite gibt es kein Herausfordern, sondern "Lobby aufmachen"
+  await a.goto(`/teams/${await slugOf(teamA)}`);
+  await expect(a.getByTestId("team-open-lobby")).toBeVisible();
+  await expect(a.getByTestId("team-challenge")).toHaveCount(0);
+
   // ein Klick auf der Teamseite: kein Formular, sondern sofort die Lobby "A VS. B"
   await a.goto(`/teams/${await slugOf(teamB)}`);
   await a.waitForLoadState("networkidle");

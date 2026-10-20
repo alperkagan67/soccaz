@@ -210,6 +210,13 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         </section>
       )}
 
+      {active && open && mode === "participant" && (
+        <section className="card space-y-2" data-testid="ready-later">
+          <button className="btn btn-primary w-full" disabled>Bereit machen</button>
+          <p className="text-sm text-muted">{scheduling ? "Du bist in der Lobby. Bereit machen kannst du, sobald die Captains Uhrzeit und Halle gewählt haben." : "Du bist in der Lobby. Bereit machen kannst du, sobald die Halle feststeht."}</p>
+        </section>
+      )}
+
       {active && !open && (
         <MyActions
           matchId={match.id}
