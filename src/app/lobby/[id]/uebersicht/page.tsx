@@ -79,6 +79,8 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
               )}
             </>
           ) : pv?.canSubmit ? (
+            <>
+              <p className="text-sm text-muted">Du kannst das Ergebnis jederzeit eintragen, auch lange nach dem Spiel.</p>
             <ScoreDialog
               matchId={match.id}
               home={{ id: match.homeId, name: match.homeName }}
@@ -86,8 +88,9 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
               players={page!.participants}
               existing={page!.events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))}
             />
+            </>
           ) : (
-            <p className="text-sm text-muted">Die Captains tragen nach dem Spiel das Ergebnis ein und bestätigen es beide.</p>
+            <p className="text-sm text-muted">Die Captains tragen das Ergebnis ein, auch nach dem Spiel, und beide bestätigen es.</p>
           )}
         </section>
       )}

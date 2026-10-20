@@ -99,7 +99,7 @@ describe("Ergebnis per Pop-up", () => {
   it("Tore mit Torschütze eintragen meldet das Ergebnis, nur der andere Captain bestätigt", async () => {
     const m = await makeMatch();
     const scorer = await addPlayer(m.match.id, m.home.id, "tor");
-    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m.match.id));
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3 * 86_400_000) }).where(eq(matches.id, m.match.id)); // das Spiel ist Tage her: Eintragen geht trotzdem
     await expect(submitScore(m.adminA.id, m.match.id, [{ teamId: m.home.id, scorerId: m.adminB.id }])).rejects.toThrow(/nicht zum Team/); // Torschütze aus dem anderen Team
     await submitScore(m.adminA.id, m.match.id, [{ teamId: m.home.id, scorerId: scorer.id }, { teamId: m.home.id }, { teamId: m.away.id }]);
     const events = await db.select().from(matchEvents).where(eq(matchEvents.matchId, m.match.id));

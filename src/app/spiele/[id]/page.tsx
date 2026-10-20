@@ -11,6 +11,7 @@ import { PHASE_LABEL } from "@/lib/result-rules";
 import { listMatchPhotos } from "@/server/media";
 import { canViewMatch, getMatchPage } from "@/server/results";
 import { getCurrentUser } from "@/server/session";
+import { ScoreDialog } from "@/app/lobby/[id]/uebersicht/ScoreDialog";
 import { MatchPhotos } from "./MatchPhotos";
 import { StreamEmbed } from "./StreamEmbed";
 import { StreamForm } from "./StreamForm";
@@ -88,6 +89,13 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
       {result?.disputed && <p className="card text-sm text-coral">Das Ergebnis ist strittig. Ein Plattform-Admin entscheidet.</p>}
 
       {v?.canRecord && <Recorder matchId={match.id} home={home} away={away} players={participants} hasEvents={events.length > 0} />}
+
+      {v?.canSubmit && !result?.disputed && !result && (
+        <section className="card space-y-2">
+          <p className="text-sm text-muted">Das Ergebnis kannst du jederzeit eintragen, auch nach dem Spiel, mit Torschützen:</p>
+          <ScoreDialog matchId={match.id} home={home} away={away} players={participants} existing={events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))} />
+        </section>
+      )}
 
       {v?.canSubmit && !result?.disputed && (
         <SubmitResultForm matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} />
