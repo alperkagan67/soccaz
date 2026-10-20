@@ -10,6 +10,7 @@ import { requireUser } from "@/server/session";
 import { CancelForm } from "../LobbyClient";
 import { VenueBox } from "../VenueBox";
 import { KickoffCountdown } from "@/components/KickoffCountdown";
+import { MatchClock } from "@/components/MatchClock";
 import { ClipForm, DeleteClip } from "./ClipForm";
 import { ScoreDialog } from "./ScoreDialog";
 import { ConfirmPanel } from "@/app/spiele/[id]/MatchClient";
@@ -53,6 +54,7 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
         <p className={`text-sm font-semibold ${cancelled ? "text-coral" : "text-green"}`}>{cancelled ? "Abgesagt" : started ? "Das Spiel läuft oder ist vorbei" : "Bestätigt von beiden Captains"}</p>
       </header>
 
+      {!cancelled && started && !played && !result && <MatchClock startsAtIso={match.startsAt.toISOString()} durationMin={match.durationMin} />}
       {!cancelled && !started && <KickoffCountdown startsAtIso={match.startsAt.toISOString()} />}
 
       {venueName && <VenueBox name={venueName} address={match.venueAddress} city={match.venueCity} when={formatDateTime(match.startsAt)} lat={match.venueLat} lng={match.venueLng} />}

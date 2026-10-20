@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { KickoffCountdown } from "@/components/KickoffCountdown";
 import { LiveIndicator } from "@/components/LiveIndicator";
+import { MatchClock } from "@/components/MatchClock";
 import { parseStreamUrl } from "@/lib/stream";
 import { formatDateTime } from "@/lib/time";
 import { PHASE_LABEL } from "@/lib/result-rules";
@@ -55,6 +56,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
         <p className={`text-center text-sm font-semibold ${phase === "live" ? "text-green" : phase === "disputed" || phase === "cancelled" ? "text-coral" : "text-muted"}`}>
           {PHASE_LABEL[phase]}
         </p>
+        {phase === "live" && <MatchClock startsAtIso={match.startsAt.toISOString()} durationMin={match.durationMin} />}
         {phase === "upcoming" && <KickoffCountdown startsAtIso={match.startsAt.toISOString()} />}
         {match.status === "played" && match.visibility === "public" && (
           <p className="text-center text-sm">

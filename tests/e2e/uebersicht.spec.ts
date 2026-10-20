@@ -73,6 +73,9 @@ test("Letzte Bestätigung beider Captains öffnet die Spielübersicht mit Ort, N
   await expect(b.getByTestId("clip").filter({ hasText: `Tor des Spiels ${run}` })).toBeVisible();
   await expect(b.getByTestId("clip").first().getByRole("button", { name: "Löschen" })).toHaveCount(0); // nur der Autor löscht
 
+  // Spieluhr läuft nach dem Anstoß (hier 2 Stunden her: Nachspielzeit)
+  await expect(a.getByTestId("match-clock")).toContainText("60'+");
+
   // Ergebnis: Captain A trägt per Pop-up 1 : 0 mit Torschütze ein, Captain B bestätigt
   await a.getByTestId("open-score").click();
   const dialog = a.getByTestId("score-dialog");
@@ -80,6 +83,7 @@ test("Letzte Bestätigung beider Captains öffnet die Spielübersicht mit Ort, N
   await dialog.getByRole("button", { name: `+ Tor ${nameA}` }).click();
   await expect(dialog.getByTestId("score-preview")).toContainText("1 : 0");
   await dialog.getByLabel("Torschütze").selectOption({ label: "Spieler ueha1" });
+  await dialog.getByLabel("Spielminute").fill("17");
   await dialog.getByRole("button", { name: "Ergebnis melden" }).click();
   await expect(a.getByTestId("reported-score")).toContainText("1 : 0", { timeout: 15_000 });
   await expect(a.getByTestId("waiting-confirm")).toBeVisible();
@@ -91,4 +95,5 @@ test("Letzte Bestätigung beider Captains öffnet die Spielübersicht mit Ort, N
   await a.reload();
   await expect(a.getByTestId("final-score")).toContainText("1 : 0");
   await expect(a.getByText("Beide Captains haben das Ergebnis bestätigt.")).toBeVisible();
+  expect((await query<{ minute: number }>("select minute from match_events where match_id = $1", [matchId]))[0].minute).toBe(17);
 });

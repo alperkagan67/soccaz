@@ -5,7 +5,7 @@ import { submitScoreAction } from "@/server/actions";
 
 type Team = { id: string; name: string };
 type Player = { userId: string; name: string; teamId: string | null };
-type Goal = { teamId: string; scorerId: string };
+type Goal = { teamId: string; scorerId: string; minute: string };
 
 /** Pop-up: Tore je Team eintragen, optional den Torschützen markieren. Der Captain meldet das Ergebnis, der andere Captain bestätigt. */
 export function ScoreDialog({ matchId, home, away, players, existing }: { matchId: string; home: Team; away: Team; players: Player[]; existing: { teamId: string; scorer: string | null }[] }) {
@@ -15,14 +15,15 @@ export function ScoreDialog({ matchId, home, away, players, existing }: { matchI
   const [pending, start] = useTransition();
 
   const count = (teamId: string) => existing.filter((e) => e.teamId === teamId).length + goals.filter((g) => g.teamId === teamId).length;
-  const add = (teamId: string) => setGoals((g) => [...g, { teamId, scorerId: "" }]);
+  const add = (teamId: string) => setGoals((g) => [...g, { teamId, scorerId: "", minute: "" }]);
   const setScorer = (i: number, scorerId: string) => setGoals((g) => g.map((x, idx) => (idx === i ? { ...x, scorerId } : x)));
+  const setMinute = (i: number, minute: string) => setGoals((g) => g.map((x, idx) => (idx === i ? { ...x, minute } : x)));
   const remove = (i: number) => setGoals((g) => g.filter((_, idx) => idx !== i));
 
   function submit() {
     setError(undefined);
     start(async () => {
-      const result = await submitScoreAction(matchId, goals.map((g) => ({ teamId: g.teamId, scorerId: g.scorerId || null })));
+      const result = await submitScoreAction(matchId, goals.map((g) => ({ teamId: g.teamId, scorerId: g.scorerId || null, minute: g.minute ? Number(g.minute) : null })));
       if (result?.error) return setError(result.error);
       setGoals([]);
       ref.current?.close();
@@ -60,6 +61,7 @@ export function ScoreDialog({ matchId, home, away, players, existing }: { matchI
                 <li key={i} className="flex items-center justify-between gap-2 rounded-lg border border-green/50 px-3 py-2" data-testid="score-goal">
                   <span>Tor {g.teamId === home.id ? home.name : away.name}</span>
                   <span className="flex items-center gap-2">
+                    <input aria-label="Spielminute" type="number" inputMode="numeric" min={1} max={120} value={g.minute} onChange={(e) => setMinute(i, e.target.value)} placeholder="Min" className="field !min-h-9 !w-16 !px-2 !py-1 text-center text-sm" />
                     <select aria-label="Torschütze" value={g.scorerId} onChange={(e) => setScorer(i, e.target.value)} className="field !min-h-9 !py-1 text-sm">
                       <option value="">Torschütze: unbekannt</option>
                       {players.filter((p) => p.teamId === g.teamId).map((p) => (
