@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { KickoffCountdown } from "@/components/KickoffCountdown";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { parseStreamUrl } from "@/lib/stream";
 import { formatDateTime } from "@/lib/time";
@@ -54,6 +55,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
         <p className={`text-center text-sm font-semibold ${phase === "live" ? "text-green" : phase === "disputed" || phase === "cancelled" ? "text-coral" : "text-muted"}`}>
           {PHASE_LABEL[phase]}
         </p>
+        {phase === "upcoming" && <KickoffCountdown startsAtIso={match.startsAt.toISOString()} />}
         {match.status === "played" && match.visibility === "public" && (
           <p className="text-center text-sm">
             <a href={`/api/karte/${match.id}`} className="text-green underline" download>Spielbericht als Bild</a>

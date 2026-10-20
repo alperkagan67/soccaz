@@ -9,6 +9,7 @@ import { getSetting } from "@/server/settings";
 import { requireUser } from "@/server/session";
 import { CancelForm } from "../LobbyClient";
 import { VenueBox } from "../VenueBox";
+import { KickoffCountdown } from "@/components/KickoffCountdown";
 import { ClipForm, DeleteClip } from "./ClipForm";
 
 export const metadata: Metadata = { title: "Spielübersicht", robots: { index: false } };
@@ -45,6 +46,8 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
         <p className="text-lg" data-testid="overview-time">{formatDateTime(match.startsAt)} Uhr · {match.durationMin} Minuten</p>
         <p className={`text-sm font-semibold ${cancelled ? "text-coral" : "text-green"}`}>{cancelled ? "Abgesagt" : started ? "Das Spiel läuft oder ist vorbei" : "Bestätigt von beiden Captains"}</p>
       </header>
+
+      {!cancelled && !started && <KickoffCountdown startsAtIso={match.startsAt.toISOString()} />}
 
       {venueName && <VenueBox name={venueName} address={match.venueAddress} city={match.venueCity} when={formatDateTime(match.startsAt)} lat={match.venueLat} lng={match.venueLng} />}
 

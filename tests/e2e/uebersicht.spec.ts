@@ -56,6 +56,10 @@ test("Letzte Bestätigung beider Captains öffnet die Spielübersicht mit Ort, N
   await expect(a.getByTestId("emergency-phone")).toContainText("+49 201 1234567");
   await expect(a.getByTestId("emergency-phone")).toHaveAttribute("href", "tel:+492011234567");
   await expect(a.getByTestId("clips")).toContainText("Noch keine Clips");
+  await expect(a.getByTestId("kickoff-countdown")).toContainText("Anstoß in"); // Countdown bis zum Anstoß
+  await a.goto(`/spiele/${matchId}`);
+  await expect(a.getByTestId("kickoff-countdown")).toContainText("Sek");
+  await a.goto(`/lobby/${matchId}/uebersicht`);
 
   // nach dem Anstoß können Spieler Clips einstellen
   await query("update matches set starts_at = now() - interval '2 hours' where id = $1", [matchId]);
