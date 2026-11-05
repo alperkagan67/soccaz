@@ -330,3 +330,15 @@ test("Stadt-Challenge und Ligenübersicht auf der Rangliste", async ({ browser }
   await page.goto("/profitag");
   await expect(page.getByRole("heading", { name: "Profi-Tag" })).toBeVisible();
 });
+
+test("Betreiber ohne Spieler-Onboarding: Admin kommt direkt zum Turnier-Formular", async ({ browser }) => {
+  const email = `rawadm-${run}@test.local`;
+  await query("insert into users (email, name, role) values ($1, 'Roh Admin', 'admin')", [email]); // nie eingerichtet: keine Stadt, keine Position, kein Geburtsdatum
+  const page = await (await browser.newContext()).newPage();
+  await devLogin(page, email, "Roh Admin");
+  await page.waitForURL((u) => !u.pathname.startsWith("/anmelden"));
+  await page.goto("/");
+  await page.getByTestId("mode-tournament").getByRole("link", { name: "Turnier veranstalten" }).click();
+  await expect(page).toHaveURL(/\/app\/turniere\/neu/);
+  await expect(page.getByLabel("Name des Turniers")).toBeVisible(); // kein Willkommen-Formular mit Stadt, Position, Geburtsdatum
+});

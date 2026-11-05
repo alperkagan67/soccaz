@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { can, type Permission } from "@/lib/roles";
+import { ensureStaffOnboarded } from "./onboarding";
 
 export type CurrentUser = typeof users.$inferSelect;
 
@@ -17,7 +18,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   if (!id) return null;
   const [user] = await db.select().from(users).where(eq(users.id, id));
   if (!user || user.bannedAt) return null;
-  return user;
+  return ensureStaffOnboarded(user); // Betreiber brauchen kein Spieler-Onboarding
 }
 
 /** Für Seiten und Aktionen, die einen vollständig eingerichteten Account brauchen. */
