@@ -47,11 +47,11 @@ export default async function HelpPage() {
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Ein Spiel ausmachen</h2>
         <Q q="Wie finde ich einen Gegner?">
-          <p><strong>Matchmaking:</strong> Du gibst Stadt, Dauer und bis zu drei Zeitfenster an. Wir suchen ein Team mit ähnlicher Spielstärke und gemeinsamer Zeit. Wartet ihr länger, darf der Unterschied größer werden.</p>
+          <p><strong>Lobby aufmachen:</strong> Der Captain gibt Stadt, Dauer sowie Tag und Zeitraum an. Die Lobby steht dann für alle sichtbar unter „Offene Lobbys“. Ein anderes Team tritt an, danach einigen sich die Captains auf die Uhrzeit.</p>
           <p><strong>Spielsuche:</strong> Du legst selbst ein Spiel mit festem Termin an. Andere Teams sehen es und nehmen es an. Oder du forderst ein bestimmtes Team direkt heraus.</p>
         </Q>
         <Q q="Wo sehe ich, wer gerade einen Gegner sucht?">
-          <p>Unter „Spielsuchen“ (oben) und im Matchmaking steht die Liste aller offenen Suchen: Team, Stadt, Dauer, Elo und Spielstärke, Kadergröße, gesuchte Stärke des Gegners, Zeitfenster und Hinweis. Passt eine Suche, nimmst du sie mit einem Klick an. Ihr legt euch dann auf die Zeitfenster dieser Suche fest, danach folgt das Hallen-Veto.</p>
+          <p>Unter „Spielsuchen“ (oben) steht die Liste aller offenen Lobbys: Team, Stadt, Dauer, Elo und Spielstärke, Kadergröße, gesuchte Stärke des Gegners, Zeitfenster und Hinweis. Passt eine Suche, nimmst du sie mit einem Klick an. Ihr legt euch dann auf die Zeitfenster dieser Suche fest, danach folgt das Hallen-Veto.</p>
         </Q>
         <Q q="Wer legt Termin und Ort fest?">
           <p><strong>1. Termin:</strong> Zuerst einigt ihr euch auf Tag und Uhrzeit. Wir machen Vorschläge aus euren Zeitfenstern, ihr könnt eigene hinzufügen. Stimmen beide Teams für denselben, steht der Termin. Einigt ihr euch nicht rechtzeitig, wird das Spiel abgesagt.</p>

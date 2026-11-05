@@ -165,7 +165,7 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/s
       <section className="space-y-2" aria-label="Kommende Spiele">
         <h2 className="text-lg font-semibold">Kommende Spiele ({schedule.upcoming.length})</h2>
         {schedule.upcoming.length === 0 ? (
-          <p className="text-sm text-muted">{p.isSelf ? "Nichts geplant. Such dir einen Gegner im Matchmaking." : "Keine kommenden öffentlichen Spiele."}</p>
+          <p className="text-sm text-muted">{p.isSelf ? "Nichts geplant. Mach eine Lobby auf und such dir einen Gegner." : "Keine kommenden öffentlichen Spiele."}</p>
         ) : (
           <ul className="space-y-2">
             {schedule.upcoming.map((m) => (

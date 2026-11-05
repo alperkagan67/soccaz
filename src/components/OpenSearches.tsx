@@ -14,14 +14,14 @@ function wanted(min: number | null, max: number | null): string {
 }
 
 /**
- * Offene Suchen im Matchmaking mit allen Angaben, die ein anderes Team für die Entscheidung braucht.
+ * Offene Lobbys mit allen Angaben, die ein anderes Team für die Entscheidung braucht.
  * `mine` sind die Teams der angemeldeten Person (als Admin), mit denen sie annehmen kann.
  */
 export function OpenSearches({ searches, mine, myWaitingTeamIds, loggedIn = true }: { searches: OpenSearch[]; mine: { id: string; name: string; elo: number; strength: number }[]; myWaitingTeamIds: string[]; loggedIn?: boolean }) {
   if (searches.length === 0) {
     return (
       <p className="card text-sm text-muted" data-testid="open-searches-empty">
-        Gerade sucht kein Team im Matchmaking. Stell dein Team in die Warteschlange, dann sehen es andere hier.
+        Gerade hat kein Team eine Lobby geöffnet. Mach eine Lobby für dein Team auf, dann sehen es andere hier.
       </p>
     );
   }

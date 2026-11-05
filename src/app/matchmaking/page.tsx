@@ -63,7 +63,7 @@ export default async function MatchmakingPage({ searchParams }: PageProps<"/matc
             <button className="btn btn-ghost !min-h-9 !px-3 text-sm">Filtern</button>
           </form>
         </div>
-        <p className="text-sm text-muted">Diese Teams suchen gerade einen Gegner. Passt eine Suche zu euch, könnt ihr sie direkt annehmen, ohne auf die automatische Paarung zu warten.</p>
+        <p className="text-sm text-muted">Diese Teams haben eine Lobby geöffnet und suchen einen Gegner. Passt eine Lobby zu euch, tretet ihr mit einem Klick an.</p>
         <OpenSearches searches={searches} mine={mineForAccept} myWaitingTeamIds={[...waitingIds]} />
       </section>
 

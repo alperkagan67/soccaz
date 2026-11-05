@@ -36,6 +36,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               const email = String(c?.email ?? "").trim();
               if (!email) return null;
               const user = await upsertUser({ email, name: String(c?.name || email.split("@")[0]) });
+              // Nur lokal: Wer sich mit admin@… anmeldet, ist Plattform-Admin (so lässt sich der Betreiber-Weg ausprobieren)
+              if (email.toLowerCase().startsWith("admin@") && user.role !== "admin") {
+                await db.update(users).set({ role: "admin" }).where(eq(users.id, user.id));
+              }
               return { id: user.id, email: user.email, name: user.name };
             },
           }),

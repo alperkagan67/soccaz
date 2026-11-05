@@ -26,7 +26,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email
   "player.request": { label: "Ein Team fragt dich als Mitspieler an", email: true, optional: true },
   "hall.request": { label: "Neue Spielanfrage für deine Halle", email: true, optional: false },
   "veto.turn": { label: "Du bist beim Hallen-Veto dran", email: true, optional: false },
-  "match.found": { label: "Gegner im Matchmaking gefunden", email: true, optional: false },
+  "match.found": { label: "Ein Team ist deiner Lobby beigetreten", email: true, optional: false },
   "match.scheduled": { label: "Termin und Ort stehen fest", email: true, optional: false },
   "request.challenge": { label: "Dein Team wurde herausgefordert", email: true, optional: true },
   "team.joined": { label: "Neues Mitglied in deinem Team", email: false, optional: true },
