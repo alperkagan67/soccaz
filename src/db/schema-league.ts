@@ -89,7 +89,14 @@ export const tournaments = pgTable(
     startsOn: date("starts_on").notNull(),
     format: text("format").$type<TournamentFormat>().notNull(),
     maxTeams: integer("max_teams").notNull(),
-    entryFeeCents: integer("entry_fee_cents").notNull().default(0),
+    entryFeeCents: integer("entry_fee_cents").notNull().default(0), // Eintritt je Spieler
+    isPrivate: boolean("is_private").notNull().default(true), // standardmäßig nur über den Einladungslink erreichbar
+    inviteToken: text("invite_token").unique(),
+    registrationDeadline: timestamp("registration_deadline", { withTimezone: true }),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    matchMinutes: integer("match_minutes").notNull().default(15),
+    bracketGeneratedAt: timestamp("bracket_generated_at", { withTimezone: true }), // Bracket gibt es erst, wenn alle Teams da und alle Captains bereit sind
+
     status: text("status").$type<TournamentStatus>().notNull().default("registration"),
     winnerTeamId: uuid("winner_team_id").references(() => teams.id, { onDelete: "set null" }),
     settledAt: timestamp("settled_at", { withTimezone: true }),
@@ -105,9 +112,25 @@ export const tournamentTeams = pgTable(
     teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
     paidBy: uuid("paid_by").references(() => users.id, { onDelete: "set null" }),
     feeCents: integer("fee_cents").notNull().default(0),
+    captainId: uuid("captain_id").references(() => users.id, { onDelete: "set null" }), // genau ein Captain pro Team
+    readyAt: timestamp("ready_at", { withTimezone: true }),
     registeredAt: timestamp("registered_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.tournamentId, t.teamId] })],
+);
+
+/** Spieler eines Turnier-Teams: Wer dabei ist und seinen Eintritt bezahlt hat. */
+export const tournamentPlayers = pgTable(
+  "tournament_players",
+  {
+    tournamentId: uuid("tournament_id").notNull().references(() => tournaments.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    paidCents: integer("paid_cents").notNull().default(0),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tournamentId, t.userId] }), index("tournament_players_team_idx").on(t.tournamentId, t.teamId)],
 );
 
 /** Ein Spiel im Turnier. Teams sind leer, solange sie noch nicht feststehen (K.-o.-Runden). */
@@ -127,6 +150,7 @@ export const tournamentMatches = pgTable(
     feedsMatchId: uuid("feeds_match_id"),
     feedsSide: text("feeds_side").$type<"a" | "b">(),
     playedAt: timestamp("played_at", { withTimezone: true }),
+    matchId: uuid("match_id").references(() => matches.id, { onDelete: "set null" }), // das echte Spiel mit Captain-Meldung und Bestätigung
   },
   (t) => [uniqueIndex("tournament_matches_slot").on(t.tournamentId, t.stage, t.round, t.slot), index("tournament_matches_tournament_idx").on(t.tournamentId)],
 );

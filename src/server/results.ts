@@ -35,6 +35,7 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
       durationMin: matches.durationMin,
       venueText: matches.venueText,
       visibility: matches.visibility,
+      kind: matches.kind,
       status: matches.status,
       homeId: home.id,
       homeName: home.name,

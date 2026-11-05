@@ -33,6 +33,7 @@ export async function applyMatchStats(tx: Tx, matchId: string): Promise<void> {
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId));
   const [result] = await tx.select().from(matchResults).where(eq(matchResults.matchId, matchId));
   if (!match || !result) return;
+  if (match.kind !== "team") return; // Turnier- und Privatspiele zählen nicht für Elo, Statistik und Rangliste
   const hs = result.homeScore;
   const as = result.awayScore;
 

@@ -54,6 +54,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       homeFinalAt: matches.homeFinalAt,
       awayFinalAt: matches.awayFinalAt,
       visibility: matches.visibility,
+      kind: matches.kind,
       status: matches.status,
       priceCents: matches.priceCents,
       finalShareCents: matches.finalShareCents,

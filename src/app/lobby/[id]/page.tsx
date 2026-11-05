@@ -40,6 +40,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
 
   const { match, payments, participants, counts, pendingStrangers, active, roster, strength } = view;
   const v = view.viewer ?? { id: "", platformAdmin: false, membershipTeamId: null, adminOf: [] as string[], participant: null, canManage: false, canJoin: false, teamFull: false, canJoinAsSubstitute: false };
+  if (match.kind === "tournament") redirect(`/spiele/${match.id}`); // Turnierspiele haben keine eigene Lobby: Ergebnis auf der Spielseite, Überblick im Turnier
   const confirmed = match.status === "confirmed";
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
   // Haben beide Captains bestätigt, ist die Spielübersicht die Hauptseite für alle Beteiligten

@@ -69,7 +69,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
             <Link href={`/app/suche/neu?gegner=${v.mySide === "home" ? match.awaySlug : match.homeSlug}`} className="text-green underline">Revanche anfragen</Link>
           </p>
         )}
-        {user && (
+        {user && match.kind !== "tournament" && (
           <p className="text-center text-xs">
             <Link href={`/lobby/${match.id}`} className="text-muted underline">Zur Lobby</Link>
           </p>

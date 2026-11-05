@@ -120,68 +120,158 @@ test("Profi-Tag: bewerben, auslosen, Spiel entsteht", async ({ browser }) => {
   await expect(applicant.getByText("Ihr habt gewonnen: Profi-Tag")).toBeVisible();
 });
 
-test("Turnier: Veranstalter legt an, Teams melden sich an, K.-o.-System bis zum Sieger", async ({ browser }) => {
+test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach Zahlung, Bracket erst am Ende, Sieger rücken weiter", async ({ browser }) => {
+  test.setTimeout(300_000);
   const admin = await adminPage(browser, "tn-adm");
   const org = await (await browser.newContext()).newPage();
   await newUser(org, "tnorg");
   const orgId = (await query<{ id: string }>("select id from users where email = $1", [`tnorg-${run}@test.local`]))[0].id;
 
-  // ohne Freischaltung kein Anlegen
+  // ohne Freischaltung kein Anlegen, dafür der Hinweis, wie man Veranstalter wird
   await org.goto("/app/turniere/neu");
   await expect(org.getByText(/nur freigeschaltete Veranstalter/)).toBeVisible();
-  // Freischalten über die Nutzerverwaltung
+  await expect(org.getByTestId("organizer-info")).toContainText("Socaz-Admin an oder schreib uns eine E-Mail");
   await admin.goto(`/admin/nutzer?q=${encodeURIComponent(`tnorg-${run}`)}`);
   await admin.getByTestId(`user-tnorg-${run}@test.local`).getByRole("button", { name: "Als Turnier-Veranstalter freischalten" }).click();
   await expect.poll(async () => (await query<{ is_organizer: boolean }>("select is_organizer from users where id = $1", [orgId]))[0].is_organizer).toBe(true);
 
   await org.goto("/app/turniere/neu");
   await org.waitForLoadState("networkidle");
-  await org.getByLabel("Name", { exact: true }).fill(`E2E Cup ${run}`);
-  await org.getByLabel("Tag").fill(futureLocal(5).slice(0, 10));
-  await org.getByLabel("Höchstens Teams").fill("4");
+  await org.getByLabel("Name des Turniers").fill(`E2E Cup ${run}`);
+  await org.getByLabel("Anzahl Teams (4 bis 32)").fill("4");
+  await org.getByLabel("Spielort").fill("Soccerhalle Test");
+  await org.getByLabel("Termin (Beginn)").fill(futureLocal(6, "12:00"));
+  await org.getByLabel("Anmeldeschluss").fill(futureLocal(4, "12:00"));
+  await org.getByLabel(/Eintritt pro Spieler/).fill("5");
   await org.getByRole("button", { name: "Turnier anlegen" }).click();
-  await expect(org).toHaveURL(/\/turniere\/[0-9a-f-]{36}$/, { timeout: 40_000 }); // erste Kompilierung der Seite kann dauern
-  const url = org.url();
+  await expect(org).toHaveURL(/\/turniere\/[0-9a-f-]{36}/, { timeout: 40_000 });
+  const tid = org.url().split("/turniere/")[1].split("?")[0];
+  await expect(org.getByTestId("tournament-meta")).toContainText("privat");
+  const link = await org.getByLabel("Einladungslink zum Turnier").first().inputValue();
+  expect(link).toContain(`/turniere/${tid}?t=`);
 
-  // vier Teams melden sich an
-  const teams = [];
-  for (const [i, key] of ["tn1", "tn2", "tn3", "tn4"].entries()) {
-    const p = await (await browser.newContext()).newPage();
-    await newUser(p, key);
-    await createTeam(p, `Cup ${key} ${run}`);
-    await p.goto(url);
-    await p.getByRole("button", { name: "Anmelden", exact: true }).click();
-    await expect.poll(async () => (await query<{ n: number }>("select count(*)::int as n from tournament_teams tt join tournaments t on t.id = tt.tournament_id where t.organizer_id = $1", [orgId]))[0].n).toBe(i + 1);
-    teams.push(p);
+  // ohne Link und ohne Anmeldung sieht niemand das private Turnier, auch nicht in der Liste
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto(`/turniere/${tid}`);
+  await anon.waitForLoadState("networkidle");
+  await expect(anon.getByTestId("tournament-name")).toHaveCount(0); // privat: ohne Link nicht zu sehen
+  await expect(anon.getByText(`E2E Cup ${run}`)).toHaveCount(0);
+  await anon.goto("/turniere");
+  await expect(anon.getByText(`E2E Cup ${run}`)).toHaveCount(0);
+
+  // vier Captains treten mit ihrem Team über den Link bei
+  const caps: { page: import("@playwright/test").Page; team: string; id: string }[] = [];
+  for (const key of ["tn1", "tn2", "tn3", "tn4"]) {
+    const page = await (await browser.newContext()).newPage();
+    await newUser(page, key);
+    const team = `Cup ${key} ${run}`;
+    await createTeam(page, team);
+    await page.goto(link);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Team anmelden" }).click();
+    await expect(page.getByTestId("tournament-team").filter({ hasText: team })).toBeVisible({ timeout: 20_000 });
+    const id = (await query<{ id: string }>("select id from users where email = $1", [`${key}-${run}@test.local`]))[0].id;
+    caps.push({ page, team, id });
   }
+  await expect(org.getByTestId("tournament-meta")).toBeVisible();
+
+  // Team 1: ein Spieler tritt per Oberfläche bei, die anderen zwei in der Datenbank; Guthaben für alle
+  const teamIds = new Map<string, string>();
+  for (const c of caps) teamIds.set(c.team, (await query<{ id: string }>("select id from teams where name = $1", [c.team]))[0].id);
+  const { seedUser, addTeamMember } = await import("./helpers");
+  const { fundWallet } = await import("./helpers-db");
+  const players = new Map<string, string[]>();
+  for (const c of caps) {
+    await fundWallet(c.id, 1000);
+    const ids: string[] = [c.id];
+    for (let i = 1; i <= 3; i++) {
+      const uid = await seedUser(`${c.team.split(" ")[1]}p${i}`);
+      await addTeamMember(teamIds.get(c.team)!, uid);
+      await fundWallet(uid, 1000);
+      ids.push(uid);
+    }
+    players.set(c.team, ids);
+  }
+  // Team 1, Spieler 1 geht den echten Weg: Link, Anmelden (Dev-Login), Beitreten, Bezahlen
+  const t1 = caps[0];
+  const p1email = (await query<{ email: string }>("select email from users where id = $1", [players.get(t1.team)![1]]))[0].email;
+  const p1 = await (await browser.newContext()).newPage();
+  await devLogin(p1, p1email, "Spieler Eins", `/turniere/${tid}?t=${link.split("?t=")[1]}`);
+  await p1.waitForLoadState("networkidle");
+  await p1.getByTestId("tournament-team").filter({ hasText: t1.team }).getByRole("button", { name: "Dem Turnier-Kader beitreten" }).click();
+  await expect(p1.getByTestId("pay-entry")).toBeVisible({ timeout: 20_000 });
+  await p1.getByRole("button", { name: /Eintritt bezahlen/ }).click();
+  await expect(p1.getByTestId("paid-note")).toBeVisible({ timeout: 20_000 });
+  // die übrigen Spieler: im Kader, Zahlung später über die Datenbank-Hilfe (Eintrag wie nach einer Zahlung)
+  for (const c of caps) {
+    for (const uid of players.get(c.team)!.slice(c === t1 ? 2 : 1)) {
+      await query("insert into tournament_players (tournament_id, team_id, user_id) values ($1, $2, $3) on conflict do nothing", [tid, teamIds.get(c.team), uid]);
+    }
+  }
+
+  // Captain 1 will bereit drücken, aber nicht alle haben bezahlt: der Server lehnt ab
+  await t1.page.goto(link);
+  await t1.page.waitForLoadState("networkidle");
+  await t1.page.getByRole("button", { name: "Team ist bereit" }).click();
+  await expect(t1.page.getByText(/bezahlt haben/).first()).toBeVisible();
+  await expect(t1.page.getByTestId("bracket-hidden")).toBeVisible();
+
+  // alle bezahlen (Eintragen wie nach der Zahlung), dann drücken die Captains bereit
+  await query("update tournament_players set paid_cents = 500, paid_at = now() where tournament_id = $1", [tid]);
+  for (const [i, c] of caps.entries()) {
+    await c.page.goto(link);
+    await c.page.waitForLoadState("networkidle");
+    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team }).locator('[data-paid="false"]')).toHaveCount(0);
+    await c.page.getByRole("button", { name: "Team ist bereit" }).click();
+    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-ready", "true", { timeout: 20_000 });
+    if (i < 3) {
+      // solange nicht alle bereit sind, bleibt das Bracket verborgen
+      expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
+      await expect(c.page.getByTestId("bracket-stage")).toHaveCount(0);
+    }
+  }
+  await caps[3].page.reload();
+  await expect(caps[3].page.getByRole("heading", { name: "Halbfinale" })).toBeVisible({ timeout: 20_000 });
+  expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(3);
   await org.reload();
-  await expect(org.getByRole("heading", { name: "Teams (4)" })).toBeVisible();
+  await expect(org.getByTestId("bracket-hidden")).toHaveCount(0);
 
-  await org.waitForLoadState("networkidle");
-  org.once("dialog", (d) => void d.accept());
-  await org.getByRole("button", { name: "Turnier starten" }).click();
-  await expect(org.getByRole("heading", { name: "Halbfinale" })).toBeVisible();
-
-  // beide Halbfinals: Heimteam gewinnt
-  for (let i = 0; i < 2; i++) {
-    const m = org.getByTestId("tournament-match").nth(i);
-    await m.getByLabel(/^Cup tn\d/).first().fill("2");
-    await m.getByLabel(/^Cup tn\d/).nth(1).fill("1");
-    await m.getByRole("button", { name: "Eintragen" }).click();
-    await expect(org.getByTestId("tournament-match").nth(i)).toContainText("2 : 1");
-  }
-  // Finale endet unentschieden: Siebenmeterschießen verlangt
-  const final = org.getByTestId("tournament-match").nth(2);
-  await expect(final).not.toContainText("offen");
-  await final.getByLabel(/^Cup tn\d/).first().fill("1");
-  await final.getByLabel(/^Cup tn\d/).nth(1).fill("1");
-  await expect(final.getByLabel("Sieger im Siebenmeterschießen")).toBeVisible();
-  await final.getByRole("button", { name: "Eintragen" }).click();
-  await expect(final.getByText(/bitte|Sieger/i).first()).toBeVisible();
-  await final.getByLabel("Sieger im Siebenmeterschießen").selectOption({ index: 1 });
-  await final.getByRole("button", { name: "Eintragen" }).click();
-  await expect(org.getByTestId("winner")).toBeVisible();
-  await expect.poll(async () => (await query<{ status: string }>("select status from tournaments where organizer_id = $1", [orgId]))[0].status).toBe("finished");
+  // Ergebnisse über die normale Spielseite: ein Captain meldet, der andere bestätigt
+  const pageOfTeam = (teamId: string) => caps.find((c) => teamIds.get(c.team) === teamId)!.page;
+  const play = async (matchId: string, homeGoals: number, awayGoals: number) => {
+    const m = (await query<{ home_team_id: string; away_team_id: string; hn: string; an: string }>(
+      "select m.home_team_id, m.away_team_id, h.name as hn, a.name as an from matches m join teams h on h.id = m.home_team_id join teams a on a.id = m.away_team_id where m.id = $1",
+      [matchId],
+    ))[0];
+    await query("update matches set starts_at = now() - interval '1 hour' where id = $1", [matchId]);
+    const home = pageOfTeam(m.home_team_id);
+    const away = pageOfTeam(m.away_team_id);
+    await home.goto(`/spiele/${matchId}`);
+    await home.waitForLoadState("networkidle");
+    await home.getByLabel(m.hn, { exact: true }).fill(String(homeGoals));
+    await home.getByLabel(m.an, { exact: true }).fill(String(awayGoals));
+    await home.getByRole("button", { name: "Ergebnis melden", exact: true }).click();
+    await expect.poll(async () => (await query("select 1 from match_results where match_id = $1", [matchId])).length).toBe(1);
+    await away.goto(`/spiele/${matchId}`);
+    await away.waitForLoadState("networkidle");
+    await away.getByRole("button", { name: "Bestätigen" }).click();
+    await expect.poll(async () => (await query<{ status: string }>("select status from matches where id = $1", [matchId]))[0].status).toBe("played");
+  };
+  const semis = await query<{ match_id: string }>("select match_id from tournament_matches where tournament_id = $1 and stage = 'ko:4' order by slot", [tid]);
+  await play(semis[0].match_id, 2, 1);
+  await play(semis[1].match_id, 3, 0);
+  const final = (await query<{ match_id: string | null }>("select match_id from tournament_matches where tournament_id = $1 and stage = 'ko:2'", [tid]))[0];
+  expect(final.match_id).not.toBeNull(); // das Finale entsteht automatisch mit den beiden Siegern
+  // Sieger der Halbfinals stehen im Finale
+  const fin = (await query<{ team_a: string; team_b: string }>("select team_a, team_b from tournament_matches where tournament_id = $1 and stage = 'ko:2'", [tid]))[0];
+  expect(fin.team_a && fin.team_b).toBeTruthy();
+  // Finale endet unentschieden: der Veranstalter trägt das Siebenmeterschießen ein
+  await play(final.match_id!, 1, 1);
+  await org.reload();
+  await expect(org.getByTestId("shootout")).toBeVisible({ timeout: 20_000 });
+  await org.getByTestId("shootout").getByRole("button").first().click();
+  await expect(org.getByTestId("winner")).toBeVisible({ timeout: 20_000 });
+  await expect.poll(async () => (await query<{ status: string }>("select status from tournaments where id = $1", [tid]))[0].status).toBe("finished");
 });
 
 test("Sponsoren: anlegen, auf der Startseite, Klick zählt und leitet weiter", async ({ browser }) => {

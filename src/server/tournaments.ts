@@ -1,10 +1,13 @@
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { teamMembers, teams, users } from "@/db/schema";
-import { tournamentMatches, tournamentTeams, tournaments, type TournamentFormat } from "@/db/schema-league";
+import { matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
+import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
+import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
+import { koWinner, knockout, standings, drawGroups, groupName, splitEntryFees, type Fixture, type Played } from "@/lib/tournament";
+import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
-import { drawGroups, groupFixtures, groupName, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, type Fixture, type Played } from "@/lib/tournament";
 import { audit } from "./audit";
 import { creditWallet, debitWallet, post } from "./ledger";
 import { notifyUsers, teamAdminIds } from "./notifications";
@@ -13,11 +16,12 @@ import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
+export const MIN_TOURNAMENT_TEAMS = 4;
+export const MAX_TOURNAMENT_TEAMS = 32;
+/** Mindestens so viele Spieler braucht ein Turnier-Team, damit der Captain bereit drücken kann. */
+export const MIN_PLAYERS_PER_TEAM = MIN_READY_PER_TEAM;
 
-const isDay = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
-const today = () => new Date().toISOString().slice(0, 10);
-
-/** Provision der Plattform auf die Startgelder, in Prozent (Einstellung, Standard 10). */
+/** Provision der Plattform auf die Eintrittsgelder, in Prozent (Einstellung, Standard 10). */
 export async function commissionPercent(exec: Pick<typeof db, "select"> = db): Promise<number> {
   const v = await getSetting<number>("tournament_commission_percent", 10, exec);
   return Number.isFinite(v) && v >= 0 && v <= 100 ? v : 10;
@@ -29,29 +33,58 @@ export async function setOrganizer(actorId: string, userId: string, value: boole
   await audit(actorId, value ? "organizer.grant" : "organizer.revoke", "user", userId, {});
 }
 
-export type TournamentInput = { name: string; city: string; venueText?: string; startsOn: string; format: TournamentFormat; maxTeams: number; entryFeeCents: number };
+export type TournamentInput = {
+  name: string;
+  city: string;
+  venueText?: string;
+  startsAt: Date;
+  registrationDeadline: Date;
+  maxTeams: number;
+  playerFeeCents: number;
+  isPrivate?: boolean;
+  matchMinutes?: number;
+};
 
+/** Nur freigeschaltete Veranstalter (und Plattform-Admins) legen Turniere an. Das Turnier ist standardmäßig privat und läuft im K.-o.-System. */
 export async function createTournament(userId: string, input: TournamentInput) {
   const [u] = await db.select({ isOrganizer: users.isOrganizer, role: users.role }).from(users).where(eq(users.id, userId));
-  if (!u || (!u.isOrganizer && u.role !== "admin")) throw new DomainError("Turniere dürfen nur freigeschaltete Veranstalter anlegen.");
+  if (!u || (!u.isOrganizer && u.role !== "admin")) throw new DomainError("Turniere dürfen nur freigeschaltete Veranstalter anlegen. Melde dich beim Socaz-Admin (Telefon oder E-Mail), dann schalten wir dich frei.");
   const name = input.name.replace(/\s+/g, " ").trim();
   if (name.length < 3 || name.length > 80) throw new DomainError("Der Name braucht 3 bis 80 Zeichen.");
   if (!(CITIES as readonly string[]).includes(input.city)) throw new DomainError("Bitte wähle eine Stadt.");
-  if (!isDay(input.startsOn) || input.startsOn < today()) throw new DomainError("Bitte wähle einen Tag in der Zukunft.");
-  if (!["round_robin", "knockout", "groups_ko"].includes(input.format)) throw new DomainError("Ungültiges Format.");
-  if (!Number.isInteger(input.maxTeams) || input.maxTeams < 2 || input.maxTeams > 32) throw new DomainError("2 bis 32 Teams.");
-  const countError = validateTeamCount(input.format, input.maxTeams);
-  if (countError && input.format === "groups_ko") throw new DomainError(countError);
-  if (!Number.isInteger(input.entryFeeCents) || input.entryFeeCents < 0 || input.entryFeeCents > MAX_ENTRY_FEE_CENTS) throw new DomainError("Das Startgeld liegt zwischen 0 und 500 Euro.");
+  const now = Date.now();
+  if (Number.isNaN(input.startsAt.getTime()) || input.startsAt.getTime() <= now) throw new DomainError("Bitte wähle einen Termin in der Zukunft.");
+  if (Number.isNaN(input.registrationDeadline.getTime()) || input.registrationDeadline.getTime() <= now) throw new DomainError("Der Anmeldeschluss muss in der Zukunft liegen.");
+  if (input.registrationDeadline.getTime() >= input.startsAt.getTime()) throw new DomainError("Der Anmeldeschluss muss vor dem Turnierbeginn liegen.");
+  if (!Number.isInteger(input.maxTeams) || input.maxTeams < MIN_TOURNAMENT_TEAMS || input.maxTeams > MAX_TOURNAMENT_TEAMS) throw new DomainError(`${MIN_TOURNAMENT_TEAMS} bis ${MAX_TOURNAMENT_TEAMS} Teams.`);
+  if (!Number.isInteger(input.playerFeeCents) || input.playerFeeCents < 0 || input.playerFeeCents > MAX_ENTRY_FEE_CENTS) throw new DomainError("Der Eintritt liegt zwischen 0 und 500 Euro pro Spieler.");
+  const matchMinutes = input.matchMinutes ?? 15;
+  if (!Number.isInteger(matchMinutes) || matchMinutes < 5 || matchMinutes > 90) throw new DomainError("Eine Spielzeit dauert 5 bis 90 Minuten.");
   const [row] = await db
     .insert(tournaments)
-    .values({ organizerId: userId, name, city: input.city, venueText: input.venueText?.trim().slice(0, 120) || null, startsOn: input.startsOn, format: input.format, maxTeams: input.maxTeams, entryFeeCents: input.entryFeeCents })
+    .values({
+      organizerId: userId,
+      name,
+      city: input.city,
+      venueText: input.venueText?.trim().slice(0, 120) || null,
+      startsOn: toBerlinInputValue(input.startsAt).slice(0, 10),
+      startsAt: input.startsAt,
+      registrationDeadline: input.registrationDeadline,
+      format: "knockout",
+      maxTeams: input.maxTeams,
+      entryFeeCents: input.playerFeeCents,
+      isPrivate: input.isPrivate ?? true,
+      inviteToken: randomBytes(16).toString("base64url"),
+      matchMinutes,
+    })
     .returning();
-  await audit(userId, "tournament.create", "tournament", row.id, { after: row });
+  await audit(userId, "tournament.create", "tournament", row.id, { after: { ...row, inviteToken: undefined } });
   return row;
 }
 
-async function lockTournament(tx: Tx, id: string) {
+type T = typeof tournaments.$inferSelect;
+
+async function lockTournament(tx: Tx, id: string): Promise<T> {
   const [t] = await tx.select().from(tournaments).where(eq(tournaments.id, id)).for("update");
   if (!t) throw new DomainError("Turnier nicht gefunden.");
   return t;
@@ -68,11 +101,19 @@ async function canManage(tx: Pick<typeof db, "select">, userId: string, t: { org
   return u?.role === "admin";
 }
 
-/** Team-Admin meldet sein Team an. Das Startgeld wird sofort vom Guthaben abgebucht und liegt auf dem Turnierkonto, bis das Turnier endet. */
+const registrationOpen = (t: T) => t.status === "registration" && !t.bracketGeneratedAt;
+const deadlinePassed = (t: T) => Boolean(t.registrationDeadline && t.registrationDeadline.getTime() <= Date.now());
+
+function requireOpen(t: T) {
+  if (!registrationOpen(t)) throw new DomainError("Die Anmeldung ist geschlossen.");
+  if (deadlinePassed(t)) throw new DomainError("Der Anmeldeschluss ist vorbei.");
+}
+
+/** Der Captain meldet sein Team an: mit einem bestehenden Team (dort ist er Team-Admin). Es gibt genau einen Captain pro Team. */
 export async function registerTeam(userId: string, tournamentId: string, teamId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
-    if (t.status !== "registration") throw new DomainError("Die Anmeldung ist geschlossen.");
+    requireOpen(t);
     if (!(await isTeamAdmin(tx, userId, teamId))) throw new DomainError("Nur Team-Admins können ihr Team anmelden.");
     const [team] = await tx.select({ archivedAt: teams.archivedAt }).from(teams).where(eq(teams.id, teamId));
     if (!team || team.archivedAt) throw new DomainError("Team nicht gefunden.");
@@ -80,30 +121,146 @@ export async function registerTeam(userId: string, tournamentId: string, teamId:
     if (n >= t.maxTeams) throw new DomainError("Das Turnier ist voll.");
     const [already] = await tx.select({ teamId: tournamentTeams.teamId }).from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
     if (already) throw new DomainError("Euer Team ist schon angemeldet.");
+    const [other] = await tx.select({ teamId: tournamentPlayers.teamId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
+    if (other) throw new DomainError("Du bist schon in einem anderen Team dieses Turniers.");
 
-    if (t.entryFeeCents > 0) {
-      await debitWallet(tx, userId, { to: "tournament", amountCents: t.entryFeeCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${teamId}`, reason: `Startgeld ${t.name}`, actorId: userId });
-    }
-    await tx.insert(tournamentTeams).values({ tournamentId, teamId, paidBy: userId, feeCents: t.entryFeeCents });
-    await audit(userId, "tournament.register", "tournament", tournamentId, { after: { teamId, fee: t.entryFeeCents } }, tx);
+    await tx.insert(tournamentTeams).values({ tournamentId, teamId, captainId: userId });
+    await tx.insert(tournamentPlayers).values({ tournamentId, teamId, userId }); // der Captain spielt mit und zahlt wie alle
+    await audit(userId, "tournament.register", "tournament", tournamentId, { after: { teamId } }, tx);
   });
 }
 
-async function refundEntry(tx: Tx, t: { id: string; name: string }, row: { teamId: string; paidBy: string | null; feeCents: number }, reason: string) {
-  if (row.feeCents > 0 && row.paidBy) {
-    await creditWallet(tx, row.paidBy, { from: "tournament", amountCents: row.feeCents, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-refund:${t.id}:${row.teamId}`, reason: `${reason}: ${t.name}` });
+/** Ein Mitglied eines angemeldeten Teams tritt dem Turnier-Kader bei. Ändert sich der Kader, ist "Bereit" des Teams zurückgesetzt. */
+export async function joinAsPlayer(userId: string, tournamentId: string, teamId: string) {
+  await db.transaction(async (tx) => {
+    const t = await lockTournament(tx, tournamentId);
+    requireOpen(t);
+    const [entry] = await tx.select({ teamId: tournamentTeams.teamId }).from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
+    if (!entry) throw new DomainError("Dieses Team ist nicht im Turnier.");
+    const [member] = await tx.select({ userId: teamMembers.userId }).from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
+    if (!member) throw new DomainError("Nur Mitglieder des Teams können dem Turnier beitreten. Tritt zuerst über den Einladungslink des Teams bei.");
+    const [existing] = await tx.select({ teamId: tournamentPlayers.teamId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
+    if (existing) throw new DomainError("Du bist schon im Turnier-Kader.");
+    const [{ n }] = await tx.select({ n: count() }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
+    if (n >= MAX_PER_TEAM) throw new DomainError("Der Kader ist voll.");
+    await tx.insert(tournamentPlayers).values({ tournamentId, teamId, userId });
+    await revalidateReady(tx, t);
+    await audit(userId, "tournament.join", "tournament", tournamentId, { after: { teamId } }, tx);
+  });
+}
+
+type PlayerRow = typeof tournamentPlayers.$inferSelect;
+
+async function refundPlayer(tx: Tx, t: T, p: PlayerRow, reason: string) {
+  if (p.paidCents > 0) {
+    await creditWallet(tx, p.userId, { from: "tournament", amountCents: p.paidCents, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-refund:${t.id}:${p.userId}:${p.joinedAt.getTime()}`, reason: `${reason}: ${t.name}` });
   }
 }
 
+/** Spieler verlässt den Turnier-Kader (oder der Captain/Veranstalter entfernt ihn). Bezahlter Eintritt geht aufs Guthaben zurück. */
+export async function leavePlayer(actorId: string, tournamentId: string, targetUserId: string) {
+  await db.transaction(async (tx) => {
+    const t = await lockTournament(tx, tournamentId);
+    if (!registrationOpen(t)) throw new DomainError("Jetzt ist keine Änderung mehr möglich.");
+    const [p] = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, targetUserId)));
+    if (!p) throw new DomainError("Dieser Spieler ist nicht im Kader.");
+    const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, p.teamId)));
+    if (entry?.captainId === targetUserId) throw new DomainError("Der Captain kann nicht austreten. Das Team muss sich abmelden.");
+    const allowed = actorId === targetUserId || entry?.captainId === actorId || (await canManage(tx, actorId, t));
+    if (!allowed) throw new DomainError("Dazu fehlt dir die Berechtigung.");
+    await tx.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, targetUserId)));
+    await refundPlayer(tx, t, p, "Rückerstattung Eintritt");
+    await revalidateReady(tx, t);
+    await audit(actorId, "tournament.leave", "tournament", tournamentId, { after: { userId: targetUserId } }, tx);
+  });
+}
+
+/** Jeder Spieler zahlt seinen Eintritt selbst vom Guthaben. Doppelklick oder zweite Anfrage buchen nicht doppelt. */
+export async function payEntry(userId: string, tournamentId: string) {
+  await db.transaction(async (tx) => {
+    const t = await lockTournament(tx, tournamentId);
+    requireOpen(t);
+    const [p] = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId))).for("update");
+    if (!p) throw new DomainError("Du bist nicht im Turnier-Kader.");
+    if (t.entryFeeCents === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
+    if (p.paidCents > 0) throw new DomainError("Du hast schon bezahlt.");
+    await debitWallet(tx, userId, { to: "tournament", amountCents: t.entryFeeCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${userId}:${p.joinedAt.getTime()}`, reason: `Eintritt ${t.name}`, actorId: userId });
+    await tx.update(tournamentPlayers).set({ paidCents: t.entryFeeCents, paidAt: new Date() }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
+    await audit(userId, "tournament.pay", "tournament", tournamentId, { after: { cents: t.entryFeeCents } }, tx);
+  });
+}
+
+/** Ist ein Team komplett? Genug Spieler und alle haben ihren Eintritt bezahlt. Das gilt serverseitig, nicht nur in der Oberfläche. */
+export async function teamComplete(tx: Pick<typeof db, "select">, t: Pick<T, "id" | "entryFeeCents">, teamId: string): Promise<boolean> {
+  const rows = await tx.select({ paid: tournamentPlayers.paidCents }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.teamId, teamId)));
+  return rows.length >= MIN_PLAYERS_PER_TEAM && rows.every((r) => t.entryFeeCents === 0 || r.paid >= t.entryFeeCents);
+}
+
+/** Nach jeder Kaderänderung: Ist ein Team nicht mehr komplett, wird sein "Bereit" zurückgesetzt. */
+async function revalidateReady(tx: Tx, t: T) {
+  const ready = await tx.select({ teamId: tournamentTeams.teamId }).from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, t.id), isNotNull(tournamentTeams.readyAt)));
+  for (const r of ready) {
+    if (!(await teamComplete(tx, t, r.teamId))) {
+      await tx.update(tournamentTeams).set({ readyAt: null }).where(and(eq(tournamentTeams.tournamentId, t.id), eq(tournamentTeams.teamId, r.teamId)));
+    }
+  }
+}
+
+/** Der Captain drückt "Bereit". Geht nur, wenn alle Spieler seines Teams bezahlt haben. Sind alle Teams da und bereit, entsteht das Bracket. */
+export async function setTeamReady(userId: string, tournamentId: string, ready: boolean) {
+  await db.transaction(async (tx) => {
+    const t = await lockTournament(tx, tournamentId);
+    if (!registrationOpen(t)) throw new DomainError("Das Bracket steht schon, jetzt ist keine Änderung mehr möglich.");
+    const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
+    if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann bereit drücken.");
+    if (ready) {
+      if (!(await teamComplete(tx, t, entry.teamId))) {
+        throw new DomainError(`Bereit geht erst, wenn mindestens ${MIN_PLAYERS_PER_TEAM} Spieler im Kader sind und alle ihren Eintritt bezahlt haben.`);
+      }
+    }
+    await tx.update(tournamentTeams).set({ readyAt: ready ? new Date() : null }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, entry.teamId)));
+    await audit(userId, ready ? "tournament.ready" : "tournament.unready", "tournament", tournamentId, { after: { teamId: entry.teamId } }, tx);
+    await maybeGenerateBracket(tx, t);
+  });
+}
+
+/** Team abmelden (Captain) oder entfernen (Veranstalter). Alle bezahlten Eintritte des Teams werden erstattet. So lässt sich ein fehlendes Team ersetzen. */
 export async function withdrawTeam(userId: string, tournamentId: string, teamId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
-    if (t.status !== "registration") throw new DomainError("Nach dem Start ist keine Abmeldung mehr möglich.");
-    if (!(await isTeamAdmin(tx, userId, teamId)) && !(await canManage(tx, userId, t))) throw new DomainError("Nur Team-Admins können das Team abmelden.");
-    const [row] = await tx.delete(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId))).returning();
-    if (!row) throw new DomainError("Das Team ist nicht angemeldet.");
-    await refundEntry(tx, t, row, "Rückerstattung Startgeld");
+    if (!registrationOpen(t)) throw new DomainError("Nach dem Start ist keine Abmeldung mehr möglich.");
+    const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
+    if (!entry) throw new DomainError("Das Team ist nicht angemeldet.");
+    const manager = await canManage(tx, userId, t);
+    if (entry.captainId !== userId && !manager) throw new DomainError("Nur der Captain oder der Veranstalter kann das Team abmelden.");
+    if (manager && entry.captainId !== userId && deadlinePassed(t)) throw new DomainError("Nach dem Anmeldeschluss kann der Veranstalter keine Teams mehr ersetzen. Er kann das Turnier absagen.");
+    const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
+    for (const p of players) await refundPlayer(tx, t, p, "Rückerstattung Eintritt");
+    await tx.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
+    await tx.delete(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
+    if (manager && entry.captainId !== userId) {
+      await notifyUsers(await teamAdminIds(tx, teamId), { type: "system", title: "Team aus dem Turnier genommen", body: `Der Veranstalter hat euer Team aus ${t.name} genommen. Bezahlte Eintritte wurden erstattet.`, url: `/turniere/${tournamentId}` }, tx);
+    }
     await audit(userId, "tournament.withdraw", "tournament", tournamentId, { after: { teamId } }, tx);
+  });
+}
+
+/**
+ * Nach dem Anmeldeschluss, wenn nicht alle Plätze belegt sind: Der Veranstalter spielt mit den angemeldeten Teams
+ * (mindestens 4). Die Teamzahl wird auf die Anmeldungen gesenkt, danach gelten dieselben Regeln.
+ */
+export async function closeWithJoinedTeams(userId: string, tournamentId: string) {
+  await db.transaction(async (tx) => {
+    const t = await lockTournament(tx, tournamentId);
+    if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann das.");
+    if (!registrationOpen(t)) throw new DomainError("Das Turnier läuft schon oder ist beendet.");
+    if (!deadlinePassed(t)) throw new DomainError("Das geht erst nach dem Anmeldeschluss.");
+    const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, tournamentId));
+    if (n < MIN_TOURNAMENT_TEAMS) throw new DomainError(`Mit weniger als ${MIN_TOURNAMENT_TEAMS} Teams findet das Turnier nicht statt. Du kannst es absagen.`);
+    if (n === t.maxTeams) throw new DomainError("Es sind schon alle Plätze belegt.");
+    await tx.update(tournaments).set({ maxTeams: n }).where(eq(tournaments.id, tournamentId));
+    await audit(userId, "tournament.shrink", "tournament", tournamentId, { before: { maxTeams: t.maxTeams }, after: { maxTeams: n } }, tx);
+    await maybeGenerateBracket(tx, { ...t, maxTeams: n });
   });
 }
 
@@ -117,136 +274,137 @@ async function insertFixtures(tx: Tx, tournamentId: string, fixtures: Fixture[])
   const ids = new Map(inserted.map((r) => [key(r), r.id]));
   for (const f of fixtures) {
     if (!f.feeds) continue;
-    await tx
-      .update(tournamentMatches)
-      .set({ feedsMatchId: ids.get(key(f.feeds)) ?? null, feedsSide: f.feeds.side })
-      .where(eq(tournamentMatches.id, ids.get(key(f))!));
+    await tx.update(tournamentMatches).set({ feedsMatchId: ids.get(key(f.feeds)) ?? null, feedsSide: f.feeds.side }).where(eq(tournamentMatches.id, ids.get(key(f))!));
   }
 }
 
-/** Startet das Turnier: Anmeldung schließt, der Spielplan wird in der Reihenfolge der Anmeldung gesetzt. */
-export async function startTournament(userId: string, tournamentId: string) {
-  await db.transaction(async (tx) => {
-    const t = await lockTournament(tx, tournamentId);
-    if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann das Turnier starten.");
-    if (t.status !== "registration") throw new DomainError("Das Turnier läuft schon oder ist beendet.");
-    const entries = await tx.select({ teamId: tournamentTeams.teamId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, tournamentId)).orderBy(asc(tournamentTeams.registeredAt));
-    const ids = entries.map((e) => e.teamId);
-    const problem = validateTeamCount(t.format, ids.length);
-    if (problem) throw new DomainError(problem);
+/**
+ * Erzeugt das K.-o.-Bracket genau einmal, wenn alle Plätze belegt und alle Captains bereit sind. Läuft unter der Turniersperre
+ * und setzt `bracket_generated_at`, damit eine zweite Auslösung nichts mehr tut.
+ */
+async function maybeGenerateBracket(tx: Tx, t: T) {
+  const [fresh] = await tx.select().from(tournaments).where(eq(tournaments.id, t.id));
+  if (!fresh || fresh.status !== "registration" || fresh.bracketGeneratedAt) return;
+  const entries = await tx.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).orderBy(asc(tournamentTeams.registeredAt));
+  if (entries.length !== fresh.maxTeams || entries.length < MIN_TOURNAMENT_TEAMS) return;
+  if (!entries.every((e) => e.readyAt)) return;
+  for (const e of entries) if (!(await teamComplete(tx, fresh, e.teamId))) return;
 
-    const fixtures = t.format === "round_robin" ? roundRobin(ids) : t.format === "knockout" ? knockout(ids) : groupFixtures(ids).fixtures;
-    await insertFixtures(tx, tournamentId, fixtures);
-    await tx.update(tournaments).set({ status: "running" }).where(eq(tournaments.id, tournamentId));
-    for (const id of ids) await notifyUsers(await teamAdminIds(tx, id), { type: "system", title: "Turnier gestartet", body: `${t.name}: Der Spielplan steht.`, url: `/turniere/${tournamentId}` }, tx);
-    await audit(userId, "tournament.start", "tournament", tournamentId, { after: { teams: ids.length } }, tx);
-  });
+  await tx.update(tournaments).set({ status: "running", bracketGeneratedAt: new Date() }).where(eq(tournaments.id, t.id));
+  await insertFixtures(tx, t.id, knockout(entries.map((e) => e.teamId)));
+  await createGames(tx, fresh);
+  for (const e of entries) await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Das Bracket steht", body: `${fresh.name}: Alle Teams sind bereit, das Bracket ist jetzt sichtbar.`, url: `/turniere/${t.id}` }, tx);
+  await audit(null, "tournament.bracket", "tournament", t.id, { after: { teams: entries.length } }, tx);
 }
 
-type MatchRow = typeof tournamentMatches.$inferSelect;
+/** Für jede Paarung, deren beide Teams feststehen, entsteht ein echtes Spiel (Captain meldet, der andere bestätigt). */
+async function createGames(tx: Tx, t: T) {
+  const open = await tx
+    .select()
+    .from(tournamentMatches)
+    .where(and(eq(tournamentMatches.tournamentId, t.id), isNull(tournamentMatches.matchId), isNotNull(tournamentMatches.teamA), isNotNull(tournamentMatches.teamB)))
+    .orderBy(asc(tournamentMatches.round), asc(tournamentMatches.slot));
+  const base = (t.startsAt ?? new Date()).getTime();
+  for (const tm of open) {
+    const startsAt = new Date(base + (tm.round - 1) * (t.matchMinutes + 10) * 60_000);
+    const [game] = await tx
+      .insert(matches)
+      .values({ kind: "tournament", homeTeamId: tm.teamA!, awayTeamId: tm.teamB!, startsAt, durationMin: t.matchMinutes, venueText: t.venueText, visibility: "private", status: "confirmed", schedulingOpen: false })
+      .returning({ id: matches.id });
+    const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), inArray(tournamentPlayers.teamId, [tm.teamA!, tm.teamB!])));
+    if (players.length) await tx.insert(matchParticipants).values(players.map((p) => ({ matchId: game.id, userId: p.userId, teamId: p.teamId, readyAt: new Date(), paidCents: p.paidCents, paidAt: p.paidAt }))).onConflictDoNothing();
+    await tx.update(tournamentMatches).set({ matchId: game.id }).where(eq(tournamentMatches.id, tm.id));
+    await notifyUsers(
+      [...(await teamAdminIds(tx, tm.teamA!)), ...(await teamAdminIds(tx, tm.teamB!))],
+      { type: "match.scheduled", title: "Euer Turnierspiel steht fest", body: `${t.name}: ${startsAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", weekday: "short", hour: "2-digit", minute: "2-digit" })} Uhr.`, url: `/spiele/${game.id}` },
+      tx,
+    );
+  }
+}
 
-const played = (m: MatchRow): Played | null => (m.teamA && m.teamB && m.scoreA !== null && m.scoreB !== null ? { a: m.teamA, b: m.teamB, scoreA: m.scoreA, scoreB: m.scoreB } : null);
+type TmRow = typeof tournamentMatches.$inferSelect;
 
-/** Ergebnis eintragen. Wirkt auf die Tabelle, schiebt K.-o.-Sieger weiter, baut nach der Gruppenphase die K.-o.-Runde und beendet das Turnier. */
-export async function reportResult(userId: string, tournamentId: string, matchId: string, input: { scoreA: number; scoreB: number; shootoutWinner?: string | null }) {
+/** Sieger rückt ins Folgespiel; das Folgespiel entsteht, sobald beide Teams feststehen. Das Finale beendet das Turnier. */
+async function completeKo(tx: Tx, t: T, tm: TmRow, winner: string) {
+  if (tm.feedsMatchId && tm.feedsSide) {
+    await tx.update(tournamentMatches).set(tm.feedsSide === "a" ? { teamA: winner } : { teamB: winner }).where(eq(tournamentMatches.id, tm.feedsMatchId));
+    await createGames(tx, t);
+    return;
+  }
+  await finishTournament(tx, t, winner);
+}
+
+/** Finalizer: Ein Turnierspiel ist gespielt. Eintragen, Sieger weiterführen. Bei Gleichstand entscheidet der Veranstalter das Siebenmeterschießen. */
+export async function advanceFromMatch(tx: Tx, matchId: string): Promise<void> {
+  const [tm] = await tx.select().from(tournamentMatches).where(eq(tournamentMatches.matchId, matchId));
+  if (!tm || tm.scoreA !== null) return;
+  const [result] = await tx.select().from(matchResults).where(eq(matchResults.matchId, matchId));
+  if (!result || !tm.teamA || !tm.teamB) return;
+  const [t] = await tx.select().from(tournaments).where(eq(tournaments.id, tm.tournamentId)).for("update");
+  if (!t || t.status !== "running") return;
+  await tx.update(tournamentMatches).set({ scoreA: result.homeScore, scoreB: result.awayScore, playedAt: new Date() }).where(eq(tournamentMatches.id, tm.id));
+  const winner = koWinner({ a: tm.teamA, b: tm.teamB, scoreA: result.homeScore, scoreB: result.awayScore });
+  if (!winner) {
+    await notifyUsers([t.organizerId], { type: "system", title: "Siebenmeterschießen eintragen", body: `${t.name}: Ein Spiel endete unentschieden. Bitte trage den Sieger ein.`, url: `/turniere/${t.id}` }, tx);
+    return;
+  }
+  await completeKo(tx, t, tm, winner);
+}
+
+/** Bei Gleichstand im K.-o.-Spiel trägt der Veranstalter den Sieger des Siebenmeterschießens ein. */
+export async function decideShootout(userId: string, tournamentId: string, tournamentMatchId: string, winnerTeamId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
-    if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann Ergebnisse eintragen.");
+    if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann das eintragen.");
     if (t.status !== "running") throw new DomainError("Das Turnier läuft nicht.");
-    const [m] = await tx.select().from(tournamentMatches).where(and(eq(tournamentMatches.id, matchId), eq(tournamentMatches.tournamentId, tournamentId)));
-    if (!m) throw new DomainError("Spiel nicht gefunden.");
-    if (!m.teamA || !m.teamB) throw new DomainError("Die Paarung steht noch nicht fest.");
-    const ok = (n: number) => Number.isInteger(n) && n >= 0 && n <= 99;
-    if (!ok(input.scoreA) || !ok(input.scoreB)) throw new DomainError("Bitte gib Tore von 0 bis 99 ein.");
-
-    const isKo = m.stage.startsWith("ko:");
-    let shootout: string | null = null;
-    if (isKo) {
-      const winner = koWinner({ a: m.teamA, b: m.teamB, scoreA: input.scoreA, scoreB: input.scoreB, shootoutWinner: input.shootoutWinner });
-      if (!winner) throw new DomainError("Im K.-o.-Spiel muss es einen Sieger geben. Bei Gleichstand bitte den Sieger des Siebenmeterschießens wählen.");
-      shootout = input.scoreA === input.scoreB ? winner : null;
-      // Ändern geht nur, solange das Folgespiel noch nicht gespielt ist
-      if (m.feedsMatchId) {
-        const [next] = await tx.select({ scoreA: tournamentMatches.scoreA }).from(tournamentMatches).where(eq(tournamentMatches.id, m.feedsMatchId));
-        if (next && next.scoreA !== null) throw new DomainError("Das Folgespiel ist schon gespielt. Das Ergebnis kann nicht mehr geändert werden.");
-      }
-      if (m.feedsMatchId && m.feedsSide) {
-        await tx.update(tournamentMatches).set(m.feedsSide === "a" ? { teamA: winner } : { teamB: winner }).where(eq(tournamentMatches.id, m.feedsMatchId));
-      }
-    }
-    await tx.update(tournamentMatches).set({ scoreA: input.scoreA, scoreB: input.scoreB, shootoutWinner: shootout, playedAt: new Date() }).where(eq(tournamentMatches.id, matchId));
-    await audit(userId, "tournament.result", "tournament", tournamentId, { after: { matchId, scoreA: input.scoreA, scoreB: input.scoreB } }, tx);
-
-    await progress(tx, t);
+    const [tm] = await tx.select().from(tournamentMatches).where(and(eq(tournamentMatches.id, tournamentMatchId), eq(tournamentMatches.tournamentId, tournamentId)));
+    if (!tm || tm.scoreA === null || tm.scoreA !== tm.scoreB || tm.shootoutWinner) throw new DomainError("Hier ist kein Siebenmeterschießen offen.");
+    if (winnerTeamId !== tm.teamA && winnerTeamId !== tm.teamB) throw new DomainError("Das Team spielt in diesem Spiel nicht.");
+    await tx.update(tournamentMatches).set({ shootoutWinner: winnerTeamId }).where(eq(tournamentMatches.id, tm.id));
+    await audit(userId, "tournament.shootout", "tournament", tournamentId, { after: { matchId: tm.id, winnerTeamId } }, tx);
+    await completeKo(tx, t, tm, winnerTeamId);
   });
 }
 
-/** Nach jedem Ergebnis: Gruppenphase fertig? Turnier fertig? */
-async function progress(tx: Tx, t: typeof tournaments.$inferSelect) {
-  const all = await tx.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, t.id));
-  const entries = await tx.select({ teamId: tournamentTeams.teamId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).orderBy(asc(tournamentTeams.registeredAt));
-  const ids = entries.map((e) => e.teamId);
-
-  if (t.format === "groups_ko") {
-    const groupMatches = all.filter((m) => m.stage.startsWith("group:"));
-    const hasKo = all.some((m) => m.stage.startsWith("ko:"));
-    if (!hasKo && groupMatches.length > 0 && groupMatches.every((m) => played(m))) {
-      const groups = drawGroups(ids);
-      const tables = groups.map((members, i) => standings(members, groupMatches.filter((m) => m.stage === `group:${groupName(i)}`).map((m) => played(m)!)).map((r) => r.teamId));
-      await insertFixtures(tx, t.id, koFromGroups(tables));
-      for (const id of ids) await notifyUsers(await teamAdminIds(tx, id), { type: "system", title: "K.-o.-Runde steht", body: `${t.name}: Die Gruppenphase ist beendet, die K.-o.-Runde beginnt.`, url: `/turniere/${t.id}` }, tx);
-      return;
-    }
-  }
-
-  let winnerId: string | null = null;
-  if (t.format === "round_robin") {
-    if (all.length > 0 && all.every((m) => played(m))) winnerId = standings(ids, all.map((m) => played(m)!))[0].teamId;
-  } else {
-    const ko = all.filter((m) => m.stage.startsWith("ko:"));
-    if (ko.length > 0 && ko.every((m) => played(m))) {
-      const final = ko.reduce((best, m) => (Number(m.stage.slice(3)) < Number(best.stage.slice(3)) ? m : best));
-      winnerId = koWinner({ a: final.teamA!, b: final.teamB!, scoreA: final.scoreA!, scoreB: final.scoreB!, shootoutWinner: final.shootoutWinner });
-    }
-  }
-  if (winnerId) await finishTournament(tx, t, winnerId, ids);
-}
-
-async function finishTournament(tx: Tx, t: typeof tournaments.$inferSelect, winnerId: string, teamIds: string[]) {
+async function finishTournament(tx: Tx, t: T, winnerId: string) {
   await tx.update(tournaments).set({ status: "finished", winnerTeamId: winnerId }).where(eq(tournaments.id, t.id));
   await settle(tx, t);
   const [winner] = await tx.select({ name: teams.name }).from(teams).where(eq(teams.id, winnerId));
-  for (const id of teamIds) {
-    await notifyUsers(await teamAdminIds(tx, id), { type: "system", title: "Turnier beendet", body: id === winnerId ? `Ihr habt ${t.name} gewonnen. Glückwunsch!` : `${t.name} ist beendet. Sieger: ${winner?.name ?? "–"}.`, url: `/turniere/${t.id}` }, tx);
+  const entries = await tx.select({ teamId: tournamentTeams.teamId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+  for (const e of entries) {
+    await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Turnier beendet", body: e.teamId === winnerId ? `Ihr habt ${t.name} gewonnen. Glückwunsch!` : `${t.name} ist beendet. Sieger: ${winner?.name ?? "–"}.`, url: `/turniere/${t.id}` }, tx);
   }
 }
 
-/** Zahlt den Veranstalter aus (Startgelder abzüglich Provision) und verbucht die Provision als Umsatz. Genau einmal pro Turnier. */
-async function settle(tx: Tx, t: typeof tournaments.$inferSelect) {
-  const [{ total }] = await tx.select({ total: sql<number>`coalesce(sum(${tournamentTeams.feeCents}), 0)`.mapWith(Number) }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+/** Zahlt den Veranstalter aus (Eintritte abzüglich Provision) und verbucht die Provision als Umsatz. Genau einmal pro Turnier. */
+async function settle(tx: Tx, t: T) {
+  const [{ total }] = await tx.select({ total: sql<number>`coalesce(sum(${tournamentPlayers.paidCents}), 0)`.mapWith(Number) }).from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
   const { commission, payout } = splitEntryFees(total, await commissionPercent(tx));
-  if (payout > 0) await creditWallet(tx, t.organizerId, { from: "tournament", amountCents: payout, kind: "tournament_payout", tournamentId: t.id, idempotencyKey: `tournament-payout:${t.id}`, reason: `Auszahlung Startgelder ${t.name}` });
+  if (payout > 0) await creditWallet(tx, t.organizerId, { from: "tournament", amountCents: payout, kind: "tournament_payout", tournamentId: t.id, idempotencyKey: `tournament-payout:${t.id}`, reason: `Auszahlung Eintritte ${t.name}` });
   if (commission > 0) await post(tx, { debit: { account: "tournament" }, credit: { account: "revenue" }, amountCents: commission, kind: "tournament_commission", tournamentId: t.id, idempotencyKey: `tournament-commission:${t.id}`, reason: `Provision ${t.name}` });
   await tx.update(tournaments).set({ settledAt: new Date() }).where(eq(tournaments.id, t.id));
   await audit(null, "tournament.settle", "tournament", t.id, { after: { total, commission, payout } }, tx);
 }
 
-/** Absagen: alle Startgelder gehen zurück. Nur möglich, solange noch kein Ergebnis eingetragen ist. */
+/** Absagen: Alle bezahlten Eintritte gehen vollständig aufs Guthaben der Spieler zurück. Nur möglich, solange noch kein Spiel gespielt ist. */
 export async function cancelTournament(userId: string, tournamentId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann absagen.");
     if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
-    const results = await tx.select({ id: tournamentMatches.id }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), sql`${tournamentMatches.scoreA} is not null`)).limit(1);
-    if (results.length > 0) throw new DomainError("Es gibt schon Ergebnisse. Bitte wende dich an die Plattform.");
-    const entries = await tx.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, tournamentId));
-    for (const e of entries) {
-      await refundEntry(tx, t, e, "Rückerstattung abgesagtes Turnier");
-      await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Turnier abgesagt", body: `${t.name} findet nicht statt. Das Startgeld wurde erstattet.`, url: `/turniere/${tournamentId}` }, tx);
+    const played = await tx.select({ id: tournamentMatches.id }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.scoreA))).limit(1);
+    if (played.length > 0) throw new DomainError("Es gibt schon Ergebnisse. Bitte wende dich an die Plattform.");
+    const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
+    for (const p of players) {
+      await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
     }
+    await notifyUsers(players.map((p) => p.userId), { type: "system", title: "Turnier abgesagt", body: `${t.name} findet nicht statt. Dein Eintritt wurde vollständig erstattet.`, url: `/turniere/${tournamentId}` }, tx);
+    const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
+    const gameIds = games.map((g) => g.matchId!).filter(Boolean);
+    if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
     await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
     await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));
-    await audit(userId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: entries.length } }, tx);
+    await audit(userId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length } }, tx);
   });
 }
 
@@ -254,8 +412,9 @@ export async function cancelTournament(userId: string, tournamentId: string) {
 // Lesen
 // ---------------------------------------------------------------------------------------------
 
-export async function listTournaments(filter: { city?: string } = {}) {
+export async function listTournaments(filter: { city?: string; viewerId?: string | null } = {}) {
   await connection();
+  const visible = filter.viewerId ? or(eq(tournaments.isPrivate, false), eq(tournaments.organizerId, filter.viewerId)) : eq(tournaments.isPrivate, false);
   return db
     .select({
       id: tournaments.id,
@@ -266,10 +425,11 @@ export async function listTournaments(filter: { city?: string } = {}) {
       status: tournaments.status,
       maxTeams: tournaments.maxTeams,
       entryFeeCents: tournaments.entryFeeCents,
+      isPrivate: tournaments.isPrivate,
       teams: sql<number>`(select count(*)::int from tournament_teams x where x.tournament_id = ${tournaments.id})`,
     })
     .from(tournaments)
-    .where(and(inArray(tournaments.status, ["registration", "running", "finished"]), filter.city ? eq(tournaments.city, filter.city) : undefined))
+    .where(and(inArray(tournaments.status, ["registration", "running", "finished"]), visible, filter.city ? eq(tournaments.city, filter.city) : undefined))
     .orderBy(sql`${tournaments.status} = 'finished'`, desc(tournaments.startsOn))
     .limit(50);
 }
@@ -278,39 +438,94 @@ export async function myTournaments(userId: string) {
   return db.select({ id: tournaments.id, name: tournaments.name, status: tournaments.status, startsOn: tournaments.startsOn }).from(tournaments).where(eq(tournaments.organizerId, userId)).orderBy(desc(tournaments.createdAt)).limit(30);
 }
 
-export async function getTournament(id: string) {
+const playedOf = (m: TmRow): Played | null => (m.teamA && m.teamB && m.scoreA !== null && m.scoreB !== null ? { a: m.teamA, b: m.teamB, scoreA: m.scoreA, scoreB: m.scoreB } : null);
+
+export type TournamentViewer = { id: string; role: string } | null;
+
+/**
+ * Die einzige Lesefunktion für ein Turnier (Seite und Daten). Private Turniere sieht nur, wer den Einladungstoken hat,
+ * der Veranstalter, Plattform-Admins und Mitglieder angemeldeter Teams. Das Bracket (Spiele) wird erst ausgeliefert, wenn es erzeugt wurde.
+ */
+export async function getTournament(id: string, viewer: TournamentViewer = null, token?: string | null) {
   await connection();
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
   if (!t) return null;
-  const [organizer] = await db.select({ name: users.name }).from(users).where(eq(users.id, t.organizerId));
+
   const entries = await db
-    .select({ teamId: teams.id, name: teams.name, slug: teams.slug })
+    .select({ teamId: teams.id, name: teams.name, slug: teams.slug, captainId: tournamentTeams.captainId, readyAt: tournamentTeams.readyAt })
     .from(tournamentTeams)
     .innerJoin(teams, eq(teams.id, tournamentTeams.teamId))
     .where(eq(tournamentTeams.tournamentId, id))
     .orderBy(asc(tournamentTeams.registeredAt));
-  const matchRows = await db.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, id)).orderBy(asc(tournamentMatches.stage), asc(tournamentMatches.round), asc(tournamentMatches.slot));
-  const nameOf = new Map(entries.map((e) => [e.teamId, e.name]));
+  const players = await db
+    .select({ teamId: tournamentPlayers.teamId, userId: users.id, name: sql<string>`coalesce(${users.nickname}, ${users.name})`, paidCents: tournamentPlayers.paidCents })
+    .from(tournamentPlayers)
+    .innerJoin(users, eq(users.id, tournamentPlayers.userId))
+    .where(eq(tournamentPlayers.tournamentId, id))
+    .orderBy(asc(tournamentPlayers.joinedAt));
 
-  const ids = entries.map((e) => e.teamId);
-  const results = (rows: MatchRow[]) => rows.map(played).filter((p): p is Played => p !== null);
-  const tables =
-    t.format === "round_robin"
-      ? [{ name: "Tabelle", rows: standings(ids, results(matchRows)) }]
-      : t.format === "groups_ko"
-        ? drawGroups(ids).map((members, i) => ({ name: `Gruppe ${groupName(i)}`, rows: standings(members, results(matchRows.filter((m) => m.stage === `group:${groupName(i)}`))) }))
-        : [];
+  const isOrganizer = Boolean(viewer && (viewer.id === t.organizerId || viewer.role === "admin"));
+  const myPlayer = viewer ? players.find((p) => p.userId === viewer.id) : undefined;
+  const memberTeams = viewer ? (await db.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.userId, viewer.id))) : [];
+  const inTournament = memberTeams.some((m) => entries.some((e) => e.teamId === m.teamId));
+  const tokenOk = Boolean(token && t.inviteToken && token === t.inviteToken);
+  if (t.isPrivate && !isOrganizer && !inTournament && !tokenOk) return null;
+
+  const organizer = (await db.select({ name: users.name }).from(users).where(eq(users.id, t.organizerId)))[0];
+  const nameOf = new Map(entries.map((e) => [e.teamId, e.name]));
+  const bracketVisible = Boolean(t.bracketGeneratedAt);
+  const matchRows = bracketVisible ? await db.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, id)).orderBy(asc(tournamentMatches.stage), asc(tournamentMatches.round), asc(tournamentMatches.slot)) : [];
   const stages = [...new Set(matchRows.map((m) => m.stage))].sort((a, b) => {
     const rank = (s: string) => (s.startsWith("group:") ? 0 : s === "round" ? 0 : 100 - Number(s.slice(3)));
     return rank(a) - rank(b) || a.localeCompare(b);
   });
+  const ids = entries.map((e) => e.teamId);
+  const legacyTables =
+    bracketVisible && t.format === "round_robin"
+      ? [{ name: "Tabelle", rows: standings(ids, matchRows.map(playedOf).filter((p): p is Played => p !== null)) }]
+      : bracketVisible && t.format === "groups_ko"
+        ? drawGroups(ids).map((members, i) => ({ name: `Gruppe ${groupName(i)}`, rows: standings(members, matchRows.filter((m) => m.stage === `group:${groupName(i)}`).map(playedOf).filter((p): p is Played => p !== null)) }))
+        : [];
+
+  const teamViews = await Promise.all(
+    entries.map(async (e) => {
+      const list = players.filter((p) => p.teamId === e.teamId);
+      return {
+        ...e,
+        captainName: list.find((p) => p.userId === e.captainId)?.name ?? "–",
+        ready: Boolean(e.readyAt),
+        complete: await teamComplete(db, t, e.teamId),
+        players: list.map((p) => ({ userId: p.userId, name: p.name, paid: t.entryFeeCents === 0 || p.paidCents >= t.entryFeeCents, isCaptain: p.userId === e.captainId })),
+      };
+    }),
+  );
+
+  const open = registrationOpen(t) && !deadlinePassed(t);
+  const adminTeams = memberTeams.filter((m) => m.role === "admin").map((m) => m.teamId);
+  const adminTeamRows = adminTeams.length ? await db.select({ id: teams.id, name: teams.name }).from(teams).where(and(inArray(teams.id, adminTeams), isNull(teams.archivedAt))) : [];
+  const captainOf = viewer ? entries.find((e) => e.captainId === viewer.id) : undefined;
+  const showToken = isOrganizer || inTournament;
+
   return {
-    tournament: t,
+    tournament: { ...t, inviteToken: showToken ? t.inviteToken : null },
     organizerName: organizer?.name ?? "–",
-    entries,
-    stages: stages.map((stage) => ({ stage, matches: matchRows.filter((m) => m.stage === stage).map((m) => ({ ...m, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null })) })),
-    tables: tables.map((tb) => ({ ...tb, rows: tb.rows.map((r) => ({ ...r, name: nameOf.get(r.teamId) ?? "?", slug: entries.find((e) => e.teamId === r.teamId)?.slug ?? "" })) })),
+    teams: teamViews,
+    viewer: viewer
+      ? {
+          isOrganizer,
+          captainTeamId: captainOf?.teamId ?? null,
+          myTeamId: myPlayer?.teamId ?? null,
+          iPaid: myPlayer ? t.entryFeeCents === 0 || myPlayer.paidCents >= t.entryFeeCents : false,
+          registerableTeams: open && !captainOf && !myPlayer ? adminTeamRows.filter((x) => !entries.some((e) => e.teamId === x.id)) : [],
+          joinableTeamIds: open && !myPlayer ? memberTeams.map((m) => m.teamId).filter((tid) => entries.some((e) => e.teamId === tid)) : [],
+        }
+      : null,
+    registrationOpen: open,
+    deadlinePassed: deadlinePassed(t),
+    bracketVisible,
+    stages: stages.map((stage) => ({ stage, matches: matchRows.filter((m) => m.stage === stage).map((m) => ({ ...m, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null, pendingShootout: m.scoreA !== null && m.scoreA === m.scoreB && !m.shootoutWinner })) })),
+    tables: legacyTables.map((tb) => ({ ...tb, rows: tb.rows.map((r) => ({ ...r, name: nameOf.get(r.teamId) ?? "?", slug: entries.find((e) => e.teamId === r.teamId)?.slug ?? "" })) })),
     winner: t.winnerTeamId ? (nameOf.get(t.winnerTeamId) ?? null) : null,
   };
 }

@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/validation";
 import { parseEuro } from "@/lib/money";
+import { parseBerlinLocal } from "@/lib/time";
 import { InsufficientFunds } from "./ledger";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
-import { cancelTournament, createTournament, registerTeam, reportResult, setOrganizer, startTournament, withdrawTeam } from "./tournaments";
+import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, registerTeam, setOrganizer, setTeamReady, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -25,17 +26,22 @@ const str = (f: FormData, key: string) => String(f.get(key) ?? "").trim();
 export async function createTournamentAction(_prev: ActionState, f: FormData): Promise<ActionState> {
   const user = await requireUser("/app/turniere/neu");
   const fee = str(f, "entryFee") === "" ? 0 : parseEuro(str(f, "entryFee"));
-  if (fee === null) return { error: "Bitte gib das Startgeld als Betrag an, z. B. 15 oder 12,50.", fieldErrors: { entryFee: "Ungültiger Betrag." } };
+  if (fee === null) return { error: "Bitte gib den Eintritt als Betrag an, z. B. 15 oder 12,50.", fieldErrors: { entryFee: "Ungültiger Betrag." } };
+  const startsAt = parseBerlinLocal(str(f, "startsAt"));
+  const deadline = parseBerlinLocal(str(f, "registrationDeadline"));
+  if (!startsAt || !deadline) return { error: "Bitte gib Termin und Anmeldeschluss mit Datum und Uhrzeit an." };
   let id = "";
   const result = await guarded(async () => {
     const t = await createTournament(user.id, {
       name: str(f, "name"),
       city: str(f, "city"),
       venueText: str(f, "venueText"),
-      startsOn: str(f, "startsOn"),
-      format: str(f, "format") as "round_robin" | "knockout" | "groups_ko",
+      startsAt,
+      registrationDeadline: deadline,
       maxTeams: Number(str(f, "maxTeams")),
-      entryFeeCents: fee,
+      playerFeeCents: fee,
+      isPrivate: str(f, "public") !== "on",
+      matchMinutes: Number(str(f, "matchMinutes") || 15),
     });
     id = t.id;
   });
@@ -43,47 +49,40 @@ export async function createTournamentAction(_prev: ActionState, f: FormData): P
   redirect(`/turniere/${id}`);
 }
 
-function touch(id: string) {
+async function touch(id: string, action: (userId: string) => Promise<void>): Promise<ActionState> {
+  const user = await requireUser(`/turniere/${id}`);
+  const result = await guarded(() => action(user.id));
   revalidatePath(`/turniere/${id}`);
   revalidatePath("/turniere");
+  return result;
 }
 
 export async function registerTeamAction(tournamentId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
-  const user = await requireUser(`/turniere/${tournamentId}`);
-  const result = await guarded(() => registerTeam(user.id, tournamentId, str(f, "teamId")));
-  touch(tournamentId);
-  return result;
+  return touch(tournamentId, (uid) => registerTeam(uid, tournamentId, str(f, "teamId")));
 }
-
+export async function joinAsPlayerAction(tournamentId: string, teamId: string): Promise<ActionState> {
+  return touch(tournamentId, (uid) => joinAsPlayer(uid, tournamentId, teamId));
+}
+export async function leavePlayerAction(tournamentId: string, targetUserId: string): Promise<ActionState> {
+  return touch(tournamentId, (uid) => leavePlayer(uid, tournamentId, targetUserId));
+}
+export async function payEntryAction(tournamentId: string): Promise<ActionState> {
+  return touch(tournamentId, (uid) => payEntry(uid, tournamentId));
+}
+export async function setTeamReadyAction(tournamentId: string, ready: boolean): Promise<ActionState> {
+  return touch(tournamentId, (uid) => setTeamReady(uid, tournamentId, ready));
+}
 export async function withdrawTeamAction(tournamentId: string, teamId: string): Promise<ActionState> {
-  const user = await requireUser(`/turniere/${tournamentId}`);
-  const result = await guarded(() => withdrawTeam(user.id, tournamentId, teamId));
-  touch(tournamentId);
-  return result;
+  return touch(tournamentId, (uid) => withdrawTeam(uid, tournamentId, teamId));
 }
-
-export async function startTournamentAction(tournamentId: string): Promise<ActionState> {
-  const user = await requireUser(`/turniere/${tournamentId}`);
-  const result = await guarded(() => startTournament(user.id, tournamentId));
-  touch(tournamentId);
-  return result;
+export async function closeWithJoinedAction(tournamentId: string): Promise<ActionState> {
+  return touch(tournamentId, (uid) => closeWithJoinedTeams(uid, tournamentId));
 }
-
 export async function cancelTournamentAction(tournamentId: string): Promise<ActionState> {
-  const user = await requireUser(`/turniere/${tournamentId}`);
-  const result = await guarded(() => cancelTournament(user.id, tournamentId));
-  touch(tournamentId);
-  return result;
+  return touch(tournamentId, (uid) => cancelTournament(uid, tournamentId));
 }
-
-export async function reportResultAction(tournamentId: string, matchId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
-  const user = await requireUser(`/turniere/${tournamentId}`);
-  const scoreA = Number(str(f, "scoreA"));
-  const scoreB = Number(str(f, "scoreB"));
-  if (str(f, "scoreA") === "" || str(f, "scoreB") === "") return { error: "Bitte gib beide Ergebnisse ein." };
-  const result = await guarded(() => reportResult(user.id, tournamentId, matchId, { scoreA, scoreB, shootoutWinner: str(f, "shootoutWinner") || null }));
-  touch(tournamentId);
-  return result;
+export async function decideShootoutAction(tournamentId: string, tournamentMatchId: string, winnerTeamId: string): Promise<ActionState> {
+  return touch(tournamentId, (uid) => decideShootout(uid, tournamentId, tournamentMatchId, winnerTeamId));
 }
 
 export async function setOrganizerAction(userId: string, value: boolean): Promise<ActionState> {

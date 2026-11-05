@@ -78,3 +78,8 @@ export function addBerlinDays(date: Date, days: number): Date {
   const d = new Date(Date.UTC(+local.slice(0, 4), +local.slice(5, 7) - 1, +local.slice(8, 10) + days));
   return parseBerlinLocal(`${d.toISOString().slice(0, 10)}${local.slice(10)}`) ?? new Date(date.getTime() + days * 86_400_000);
 }
+
+/** Früheste Eingabe für Datum-Felder mit Viertelstunden-Raster: jetzt, auf die nächste Viertelstunde aufgerundet (deutsche Zeit). */
+export function nextQuarterHourInput(): string {
+  return toBerlinInputValue(new Date(Math.ceil(Date.now() / 900_000) * 900_000));
+}

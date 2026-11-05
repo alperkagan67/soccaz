@@ -13,12 +13,13 @@ const STATUS = { registration: "Anmeldung offen", running: "Läuft", finished: "
 export default async function TournamentsPage({ searchParams }: PageProps<"/turniere">) {
   const sp = await searchParams;
   const city = typeof sp.city === "string" && (CITIES as readonly string[]).includes(sp.city) ? sp.city : undefined;
-  const [list, user] = await Promise.all([listTournaments({ city }), getCurrentUser()]);
+  const user = await getCurrentUser();
+  const list = await listTournaments({ city, viewerId: user?.id ?? null });
   return (
     <div className="space-y-5">
       <header className="space-y-1">
         <h1 className="text-3xl font-bold">Turniere</h1>
-        <p className="text-muted">Turniere von freigeschalteten Veranstaltern. Das Startgeld zahlst du bei der Anmeldung vom Guthaben.</p>
+        <p className="text-muted">Öffentliche Turniere und deine eigenen. Private Turniere erreichst du nur über den Einladungslink des Veranstalters. Jeder Spieler zahlt seinen Eintritt selbst vom Guthaben.</p>
       </header>
       <form className="flex gap-2">
         <select name="city" defaultValue={city ?? ""} aria-label="Stadt" className="field !w-auto flex-1">
@@ -31,9 +32,10 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
       </form>
       {user?.onboardedAt && (
         <Link href="/app/turniere/neu" className="btn btn-ghost w-full">
-          Eigenes Turnier anlegen
+          Turnier veranstalten
         </Link>
       )}
+      <p className="text-xs text-muted">Nur freigeschaltete Veranstalter legen Turniere an. Wenn du ein Turnier starten willst, ruf den Socaz-Admin an oder schreib uns eine E-Mail.</p>
       {list.length === 0 ? (
         <p className="card text-muted">Aktuell sind keine Turniere eingetragen.</p>
       ) : (
@@ -42,7 +44,7 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
             <li key={t.id}>
               <Link href={`/turniere/${t.id}`} className="card flex items-center justify-between gap-3 hover:border-green/50">
                 <span>
-                  <span className="font-semibold">{t.name}</span>
+                  <span className="font-semibold">{t.name}{t.isPrivate && <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-xs text-muted">privat</span>}</span>
                   <span className="block text-sm text-muted">
                     {t.city} · {t.startsOn} · {FORMAT[t.format]}
                   </span>
@@ -50,7 +52,7 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
                 <span className="text-right text-sm">
                   <span className="text-muted">{STATUS[t.status]}</span>
                   <span className="block text-xs text-muted">
-                    {t.teams}/{t.maxTeams} Teams · {t.entryFeeCents > 0 ? formatEuro(t.entryFeeCents) : "kostenlos"}
+                    {t.teams}/{t.maxTeams} Teams · {t.entryFeeCents > 0 ? `${formatEuro(t.entryFeeCents)} pro Spieler` : "kostenlos"}
                   </span>
                 </span>
               </Link>
