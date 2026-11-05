@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { roundTitle } from "@/lib/tournament";
+import { LiveBadge } from "./LiveBadge";
 import { decideShootoutAction } from "@/server/tournament-actions";
 
 type Match = {
@@ -17,6 +18,7 @@ type Match = {
   matchId: string | null;
   court?: number | null;
   startIso?: string | null;
+  endIso?: string | null;
   pendingShootout: boolean;
 };
 type Stage = { stage: string; matches: Match[] };
@@ -57,9 +59,10 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
             const done = m.scoreA !== null && m.scoreB !== null;
             const winA = done && (m.scoreA! > m.scoreB! || (m.scoreA === m.scoreB && m.shootoutWinner === m.teamA));
             const winB = done && (m.scoreB! > m.scoreA! || (m.scoreA === m.scoreB && m.shootoutWinner === m.teamB));
-            const row = (name: string | null, score: number | null, win: boolean) => (
+            const row = (name: string | null, score: number | null, win: boolean, badge?: ReactNode) => (
               <div className={`flex items-center justify-between gap-2 px-3 py-1.5 ${win ? "font-bold text-green" : ""}`}>
                 <span className="truncate">{name ?? <span className="text-muted">offen</span>}</span>
+                {badge}
                 <span className="font-heading tabular-nums">{score ?? ""}</span>
               </div>
             );
@@ -69,7 +72,7 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
                 {!last && <span className="absolute -right-4 top-1/2 h-px w-4 bg-line" aria-hidden />}
                 {!last && m.slot % 2 === 0 && <span className="absolute -right-4 top-1/2 w-px bg-line" style={{ height: "100%" }} aria-hidden />}
                 <div className="w-full rounded-lg border border-line bg-panel text-sm" data-testid="tournament-match">
-                  {row(m.nameA, m.scoreA, winA)}
+                  {row(m.nameA, m.scoreA, winA, !done && m.teamA && m.teamB && m.startIso && m.endIso ? <LiveBadge startIso={m.startIso} endIso={m.endIso} /> : undefined)}
                   <div className="h-px bg-line" />
                   {row(m.nameB, m.scoreB, winB)}
                   {m.court && m.startIso && (

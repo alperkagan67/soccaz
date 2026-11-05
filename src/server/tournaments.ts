@@ -665,7 +665,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
         }),
       })),
     },
-    stages: stages.map((stage) => ({ stage, matches: matchRows.filter((m) => m.stage === stage).map((m) => ({ ...m, court: courtOf(m.stage, m.slot)?.court ?? null, startIso: courtOf(m.stage, m.slot)?.startsAt.toISOString() ?? null, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null, pendingShootout: m.scoreA !== null && m.scoreA === m.scoreB && !m.shootoutWinner })) })),
+    stages: stages.map((stage) => ({ stage, matches: matchRows.filter((m) => m.stage === stage).map((m) => ({ ...m, court: courtOf(m.stage, m.slot)?.court ?? null, startIso: courtOf(m.stage, m.slot)?.startsAt.toISOString() ?? null, endIso: courtOf(m.stage, m.slot)?.endsAt.toISOString() ?? null, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null, pendingShootout: m.scoreA !== null && m.scoreA === m.scoreB && !m.shootoutWinner })) })),
     tables: legacyTables.map((tb) => ({ ...tb, rows: tb.rows.map((r) => ({ ...r, name: nameOf.get(r.teamId) ?? "?", slug: entries.find((e) => e.teamId === r.teamId)?.slug ?? "" })) })),
     winner: t.winnerTeamId ? (nameOf.get(t.winnerTeamId) ?? null) : null,
   };
