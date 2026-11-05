@@ -86,7 +86,7 @@ if (mode === "fill") {
   // nur Demo-Spieler (turnierfill-Adressen) zahlen, echte Konten bleiben dir überlassen
   const demoIds = new Set((await db.select({ id: users.id, email: users.email }).from(users).where(ne(users.email, ""))).filter((u) => u.email.startsWith("turnierfill-")).map((u) => u.id));
   const demo = players.filter((p) => demoIds.has(p.userId));
-  const skip = new Set(demo.slice(-unpaidWanted).map((p) => p.userId));
+  const skip = new Set((unpaidWanted > 0 ? demo.slice(-unpaidWanted) : []).map((p) => p.userId));
   for (const p of demo) {
     if (skip.has(p.userId)) continue;
     await db.transaction((tx) => creditWallet(tx, p.userId, { from: "clearing", amountCents: Math.max(share * 2, 2000), kind: "topup", idempotencyKey: `turnierfill-topup:${tag}:${p.userId}` }));
