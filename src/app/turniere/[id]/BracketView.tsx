@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { decideShootoutAction } from "@/server/tournament-actions";
@@ -23,7 +24,7 @@ const roundTitle = (teamsInRound: number) => (teamsInRound === 2 ? "Finale" : te
  * Turnier-Bracket als Baum: Links die erste Runde, rechts das Finale. Die Größe passt sich der Teamzahl an (Freilose stehen
  * schon in der zweiten Runde). Jeder Kasten führt zum Spiel, wo die Captains das Ergebnis melden und bestätigen.
  */
-export function BracketView({ tournamentId, stages, manage }: { tournamentId: string; stages: Stage[]; manage: boolean }) {
+export function BracketView({ tournamentId, stages, manage, info }: { tournamentId: string; stages: Stage[]; manage: boolean; info?: ReactNode }) {
   const rounds = stages
     .filter((s) => s.stage.startsWith("ko:"))
     .map((s) => ({ ...s, n: Number(s.stage.slice(3)) }))
@@ -33,14 +34,20 @@ export function BracketView({ tournamentId, stages, manage }: { tournamentId: st
   const rows = size / 2;
   const cols = { gridTemplateColumns: `repeat(${rounds.length}, minmax(200px, 1fr))`, minWidth: `${rounds.length * 232}px` };
 
+  // Bei acht und mehr Plätzen liegt die Anzeige im freien Feld über dem Finale, sonst steht sie darüber
+  const infoInGrid = rows >= 4;
   return (
     <div className="overflow-x-auto pb-2" data-testid="bracket">
+      {info && !infoInGrid && <div className="mx-auto mb-3 max-w-xs">{info}</div>}
       <div className="grid gap-x-8 pb-2" style={cols}>
         {rounds.map((r) => (
           <h3 key={r.stage} className="text-center text-sm font-semibold" data-testid="bracket-stage">{roundTitle(r.n)}</h3>
         ))}
       </div>
       <div className="grid gap-x-8" style={{ ...cols, gridTemplateRows: `repeat(${rows}, minmax(92px, auto))` }}>
+        {info && infoInGrid && (
+          <div className="flex items-center py-2" style={{ gridColumn: rounds.length, gridRow: 1 }}>{info}</div>
+        )}
         {rounds.flatMap((r, ci) => {
           const span = size / r.n;
           const last = ci === rounds.length - 1;

@@ -105,13 +105,19 @@ describe("Turnier anlegen", () => {
     expect((await createTournament(admin.id, base)).organizerId).toBe(admin.id); // Plattform-Admins dürfen immer
   });
 
-  it("private Turniere sieht nur, wer den Token hat, der Veranstalter oder Mitglieder angemeldeter Teams", async () => {
+  it("Bracket sehen alle, Kader, Zahlungen und Einladungslink privater Turniere nur Eingeweihte", async () => {
     const o = await organizer();
     const t = await newTournament(o);
     const stranger = await makeUser("fremd");
-    expect(await getTournament(t.id, { id: stranger.id, role: "player" })).toBeNull();
-    expect(await getTournament(t.id, null)).toBeNull();
-    expect(await getTournament(t.id, { id: stranger.id, role: "player" }, "falscher-token")).toBeNull();
+    const sq0 = await squad(t.id, 4);
+    for (const viewer of [null, { id: stranger.id, role: "player" as const }]) {
+      const v = await getTournament(t.id, viewer, "falscher-token");
+      expect(v).not.toBeNull(); // Zuschauer
+      expect(v?.tournament.inviteToken).toBeNull();
+      expect(v?.teams.every((x) => x.players.length === 0)).toBe(true);
+      expect(v?.viewer?.registerableTeams ?? []).toEqual([]);
+    }
+    expect((await getTournament(t.id, { id: sq0.players[1].id, role: "player" }))?.teams.some((x) => x.players.length > 0)).toBe(true);
     expect(await getTournament(t.id, { id: stranger.id, role: "player" }, t.inviteToken)).not.toBeNull();
     expect((await orgView(o, t.id))?.tournament.inviteToken).toBe(t.inviteToken); // der Veranstalter sieht den Link
     expect((await getTournament(t.id, { id: stranger.id, role: "player" }, t.inviteToken))?.tournament.inviteToken).toBeNull(); // Gäste mit Link nicht den Token zum Weitergeben

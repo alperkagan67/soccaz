@@ -559,7 +559,9 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const memberTeams = viewer ? (await db.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.userId, viewer.id))) : [];
   const inTournament = memberTeams.some((m) => entries.some((e) => e.teamId === m.teamId));
   const tokenOk = Boolean(token && t.inviteToken && token === t.inviteToken);
-  if (t.isPrivate && !isOrganizer && !inTournament && !tokenOk) return null;
+  // Das Bracket ist für alle sichtbar (auch ohne Konto): Wer ein privates Turnier nicht kennt, sieht nur die Spielübersicht,
+  // aber weder Einladungslink noch Kader noch Zahlungsstand. Mitmachen geht nur über den Einladungslink.
+  const spectator = t.isPrivate && !isOrganizer && !inTournament && !tokenOk;
 
   const organizer = (await db.select({ name: users.name }).from(users).where(eq(users.id, t.organizerId)))[0];
   const nameOf = new Map(entries.map((e) => [e.teamId, e.name]));
@@ -584,12 +586,12 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
       const list = players.filter((p) => p.teamId === e.teamId);
       return {
         ...e,
-        captainName: list.find((p) => p.userId === e.captainId)?.name ?? "–",
+        captainName: spectator ? "–" : (list.find((p) => p.userId === e.captainId)?.name ?? "–"),
         ready: Boolean(e.readyAt), // Team vollzählig gemeldet
-        dueCents: priceFixed ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
-        anyPaid: list.some((p) => p.paidCents > 0),
+        dueCents: priceFixed && !spectator ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
+        anyPaid: !spectator && list.some((p) => p.paidCents > 0),
         complete: await rosterReady(db, t.id, e.teamId),
-        players: list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: priceFixed && (share === 0 || p.paidCents >= share), isCaptain: p.userId === e.captainId })),
+        players: spectator ? [] : list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: priceFixed && (share === 0 || p.paidCents >= share), isCaptain: p.userId === e.captainId })),
       };
     }),
   );
@@ -599,6 +601,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const adminTeamRows = adminTeams.length ? await db.select({ id: teams.id, name: teams.name }).from(teams).where(and(inArray(teams.id, adminTeams), isNull(teams.archivedAt))) : [];
   const captainOf = viewer ? entries.find((e) => e.captainId === viewer.id) : undefined;
   const showToken = isOrganizer || inTournament;
+  const canJoin = open && !spectator;
 
   return {
     tournament: { ...t, inviteToken: showToken ? t.inviteToken : null },
@@ -611,8 +614,8 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
           myTeamId: myPlayer?.teamId ?? null,
           iPaid: myPlayer ? priceFixed && (share === 0 || myPlayer.paidCents >= share) : false,
           myDueCents: myPlayer && priceFixed ? Math.max(share - myPlayer.paidCents, 0) : 0,
-          registerableTeams: open && !captainOf && !myPlayer ? adminTeamRows.filter((x) => !entries.some((e) => e.teamId === x.id)) : [],
-          joinableTeamIds: open && !myPlayer ? memberTeams.map((m) => m.teamId).filter((tid) => entries.some((e) => e.teamId === tid)) : [],
+          registerableTeams: canJoin && !captainOf && !myPlayer ? adminTeamRows.filter((x) => !entries.some((e) => e.teamId === x.id)) : [],
+          joinableTeamIds: canJoin && !myPlayer ? memberTeams.map((m) => m.teamId).filter((tid) => entries.some((e) => e.teamId === tid)) : [],
         }
       : null,
     pricing: {

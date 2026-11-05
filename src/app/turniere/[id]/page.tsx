@@ -20,6 +20,7 @@ import {
 } from "@/server/tournament-actions";
 import { getCurrentUser } from "@/server/session";
 import { getTournament } from "@/server/tournaments";
+import { BoardInfo } from "./BoardInfo";
 import { BracketView } from "./BracketView";
 import { CopyLink } from "./CopyLink";
 import { RegisterForm } from "./RegisterForm";
@@ -137,7 +138,12 @@ export default async function TournamentPage({ params, searchParams }: PageProps
               </div>
             ))}
           </div>
-          <BracketView tournamentId={t.id} stages={data.stages} manage={manage} />
+          <BracketView
+            tournamentId={t.id}
+            stages={data.stages}
+            manage={manage}
+            info={<BoardInfo startsAtIso={t.startsAt ? t.startsAt.toISOString() : null} status={t.status} winner={data.winner} matches={data.stages.flatMap((s) => s.matches)} />}
+          />
         </section>
       )}
 

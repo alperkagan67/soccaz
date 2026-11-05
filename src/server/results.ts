@@ -138,7 +138,7 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
 export type MatchPage = NonNullable<Awaited<ReturnType<typeof getMatchPage>>>;
 
 export function canViewMatch(page: MatchPage): boolean {
-  if (page.match.visibility === "public") return true;
+  if (page.match.visibility === "public" || page.match.kind === "tournament") return true; // Turnierspiele darf jeder ansehen
   const v = page.viewer;
   return Boolean(v && (v.platformAdmin || v.membership));
 }

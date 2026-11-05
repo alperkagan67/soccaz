@@ -157,8 +157,8 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   const anon = await (await browser.newContext()).newPage();
   await anon.goto(`/turniere/${tid}`);
   await anon.waitForLoadState("networkidle");
-  await expect(anon.getByTestId("tournament-name")).toHaveCount(0); // privat: ohne Link nicht zu sehen
-  await expect(anon.getByText(`E2E Cup ${run}`)).toHaveCount(0);
+  await expect(anon.getByTestId("tournament-name")).toHaveCount(1); // jeder darf zuschauen, auch bei privaten Turnieren
+  await expect(anon.getByText("Einladungslink")).toHaveCount(0); // aber ohne Einladungslink und Kader
   await anon.goto("/turniere");
   await expect(anon.getByText(`E2E Cup ${run}`)).toHaveCount(0);
 
