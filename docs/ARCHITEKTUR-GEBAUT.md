@@ -120,9 +120,13 @@ sequenceDiagram
   S->>N: "Spieler des Spiels"
 ```
 
-## Turnier mit Startgeld (gebaut)
+## Drei Spielarten (gebaut)
 
-Anmeldung mit Treuhandkonto, Spielplan je Format, Ergebnisse, Abrechnung, Absage.
+Teamspiel, Privatspiel und Turnier sind in der Oberfläche getrennt (`GameModes` auf Startseite und Mein Bereich). Alle drei nutzen dieselbe Team-, Einladungs-, Guthaben- und Ergebnislogik. Es gibt keine zweite Lobby-Logik: Spiele sind immer Zeilen in `matches`, unterschieden durch `matches.kind` (`team`, `private`, `tournament`). Nur `team` zählt für Elo, Statistik und Rangliste (`applyMatchStats` bricht sonst ab).
+
+## Turnier (gebaut)
+
+Privat per Einladungslink, ein Captain pro Team, Eintritt pro Spieler, Bereit nur nach vollständiger Zahlung (serverseitig), Bracket erst wenn alle Teams da und alle Captains bereit sind. Gespielt wird über echte Spiele (`kind = tournament`), die Sieger rücken über einen Finalizer weiter.
 
 ```mermaid
 flowchart TD
@@ -130,45 +134,56 @@ flowchart TD
   classDef state fill:#e3f2fd,stroke:#1d5fa8,color:#000
   classDef rule fill:#f3e5f5,stroke:#7a3fa8,color:#000
 
-  A([Admin schaltet Veranstalter frei]):::rule --> B[Veranstalter legt Turnier an<br/>Format, max. Teams 2-32, Startgeld 0-500 EUR]
+  A([Admin schaltet Veranstalter frei]):::rule --> B[Veranstalter legt Turnier an<br/>4-32 Teams, Termin, Anmeldeschluss,<br/>Eintritt je Spieler, privat mit Einladungslink]
   B --> C{{Status: Anmeldung}}:::state
-  C --> D[Team-Admin meldet Team an]
-  D --> E{Platz frei und<br/>Guthaben reicht?}
-  E -- nein --> D1[Fehlermeldung / Aufladen]
-  E -- ja --> F[Startgeld: Guthaben -> Konto Turnier<br/>Zeilensperre, Schluessel pro Team]:::money
-  F --> C
-  C --> G[Team meldet sich ab]
-  G --> H[Rueckerstattung: Konto Turnier -> Guthaben<br/>genau einmal]:::money
-  H --> C
-  C --> I[Veranstalter startet]
-  I --> J{Format}
-  J -- jeder gegen jeden --> K1[Kreisverfahren: n x n-1 / 2 Spiele]
-  J -- K.o. --> K2[Baum mit Freilosen: immer n-1 Spiele]
-  J -- Gruppen + K.o. --> K3[Gruppen in Schlangenlinie,<br/>je Gruppe jeder gegen jeden]
-  K1 --> L{{Status: laeuft}}:::state
-  K2 --> L
-  K3 --> L
-  L --> M[Veranstalter traegt Ergebnis ein]
-  M --> N{K.o.-Spiel?}
-  N -- ja, unentschieden --> O[Sieger im Siebenmeterschiessen waehlen]
-  N -- ja --> P[Sieger rueckt in das Folgespiel]
+  C --> D[Captain tritt mit bestehendem Team bei<br/>genau ein Captain pro Team]
+  D --> E[Mitspieler kommen ueber die Team-Einladung<br/>und treten dem Turnier-Kader bei]
+  E --> F[Jeder Spieler zahlt selbst:<br/>Guthaben -> Konto Turnier<br/>Schluessel pro Spieler und Beitritt]:::money
+  F --> G{Alle im Team bezahlt<br/>und mindestens 4 Spieler?}
+  G -- nein --> G1[Captain kann nicht bereit druecken<br/>Server lehnt ab]:::rule
+  G -- ja --> H[Captain drueckt Bereit]
+  H --> I{Kader aendert sich oder<br/>Zahlung faellt weg?}
+  I -- ja --> I1[Bereit des Teams wird zurueckgesetzt]:::rule
+  I1 --> G
+  H --> J{Alle Plaetze belegt und<br/>alle Captains bereit?}
+  J -- nein --> J1[Bracket bleibt verborgen<br/>auch in der Datenabfrage]:::rule
+  J -- ja --> K[Genau einmal: K.o.-Bracket mit Freilosen<br/>Zeilensperre + bracket_generated_at]
+  K --> L{{Status: laeuft}}:::state
+  L --> M[Jede Paarung wird ein echtes Spiel<br/>Captain meldet, anderer Captain bestaetigt]
+  M --> N{Unentschieden?}
+  N -- ja --> O[Veranstalter traegt Siebenmeterschiessen ein]
+  N -- nein --> P[Sieger rueckt ins Folgespiel,<br/>Folgespiel entsteht]
   O --> P
-  N -- nein --> Q{Gruppenphase komplett?}
-  Q -- ja --> R[K.o.-Runde aus Tabellen:<br/>A1-B2, B1-A2 ...]
-  P --> S{Alle Spiele gespielt?}
-  R --> L
-  Q -- nein --> L
-  S -- nein --> L
-  S -- ja --> T{{Status: beendet, Sieger steht fest}}:::state
-  T --> U[Abrechnung genau einmal]:::money
-  U --> V[Auszahlung an Veranstalter:<br/>Startgelder minus Provision]:::money
-  U --> W[Provision -> Umsatz, abgerundet]:::money
+  P --> S{Finale gespielt?}
+  S -- nein --> M
+  S -- ja --> T{{Status: beendet}}:::state
+  T --> U[Auszahlung an Veranstalter:<br/>Eintritte minus Provision, Provision -> Umsatz]:::money
+  C --> V[Veranstalter ersetzt Team bis Anmeldeschluss<br/>Eintritte des Teams werden erstattet]:::money
+  C --> W[Nach Anmeldeschluss: mit weniger Teams starten<br/>mindestens 4, oder absagen]
   C --> X[Veranstalter sagt ab]
   L --> X
-  X --> Y{Schon Ergebnisse?}
+  X --> Y{Schon ein Ergebnis?}
   Y -- ja --> Z[Nicht moeglich, Plattform muss helfen]
-  Y -- nein --> AA[Alle Startgelder zurueck, Spielplan geloescht]:::money
-  AA --> AB{{Status: abgesagt}}:::state
+  Y -- nein --> AA[Alle Eintritte vollstaendig zurueck<br/>Spiele abgesagt]:::money
+```
+
+## Privatspiel (gebaut)
+
+Eine Person legt ein Spiel für ihre Freundesgruppe an (Standard 10 Spieler). Das Spiel ist nie öffentlich, nur über `/spiel/<token>` erreichbar und zählt nicht für die Rangliste.
+
+```mermaid
+flowchart TD
+  A[Veranstalter legt Spiel an<br/>Termin, Halle, 4-22 Spieler gerade, optional Miete] --> B[Zwei unsichtbare Spiel-Teams Rot und Blau<br/>teams.kind = private, Veranstalter ist Admin beider]
+  B --> C[matches.kind = private, visibility = private<br/>Einladungslink game_invites]
+  C --> D[Link per WhatsApp teilen]
+  D --> E{Eingeladener angemeldet?}
+  E -- nein --> F[Anmelden oder registrieren, Onboarding,<br/>danach zurueck zum Link]
+  F --> G[Beitritt ohne Team, Platzgrenze, mehrfach harmlos]
+  E -- ja --> G
+  G --> H[Veranstalter teilt ein: von Hand oder zufaellig<br/>Neu mischen nur ohne Zahlung und Bereit]
+  H --> I[Bezahlen: Miete geteilt durch zahlende Spieler<br/>Reservierung und Abrechnung wie beim Teamspiel]
+  I --> J[Bereit, ein Klick des Veranstalters bestaetigt beide Teams]
+  J --> K[Uebersicht, Ergebnis: Veranstalter traegt direkt ein]
 ```
 
 ## Alle Seiten und Schnittstellen (gebaut)

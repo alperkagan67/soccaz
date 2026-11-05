@@ -58,11 +58,11 @@ export function QueueForm({ teams, minDay }: { teams: { id: string; name: string
         <label className="label" htmlFor="q-note">Hinweis für andere Teams (optional)</label>
         <input id="q-note" name="note" maxLength={200} className="field" placeholder="z. B. Mixed-Team, wir spielen locker, Revanche erwünscht" />
       </div>
-      <p className="text-sm text-muted">Wann könnt ihr? Bis zu drei Zeitfenster. Wir suchen ein Team mit ähnlicher Spielstärke und gemeinsamer Zeit.</p>
+      <p className="text-sm text-muted" data-testid="windows-hint">Wann kann euer Team spielen? Trage bis zu drei Zeitfenster ein (Tag, von wann bis wann). Das sind keine drei Spieltage: Es wird ein Spiel. Wenn ein Team antritt, einigen sich die Captains auf die Uhrzeit innerhalb eines Fensters.</p>
       {[1, 2, 3].map((i) => (
         <div key={i} className="grid grid-cols-3 gap-2">
           <div>
-            <label className="label" htmlFor={`q-day${i}`}>Tag {i}</label>
+            <label className="label" htmlFor={`q-day${i}`}>Zeitfenster {i}: Tag</label>
             <input id={`q-day${i}`} name={`day${i}`} type="date" min={minDay} className="field" />
           </div>
           <div>

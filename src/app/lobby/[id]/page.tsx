@@ -3,7 +3,11 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { formatDateTime, formatTime, toBerlinInputValue } from "@/lib/time";
 import { formatEuro } from "@/lib/money";
-import { hasFreeSlot, MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
+import { hasFreeSlot, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
+import { ShareLink } from "@/components/ShareLink";
+import { PrivateTools } from "./PrivateTools";
+import { getGameInviteToken } from "@/server/privategame";
+import { headers } from "next/headers";
 import { getCurrentUser } from "@/server/session";
 import { lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
 import { expectedScore } from "@/lib/elo";
@@ -38,7 +42,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   if (!view) notFound();
   if (!canViewLobby(view)) redirect(user ? "/app" : `/anmelden?next=${encodeURIComponent(`/lobby/${id}`)}`);
 
-  const { match, payments, participants, counts, pendingStrangers, active, roster, strength } = view;
+  const { match, payments, participants, counts, pendingStrangers, active, roster, strength, capacity } = view;
+  const isPrivate = match.kind === "private";
   const v = view.viewer ?? { id: "", platformAdmin: false, membershipTeamId: null, adminOf: [] as string[], participant: null, canManage: false, canJoin: false, teamFull: false, canJoinAsSubstitute: false };
   if (match.kind === "tournament") redirect(`/spiele/${match.id}`); // Turnierspiele haben keine eigene Lobby: Ergebnis auf der Spielseite, Überblick im Turnier
   const confirmed = match.status === "confirmed";
@@ -97,14 +102,25 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   ];
   const canAdminTeam = (teamId: string) => v.platformAdmin || v.adminOf.includes(teamId);
   const assignTargets = teamsView
-    .filter((t) => canAdminTeam(t.id) && hasFreeSlot(t.count))
+    .filter((t) => canAdminTeam(t.id) && hasFreeSlot(t.count, capacity))
     .map((t) => ({ teamId: t.id, name: t.name }));
+
+  let inviteUrl: string | null = null;
+  if (isPrivate && user && (v.platformAdmin || v.adminOf.length > 0)) {
+    const token = await getGameInviteToken(user.id, match.id);
+    if (token) {
+      const h = await headers();
+      const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost";
+      const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+      inviteUrl = `${process.env.APP_URL ?? `${proto}://${host}`}/spiel/${token}`;
+    }
+  }
 
   return (
     <div className="space-y-4">
       <header className="space-y-1">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted" data-testid="game-number">Spiel #{match.number} · Lobby</p>
+          <p className="text-sm text-muted" data-testid="game-number">{isPrivate ? "Privatspiel" : "Spiel"} #{match.number} · {isPrivate ? "nicht öffentlich, nur per Einladungslink" : "Lobby"}</p>
           <LiveIndicator eventsUrl={`/api/lobby/${match.id}/events`} />
         </div>
         <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-bold sm:text-3xl" aria-label={`${match.homeName} gegen ${match.awayName}`}>
@@ -117,9 +133,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           {active && !open && <> · <span className="text-ink"><Countdown startsAtIso={match.startsAt.toISOString()} /></span></>}
         </p>
         <p className={`text-sm font-semibold ${status.tone}`} data-testid="match-status">{status.label}</p>
-        <p className="text-xs text-muted" data-testid="win-chance">
+        {!isPrivate && <p className="text-xs text-muted" data-testid="win-chance">
           Spielstärke: {match.homeName} Elo {strength[match.homeId].elo}, {match.awayName} Elo {strength[match.awayId].elo} · Siegchance {winChanceHome} % zu {100 - winChanceHome} %
-        </p>
+        </p>}
         {!user && (
           <p className="text-sm">
             <Link href={`/anmelden?next=${encodeURIComponent(`/lobby/${match.id}`)}`} className="text-green underline">Anmelden</Link>, um beizutreten oder dein Team herauszufordern.
@@ -129,6 +145,11 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <Link href={`/spiele/${match.id}`} className="btn btn-primary mt-2">Zur Spielseite</Link>
         )}
       </header>
+
+      {isPrivate && inviteUrl && (
+        <ShareLink url={inviteUrl} title="Einladungslink zum Spiel" shareText={`Privatspiel #${match.number} auf Socaz: komm dazu!`} testId="game-invite" hint={`${participants.length} von ${match.maxPlayers ?? 10} Plätzen belegt. Wer den Link öffnet, meldet sich an oder registriert sich und landet direkt in diesem Spiel.`} />
+      )}
+      {isPrivate && v.canManage && active && <PrivateTools matchId={match.id} waiting={pendingStrangers.length} assigned={participants.filter((p) => p.teamId).length} />}
 
       {challengePending && (
         <ChallengePanel
@@ -241,9 +262,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <section key={t.id} className="card space-y-2">
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="font-semibold">
-                <Link href={`/teams/${t.slug}`} className="hover:text-green">{t.name}</Link>
+                {isPrivate ? t.name : <Link href={`/teams/${t.slug}`} className="hover:text-green">{t.name}</Link>}
               </h2>
-              <span className="text-xs text-muted">Elo {strength[t.id].elo}{strength[t.id].matches === 0 ? " (geschätzt)" : ""} · {t.count} von {MAX_PER_TEAM} · bereit {t.ready}/{MIN_READY_PER_TEAM}</span>
+              <span className="text-xs text-muted">{isPrivate ? "" : `Elo ${strength[t.id].elo}${strength[t.id].matches === 0 ? " (geschätzt)" : ""} · `}{t.count} von {capacity} · bereit {t.ready}/{MIN_READY_PER_TEAM}</span>
             </div>
             <ul className="space-y-2 text-sm">
               {participants.filter((p) => p.teamId === t.id).map((p) => (
@@ -257,19 +278,19 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                   <span className="flex items-center gap-2">
                     <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel />
                     {active && p.userId !== user?.id && canAdminTeam(t.id) && (
-                      <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} />
+                      <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} canUnassign={isPrivate && !p.ready && !p.paid} />
                     )}
                   </span>
                 </li>
               ))}
-              {Array.from({ length: Math.max(MAX_PER_TEAM - t.count, 0) }, (_, i) => (
+              {Array.from({ length: Math.max(capacity - t.count, 0) }, (_, i) => (
                 <li key={`free-${i}`} className="flex items-center justify-between gap-2 text-muted" data-testid="free-slot">
                   <span>Wartet auf Spieler {t.count + i + 1}</span>
                   <span className="text-xs">frei</span>
                 </li>
               ))}
             </ul>
-            {roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
+            {!isPrivate && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
               <div className="border-t border-line pt-2" data-testid={`roster-${t.slug}`}>
                 <p className="mb-1 text-xs text-muted">Weitere Teammitglieder (noch nicht in der Lobby)</p>
                 <ul className="space-y-1 text-sm text-muted">
@@ -282,14 +303,14 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                 </ul>
               </div>
             )}
-            {active && v.adminOf.includes(t.id) && <InviteBox teamId={t.id} teamName={t.name} />}
+            {!isPrivate && active && v.adminOf.includes(t.id) && <InviteBox teamId={t.id} teamName={t.name} />}
           </section>
         ))}
       </div>
 
       {pendingStrangers.length > 0 && (
         <section className="card space-y-2">
-          <h2 className="font-semibold">Ersatzspieler warten auf Zuweisung</h2>
+          <h2 className="font-semibold">{isPrivate ? "Spieler warten auf ihr Team" : "Ersatzspieler warten auf Zuweisung"}</h2>
           <ul className="space-y-2 text-sm">
             {pendingStrangers.map((p) => (
               <li key={p.userId} className="flex items-center justify-between gap-2">

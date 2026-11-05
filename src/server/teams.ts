@@ -44,7 +44,7 @@ export async function createTeam(userId: string, input: { name: string; city: st
 }
 
 export async function getTeamBySlug(slug: string) {
-  const [team] = await db.select().from(teams).where(eq(teams.slug, slug));
+  const [team] = await db.select().from(teams).where(and(eq(teams.slug, slug), eq(teams.kind, "team"))); // Spiel-Teams von Privatspielen gibt es nicht als Seite
   return team ?? null;
 }
 
@@ -69,7 +69,7 @@ export async function listMyTeams(userId: string) {
     .select({ id: teams.id, name: teams.name, slug: teams.slug, city: teams.city, role: teamMembers.role })
     .from(teamMembers)
     .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-    .where(and(eq(teamMembers.userId, userId), isNull(teams.archivedAt)))
+    .where(and(eq(teamMembers.userId, userId), isNull(teams.archivedAt), eq(teams.kind, "team")))
     .orderBy(desc(teamMembers.joinedAt));
 }
 

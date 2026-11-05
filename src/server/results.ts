@@ -207,6 +207,14 @@ async function loadAdminContext(tx: Tx, userId: string, match: MatchRow) {
   return { platformAdmin: u?.role === "admin", side };
 }
 
+async function isAdminOfBoth(tx: Tx, userId: string, match: MatchRow) {
+  const rows = await tx
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), inArray(teamMembers.teamId, [match.homeTeamId, match.awayTeamId])));
+  return rows.length === 2;
+}
+
 async function mutateMatch(
   userId: string,
   matchId: string,
@@ -295,8 +303,9 @@ export function submitResult(userId: string, matchId: string, homeScore: number,
     requireStarted(match);
     const [existing] = await tx.select().from(matchResults).where(eq(matchResults.matchId, matchId));
 
-    if (ctx.platformAdmin && !ctx.side) {
-      // Plattform-Admin trägt direkt das endgültige Ergebnis ein
+    const bothSides = match.kind === "private" && (await isAdminOfBoth(tx, userId, match));
+    if ((ctx.platformAdmin && !ctx.side) || bothSides) {
+      // Plattform-Admin (oder der Veranstalter eines Privatspiels, Captain beider Teams) trägt direkt das endgültige Ergebnis ein
       await upsertFinal(tx, match, userId, homeScore, awayScore, null);
       return;
     }

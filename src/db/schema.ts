@@ -54,6 +54,7 @@ export const teams = pgTable("teams", {
   bio: text("bio"), // "Über uns", höchstens 280 Zeichen
   strength: integer("strength").notNull().default(3), // 1-5 Selbsteinschätzung, später Elo
   isVerified: boolean("is_verified").notNull().default(false),
+  kind: text("kind").$type<"team" | "private">().notNull().default("team"), // "private": unsichtbares Spiel-Team eines Privatspiels (nicht im Verzeichnis, nicht in Listen)
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -119,6 +120,7 @@ export const matches = pgTable("matches", {
   mvpUserId: uuid("mvp_user_id"),
   mvpClosedAt: timestamp("mvp_closed_at", { withTimezone: true }),
   challengeStatus: text("challenge_status").$type<"none" | "pending" | "accepted">().notNull().default("none"), // Direkt-Herausforderung: Lobby steht, das Zielteam muss noch annehmen
+  maxPlayers: integer("max_players"), // nur Privatspiele: Spieler insgesamt (Standard 10, je Team die Hälfte)
   kind: text("kind").$type<"team" | "private" | "tournament">().notNull().default("team"), // Teamspiel, Privatspiel oder Turnierspiel (nur Teamspiele zählen für Elo und Rangliste)
   homeFinalAt: timestamp("home_final_at", { withTimezone: true }), // letzte Bestätigung des Captains: alle im Team bereit und bezahlt
   awayFinalAt: timestamp("away_final_at", { withTimezone: true }),

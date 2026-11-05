@@ -112,3 +112,15 @@ export const matchClips = pgTable(
   },
   (t) => [index("match_clips_match_idx").on(t.matchId)],
 );
+
+/** Einladungslink zu einem Privatspiel: Wer ihn hat, kann dem Spiel beitreten (nach Anmeldung). */
+export const gameInvites = pgTable(
+  "game_invites",
+  {
+    token: text("token").primaryKey(),
+    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("game_invites_match_idx").on(t.matchId)],
+);

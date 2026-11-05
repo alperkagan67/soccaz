@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
-import { MIN_READY_PER_TEAM, hasFreeSlot, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
+import { MIN_READY_PER_TEAM, hasFreeSlot, teamCapacity, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
 import { teamName, userName } from "./names";
@@ -55,6 +55,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       awayFinalAt: matches.awayFinalAt,
       visibility: matches.visibility,
       kind: matches.kind,
+      maxPlayers: matches.maxPlayers,
       status: matches.status,
       priceCents: matches.priceCents,
       finalShareCents: matches.finalShareCents,
@@ -141,6 +142,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
     participants,
     counts: { home: countFor(match.homeId), away: countFor(match.awayId), readyHome: readyFor(match.homeId), readyAway: readyFor(match.awayId) },
     pendingStrangers,
+    capacity: teamCapacity(match),
     viewer: viewer
       ? {
           id: viewer.id,
@@ -149,8 +151,8 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
           adminOf,
           participant: me,
           canManage: platformAdmin || adminOf.length > 0,
-          canJoin: active && !me && membership !== null && hasFreeSlot(countFor(membership)),
-          teamFull: active && !me && membership !== null && !hasFreeSlot(countFor(membership)),
+          canJoin: active && !me && membership !== null && hasFreeSlot(countFor(membership), teamCapacity(match)),
+          teamFull: active && !me && membership !== null && !hasFreeSlot(countFor(membership), teamCapacity(match)),
           canJoinAsSubstitute:
             active &&
             !me &&
@@ -271,8 +273,14 @@ export function finalConfirm(userId: string, matchId: string) {
       .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), inArray(teamMembers.teamId, [match.homeTeamId, match.awayTeamId])));
     if (!admin) throw new DomainError("Nur der Captain kann die Lobby zum Schluss bestätigen.");
     if (!(await teamComplete(tx, matchId, admin.teamId))) throw new DomainError(`Es müssen mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle in deinem Team bereit und bezahlt.`);
-    const home = admin.teamId === match.homeTeamId;
-    await tx.update(matches).set(home ? { homeFinalAt: new Date() } : { awayFinalAt: new Date() }).where(eq(matches.id, matchId));
+    const both = match.kind === "private" && (await isAdminOf(tx, userId, match.homeTeamId)) && (await isAdminOf(tx, userId, match.awayTeamId));
+    if (both) {
+      if (!(await teamComplete(tx, matchId, match.homeTeamId)) || !(await teamComplete(tx, matchId, match.awayTeamId))) throw new DomainError(`Es müssen in beiden Teams mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle bereit und bezahlt.`);
+      await tx.update(matches).set({ homeFinalAt: new Date(), awayFinalAt: new Date() }).where(eq(matches.id, matchId));
+    } else {
+      const home = admin.teamId === match.homeTeamId;
+      await tx.update(matches).set(home ? { homeFinalAt: new Date() } : { awayFinalAt: new Date() }).where(eq(matches.id, matchId));
+    }
     await audit(userId, "lobby.final", "match", matchId, { after: { teamId: admin.teamId } }, tx);
     const [fresh] = await tx.select().from(matches).where(eq(matches.id, matchId));
     const bothDone = Boolean(fresh.homeFinalAt && fresh.awayFinalAt);
@@ -304,7 +312,7 @@ export function joinLobby(userId: string, matchId: string) {
     if (mine.length === 0) throw new DomainError("Nur Mitglieder der beiden Teams können beitreten.");
     if (await findParticipant(tx, matchId, userId)) throw new DomainError("Du bist schon in der Lobby.");
     const teamId = mine.find((m) => m.teamId === match.homeTeamId)?.teamId ?? mine[0].teamId;
-    if (!hasFreeSlot(await teamCount(tx, matchId, teamId))) throw new DomainError("Dein Team ist voll (5 Spieler plus 1 Ersatz).");
+    if (!hasFreeSlot(await teamCount(tx, matchId, teamId), teamCapacity(match))) throw new DomainError("Dein Team ist voll.");
     await tx.insert(matchParticipants).values({ matchId, userId, teamId });
     await audit(userId, "lobby.join", "match", matchId, { after: { teamId } }, tx);
     await notifyUsers(
@@ -403,12 +411,57 @@ export function assignSubstitute(actorId: string, matchId: string, targetUserId:
     }
     const target = await findParticipant(tx, matchId, targetUserId);
     if (!target || target.teamId !== null) throw new DomainError("Dieser Spieler wartet nicht auf eine Zuweisung.");
-    if (!hasFreeSlot(await teamCount(tx, matchId, teamId))) throw new DomainError("Das Team ist voll.");
+    if (!hasFreeSlot(await teamCount(tx, matchId, teamId), teamCapacity(match))) throw new DomainError("Das Team ist voll.");
     await tx
       .update(matchParticipants)
       .set({ teamId, joinedAt: new Date() })
       .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, targetUserId)));
     await audit(actorId, "lobby.substitute.assign", "match", matchId, { after: { userId: targetUserId, teamId } }, tx);
+  });
+}
+
+/**
+ * Privatspiel: Der Veranstalter lässt die noch nicht eingeteilten Spieler zufällig auf die beiden Teams verteilen.
+ * Mit `reshuffle` kommen auch eingeteilte Spieler ohne Zahlung und ohne Bereit in die Verlosung.
+ */
+export function randomSplit(actorId: string, matchId: string, reshuffle = false) {
+  return mutateLobby(actorId, matchId, async (tx, match) => {
+    if (match.kind !== "private") throw new DomainError("Zufällig einteilen gibt es nur bei Privatspielen.");
+    if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
+    if (reshuffle) {
+      await tx
+        .update(matchParticipants)
+        .set({ teamId: null })
+        .where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId), isNull(matchParticipants.readyAt), eq(matchParticipants.paidCents, 0)));
+    }
+    const pool = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNull(matchParticipants.teamId)));
+    if (pool.length === 0) throw new DomainError("Es wartet niemand auf eine Einteilung.");
+    const cap = teamCapacity(match);
+    const counts = { [match.homeTeamId]: await teamCount(tx, matchId, match.homeTeamId), [match.awayTeamId]: await teamCount(tx, matchId, match.awayTeamId) };
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    let assigned = 0;
+    for (const p of shuffled) {
+      const target = counts[match.homeTeamId] <= counts[match.awayTeamId] ? match.homeTeamId : match.awayTeamId;
+      if (!hasFreeSlot(counts[target], cap)) break;
+      await tx.update(matchParticipants).set({ teamId: target, joinedAt: new Date() }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, p.userId)));
+      counts[target] += 1;
+      assigned += 1;
+    }
+    if (assigned === 0) throw new DomainError("Beide Teams sind voll.");
+    await audit(actorId, "lobby.randomsplit", "match", matchId, { after: { assigned, reshuffle } }, tx);
+  });
+}
+
+/** Privatspiel: Ein eingeteilter Spieler (noch nicht bereit, nicht bezahlt) geht zurück in den Pool der Nichteingeteilten. */
+export function unassignParticipant(actorId: string, matchId: string, targetUserId: string) {
+  return mutateLobby(actorId, matchId, async (tx, match) => {
+    if (match.kind !== "private") throw new DomainError("Das gibt es nur bei Privatspielen.");
+    if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
+    const p = await findParticipant(tx, matchId, targetUserId);
+    if (!p || !p.teamId) throw new DomainError("Dieser Spieler ist keinem Team zugeteilt.");
+    if (p.readyAt || p.paidCents > 0) throw new DomainError("Der Spieler ist schon bereit oder hat bezahlt. Entferne ihn, wenn er gehen soll.");
+    await tx.update(matchParticipants).set({ teamId: null }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, targetUserId)));
+    await audit(actorId, "lobby.unassign", "match", matchId, { after: { userId: targetUserId } }, tx);
   });
 }
 

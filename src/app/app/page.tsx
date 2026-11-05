@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MyGames } from "@/components/MyGames";
+import { GameModes } from "@/components/GameModes";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/time";
 import { phaseOf, PHASE_LABEL } from "@/lib/result-rules";
@@ -46,10 +47,7 @@ export default async function DashboardPage() {
         </section>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Link href="/matchmaking" className="btn btn-primary">Lobby aufmachen</Link>
-        <Link href="/suche" className="btn btn-ghost">Offene Lobbys ansehen</Link>
-      </div>
+      <GameModes signedIn />
 
       <Link href="/app/guthaben" className="card flex items-center justify-between hover:border-green" data-testid="wallet-card">
         <span>

@@ -31,7 +31,7 @@ export default async function TeamsPage({ searchParams }: PageProps<"/teams">) {
     })
     .from(teams)
     .leftJoin(teamStats, eq(teamStats.teamId, teams.id))
-    .where(and(isNull(teams.archivedAt), city ? eq(teams.city, city) : undefined, term ? ilike(teams.name, term) : undefined))
+    .where(and(isNull(teams.archivedAt), eq(teams.kind, "team"), city ? eq(teams.city, city) : undefined, term ? ilike(teams.name, term) : undefined))
     .orderBy(desc(sql`coalesce(${teamStats.matches}, 0)`), asc(teams.name))
     .limit(31)
     .offset((page - 1) * 30);

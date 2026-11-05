@@ -66,7 +66,7 @@ export async function getPlayerProfile(userId: string, viewer: Viewer) {
     .select({ id: teams.id, name: teams.name, slug: teams.slug, role: teamMembers.role, isVerified: teams.isVerified })
     .from(teamMembers)
     .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-    .where(and(eq(teamMembers.userId, userId), isNull(teams.archivedAt)))
+    .where(and(eq(teamMembers.userId, userId), isNull(teams.archivedAt), eq(teams.kind, "team")))
     .orderBy(asc(teams.name));
 
   const home = alias(teams, "home");
@@ -216,7 +216,7 @@ export async function listPlayers(filter: { q?: string; city?: string; page?: nu
 export async function getTeamProfile(slug: string, vsTeamId?: string | null) {
   await connection();
   const [team] = await db.select().from(teams).where(eq(teams.slug, slug));
-  if (!team || team.archivedAt) return null;
+  if (!team || team.archivedAt || team.kind !== "team") return null; // Spiel-Teams von Privatspielen haben keine Seite
   const [stats] = await db.select().from(teamStats).where(eq(teamStats.teamId, team.id));
 
   let cityRank: number | null = null;

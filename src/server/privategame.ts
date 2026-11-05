@@ -1,0 +1,127 @@
+import { randomBytes } from "node:crypto";
+import { and, count, eq, gt } from "drizzle-orm";
+import { connection } from "next/server";
+import { db } from "@/db";
+import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
+import { gameInvites } from "@/db/schema-matchmaking";
+import { DEFAULT_PRIVATE_PLAYERS, MAX_PRIVATE_PLAYERS, MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
+import { audit } from "./audit";
+import { notifyUsers } from "./notifications";
+import { DomainError } from "./teams";
+
+export type PrivateGameInput = {
+  city: string;
+  venueText: string;
+  startsAt: Date;
+  durationMin: number;
+  maxPlayers?: number;
+  /** Hallenmiete in Cent; leer = Standardpreis der Plattform. Sie wird auf die zahlenden Spieler aufgeteilt. */
+  rentCents?: number | null;
+};
+
+const MIN_LEAD_MS = 60 * 60_000;
+const INVITE_DAYS_AFTER_START = 1;
+
+/**
+ * Eine Person legt ein Privatspiel für ihre Freundesgruppe an. Es gibt zwei unsichtbare Spiel-Teams (Rot und Blau), deren Admin der
+ * Veranstalter ist, damit Lobby, Zahlung, Ergebnis und Übersicht genau wie beim Teamspiel laufen. Das Spiel ist nie öffentlich
+ * sichtbar, nur über den Einladungslink erreichbar und zählt nicht für Elo oder Rangliste.
+ */
+export async function createPrivateGame(userId: string, input: PrivateGameInput) {
+  const maxPlayers = input.maxPlayers ?? DEFAULT_PRIVATE_PLAYERS;
+  if (!Number.isInteger(maxPlayers) || maxPlayers < MIN_PRIVATE_PLAYERS || maxPlayers > MAX_PRIVATE_PLAYERS || maxPlayers % 2 !== 0) {
+    throw new DomainError(`Die Spielerzahl muss gerade sein, zwischen ${MIN_PRIVATE_PLAYERS} und ${MAX_PRIVATE_PLAYERS}.`);
+  }
+  if (![60, 90].includes(input.durationMin)) throw new DomainError("Ein Spiel dauert 60 oder 90 Minuten.");
+  if (Number.isNaN(input.startsAt.getTime()) || input.startsAt.getTime() < Date.now() + MIN_LEAD_MS) throw new DomainError("Der Termin muss mindestens eine Stunde in der Zukunft liegen.");
+  const venue = input.venueText.trim().slice(0, 120);
+  if (!venue) throw new DomainError("Bitte gib die Halle oder den Ort an.");
+  if (input.rentCents != null && (!Number.isInteger(input.rentCents) || input.rentCents < 0 || input.rentCents > 100_000)) throw new DomainError("Die Hallenmiete liegt zwischen 0 und 1.000 Euro.");
+
+  return db.transaction(async (tx) => {
+    const [u] = await tx.select({ id: users.id, banned: users.bannedAt }).from(users).where(eq(users.id, userId));
+    if (!u || u.banned) throw new DomainError("Dein Konto kann kein Spiel anlegen.");
+    const suffix = randomBytes(4).toString("hex");
+    const [red, blue] = await tx
+      .insert(teams)
+      .values([
+        { name: "Team Rot", slug: `privat-${suffix}-rot`, city: input.city, createdBy: userId, kind: "private" as const },
+        { name: "Team Blau", slug: `privat-${suffix}-blau`, city: input.city, createdBy: userId, kind: "private" as const },
+      ])
+      .returning({ id: teams.id });
+    await tx.insert(teamMembers).values([
+      { teamId: red.id, userId, role: "admin" },
+      { teamId: blue.id, userId, role: "admin" },
+    ]);
+    const rent = input.rentCents ?? null;
+    const [match] = await tx
+      .insert(matches)
+      .values({
+        kind: "private",
+        visibility: "private",
+        homeTeamId: red.id,
+        awayTeamId: blue.id,
+        startsAt: input.startsAt,
+        durationMin: input.durationMin,
+        venueText: venue,
+        maxPlayers,
+        schedulingOpen: false,
+        ...(rent !== null ? { priceCents: rent, costCents: rent } : {}),
+      })
+      .returning();
+    await tx.insert(matchParticipants).values({ matchId: match.id, userId, teamId: null });
+    const token = randomBytes(16).toString("base64url");
+    await tx.insert(gameInvites).values({ token, matchId: match.id, createdBy: userId, expiresAt: new Date(input.startsAt.getTime() + INVITE_DAYS_AFTER_START * 86_400_000) });
+    await audit(userId, "private.create", "match", match.id, { after: { maxPlayers, startsAt: input.startsAt } }, tx);
+    return { match, token };
+  });
+}
+
+/** Der Einladungslink eines Privatspiels, nur für den Veranstalter. */
+export async function getGameInviteToken(userId: string, matchId: string): Promise<string | null> {
+  const [m] = await db.select({ kind: matches.kind, home: matches.homeTeamId }).from(matches).where(eq(matches.id, matchId));
+  if (!m || m.kind !== "private") return null;
+  const [admin] = await db.select({ role: teamMembers.role }).from(teamMembers).where(and(eq(teamMembers.teamId, m.home), eq(teamMembers.userId, userId), eq(teamMembers.role, "admin")));
+  const [u] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+  if (!admin && u?.role !== "admin") return null;
+  const [row] = await db.select({ token: gameInvites.token }).from(gameInvites).where(and(eq(gameInvites.matchId, matchId), gt(gameInvites.expiresAt, new Date()))).limit(1);
+  return row?.token ?? null;
+}
+
+export async function getGameInvitePreview(token: string) {
+  await connection();
+  const [row] = await db
+    .select({ matchId: matches.id, number: matches.number, startsAt: matches.startsAt, durationMin: matches.durationMin, venueText: matches.venueText, status: matches.status, maxPlayers: matches.maxPlayers, expiresAt: gameInvites.expiresAt, organizer: users.name, organizerId: gameInvites.createdBy })
+    .from(gameInvites)
+    .innerJoin(matches, eq(matches.id, gameInvites.matchId))
+    .innerJoin(users, eq(users.id, gameInvites.createdBy))
+    .where(eq(gameInvites.token, token));
+  if (!row) return { status: "invalid" as const };
+  if (row.expiresAt.getTime() < Date.now()) return { status: "expired" as const };
+  if (row.status === "cancelled") return { status: "cancelled" as const };
+  const [{ players }] = await db.select({ players: count() }).from(matchParticipants).where(eq(matchParticipants.matchId, row.matchId));
+  return { status: "valid" as const, game: row, players };
+}
+
+/** Wer den Link hat, tritt dem Spiel bei (zunächst ohne Team; der Veranstalter teilt ein oder lässt zufällig einteilen). Mehrfach ist harmlos. */
+export async function joinPrivateGame(userId: string, token: string): Promise<{ matchId: string; already: boolean }> {
+  return db.transaction(async (tx) => {
+    const [inv] = await tx.select().from(gameInvites).where(eq(gameInvites.token, token));
+    if (!inv) throw new DomainError("Dieser Einladungslink ist ungültig.");
+    if (inv.expiresAt.getTime() < Date.now()) throw new DomainError("Dieser Einladungslink ist abgelaufen. Bitte frag den Veranstalter nach einem neuen.");
+    const [match] = await tx.select().from(matches).where(eq(matches.id, inv.matchId)).for("update");
+    if (!match || match.kind !== "private") throw new DomainError("Dieses Spiel gibt es nicht mehr.");
+    if (match.status === "cancelled") throw new DomainError("Dieses Spiel wurde abgesagt.");
+    if (match.status !== "lobby" && match.status !== "confirmed") throw new DomainError("Dieses Spiel ist schon vorbei.");
+    const [existing] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
+    if (existing) return { matchId: match.id, already: true };
+    const [{ n }] = await tx.select({ n: count() }).from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+    if (n >= (match.maxPlayers ?? DEFAULT_PRIVATE_PLAYERS)) throw new DomainError("Das Spiel ist schon voll.");
+    await tx.insert(matchParticipants).values({ matchId: match.id, userId, teamId: null });
+    await audit(userId, "private.join", "match", match.id, {}, tx);
+    const [name] = await tx.select({ name: users.name, nick: users.nickname }).from(users).where(eq(users.id, userId));
+    await notifyUsers([inv.createdBy], { type: "lobby.joined", title: "Neuer Spieler im Privatspiel", body: `${name?.nick ?? name?.name ?? "Jemand"} ist beigetreten. Teile die Spieler jetzt in die Teams ein.`, url: `/lobby/${match.id}` }, tx, userId);
+    return { matchId: match.id, already: false };
+  });
+}
+

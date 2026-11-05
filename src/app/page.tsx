@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { BoardSection } from "@/components/BoardSection";
 import { MyGames } from "@/components/MyGames";
+import { GameModes } from "@/components/GameModes";
 import { HowItWorks } from "@/components/HowItWorks";
 import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
@@ -66,6 +67,8 @@ export default async function Home() {
           </div>
         </div>
       </section>
+
+      <GameModes signedIn={Boolean(user)} />
 
       <HowItWorks />
 

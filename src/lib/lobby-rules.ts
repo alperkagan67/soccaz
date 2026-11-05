@@ -16,8 +16,17 @@ export function isSubstituteByRank(rankInTeam: number, fromOutside: boolean): bo
   return fromOutside || rankInTeam >= STARTERS_PER_TEAM;
 }
 
-export function hasFreeSlot(currentInTeam: number): boolean {
-  return currentInTeam < MAX_PER_TEAM;
+export function hasFreeSlot(currentInTeam: number, capacity: number = MAX_PER_TEAM): boolean {
+  return currentInTeam < capacity;
+}
+
+export const DEFAULT_PRIVATE_PLAYERS = 10;
+export const MIN_PRIVATE_PLAYERS = 4;
+export const MAX_PRIVATE_PLAYERS = 22;
+
+/** Plätze pro Team: bei Teamspielen 5 plus 1 Ersatz, bei Privatspielen die Hälfte der Spielerzahl. */
+export function teamCapacity(match: { kind: string; maxPlayers: number | null }): number {
+  return match.kind === "private" ? Math.floor((match.maxPlayers ?? DEFAULT_PRIVATE_PLAYERS) / 2) : MAX_PER_TEAM;
 }
 
 /** Verbleibende Zeit bis zum Anstoß als lesbarer Text. */

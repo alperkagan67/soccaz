@@ -169,6 +169,12 @@ export async function setReadyAction(matchId: string, ready: boolean) {
 export async function finalConfirmAction(matchId: string) {
   return lobbyAction(matchId, (id) => lobby.finalConfirm(id, matchId));
 }
+export async function randomSplitAction(matchId: string, reshuffle: boolean) {
+  return lobbyAction(matchId, (id) => lobby.randomSplit(id, matchId, reshuffle));
+}
+export async function unassignParticipantAction(matchId: string, targetUserId: string) {
+  return lobbyAction(matchId, (id) => lobby.unassignParticipant(id, matchId, targetUserId));
+}
 export async function payShareAction(matchId: string) {
   return lobbyAction(matchId, (id) => lobby.payShare(id, matchId));
 }

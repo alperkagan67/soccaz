@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import {
   assignSubstituteAction,
+  unassignParticipantAction,
   cancelMatchAction,
   joinAsSubstituteAction,
   joinLobbyAction,
@@ -173,11 +174,13 @@ export function ParticipantActions({
   userId,
   canRemove,
   assignTo,
+  canUnassign = false,
 }: {
   matchId: string;
   userId: string;
   canRemove: boolean;
   assignTo: { teamId: string; name: string }[];
+  canUnassign?: boolean;
 }) {
   const { error, pending, run } = useRun();
   return (
@@ -187,6 +190,11 @@ export function ParticipantActions({
           Zu {t.name}
         </button>
       ))}
+      {canUnassign && (
+        <button className="btn btn-ghost !min-h-8 !px-2 text-xs" disabled={pending} onClick={() => run(() => unassignParticipantAction(matchId, userId))}>
+          In den Pool
+        </button>
+      )}
       {canRemove && (
         <button className="btn btn-danger !min-h-8 !px-2 text-xs" disabled={pending} aria-label="Spieler entfernen" onClick={() => confirm("Spieler entfernen?") && run(() => removeParticipantAction(matchId, userId))}>
           Entfernen

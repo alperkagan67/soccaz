@@ -202,7 +202,7 @@ export async function myAdminTeams(userId: string) {
     .select({ id: teams.id, name: teams.name, slug: teams.slug, city: teams.city, strength: teams.strength })
     .from(teamMembers)
     .innerJoin(teams, eq(teams.id, teamMembers.teamId))
-    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin")))
+    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), eq(teams.kind, "team")))
     .orderBy(teams.name);
 }
 
