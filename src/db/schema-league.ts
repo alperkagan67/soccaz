@@ -76,7 +76,7 @@ export const proApplications = pgTable(
 );
 
 export type TournamentFormat = "round_robin" | "knockout" | "groups_ko";
-export type TournamentStatus = "registration" | "running" | "finished" | "cancelled";
+export type TournamentStatus = "registration" | "payment" | "running" | "finished" | "cancelled";
 
 export const tournaments = pgTable(
   "tournaments",
@@ -93,6 +93,7 @@ export const tournaments = pgTable(
     totalCents: integer("total_cents"), // Hallenkosten des ganzen Turniers: Stundenpreis mal Dauer, wird auf alle Spieler geteilt (leer = altes Festgeld pro Spieler)
     hourlyCents: integer("hourly_cents"),
     durationMin: integer("duration_min"),
+    priceRound: integer("price_round").notNull().default(0), // wie oft der Preis schon festgelegt wurde (für eindeutige Buchungsschlüssel, falls der Veranstalter den Kader wieder öffnet)
     finalShareCents: integer("final_share_cents"), // endgültiger Anteil pro Spieler, steht fest, sobald das Bracket erzeugt wurde
     isPrivate: boolean("is_private").notNull().default(true), // standardmäßig nur über den Einladungslink erreichbar
     inviteToken: text("invite_token").unique(),

@@ -8,7 +8,7 @@ import { parseBerlinLocal } from "@/lib/time";
 import { InsufficientFunds } from "./ledger";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
-import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, payForTeam, registerTeam, setOrganizer, setTeamReady, withdrawTeam } from "./tournaments";
+import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, payForTeam, registerTeam, reopenRosters, setOrganizer, setRosterComplete, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -76,8 +76,12 @@ export async function payEntryAction(tournamentId: string): Promise<ActionState>
 export async function payForTeamAction(tournamentId: string, targetUserId?: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => payForTeam(uid, tournamentId, targetUserId));
 }
-export async function setTeamReadyAction(tournamentId: string, ready: boolean): Promise<ActionState> {
-  return touch(tournamentId, (uid) => setTeamReady(uid, tournamentId, ready));
+/** Der Captain meldet: Mein Team ist vollzählig (oder nimmt es zurück). */
+export async function setRosterCompleteAction(tournamentId: string, complete: boolean): Promise<ActionState> {
+  return touch(tournamentId, (uid) => setRosterComplete(uid, tournamentId, complete));
+}
+export async function reopenRostersAction(tournamentId: string): Promise<ActionState> {
+  return touch(tournamentId, (uid) => reopenRosters(uid, tournamentId));
 }
 export async function withdrawTeamAction(tournamentId: string, teamId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => withdrawTeam(uid, tournamentId, teamId));

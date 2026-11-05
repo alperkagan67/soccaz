@@ -1,12 +1,17 @@
-// Füllt ein Turnier zum Ausprobieren (nur lokal): weitere Teams, Spieler im Kader, fast alle haben bezahlt.
-// Aufruf: npx tsx --env-file=.env.local scripts/seed-tournament.mts [turnierId] [unbezahlt=2]   (ohne Angabe: das neueste Turnier)
-import { eq } from "drizzle-orm";
+// Füllt ein Turnier zum Ausprobieren (nur lokal).
+//   npx tsx --env-file=.env.local scripts/seed-tournament.mts fill [turnierId]
+//     legt die fehlenden Teams an, füllt alle Kader auf mindestens 4 Spieler und meldet alle Demo-Teams "vollzählig"
+//     (dein eigenes Team bleibt offen: du drückst selbst "Team ist vollzählig", danach steht der Preis fest)
+//   npx tsx --env-file=.env.local scripts/seed-tournament.mts pay [turnierId] [unbezahlt=2]
+//     in der Zahlungsphase: alle Demo-Spieler zahlen ihren Anteil, bis auf die letzten `unbezahlt` Spieler
+// Ohne Turnier-ID gilt das neueste Turnier.
+import { and, asc, eq, ne } from "drizzle-orm";
 import { db } from "../src/db";
-import { users, teamMembers } from "../src/db/schema";
+import { teamMembers, users } from "../src/db/schema";
 import { tournamentPlayers, tournamentTeams, tournaments } from "../src/db/schema-league";
 import { creditWallet } from "../src/server/ledger";
 import { createTeam } from "../src/server/teams";
-import { joinAsPlayer, payEntry, registerTeam, reservationOf } from "../src/server/tournaments";
+import { joinAsPlayer, payEntry, registerTeam, setRosterComplete } from "../src/server/tournaments";
 
 if (!["127.0.0.1", "localhost"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Nur gegen eine lokale Datenbank.");
 
@@ -22,15 +27,10 @@ const TEAMS = [
   ["Moschee-Team Münster", "Münster"],
 ];
 
-const arg = process.argv[2];
-const [t] = arg
-  ? await db.select().from(tournaments).where(eq(tournaments.id, arg))
-  : await db.select().from(tournaments).orderBy(tournaments.createdAt).limit(1000).then((r) => r.slice(-1));
+const mode = process.argv[2] === "pay" ? "pay" : "fill";
+const arg = process.argv[3];
+const [t] = arg ? await db.select().from(tournaments).where(eq(tournaments.id, arg)) : (await db.select().from(tournaments).orderBy(asc(tournaments.createdAt))).slice(-1);
 if (!t) throw new Error("Kein Turnier gefunden.");
-const unpaidWanted = Number(process.argv[3] ?? 2);
-const reservation = reservationOf(t);
-const existing = await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
-const freeSlots = t.maxTeams - existing.length;
 const tag = Date.now().toString(36);
 let seq = 0;
 
@@ -42,51 +42,57 @@ async function person(name: string) {
     .returning();
   return u;
 }
-const fund = (userId: string) => db.transaction((tx) => creditWallet(tx, userId, { from: "clearing", amountCents: Math.max(reservation * 2, 2000), kind: "topup", idempotencyKey: `turnierfill-topup:${tag}:${userId}` }));
 
-// zuerst die Spieler: bestehende Teams auffüllen, dann neue Teams anlegen; die letzten zwei Spieler bleiben unbezahlt
-const plan: { teamId: string; userId: string; pay: boolean }[] = [];
-
-// bestehende Teams (z. B. dein Team) auf mindestens 4 Spieler auffüllen
-for (const e of existing) {
-  const have = await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.teamId, e.teamId));
-  for (let i = have.length; i < 4; i++) {
-    const u = await person(NAMES[(seq + i) % NAMES.length]);
-    await db.insert(teamMembers).values({ teamId: e.teamId, userId: u.id, role: "player" }).onConflictDoNothing();
-    await joinAsPlayer(u.id, t.id, e.teamId);
-    plan.push({ teamId: e.teamId, userId: u.id, pay: true });
+if (mode === "fill") {
+  const existing = await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+  const demo: string[] = [];
+  // bestehende Teams auf mindestens 4 Spieler auffüllen
+  for (const e of existing) {
+    const have = await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.teamId, e.teamId));
+    for (let i = have.length; i < 4; i++) {
+      const u = await person(NAMES[(seq + i) % NAMES.length]);
+      await db.insert(teamMembers).values({ teamId: e.teamId, userId: u.id, role: "player" }).onConflictDoNothing();
+      await joinAsPlayer(u.id, t.id, e.teamId);
+    }
   }
-}
-
-const made: string[] = [];
-for (const [name, city] of TEAMS.slice(0, freeSlots)) {
-  const cap = await person(NAMES[seq % NAMES.length]);
-  const team = await createTeam(cap.id, { name: `${name} ${tag.slice(-3)}`, city, strength: 3 });
-  await registerTeam(cap.id, t.id, team.id);
-  await fund(cap.id);
-  await payEntry(cap.id, t.id);
-  for (let i = 0; i < 4; i++) {
-    const u = await person(NAMES[(seq + i) % NAMES.length]);
-    await db.insert(teamMembers).values({ teamId: team.id, userId: u.id, role: "player" }).onConflictDoNothing();
-    await joinAsPlayer(u.id, t.id, team.id);
-    plan.push({ teamId: team.id, userId: u.id, pay: true });
+  // neue Teams mit 5 Spielern
+  for (const [name, city] of TEAMS.slice(0, t.maxTeams - existing.length)) {
+    const cap = await person(NAMES[seq % NAMES.length]);
+    const team = await createTeam(cap.id, { name: `${name} ${tag.slice(-3)}`, city, strength: 3 });
+    await registerTeam(cap.id, t.id, team.id);
+    for (let i = 0; i < 4; i++) {
+      const u = await person(NAMES[(seq + i) % NAMES.length]);
+      await db.insert(teamMembers).values({ teamId: team.id, userId: u.id, role: "player" }).onConflictDoNothing();
+      await joinAsPlayer(u.id, t.id, team.id);
+    }
+    demo.push(cap.id);
+    await setRosterComplete(cap.id, t.id, true);
   }
-  made.push(name);
+  // alle Demo-Teams (Captain mit turnierfill-Adresse) melden vollzählig; fremde Teams bleiben dir überlassen
+  for (const e of await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id))) {
+    if (e.readyAt || !e.captainId) continue;
+    const [cap] = await db.select({ email: users.email }).from(users).where(eq(users.id, e.captainId));
+    if (cap?.email.startsWith("turnierfill-")) await setRosterComplete(e.captainId, t.id, true);
+  }
+  const teamsNow = await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+  const players = await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
+  console.log(`Turnier "${t.name}": ${teamsNow.length} Teams, ${players.length} Spieler, ${teamsNow.filter((x) => x.readyAt).length} Teams vollzählig. Drücke bei deinem Team "Team ist vollzählig".`);
+} else {
+  const [fresh] = await db.select().from(tournaments).where(eq(tournaments.id, t.id));
+  if (fresh.status !== "payment") throw new Error(`Das Turnier ist in der Phase "${fresh.status}". Bezahlt wird erst, wenn alle Teams vollzählig sind.`);
+  const unpaidWanted = Number(process.argv[4] ?? 2);
+  const share = fresh.finalShareCents ?? 0;
+  const players = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.paidCents, 0)));
+  // nur Demo-Spieler (turnierfill-Adressen) zahlen, echte Konten bleiben dir überlassen
+  const demoIds = new Set((await db.select({ id: users.id, email: users.email }).from(users).where(ne(users.email, ""))).filter((u) => u.email.startsWith("turnierfill-")).map((u) => u.id));
+  const demo = players.filter((p) => demoIds.has(p.userId));
+  const skip = new Set(demo.slice(-unpaidWanted).map((p) => p.userId));
+  for (const p of demo) {
+    if (skip.has(p.userId)) continue;
+    await db.transaction((tx) => creditWallet(tx, p.userId, { from: "clearing", amountCents: Math.max(share * 2, 2000), kind: "topup", idempotencyKey: `turnierfill-topup:${tag}:${p.userId}` }));
+    await payEntry(p.userId, t.id);
+  }
+  const rows = await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
+  console.log(`Preis pro Spieler ${(share / 100).toFixed(2)} €: ${rows.filter((r) => r.paidCents >= share).length} von ${rows.length} bezahlt, ${rows.filter((r) => r.paidCents < share).length} offen.`);
 }
-
-// alle bezahlen außer den letzten zwei (in verschiedenen Teams)
-const unpaid = new Set<string>();
-const byTeam = new Map<string, string[]>();
-for (const p of plan) byTeam.set(p.teamId, [...(byTeam.get(p.teamId) ?? []), p.userId]);
-const teamIds = [...byTeam.keys()];
-for (let i = 0; i < unpaidWanted && teamIds.length; i++) unpaid.add(byTeam.get(teamIds[(i * 3 + 1) % teamIds.length])![i % 2]);
-for (const p of plan) {
-  if (unpaid.has(p.userId)) continue;
-  await fund(p.userId);
-  await payEntry(p.userId, t.id);
-}
-// bestehende Mitglieder, die schon vor dem Skript im Kader waren, zahlen nicht automatisch: nur die neuen Spieler
-
-const rows = await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
-console.log(`Turnier "${t.name}": ${made.length} neue Teams, ${rows.length} Spieler im Kader, ${rows.filter((r) => r.paidCents >= reservation).length} bezahlt, ${rows.filter((r) => r.paidCents < reservation).length} offen.`);
 process.exit(0);

@@ -225,6 +225,13 @@
       "when": 1793890521153,
       "tag": "0031_glossy_clint_barton",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793896044545,
+      "tag": "0032_sad_wild_child",
+      "breakpoints": true
     }
   ]
 }

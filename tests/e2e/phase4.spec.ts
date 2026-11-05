@@ -179,84 +179,74 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   }
   await expect(org.getByTestId("tournament-meta")).toBeVisible();
 
-  // Team 1: ein Spieler tritt per Oberfläche bei, die anderen zwei in der Datenbank; Guthaben für alle
+  // Kader: Team 1, Spieler 1 geht den echten Weg (Link, Anmelden, Beitreten), alle anderen werden direkt eingetragen
   const teamIds = new Map<string, string>();
   for (const c of caps) teamIds.set(c.team, (await query<{ id: string }>("select id from teams where name = $1", [c.team]))[0].id);
   const { seedUser, addTeamMember } = await import("./helpers");
   const { fundWallet } = await import("./helpers-db");
   const players = new Map<string, string[]>();
   for (const c of caps) {
-    await fundWallet(c.id, 1000);
+    await fundWallet(c.id, 4000); // die Captains zahlen später für ihr Team
     const ids: string[] = [c.id];
     for (let i = 1; i <= 3; i++) {
       const uid = await seedUser(`${c.team.split(" ")[1]}p${i}`);
       await addTeamMember(teamIds.get(c.team)!, uid);
-      await fundWallet(uid, 1000);
       ids.push(uid);
     }
     players.set(c.team, ids);
   }
-  // Team 1, Spieler 1 geht den echten Weg: Link, Anmelden (Dev-Login), Beitreten, Bezahlen
   const t1 = caps[0];
-  const p1email = (await query<{ email: string }>("select email from users where id = $1", [players.get(t1.team)![1]]))[0].email;
+  const p1id = players.get(t1.team)![1];
+  await fundWallet(p1id, 1000); // Spieler 1 zahlt später selbst
+  const p1email = (await query<{ email: string }>("select email from users where id = $1", [p1id]))[0].email;
   const p1 = await (await browser.newContext()).newPage();
   await devLogin(p1, p1email, "Spieler Eins", `/turniere/${tid}?t=${link.split("?t=")[1]}`);
   await p1.waitForLoadState("networkidle");
   await p1.getByTestId("tournament-team").filter({ hasText: t1.team }).getByRole("button", { name: "Dem Turnier-Kader beitreten" }).click();
-  await expect(p1.getByTestId("pay-entry")).toBeVisible({ timeout: 20_000 });
-  await p1.getByRole("button", { name: /Anteil bezahlen/ }).click();
-  await expect(p1.getByTestId("paid-note")).toBeVisible({ timeout: 20_000 });
-  // die übrigen Spieler: im Kader, Zahlung später über die Datenbank-Hilfe (Eintrag wie nach einer Zahlung)
+  await expect.poll(async () => (await query("select 1 from tournament_players where tournament_id = $1 and user_id = $2", [tid, p1id])).length).toBe(1);
   for (const c of caps) {
     for (const uid of players.get(c.team)!.slice(c === t1 ? 2 : 1)) {
       await query("insert into tournament_players (tournament_id, team_id, user_id) values ($1, $2, $3) on conflict do nothing", [tid, teamIds.get(c.team), uid]);
     }
   }
 
-  // Team 4: der Captain zahlt für alle offenen Spieler (4 x 10 Euro)
-  const t4 = caps[3];
-  await fundWallet(t4.id, 3000);
-  await t4.page.goto(link);
-  await t4.page.waitForLoadState("networkidle");
-  await t4.page.getByRole("button", { name: /Als Captain für alle offenen Spieler bezahlen \(40,00/ }).click();
-  await expect(t4.page.getByTestId("captain-pay-box")).toHaveCount(0, { timeout: 20_000 });
-  expect((await query<{ n: number }>("select count(*)::int as n from tournament_players where tournament_id = $1 and team_id = $2 and paid_cents = 1000 and paid_by = $3", [tid, teamIds.get(t4.team), t4.id]))[0].n).toBe(4);
-
-  // Team 3: der Captain zahlt nur für einen einzelnen Spieler
-  const t3 = caps[2];
-  await t3.page.goto(link);
-  await t3.page.waitForLoadState("networkidle");
-  await t3.page.getByTestId("tournament-team").filter({ hasText: t3.team }).getByRole("button", { name: "Ich zahle für ihn" }).first().click();
-  await expect.poll(async () => (await query<{ n: number }>("select count(*)::int as n from tournament_players where tournament_id = $1 and team_id = $2 and paid_by = $3", [tid, teamIds.get(t3.team), t3.id]))[0].n).toBe(1);
-
-  // Captain 1 will bereit drücken, aber nicht alle haben bezahlt: der Server lehnt ab
-  await t1.page.goto(link);
-  await t1.page.waitForLoadState("networkidle");
-  await t1.page.getByRole("button", { name: "Team ist bereit" }).click();
-  await expect(t1.page.getByText(/bezahlt haben/).first()).toBeVisible();
-  await expect(t1.page.getByTestId("bracket-hidden")).toBeVisible();
-
-  // alle bezahlen (Eintragen wie nach der Zahlung), dann drücken die Captains bereit
-  await query("update tournament_players set paid_cents = 1000, paid_at = now() where tournament_id = $1", [tid]);
+  // Preis steht erst fest, wenn ALLE Teams vollzählig melden: vorher gibt es keinen Preis und kein Bracket
   for (const [i, c] of caps.entries()) {
     await c.page.goto(link);
     await c.page.waitForLoadState("networkidle");
-    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team }).locator('[data-paid="false"]')).toHaveCount(0);
-    // der Knopf kann nach dem Klick sofort verschwinden (Seite wird neu gerendert): ein Klick, danach auf den Zustand warten
-    const readyButton = c.page.getByRole("button", { name: "Team ist bereit" });
-    if (await readyButton.count()) await readyButton.click({ timeout: 10_000 }).catch(() => {});
+    await expect(c.page.getByTestId("bracket-hidden")).toBeVisible();
+    await expect(c.page.getByTestId("reservation-info")).toContainText("Der Preis steht noch nicht fest");
+    const lockButton = c.page.getByRole("button", { name: "Team ist vollzählig" });
+    if (await lockButton.count()) await lockButton.click({ timeout: 10_000 }).catch(() => {});
     await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-ready", "true", { timeout: 25_000 });
-    if (i < 3) {
-      // solange nicht alle bereit sind, bleibt das Bracket verborgen
-      expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
-      await expect(c.page.getByTestId("bracket-stage")).toHaveCount(0);
-    }
+    if (i < 3) expect((await query<{ status: string }>("select status from tournaments where id = $1", [tid]))[0].status).toBe("registration");
   }
+  await expect.poll(async () => (await query<{ status: string }>("select status from tournaments where id = $1", [tid]))[0].status).toBe("payment");
+  await caps[0].page.reload();
+  await expect(caps[0].page.getByTestId("final-share")).toContainText("10,00"); // 160 Euro durch 16 Spieler, automatisch
+  expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // noch kein Bracket
+
+  // Zahlung: Spieler 1 zahlt selbst, Captain 3 zahlt erst für einen einzelnen Spieler, die übrigen Captains für alle offenen
+  await p1.reload();
+  await p1.getByRole("button", { name: /Anteil bezahlen/ }).click();
+  await expect(p1.getByTestId("paid-note")).toBeVisible({ timeout: 20_000 });
+  const t3 = caps[2];
+  await t3.page.reload();
+  await t3.page.getByTestId("tournament-team").filter({ hasText: t3.team }).getByRole("button", { name: "Ich zahle für ihn" }).first().click();
+  await expect.poll(async () => (await query<{ n: number }>("select count(*)::int as n from tournament_players where tournament_id = $1 and team_id = $2 and paid_by = $3", [tid, teamIds.get(t3.team), t3.id]))[0].n).toBe(1);
+  for (const [i, c] of caps.entries()) {
+    await c.page.reload();
+    await c.page.waitForLoadState("networkidle");
+    await expect(c.page.getByTestId("bracket-hidden")).toBeVisible(); // solange jemand nicht bezahlt hat, bleibt das Bracket verborgen
+    await c.page.getByRole("button", { name: /Als Captain für alle offenen Spieler bezahlen/ }).click();
+    await expect(c.page.getByTestId("captain-pay-box")).toHaveCount(0, { timeout: 20_000 });
+    if (i < 3) expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
+  }
+  await expect.poll(async () => (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length, { timeout: 20_000 }).toBe(3);
   await caps[3].page.reload();
   await expect(caps[3].page.getByRole("heading", { name: "Halbfinale" })).toBeVisible({ timeout: 20_000 });
-  expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(3);
-  await caps[3].page.reload();
-  await expect(caps[3].page.getByTestId("final-share")).toContainText("10,00"); // 160 Euro durch 16 Spieler
+  await expect(caps[3].page.getByTestId("dashboard")).toBeVisible();
+  await expect(caps[3].page.getByTestId("tournament-match")).toHaveCount(3); // Bracket-Baum mit Halbfinals und Finale
   await org.reload();
   await expect(org.getByTestId("bracket-hidden")).toHaveCount(0);
 

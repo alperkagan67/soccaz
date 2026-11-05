@@ -1,0 +1,1 @@
+ALTER TABLE "tournaments" ADD COLUMN "price_round" integer DEFAULT 0 NOT NULL;

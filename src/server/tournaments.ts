@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
-import { finalSharePerPlayer, koWinner, knockout, reservationPerPlayer, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
+import { finalSharePerPlayer, koWinner, knockout, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
@@ -49,12 +49,8 @@ export type TournamentInput = {
   matchMinutes?: number;
 };
 
-type PricingT = { totalCents: number | null; entryFeeCents: number; maxTeams: number };
-
-/** Vorauszahlung pro Spieler: Gesamtkosten durch die kleinste mögliche Spielerzahl. Alte Turniere haben ein festes Eintrittsgeld. */
-export function reservationOf(t: PricingT): number {
-  return t.totalCents !== null ? reservationPerPlayer(t.totalCents, t.maxTeams, MIN_PLAYERS_PER_TEAM) : t.entryFeeCents;
-}
+/** Der endgültige Preis pro Spieler: erst bekannt, wenn alle Teams vollzählig gemeldet haben (Phase "Zahlung"). */
+export const shareOf = (t: { finalShareCents: number | null }): number => t.finalShareCents ?? 0;
 
 /** Nur freigeschaltete Veranstalter (und Plattform-Admins) legen Turniere an. Das Turnier ist standardmäßig privat und läuft im K.-o.-System. */
 export async function createTournament(userId: string, input: TournamentInput) {
@@ -124,6 +120,7 @@ async function canManage(tx: Pick<typeof db, "select">, userId: string, t: { org
 }
 
 const registrationOpen = (t: T) => t.status === "registration" && !t.bracketGeneratedAt;
+const paymentOpen = (t: T) => t.status === "payment" && !t.bracketGeneratedAt;
 const deadlinePassed = (t: T) => Boolean(t.registrationDeadline && t.registrationDeadline.getTime() <= Date.now());
 
 function requireOpen(t: T) {
@@ -152,7 +149,7 @@ export async function registerTeam(userId: string, tournamentId: string, teamId:
   });
 }
 
-/** Ein Mitglied eines angemeldeten Teams tritt dem Turnier-Kader bei. Ändert sich der Kader, ist "Bereit" des Teams zurückgesetzt. */
+/** Ein Mitglied eines angemeldeten Teams tritt dem Turnier-Kader bei. Ändert sich der Kader, gilt "Team vollzählig" nicht mehr. */
 export async function joinAsPlayer(userId: string, tournamentId: string, teamId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
@@ -166,7 +163,7 @@ export async function joinAsPlayer(userId: string, tournamentId: string, teamId:
     const [{ n }] = await tx.select({ n: count() }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
     if (n >= MAX_PER_TEAM) throw new DomainError("Der Kader ist voll.");
     await tx.insert(tournamentPlayers).values({ tournamentId, teamId, userId });
-    await revalidateReady(tx, t);
+    await unlockTeam(tx, tournamentId, teamId);
     await audit(userId, "tournament.join", "tournament", tournamentId, { after: { teamId } }, tx);
   });
 }
@@ -176,7 +173,7 @@ type PlayerRow = typeof tournamentPlayers.$inferSelect;
 async function refundPlayer(tx: Tx, t: T, p: PlayerRow, reason: string) {
   if (p.paidCents > 0) {
     // Die Erstattung geht an den, der gezahlt hat: der Spieler selbst oder der Captain, der für das Team gezahlt hat
-    await creditWallet(tx, p.paidBy ?? p.userId, { from: "tournament", amountCents: p.paidCents, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-refund:${t.id}:${p.userId}:${p.joinedAt.getTime()}`, reason: `${reason}: ${t.name}` });
+    await creditWallet(tx, p.paidBy ?? p.userId, { from: "tournament", amountCents: p.paidCents, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-refund:${t.id}:${p.userId}:${p.joinedAt.getTime()}:${p.paidAt?.getTime() ?? 0}`, reason: `${reason}: ${t.name}` });
   }
 }
 
@@ -193,86 +190,124 @@ export async function leavePlayer(actorId: string, tournamentId: string, targetU
     if (!allowed) throw new DomainError("Dazu fehlt dir die Berechtigung.");
     await tx.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, targetUserId)));
     await refundPlayer(tx, t, p, "Rückerstattung Eintritt");
-    await revalidateReady(tx, t);
+    await unlockTeam(tx, tournamentId, p.teamId);
     await audit(actorId, "tournament.leave", "tournament", tournamentId, { after: { userId: targetUserId } }, tx);
   });
 }
 
-/** Jeder Spieler zahlt seinen Eintritt selbst vom Guthaben. Doppelklick oder zweite Anfrage buchen nicht doppelt. */
+/** Jeder Spieler zahlt seinen Anteil selbst vom Guthaben (erst wenn der Preis feststeht). Doppelklick oder zweite Anfrage buchen nicht doppelt. */
 export async function payEntry(userId: string, tournamentId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
-    if (!registrationOpen(t)) throw new DomainError("Die Anmeldung ist geschlossen."); // auch nach dem Anmeldeschluss: Nachzahlung, wenn der Veranstalter die Teamzahl senkt
-
+    if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
     const [p] = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId))).for("update");
     if (!p) throw new DomainError("Du bist nicht im Turnier-Kader.");
-    const reservation = reservationOf(t);
-    if (reservation === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
-    const due = reservation - p.paidCents; // beim ersten Mal die Vorauszahlung, später nur eine Nachzahlung, falls sich die Teamzahl geändert hat
-    if (due <= 0) throw new DomainError("Du hast schon bezahlt.");
-    await debitWallet(tx, userId, { to: "tournament", amountCents: due, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${userId}:${p.joinedAt.getTime()}:${p.paidCents}`, reason: `Anteil Hallenkosten ${t.name}`, actorId: userId });
-    await tx.update(tournamentPlayers).set({ paidCents: reservation, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
-    await audit(userId, "tournament.pay", "tournament", tournamentId, { after: { cents: due } }, tx);
+    const share = shareOf(t);
+    if (share === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
+    if (p.paidCents >= share) throw new DomainError("Du hast schon bezahlt.");
+    await debitWallet(tx, userId, { to: "tournament", amountCents: share - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${userId}:${p.joinedAt.getTime()}:${t.priceRound}`, reason: `Anteil Hallenkosten ${t.name}`, actorId: userId });
+    await tx.update(tournamentPlayers).set({ paidCents: share, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
+    await audit(userId, "tournament.pay", "tournament", tournamentId, { after: { cents: share } }, tx);
+    await maybeGenerateBracket(tx, t);
   });
 }
 
 /**
  * Der Captain zahlt für sein Team: für alle Spieler, die noch nicht bezahlt haben, oder nur für einen einzelnen Spieler (`targetUserId`).
  * Alle anderen Spieler können weiter selbst zahlen. Alles oder nichts: reicht das Guthaben nicht, wird nichts gebucht.
- * Die Erstattung geht später an den Captain, weil er gezahlt hat.
+ * Die Erstattung (nur bei Absage oder wenn der Veranstalter den Kader wieder öffnet) geht an den Captain, weil er gezahlt hat.
  */
 export async function payForTeam(userId: string, tournamentId: string, targetUserId?: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
-    if (!registrationOpen(t)) throw new DomainError("Die Anmeldung ist geschlossen.");
+    if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
     const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
     if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann für andere Spieler bezahlen.");
-    const reservation = reservationOf(t);
-    if (reservation === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
+    const share = shareOf(t);
+    if (share === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
     const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, entry.teamId))).for("update");
     if (targetUserId && !players.some((p) => p.userId === targetUserId)) throw new DomainError("Dieser Spieler ist nicht in deinem Team.");
-    const open = players.filter((p) => p.paidCents < reservation && (!targetUserId || p.userId === targetUserId));
+    const open = players.filter((p) => p.paidCents < share && (!targetUserId || p.userId === targetUserId));
     if (open.length === 0) throw new DomainError(targetUserId ? "Dieser Spieler hat schon bezahlt." : "Euer Team ist schon komplett bezahlt.");
     for (const p of open) {
-      await debitWallet(tx, userId, { to: "tournament", amountCents: reservation - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${p.userId}:${p.joinedAt.getTime()}:${p.paidCents}`, reason: `Anteil Hallenkosten (Captain zahlt) ${t.name}`, actorId: userId });
-      await tx.update(tournamentPlayers).set({ paidCents: reservation, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
+      await debitWallet(tx, userId, { to: "tournament", amountCents: share - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${p.userId}:${p.joinedAt.getTime()}:${t.priceRound}`, reason: `Anteil Hallenkosten (Captain zahlt) ${t.name}`, actorId: userId });
+      await tx.update(tournamentPlayers).set({ paidCents: share, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
     }
     await audit(userId, "tournament.payteam", "tournament", tournamentId, { after: { players: open.length, single: Boolean(targetUserId) } }, tx);
+    await maybeGenerateBracket(tx, t);
   });
 }
 
-/** Ist ein Team komplett? Genug Spieler und alle haben ihren Eintritt bezahlt. Das gilt serverseitig, nicht nur in der Oberfläche. */
-export async function teamComplete(tx: Pick<typeof db, "select">, t: Pick<T, "id" | "entryFeeCents" | "totalCents" | "maxTeams">, teamId: string): Promise<boolean> {
-  const rows = await tx.select({ paid: tournamentPlayers.paidCents }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.teamId, teamId)));
-  const need = reservationOf(t);
-  return rows.length >= MIN_PLAYERS_PER_TEAM && rows.every((r) => need === 0 || r.paid >= need);
+/** Ein Team ist vollzählig, wenn genug Spieler im Kader sind (4 bis 6). */
+async function rosterReady(tx: Pick<typeof db, "select">, tournamentId: string, teamId: string): Promise<boolean> {
+  const [{ n }] = await tx.select({ n: count() }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
+  return n >= MIN_PLAYERS_PER_TEAM && n <= MAX_PER_TEAM;
 }
 
-/** Nach jeder Kaderänderung: Ist ein Team nicht mehr komplett, wird sein "Bereit" zurückgesetzt. */
-async function revalidateReady(tx: Tx, t: T) {
-  const ready = await tx.select({ teamId: tournamentTeams.teamId }).from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, t.id), isNotNull(tournamentTeams.readyAt)));
-  for (const r of ready) {
-    if (!(await teamComplete(tx, t, r.teamId))) {
-      await tx.update(tournamentTeams).set({ readyAt: null }).where(and(eq(tournamentTeams.tournamentId, t.id), eq(tournamentTeams.teamId, r.teamId)));
-    }
-  }
+/** Wer in den Kader kommt oder geht, hebt die "vollzählig"-Meldung des Teams auf (solange der Preis noch nicht feststeht). */
+async function unlockTeam(tx: Tx, tournamentId: string, teamId: string) {
+  await tx.update(tournamentTeams).set({ readyAt: null }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
 }
 
-/** Der Captain drückt "Bereit". Geht nur, wenn alle Spieler seines Teams bezahlt haben. Sind alle Teams da und bereit, entsteht das Bracket. */
-export async function setTeamReady(userId: string, tournamentId: string, ready: boolean) {
+/**
+ * Der Captain meldet: "Mein Team ist vollzählig" (oder nimmt es zurück, solange der Preis noch nicht feststeht).
+ * Haben alle Captains gemeldet, wird der Preis pro Spieler automatisch berechnet und die Zahlung beginnt.
+ */
+export async function setRosterComplete(userId: string, tournamentId: string, complete: boolean) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
-    if (!registrationOpen(t)) throw new DomainError("Das Bracket steht schon, jetzt ist keine Änderung mehr möglich.");
+    if (!registrationOpen(t)) throw new DomainError("Der Preis steht schon fest, jetzt ist keine Änderung am Kader mehr möglich.");
     const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
-    if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann bereit drücken.");
-    if (ready) {
-      if (!(await teamComplete(tx, t, entry.teamId))) {
-        throw new DomainError(`Bereit geht erst, wenn mindestens ${MIN_PLAYERS_PER_TEAM} Spieler im Kader sind und alle ihren Anteil an den Hallenkosten bezahlt haben.`);
-      }
+    if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann den Kader als vollzählig melden.");
+    if (complete && !(await rosterReady(tx, tournamentId, entry.teamId))) {
+      throw new DomainError(`Vollzählig geht mit ${MIN_PLAYERS_PER_TEAM} bis ${MAX_PER_TEAM} Spielern im Kader.`);
     }
-    await tx.update(tournamentTeams).set({ readyAt: ready ? new Date() : null }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, entry.teamId)));
-    await audit(userId, ready ? "tournament.ready" : "tournament.unready", "tournament", tournamentId, { after: { teamId: entry.teamId } }, tx);
-    await maybeGenerateBracket(tx, t);
+    await tx.update(tournamentTeams).set({ readyAt: complete ? new Date() : null }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, entry.teamId)));
+    await audit(userId, complete ? "tournament.roster.complete" : "tournament.roster.open", "tournament", tournamentId, { after: { teamId: entry.teamId } }, tx);
+    await maybeFixPrice(tx, t);
+  });
+}
+
+/**
+ * Sind alle Plätze belegt und alle Teams vollzählig, steht die Spielerzahl fest: Der Preis pro Spieler ist Hallenkosten geteilt
+ * durch alle Spieler (aufgerundet). Der Kader ist ab jetzt gesperrt, alle Spieler bekommen den Preis und können bezahlen.
+ */
+async function maybeFixPrice(tx: Tx, t: T) {
+  const [fresh] = await tx.select().from(tournaments).where(eq(tournaments.id, t.id));
+  if (!fresh || fresh.status !== "registration") return;
+  const entries = await tx.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+  if (entries.length !== fresh.maxTeams || entries.length < MIN_TOURNAMENT_TEAMS) return;
+  if (!entries.every((e) => e.readyAt)) return;
+  const everyone = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
+  const share = fresh.totalCents !== null ? finalSharePerPlayer(fresh.totalCents, everyone.length) : fresh.entryFeeCents;
+  await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
+  await audit(null, "tournament.price", "tournament", t.id, { after: { share, players: everyone.length } }, tx);
+  await notifyUsers(
+    [...new Set(everyone.map((p) => p.userId))],
+    { type: "payment", title: "Der Preis steht fest", body: share > 0 ? `${fresh.name}: Dein Anteil beträgt ${(share / 100).toFixed(2).replace(".", ",")} €. Bezahle jetzt in der Turnier-Lobby.` : `${fresh.name}: Das Turnier ist kostenlos.`, url: `/turniere/${t.id}` },
+    tx,
+  );
+  await maybeGenerateBracket(tx, { ...fresh, status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 });
+}
+
+/**
+ * Der Veranstalter öffnet die Kader wieder (z. B. weil jemand nicht zahlt): Alle bereits gezahlten Anteile werden vollständig
+ * erstattet (an den Zahler), der Preis wird später neu berechnet. Nur in der Zahlungsphase, vor dem Bracket.
+ */
+export async function reopenRosters(userId: string, tournamentId: string) {
+  await db.transaction(async (tx) => {
+    const t = await lockTournament(tx, tournamentId);
+    if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann die Kader wieder öffnen.");
+    if (!paymentOpen(t)) throw new DomainError("Das geht nur, solange die Zahlung läuft und das Bracket noch nicht steht.");
+    const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
+    for (const p of players) {
+      await refundPlayer(tx, t, p, "Rückerstattung: Kader wieder geöffnet");
+      await tx.update(tournamentPlayers).set({ paidCents: 0, paidAt: null, paidBy: null }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
+    }
+    await tx.update(tournamentTeams).set({ readyAt: null }).where(eq(tournamentTeams.tournamentId, tournamentId));
+    await tx.update(tournaments).set({ status: "registration", finalShareCents: null }).where(eq(tournaments.id, tournamentId));
+    await notifyUsers([...new Set(players.map((p) => p.userId)), ...new Set(players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])))], { type: "system", title: "Kader wieder offen", body: `${t.name}: Der Veranstalter hat die Kader wieder geöffnet. Bereits gezahlte Anteile wurden erstattet, der Preis wird neu berechnet.`, url: `/turniere/${tournamentId}` }, tx);
+    await audit(userId, "tournament.reopen", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length } }, tx);
   });
 }
 
@@ -312,9 +347,8 @@ export async function closeWithJoinedTeams(userId: string, tournamentId: string)
     if (n === t.maxTeams) throw new DomainError("Es sind schon alle Plätze belegt.");
     await tx.update(tournaments).set({ maxTeams: n }).where(eq(tournaments.id, tournamentId));
     await audit(userId, "tournament.shrink", "tournament", tournamentId, { before: { maxTeams: t.maxTeams }, after: { maxTeams: n } }, tx);
-    // Weniger Teams heißt höherer Anteil pro Spieler: wer zu wenig vorausgezahlt hat, zahlt nach, "Bereit" wird zurückgesetzt
-    await revalidateReady(tx, { ...t, maxTeams: n });
-    await maybeGenerateBracket(tx, { ...t, maxTeams: n });
+    // Sind jetzt alle vorhandenen Teams vollzählig, steht der Preis fest
+    await maybeFixPrice(tx, { ...t, maxTeams: n });
   });
 }
 
@@ -333,34 +367,22 @@ async function insertFixtures(tx: Tx, tournamentId: string, fixtures: Fixture[])
 }
 
 /**
- * Erzeugt das K.-o.-Bracket genau einmal, wenn alle Plätze belegt und alle Captains bereit sind. Läuft unter der Turniersperre
- * und setzt `bracket_generated_at`, damit eine zweite Auslösung nichts mehr tut.
+ * Erzeugt das K.-o.-Bracket genau einmal, sobald der Preis feststeht und alle Spieler bezahlt haben (bei einem kostenlosen Turnier sofort).
+ * Läuft unter der Turniersperre und setzt `bracket_generated_at`, damit eine zweite Auslösung nichts mehr tut.
  */
 async function maybeGenerateBracket(tx: Tx, t: T) {
   const [fresh] = await tx.select().from(tournaments).where(eq(tournaments.id, t.id));
-  if (!fresh || fresh.status !== "registration" || fresh.bracketGeneratedAt) return;
+  if (!fresh || fresh.status !== "payment" || fresh.bracketGeneratedAt) return;
   const entries = await tx.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).orderBy(asc(tournamentTeams.registeredAt));
   if (entries.length !== fresh.maxTeams || entries.length < MIN_TOURNAMENT_TEAMS) return;
-  if (!entries.every((e) => e.readyAt)) return;
-  for (const e of entries) if (!(await teamComplete(tx, fresh, e.teamId))) return;
+  const share = shareOf(fresh);
+  const everyone = await tx.select({ paid: tournamentPlayers.paidCents }).from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
+  if (!everyone.every((p) => share === 0 || p.paid >= share)) return;
 
-  // Der Kader steht jetzt fest: Gesamtkosten durch alle Spieler, zu viel Gezahltes geht sofort zurück
-  const everyone = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
-  let finalShare: number | null = null;
-  if (fresh.totalCents !== null) {
-    finalShare = finalSharePerPlayer(fresh.totalCents, everyone.length);
-    for (const p of everyone) {
-      const diff = p.paidCents - finalShare;
-      if (diff > 0) {
-        await creditWallet(tx, p.paidBy ?? p.userId, { from: "tournament", amountCents: diff, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-share:${t.id}:${p.userId}:${p.joinedAt.getTime()}`, reason: `Abrechnung Hallenkosten: Anteil nach Spielerzahl, ${fresh.name}` });
-        await tx.update(tournamentPlayers).set({ paidCents: finalShare }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, p.userId)));
-      }
-    }
-  }
-  await tx.update(tournaments).set({ status: "running", bracketGeneratedAt: new Date(), finalShareCents: finalShare }).where(eq(tournaments.id, t.id));
+  await tx.update(tournaments).set({ status: "running", bracketGeneratedAt: new Date() }).where(eq(tournaments.id, t.id));
   await insertFixtures(tx, t.id, knockout(entries.map((e) => e.teamId)));
   await createGames(tx, fresh);
-  for (const e of entries) await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Das Bracket steht", body: `${fresh.name}: Alle Teams sind bereit, das Bracket ist jetzt sichtbar.`, url: `/turniere/${t.id}` }, tx);
+  for (const e of entries) await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Das Bracket steht", body: `${fresh.name}: Alle haben bezahlt, das Bracket ist jetzt sichtbar.`, url: `/turniere/${t.id}` }, tx);
   await audit(null, "tournament.bracket", "tournament", t.id, { after: { teams: entries.length } }, tx);
 }
 
@@ -496,7 +518,7 @@ export async function listTournaments(filter: { city?: string; viewerId?: string
       teams: sql<number>`(select count(*)::int from tournament_teams x where x.tournament_id = ${tournaments.id})`,
     })
     .from(tournaments)
-    .where(and(inArray(tournaments.status, ["registration", "running", "finished"]), visible, filter.city ? eq(tournaments.city, filter.city) : undefined))
+    .where(and(inArray(tournaments.status, ["registration", "payment", "running", "finished"]), visible, filter.city ? eq(tournaments.city, filter.city) : undefined))
     .orderBy(sql`${tournaments.status} = 'finished'`, desc(tournaments.startsOn))
     .limit(50);
 }
@@ -555,18 +577,19 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
         ? drawGroups(ids).map((members, i) => ({ name: `Gruppe ${groupName(i)}`, rows: standings(members, matchRows.filter((m) => m.stage === `group:${groupName(i)}`).map(playedOf).filter((p): p is Played => p !== null)) }))
         : [];
 
-  const reservation = reservationOf(t);
+  const share = shareOf(t);
+  const priceFixed = t.finalShareCents !== null;
   const teamViews = await Promise.all(
     entries.map(async (e) => {
       const list = players.filter((p) => p.teamId === e.teamId);
       return {
         ...e,
         captainName: list.find((p) => p.userId === e.captainId)?.name ?? "–",
-        ready: Boolean(e.readyAt),
-        dueCents: list.reduce((sum, p) => sum + Math.max(reservation - p.paidCents, 0), 0),
+        ready: Boolean(e.readyAt), // Team vollzählig gemeldet
+        dueCents: priceFixed ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
         anyPaid: list.some((p) => p.paidCents > 0),
-        complete: await teamComplete(db, t, e.teamId),
-        players: list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: reservation === 0 || p.paidCents >= Math.min(reservation, t.finalShareCents ?? reservation), isCaptain: p.userId === e.captainId })),
+        complete: await rosterReady(db, t.id, e.teamId),
+        players: list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: priceFixed && (share === 0 || p.paidCents >= share), isCaptain: p.userId === e.captainId })),
       };
     }),
   );
@@ -586,8 +609,8 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
           isOrganizer,
           captainTeamId: captainOf?.teamId ?? null,
           myTeamId: myPlayer?.teamId ?? null,
-          iPaid: myPlayer ? reservation === 0 || myPlayer.paidCents >= Math.min(reservation, t.finalShareCents ?? reservation) : false,
-          myDueCents: myPlayer ? Math.max(reservation - myPlayer.paidCents, 0) : 0,
+          iPaid: myPlayer ? priceFixed && (share === 0 || myPlayer.paidCents >= share) : false,
+          myDueCents: myPlayer && priceFixed ? Math.max(share - myPlayer.paidCents, 0) : 0,
           registerableTeams: open && !captainOf && !myPlayer ? adminTeamRows.filter((x) => !entries.some((e) => e.teamId === x.id)) : [],
           joinableTeamIds: open && !myPlayer ? memberTeams.map((m) => m.teamId).filter((tid) => entries.some((e) => e.teamId === tid)) : [],
         }
@@ -596,8 +619,9 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
       totalCents: t.totalCents,
       hourlyCents: t.hourlyCents,
       durationMin: t.durationMin,
-      reservationCents: reservation,
+      shareCents: priceFixed ? share : null,
       finalShareCents: t.finalShareCents,
+      players: players.length,
       range: t.totalCents !== null ? shareRange(t.totalCents, t.maxTeams, MIN_PLAYERS_PER_TEAM, MAX_PER_TEAM) : null,
       commissionPercent: await commissionPercent(),
     },

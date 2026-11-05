@@ -8,7 +8,7 @@ import { listTournaments } from "@/server/tournaments";
 export const metadata: Metadata = { title: "Turniere" };
 
 const FORMAT = { round_robin: "Jeder gegen jeden", knockout: "K.-o.-System", groups_ko: "Gruppen und K.-o.-Runde" } as const;
-const STATUS = { registration: "Anmeldung offen", running: "Läuft", finished: "Beendet", cancelled: "Abgesagt" } as const;
+const STATUS = { registration: "Kader füllen", payment: "Zahlung läuft", running: "Läuft", finished: "Beendet", cancelled: "Abgesagt" } as const;
 
 export default async function TournamentsPage({ searchParams }: PageProps<"/turniere">) {
   const sp = await searchParams;
