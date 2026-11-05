@@ -142,8 +142,34 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             tournamentId={t.id}
             stages={data.stages}
             manage={manage}
-            info={<BoardInfo startsAtIso={t.startsAt ? t.startsAt.toISOString() : null} status={t.status} winner={data.winner} matches={data.stages.flatMap((s) => s.matches)} />}
+            info={<BoardInfo blocks={data.schedule?.blocks ?? null} slotMinutes={data.schedule?.slotMinutes ?? 0} gapMinutes={data.schedule?.gapMinutes ?? 0} winner={data.winner} />}
           />
+          {data.schedule && (
+            <div className="card space-y-2 text-sm" data-testid="schedule">
+              <h3 className="font-semibold">Spielplan</h3>
+              <p className="text-xs text-muted">
+                Zwei Plätze, gebucht von {formatDateTime(new Date(data.schedule.blocks[0].startIso))} bis {new Date(data.schedule.blocks[data.schedule.blocks.length - 1].endIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr.
+                {" "}Jedes Spiel dauert {data.schedule.slotMinutes} Minuten, dazwischen {data.schedule.gapMinutes} Minuten Pause zum Einwechseln. Im Finale bleibt ein Platz frei: Dort spielen die Verlierer der Halbfinals nur zum Spaß.
+              </p>
+              <ol className="space-y-1.5">
+                {data.schedule.blocks.map((b, i) => (
+                  <li key={i} className="rounded-lg border border-line p-2">
+                    <p className="text-xs font-semibold">
+                      {new Date(b.startIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr · {b.label}
+                    </p>
+                    <ul className="text-xs text-muted">
+                      {b.games.map((g) => (
+                        <li key={g.court}>
+                          Platz {g.court}: {g.fun ? "Just for fun, " : ""}
+                          {g.nameA && g.nameB ? `${g.nameA} – ${g.nameB}` : g.fun ? "Verlierer der Halbfinals" : "noch offen"}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </section>
       )}
 

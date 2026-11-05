@@ -213,3 +213,44 @@ export function finalSharePerPlayer(totalCents: number, players: number): number
 export function shareRange(totalCents: number, teamCount: number, minPerTeam: number, maxPerTeam: number): { lowest: number; highest: number } {
   return { lowest: finalSharePerPlayer(totalCents, teamCount * maxPerTeam), highest: reservationPerPlayer(totalCents, teamCount, minPerTeam) };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Zeitplan: zwei Plätze, feste Pause zwischen den Spielblöcken
+// ---------------------------------------------------------------------------------------------
+
+export const COURTS = 2;
+/** Pause zwischen zwei Spielblöcken: neues Team einwechseln. */
+export const GAP_MIN = 5;
+
+export const roundTitle = (teamsInRound: number) => (teamsInRound === 2 ? "Finale" : teamsInRound === 4 ? "Halbfinale" : teamsInRound === 8 ? "Viertelfinale" : `Runde der letzten ${teamsInRound}`);
+
+export type PlannedGame = { stage: string; slot: number; court: number; fun: boolean };
+export type PlannedBlock = { index: number; label: string; startsAt: Date; endsAt: Date; games: PlannedGame[] };
+
+/**
+ * Verteilt die K.-o.-Runden auf die gebuchte Hallenzeit: Jede Runde wird in Blöcke zu je `courts` Spielen geteilt (zwei Plätze
+ * laufen gleichzeitig). Zwischen den Blöcken liegt eine Pause von `gap` Minuten. Die Spielzeit ergibt sich aus der Buchung,
+ * damit der letzte Block genau mit der Hallenzeit endet. Im Finale-Block bleibt Platz 2 frei: dort spielen die beiden
+ * Halbfinal-Verlierer ein Spiel nur zum Spaß (`fun`).
+ * `rounds` sind die Runden von der ersten bis zum Finale mit ihrer Spielzahl.
+ */
+export function planSchedule(rounds: { stage: string; games: number }[], startsAt: Date, durationMin: number, courts = COURTS, gap = GAP_MIN): { slotMinutes: number; blocks: PlannedBlock[] } {
+  const raw: { stage: string; games: { stage: string; slot: number; court: number; fun: boolean }[] }[] = [];
+  rounds.forEach((r, ri) => {
+    const isFinal = ri === rounds.length - 1;
+    const perBlock = isFinal ? 1 : courts;
+    for (let first = 0; first < r.games; first += perBlock) {
+      const games = Array.from({ length: Math.min(perBlock, r.games - first) }, (_, i) => ({ stage: r.stage, slot: first + i, court: i + 1, fun: false }));
+      if (isFinal && rounds.length >= 2 && courts >= 2) games.push({ stage: r.stage, slot: -1, court: 2, fun: true });
+      raw.push({ stage: r.stage, games });
+    }
+  });
+  const count = Math.max(raw.length, 1);
+  const slotMinutes = Math.max(Math.floor((durationMin - gap * (count - 1)) / count), 5);
+  const blocks = raw.map((b, index) => {
+    const start = new Date(startsAt.getTime() + index * (slotMinutes + gap) * 60_000);
+    const n = Number(b.stage.slice(3));
+    return { index, label: roundTitle(n), startsAt: start, endsAt: new Date(start.getTime() + slotMinutes * 60_000), games: b.games };
+  });
+  return { slotMinutes, blocks };
+}

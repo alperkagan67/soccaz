@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
-import { finalSharePerPlayer, koWinner, knockout, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
+import { GAP_MIN, finalSharePerPlayer, planSchedule, koWinner, knockout, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
@@ -386,6 +386,15 @@ async function maybeGenerateBracket(tx: Tx, t: T) {
   await audit(null, "tournament.bracket", "tournament", t.id, { after: { teams: entries.length } }, tx);
 }
 
+/** Zeitplan der K.-o.-Runden aus den Spielzeilen (null ohne Starttermin oder bei anderen Formaten). */
+function scheduleOf(t: T, rows: { stage: string }[]) {
+  if (!t.startsAt || rows.length === 0 || rows.some((r) => !r.stage.startsWith("ko:"))) return null;
+  const counts = new Map<string, number>();
+  for (const r of rows) counts.set(r.stage, (counts.get(r.stage) ?? 0) + 1);
+  const rounds = [...counts].map(([stage, games]) => ({ stage, games })).sort((a, b) => Number(b.stage.slice(3)) - Number(a.stage.slice(3)));
+  return planSchedule(rounds, t.startsAt, t.durationMin ?? 120);
+}
+
 /** Für jede Paarung, deren beide Teams feststehen, entsteht ein echtes Spiel (Captain meldet, der andere bestätigt). */
 async function createGames(tx: Tx, t: T) {
   const open = await tx
@@ -393,12 +402,15 @@ async function createGames(tx: Tx, t: T) {
     .from(tournamentMatches)
     .where(and(eq(tournamentMatches.tournamentId, t.id), isNull(tournamentMatches.matchId), isNotNull(tournamentMatches.teamA), isNotNull(tournamentMatches.teamB)))
     .orderBy(asc(tournamentMatches.round), asc(tournamentMatches.slot));
+  const plan = scheduleOf(t, await tx.select({ stage: tournamentMatches.stage }).from(tournamentMatches).where(eq(tournamentMatches.tournamentId, t.id)));
   const base = (t.startsAt ?? new Date()).getTime();
   for (const tm of open) {
-    const startsAt = new Date(base + (tm.round - 1) * (t.matchMinutes + 10) * 60_000);
+    const block = plan?.blocks.find((b) => b.games.some((g) => !g.fun && g.stage === tm.stage && g.slot === tm.slot));
+    const startsAt = block?.startsAt ?? new Date(base + (tm.round - 1) * (t.matchMinutes + 10) * 60_000);
+    const minutes = plan ? plan.slotMinutes : t.matchMinutes;
     const [game] = await tx
       .insert(matches)
-      .values({ kind: "tournament", homeTeamId: tm.teamA!, awayTeamId: tm.teamB!, startsAt, durationMin: t.matchMinutes, venueText: t.venueText, visibility: "private", status: "confirmed", schedulingOpen: false })
+      .values({ kind: "tournament", homeTeamId: tm.teamA!, awayTeamId: tm.teamB!, startsAt, durationMin: minutes, venueText: t.venueText, visibility: "private", status: "confirmed", schedulingOpen: false })
       .returning({ id: matches.id });
     const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), inArray(tournamentPlayers.teamId, [tm.teamA!, tm.teamB!])));
     if (players.length) await tx.insert(matchParticipants).values(players.map((p) => ({ matchId: game.id, userId: p.userId, teamId: p.teamId, readyAt: new Date(), paidCents: p.paidCents, paidAt: p.paidAt }))).onConflictDoNothing();
@@ -571,6 +583,14 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
     const rank = (s: string) => (s.startsWith("group:") ? 0 : s === "round" ? 0 : 100 - Number(s.slice(3)));
     return rank(a) - rank(b) || a.localeCompare(b);
   });
+  const plan = bracketVisible ? scheduleOf(t, matchRows) : null;
+  const courtOf = (stage: string, slot: number) => plan?.blocks.flatMap((b) => b.games.map((g) => ({ ...g, startsAt: b.startsAt, endsAt: b.endsAt }))).find((g) => !g.fun && g.stage === stage && g.slot === slot);
+  const semis = matchRows.filter((m) => m.stage === "ko:4");
+  const losers = semis.flatMap((m) => {
+    if (!m.teamA || !m.teamB || m.scoreA === null || m.scoreB === null) return [];
+    const w = koWinner({ a: m.teamA, b: m.teamB, scoreA: m.scoreA, scoreB: m.scoreB, shootoutWinner: m.shootoutWinner });
+    return w ? [w === m.teamA ? m.teamB : m.teamA] : [];
+  });
   const ids = entries.map((e) => e.teamId);
   const legacyTables =
     bracketVisible && t.format === "round_robin"
@@ -631,7 +651,21 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
     registrationOpen: open,
     deadlinePassed: deadlinePassed(t),
     bracketVisible,
-    stages: stages.map((stage) => ({ stage, matches: matchRows.filter((m) => m.stage === stage).map((m) => ({ ...m, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null, pendingShootout: m.scoreA !== null && m.scoreA === m.scoreB && !m.shootoutWinner })) })),
+    schedule: plan && {
+      slotMinutes: plan.slotMinutes,
+      gapMinutes: GAP_MIN,
+      blocks: plan.blocks.map((b) => ({
+        label: b.label,
+        startIso: b.startsAt.toISOString(),
+        endIso: b.endsAt.toISOString(),
+        games: b.games.map((g) => {
+          if (g.fun) return { court: g.court, fun: true, matchId: null, nameA: losers[0] ? nameOf.get(losers[0]) ?? "?" : null, nameB: losers[1] ? nameOf.get(losers[1]) ?? "?" : null };
+          const m = matchRows.find((x) => x.stage === g.stage && x.slot === g.slot)!;
+          return { court: g.court, fun: false, matchId: m.matchId, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null };
+        }),
+      })),
+    },
+    stages: stages.map((stage) => ({ stage, matches: matchRows.filter((m) => m.stage === stage).map((m) => ({ ...m, court: courtOf(m.stage, m.slot)?.court ?? null, startIso: courtOf(m.stage, m.slot)?.startsAt.toISOString() ?? null, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null, pendingShootout: m.scoreA !== null && m.scoreA === m.scoreB && !m.shootoutWinner })) })),
     tables: legacyTables.map((tb) => ({ ...tb, rows: tb.rows.map((r) => ({ ...r, name: nameOf.get(r.teamId) ?? "?", slug: entries.find((e) => e.teamId === r.teamId)?.slug ?? "" })) })),
     winner: t.winnerTeamId ? (nameOf.get(t.winnerTeamId) ?? null) : null,
   };

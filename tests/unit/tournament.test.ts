@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bracketOrder, drawGroups, groupCount, groupFixtures, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, finalSharePerPlayer, reservationPerPlayer, shareRange, tournamentTotalCents } from "@/lib/tournament";
+import { bracketOrder, planSchedule, drawGroups, groupCount, groupFixtures, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, finalSharePerPlayer, reservationPerPlayer, shareRange, tournamentTotalCents } from "@/lib/tournament";
 
 const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
 const pairKey = (a: string, b: string) => [a, b].sort().join("-");
@@ -172,5 +172,30 @@ describe("Hallenkosten geteilt durch alle Spieler", () => {
   });
   it("Spanne des Anteils vor dem Start", () => {
     expect(shareRange(16_000, 8, 4, 6)).toEqual({ lowest: 334, highest: 500 });
+  });
+});
+
+describe("Zeitplan auf zwei Plätzen", () => {
+  const rounds8 = [{ stage: "ko:8", games: 4 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }];
+
+  it("8 Teams in 120 Minuten: 4 Blöcke, 26 Minuten pro Spiel, 5 Minuten Pause", () => {
+    const start = new Date("2026-11-06T18:00:00Z");
+    const { slotMinutes, blocks } = planSchedule(rounds8, start, 120);
+    expect(slotMinutes).toBe(26);
+    expect(blocks).toHaveLength(4);
+    expect(blocks.map((b) => (b.startsAt.getTime() - start.getTime()) / 60_000)).toEqual([0, 31, 62, 93]);
+    expect(blocks[3].endsAt.getTime() - start.getTime()).toBeLessThanOrEqual(120 * 60_000);
+    expect(blocks[0].games.map((g) => [g.slot, g.court])).toEqual([[0, 1], [1, 2]]);
+    expect(blocks[1].games.map((g) => [g.slot, g.court])).toEqual([[2, 1], [3, 2]]);
+  });
+
+  it("im Finale-Block bleibt ein Platz für das Spiel der Verlierer", () => {
+    const last = planSchedule(rounds8, new Date(), 120).blocks[3];
+    expect(last.games).toEqual([{ stage: "ko:2", slot: 0, court: 1, fun: false }, { stage: "ko:2", slot: -1, court: 2, fun: true }]);
+  });
+
+  it("4 Teams: Halbfinale, dann Finale; 16 Teams: acht Blöcke", () => {
+    expect(planSchedule([{ stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], new Date(), 60).blocks).toHaveLength(2);
+    expect(planSchedule([{ stage: "ko:16", games: 8 }, { stage: "ko:8", games: 4 }, ...rounds8.slice(1)], new Date(), 240).blocks).toHaveLength(8);
   });
 });

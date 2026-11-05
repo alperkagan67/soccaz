@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
+import { roundTitle } from "@/lib/tournament";
 import { decideShootoutAction } from "@/server/tournament-actions";
 
 type Match = {
@@ -14,11 +15,12 @@ type Match = {
   scoreB: number | null;
   shootoutWinner: string | null;
   matchId: string | null;
+  court?: number | null;
+  startIso?: string | null;
   pendingShootout: boolean;
 };
 type Stage = { stage: string; matches: Match[] };
 
-const roundTitle = (teamsInRound: number) => (teamsInRound === 2 ? "Finale" : teamsInRound === 4 ? "Halbfinale" : teamsInRound === 8 ? "Viertelfinale" : `Runde der letzten ${teamsInRound}`);
 
 /**
  * Turnier-Bracket als Baum: Links die erste Runde, rechts das Finale. Die Größe passt sich der Teamzahl an (Freilose stehen
@@ -70,6 +72,9 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
                   {row(m.nameA, m.scoreA, winA)}
                   <div className="h-px bg-line" />
                   {row(m.nameB, m.scoreB, winB)}
+                  {m.court && m.startIso && (
+                    <p className="border-t border-line px-3 py-1 text-center text-xs text-muted">Platz {m.court} · {new Date(m.startIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr</p>
+                  )}
                   {m.matchId && !done && (
                     <p className="border-t border-line px-3 py-1 text-center text-xs">
                       <Link href={`/spiele/${m.matchId}`} className="text-green underline">Zum Spiel</Link>
