@@ -132,6 +132,7 @@ export const tournamentPlayers = pgTable(
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     paidCents: integer("paid_cents").notNull().default(0),
     paidAt: timestamp("paid_at", { withTimezone: true }),
+    paidBy: uuid("paid_by").references(() => users.id, { onDelete: "set null" }), // wer gezahlt hat (der Spieler selbst oder der Captain): dorthin gehen Erstattungen
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.tournamentId, t.userId] }), index("tournament_players_team_idx").on(t.tournamentId, t.teamId)],

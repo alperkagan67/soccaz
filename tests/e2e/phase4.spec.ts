@@ -171,6 +171,7 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
     await createTeam(page, team);
     await page.goto(link);
     await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("paymode-info")).toContainText("oder du als Captain"); // Bezahlen: jeder für sich, der Captain für alle oder für einzelne
     await page.getByRole("button", { name: "Team anmelden" }).click();
     await expect(page.getByTestId("tournament-team").filter({ hasText: team })).toBeVisible({ timeout: 20_000 });
     const id = (await query<{ id: string }>("select id from users where email = $1", [`${key}-${run}@test.local`]))[0].id;
@@ -211,6 +212,22 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
       await query("insert into tournament_players (tournament_id, team_id, user_id) values ($1, $2, $3) on conflict do nothing", [tid, teamIds.get(c.team), uid]);
     }
   }
+
+  // Team 4: der Captain zahlt für alle offenen Spieler (4 x 10 Euro)
+  const t4 = caps[3];
+  await fundWallet(t4.id, 3000);
+  await t4.page.goto(link);
+  await t4.page.waitForLoadState("networkidle");
+  await t4.page.getByRole("button", { name: /Als Captain für alle offenen Spieler bezahlen \(40,00/ }).click();
+  await expect(t4.page.getByTestId("captain-pay-box")).toHaveCount(0, { timeout: 20_000 });
+  expect((await query<{ n: number }>("select count(*)::int as n from tournament_players where tournament_id = $1 and team_id = $2 and paid_cents = 1000 and paid_by = $3", [tid, teamIds.get(t4.team), t4.id]))[0].n).toBe(4);
+
+  // Team 3: der Captain zahlt nur für einen einzelnen Spieler
+  const t3 = caps[2];
+  await t3.page.goto(link);
+  await t3.page.waitForLoadState("networkidle");
+  await t3.page.getByTestId("tournament-team").filter({ hasText: t3.team }).getByRole("button", { name: "Ich zahle für ihn" }).first().click();
+  await expect.poll(async () => (await query<{ n: number }>("select count(*)::int as n from tournament_players where tournament_id = $1 and team_id = $2 and paid_by = $3", [tid, teamIds.get(t3.team), t3.id]))[0].n).toBe(1);
 
   // Captain 1 will bereit drücken, aber nicht alle haben bezahlt: der Server lehnt ab
   await t1.page.goto(link);

@@ -8,7 +8,7 @@ import { parseBerlinLocal } from "@/lib/time";
 import { InsufficientFunds } from "./ledger";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
-import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, registerTeam, setOrganizer, setTeamReady, withdrawTeam } from "./tournaments";
+import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, payForTeam, registerTeam, setOrganizer, setTeamReady, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -71,6 +71,10 @@ export async function leavePlayerAction(tournamentId: string, targetUserId: stri
 }
 export async function payEntryAction(tournamentId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => payEntry(uid, tournamentId));
+}
+/** Der Captain zahlt für alle offenen Spieler seines Teams oder nur für einen. */
+export async function payForTeamAction(tournamentId: string, targetUserId?: string): Promise<ActionState> {
+  return touch(tournamentId, (uid) => payForTeam(uid, tournamentId, targetUserId));
 }
 export async function setTeamReadyAction(tournamentId: string, ready: boolean): Promise<ActionState> {
   return touch(tournamentId, (uid) => setTeamReady(uid, tournamentId, ready));

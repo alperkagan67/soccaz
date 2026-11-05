@@ -1,0 +1,1 @@
+ALTER TABLE "tournament_teams" DROP COLUMN "pay_mode";

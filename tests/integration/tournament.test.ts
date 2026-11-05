@@ -15,6 +15,7 @@ import {
   joinAsPlayer,
   leavePlayer,
   payEntry,
+  payForTeam,
   registerTeam,
   setOrganizer,
   setTeamReady,
@@ -474,6 +475,109 @@ describe("Hallenkosten werden nach der echten Spielerzahl abgerechnet", () => {
     const [done] = await db.select().from(tournaments).where(eq(tournaments.id, t.id));
     expect(done.status).toBe("finished");
     expect(await walletBalance(db, o.id)).toBe(orgBefore + 16_000 - 1600); // 20 x 8 Euro, 10 % Provision
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+});
+
+/** Team mit Captain und `size` Spielern im Kader, noch ohne Zahlung. */
+async function squadUnpaid(tid: string, size: number) {
+  return squad(tid, size, false);
+}
+
+describe("Wer bezahlt: jeder für sich, der Captain für alle oder für einzelne Spieler", () => {
+  it("Captain zahlt für alle offenen Spieler: alles oder nichts, nur der Captain, Nachzahlung für neue Spieler", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const sq = await squadUnpaid(t.id, 4);
+    const [p1, p2] = [sq.players[1], sq.players[2]];
+    await expect(payForTeam(p1.id, t.id)).rejects.toThrow(/Captain/); // normale Spieler dürfen nicht für andere zahlen
+    await expect(payForTeam((await makeUser("fremd")).id, t.id)).rejects.toThrow(/Captain/);
+    await expect(setTeamReady(sq.captain.id, t.id, true)).rejects.toThrow(/bezahlt/);
+
+    // zu wenig Guthaben: es wird gar nichts gebucht
+    await fund(sq.captain.id, 2500);
+    await expect(payForTeam(sq.captain.id, t.id)).rejects.toThrow(/Guthaben/);
+    expect(await walletBalance(db, sq.captain.id)).toBe(2500);
+    expect((await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id))).every((x) => x.paidCents === 0)).toBe(true);
+
+    await fund(sq.captain.id, 2500);
+    await payForTeam(sq.captain.id, t.id);
+    expect(await walletBalance(db, sq.captain.id)).toBe(1000); // 5.000 minus 4 x 10 Euro
+    for (const p of sq.players.slice(1)) expect(await walletBalance(db, p.id)).toBe(0); // die Spieler zahlen nichts
+    await expect(payForTeam(sq.captain.id, t.id)).rejects.toThrow(/schon komplett/);
+    await expect(payEntry(p1.id, t.id)).rejects.toThrow(/schon bezahlt/);
+    await setTeamReady(sq.captain.id, t.id, true);
+    expect((await getTournament(t.id, { id: o.id, role: "player" }))!.teams[0].players.filter((x) => x.paidByOther)).toHaveLength(3);
+
+    // ein neuer Spieler: "Bereit" ist zurückgesetzt, der Captain zahlt nur dessen Anteil
+    const late = await makeUser("pl");
+    await db.insert(teamMembers).values({ teamId: sq.team.id, userId: late.id, role: "player" });
+    await joinAsPlayer(late.id, t.id, sq.team.id);
+    expect((await getTournament(t.id, { id: o.id, role: "player" }))!.teams[0].ready).toBe(false);
+    await payForTeam(sq.captain.id, t.id);
+    expect(await walletBalance(db, sq.captain.id)).toBe(0);
+    await setTeamReady(sq.captain.id, t.id, true);
+
+    // Austritt eines Spielers: die Erstattung geht an den Captain, der gezahlt hat
+    await leavePlayer(p2.id, t.id, p2.id);
+    expect(await walletBalance(db, sq.captain.id)).toBe(1000);
+    expect(await walletBalance(db, p2.id)).toBe(0);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Captain zahlt nur für einzelne Spieler, die anderen zahlen selbst; Erstattung geht jeweils an den Zahler", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const sq = await squadUnpaid(t.id, 4);
+    const [p1, p2, p3] = [sq.players[1], sq.players[2], sq.players[3]];
+    await expect(payForTeam(sq.captain.id, t.id, (await makeUser("fremd")).id)).rejects.toThrow(/nicht in deinem Team/);
+    await fund(sq.captain.id, 3000);
+    await payForTeam(sq.captain.id, t.id, p1.id); // nur Spieler 1
+    await expect(payForTeam(sq.captain.id, t.id, p1.id)).rejects.toThrow(/schon bezahlt/);
+    expect(await walletBalance(db, sq.captain.id)).toBe(2000);
+    await fund(p2.id, 1500);
+    await payEntry(p2.id, t.id); // Spieler 2 zahlt selbst
+    await expect(setTeamReady(sq.captain.id, t.id, true)).rejects.toThrow(/bezahlt/); // Captain und Spieler 3 fehlen
+    await payEntry(sq.captain.id, t.id); // der Captain zahlt auch seinen eigenen Anteil
+    await payForTeam(sq.captain.id, t.id, p3.id);
+    expect(await walletBalance(db, sq.captain.id)).toBe(0);
+    await setTeamReady(sq.captain.id, t.id, true);
+    const rows = await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
+    expect(rows.find((x) => x.userId === p1.id)!.paidBy).toBe(sq.captain.id);
+    expect(rows.find((x) => x.userId === p2.id)!.paidBy).toBe(p2.id);
+
+    // Spieler 2 (selbst gezahlt) geht: das Geld kommt zu ihm zurück; Spieler 1 (vom Captain bezahlt): zum Captain
+    await leavePlayer(p2.id, t.id, p2.id);
+    expect(await walletBalance(db, p2.id)).toBe(1500);
+    await leavePlayer(sq.captain.id, t.id, p1.id);
+    expect(await walletBalance(db, p1.id)).toBe(0);
+    expect(await walletBalance(db, sq.captain.id)).toBe(1000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("gemischt über mehrere Teams: Abrechnung beim Bracket und Absage gehen an den jeweiligen Zahler", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const cap = await squadUnpaid(t.id, 5); // Captain zahlt 50 Euro für alle fünf
+    await fund(cap.captain.id, 5000);
+    await payForTeam(cap.captain.id, t.id);
+    const others = [];
+    for (let i = 0; i < 3; i++) others.push(await squad(t.id, 5, true)); // je Spieler 10 Euro vorab
+    const everyone = [...cap.players, ...others.flatMap((x) => x.players)];
+    expect(everyone).toHaveLength(20);
+    await setTeamReady(cap.captain.id, t.id, true);
+    for (const x of others) await setTeamReady(x.captain.id, t.id, true);
+
+    // 20 Spieler: endgültiger Anteil 8 Euro, 2 Euro je Spieler zurück: beim Captain-Team 5 x 2 = 10 Euro an den Captain
+    expect((await db.select().from(tournaments).where(eq(tournaments.id, t.id)))[0].finalShareCents).toBe(800);
+    expect(await walletBalance(db, cap.captain.id)).toBe(1000);
+    for (const p of cap.players.slice(1)) expect(await walletBalance(db, p.id)).toBe(0);
+    for (const x of others) for (const p of x.players) expect(await walletBalance(db, p.id)).toBe(1200);
+    expect((await trialBalance()).balanced).toBe(true);
+
+    await cancelTournament(o.id, t.id); // Absage: der Captain bekommt seine 5 x 8 Euro zurück
+    expect(await walletBalance(db, cap.captain.id)).toBe(5000);
+    for (const x of others) for (const p of x.players) expect(await walletBalance(db, p.id)).toBe(2000);
     expect((await trialBalance()).balanced).toBe(true);
   });
 });

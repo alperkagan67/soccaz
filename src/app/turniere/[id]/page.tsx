@@ -14,6 +14,7 @@ import {
   joinAsPlayerAction,
   leavePlayerAction,
   payEntryAction,
+  payForTeamAction,
   setTeamReadyAction,
   withdrawTeamAction,
 } from "@/server/tournament-actions";
@@ -133,16 +134,24 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                     <span className={`text-xs font-semibold ${team.ready ? "text-green" : "text-muted"}`}>{team.ready ? "✓ Bereit" : "Nicht bereit"}</span>
                   </div>
                   <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{fee > 0 ? ` · ${paid} bezahlt` : ""}</p>
+                  {mine && fee > 0 && t.status === "registration" && !t.bracketGeneratedAt && team.dueCents > 0 && (
+                    <div className="space-y-1 rounded-lg border border-line p-2" data-testid="captain-pay-box">
+                      <ActionButton action={payForTeamAction.bind(null, t.id, undefined)} label={`Als Captain für alle offenen Spieler bezahlen (${formatEuro(team.dueCents)})`} className="btn btn-primary w-full" />
+                      <p className="text-xs text-muted">Oder jeder Spieler zahlt für sich, oder du zahlst unten für einzelne Spieler.</p>
+                    </div>
+                  )}
                   <ul className="space-y-1.5 text-sm">
                     {team.players.map((p) => (
                       <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="tournament-player" data-paid={p.paid}>
                         <span>
                           <Link href={`/spieler/${p.userId}`} className="hover:text-green">{p.name}</Link>
                           {p.isCaptain && <span className="ml-2 text-xs text-muted">Captain</span>}
+                          {p.paidByOther && <span className="ml-2 text-xs text-muted">vom Captain bezahlt</span>}
                           {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                         </span>
                         <span className="flex items-center gap-2">
                           <PlayerLight light={team.ready && p.paid ? "green" : p.paid ? "orange" : "red"} />
+                          {t.status === "registration" && mine && fee > 0 && !p.paid && <ActionButton action={payForTeamAction.bind(null, t.id, p.userId)} label="Ich zahle für ihn" className="btn btn-ghost !min-h-8 !px-2 text-xs" />}
                           {t.status === "registration" && !p.isCaptain && (mine || manage) && <ActionButton action={leavePlayerAction.bind(null, t.id, p.userId)} label="Entfernen" confirm="Spieler aus dem Kader nehmen? Bezahltes wird erstattet." />}
                         </span>
                       </li>
@@ -175,7 +184,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         )}
         {v && v.myTeamId && !v.iPaid && fee > 0 && t.status === "registration" && (
           <section className="card space-y-2" data-testid="pay-entry">
-            <p className="text-sm">Dein Anteil jetzt: <strong>{formatEuro(v.myDueCents)}</strong>. Er wird von deinem Guthaben abgebucht, nach der endgültigen Spielerzahl abgerechnet (Rest zurück) und bei Absage oder Austritt vollständig erstattet.</p>
+            <p className="text-sm">Dein Anteil jetzt: <strong>{formatEuro(v.myDueCents)}</strong>. Du kannst selbst zahlen, oder dein Captain zahlt für dich. Er wird von deinem Guthaben abgebucht, nach der endgültigen Spielerzahl abgerechnet (Rest zurück) und bei Absage oder Austritt vollständig erstattet.</p>
             <ActionButton action={payEntryAction.bind(null, t.id)} label={`${formatEuro(v.myDueCents)} Anteil bezahlen`} className="btn btn-primary w-full" />
           </section>
         )}

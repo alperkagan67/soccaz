@@ -175,7 +175,8 @@ type PlayerRow = typeof tournamentPlayers.$inferSelect;
 
 async function refundPlayer(tx: Tx, t: T, p: PlayerRow, reason: string) {
   if (p.paidCents > 0) {
-    await creditWallet(tx, p.userId, { from: "tournament", amountCents: p.paidCents, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-refund:${t.id}:${p.userId}:${p.joinedAt.getTime()}`, reason: `${reason}: ${t.name}` });
+    // Die Erstattung geht an den, der gezahlt hat: der Spieler selbst oder der Captain, der für das Team gezahlt hat
+    await creditWallet(tx, p.paidBy ?? p.userId, { from: "tournament", amountCents: p.paidCents, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-refund:${t.id}:${p.userId}:${p.joinedAt.getTime()}`, reason: `${reason}: ${t.name}` });
   }
 }
 
@@ -210,8 +211,33 @@ export async function payEntry(userId: string, tournamentId: string) {
     const due = reservation - p.paidCents; // beim ersten Mal die Vorauszahlung, später nur eine Nachzahlung, falls sich die Teamzahl geändert hat
     if (due <= 0) throw new DomainError("Du hast schon bezahlt.");
     await debitWallet(tx, userId, { to: "tournament", amountCents: due, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${userId}:${p.joinedAt.getTime()}:${p.paidCents}`, reason: `Anteil Hallenkosten ${t.name}`, actorId: userId });
-    await tx.update(tournamentPlayers).set({ paidCents: reservation, paidAt: new Date() }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
+    await tx.update(tournamentPlayers).set({ paidCents: reservation, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
     await audit(userId, "tournament.pay", "tournament", tournamentId, { after: { cents: due } }, tx);
+  });
+}
+
+/**
+ * Der Captain zahlt für sein Team: für alle Spieler, die noch nicht bezahlt haben, oder nur für einen einzelnen Spieler (`targetUserId`).
+ * Alle anderen Spieler können weiter selbst zahlen. Alles oder nichts: reicht das Guthaben nicht, wird nichts gebucht.
+ * Die Erstattung geht später an den Captain, weil er gezahlt hat.
+ */
+export async function payForTeam(userId: string, tournamentId: string, targetUserId?: string) {
+  await db.transaction(async (tx) => {
+    const t = await lockTournament(tx, tournamentId);
+    if (!registrationOpen(t)) throw new DomainError("Die Anmeldung ist geschlossen.");
+    const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
+    if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann für andere Spieler bezahlen.");
+    const reservation = reservationOf(t);
+    if (reservation === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
+    const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, entry.teamId))).for("update");
+    if (targetUserId && !players.some((p) => p.userId === targetUserId)) throw new DomainError("Dieser Spieler ist nicht in deinem Team.");
+    const open = players.filter((p) => p.paidCents < reservation && (!targetUserId || p.userId === targetUserId));
+    if (open.length === 0) throw new DomainError(targetUserId ? "Dieser Spieler hat schon bezahlt." : "Euer Team ist schon komplett bezahlt.");
+    for (const p of open) {
+      await debitWallet(tx, userId, { to: "tournament", amountCents: reservation - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${p.userId}:${p.joinedAt.getTime()}:${p.paidCents}`, reason: `Anteil Hallenkosten (Captain zahlt) ${t.name}`, actorId: userId });
+      await tx.update(tournamentPlayers).set({ paidCents: reservation, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
+    }
+    await audit(userId, "tournament.payteam", "tournament", tournamentId, { after: { players: open.length, single: Boolean(targetUserId) } }, tx);
   });
 }
 
@@ -326,7 +352,7 @@ async function maybeGenerateBracket(tx: Tx, t: T) {
     for (const p of everyone) {
       const diff = p.paidCents - finalShare;
       if (diff > 0) {
-        await creditWallet(tx, p.userId, { from: "tournament", amountCents: diff, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-share:${t.id}:${p.userId}:${p.joinedAt.getTime()}`, reason: `Abrechnung Hallenkosten: Anteil nach Spielerzahl, ${fresh.name}` });
+        await creditWallet(tx, p.paidBy ?? p.userId, { from: "tournament", amountCents: diff, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-share:${t.id}:${p.userId}:${p.joinedAt.getTime()}`, reason: `Abrechnung Hallenkosten: Anteil nach Spielerzahl, ${fresh.name}` });
         await tx.update(tournamentPlayers).set({ paidCents: finalShare }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, p.userId)));
       }
     }
@@ -500,7 +526,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
     .where(eq(tournamentTeams.tournamentId, id))
     .orderBy(asc(tournamentTeams.registeredAt));
   const players = await db
-    .select({ teamId: tournamentPlayers.teamId, userId: users.id, name: sql<string>`coalesce(${users.nickname}, ${users.name})`, paidCents: tournamentPlayers.paidCents })
+    .select({ teamId: tournamentPlayers.teamId, userId: users.id, name: sql<string>`coalesce(${users.nickname}, ${users.name})`, paidCents: tournamentPlayers.paidCents, paidBy: tournamentPlayers.paidBy })
     .from(tournamentPlayers)
     .innerJoin(users, eq(users.id, tournamentPlayers.userId))
     .where(eq(tournamentPlayers.tournamentId, id))
@@ -537,8 +563,10 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
         ...e,
         captainName: list.find((p) => p.userId === e.captainId)?.name ?? "–",
         ready: Boolean(e.readyAt),
+        dueCents: list.reduce((sum, p) => sum + Math.max(reservation - p.paidCents, 0), 0),
+        anyPaid: list.some((p) => p.paidCents > 0),
         complete: await teamComplete(db, t, e.teamId),
-        players: list.map((p) => ({ userId: p.userId, name: p.name, paid: reservation === 0 || p.paidCents >= Math.min(reservation, t.finalShareCents ?? reservation), isCaptain: p.userId === e.captainId })),
+        players: list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: reservation === 0 || p.paidCents >= Math.min(reservation, t.finalShareCents ?? reservation), isCaptain: p.userId === e.captainId })),
       };
     }),
   );

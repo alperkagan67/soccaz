@@ -24,7 +24,7 @@ export function RegisterForm({ tournamentId, teams }: { tournamentId: string; te
           <p className="text-sm text-muted">Dein Team: {teams[0].name}</p>
         </>
       )}
-      <p className="text-xs text-muted">Du wirst Captain dieses Teams im Turnier. Danach laden die Spieler sich über die Teamfunktion ein und zahlen ihren Eintritt selbst.</p>
+      <p className="text-xs text-muted" data-testid="paymode-info">Du wirst Captain dieses Teams im Turnier. Danach laden die Spieler sich über die Teamfunktion ein. Bezahlen kann jeder Spieler für sich, oder du als Captain für das ganze Team oder für einzelne Spieler.</p>
       <SubmitButton pending={pending}>Team anmelden</SubmitButton>
       {state?.error && <FieldError message={state.error} />}
     </form>
