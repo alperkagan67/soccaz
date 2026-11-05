@@ -142,11 +142,14 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   await org.getByLabel("Spielort").fill("Soccerhalle Test");
   await org.getByLabel("Termin (Beginn)").fill(futureLocal(6, "12:00"));
   await org.getByLabel("Anmeldeschluss").fill(futureLocal(4, "12:00"));
-  await org.getByLabel(/Eintritt pro Spieler/).fill("5");
+  await expect(org.getByTestId("fee-explainer")).toContainText("automatisch berechnet"); // kein Eintrittsfeld: Hallenkosten werden durch alle Spieler geteilt
+  await org.getByLabel(/Hallenzeit/).fill("2");
+  await org.getByLabel(/Hallenpreis pro Stunde/).fill("80");
   await org.getByRole("button", { name: "Turnier anlegen" }).click();
   await expect(org).toHaveURL(/\/turniere\/[0-9a-f-]{36}/, { timeout: 40_000 });
   const tid = org.url().split("/turniere/")[1].split("?")[0];
   await expect(org.getByTestId("tournament-meta")).toContainText("privat");
+  await expect(org.getByTestId("pricing-box")).toContainText("Hallenkosten: 160,00"); // 2 Stunden mal 80 Euro
   const link = await org.getByLabel("Einladungslink zum Turnier").first().inputValue();
   expect(link).toContain(`/turniere/${tid}?t=`);
 
@@ -200,7 +203,7 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   await p1.waitForLoadState("networkidle");
   await p1.getByTestId("tournament-team").filter({ hasText: t1.team }).getByRole("button", { name: "Dem Turnier-Kader beitreten" }).click();
   await expect(p1.getByTestId("pay-entry")).toBeVisible({ timeout: 20_000 });
-  await p1.getByRole("button", { name: /Eintritt bezahlen/ }).click();
+  await p1.getByRole("button", { name: /Anteil bezahlen/ }).click();
   await expect(p1.getByTestId("paid-note")).toBeVisible({ timeout: 20_000 });
   // die übrigen Spieler: im Kader, Zahlung später über die Datenbank-Hilfe (Eintrag wie nach einer Zahlung)
   for (const c of caps) {
@@ -217,13 +220,15 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   await expect(t1.page.getByTestId("bracket-hidden")).toBeVisible();
 
   // alle bezahlen (Eintragen wie nach der Zahlung), dann drücken die Captains bereit
-  await query("update tournament_players set paid_cents = 500, paid_at = now() where tournament_id = $1", [tid]);
+  await query("update tournament_players set paid_cents = 1000, paid_at = now() where tournament_id = $1", [tid]);
   for (const [i, c] of caps.entries()) {
     await c.page.goto(link);
     await c.page.waitForLoadState("networkidle");
     await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team }).locator('[data-paid="false"]')).toHaveCount(0);
-    await c.page.getByRole("button", { name: "Team ist bereit" }).click();
-    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-ready", "true", { timeout: 20_000 });
+    // der Knopf kann nach dem Klick sofort verschwinden (Seite wird neu gerendert): ein Klick, danach auf den Zustand warten
+    const readyButton = c.page.getByRole("button", { name: "Team ist bereit" });
+    if (await readyButton.count()) await readyButton.click({ timeout: 10_000 }).catch(() => {});
+    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-ready", "true", { timeout: 25_000 });
     if (i < 3) {
       // solange nicht alle bereit sind, bleibt das Bracket verborgen
       expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
@@ -233,6 +238,8 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   await caps[3].page.reload();
   await expect(caps[3].page.getByRole("heading", { name: "Halbfinale" })).toBeVisible({ timeout: 20_000 });
   expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(3);
+  await caps[3].page.reload();
+  await expect(caps[3].page.getByTestId("final-share")).toContainText("10,00"); // 160 Euro durch 16 Spieler
   await org.reload();
   await expect(org.getByTestId("bracket-hidden")).toHaveCount(0);
 

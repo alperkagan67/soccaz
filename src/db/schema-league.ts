@@ -90,6 +90,10 @@ export const tournaments = pgTable(
     format: text("format").$type<TournamentFormat>().notNull(),
     maxTeams: integer("max_teams").notNull(),
     entryFeeCents: integer("entry_fee_cents").notNull().default(0), // Eintritt je Spieler
+    totalCents: integer("total_cents"), // Hallenkosten des ganzen Turniers: Stundenpreis mal Dauer, wird auf alle Spieler geteilt (leer = altes Festgeld pro Spieler)
+    hourlyCents: integer("hourly_cents"),
+    durationMin: integer("duration_min"),
+    finalShareCents: integer("final_share_cents"), // endgültiger Anteil pro Spieler, steht fest, sobald das Bracket erzeugt wurde
     isPrivate: boolean("is_private").notNull().default(true), // standardmäßig nur über den Einladungslink erreichbar
     inviteToken: text("invite_token").unique(),
     registrationDeadline: timestamp("registration_deadline", { withTimezone: true }),

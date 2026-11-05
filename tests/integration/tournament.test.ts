@@ -38,7 +38,8 @@ async function organizer() {
   return o;
 }
 
-const base = { name: "Hallen-Cup", city: "Essen", startsAt: days(5), registrationDeadline: days(3), maxTeams: 4, playerFeeCents: 1000 };
+// 2 Stunden à 80 Euro = 160 Euro Hallenkosten; bei 4 Teams mit mindestens 4 Spielern zahlt jeder vorab 10 Euro
+const base = { name: "Hallen-Cup", city: "Essen", startsAt: days(5), registrationDeadline: days(3), maxTeams: 4, durationMin: 120, hourlyCents: 8000 };
 const newTournament = async (o: { id: string }, over: Partial<typeof base & { isPrivate: boolean }> = {}) => createTournament(o.id, { ...base, ...over });
 
 /** Ein Team mit Captain und `size` Spielern insgesamt, alle im Kader; auf Wunsch haben alle bezahlt. */
@@ -73,8 +74,10 @@ describe("Turnier anlegen", () => {
     await expect(createTournament(o.id, { ...base, registrationDeadline: days(9) })).rejects.toThrow(/vor dem Turnierbeginn/);
     await expect(createTournament(o.id, { ...base, maxTeams: 3 })).rejects.toThrow(/4 bis 32/);
     await expect(createTournament(o.id, { ...base, maxTeams: 33 })).rejects.toThrow(/4 bis 32/);
-    await expect(createTournament(o.id, { ...base, playerFeeCents: 60_000 })).rejects.toThrow(/500 Euro/);
-    await expect(createTournament(o.id, { ...base, playerFeeCents: -1 })).rejects.toThrow(/500 Euro/);
+    await expect(createTournament(o.id, { ...base, hourlyCents: 200_000 })).rejects.toThrow(/1.000 Euro/);
+    await expect(createTournament(o.id, { ...base, hourlyCents: -1 })).rejects.toThrow(/1.000 Euro/);
+    await expect(createTournament(o.id, { ...base, durationMin: 20 })).rejects.toThrow(/30 Minuten/);
+    await expect(createTournament(o.id, { ...base, durationMin: 125 })).rejects.toThrow(/30 Minuten/);
     const t = await newTournament(o);
     expect(t).toMatchObject({ status: "registration", isPrivate: true, format: "knockout", bracketGeneratedAt: null });
     expect(t.inviteToken).toBeTruthy();
@@ -220,7 +223,7 @@ describe("Bereit nur bei vollständiger Zahlung (serverseitig)", () => {
 
   it("kostenloses Turnier: Bereit braucht keine Zahlung, aber mindestens 4 Spieler", async () => {
     const o = await organizer();
-    const t = await newTournament(o, { playerFeeCents: 0 });
+    const t = await newTournament(o, { hourlyCents: 0 });
     const sq = await squad(t.id, 3, false, 0);
     await expect(setTeamReady(sq.captain.id, t.id, true)).rejects.toThrow(/mindestens 4/);
     const p = await makeUser("pl");
@@ -365,6 +368,13 @@ describe("Sonderfälle: Teams ersetzen, mit weniger Teams starten, absagen", () 
     await expect(closeWithJoinedTeams(squads[0].captain.id, t.id)).rejects.toThrow(/Veranstalter/);
     await closeWithJoinedTeams(o.id, t.id);
     expect((await db.select().from(tournaments).where(eq(tournaments.id, t.id)))[0].maxTeams).toBe(4);
+    // mit 4 statt 5 Teams steigt die Vorauszahlung von 8 auf 10 Euro: wer weniger gezahlt hat, zahlt nach, sonst geht Bereit nicht
+    await expect(setTeamReady(squads[0].captain.id, t.id, true)).rejects.toThrow(/bezahlt/);
+    for (const s of squads) for (const p of s.players) {
+      await payEntry(p.id, t.id);
+      expect(await walletBalance(db, p.id)).toBe(2000 - 1000);
+      await expect(payEntry(p.id, t.id)).rejects.toThrow(/schon bezahlt/);
+    }
     for (const s of squads) await setTeamReady(s.captain.id, t.id, true);
     expect(await bracketRows(t.id)).toHaveLength(3);
 
@@ -412,6 +422,59 @@ describe("Sonderfälle: Teams ersetzen, mit weniger Teams starten, absagen", () 
     const first = (await bracketRows(t3.id)).find((r) => r.matchId)!;
     await play(first, 1, 0, captains);
     await expect(cancelTournament(o.id, t3.id)).rejects.toThrow(/schon Ergebnisse/);
+  });
+});
+
+describe("Hallenkosten werden nach der echten Spielerzahl abgerechnet", () => {
+  it("Vorauszahlung ist der höchste Anteil; beim Bracket wird genau abgerechnet und der Rest sofort erstattet; Auszahlung stimmt", async () => {
+    const o = await organizer();
+    const t = await newTournament(o); // 160 Euro, 4 Teams: Vorauszahlung 10 Euro
+    expect(t).toMatchObject({ totalCents: 16_000, hourlyCents: 8000, durationMin: 120 });
+    const sizes = [4, 5, 5, 6]; // 20 Spieler: endgültiger Anteil 8 Euro
+    const squads = [];
+    for (const n of sizes) squads.push(await squad(t.id, n, true));
+    const view = (await getTournament(t.id, { id: o.id, role: "player" }))!;
+    expect(view.pricing).toMatchObject({ totalCents: 16_000, reservationCents: 1000, finalShareCents: null });
+    expect(view.pricing.range).toEqual({ lowest: 667, highest: 1000 }); // alle Teams voll (24 Spieler) bis nur das Minimum (16)
+    const everyone = squads.flatMap((s) => s.players);
+    for (const p of everyone) expect(await walletBalance(db, p.id)).toBe(1000); // 20 Euro Guthaben, 10 Euro vorab gezahlt
+
+    const orgBefore = await walletBalance(db, o.id);
+    const tb = await tournamentAccount();
+    for (const s of squads) await setTeamReady(s.captain.id, t.id, true);
+    const [row] = await db.select().from(tournaments).where(eq(tournaments.id, t.id));
+    expect(row.finalShareCents).toBe(800);
+    for (const p of everyone) expect(await walletBalance(db, p.id)).toBe(1200); // 2 Euro zurück, genau einmal
+    expect(await tournamentAccount()).toBe(tb - 20 * 200);
+    const paid = await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
+    expect(paid.every((p) => p.paidCents === 800)).toBe(true);
+    expect((await getTournament(t.id, { id: o.id, role: "player" }))!.pricing.finalShareCents).toBe(800);
+    expect((await trialBalance()).balanced).toBe(true);
+
+    // Absage nach dem Bracket erstattet den endgültigen Anteil vollständig
+    await cancelTournament(o.id, t.id);
+    for (const p of everyone) expect(await walletBalance(db, p.id)).toBe(2000);
+    expect(await walletBalance(db, o.id)).toBe(orgBefore);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Auszahlung an den Veranstalter: gesammelte Anteile abzüglich Provision", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads = [];
+    for (const n of [5, 5, 5, 5]) squads.push(await squad(t.id, n, true)); // 20 Spieler, 8 Euro
+    const captains = new Map(squads.map((s) => [s.team.id, s.captain]));
+    const orgBefore = await walletBalance(db, o.id);
+    for (const s of squads) await setTeamReady(s.captain.id, t.id, true);
+    for (let round = 0; round < 3; round++) {
+      const next = (await bracketRows(t.id)).find((r) => r.matchId && r.scoreA === null);
+      if (!next) break;
+      await play(next, 1, 0, captains);
+    }
+    const [done] = await db.select().from(tournaments).where(eq(tournaments.id, t.id));
+    expect(done.status).toBe("finished");
+    expect(await walletBalance(db, o.id)).toBe(orgBefore + 16_000 - 1600); // 20 x 8 Euro, 10 % Provision
+    expect((await trialBalance()).balanced).toBe(true);
   });
 });
 

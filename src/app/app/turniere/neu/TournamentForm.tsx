@@ -5,7 +5,7 @@ import { useFormAction } from "@/components/useFormAction";
 import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
 
-export function TournamentForm({ min, defaultCity }: { min: string; defaultCity: string | null }) {
+export function TournamentForm({ min, defaultCity, standardHourly, commission }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number }) {
   const { state, pending, onSubmit } = useFormAction(createTournamentAction);
   const fe = state?.fieldErrors ?? {};
   return (
@@ -44,16 +44,25 @@ export function TournamentForm({ min, defaultCity }: { min: string; defaultCity:
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="label" htmlFor="entryFee">Eintritt pro Spieler (Euro, 0 = kostenlos)</label>
-          <input id="entryFee" name="entryFee" inputMode="decimal" className="field" placeholder="0" />
-          <FieldError message={fe.entryFee} />
+          <label className="label" htmlFor="durationHours">Hallenzeit für das Turnier (Stunden)</label>
+          <input id="durationHours" name="durationHours" inputMode="decimal" defaultValue="3" className="field" required />
+          <FieldError message={fe.durationHours} />
         </div>
         <div>
           <label className="label" htmlFor="matchMinutes">Spielzeit pro Spiel (Minuten)</label>
           <input id="matchMinutes" name="matchMinutes" type="number" min={5} max={90} defaultValue={15} className="field" />
         </div>
       </div>
-      <p className="text-xs text-muted">Jeder Spieler zahlt seinen Eintritt selbst über die Plattform. Die Gelder liegen bis zum Turnierende auf einem Treuhandkonto. Danach zahlen wir dir den Betrag abzüglich Provision auf dein Guthaben aus. Bei Absage bekommt jeder Spieler alles zurück.</p>
+      <div>
+        <label className="label" htmlFor="hourlyRent">Hallenpreis pro Stunde (Euro, optional)</label>
+        <input id="hourlyRent" name="hourlyRent" inputMode="decimal" className="field" placeholder={standardHourly ? `leer = Standardpreis ${standardHourly}` : "z. B. 80"} required={!standardHourly} />
+        <FieldError message={fe.hourlyRent} />
+      </div>
+      <div className="space-y-1 rounded-lg border border-line p-3 text-xs text-muted" data-testid="fee-explainer">
+        <p><strong className="text-ink">Der Eintritt wird automatisch berechnet.</strong> Hallenkosten = Stundenpreis mal Hallenzeit. Sie werden durch <em>alle Spieler</em> des Turniers geteilt.</p>
+        <p>Jeder Spieler zahlt beim Beitritt vorab den höchsten möglichen Anteil. Sobald alle Teams da, bezahlt und bereit sind, steht die Spielerzahl fest: Dann wird genau abgerechnet und zu viel Gezahltes sofort erstattet. Bei Absage bekommt jeder alles zurück.</p>
+        <p>Die Gelder liegen bis zum Turnierende auf einem Treuhandkonto. Danach zahlen wir dir den Betrag abzüglich {commission} % Provision auf dein Guthaben aus.</p>
+      </div>
       <label className="flex items-start gap-3 text-sm">
         <input type="checkbox" name="public" className="mt-1 size-5 accent-green" />
         <span>

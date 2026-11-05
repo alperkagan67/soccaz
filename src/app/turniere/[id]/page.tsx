@@ -46,7 +46,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   }
   const { tournament: t, teams, viewer: v } = data;
   const manage = Boolean(v?.isOrganizer);
-  const fee = t.entryFeeCents;
+  const pricing = data.pricing;
+  const fee = pricing.reservationCents; // Vorauszahlung pro Spieler (0 = kostenlos)
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
@@ -62,7 +63,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
           {t.startsAt ? ` · ${formatDateTime(t.startsAt)} Uhr` : ` · ${t.startsOn}`} · K.-o.-System
         </p>
         <p className="text-sm text-muted" data-testid="tournament-meta">
-          Veranstalter: {data.organizerName} · {STATUS[t.status]} · {teams.length}/{t.maxTeams} Teams · Eintritt {fee > 0 ? `${formatEuro(fee)} pro Spieler` : "kostenlos"}
+          Veranstalter: {data.organizerName} · {STATUS[t.status]} · {teams.length}/{t.maxTeams} Teams · {pricing.totalCents !== null ? (pricing.totalCents > 0 ? `Hallenkosten ${formatEuro(pricing.totalCents)}, geteilt durch alle Spieler` : "kostenlos") : fee > 0 ? `Eintritt ${formatEuro(fee)} pro Spieler` : "kostenlos"}
           {t.registrationDeadline ? ` · Anmeldeschluss ${formatDateTime(t.registrationDeadline)} Uhr` : ""}
           {t.isPrivate ? " · privat" : ""}
         </p>
@@ -77,6 +78,23 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
       {linkUrl && <CopyLink url={linkUrl} title={t.name} />}
+      {pricing.totalCents !== null && pricing.totalCents > 0 && (
+        <section className="card space-y-1 text-sm" aria-label="So wird bezahlt" data-testid="pricing-box">
+          <h2 className="font-semibold">So wird bezahlt</h2>
+          <p>
+            Hallenkosten: <strong>{formatEuro(pricing.totalCents)}</strong>
+            {pricing.hourlyCents !== null && pricing.durationMin !== null ? ` (${formatEuro(pricing.hourlyCents)} pro Stunde mal ${(pricing.durationMin / 60).toLocaleString("de-DE")} Stunden)` : ""}. Sie werden durch <strong>alle Spieler</strong> geteilt.
+          </p>
+          {pricing.finalShareCents !== null ? (
+            <p data-testid="final-share">Endgültiger Anteil: <strong>{formatEuro(pricing.finalShareCents)}</strong> pro Spieler. Zu viel Gezahltes wurde erstattet.</p>
+          ) : (
+            <>
+              <p data-testid="reservation-info">Du zahlst vorab <strong>{formatEuro(pricing.reservationCents)}</strong> (der höchste mögliche Anteil, falls jedes Team nur mit 4 Spielern antritt). {pricing.range && `Je nach Kadergröße landet dein Anteil zwischen ${formatEuro(pricing.range.lowest)} und ${formatEuro(pricing.range.highest)}.`}</p>
+              <p className="text-muted">Sind alle Teams da, bezahlt und bereit, steht die Spielerzahl fest. Dann wird genau abgerechnet und der Rest sofort aufs Guthaben zurückgebucht.</p>
+            </>
+          )}
+        </section>
+      )}
       {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} />}
 
       {manage && (t.status === "registration" || t.status === "running") && (
@@ -157,11 +175,11 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         )}
         {v && v.myTeamId && !v.iPaid && fee > 0 && t.status === "registration" && (
           <section className="card space-y-2" data-testid="pay-entry">
-            <p className="text-sm">Dein Eintritt: <strong>{formatEuro(fee)}</strong>. Er wird von deinem Guthaben abgebucht und bei Absage oder Austritt vollständig erstattet.</p>
-            <ActionButton action={payEntryAction.bind(null, t.id)} label={`${formatEuro(fee)} Eintritt bezahlen`} className="btn btn-primary w-full" />
+            <p className="text-sm">Dein Anteil jetzt: <strong>{formatEuro(v.myDueCents)}</strong>. Er wird von deinem Guthaben abgebucht, nach der endgültigen Spielerzahl abgerechnet (Rest zurück) und bei Absage oder Austritt vollständig erstattet.</p>
+            <ActionButton action={payEntryAction.bind(null, t.id)} label={`${formatEuro(v.myDueCents)} Anteil bezahlen`} className="btn btn-primary w-full" />
           </section>
         )}
-        {v && v.myTeamId && v.iPaid && fee > 0 && t.status === "registration" && <p className="text-sm text-green" data-testid="paid-note">Dein Eintritt ist bezahlt.</p>}
+        {v && v.myTeamId && v.iPaid && fee > 0 && t.status === "registration" && <p className="text-sm text-green" data-testid="paid-note">Dein Anteil ist bezahlt.</p>}
       </section>
 
       {!data.bracketVisible && t.status === "registration" && (

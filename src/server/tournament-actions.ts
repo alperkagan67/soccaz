@@ -25,8 +25,10 @@ const str = (f: FormData, key: string) => String(f.get(key) ?? "").trim();
 
 export async function createTournamentAction(_prev: ActionState, f: FormData): Promise<ActionState> {
   const user = await requireUser("/app/turniere/neu");
-  const fee = str(f, "entryFee") === "" ? 0 : parseEuro(str(f, "entryFee"));
-  if (fee === null) return { error: "Bitte gib den Eintritt als Betrag an, z. B. 15 oder 12,50.", fieldErrors: { entryFee: "Ungültiger Betrag." } };
+  const hourly = str(f, "hourlyRent") === "" ? undefined : parseEuro(str(f, "hourlyRent"));
+  if (hourly === null) return { error: "Bitte gib den Hallenpreis als Betrag an, z. B. 80 oder 95,50.", fieldErrors: { hourlyRent: "Ungültiger Betrag." } };
+  const hours = Number(str(f, "durationHours").replace(",", "."));
+  if (!Number.isFinite(hours) || hours <= 0) return { error: "Bitte gib die Dauer der Halle in Stunden an, z. B. 3 oder 2,5.", fieldErrors: { durationHours: "Ungültige Dauer." } };
   const startsAt = parseBerlinLocal(str(f, "startsAt"));
   const deadline = parseBerlinLocal(str(f, "registrationDeadline"));
   if (!startsAt || !deadline) return { error: "Bitte gib Termin und Anmeldeschluss mit Datum und Uhrzeit an." };
@@ -39,7 +41,8 @@ export async function createTournamentAction(_prev: ActionState, f: FormData): P
       startsAt,
       registrationDeadline: deadline,
       maxTeams: Number(str(f, "maxTeams")),
-      playerFeeCents: fee,
+      durationMin: Math.round(hours * 60),
+      hourlyCents: hourly ?? null,
       isPrivate: str(f, "public") !== "on",
       matchMinutes: Number(str(f, "matchMinutes") || 15),
     });

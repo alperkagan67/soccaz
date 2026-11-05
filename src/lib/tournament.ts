@@ -185,3 +185,31 @@ export function splitEntryFees(totalCents: number, commissionPercent: number): {
   const commission = Math.floor((totalCents * pct) / 100);
   return { commission, payout: totalCents - commission };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Hallenkosten des Turniers, geteilt durch alle Spieler
+// ---------------------------------------------------------------------------------------------
+
+/** Gesamtkosten: Preis pro Stunde mal Dauer in Minuten (auf den Cent gerundet). */
+export function tournamentTotalCents(hourlyCents: number, durationMin: number): number {
+  return Math.round((hourlyCents * durationMin) / 60);
+}
+
+/**
+ * Vorauszahlung pro Spieler: der höchste mögliche Anteil, also die Gesamtkosten geteilt durch die kleinste mögliche Spielerzahl
+ * (jedes Team braucht mindestens `minPerTeam` Spieler). So reicht die Vorauszahlung immer, der Rest kommt zurück.
+ */
+export function reservationPerPlayer(totalCents: number, teamCount: number, minPerTeam: number): number {
+  const players = Math.max(teamCount * minPerTeam, 1);
+  return Math.ceil(totalCents / players);
+}
+
+/** Endgültiger Anteil pro Spieler nach der tatsächlichen Spielerzahl (aufgerundet, die Kosten sind nie unterdeckt). */
+export function finalSharePerPlayer(totalCents: number, players: number): number {
+  return Math.ceil(totalCents / Math.max(players, 1));
+}
+
+/** Spanne des Anteils vor dem Start: von "alle Teams voll" bis "jedes Team nur mit dem Minimum". */
+export function shareRange(totalCents: number, teamCount: number, minPerTeam: number, maxPerTeam: number): { lowest: number; highest: number } {
+  return { lowest: finalSharePerPlayer(totalCents, teamCount * maxPerTeam), highest: reservationPerPlayer(totalCents, teamCount, minPerTeam) };
+}

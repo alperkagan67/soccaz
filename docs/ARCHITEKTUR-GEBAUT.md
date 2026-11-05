@@ -134,11 +134,11 @@ flowchart TD
   classDef state fill:#e3f2fd,stroke:#1d5fa8,color:#000
   classDef rule fill:#f3e5f5,stroke:#7a3fa8,color:#000
 
-  A([Admin schaltet Veranstalter frei]):::rule --> B[Veranstalter legt Turnier an<br/>4-32 Teams, Termin, Anmeldeschluss,<br/>Eintritt je Spieler, privat mit Einladungslink]
+  A([Admin schaltet Veranstalter frei]):::rule --> B[Veranstalter legt Turnier an<br/>4-32 Teams, Termin, Anmeldeschluss,<br/>Hallenzeit und Stundenpreis, privat mit Einladungslink]
   B --> C{{Status: Anmeldung}}:::state
   C --> D[Captain tritt mit bestehendem Team bei<br/>genau ein Captain pro Team]
   D --> E[Mitspieler kommen ueber die Team-Einladung<br/>und treten dem Turnier-Kader bei]
-  E --> F[Jeder Spieler zahlt selbst:<br/>Guthaben -> Konto Turnier<br/>Schluessel pro Spieler und Beitritt]:::money
+  E --> F[Jeder Spieler zahlt selbst vorab den hoechsten Anteil<br/>Hallenkosten / (Teams x 4 Spieler)<br/>Guthaben -> Konto Turnier, Nachzahlung bei weniger Teams]:::money
   F --> G{Alle im Team bezahlt<br/>und mindestens 4 Spieler?}
   G -- nein --> G1[Captain kann nicht bereit druecken<br/>Server lehnt ab]:::rule
   G -- ja --> H[Captain drueckt Bereit]
@@ -148,7 +148,8 @@ flowchart TD
   H --> J{Alle Plaetze belegt und<br/>alle Captains bereit?}
   J -- nein --> J1[Bracket bleibt verborgen<br/>auch in der Datenabfrage]:::rule
   J -- ja --> K[Genau einmal: K.o.-Bracket mit Freilosen<br/>Zeilensperre + bracket_generated_at]
-  K --> L{{Status: laeuft}}:::state
+  K --> K1[Kader steht fest: Hallenkosten / alle Spieler<br/>zu viel Gezahltes sofort zurueck]:::money
+  K1 --> L{{Status: laeuft}}:::state
   L --> M[Jede Paarung wird ein echtes Spiel<br/>Captain meldet, anderer Captain bestaetigt]
   M --> N{Unentschieden?}
   N -- ja --> O[Veranstalter traegt Siebenmeterschiessen ein]
