@@ -126,7 +126,7 @@ Teamspiel, Privatspiel und Turnier sind in der Oberfläche getrennt (`GameModes`
 
 ## Turnier (gebaut)
 
-Privat per Einladungslink, ein Captain pro Team, Eintritt pro Spieler, Bereit nur nach vollständiger Zahlung (serverseitig), Bracket erst wenn alle Teams da und alle Captains bereit sind. Gespielt wird über echte Spiele (`kind = tournament`), die Sieger rücken über einen Finalizer weiter.
+Privat per Einladungslink, ein Captain pro Team. Phasen: Kader füllen, Zahlung, läuft, beendet. Der Preis pro Spieler wird erst berechnet, wenn alle Teams vollzählig gemeldet haben. Dann gibt es kein Hin- und Herbuchen: Jeder zahlt genau den Endpreis.
 
 ```mermaid
 flowchart TD
@@ -134,38 +134,36 @@ flowchart TD
   classDef state fill:#e3f2fd,stroke:#1d5fa8,color:#000
   classDef rule fill:#f3e5f5,stroke:#7a3fa8,color:#000
 
-  A([Admin schaltet Veranstalter frei]):::rule --> B[Veranstalter legt Turnier an<br/>4-32 Teams, Termin, Anmeldeschluss,<br/>Hallenzeit und Stundenpreis, privat mit Einladungslink]
-  B --> C{{Status: Anmeldung}}:::state
-  C --> D[Captain tritt mit bestehendem Team bei<br/>genau ein Captain pro Team]
-  D --> E[Mitspieler kommen ueber die Team-Einladung<br/>und treten dem Turnier-Kader bei]
-  E --> F[Jeder Spieler zahlt selbst vorab den hoechsten Anteil<br/>Hallenkosten / (Teams x 4 Spieler)<br/>Guthaben -> Konto Turnier, Nachzahlung bei weniger Teams]:::money
-  F --> G{Alle im Team bezahlt<br/>und mindestens 4 Spieler?}
-  G -- nein --> G1[Captain kann nicht bereit druecken<br/>Server lehnt ab]:::rule
-  G -- ja --> H[Captain drueckt Bereit]
-  H --> I{Kader aendert sich oder<br/>Zahlung faellt weg?}
-  I -- ja --> I1[Bereit des Teams wird zurueckgesetzt]:::rule
-  I1 --> G
-  H --> J{Alle Plaetze belegt und<br/>alle Captains bereit?}
-  J -- nein --> J1[Bracket bleibt verborgen<br/>auch in der Datenabfrage]:::rule
+  A([Admin schaltet Veranstalter frei]):::rule --> B[Veranstalter legt Turnier an<br/>4-32 Teams, Termin, Anmeldeschluss,<br/>Hallenzeit und Stundenpreis, privat per Link]
+  B --> C{{Phase: Kader fuellen}}:::state
+  C --> D[Captain tritt mit bestehendem Team bei<br/>Mitspieler ueber die Team-Einladung]
+  D --> E[Captain meldet: Team ist vollzaehlig<br/>4 bis 6 Spieler]
+  E --> F{Alle Plaetze belegt und<br/>alle Teams vollzaehlig?}
+  F -- nein --> C
+  F -- ja --> G[Preis automatisch: Hallenkosten / alle Spieler<br/>aufgerundet, Kader gesperrt]:::money
+  G --> H{{Phase: Zahlung}}:::state
+  H --> I[Jeder Spieler zahlt den Preis oder der Captain<br/>fuer alle oder einzelne: Ampel rot, orange, gruen]:::money
+  I --> J{Alle bezahlt?}
+  J -- nein --> I
   J -- ja --> K[Genau einmal: K.o.-Bracket mit Freilosen<br/>Zeilensperre + bracket_generated_at]
-  K --> K1[Kader steht fest: Hallenkosten / alle Spieler<br/>zu viel Gezahltes sofort zurueck]:::money
-  K1 --> L{{Status: laeuft}}:::state
+  K --> L{{Phase: laeuft}}:::state
   L --> M[Jede Paarung wird ein echtes Spiel<br/>Captain meldet, anderer Captain bestaetigt]
   M --> N{Unentschieden?}
   N -- ja --> O[Veranstalter traegt Siebenmeterschiessen ein]
-  N -- nein --> P[Sieger rueckt ins Folgespiel,<br/>Folgespiel entsteht]
+  N -- nein --> P[Sieger rueckt ins Folgespiel]
   O --> P
   P --> S{Finale gespielt?}
   S -- nein --> M
-  S -- ja --> T{{Status: beendet}}:::state
-  T --> U[Auszahlung an Veranstalter:<br/>Eintritte minus Provision, Provision -> Umsatz]:::money
-  C --> V[Veranstalter ersetzt Team bis Anmeldeschluss<br/>Eintritte des Teams werden erstattet]:::money
-  C --> W[Nach Anmeldeschluss: mit weniger Teams starten<br/>mindestens 4, oder absagen]
+  S -- ja --> T{{Phase: beendet}}:::state
+  T --> U[Auszahlung an Veranstalter:<br/>Anteile minus Provision]:::money
+  H --> V[Veranstalter: Kader wieder oeffnen<br/>alles erstattet, Preis neu]:::money
+  V --> C
   C --> X[Veranstalter sagt ab]
+  H --> X
   L --> X
   X --> Y{Schon ein Ergebnis?}
   Y -- ja --> Z[Nicht moeglich, Plattform muss helfen]
-  Y -- nein --> AA[Alle Eintritte vollstaendig zurueck<br/>Spiele abgesagt]:::money
+  Y -- nein --> AA[Alle Anteile vollstaendig zurueck, an den Zahler]:::money
 ```
 
 ## Privatspiel (gebaut)
