@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { berlinMonthRange } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
 import { cityChallenge, pastChampions } from "@/server/city-challenge";
@@ -8,6 +9,7 @@ import { leaderboards } from "@/server/profiles";
 export const metadata: Metadata = { title: "Rangliste" };
 
 export default async function RankingPage({ searchParams }: PageProps<"/rangliste">) {
+  await connection();
   const sp = await searchParams;
   const city = typeof sp.city === "string" && (CITIES as readonly string[]).includes(sp.city) ? sp.city : undefined;
   const range = berlinMonthRange(typeof sp.monat === "string" ? sp.monat : undefined);
