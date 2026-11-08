@@ -54,3 +54,6 @@ sessions/
 
 # Arbeitsdatei, lokal gepflegt, nicht im Repo
 TASKS.md
+
+# Lokale Claude-Berechtigungen, nicht im Repo
+.claude/settings.local.json
