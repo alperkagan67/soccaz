@@ -341,4 +341,33 @@ describe("Offene Lobby: Übersicht und Beitritt", () => {
     expect((await getOpenLobby(entry.id, null))?.status).toBe("matched");
     await expect(setOpenLobbyJoined(member.id, entry.id, true)).rejects.toThrow(/nicht mehr offen/);
   });
+
+  it("AC-5: Nicht-Mitglieder und Anonyme sehen Team, Stadt, Zeitfenster und Anzahl, aber keine Spielernamen; Mitglieder sehen sie weiter", async () => {
+    const t = await twoTeams();
+    const member = await makeUser("qm5");
+    await db.insert(teamMembers).values({ teamId: t.ta.id, userId: member.id, role: "player" });
+    await joinQueue(t.a.id, { teamId: t.ta.id, city: "Essen", durationMin: 60, windows: evening() });
+    const [entry] = await db.select().from(matchmakingQueue).where(eq(matchmakingQueue.teamId, t.ta.id));
+    await setOpenLobbyJoined(member.id, entry.id, true);
+
+    const memberView = (await getOpenLobby(entry.id, member.id))!;
+    expect(memberView.members.map((m) => m.userId).sort()).toEqual([t.a.id, member.id].sort());
+    expect(memberView.members.every((m) => m.name.length > 0)).toBe(true);
+    expect(memberView.joinedCount).toBe(2);
+
+    for (const viewer of [null, t.b.id]) {
+      const view = (await getOpenLobby(entry.id, viewer))!;
+      expect(view.members).toEqual([]);
+      expect(view.joinedCount).toBe(2);
+      expect(view.team.name).toBe(memberView.team.name);
+      expect(view.city).toBe("Essen");
+      expect(view.windows).toHaveLength(1);
+      expect(view.viewer).toMatchObject({ isMember: false, isAdmin: false, joined: false });
+      const json = JSON.stringify(view);
+      for (const m of memberView.members) {
+        expect(json).not.toContain(m.name);
+        expect(json).not.toContain(m.userId);
+      }
+    }
+  });
 });

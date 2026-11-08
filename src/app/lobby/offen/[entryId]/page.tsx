@@ -21,7 +21,8 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
   if (lobby.status === "matched" && lobby.matchId) redirect(`/lobby/${lobby.matchId}`);
   const open = lobby.status === "waiting";
   const joined = lobby.members.filter((m) => m.joined);
-  const empty = Math.max(lobby.slots - joined.length, 0);
+  const empty = Math.max(lobby.slots - lobby.joinedCount, 0);
+  const isMember = lobby.viewer.isMember;
 
   return (
     <div className="space-y-4">
@@ -38,8 +39,8 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
 
       <section className="card space-y-3" aria-label="Mein Team" data-testid="open-lobby-team">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="font-semibold">Mein Team: <Link href={`/teams/${lobby.team.slug}`} className="hover:text-green">{lobby.team.name}</Link></h2>
-          <span className="text-xs text-muted">{joined.length} von {lobby.slots} Plätzen</span>
+          <h2 className="font-semibold">{isMember ? "Mein Team" : "Team"}: <Link href={`/teams/${lobby.team.slug}`} className="hover:text-green">{lobby.team.name}</Link></h2>
+          <span className="text-xs text-muted">{lobby.joinedCount} von {lobby.slots} Plätzen</span>
         </div>
         <ul className="space-y-2 text-sm">
           {joined.map((m) => (
@@ -57,7 +58,7 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
           ))}
           {Array.from({ length: empty }, (_, i) => (
             <li key={`free-${i}`} className="flex items-center justify-between gap-2 text-muted" data-testid="open-lobby-free">
-              <span>Wartet auf Spieler {joined.length + i + 1}</span>
+              <span>Wartet auf Spieler {lobby.joinedCount + i + 1}</span>
               <span className="text-xs">frei</span>
             </li>
           ))}

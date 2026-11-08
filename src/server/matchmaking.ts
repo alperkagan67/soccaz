@@ -291,6 +291,7 @@ export type OpenLobbyView = {
   note: string | null;
   members: { userId: string; name: string; isAdmin: boolean; joined: boolean }[];
   slots: number; // so viele Plätze hat das Team (Startspieler plus Ersatz)
+  joinedCount: number; // Anzahl beigetretener Spieler; für alle sichtbar, auch ohne Namen
   viewer: { isMember: boolean; isAdmin: boolean; joined: boolean };
 };
 
@@ -321,8 +322,10 @@ export async function getOpenLobby(entryId: string, viewerId: string | null): Pr
     durationMin: e.durationMin,
     windows: e.windows,
     note: e.note,
-    members: rows.map((r) => ({ userId: r.userId, name: r.name, isAdmin: r.role === "admin", joined: joined.has(r.userId) })),
+    // Datenschutz (AC-5): Namen und IDs der Spieler nur für Teammitglieder; alle anderen sehen nur die Anzahl.
+    members: mine ? rows.map((r) => ({ userId: r.userId, name: r.name, isAdmin: r.role === "admin", joined: joined.has(r.userId) })) : [],
     slots: MAX_PER_TEAM,
+    joinedCount: rows.filter((r) => joined.has(r.userId)).length,
     viewer: { isMember: Boolean(mine), isAdmin: mine?.role === "admin", joined: viewerId ? joined.has(viewerId) : false },
   };
 }
