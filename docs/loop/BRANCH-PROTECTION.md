@@ -57,7 +57,7 @@ Der Test muss in **Deinem eigenen Terminal** laufen, nicht in einer Claude-Sessi
 gh api repos/alperkagan67/soccaz/rules/branches/main
 gh api repos/alperkagan67/soccaz/branches/main/protection
 ```
-Die erste Zeile zeigt Ruleset-Regeln, die auf `main` wirken; die zweite die klassische Regel (bei Ruleset-Variante kann sie "Branch not protected" melden, das ist dann normal). Den Ruleset-Modus "Evaluate" bitte nicht zum Testen nutzen (nur für Organisationen/Enterprise).
+Die erste Zeile zeigt Ruleset-Regeln, die auf `main` wirken; die zweite die klassische Regel (bei Ruleset-Variante kann sie "Branch not protected" melden, das ist dann normal). Eine leere Antwort `[]` der ersten Abfrage heißt: Es greift keine Ruleset-Regel auf `main`. Die klassische Abfrage braucht Admin-Rechte. Den Ruleset-Modus "Evaluate" bitte nicht zum Testen nutzen (nur für Organisationen/Enterprise).
 
 Test-Push, so sicher wie möglich. Der Testbranch muss von `origin/main` abzweigen, **nicht** vom aktuellen Stand (sonst würden bei inaktiver Regel alle Commits Deines aktuellen Branches auf `main` landen):
 
@@ -67,17 +67,18 @@ git switch -c test-branch-protection origin/main
 git commit --allow-empty -m "Test Branch Protection"
 git log --oneline origin/main..HEAD
 ```
-Der letzte Befehl muss **genau 1 Zeile** zeigen. Zeigt er mehr oder weniger: **abbrechen und NICHT pushen** (zuerst aufräumen, siehe unten). Nur bei genau 1 Zeile:
+Der letzte Befehl muss **genau 1 Zeile** zeigen. Zeigt er mehr oder weniger: **abbrechen und NICHT pushen** (zuerst aufräumen, siehe unten). Nur bei genau 1 Zeile weiter. Prüfe vor dem Push den Branch (muss `test-branch-protection` zeigen, sonst NICHT pushen) und pushe `HEAD:main`, damit genau der geprüfte Stand gepusht wird:
 
 ```
-git push origin test-branch-protection:main
+git branch --show-current
+git push origin HEAD:main
 ```
 
 **Bestanden** ist der Test nur bei einer dieser Ablehnungen:
 - `GH013` ("Repository rule violations found"), wenn Du ein Ruleset benutzt
 - `GH006` bzw. "protected branch hook declined", wenn Du die klassische Regel benutzt
 
-**Ungültig, nicht bestanden:** Meldungen wie `non-fast-forward` oder `fetch first` (Dein Testbranch war nicht auf dem neuesten `main`; wiederhole ab `git fetch origin`). Geht der Push **durch**, ist die Regel nicht aktiv; der schlimmste Fall ist dann ein einzelner leerer Commit auf `main`.
+**Ungültig, nicht bestanden:** Meldungen wie `non-fast-forward` oder `fetch first` (Dein Testbranch war nicht auf dem neuesten `main`; wiederhole ab `git fetch origin`; räume vor der Wiederholung zuerst auf: `git switch -` und `git branch -D test-branch-protection`). Geht der Push **durch**, ist die Regel nicht aktiv; der schlimmste Fall ist dann ein einzelner leerer Commit auf `main`.
 
 **Nicht verwenden:** `git push origin HEAD:main --dry-run` ist kein Test (ein Dry-Run fragt die Regeln nicht ab). Erzeuge den leeren Commit nicht auf `main` selbst und zweige den Testbranch nicht von einem Feature-Branch ab.
 

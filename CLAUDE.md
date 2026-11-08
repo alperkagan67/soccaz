@@ -37,9 +37,9 @@ Next.js-Regeln: AGENTS.md (nicht überschreiben, nicht ändern).
 - Diese Next.js-Version hat Breaking Changes: vor Code die Doku in `node_modules/next/dist/docs/` lesen (siehe AGENTS.md).
 - Cache Components: `new Date()` o. Ä. in Seiten braucht `await connection()` (Muster: `src/app/teams/page.tsx`).
 - Öffentliches Repo: keine Secrets, keine lokalen Pfade, keine privaten E-Mail-Adressen committen.
-- `.env*` nicht lesen und nicht ausgeben (Deny-Regel). `TASKS.md` ist lokal und nicht versioniert.
+- `.env*` nicht lesen und nicht ausgeben (Deny-Regeln `Read(./.env*)` und `Read(**/.env.local)` in `.claude/settings.json`). `TASKS.md` ist lokal und nicht versioniert.
 - Pfade enthalten ein Leerzeichen („Neuer Ordner“): immer quoten.
-- Der Hook-Guard (`.claude/hooks/guard.mjs`, kommt mit E1) und die Deny-Regeln blockieren u. a. Force-Push (auch `--force-with-lease`), Push auf `main`, `rm -rf`, `git reset --hard`. Amend + Force-Push braucht eine bewusste Handlung des Nutzers im eigenen Terminal.
+- Der Hook-Guard (`.claude/hooks/guard.mjs`) und die Deny-Regeln (`.claude/settings.json`) blockieren u. a. Force-Push (auch `--force-with-lease`), Push auf `main`, `rm -rf`, `git reset --hard`. Amend + Force-Push braucht eine bewusste Handlung des Nutzers im eigenen Terminal.
 - Migrationen laufen nie parallel zu anderen Tasks mit Schema-Annahmen.
 
 ## Verweise
@@ -47,5 +47,5 @@ Next.js-Regeln: AGENTS.md (nicht überschreiben, nicht ändern).
 - Prozess: `docs/loop/LOOP-SPEC.md`; Team-Ablauf und Rollen-Prompts: `AGENTS-SETUP.md`
 - Verträge: `docs/contracts/` · Entscheidungen (ADR): `docs/decisions/` · Retros: `docs/retros/`
 - Ist-Analyse: `docs/analysis/ist-analyse.md` (liegt im Branch `docs/ist-analyse`, folgt nach dessen Merge)
-- Branch Protection (Nutzer klickt selbst): `docs/loop/BRANCH-PROTECTION.md` (folgt in E2)
+- Branch Protection (Nutzer klickt selbst): `docs/loop/BRANCH-PROTECTION.md`
 - Architektur und Betrieb: `docs/ARCHITEKTUR.md`, `docs/BETRIEB.md`
