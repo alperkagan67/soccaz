@@ -3,7 +3,7 @@
 > **Für das Agenten-Team (Orchestrator, Task Manager, Worker 1–4).**
 > Diese Datei beschreibt, WIE wir an Soccaz arbeiten. Sie ist die Vorlage für Auftrag A16.
 > Ablageort im Repo: `SoccaV2/docs/loop/LOOP-SPEC.md`
-> Änderungen an dieser Datei nur per Branch + PR, Merge nur durch den Nutzer.
+> Änderungen an dieser Datei nur per Branch + PR; diesen PR mergt der Nutzer (Prozessdatei, siehe Phase 8).
 
 ---
 
@@ -19,7 +19,7 @@
 | P6 | **Regeln, die immer gelten müssen, sind Hooks/Permissions, nicht Prompts.** | Texte in CLAUDE.md sind Empfehlungen, Hooks und Deny-Regeln greifen deterministisch. |
 | P7 | **Jede Einheit Arbeit macht die nächste leichter.** | Nach jedem Auftrag werden Lehren festgehalten (Compounding). |
 | P8 | **Pragmatisch vor perfekt.** | Endlosschleifen aus „noch ein Fund, noch ein Fix" sind der häufigste Kostentreiber. |
-| P9 | **Nur zwei menschliche Pflicht-Gates.** | Der Nutzer gibt (G1) den Vertrag frei und (G2) mergt. Alles andere läuft autonom, Eskalation nur bei Blockaden. |
+| P9 | **Wenige menschliche Pflicht-Gates.** | Der Nutzer gibt (G1) den Vertrag frei und mergt (G2) nur die Ausnahme-PRs aus Phase 8. Alles andere läuft autonom, Eskalation nur bei Blockaden. |
 
 ---
 
@@ -56,7 +56,7 @@
 - Erstellt PRs (Phase 7)
 - Meldet dem Orchestrator kurz: fertig / blockiert / braucht Nutzer
 
-**Macht NICHT:** Keinen Feature-Code, keine Merges auf `main`.
+**Macht NICHT:** Keinen Feature-Code; Merges nur nach der Merge-Regel (Phase 8), nie mit `--admin`.
 
 ### 1.3 Worker 1–4 (`role=worker-N`)
 **Zweck:** Umsetzung (Writer) oder Prüfung (Reviewer), je nach Task.
@@ -72,7 +72,7 @@
 
 ### 1.4 Nutzer
 - **G1:** Vertrag freigeben
-- **G2:** PR auf GitHub mergen
+- **G2:** Nur Ausnahme-PRs auf GitHub mergen (Phase 8); normale PRs mergt der Task Manager
 - Beantwortet Eskalationen
 
 ---
@@ -87,7 +87,7 @@
  PHASE 5  Umsetzung     Writer-Worker: Plan → TDD → /goal
  PHASE 6  Review        anderer Worker: Vertrag, Code, Security, Tests
  PHASE 7  Integration   Task Manager: Rebase, CI grün, PR mit Belegen
- PHASE 8  Merge         Nutzer auf GitHub                       ◄── G2 Nutzer
+ PHASE 8  Merge         Task Manager; Ausnahme-PRs: Nutzer      ◄── G2 nur Ausnahmen
  PHASE 9  Retro         Lehren → CLAUDE.md / AGENTS-SETUP.md / Tests
 ```
 
@@ -155,8 +155,9 @@
 - Orchestrator melden: `PR bereit: <Link>, alle ACs belegt, CI grün`
 
 ### Phase 8 – Merge
-- **Nutzer** prüft PR auf GitHub (Files changed, Checks) und mergt selbst
-- Danach: Task Manager räumt Worktree und lokalen Branch auf
+- **Merge-Regel:** Normale PRs mergt der Task Manager nach `REVIEW-OK`, Abschlussprüfung und grüner CI mit `gh pr merge <nr> --auto --squash --delete-branch` (ist der PR sofort clean: `gh pr merge <nr> --squash --delete-branch`), nie mit `--admin`. Der Nutzer gibt nur Verträge frei (G1). **Ausnahmen, die nur der Nutzer selbst mergt** (`NEEDS-USER`): PRs, die `.claude/`, `.github/`, DB-Migrationen, `package.json`/Lockfile, Zahlungen oder Auth berühren, sowie PRs, die Prozessdateien ändern (`CLAUDE.md`, `AGENTS-SETUP.md`, `docs/loop/`).
+- Ausnahme-PRs: Task Manager meldet `NEEDS-USER`, der **Nutzer** prüft den PR auf GitHub (Files changed, Checks) und mergt selbst
+- Danach: Task Manager räumt Worktree und lokalen Branch auf (nach Squash-Merge nur mit `git branch -D`, Inhalt vorher gegen `main` prüfen)
 
 ### Phase 9 – Retro (Compounding)
 - **Wer:** Task Manager entwirft, Orchestrator kürzt, Nutzer sieht es im PR
