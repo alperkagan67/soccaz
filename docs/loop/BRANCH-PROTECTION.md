@@ -52,24 +52,43 @@ Hinweis: GitHub bietet einen Check erst zur Auswahl an, nachdem er in den letzte
 
 Der Test muss in **Deinem eigenen Terminal** laufen, nicht in einer Claude-Session. Der Guard-Hook (E1) blockiert Pushes auf `main` in Claude-Sessions absichtlich, und auch Deny-Regeln greifen dort. Der Test würde dort also schon lokal scheitern und nichts über GitHub aussagen. Nicht über ein "!"-Präfix in der Session ausführen; öffne ein normales Terminal im Projektordner.
 
-Ungefährliche Variante (nichts landet auf `main`, wenn die Regel aktiv ist):
+**Optional vorher (nur Lesen):** Prüfe im Terminal, ob die Regel greift. Das ändert nichts:
+```
+gh api repos/alperkagan67/soccaz/rules/branches/main
+gh api repos/alperkagan67/soccaz/branches/main/protection
+```
+Die erste Zeile zeigt Ruleset-Regeln, die auf `main` wirken; die zweite die klassische Regel (bei Ruleset-Variante kann sie "Branch not protected" melden, das ist dann normal). Den Ruleset-Modus "Evaluate" bitte nicht zum Testen nutzen (nur für Organisationen/Enterprise).
+
+Test-Push, so sicher wie möglich. Der Testbranch muss von `origin/main` abzweigen, **nicht** vom aktuellen Stand (sonst würden bei inaktiver Regel alle Commits Deines aktuellen Branches auf `main` landen):
 
 ```
-git switch -c test-branch-protection
-git commit --allow-empty -m "test"
+git fetch origin
+git switch -c test-branch-protection origin/main
+git commit --allow-empty -m "Test Branch Protection"
+git log --oneline origin/main..HEAD
+```
+Der letzte Befehl muss **genau 1 Zeile** zeigen. Zeigt er mehr oder weniger: **abbrechen und NICHT pushen** (zuerst aufräumen, siehe unten). Nur bei genau 1 Zeile:
+
+```
 git push origin test-branch-protection:main
 ```
 
-**Erwartung:** Der Push wird abgelehnt, mit einer Meldung wie `remote: error: GH013: Repository rule violations found` (Ruleset) bzw. `protected branch hook declined` (klassische Regel). Nur in diesem Fall ist der Test bestanden.
+**Bestanden** ist der Test nur bei einer dieser Ablehnungen:
+- `GH013` ("Repository rule violations found"), wenn Du ein Ruleset benutzt
+- `GH006` bzw. "protected branch hook declined", wenn Du die klassische Regel benutzt
 
-**Nicht verwenden:** `git push origin HEAD:main --dry-run` ist kein Test (ein Dry-Run fragt die Regeln nicht ab). Erzeuge den leeren Commit nicht auf `main` selbst.
+**Ungültig, nicht bestanden:** Meldungen wie `non-fast-forward` oder `fetch first` (Dein Testbranch war nicht auf dem neuesten `main`; wiederhole ab `git fetch origin`). Geht der Push **durch**, ist die Regel nicht aktiv; der schlimmste Fall ist dann ein einzelner leerer Commit auf `main`.
 
-**Aufräumen** (immer, auch wenn der Push abgelehnt wurde):
+**Nicht verwenden:** `git push origin HEAD:main --dry-run` ist kein Test (ein Dry-Run fragt die Regeln nicht ab). Erzeuge den leeren Commit nicht auf `main` selbst und zweige den Testbranch nicht von einem Feature-Branch ab.
+
+**Aufräumen** (immer, auch wenn der Push abgelehnt wurde): zurück auf den vorherigen Branch und den lokalen Testbranch löschen. `git branch -D` ist hier ausnahmsweise in Ordnung, weil es Dein eigener Testbranch im eigenen Terminal ist.
 ```
 git switch -
 git branch -D test-branch-protection
 ```
-Falls der Push wider Erwarten durchging (Regel nicht aktiv), melde das sofort, damit der Test-Commit auf `main` mit einem Revert-PR zurückgenommen wird; keinen Force-Push nutzen.
+Auf `origin` entsteht kein Branch (gepusht wird nur nach `main`), ein `git push origin --delete` ist deshalb nicht nötig.
+
+Falls der Push durchging (Regel nicht aktiv): Der einzelne leere Commit auf `main` ist harmlos und bleibt liegen; ein Revert oder Force-Push ist nicht nötig (ein Revert eines leeren Commits bricht lokal ohnehin ab). Aktiviere die Regel und wiederhole den Test. Nur wenn aus Versehen echte Commits auf `main` gelandet sind: per Revert-PR zurücknehmen, nie per Force-Push, und melde es sofort.
 
 ## 4. Was sich danach ändert
 - Nach `main` gelangt Code nur über einen Pull Request mit grünen Checks; Du bist der Einzige, der mergt.
