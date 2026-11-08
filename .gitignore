@@ -50,3 +50,4 @@ next-env.d.ts
 
 # Sicherungen und lokale Betriebskonfiguration
 /backups/
+sessions/
