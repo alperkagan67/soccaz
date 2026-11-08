@@ -102,7 +102,7 @@ Deine Rolle:
 - Arbeite nach Abschnitt 3a (Worktrees) und docs/loop/LOOP-SPEC.md (Writer: Plan, TDD, /goal; Reviewer siehe unten). Meldungsformate siehe Abschnitt 3b.
 ```
 
-**Reviewer-Hinweis (gilt für jeden Worker, der einen Task als Reviewer bekommt):** Reviewer ist immer ein anderer Worker als der Writer. Er prüft in der Reihenfolge der Spec (Phase 6): Kriterien und Tests, Umfang, Code-Review (Subagent `code-reviewer`), bei Auth/Zahlung/Eingaben/Datenzugriff zusätzlich Security-Review (Subagent `security-reviewer`), dann typecheck, lint, npm test. Gemeldet werden nur Funde zu Korrektheit, Sicherheit oder Vertragskriterien. Ergebnis: `REVIEW-OK` oder `REVIEW-CHANGES` (max. 2 Runden).
+**Reviewer-Hinweis (gilt für jeden Worker, der einen Task als Reviewer bekommt):** Reviewer ist immer ein anderer Worker als der Writer. Er prüft in der Reihenfolge der Spec (Phase 6): Kriterien und Tests, Umfang, Code-Review (Subagent `code-reviewer`), bei Auth/Zahlung/Eingaben/Datenzugriff zusätzlich Security-Review (Subagent `security-reviewer`), dann typecheck, lint, npm test und die betroffenen E2E-Tests. Gemeldet werden nur Funde zu Korrektheit, Sicherheit oder Vertragskriterien. Ergebnis: `REVIEW-OK` oder `REVIEW-CHANGES` (max. 2 Runden, danach Eskalation an den Orchestrator).
 
 **Zusatz zum Prompt (nicht Teil des Originaltexts):**
 
@@ -138,10 +138,12 @@ Deine Rolle:
 
 Kurze, feste Formate halten die Kontexte schlank. Details und Beispiele: docs/loop/LOOP-SPEC.md.
 
-- `TASK <id> | ACs | WT | PORT | DB | DONE-Checks` (Task Manager an Worker)
+- `TASK <Tnn> | ACs | WT | PORT | DB | DONE-Checks | Details: TASKS.md#Tnn` (Task Manager an Worker)
+- `REVIEW <Tnn> | Branch | Vertrag: <Pfad>` (Task Manager an Reviewer-Worker)
 - `DONE <id> | Belege: Befehl + Ergebnis | Dateien | Commit <hash>` (Worker an Task Manager)
 - `BLOCKED <id> | Grund | braucht: TM / Orchestrator / Nutzer`
 - `REVIEW-OK <id>` oder `REVIEW-CHANGES <id> | 1) … 2) …` (Reviewer)
+- `AUFTRAG <Axx> fertig | PR #N | ACs belegt | CI grün` (Task Manager an Orchestrator)
 - `NEEDS-USER | <eine Zeile, was der Nutzer tun muss>`: Wartet jemand auf den Nutzer, geht sofort `NEEDS-USER` an den Orchestrator; Rückfragen nur im eigenen Fenster sind verboten.
 
 ## 3c. Intake (Phase 1)
@@ -152,7 +154,7 @@ Den Intake startet der Nutzer in der Orchestrator-Session mit `/grill-me`. Der S
 
 - Deny-Regeln in `.claude/settings.json` und der PreToolUse-Hook `.claude/hooks/guard.mjs` blockieren u. a. Force-Push, Push auf `main`, `git reset --hard`, `git clean -f` und rekursives Löschen.
 - Amend + Force-Push, auch `--force-with-lease`, ist für Claude gesperrt und braucht eine bewusste Handlung des Nutzers im eigenen Terminal. Darum Korrekturen als zusätzlicher Commit statt Amend.
-- Der Guard ist nur eine Schicht. Die eigentliche Absicherung trägt die Branch Protection auf `main` (PR-Pflicht, CI-Pflicht, kein Force-Push): Anleitung in docs/loop/BRANCH-PROTECTION.md (folgt in E2); der Nutzer klickt sie selbst.
+- Der Guard ist nur eine Schicht. Die eigentliche Absicherung trägt die Branch Protection auf `main` (PR-Pflicht, CI-Pflicht, kein Force-Push): Anleitung in docs/loop/BRANCH-PROTECTION.md; der Nutzer klickt sie selbst.
 
 ## 4. Anhang: Gelernt heute
 
