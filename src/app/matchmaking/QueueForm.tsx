@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { ActionForm } from "@/components/ActionForm";
 import { STRENGTH_LABELS } from "@/lib/labels";
+import { MAX_WINDOWS } from "@/lib/matchmaking";
 import { CITIES } from "@/lib/validation";
 import { joinQueueAction } from "@/server/matchmaking-actions";
 
 export function QueueForm({ teams, minDay }: { teams: { id: string; name: string; city: string }[]; minDay: string }) {
   const [windows, setWindows] = useState(1);
   return (
-    <ActionForm action={joinQueueAction} submit="Lobby aufmachen" successText="Eure Lobby ist offen. Sobald ein Team antritt, melden wir uns.">
+    <ActionForm action={joinQueueAction} submit="Lobby aufmachen">
       <h2 className="font-semibold">Neue Lobby für dein Team</h2>
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
@@ -61,13 +62,13 @@ export function QueueForm({ teams, minDay }: { teams: { id: string; name: string
         <input id="q-note" name="note" maxLength={200} className="field" placeholder="z. B. Mixed-Team, wir spielen locker, Revanche erwünscht" />
       </div>
       <div className="space-y-1">
-        <h3 className="text-sm font-semibold">Wann wollt ihr spielen?</h3>
-        <p className="text-sm text-muted" data-testid="windows-hint">Wähle den Tag und von wann bis wann euer Team Zeit hat. Wenn ein Team antritt, einigen sich die Captains auf die genaue Uhrzeit in diesem Zeitraum.</p>
+        <h3 className="text-sm font-semibold">Zeitfenster für die Terminfindung</h3>
+        <p className="text-sm text-muted" data-testid="windows-hint">Ein Zeitfenster ist ein Tag mit einem Zeitraum (von/bis), in dem euer Team spielen kann. Das ist kein Turnier. Wenn ein Team antritt, einigen sich die Captains auf die genaue Uhrzeit in einem dieser Zeitfenster.</p>
       </div>
-      {[1, 2, 3].filter((i) => i <= windows).map((i) => (
+      {Array.from({ length: MAX_WINDOWS }, (_, k) => k + 1).filter((i) => i <= windows).map((i) => (
         <div key={i} className="grid grid-cols-3 gap-2">
           <div>
-            <label className="label" htmlFor={`q-day${i}`}>{i === 1 ? "Tag des Spiels" : `Alternativer Tag ${i - 1}`}</label>
+            <label className="label" htmlFor={`q-day${i}`}>{i === 1 ? "Zeitfenster 1" : `Zeitfenster ${i} (optional)`}</label>
             <input id={`q-day${i}`} name={`day${i}`} type="date" min={minDay} className="field" required={i === 1} />
           </div>
           <div>
@@ -80,9 +81,9 @@ export function QueueForm({ teams, minDay }: { teams: { id: string; name: string
           </div>
         </div>
       ))}
-      {windows < 3 && (
-        <button type="button" className="text-sm text-green underline" onClick={() => setWindows((w) => Math.min(w + 1, 3))}>
-          + Alternativen Tag anbieten (falls ihr an mehreren Tagen könnt)
+      {windows < MAX_WINDOWS && (
+        <button type="button" className="text-sm text-green underline" onClick={() => setWindows((w) => Math.min(w + 1, MAX_WINDOWS))}>
+          + Weiteres Zeitfenster anbieten (falls ihr zu mehreren Zeiten könnt)
         </button>
       )}
     </ActionForm>

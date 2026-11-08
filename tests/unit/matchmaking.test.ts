@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agreedOption, combineOptions, eloRange, findPairs, optionStillValid, overlap, strengthOk, suggestSlots, usableWindows, type QueueEntry, type Window } from "@/lib/matchmaking";
+import { agreedOption, combineOptions, eloRange, findPairs, MAX_WINDOWS, optionStillValid, overlap, strengthOk, suggestSlots, usableWindows, type QueueEntry, type Window } from "@/lib/matchmaking";
 
 const now = new Date("2026-11-01T10:00:00Z");
 const at = (iso: string) => new Date(iso);
@@ -139,5 +139,13 @@ describe("Gesuchte Spielstärke", () => {
     // der andere wünscht sich Teams bis Stufe 2, wir sind Stufe 3
     expect(findPairs([entry({ strength: 3 }), entry({ strength: 2, wantMax: 2 })], now)).toHaveLength(0);
     expect(findPairs([entry({ strength: 2 }), entry({ strength: 2, wantMax: 2 })], now)).toHaveLength(1);
+  });
+});
+
+describe("MAX_WINDOWS", () => {
+  it("begrenzt die Zeitfenster pro Lobby auf eine positive Ganzzahl (Formular und Server nutzen dieselbe Grenze)", () => {
+    expect(Number.isInteger(MAX_WINDOWS)).toBe(true);
+    expect(MAX_WINDOWS).toBeGreaterThanOrEqual(1);
+    expect(MAX_WINDOWS).toBe(3);
   });
 });

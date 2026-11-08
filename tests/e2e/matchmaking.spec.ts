@@ -34,7 +34,12 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   const enter = async (page: typeof a) => {
     await page.goto("/matchmaking");
     await page.waitForLoadState("networkidle");
-    await page.getByLabel("Tag des Spiels").fill(day);
+    // AC-1: Zeitfenster-Beschriftung, keine alten Begriffe
+    await expect(page.getByTestId("windows-hint")).toContainText("Zeitfenster");
+    await expect(page.getByLabel("Zeitfenster 1", { exact: true })).toBeVisible();
+    await expect(page.getByText("Tag des Spiels")).toHaveCount(0);
+    await expect(page.getByText("Alternativer Tag")).toHaveCount(0);
+    await page.getByLabel("Zeitfenster 1", { exact: true }).fill(day);
     await page.getByLabel("Von", { exact: true }).first().fill("18:00");
     await page.getByLabel("Bis", { exact: true }).first().fill("21:00");
     await page.getByRole("button", { name: "Lobby aufmachen", exact: true }).click();
@@ -206,7 +211,7 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
   await a.getByLabel("Gesuchte Stärke des Gegners von").selectOption("2");
   await a.getByLabel("bis", { exact: true }).first().selectOption("4");
   await a.getByLabel("Hinweis für andere Teams (optional)").fill(`Mixed-Team, locker ${run}`);
-  await a.getByLabel("Tag des Spiels").fill(futureLocal(3).slice(0, 10));
+  await a.getByLabel("Zeitfenster 1", { exact: true }).fill(futureLocal(3).slice(0, 10));
   await a.getByLabel("Von", { exact: true }).first().fill("18:00");
   await a.getByLabel("Bis", { exact: true }).first().fill("21:00");
   await a.getByRole("button", { name: "Lobby aufmachen", exact: true }).click();

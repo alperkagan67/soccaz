@@ -58,6 +58,8 @@ export async function leaveQueueAction(teamId: string): Promise<ActionState> {
   const user = await requireUser("/matchmaking");
   const result = await guarded(() => leaveQueue(user.id, teamId));
   revalidatePath("/matchmaking");
+  revalidatePath("/suche");
+  revalidatePath("/lobby/offen/[entryId]", "page");
   return result;
 }
 
