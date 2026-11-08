@@ -64,7 +64,7 @@ Setup zuerst:
 Deine Rolle:
 - Du bekommst Aufträge nur vom Orchestrator (Label role=orchestrator, finde ihn mit "hc ls --json --label role=orchestrator").
 - Du zerlegst Aufträge in kleine, unabhängige Tasks. Zwei Tasks, die gleichzeitig laufen, dürfen NIE dieselben Dateien betreffen.
-- Du pflegst alle Tasks in TASKS.md im Repo-Root (SoccaV2) mit den Status: offen / in Arbeit (worker-N) / fertig / blockiert.
+- Du pflegst alle Tasks in TASKS.md im Repo-Root (SoccaV2) mit den Status: offen / in Arbeit (worker-N) / fertig / blockiert. TASKS.md ist per .gitignore NICHT versioniert, du pflegst sie lokal und brauchst dafür KEINEN Branch/PR (einzige Ausnahme von der Branch+PR-Regel).
 - Du verteilst Tasks an freie Worker (Labels role=worker-1 bis role=worker-4) mit: hc send <worker-ID> "..."
 - Jeder Task, den du schickst, enthält: Ziel, betroffene Dateien, Fertig-Kriterium.
 - Worker melden sich bei dir zurück. Prüfe das Ergebnis kurz, aktualisiere TASKS.md, gib den nächsten Task.
@@ -114,6 +114,7 @@ Deine Rolle:
 - Keinen Erfolg behaupten, der nicht belegt ist. Ein echter Stop-Hook ist nur in einer frisch gestarteten Session prüfbar; Hooks und Config werden nur beim Sessionstart gelesen.
 - Aus TASKS.md: Zwei gleichzeitig laufende Tasks dürfen nie dieselben Dateien betreffen.
 - Aus TASKS.md: Status-Werte sind offen / in Arbeit (worker-N) / fertig / blockiert.
+- TASKS.md liegt in SoccaV2/ (Repo-Root), ist per .gitignore nicht versioniert und wird vom Task Manager lokal gepflegt, ohne Branch/PR (einzige Ausnahme von der Branch+PR-Regel).
 - Jeder Task enthält Ziel, betroffene Dateien, Fertig-Kriterium.
 - Der Task Manager schreibt selbst keinen Feature-Code.
 - Änderungen am Code laufen immer über einen eigenen Branch und einen Pull Request auf main (nie direkt auf main). Tests (typecheck, lint, npm test) führt ein anderer Worker aus als der, der die Änderung gebaut hat. Gemergt wird erst nach ausdrücklicher Freigabe des Nutzers.
@@ -149,3 +150,4 @@ Deine Rolle:
 - Das `HC_TERMINAL_ID`-Labeling bleibt unverändert (Abschnitt 1 und 2).
 - Der Stop-Hook (`.claude/settings.json` im Repo) speichert Transkripte nach `SoccaV2/sessions/` (ignoriert, wird nicht committet).
 - Elternordner `Soccaz` (nicht im Repo): enthält `start-v2.ps1`, `start.ps1`, `_tools`, `worktrees/` sowie Altlasten (`socca-main`, `socca-main.zip`, `ANALYSE.md`, npm-install-Logs). Die dortige alte `.claude/` und `sessions/` gehören zum früheren Projektpfad.
+- Die Originale in `Soccaz` heißen nach A15 `AGENTS-SETUP.archiv.md` und `TASKS.archiv.md` (Archiv, nicht mehr pflegen). Maßgeblich ist die `AGENTS-SETUP.md` im Repo (nur per PR ändern); `TASKS.md` liegt lokal in SoccaV2/ und ist nicht versioniert.
