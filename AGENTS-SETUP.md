@@ -46,6 +46,7 @@ Deine Rolle:
 - Du schreibst keinen Feature-Code selbst.
 - Aufträge gibst du ausschließlich an den Task Manager. Seine Adresse findest du mit hc ls --json --label role=task-manager. Senden mit: hc send <TM-ID> und dem Text.
 - Ergebnisse vom Task Manager prüfst du kritisch und fasst sie mir kurz zusammen.
+- Prozess, Phasen und Gates (G1 Vertrag, G2 Merge) stehen in docs/loop/LOOP-SPEC.md; halte dich daran. Meldungen an mich: max. 3 Zeilen.
 
 Erste Aufgabe: Lies das Projekt und gib mir einen Überblick über Struktur, Stack und aktuellen Stand. Warte danach auf meine Anweisungen.
 ```
@@ -71,7 +72,7 @@ Deine Rolle:
 - Ist ein Auftrag komplett, meldest du dem Orchestrator mit hc send <ORCH-ID> "...".
 - Du schreibst selbst keinen Feature-Code.
 - Code-Änderungen laufen über eigenen Branch + Pull Request auf main (nie direkt auf main); Tests führt ein anderer Worker aus als der Ersteller; Merge erst nach ausdrücklicher Freigabe des Nutzers.
-- Arbeite nach Abschnitt 3a (Worktrees).
+- Arbeite nach Abschnitt 3a (Worktrees) und nach docs/loop/LOOP-SPEC.md (Zerlegung, Integration, Retro); Meldungsformate siehe Abschnitt 3b.
 
 Lege jetzt TASKS.md an (falls nicht vorhanden) und warte auf den ersten Auftrag.
 ```
@@ -98,8 +99,10 @@ Deine Rolle:
 - Wenn du fertig bist: hc send <TM-ID> "worker-N fertig: <kurze Zusammenfassung, geänderte Dateien>"
 - Wenn du feststeckst: hc send <TM-ID> "worker-N blockiert: <Grund>"
 - Danach wartest du auf den nächsten Task.
-- Arbeite nach Abschnitt 3a (Worktrees).
+- Arbeite nach Abschnitt 3a (Worktrees) und docs/loop/LOOP-SPEC.md (Writer: Plan, TDD, /goal; Reviewer siehe unten). Meldungsformate siehe Abschnitt 3b.
 ```
+
+**Reviewer-Hinweis (gilt für jeden Worker, der einen Task als Reviewer bekommt):** Reviewer ist immer ein anderer Worker als der Writer. Er prüft in der Reihenfolge der Spec (Phase 6): Kriterien und Tests, Umfang, Code-Review (Subagent `code-reviewer`), bei Auth/Zahlung/Eingaben/Datenzugriff zusätzlich Security-Review (Subagent `security-reviewer`), dann typecheck, lint, npm test. Gemeldet werden nur Funde zu Korrektheit, Sicherheit oder Vertragskriterien. Ergebnis: `REVIEW-OK` oder `REVIEW-CHANGES` (max. 2 Runden).
 
 **Zusatz zum Prompt (nicht Teil des Originaltexts):**
 
@@ -122,12 +125,34 @@ Deine Rolle:
 ## 3a. Arbeitsweise: Git-Worktrees
 
 - Der Task Manager legt pro Task einen Worktree an (aus SoccaV2 heraus): `git worktree add ../worktrees/<branch> -b <branch>`. `../worktrees` liegt im Elternordner `Soccaz\worktrees`, also außerhalb des Repos. Pfade enthalten Leerzeichen: immer quoten.
-- Er kopiert `.env.local` aus SoccaV2 in den Worktree; der Worker führt dort `npm install` aus.
+- Bevorzugt per Skript: `node scripts/worktree.mjs create <branch> <worker 1..4>` legt den Worktree unter `../worktrees/<branch mit - statt />` an, kopiert `.env.local` (nur `PORT` = 310N und `DATABASE_URL` mit Datenbank `soccaz_wN` werden geändert), führt `npm ci` aus, legt die DB `soccaz_wN` auf dem lokalen Postgres (5433) an, migriert und seedet (`--no-seed` überspringt den Seed). `node scripts/worktree.mjs remove <branch> [--delete-branch]` räumt Worktree und Worker-DB ab (bricht bei uncommitteten Änderungen ab; angefasst werden nur `soccaz_w1` bis `soccaz_w4`). Bekannte Grenze: `APP_URL` bleibt auf dem Haupt-Port 3100, Einladungslinks aus Worker-Apps zeigen daher dorthin.
+- Manuell (Fallback): `.env.local` aus SoccaV2 kopieren; der Worker führt dort `npm ci` aus.
 - Jeder Worker arbeitet ausschließlich in seinem Worktree, nie in SoccaV2 selbst.
 - Braucht ein Worker einen Dev-Server, bekommt er einen eigenen Port: worker-1=3101, worker-2=3102, worker-3=3103, worker-4=3104 (3100 bleibt für den Haupt-Dev-Server in SoccaV2).
-- Tasks mit Datenbank-Migrationen laufen nie parallel zu anderen Tasks (alle teilen sich die lokale Postgres auf 5433).
+- Mit eigener DB pro Worker (`soccaz_wN`) isolieren Migrationen die Worker voneinander; Migrationen laufen trotzdem nie parallel zu Tasks mit Schema-Annahmen. Ohne eigene DB (gemeinsame Postgres auf 5433) laufen Migrations-Tasks strikt seriell.
+- Max. Parallelität (Spec Abschnitt 10): 2 Writer + 1 Reviewer gleichzeitig; bis zu 4 Writer nur bei kleinen, unabhängigen Tasks.
 - Nach dem Merge räumt der Task Manager den Worktree auf: `git worktree remove <pfad>` (und lokalen Branch löschen, nur den selbst angelegten).
 - Weiterhin: Branch + PR, Tests durch anderen Worker als Ersteller, Merge nur nach Nutzer-Freigabe.
+
+## 3b. Kommunikationsformat (`hc send`, Spec Abschnitt 8)
+
+Kurze, feste Formate halten die Kontexte schlank. Details und Beispiele: docs/loop/LOOP-SPEC.md.
+
+- `TASK <id> | ACs | WT | PORT | DB | DONE-Checks` (Task Manager an Worker)
+- `DONE <id> | Belege: Befehl + Ergebnis | Dateien | Commit <hash>` (Worker an Task Manager)
+- `BLOCKED <id> | Grund | braucht: TM / Orchestrator / Nutzer`
+- `REVIEW-OK <id>` oder `REVIEW-CHANGES <id> | 1) … 2) …` (Reviewer)
+- `NEEDS-USER | <eine Zeile, was der Nutzer tun muss>`: Wartet jemand auf den Nutzer, geht sofort `NEEDS-USER` an den Orchestrator; Rückfragen nur im eigenen Fenster sind verboten.
+
+## 3c. Intake (Phase 1)
+
+Den Intake startet der Nutzer in der Orchestrator-Session mit `/grill-me`. Der Skill ist nur per Slash-Befehl startbar (`disable-model-invocation`). Alternativ liest der Orchestrator `.claude/skills/grill-me/SKILL.md` und folgt dem Text.
+
+## 3d. Leitplanken: Guard-Hook, Deny-Regeln, Branch Protection
+
+- Deny-Regeln in `.claude/settings.json` und der PreToolUse-Hook `.claude/hooks/guard.mjs` blockieren u. a. Force-Push, Push auf `main`, `git reset --hard`, `git clean -f` und rekursives Löschen.
+- Amend + Force-Push, auch `--force-with-lease`, ist für Claude gesperrt und braucht eine bewusste Handlung des Nutzers im eigenen Terminal. Darum Korrekturen als zusätzlicher Commit statt Amend.
+- Der Guard ist nur eine Schicht. Die eigentliche Absicherung trägt die Branch Protection auf `main` (PR-Pflicht, CI-Pflicht, kein Force-Push): Anleitung in docs/loop/BRANCH-PROTECTION.md (folgt in E2); der Nutzer klickt sie selbst.
 
 ## 4. Anhang: Gelernt heute
 
@@ -147,7 +172,9 @@ Deine Rolle:
 ## 5. Neustart ab jetzt
 
 - Agents/Claude direkt in SoccaV2 starten: `cd "<Projektordner>\Soccaz\SoccaV2"` (Pfad quoten, Leerzeichen).
+- Alle Agents in SoccaV2 starten, damit Skills (`.claude/skills/`), Subagents (`.claude/agents/`), Hooks und `CLAUDE.md` geladen werden. Frühere Sessions per `claude --resume <name>` wieder aufnehmen (Namen wie `worker-1`, vergeben mit `/rename`).
 - Das `HC_TERMINAL_ID`-Labeling bleibt unverändert (Abschnitt 1 und 2).
+- Kontext halten (Spec Abschnitt 10): Orchestrator `/compact` bei ca. 60 %, Task Manager `/compact` nach jedem Auftrag, Worker `/clear` nach jedem Task.
 - Der Stop-Hook (`.claude/settings.json` im Repo) speichert Transkripte nach `SoccaV2/sessions/` (ignoriert, wird nicht committet).
 - Elternordner `Soccaz` (nicht im Repo): enthält `start-v2.ps1`, `start.ps1`, `_tools`, `worktrees/` sowie Altlasten (`socca-main`, `socca-main.zip`, `ANALYSE.md`, npm-install-Logs). Die dortige alte `.claude/` und `sessions/` gehören zum früheren Projektpfad.
 - Die Originale in `Soccaz` heißen nach A15 `AGENTS-SETUP.archiv.md` und `TASKS.archiv.md` (Archiv, nicht mehr pflegen). Maßgeblich ist die `AGENTS-SETUP.md` im Repo (nur per PR ändern); `TASKS.md` liegt lokal in SoccaV2/ und ist nicht versioniert.
