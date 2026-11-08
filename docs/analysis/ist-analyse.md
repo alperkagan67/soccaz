@@ -16,7 +16,7 @@ Methode: Dateien gelesen, nichts gestartet, nichts installiert (`node_modules` f
 7. [Ergebnisse](#7-ergebnisse-eintragen-bestätigen-streit)
 8. [Benachrichtigungen und Jobs](#8-benachrichtigungen-push-jobs-pg-boss)
 9. [Turnier-Bestandteile und "Tag 1/2/3"](#9-turnier-bestandteile-und-tag-123)
-10. [Abgleich mit Brief](#10-abgleich-mit-brief)
+10. [Abgleich mit Brief](#10-abgleich-mit-brief) (mit 10.5 Zahlungsmodell vs. Entscheidung)
 11. [Unklar / nicht gefunden](#11-unklar--nicht-gefunden)
 
 ---
@@ -169,7 +169,7 @@ Konstanten `src/lib/lobby-rules.ts`: 5 Startspieler je Team (`:2`), höchstens 6
 ### 6.1 Anbieter
 - Typ `Provider = "dev" | "stripe"` (`src/server/payments.ts:13`; Enum `src/db/schema-finance.ts:25`).
 - Aktiv: Stripe, sobald `STRIPE_SECRET_KEY` gesetzt ist; außerhalb von Produktion der Entwicklungs-Anbieter; in Produktion ohne Schlüssel keiner (`src/server/payments.ts:26-30`).
-- **PayPal gibt es im Code nicht als eigenen Anbieter.** Der Begriff kommt in `src/` nur im Kommentar "Geschätzte Anbietergebühr (Karte und PayPal)" vor (`src/server/payments.ts:32`). Suchbegriff `paypal` (ohne Beachtung der Groß-/Kleinschreibung) in `src` und `package.json`: nur dieser Kommentar. (In Doku-Dateien steht PayPal, z. B. `README.md:85` "Karte, PayPal über Stripe"; das ist Doku, kein Code.)
+- **PayPal gibt es im Code nicht als eigenen Anbieter.** Der Begriff kommt in `src/` an drei Stellen vor: Kommentar "Geschätzte Anbietergebühr (Karte und PayPal)" (`src/server/payments.ts:32`) und zwei UI-Texte, nämlich Admin-Einstellungen "Stripe (Karte, PayPal, SEPA)" (`src/app/admin/einstellungen/page.tsx:41`) und Hilfeseite "per Karte oder PayPal" (`src/app/hilfe/page.tsx:82`). Ein eigener PayPal-Anbieter im Code existiert nicht (`Provider = dev | stripe`, `src/server/payments.ts:13`). Suchbegriff `paypal` (ohne Beachtung der Groß-/Kleinschreibung) in `src` und `package.json`: nur dieser Kommentar. (In Doku-Dateien steht PayPal, z. B. `README.md:85` "Karte, PayPal über Stripe"; das ist Doku, kein Code.)
 - Stripe-Checkout wird per HTTP-Aufruf erzeugt (`src/server/payments.ts:39-61`), Zahlungsart Einmalzahlung `mode=payment` (`:41`). Gebührenschätzung 2,9 % + 30 Cent, einstellbar per `PAYMENT_FEE_PERCENT`/`PAYMENT_FEE_FIXED_CENTS` (`:33-37`).
 - Rückweg nach Zahlung nur auf interne Pfade (`safeReturnPath`, `:17-19`).
 
@@ -234,7 +234,7 @@ Konstanten `src/lib/lobby-rules.ts`: 5 Startspieler je Team (`:2`), höchstens 6
 - **Bezahlen** erst in Phase `payment`: `payEntry` `:199-212` (Fehler "Bezahlen geht, sobald alle Teams vollzählig sind …" `:202`; nicht doppelt `:207`; Abbuchung vom Guthaben `:208`). **Captain zahlt für alle oder einzelne**: `payForTeam` `:220-239`; nur Captain (`:225`), alles-oder-nichts (Kommentar `:216`); Zahler wird in `paidBy` gespeichert; Erstattungen gehen an den Zahler (`:176`, `refundPlayer` zahlt an `paidBy ?? userId`).
 - **Kader wieder öffnen** durch Veranstalter: `reopenRosters` `:297-312`, erstattet alle bezahlten Anteile vollständig und berechnet den Preis später neu.
 - Team abmelden: `withdrawTeam` `:315-337`; nach Anmeldeschluss kann der Veranstalter keine Teams ersetzen (`:323`). Mit weniger Teams schließen: `closeWithJoinedTeams` `:339-352` (nur nach Anmeldeschluss `:344`, Mindestens 4 Teams `:346`).
-- **Bracket-Erzeugung**: `maybeGenerateBracket` `:373-397`. Bedingungen: Phase payment, kein Bracket (`:375`), Teamzahl = `maxTeams` und ≥ 4 (`:378`), **alle Spieler haben ihren Anteil bezahlt** (`:381`). Dann Status `running`, `bracketGeneratedAt` gesetzt (`:383`), Spielplan `knockout(...)` (`:384`), echte Spiele (`createGames` `:399-428`).
+- **Bracket-Erzeugung**: `maybeGenerateBracket` `:373-397`. Bedingungen: Phase payment, kein Bracket (`:375`), Teamzahl = `maxTeams` und ≥ 4 (`:377`), **alle Spieler haben ihren Anteil bezahlt** (`:380`). Dann Status `running`, `bracketGeneratedAt` gesetzt (`:382`), Spielplan `knockout(...)` (`:383`), echte Spiele (`createGames` `:399-428`).
 - Sperre gegen Doppelt-Erzeugung: Transaktion mit Zeilensperre `.for("update")` (`lockTournament` `:105-109`) und Prüfung `bracketGeneratedAt` (`:375`).
 - **K.-o.-Baum mit Freilosen**: `knockout(teamIds)` `src/lib/tournament.ts:52` ("Freilose rücken ohne Spiel eine Runde weiter. Immer n-1 Spiele", Kommentar `:51`). Setzreihenfolge `bracketOrder` `:39`.
 - Weitere Formate sind als Funktionen vorhanden: `roundRobin` `:20`, Gruppen (`groupFixtures` `:107`, `koFromGroups` `:148`); beim Anlegen wird nur `knockout` gesetzt (`tournaments.ts:88`). `MIN_GROUP_TEAMS = 6` `src/lib/tournament.ts:17`.
@@ -258,7 +258,7 @@ Konstanten `src/lib/lobby-rules.ts`: 5 Startspieler je Team (`:2`), höchstens 6
   - Der Hinweistext erklärt, dass es um Tag und Zeitraum geht ("Wähle den Tag und von wann bis wann euer Team Zeit hat … einigen sich die Captains auf die genaue Uhrzeit", `:65`); Knopf "+ Alternativen Tag anbieten" (`:83-86`); höchstens 3 (`:84`, `MAX_WINDOWS = 3` `src/lib/matchmaking.ts:5`).
 - Serverseitig sind es Zeitfenster `{from,to}`: Pflicht ≥ 1 Fenster (`src/server/matchmaking.ts:34`), höchstens 3 (`:35`); Spalte `matchmaking_queue.windows` (`src/db/schema-matchmaking.ts:21`). Aus der Überschneidung zweier Teams werden Terminvorschläge gebildet (`src/lib/matchmaking.ts:60`, Verwendung `:115`).
 - Beim Spiel selbst heißt das Feld `time_windows` ("vereinbartes Zeitfenster … leer = Tag frei", `src/db/schema.ts:127`).
-- Suche im Code (`src`, `drizzle/*.sql`, `tests`, `PLAN.md`, `docs/*.md`) nach den Mustern `tag 1/2/3`, `day 1/2/3`, `tag1/2/3`, `day1/2/3`, `dayNumber`, `spieltag`, `dayIndex`: Treffer nur "Spieltag" im Sinn von Spielbetrieb (z. B. `src/server/actions.ts:198`, Kommentar), nicht als Turniertag. `day${i}` steht nur in `QueueForm.tsx`.
+- Suche im Code (`src`, `drizzle/*.sql`, `tests`, `PLAN.md`, `docs/*.md`) nach den Mustern `tag 1/2/3`, `day 1/2/3`, `tag1/2/3`, `day1/2/3`, `dayNumber`, `spieltag`, `dayIndex`: Treffer nur "Spieltag" im Sinn von Spielbetrieb (z. B. `src/server/actions.ts:198`, Kommentar), nicht als Turniertag. `day${i}` steht in `src/app/matchmaking/QueueForm.tsx:70,71` (Formular) und wird in `src/server/matchmaking-actions.ts:34` gelesen (gleicher Matchmaking-Kontext, kein Turnierbezug).
 - **Es gibt kein Datenbankfeld, kein Turnierformular-Feld und keine Turnierlogik namens Tag 1/2/3.** Das Turnier-Formular hat die Felder name, city, maxTeams, venueText, startsAt, registrationDeadline, durationHours, matchMinutes, hourlyRent, public (`src/app/app/turniere/neu/TournamentForm.tsx:15-67`).
 
 ## 10. Abgleich mit Brief
@@ -280,15 +280,15 @@ Der Git-Verlauf nennt diese Schritte (Commit-Titel per `git log --oneline`): Tur
 | Jeder Spieler zahlt selbst | Ja, plus Captain kann für andere zahlen | `tournaments.ts:199`, `:220` |
 | Turnier-Lobby mit Teams, Captains, Spielern, Zahlungsstatus, Bereit-Status | Ja, Daten dafür werden geliefert | `tournaments.ts:557-565,609-614` |
 | Bereit-Reset bei Kaderänderung | Ja | `tournaments.ts:166,193` |
-| Bracket verborgen bis Bedingungen erfüllt | Ja | `tournaments.ts:373-384,580-581` |
-| K.-o.-Bracket einmalig, Freilose | Ja | `tournaments.ts:384`, `src/lib/tournament.ts:52` |
+| Bracket verborgen bis Bedingungen erfüllt | Ja | `tournaments.ts:373-384 (Prüfungen 375-380),580-581` |
+| K.-o.-Bracket einmalig, Freilose | Ja | `tournaments.ts:383`, `src/lib/tournament.ts:52` |
 | Sieger rücken automatisch weiter | Ja | `finalizers.ts:7`, `tournaments.ts:439-454` |
 | Ersetzen fehlender Teams bis Anmeldeschluss | Ja (Team abmelden durch Veranstalter) | `tournaments.ts:315-337` |
 | Absage mit voller Rückbuchung | Ja | `tournaments.ts:491-509` |
 | Doppelte Zahlung / doppeltes Bracket ausgeschlossen | Ja | `tournaments.ts:207,375,105-109`, `ledger.ts:38-69` |
 | Privatspiel: 10 Spieler Standard | Ja | `lobby-rules.ts:23` (`DEFAULT_PRIVATE_PLAYERS`) |
 | Privatspiel nicht öffentlich, nur per Link | Ja (Spiel-Team `kind=private`, Match `kind=private`, Einladung) | `privategame.ts:48-49,60,73-74` |
-| Zwei Teams einteilen oder zufällig | Ja | `lobby.ts:406,427` |
+| Zwei Teams einteilen oder zufällig | Ja | Zufällig: `randomSplit` `lobby.ts:427`; Teams einteilen/Zuweisung zurücknehmen: `assignSubstitute` `lobby.ts:406` (weist wartende Spieler ohne Team einem Team zu, Team-Admin; bei Privatspielen ist der Veranstalter Admin beider Spiel-Teams, `privategame.ts:52-55`; Beitritt ohne Team `privategame.ts:120`), `unassignParticipant` `lobby.ts:456` |
 | Hallenmiete auf zahlende Spieler | Ja, über die Teamspiel-Abrechnung | `privategame.ts:69`, `money.ts:38-40` (Besonderheiten nicht vollständig geprüft) |
 | Privatspiel zählt nicht für Rangliste | Ja | `stats.ts:36` |
 | Link funktioniert nach Anmeldung/Registrierung | Seite und Beitritt sind vorhanden; Ablauf über Anmeldung nicht durchgespielt | `src/app/spiel/[token]/page.tsx`, `privategame.ts:107` |
@@ -316,12 +316,59 @@ Turnier:
 
 Teamspiel-Lobby (zum Vergleich): Bereit verlangt bei eingeschalteten Zahlungen einen bezahlten Anteil (`lobby.ts:359`).
 
+### 10.5 Zahlungsmodell vs. Entscheidung
+
+Entscheidung des Nutzers (Vertrag 005 Turniermodus, Zahlung; Stand 2026-11-08, Wortlaut in `docs/briefs/turnier-privatspiel.md`): "Jeder Spieler zahlt grundsätzlich seinen Eintritt selbst. Zusätzlich kann der Captain für einzelne oder alle Spieler seines Teams zahlen, und Spieler können auch füreinander zahlen." Dieser Unterpunkt beschreibt nur, was der Code heute tut.
+
+**(a) "Captain zahlt für alle offenen Spieler oder für einzelne" im Code**
+- Eingeführt mit Commit `5ef2018` ("Turnier: Captain zahlt für alle offenen Spieler oder für einzelne, Spieler zahlen weiter selbst; Erstattungen gehen an den Zahler"; laut `git show --stat`: Migrationen `0030`/`0031`, `src/db/schema-league.ts`, `src/server/tournament-actions.ts`, `src/app/turniere/[id]/page.tsx`). Commit `09f0976` ("Team vollzählig, Preis automatisch berechnet, erst dann bezahlen") legte die Phase `payment` fest, in der gezahlt wird.
+- Serverfunktion `payForTeam(userId, tournamentId, targetUserId?)`: `src/server/tournaments.ts:220-239`. Nur in Phase `payment` (`:223`); der Aufrufer muss Captain eines angemeldeten Teams sein (`:224-225`); kostenloses Turnier gesperrt (`:227`); Zielspieler muss im Team des Captains sein (`:229`); offene Spieler = Anteil noch nicht voll bezahlt (`:230`); "alles oder nichts" im Kommentar (`:217`).
+- Gebucht wird **vom Guthaben des Captains** (`debitWallet(tx, userId, …)` `:233`, `userId` = Aufrufer) auf das Konto `tournament`. Beim Spieler werden `paidCents`, `paidAt` und `paidBy = Captain` gesetzt (`:234`).
+- Server Action: `payForTeamAction` `src/server/tournament-actions.ts:76-78`. Oberfläche: Knopf "Als Captain für alle offenen Spieler bezahlen" (`src/app/turniere/[id]/page.tsx:201`), Knopf "Ich zahle für ihn" je Spieler (`:216`, Bedingung `inPayment && mine && !free && !p.paid`; `mine` = `v?.captainTeamId === team.teamId`, `:191`), Hinweis "vom Captain bezahlt" (`:211`).
+- Jeder Spieler zahlt weiter selbst über `payEntry` (`tournaments.ts:199-212`, Action `tournament-actions.ts:72-74`).
+
+**(b) Können Spieler heute für andere Spieler zahlen?**
+- `payEntry` bucht ausschließlich für den Aufrufer: Es liest die eigene Zeile in `tournament_players` (`:203`), bucht vom eigenen Guthaben (`:208`) und setzt `paidBy` auf den Aufrufer (`:209`). Die Action `payEntryAction(tournamentId)` hat keinen Parameter für einen anderen Spieler (`tournament-actions.ts:72`).
+- `payForTeam` verlangt, dass der Aufrufer `captainId` des Teams ist (`tournaments.ts:224-225`) und wirkt nur auf Spieler des eigenen Teams (`:228-229`).
+- **Ergebnis: Ein Nicht-Captain kann heute nicht für einen anderen Spieler zahlen; auch ein Captain nicht für ein anderes Team.** Nachweis: Die Buchungsart `tournament_entry` wird in `src/server/tournaments.ts` nur an zwei Stellen gebucht (`:208` in `payEntry`, `:233` in `payForTeam`).
+
+**(c) Wohin gehen Erstattungen?**
+- `refundPlayer` (`tournaments.ts:173-178`) schreibt dem Konto `p.paidBy ?? p.userId` gut (`:176`), also dem, der gezahlt hat. `paid_by` auf Spielerebene verweist auf `users` (`src/db/schema-league.ts:136`). Die Spalte `tournament_teams.paid_by` (`:118`) wird im Serverteil nicht verwendet (Suche, siehe Abschnitt 11).
+- Aufrufer: Absage durch Veranstalter (`tournaments.ts:499-501`), Kader wieder öffnen (`:304`, danach wird `paidBy` auf null gesetzt, `:305`), Spieler verlässt Kader (`:192`).
+- Beim Wiederöffnen werden Spieler und Zahler benachrichtigt (`:309`, `paidBy` wird einbezogen).
+- Heute kann `paidBy` nur der Spieler selbst oder dessen Captain sein (Abschnitt (b)). Würden Spieler für Spieler zahlen, ginge nach dem jetzigen Code die Erstattung an den Zahler (`paidBy`), weil `refundPlayer` nicht nach der Art des Zahlers unterscheidet. Das Datenmodell lässt jeden Nutzer als `paidBy` zu (`schema-league.ts:136`).
+- Folgerung aus den Phasenprüfungen, nicht per Test belegt: Spieler können nur in Phase `registration` austreten (`:184`), bezahlt wird nur in Phase `payment` (`:202`, `:223`). Ein bezahlter Spieler wird also nur über `reopenRosters` oder bei Absage erstattet, nicht über `leavePlayer`.
+- Verbleib des Geldes im Normalfall: `settle` zahlt die Summe der `paidCents` abzüglich Provision an den Veranstalter aus (`:481-484`, Provision `:26-29`); wer gezahlt hat, spielt dort keine Rolle.
+
+**(d) Passung zur Bereit-Prüfung "alle Spieler bezahlt"**
+- Die Bereit-Meldung der Captains (`setRosterComplete` `:256-273`) kommt vor der Zahlung und prüft keine Zahlung (Abschnitt 10.2, Punkt 1). Eine Prüfung "alle Spieler bezahlt" gibt es nur bei der Bracket-Erzeugung: `everyone.every(p => share === 0 || p.paid >= share)` (`:380`).
+- Diese Prüfung wertet nur `paidCents` aus, nicht `paidBy`. Ob ein Spieler selbst oder der Captain gezahlt hat, ist für die Bracket-Erzeugung ohne Bedeutung.
+- Beide Zahlfunktionen rufen nach der Zahlung `maybeGenerateBracket` auf (`payEntry` und `payForTeam`; Aufrufe `:211` bzw. `:237`).
+
+**(e) Idempotenz und Doppelzahlung**
+- Serialisierung: beide Zahlfunktionen sperren die Turnierzeile (`lockTournament` `:105-109`; Aufruf `payEntry` `:201`, `payForTeam` `:222`). `payEntry` sperrt zusätzlich die eigene Spielerzeile (`:203`), `payForTeam` die Spielerzeilen des Teams (`:228`). Gleichzeitige Aufrufe laufen dadurch nacheinander.
+- Prüfung vor dem Buchen: `payEntry` bricht ab, wenn `paidCents >= share` (`:207`); `payForTeam` nimmt nur Spieler mit `paidCents < share` (`:230`) und wirft einen Fehler, wenn keiner offen ist (`:231`).
+- Buchungsschlüssel: `tournament-entry:<Turnier>:<Spieler>:<joinedAt>:<priceRound>` in beiden Funktionen (`:208`, `:233`), also **unabhängig davon, wer zahlt**. Das Hauptbuch lässt jeden Schlüssel nur einmal wirken (`src/server/ledger.ts:63`, Unique-Spalte `src/db/schema-finance.ts:134`). `priceRound` wird bei jeder Preisfestlegung erhöht (`tournaments.ts:283`), sodass nach einer Kader-Wiederöffnung neu gezahlt werden kann.
+- Nicht ausgewertet: Der Rückgabewert von `debitWallet`/`post` (`created: true/false`) wird an `:208` und `:233` nicht geprüft (`src/server/ledger.ts:41,65-68`). Das Guthaben wird vor dem Buchen geprüft (`ledger.ts:92-93`). Einen Datenbank-Constraint "höchstens eine Zahlung je Spieler" außer dem Buchungsschlüssel habe ich nicht gefunden.
+- Erstattungsschlüssel enthalten `joinedAt` und `paidAt` (`tournaments.ts:176`).
+- Unklar: Testabdeckung dieser Fälle (`tests/integration/tournament.test.ts` vorhanden, Inhalt nicht gelesen).
+
+**Differenz Entscheidung ↔ Ist**
+1. "Jeder Spieler zahlt selbst": **Ist vorhanden** (`payEntry`, `tournaments.ts:199`).
+2. "Captain zahlt für einzelne oder alle seines Teams": **Ist vorhanden** (`payForTeam`, `:220`), nur in Phase `payment`, nur für das eigene Team, nur vom eigenen Guthaben.
+3. "Spieler können füreinander zahlen": **Ist nicht vorhanden**; nur der Captain zahlt für andere (Abschnitt (b)).
+4. Erstattung an den Zahler: **Ist vorhanden** über `paidBy` (`:176`); der Fall "Spieler zahlt für Spieler" kommt im Ist nicht vor.
+5. Reihenfolge Bereit/Zahlung: **Ist umgekehrt** zu "Bereit erst nach Zahlung" aus dem Brief (Abschnitt 10.2, Punkt 1). Der Entscheidungsvermerk äußert sich dazu nicht.
+6. Unklar: Verhalten, wenn der Zahler später nicht mehr im Turnier ist (z. B. Captain-Wechsel). Eine Funktion zum Ändern von `captainId` wurde nicht gefunden; gesetzt wird `captainId` beim Anmelden (`:146`).
+
+---
+
 ## 11. Unklar / nicht gefunden
 
 | Gesucht | Ergebnis |
 |---|---|
 | Inhalt der Next.js-Hinweise `node_modules/next/dist/docs/` | Nicht vorhanden im Worktree (`node_modules` fehlt); nicht gelesen |
-| PayPal als eigener Anbieter | Suchbegriff `paypal` in `src`, `package.json`: nur Kommentar `src/server/payments.ts:32`. Nur Doku-Erwähnungen (`PLAN.md`, `README.md`, `docs/ARCHITEKTUR.md`) |
+| PayPal als eigener Anbieter | Suchbegriff `paypal` in `src`, `package.json`: Kommentar `src/server/payments.ts:32` und UI-Texte `src/app/admin/einstellungen/page.tsx:41`, `src/app/hilfe/page.tsx:82`; kein eigener Anbieter (`Provider = dev | stripe`). Nur Doku-Erwähnungen (`PLAN.md`, `README.md`, `docs/ARCHITEKTUR.md`) |
 | "Tag 1/2/3" im Turnier (Feld, Datenbank, Logik) | Nicht gefunden. Suchmuster siehe 9.4. Vorkommen nur als Zeitfenster-Felder in `QueueForm.tsx` |
 | Bracket-Dashboard "Baum" und Board im Detail | Dateien vorhanden (`src/app/turniere/[id]/*.tsx`), Inhalt nicht gelesen |
 | Captain-zahlt-für-alle in der Oberfläche | Serverfunktion belegt (`tournaments.ts:220`, `tournament-actions.ts:76`); Oberfläche nicht gelesen |
@@ -332,3 +379,7 @@ Teamspiel-Lobby (zum Vergleich): Bereit verlangt bei eingeschalteten Zahlungen e
 | Ergebnisse von Tests (typecheck, lint, vitest, e2e) | Nicht ausgeführt (nur lesend, `node_modules` fehlt) |
 | Verhalten bei laufender Datenbank (Migrationen tatsächlich angewendet, Triggerstand) | Nicht geprüft; nur Migrationsdateien gelesen |
 | Rollen-Rechte im Detail (`src/lib/roles.ts`) | Datei vorhanden (26 Zeilen), nicht ausgewertet |
+| Testabdeckung der Turnier-Zahlfälle (Doppelzahlung, Captain-Zahlung, Erstattung an Zahler) | `tests/integration/tournament.test.ts` vorhanden, Inhalt nicht gelesen |
+| Funktion zum Ändern des Captains (`captainId`) | Nicht gefunden (Suche `captainId` mit `set(` in `src/server/tournaments.ts`); gesetzt nur beim Anmelden (`:146`) |
+| Nutzung von `tournament_teams.paid_by` / `fee_cents` | Spalten im Schema (`src/db/schema-league.ts:118-119`), Verwendung in `src/server/tournaments.ts` nicht gefunden (Suche `feeCents`, `paidBy` auf Teamebene) |
+| Wirkung, wenn jemand für einen anderen Spieler zahlen würde | Im Code nicht vorhanden; Beschreibung nur über `paidBy` in Abschnitt 10.5 (c) |

@@ -79,3 +79,10 @@ ABNAHME
 - Ein Privatspiel-Link funktioniert auch für neu registrierte Nutzer.
 - Ein Privatspiel erscheint nicht öffentlich und nicht in der Rangliste.
 - Schreibe automatisierte Tests für Rechte, Zahlungen, Bereit-Logik und Bracket.
+
+ENTSCHEIDUNGEN DES NUTZERS (Stand 2026-11-08)
+
+Vertrag 005 Turniermodus, Zahlung:
+"Jeder Spieler zahlt grundsätzlich seinen Eintritt selbst. Zusätzlich kann der Captain für einzelne oder alle Spieler seines Teams zahlen, und Spieler können auch füreinander zahlen."
+
+Offen, noch nicht entschieden: wohin fließt das Eintrittsgeld, Rückzug nach Zahlung, wer trägt Ergebnisse ein/Streit, Bracket zufällig oder gesetzt, Privatspiel fester/steigender Anteil bei Nichtzahlern, Anmeldeschluss mit zu wenigen Teams.
