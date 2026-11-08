@@ -24,7 +24,7 @@ Next.js-Regeln: AGENTS.md (nicht überschreiben, nicht ändern).
 
 ## Konventionen
 
-- Änderungen nur über eigenen Branch + Pull Request, nie direkt auf `main`. Merge ausschließlich durch den Nutzer.
+- Änderungen nur über eigenen Branch + Pull Request, nie direkt auf `main`. Merge nach der Merge-Regel (AGENTS-SETUP.md Abschnitt 3): Task Manager mergt normale PRs per `gh pr merge <nr> --auto --squash --delete-branch`, nie `--admin`; nur der Nutzer mergt PRs mit `.claude/`, `.github/`, DB-Migrationen, `package.json`/Lockfile, Zahlungen, Auth und Prozessdateien (`CLAUDE.md`, `AGENTS-SETUP.md`, `docs/loop/`).
 - Tests führt ein anderer Worker aus als der Ersteller (Writer ≠ Reviewer).
 - Commit-Autor ist die GitHub-noreply-Adresse (`user.email` repo-lokal, auch in jedem Worktree prüfen).
 - Jeder Commit endet mit `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
