@@ -117,3 +117,64 @@ for (const cmd of ["git push --mirror", "git push --all", "git push origin --all
   });
 }
 test("erlaubt: Branch mit all im Namen", () => assert.equal(runCmd("git push origin feat/all-in-one").code, 0));
+
+// ---- Review-Fixes 2 (Runde 3) ----
+
+// S1) fail-closed bei internem Fehler / extremer Tiefe (kein Crash mit Exit 1)
+test("S1: 5000x $( rm -rf x 5000x ) => Exit 2 (kein Crash)", () => {
+  const cmd = "echo " + "$(".repeat(5000) + "rm -rf x" + ")".repeat(5000);
+  const r = runCmd(cmd);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /blockiert/);
+});
+test("S1: 300x $( harmlos verschachtelt => Exit 2 (zu tief, fail-closed)", () => {
+  assert.equal(runCmd("echo " + "$(".repeat(300) + "echo hi" + ")".repeat(300)).code, 2);
+});
+test("S1: 3x $( harmlos verschachtelt => Exit 0", () => {
+  assert.equal(runCmd("echo $(echo $(echo $(echo hi)))").code, 0);
+});
+test("S1: leere/defekte Eingabe bleibt Exit 0", () => {
+  assert.equal(run("").code, 0);
+  assert.equal(run("nicht json").code, 0);
+});
+
+// R4) Tiefenueberschreitung wird nie stillschweigend erlaubt
+function nest(n, inner) {
+  let c = inner;
+  for (let i = 0; i < n; i++) c = `bash -c ${JSON.stringify(c)}`;
+  return c;
+}
+test("R4: 3-fach bash -c mit rm -rf => Exit 2", () => assert.equal(runCmd(nest(3, "rm -rf x")).code, 2));
+test("R4: 6-fach bash -c mit rm -rf => Exit 2", () => {
+  const r = runCmd(nest(6, "rm -rf x"));
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /verschachtelt|BLOCKIERT/);
+});
+test("R4: 10-fach bash -c mit rm -rf => Exit 2", () => assert.equal(runCmd(nest(10, "rm -rf x")).code, 2));
+test("R4: 3-fach bash -c harmlos => Exit 0", () => assert.equal(runCmd(nest(3, "echo hi")).code, 0));
+
+// R1) Shell-Schluesselwoerter / Gruppen
+for (const cmd of [
+  "if true; then rm -rf x; fi",
+  "{ rm -rf x; }",
+  "for f in a b; do rm -rf $f; done",
+  "while true; do git push --force origin feat/x; done",
+  "! rm -rf x",
+]) {
+  test(`R1 blockiert: ${cmd}`, () => assert.equal(runCmd(cmd).code, 2));
+}
+for (const cmd of ["if true; then echo ok; fi", "{ git status; }", "for f in a b; do echo $f; done", "if git diff --quiet; then rm notes.txt; fi"]) {
+  test(`R1 erlaubt: ${cmd}`, () => assert.equal(runCmd(cmd).code, 0));
+}
+
+// R2) find -exec
+for (const cmd of [
+  "find . -name x -exec rm -rf {} +",
+  String.raw`find . -exec rm -r {} \;`,
+  "find . -execdir sh -c 'rm -rf \"$1\"' _ {} ';'",
+]) {
+  test(`R2 blockiert: ${cmd}`, () => assert.equal(runCmd(cmd).code, 2));
+}
+for (const cmd of ["find . -name x -exec echo {} +", String.raw`find . -name '*.log' -exec rm {} \;`, "find . -name x"]) {
+  test(`R2 erlaubt: ${cmd}`, () => assert.equal(runCmd(cmd).code, 0));
+}

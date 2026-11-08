@@ -35,9 +35,22 @@
 // --force-with-lease. Kuenftige Amend + Force-Pushes brauchen damit eine
 // bewusste Handlung des Nutzers.
 //
+// Fail-closed: Interne Fehler (Exception, Stack Overflow) und zu tiefe
+// Verschachtelung (mehr als MAX_DEPTH Ebenen bash -c/eval/..., mehr als
+// MAX_PARSE_DEPTH Ebenen $( )) blockieren mit Exit 2. Nur leere oder defekte
+// Hook-Eingabe (kein command) ergibt Exit 0.
+// Shell-Schluesselwoerter/Gruppen (if/then/else/elif/fi/do/done/while/until,
+// { } !) am Segmentanfang werden uebersprungen; find -exec/-execdir/-ok/-okdir
+// wird wie ein eigener Befehl ausgewertet.
+//
 // Bekannte Grenzen (guard-light, kein vollstaendiger Parser):
-//  - Umgehungen ueber Variablen (X=rm; $X ...), find -delete / find -exec,
-//    python/node-Einzeiler werden nicht erkannt.
+//  - Exotische Heredoc-Faelle: unquoted Heredoc mit Substitution im Body;
+//    "bash <<EOF" mit Body als Script nur teilweise.
+//  - Umgehungen ueber Variablen (X=rm; $X -rf y), find -delete,
+//    python/node-Einzeiler (rmtree/rmSync) werden nicht erkannt.
+//  - Der Guard ist nur eine Schicht; die eigentliche Sicherheit tragen
+//    Deny-Regeln, Branch Protection (PR-Pflicht, CI-Pflicht, kein Force-Push)
+//    und die PR-Pruefung durch den Nutzer.
 //  - git reset --hard, git clean -f, DELETE FROM greifen nur ueber die
 //    Deny-Regeln in settings.json.
 //  - Ein reines "git push" ohne Ziel wird nicht blockiert (der aktuelle Branch
@@ -46,9 +59,15 @@
 import { readFileSync } from "node:fs";
 
 const MAX_DEPTH = 5;
+const MAX_PARSE_DEPTH = 100;
+
+// Wird bei zu tiefer Verschachtelung geworfen; main() faengt sie fail-closed ab.
+class DepthError extends Error {}
 const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh"]);
 const WRAPPERS = new Set(["sudo", "doas", "env", "command", "builtin", "nohup", "time", "exec", "xargs", "nice", "stdbuf"]);
-const DB_CLIENTS = new Set(["psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "duckdb"]);
+// Shell-Schluesselwoerter/Gruppen am Segmentanfang (if true; then rm -rf x; fi, { rm -rf x; })
+const KEYWORDS = new Set(["if", "then", "else", "elif", "fi", "do", "done", "while", "until", "{", "}", "!"]);
+const DB_CLIENTS =new Set(["psql", "mysql", "mariadb", "sqlite3", "sqlcmd", "duckdb"]);
 
 // ---------------------------------------------------------------- Tokenizer
 
@@ -58,7 +77,8 @@ function parse(s) {
   let i = 0;
   const len = s.length;
 
-  function scan(close) {
+  function scan(close, d) {
+    if (d > MAX_PARSE_DEPTH) throw new DepthError();
     let cmd = { words: [], heredoc: "" };
     let word = null;
     let pend = [];
@@ -90,10 +110,10 @@ function parse(s) {
             i += 2;
           } else if (s[i] === "$" && s[i + 1] === "(") {
             i += 2;
-            scan(")");
+            scan(")", d + 1);
           } else if (s[i] === "`") {
             i++;
-            scan("`");
+            scan("`", d + 1);
           } else {
             word += s[i++];
           }
@@ -110,7 +130,7 @@ function parse(s) {
       } else if (c === "$" && s[i + 1] === "(") {
         word ??= "";
         i += 2;
-        scan(")");
+        scan(")", d + 1);
       } else if (c === "`") {
         if (close === "`") {
           endCmd();
@@ -119,7 +139,7 @@ function parse(s) {
         }
         word ??= "";
         i++;
-        scan("`");
+        scan("`", d + 1);
       } else if (c === ")" && close === ")") {
         endCmd();
         i++;
@@ -178,7 +198,7 @@ function parse(s) {
     endCmd();
   }
 
-  scan(null);
+  scan(null, 0);
   return out;
 }
 
@@ -234,7 +254,7 @@ function checkCommand(cmd, depth) {
   const words = cmd.words;
   let k = 0;
   while (k < words.length) {
-    if (/^[A-Za-z_]\w*=/.test(words[k])) k++;
+    if (/^[A-Za-z_]\w*=/.test(words[k]) || KEYWORDS.has(words[k])) k++;
     else if (WRAPPERS.has(baseName(words[k]))) {
       k++;
       while (k < words.length && words[k].startsWith("-")) k++;
@@ -281,6 +301,17 @@ function checkCommand(cmd, depth) {
   } else if (name === "powershell" || name === "pwsh") {
     const a = args.findIndex((x) => ["-c", "-command"].includes(x.toLowerCase()));
     if (a >= 0) return evaluate(args.slice(a + 1).join(" "), depth + 1);
+  } else if (name === "find") {
+    // Argumente nach -exec/-execdir/-ok/-okdir bis ; oder + wie einen Befehl auswerten
+    for (let a = 0; a < args.length; a++) {
+      if (!["-exec", "-execdir", "-ok", "-okdir"].includes(args[a])) continue;
+      const sub = [];
+      let b = a + 1;
+      while (b < args.length && args[b] !== ";" && args[b] !== "+") sub.push(args[b++]);
+      const r = checkCommand({ words: sub, heredoc: "" }, depth);
+      if (r) return r;
+      a = b;
+    }
   } else if (name === "cmd") {
     const a = args.findIndex((x) => x.toLowerCase() === "/c");
     if (a >= 0) return evaluate(args.slice(a + 1).join(" "), depth + 1);
@@ -289,7 +320,7 @@ function checkCommand(cmd, depth) {
 }
 
 function evaluate(text, depth = 0) {
-  if (depth > MAX_DEPTH) return null;
+  if (depth > MAX_DEPTH) throw new DepthError();
   for (const cmd of parse(String(text))) {
     const reason = checkCommand(cmd, depth);
     if (reason) return reason;
@@ -309,7 +340,16 @@ function main() {
     return 0;
   }
   if (typeof command !== "string" || !command) return 0;
-  const reason = evaluate(command);
+  // Fail-closed: jede interne Exception (auch Stack Overflow) blockiert den Befehl.
+  let reason;
+  try {
+    reason = evaluate(command);
+  } catch (e) {
+    reason =
+      e instanceof DepthError
+        ? "zu tief verschachtelt, blockiert."
+        : "interner Fehler beim Pruefen, Befehl blockiert.";
+  }
   if (reason) {
     process.stderr.write(`guard: BLOCKIERT - ${reason}\nBefehl: ${command}\n`);
     return 2;
