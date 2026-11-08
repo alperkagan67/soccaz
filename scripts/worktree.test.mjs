@@ -4,6 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   addSecret,
+  assertBase,
+  assertLocalHost,
+  resolveDbName,
   assertBranch,
   assertDbName,
   dbNameFor,
@@ -71,4 +74,39 @@ test("parseArgs", () => {
   const { positional, flags } = parseArgs(["create", "a/b", "1", "--base", "main", "--no-seed"]);
   assert.deepEqual(positional, ["create", "a/b", "1"]);
   assert.deepEqual(flags, { base: "main", "no-seed": true });
+});
+
+// ---- Review-Fixes (Runde 1) ----
+
+test("Fund A: resolveDbName - .env.local ist massgeblich, --worker muss passen", () => {
+  const url = "postgres://u@127.0.0.1:5433/soccaz_w1";
+  assert.equal(resolveDbName(url, undefined), "soccaz_w1");
+  assert.equal(resolveDbName(url, "1"), "soccaz_w1");
+  assert.throws(() => resolveDbName(url, "2"), /passt nicht/);
+  assert.throws(() => resolveDbName("postgres://u@127.0.0.1:5433/soccav2", "1"), /nicht erlaubt/);
+  assert.throws(() => resolveDbName("postgres://u@127.0.0.1:5433/soccav2", undefined), /nicht erlaubt/);
+});
+
+test("Fund A: resolveDbName - --worker nur als Fallback ohne .env.local-Name", () => {
+  assert.equal(resolveDbName(undefined, "3"), "soccaz_w3");
+  assert.equal(resolveDbName("", "4"), "soccaz_w4");
+  assert.throws(() => resolveDbName(undefined, undefined), /--worker/);
+  assert.throws(() => resolveDbName(undefined, true), /--worker/);
+  assert.throws(() => resolveDbName(undefined, "9"), /worker muss/);
+});
+
+test("Fund B: assertBase lehnt Optionen und Pfadtricks ab", () => {
+  for (const ok of ["main", "origin/main", "feat/loop-setup", "v1.2.3", "a1b2c3d"]) assert.equal(assertBase(ok), ok);
+  for (const bad of ["-x", "--orphan", "--detach", "../x", "a..b", "a b", "x/", "", undefined, true]) {
+    assert.throws(() => assertBase(bad), /--base/);
+  }
+});
+
+test("Fund C: assertLocalHost erlaubt nur lokalen Host", () => {
+  assert.equal(assertLocalHost("postgres://u@127.0.0.1:5433/x"), "127.0.0.1");
+  assert.equal(assertLocalHost("postgres://u@localhost:5433/x"), "localhost");
+  assert.equal(assertLocalHost("postgres://u@[::1]:5433/x"), "[::1]");
+  for (const bad of ["postgres://u@db.example.com:5432/x", "postgres://u@10.0.0.5/x", "postgres://u@127.0.0.1.evil.com/x", "kaputt"]) {
+    assert.throws(() => assertLocalHost(bad), /lokal|lesbar/);
+  }
 });

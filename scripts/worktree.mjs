@@ -18,6 +18,11 @@
 //  - Es werden weder .env.local-Inhalte noch Passwoerter oder Verbindungs-URLs ausgegeben. Jede Ausgabe
 //    und jeder Fehlertext laeuft durch redact().
 //  - Kein Shell-Aufruf mit Benutzereingaben; git/node laufen mit Argumentliste.
+//  - Nur lokaler Postgres (Host 127.0.0.1/localhost); remove vergleicht --worker mit der .env.local des
+//    Worktrees und bricht bei Abweichung ab; --base wird validiert (kein fuehrendes Minus).
+//
+// Bekannte Grenze: APP_URL in der .env.local bleibt auf dem Haupt-Port (3100); Einladungslinks aus
+// Worker-Apps zeigen daher auf 3100.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -68,6 +73,47 @@ export function assertBranch(branch) {
 /** Ordnername im Verzeichnis worktrees: "/" wird zu "-". */
 export function dirNameFor(branch) {
   return assertBranch(branch).replace(/\//g, "-");
+}
+
+/**
+ * DB-Name fuer remove. Liefert die .env.local des Worktrees einen DB-Namen, ist er massgeblich: er muss erlaubt
+ * sein und zu --worker passen (sonst Fehler, es wird nichts geloescht). --worker allein gilt nur als Fallback,
+ * wenn die .env.local fehlt oder keinen Namen liefert.
+ */
+export function resolveDbName(envUrl, workerFlag) {
+  const workerGiven = typeof workerFlag === "string";
+  const envDb = envUrl ? dbNameOfUrl(envUrl) : "";
+  if (envDb) {
+    assertDbName(envDb);
+    if (workerGiven && dbNameFor(parseWorker(workerFlag)) !== envDb) {
+      throw new Error(`--worker ${workerFlag} passt nicht zur Datenbank des Worktrees (${envDb}). Nichts wurde entfernt.`);
+    }
+    return envDb;
+  }
+  if (!workerGiven) throw new Error("DB-Name nicht ableitbar - bitte --worker <1..4> angeben. Nichts wurde entfernt.");
+  return dbNameFor(parseWorker(workerFlag));
+}
+
+/** --base: nur normale Ref-Namen (kein fuehrendes Minus, kein ..), damit git sie nie als Option liest. */
+export function assertBase(base) {
+  if (typeof base !== "string" || !BRANCH_RE.test(base) || base.includes("..") || base.endsWith("/") || base.endsWith(".lock")) {
+    throw new Error("Ungueltiger Wert fuer --base.");
+  }
+  return base;
+}
+
+/** Nur lokaler Postgres: Host 127.0.0.1, localhost oder ::1. */
+export function assertLocalHost(urlString) {
+  let host = "";
+  try {
+    host = new URL(urlString).hostname.toLowerCase();
+  } catch {
+    throw new Error("DATABASE_URL ist nicht lesbar.");
+  }
+  if (!["127.0.0.1", "localhost", "[::1]", "::1"].includes(host)) {
+    throw new Error("DATABASE_URL zeigt nicht auf einen lokalen Host (nur 127.0.0.1/localhost erlaubt) - Abbruch.");
+  }
+  return host;
 }
 
 export function parseArgs(argv) {
@@ -240,6 +286,7 @@ function readMainEnv(mainRoot) {
   const url = getEnvValue(content, "DATABASE_URL");
   if (!url) throw new Error("DATABASE_URL fehlt in der .env.local von SoccaV2.");
   registerUrlSecrets(url);
+  assertLocalHost(url);
   return { file, content, url };
 }
 
@@ -259,7 +306,11 @@ async function create(branch, workerArg, flags) {
   registerUrlSecrets(wtUrl);
 
   console.log(`[1/5] git worktree add (Branch ${branch})`);
-  git(["worktree", "add", wtPath, "-b", branch, ...(flags.base ? [String(flags.base)] : [])], top);
+  if ("base" in flags) {
+    assertBase(flags.base);
+    git(["rev-parse", "--verify", "--quiet", `${flags.base}^{commit}`], top);
+  }
+  git(["worktree", "add", wtPath, "-b", branch, ...(flags.base ? [flags.base] : [])], top);
 
   console.log("[2/5] .env.local kopieren, PORT und DATABASE_URL anpassen");
   let content = setEnvValue(env.content, "DATABASE_URL", wtUrl);
@@ -300,18 +351,11 @@ async function remove(branch, flags) {
   if (!listedWorktrees(top).some((p) => samePath(p, wtPath))) throw new Error("Kein registrierter Worktree fuer diesen Branch gefunden.");
   if (samePath(wtPath, top)) throw new Error("Der aktuelle Worktree kann nicht entfernt werden (aus SoccaV2 aufrufen).");
 
-  // Worker/DB ableiten: --worker oder DB-Name aus der .env.local des Worktrees (nur Namensmuster zaehlt)
-  let dbName;
-  if (flags.worker) dbName = dbNameFor(parseWorker(flags.worker));
-  else {
-    const f = path.join(wtPath, ".env.local");
-    const url = existsSync(f) ? getEnvValue(readFileSync(f, "utf8"), "DATABASE_URL") : undefined;
-    if (url) registerUrlSecrets(url);
-    const name = url ? dbNameOfUrl(url) : "";
-    if (!DB_NAME_RE.test(name)) throw new Error("DB-Name nicht ableitbar oder nicht erlaubt - bitte --worker <1..4> angeben. Nichts wurde entfernt.");
-    dbName = name;
-  }
-  assertDbName(dbName);
+  // DB ableiten: Die .env.local des Worktrees ist massgeblich; --worker muss dazu passen (Fallback nur ohne .env.local)
+  const f = path.join(wtPath, ".env.local");
+  const url = existsSync(f) ? getEnvValue(readFileSync(f, "utf8"), "DATABASE_URL") : undefined;
+  if (url) registerUrlSecrets(url);
+  const dbName = resolveDbName(url, flags.worker);
 
   const dirty = git(["status", "--porcelain"], wtPath);
   if (dirty) throw new Error("Worktree hat uncommittete Aenderungen oder neue Dateien - Abbruch. Erst committen oder bewusst bereinigen.");
