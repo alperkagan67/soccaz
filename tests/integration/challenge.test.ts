@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matchRequests, matches, notifications } from "@/db/schema";
+import { matchParticipants, matchRequests, matches, notifications, teams } from "@/db/schema";
 import { matchOptions } from "@/db/schema-matchmaking";
 import { venues } from "@/db/schema-finance";
 import { acceptChallenge, challengeTeam, convertLegacyChallenges, declineChallenge, pendingChallengeMatches } from "@/server/challenges";
@@ -41,6 +41,44 @@ describe("Direkt-Herausforderung", () => {
     await expect(challengeTeam(d.a.id, d.ta.id, d.tb.id)).rejects.toThrow(/schon eine Herausforderung/);
     await expect(challengeTeam(d.b.id, d.tb.id, d.ta.id)).rejects.toThrow(/schon eine Herausforderung/);
     expect((await pendingChallengeMatches(d.b.id)).map((x) => x.id)).toContain(id);
+  });
+
+  it("AC-6: zwei parallele Herausforderungen im selben Paar ergeben genau ein Spiel (gleiche und Gegenrichtung, kein Deadlock)", async () => {
+    for (const opposite of [false, true]) {
+      const d = await duel();
+      const calls = [challengeTeam(d.a.id, d.ta.id, d.tb.id), opposite ? challengeTeam(d.b.id, d.tb.id, d.ta.id) : challengeTeam(d.a.id, d.ta.id, d.tb.id)];
+      const res = await Promise.allSettled(calls);
+      expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const rejected = res.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      expect(rejected).toHaveLength(1);
+      expect(String(rejected[0].reason?.message)).toBe("Zwischen euch läuft schon eine Herausforderung.");
+      const rows = await db.select().from(matches).where(and(inArray(matches.homeTeamId, [d.ta.id, d.tb.id]), inArray(matches.awayTeamId, [d.ta.id, d.tb.id])));
+      expect(rows).toHaveLength(1);
+    }
+  });
+
+  it("AC-6: viele parallele Aufrufe in beide Richtungen bleiben bei einem Spiel", async () => {
+    const d = await duel();
+    const res = await Promise.allSettled([1, 2, 3, 4].flatMap(() => [challengeTeam(d.a.id, d.ta.id, d.tb.id), challengeTeam(d.b.id, d.tb.id, d.ta.id)]));
+    expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(res.filter((r) => r.status === "rejected")).toHaveLength(7);
+  });
+
+  it("AC-7 (Regression): die 6. offene Herausforderung eines Teams wird abgelehnt", async () => {
+    const d = await duel();
+    for (let i = 0; i < 5; i++) {
+      const o = await makeUser("lim");
+      await challengeTeam(d.a.id, d.ta.id, (await makeTeam(o.id, `Limit ${i}`)).id);
+    }
+    await expect(challengeTeam(d.a.id, d.ta.id, d.tb.id)).rejects.toThrow("Ihr habt schon 5 offene Herausforderungen.");
+  });
+
+  it("AC-7 (Regression): archivierte Teams (eigenes oder Zielteam) werden abgelehnt", async () => {
+    const d = await duel();
+    await db.update(teams).set({ archivedAt: new Date() }).where(eq(teams.id, d.tb.id));
+    await expect(challengeTeam(d.a.id, d.ta.id, d.tb.id)).rejects.toThrow("Team nicht gefunden.");
+    await db.update(teams).set({ archivedAt: new Date() }).where(eq(teams.id, d.ta.id));
+    await expect(challengeTeam(d.a.id, d.ta.id, (await makeTeam((await makeUser("x")).id, "Frei")).id)).rejects.toThrow("Team nicht gefunden.");
   });
 
   it("solange nicht angenommen: keine Terminwahl; nur das Zielteam nimmt an, dann einigen sich beide auf den Termin, danach folgen Hallen und Veto", async () => {

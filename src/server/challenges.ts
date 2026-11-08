@@ -20,7 +20,9 @@ export async function challengeTeam(userId: string, myTeamId: string, targetTeam
   return db.transaction(async (tx) => {
     const [role] = await tx.select({ role: teamMembers.role }).from(teamMembers).where(and(eq(teamMembers.teamId, myTeamId), eq(teamMembers.userId, userId)));
     if (role?.role !== "admin") throw new DomainError("Nur Team-Admins können herausfordern.");
-    const rows = await tx.select({ id: teams.id, archivedAt: teams.archivedAt }).from(teams).where(inArray(teams.id, [myTeamId, targetTeamId]));
+    // Beide Team-Zeilen in fester Reihenfolge (nach ID) sperren: parallele Aufrufe im selben Paar, auch in Gegenrichtung, laufen nacheinander und
+    // ohne Deadlock. Die Prüfung unten sieht danach die bereits festgeschriebene Herausforderung (eigene Anweisung, frischer Snapshot).
+    const rows = await tx.select({ id: teams.id, archivedAt: teams.archivedAt }).from(teams).where(inArray(teams.id, [myTeamId, targetTeamId])).orderBy(teams.id).for("update");
     if (rows.length !== 2 || rows.some((t) => t.archivedAt)) throw new DomainError("Team nicht gefunden.");
 
     // Pro Team-Paar nur eine offene Herausforderung, und nicht zu viele auf einmal
