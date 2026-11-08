@@ -169,7 +169,7 @@ Konstanten `src/lib/lobby-rules.ts`: 5 Startspieler je Team (`:2`), höchstens 6
 ### 6.1 Anbieter
 - Typ `Provider = "dev" | "stripe"` (`src/server/payments.ts:13`; Enum `src/db/schema-finance.ts:25`).
 - Aktiv: Stripe, sobald `STRIPE_SECRET_KEY` gesetzt ist; außerhalb von Produktion der Entwicklungs-Anbieter; in Produktion ohne Schlüssel keiner (`src/server/payments.ts:26-30`).
-- **PayPal gibt es im Code nicht als eigenen Anbieter.** Der Begriff kommt in `src/` an drei Stellen vor: Kommentar "Geschätzte Anbietergebühr (Karte und PayPal)" (`src/server/payments.ts:32`) und zwei UI-Texte, nämlich Admin-Einstellungen "Stripe (Karte, PayPal, SEPA)" (`src/app/admin/einstellungen/page.tsx:41`) und Hilfeseite "per Karte oder PayPal" (`src/app/hilfe/page.tsx:82`). Ein eigener PayPal-Anbieter im Code existiert nicht (`Provider = dev | stripe`, `src/server/payments.ts:13`). Suchbegriff `paypal` (ohne Beachtung der Groß-/Kleinschreibung) in `src` und `package.json`: nur dieser Kommentar. (In Doku-Dateien steht PayPal, z. B. `README.md:85` "Karte, PayPal über Stripe"; das ist Doku, kein Code.)
+- **PayPal gibt es im Code nicht als eigenen Anbieter.** Der Begriff kommt in `src/` an vier Stellen vor (`git grep -n -i paypal -- src package.json`): Kommentar "Geschätzte Anbietergebühr (Karte und PayPal)" (`src/server/payments.ts:32`) und drei UI-Texte, nämlich Admin-Einstellungen "Stripe (Karte, PayPal, SEPA)" (`src/app/admin/einstellungen/page.tsx:41`) Hilfeseite "per Karte oder PayPal" (`src/app/hilfe/page.tsx:82`) und Guthaben-Seite "kannst du hier per Karte oder PayPal aufladen" (`src/app/app/guthaben/page.tsx:84`). Ein eigener PayPal-Anbieter im Code existiert nicht (`Provider = dev oder stripe`, `src/server/payments.ts:13`). In `package.json` kommt der Begriff nicht vor. (In Doku-Dateien steht PayPal, z. B. `README.md:85` "Karte, PayPal über Stripe"; das ist Doku, kein Code.)
 - Stripe-Checkout wird per HTTP-Aufruf erzeugt (`src/server/payments.ts:39-61`), Zahlungsart Einmalzahlung `mode=payment` (`:41`). Gebührenschätzung 2,9 % + 30 Cent, einstellbar per `PAYMENT_FEE_PERCENT`/`PAYMENT_FEE_FIXED_CENTS` (`:33-37`).
 - Rückweg nach Zahlung nur auf interne Pfade (`safeReturnPath`, `:17-19`).
 
@@ -288,7 +288,7 @@ Der Git-Verlauf nennt diese Schritte (Commit-Titel per `git log --oneline`): Tur
 | Doppelte Zahlung / doppeltes Bracket ausgeschlossen | Ja | `tournaments.ts:207,375,105-109`, `ledger.ts:38-69` |
 | Privatspiel: 10 Spieler Standard | Ja | `lobby-rules.ts:23` (`DEFAULT_PRIVATE_PLAYERS`) |
 | Privatspiel nicht öffentlich, nur per Link | Ja (Spiel-Team `kind=private`, Match `kind=private`, Einladung) | `privategame.ts:48-49,60,73-74` |
-| Zwei Teams einteilen oder zufällig | Ja | Zufällig: `randomSplit` `lobby.ts:427`; Teams einteilen/Zuweisung zurücknehmen: `assignSubstitute` `lobby.ts:406` (weist wartende Spieler ohne Team einem Team zu, Team-Admin; bei Privatspielen ist der Veranstalter Admin beider Spiel-Teams, `privategame.ts:52-55`; Beitritt ohne Team `privategame.ts:120`), `unassignParticipant` `lobby.ts:456` |
+| Zwei Teams einteilen oder zufällig | Ja | Zufällig: `randomSplit` `lobby.ts:427`; Teams einteilen/Zuweisung zurücknehmen: `assignSubstitute` `lobby.ts:406` (weist wartende Spieler ohne Team einem Team zu; erlaubt für Admins des Ziel-Teams `isAdminOf` und für den Plattform-Admin `isPlatformAdmin`, `lobby.ts:409`; bei Privatspielen ist der Veranstalter Admin beider Spiel-Teams, `privategame.ts:52-55`; Beitritt ohne Team `privategame.ts:120`), `unassignParticipant` `lobby.ts:456` |
 | Hallenmiete auf zahlende Spieler | Ja, über die Teamspiel-Abrechnung | `privategame.ts:69`, `money.ts:38-40` (Besonderheiten nicht vollständig geprüft) |
 | Privatspiel zählt nicht für Rangliste | Ja | `stats.ts:36` |
 | Link funktioniert nach Anmeldung/Registrierung | Seite und Beitritt sind vorhanden; Ablauf über Anmeldung nicht durchgespielt | `src/app/spiel/[token]/page.tsx`, `privategame.ts:107` |
@@ -334,10 +334,10 @@ Entscheidung des Nutzers (Vertrag 005 Turniermodus, Zahlung; Stand 2026-11-08, W
 
 **(c) Wohin gehen Erstattungen?**
 - `refundPlayer` (`tournaments.ts:173-178`) schreibt dem Konto `p.paidBy ?? p.userId` gut (`:176`), also dem, der gezahlt hat. `paid_by` auf Spielerebene verweist auf `users` (`src/db/schema-league.ts:136`). Die Spalte `tournament_teams.paid_by` (`:118`) wird im Serverteil nicht verwendet (Suche, siehe Abschnitt 11).
-- Aufrufer: Absage durch Veranstalter (`tournaments.ts:499-501`), Kader wieder öffnen (`:304`, danach wird `paidBy` auf null gesetzt, `:305`), Spieler verlässt Kader (`:192`).
+- Aufrufer: Absage durch Veranstalter (`tournaments.ts:499-501`), Kader wieder öffnen (`:304`, danach wird `paidBy` auf null gesetzt, `:305`), Spieler verlässt Kader (`:192`), Team abmelden durch Captain oder Veranstalter (`withdrawTeam` `:315-337`, Erstattung je Spieler `:325`, nur in Phase `registration`, `:318`).
 - Beim Wiederöffnen werden Spieler und Zahler benachrichtigt (`:309`, `paidBy` wird einbezogen).
 - Heute kann `paidBy` nur der Spieler selbst oder dessen Captain sein (Abschnitt (b)). Würden Spieler für Spieler zahlen, ginge nach dem jetzigen Code die Erstattung an den Zahler (`paidBy`), weil `refundPlayer` nicht nach der Art des Zahlers unterscheidet. Das Datenmodell lässt jeden Nutzer als `paidBy` zu (`schema-league.ts:136`).
-- Folgerung aus den Phasenprüfungen, nicht per Test belegt: Spieler können nur in Phase `registration` austreten (`:184`), bezahlt wird nur in Phase `payment` (`:202`, `:223`). Ein bezahlter Spieler wird also nur über `reopenRosters` oder bei Absage erstattet, nicht über `leavePlayer`.
+- Folgerung aus den Phasenprüfungen, nicht per Test belegt: Spieler können nur in Phase `registration` austreten (`:184`) und Teams nur in Phase `registration` abgemeldet werden (`:318`); bezahlt wird nur in Phase `payment` (`:202`, `:223`). Eine Erstattung bezahlter Anteile erfolgt dadurch in der Praxis über `reopenRosters` (setzt die Phase zurück auf `registration`, `:308`) oder bei Absage; `leavePlayer` und `withdrawTeam` rufen `refundPlayer` zwar ebenfalls auf, erreichen aber nur Spieler mit `paidCents = 0`, solange keine Zahlung in der Anmeldephase möglich ist.
 - Verbleib des Geldes im Normalfall: `settle` zahlt die Summe der `paidCents` abzüglich Provision an den Veranstalter aus (`:481-484`, Provision `:26-29`); wer gezahlt hat, spielt dort keine Rolle.
 
 **(d) Passung zur Bereit-Prüfung "alle Spieler bezahlt"**
@@ -368,7 +368,7 @@ Entscheidung des Nutzers (Vertrag 005 Turniermodus, Zahlung; Stand 2026-11-08, W
 | Gesucht | Ergebnis |
 |---|---|
 | Inhalt der Next.js-Hinweise `node_modules/next/dist/docs/` | Nicht vorhanden im Worktree (`node_modules` fehlt); nicht gelesen |
-| PayPal als eigener Anbieter | Suchbegriff `paypal` in `src`, `package.json`: Kommentar `src/server/payments.ts:32` und UI-Texte `src/app/admin/einstellungen/page.tsx:41`, `src/app/hilfe/page.tsx:82`; kein eigener Anbieter (`Provider = dev | stripe`). Nur Doku-Erwähnungen (`PLAN.md`, `README.md`, `docs/ARCHITEKTUR.md`) |
+| PayPal als eigener Anbieter | Suchbegriff `paypal` in `src`, `package.json`: vier Stellen in `src`: Kommentar `src/server/payments.ts:32` und UI-Texte `src/app/admin/einstellungen/page.tsx:41`, `src/app/hilfe/page.tsx:82`, `src/app/app/guthaben/page.tsx:84`; keine in `package.json`; kein eigener Anbieter (`Provider = dev oder stripe`). Nur Doku-Erwähnungen (`PLAN.md`, `README.md`, `docs/ARCHITEKTUR.md`) |
 | "Tag 1/2/3" im Turnier (Feld, Datenbank, Logik) | Nicht gefunden. Suchmuster siehe 9.4. Vorkommen nur als Zeitfenster-Felder in `QueueForm.tsx` |
 | Bracket-Dashboard "Baum" und Board im Detail | Dateien vorhanden (`src/app/turniere/[id]/*.tsx`), Inhalt nicht gelesen |
 | Captain-zahlt-für-alle in der Oberfläche | Serverfunktion belegt (`tournaments.ts:220`, `tournament-actions.ts:76`); Oberfläche nicht gelesen |
