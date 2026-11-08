@@ -51,3 +51,6 @@ next-env.d.ts
 # Sicherungen und lokale Betriebskonfiguration
 /backups/
 sessions/
+
+# Arbeitsdatei, lokal gepflegt, nicht im Repo
+TASKS.md
