@@ -1,0 +1,13 @@
+# <NNNN> – <Entscheidung als konkrete Wahl>
+Status: vorgeschlagen | akzeptiert | ersetzt durch <NNNN>
+Datum: YYYY-MM-DD
+
+## Kontext und Problem
+## Betrachtete Optionen
+- A …  - B …  - C …
+## Entscheidung
+Gewählt: …, weil …
+## Konsequenzen
+Gut: …  Schlecht: …  Wann neu prüfen: …
+## Council-Stimmen (kurz)
+Architekt: …  Skeptiker: …  Pareto: …
