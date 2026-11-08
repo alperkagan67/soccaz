@@ -216,6 +216,17 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
   await a.getByLabel("Bis", { exact: true }).first().fill("21:00");
   await a.getByRole("button", { name: "Lobby aufmachen", exact: true }).click();
   await expect(a).toHaveURL(/\/lobby\/offen\//, { timeout: 30_000 });
+  // AC-5: Teammitglied sieht den Spielernamen, Fremde und nicht eingeloggte Nutzer nur die Anzahl
+  const lobbyUrl = a.url();
+  await expect(a.getByTestId("open-lobby-player")).toHaveCount(1);
+  const anon = await (await browser.newContext()).newPage();
+  for (const viewer of [b, anon]) {
+    await viewer.goto(lobbyUrl);
+    await expect(viewer.getByTestId("open-lobby-team")).toContainText(nameA);
+    await expect(viewer.getByTestId("open-lobby-team")).toContainText("1 von");
+    await expect(viewer.getByTestId("open-lobby-player")).toHaveCount(0);
+    await expect(viewer.getByText("Captain")).toHaveCount(0);
+  }
   await a.goto("/matchmaking");
   await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
   // die eigene Suche steht auch in der offenen Liste, ohne Annehmen
