@@ -7,7 +7,7 @@ import { teamStats } from "@/db/schema-community";
 import { gameInvites } from "@/db/schema-matchmaking";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { assignSubstitute, finalConfirm, getLobby, payShare, randomSplit, setReady, unassignParticipant } from "@/server/lobby";
-import { createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame } from "@/server/privategame";
+import { createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput } from "@/server/privategame";
 import { listBoard } from "@/server/board";
 import { getTeamProfile } from "@/server/profiles";
 import { getTeamBySlug, listMyTeams } from "@/server/teams";
@@ -24,7 +24,7 @@ beforeAll(async () => {
 afterAll(cleanup);
 
 const days = (n: number) => new Date(Date.now() + n * 86_400_000);
-const base = { city: "Essen", venueText: "Soccerhalle Test", startsAt: days(4), durationMin: 60 };
+const base = { city: "Essen", venueText: "Soccerhalle Test", startsAt: days(4), durationMin: 60, rentCents: 12_000 };
 let key = 0;
 const fund = (userId: string, cents: number) => db.transaction((tx) => creditWallet(tx, userId, { from: "bank", amountCents: cents, kind: "adjustment", idempotencyKey: `pg-${userId}-${++key}` }));
 
@@ -159,6 +159,44 @@ describe("Teams einteilen", () => {
     expect(parts.filter((p) => p.teamId === match.homeTeamId)).toHaveLength(6);
     expect(parts.filter((p) => p.teamId === match.awayTeamId)).toHaveLength(6);
   });
+});
+
+describe("Miete ist Pflicht (AC-1)", () => {
+  const { rentCents: _rent, ...withoutRent } = base;
+  void _rent;
+  const without = () => withoutRent;
+
+  it("fehlende, leere oder ungültige Miete wird serverseitig abgewiesen; kein stiller Plattformpreis", async () => {
+    const o = await makeUser("pvrent");
+    await expect(createPrivateGame(o.id, without())).rejects.toThrow(/Hallenmiete/);
+    await expect(createPrivateGame(o.id, { ...base, rentCents: null })).rejects.toThrow(/Hallenmiete/);
+    await expect(createPrivateGame(o.id, { ...base, rentCents: undefined })).rejects.toThrow(/Hallenmiete/);
+    for (const bad of [-1, 100_001, 1.5, Number.NaN]) await expect(createPrivateGame(o.id, { ...base, rentCents: bad })).rejects.toThrow(/Hallenmiete/);
+    // nach den Fehlversuchen existiert nichts: keine Teams, kein Spiel
+    expect(await db.select().from(teams).where(eq(teams.createdBy, o.id))).toHaveLength(0);
+  });
+
+  it("gültig sind 0 (kostenlos) bis 1.000 Euro; die Miete wird in Cent gespeichert; Standard 10 Spieler", async () => {
+    const o = await makeUser("pvrent");
+    for (const rent of [0, 1, 12_000, 100_000]) {
+      const { match } = await createPrivateGame(o.id, { ...base, rentCents: rent });
+      expect(match).toMatchObject({ priceCents: rent, costCents: rent, maxPlayers: 10 });
+    }
+  });
+
+  it("Formulareingabe: ausdrücklich Betrag oder kostenlos, sonst Fehler", () => {
+    expect(parseRentInput("free", "")).toBe(0);
+    expect(parseRentInput("free", "99")).toBe(0); // kostenlos gewinnt, ein altes Betragsfeld zählt nicht
+    expect(parseRentInput("amount", "120")).toBe(12_000);
+    expect(parseRentInput("amount", "95,50")).toBe(9_550);
+    expect(parseRentInput("amount", "0")).toBe(0);
+    expect(parseRentInput("amount", "1000")).toBe(100_000);
+    for (const [mode, text] of [["", "100"], ["amount", ""], ["amount", "  "], ["amount", "abc"], ["amount", "-5"], ["amount", "1000,01"], ["amount", "1001"], ["other", "100"]] as const) {
+      expect(() => parseRentInput(mode, text), `${mode}/${text}`).toThrow(/Hallenmiete|kostenlos/);
+    }
+  });
+
+  // Kostenlos-Zahlung (keine Buchung, Bereit ohne Bezahlt-Pflicht) gehört zu T52 (wallet.ts/lobby.ts), dort getestet.
 });
 
 describe("Hallenmiete geteilt, Bestätigung und Ergebnis, nicht in der Rangliste", () => {

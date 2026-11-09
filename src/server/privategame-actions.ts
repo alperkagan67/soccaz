@@ -2,9 +2,8 @@
 
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/validation";
-import { parseEuro } from "@/lib/money";
 import { parseBerlinLocal } from "@/lib/time";
-import { createPrivateGame } from "./privategame";
+import { createPrivateGame, parseRentInput } from "./privategame";
 import { requireUser } from "./session";
 import { DomainError } from "./teams";
 
@@ -14,10 +13,10 @@ export async function createPrivateGameAction(_prev: ActionState, f: FormData): 
   const user = await requireUser("/app/privatspiel/neu");
   const startsAt = parseBerlinLocal(str(f, "startsAt"));
   if (!startsAt) return { error: "Bitte gib Datum und Uhrzeit an." };
-  const rent = str(f, "rent") === "" ? null : parseEuro(str(f, "rent"));
-  if (rent === undefined || (str(f, "rent") !== "" && rent === null)) return { error: "Bitte gib die Hallenmiete als Betrag an, z. B. 120 oder 95,50.", fieldErrors: { rent: "Ungültiger Betrag." } };
   let id = "";
   try {
+    // Miete ist Pflicht: ausdrücklich ein Betrag oder "kostenlos" (rentMode), nie ein leeres Feld
+    const rent = parseRentInput(str(f, "rentMode"), str(f, "rent"));
     const { match } = await createPrivateGame(user.id, {
       city: str(f, "city"),
       venueText: str(f, "venueText"),
@@ -28,7 +27,7 @@ export async function createPrivateGameAction(_prev: ActionState, f: FormData): 
     });
     id = match.id;
   } catch (error) {
-    if (error instanceof DomainError) return { error: error.message };
+    if (error instanceof DomainError) return /Hallenmiete/.test(error.message) ? { error: error.message, fieldErrors: { rent: error.message } } : { error: error.message };
     throw error;
   }
   redirect(`/lobby/${id}`);
