@@ -17,6 +17,21 @@ async function topUp(user: { id: string; email: string }, cents: number, promo?:
   return paymentId;
 }
 
+describe("Rückweg nach der Zahlung (returnTo)", () => {
+  it("gespeichert wird immer ein interner Pfad, sonst nichts", async () => {
+    const u = await makeUser();
+    const bs = String.fromCharCode(92);
+    const stored = async (returnTo: string | null | undefined) => {
+      const { paymentId } = await createTopUp(u, 1000, undefined, returnTo);
+      return (await db.select().from(payments).where(eq(payments.id, paymentId)))[0].returnTo;
+    };
+    expect(await stored("/spiele/abc?x=1")).toBe("/spiele/abc?x=1");
+    for (const bad of [`/${bs}evil.example`, "//evil.example", "https://evil.example", "/	/evil.example", " /app", "/" + "a".repeat(600), "", null, undefined]) {
+      expect(await stored(bad), String(bad)).toBeNull();
+    }
+  });
+});
+
 describe("Aufladen mit dem Entwicklungs-Anbieter", () => {
   it("Zahlung erfolgreich: Guthaben, Beleg, Benachrichtigung", async () => {
     const u = await makeUser();

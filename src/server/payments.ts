@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { payments } from "@/db/schema-finance";
 import { formatEuro, isValidTopup } from "@/lib/money";
+import { safeInternalPath } from "@/lib/safe-path";
 import { audit } from "./audit";
 import { creditWallet, post } from "./ledger";
 import { notifyUsers } from "./notifications";
@@ -15,7 +16,7 @@ export type Checkout = { url: string; providerRef: string | null };
 
 /** Rückweg nach der Zahlung: nur interne Pfade (kein offener Weiterleitungs-Link). */
 export function safeReturnPath(value: string | null | undefined): string | null {
-  return value && value.startsWith("/") && !value.startsWith("//") && value.length < 200 ? value : null;
+  return safeInternalPath(value, null);
 }
 
 function appUrl(): string {
