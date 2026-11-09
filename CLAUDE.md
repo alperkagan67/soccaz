@@ -34,9 +34,21 @@ Next.js-Regeln: AGENTS.md (nicht überschreiben, nicht ändern).
 
 ## Merge-Regel
 
-- Normale PRs mergt nur der Task Manager, nach `REVIEW-OK`, Abschlussprüfung und grüner CI: `gh pr merge <nr> --auto --squash --delete-branch`, nie `--admin`. Der Orchestrator mergt nie.
-- Ausnahme-PRs mergt nur der Nutzer selbst (`NEEDS-USER`): PRs, die `.claude/`, `.github/`, DB-Migrationen, `package.json`/Lockfile, Zahlungen oder Auth berühren, sowie PRs, die Prozessdateien ändern (`CLAUDE.md`, `AGENTS-SETUP.md`, `docs/loop/`).
-- Ein `NEEDS-USER` übergeht kein Agent.
+- Der Task Manager mergt jeden PR selbst (auch mit DB-Migrationen, Zahlungen, Auth, `package.json`/Lockfile), sobald `REVIEW-OK`, `security-reviewer` ohne offene Funde (bei PRs mit Code; reine Doku-/Test-PRs ohne `security-reviewer`), Abschlussprüfung und grüne CI vorliegen. Nie `--admin`. Der Orchestrator mergt nie.
+- Der Befehl läuft immer einzeln, nie mit `&&` verkettet: `gh pr merge <nr> --auto --squash --delete-branch` (ist der PR sofort clean: ohne `--auto`).
+- Prüfen (`gh pr view`, `gh pr checks`) und Mergen sind getrennte Schritte. Aufräumen (Worktrees, lokale Branches, nach Squash `git branch -D`) folgt als eigener Schritt, erst nachdem `gh pr view` den PR als MERGED zeigt.
+- PRs mit Migration, Zahlungen oder Auth trägt der Task Manager in `docs/loop/GO-LIVE-AUDIT.md` ein (PR, Datum, Was, Risiko).
+- Ausnahme (`NEEDS-USER`, der Nutzer mergt selbst): Änderungen an `.claude/` und `.github/` sowie Regel-PRs, also PRs, die `CLAUDE.md`, `AGENTS-SETUP.md` oder `docs/loop/LOOP-SPEC.md` ändern. `GO-LIVE-AUDIT`, `BACKLOG` und Retros bleiben normale PRs. Ein `NEEDS-USER` übergeht kein Agent.
+- Branches: Nur der PR-Branch wird gepusht. Task-Branches bleiben lokal und werden lokal zu einem Sammel-Branch zusammengeführt. GitHub löscht den PR-Branch beim Merge; Remote-Reste erst löschen, nachdem geprüft ist, dass ihr Inhalt in `main` steht.
+
+## Autonomie und Backlog
+
+- Das Backlog steht in `docs/loop/BACKLOG.md`; der nächste Auftrag startet ohne Rückfrage.
+- G1 (Vertragsfreigabe) nur für Verträge mit echten Produktentscheidungen. Fixes und Härtungen bekommen kurze ACs direkt im Task.
+- Produktfragen sammeln und an den Orchestrator geben; unterdessen läuft der nächste Eintrag ohne offene Fragen.
+- Retro-Lehren stehen nur in `docs/retros/`; Regeländerungen gehen gesammelt an den Orchestrator.
+- Angehalten wird nur bei Änderungen an `.claude/` oder `.github/`, bei echter Blockade oder wenn das Backlog nur noch offene Produktfragen enthält.
+- Orchestrator und Task Manager machen nach jedem Auftrag `/compact`; Worker machen nach jedem Task `/clear` und lesen danach ihre Rolle aus `AGENTS-SETUP.md` neu. Maximal 2 Writer + 1 Reviewer.
 
 ## Stolperfallen
 
@@ -53,5 +65,5 @@ Next.js-Regeln: AGENTS.md (nicht überschreiben, nicht ändern).
 - Prozess: `docs/loop/LOOP-SPEC.md`; Team-Ablauf und Rollen-Prompts: `AGENTS-SETUP.md`
 - Verträge: `docs/contracts/` · Entscheidungen (ADR): `docs/decisions/` · Retros: `docs/retros/`
 - Ist-Analyse: `docs/analysis/ist-analyse.md` (liegt im Branch `docs/ist-analyse`, folgt nach dessen Merge)
-- Branch Protection (Nutzer klickt selbst): `docs/loop/BRANCH-PROTECTION.md`
+- Branch Protection (Nutzer klickt selbst): `docs/loop/BRANCH-PROTECTION.md` · Backlog und Go-Live-Audit: `docs/loop/BACKLOG.md`, `docs/loop/GO-LIVE-AUDIT.md`
 - Architektur und Betrieb: `docs/ARCHITEKTUR.md`, `docs/BETRIEB.md`

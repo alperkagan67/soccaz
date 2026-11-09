@@ -3,7 +3,7 @@
 > **Für das Agenten-Team (Orchestrator, Task Manager, Worker 1–4).**
 > Diese Datei beschreibt, WIE wir an Soccaz arbeiten. Sie ist die Vorlage für Auftrag A16.
 > Ablageort im Repo: `SoccaV2/docs/loop/LOOP-SPEC.md`
-> Änderungen an dieser Datei nur per Branch + PR; diesen PR mergt der Nutzer (Prozessdatei, siehe Phase 8).
+> Änderungen an dieser Datei nur per Branch + PR; Merge siehe CLAUDE.md, Merge-Regel.
 
 ---
 
@@ -19,7 +19,7 @@
 | P6 | **Regeln, die immer gelten müssen, sind Hooks/Permissions, nicht Prompts.** | Texte in CLAUDE.md sind Empfehlungen, Hooks und Deny-Regeln greifen deterministisch. |
 | P7 | **Jede Einheit Arbeit macht die nächste leichter.** | Nach jedem Auftrag werden Lehren festgehalten (Compounding). |
 | P8 | **Pragmatisch vor perfekt.** | Endlosschleifen aus „noch ein Fund, noch ein Fix" sind der häufigste Kostentreiber. |
-| P9 | **Wenige menschliche Pflicht-Gates.** | Der Nutzer gibt (G1) den Vertrag frei und mergt (G2) nur die Ausnahme-PRs aus Phase 8. Alles andere läuft autonom, Eskalation nur bei Blockaden. |
+| P9 | **Wenige menschliche Pflicht-Gates.** | Der Nutzer gibt nur Verträge mit echten Produktentscheidungen frei (G1); Merge siehe CLAUDE.md, Merge-Regel. Alles andere läuft autonom, Eskalation nur bei Blockaden. |
 
 ---
 
@@ -71,8 +71,7 @@
 **Kontext-Regeln:** Nach jedem abgeschlossenen Task `/clear`, damit der nächste Task mit frischem Kontext startet.
 
 ### 1.4 Nutzer
-- **G1:** Vertrag freigeben
-- **G2:** Nur Ausnahme-PRs auf GitHub mergen (Phase 8); normale PRs mergt der Task Manager
+- **G1:** Vertrag mit echten Produktentscheidungen freigeben
 - Beantwortet Eskalationen
 
 ---
@@ -87,7 +86,7 @@
  PHASE 5  Umsetzung     Writer-Worker: Plan → TDD → /goal
  PHASE 6  Review        anderer Worker: Vertrag, Code, Security, Tests
  PHASE 7  Integration   Task Manager: Rebase, CI grün, PR mit Belegen
- PHASE 8  Merge         Task Manager; Ausnahme-PRs: Nutzer      ◄── G2 nur Ausnahmen
+ PHASE 8  Merge         siehe CLAUDE.md, Merge-Regel
  PHASE 9  Retro         Lehren → CLAUDE.md / AGENTS-SETUP.md / Tests
 ```
 
@@ -107,7 +106,7 @@
   - Messbar statt vage: nicht „funktioniert gut", sondern „liefert HTTP 200 und zeigt X"
   - Ein Abschnitt **Nicht-Ziele** ist Pflicht
   - Meilensteine: je 1–4 Kriterien, jeweils einzeln auslieferbar
-- **Gate G1:** Nutzer liest den Vertrag und antwortet „freigegeben" oder mit Änderungen. Ohne G1 startet nichts.
+- **Gate G1:** Nutzer liest den Vertrag und antwortet „freigegeben" oder mit Änderungen. Ohne G1 startet kein Auftrag mit Produktentscheidungen; Fixes und Härtungen brauchen kein G1.
 
 ### Phase 3 – Council (optional)
 - **Wann:** Nur bei Entscheidungen, die teuer oder schwer umkehrbar sind (Datenmodell, neue Abhängigkeit, Zahlungsfluss, Auth, Datenschutz). Nicht für Implementierungsdetails.
@@ -155,9 +154,7 @@
 - Orchestrator melden: `PR bereit: <Link>, alle ACs belegt, CI grün`
 
 ### Phase 8 – Merge
-- **Merge-Regel:** Normale PRs mergt der Task Manager nach `REVIEW-OK`, Abschlussprüfung und grüner CI mit `gh pr merge <nr> --auto --squash --delete-branch` (ist der PR sofort clean: `gh pr merge <nr> --squash --delete-branch`), nie mit `--admin`. Der Nutzer gibt nur Verträge frei (G1). Welche PRs nur der Nutzer mergt (Ausnahmen, `NEEDS-USER`): siehe CLAUDE.md, Merge-Regel.
-- Ausnahme-PRs: Task Manager meldet `NEEDS-USER`, der **Nutzer** prüft den PR auf GitHub (Files changed, Checks) und mergt selbst
-- Danach: Task Manager räumt Worktree und lokalen Branch auf (nach Squash-Merge nur mit `git branch -D`, Inhalt vorher gegen `main` prüfen)
+- **Merge-Regel:** siehe CLAUDE.md, Merge-Regel (wer mergt, Voraussetzungen, Ausnahmen, Aufräumen).
 
 ### Phase 9 – Retro (Compounding)
 - **Wer:** Task Manager entwirft, Orchestrator kürzt, Nutzer sieht es im PR
@@ -428,7 +425,7 @@ Jede Etappe = eigener Task mit eigenem Check. Writer und Reviewer verschieden.
 | E6 | `AGENTS-SETUP.md` + `CLAUDE.md` aktualisieren (kurz halten!) | Rollen-Prompts verweisen auf diese Spec, CLAUDE.md < 80 Zeilen |
 | E7 | Superpowers-Installation: per CLI versuchen, sonst exakte Anleitung an Nutzer | `/plugin` zeigt Superpowers als aktiv |
 
-**Danach:** Nutzer mergt, alle 6 Agents frisch starten (in `SoccaV2`, damit neue Skills/Hooks geladen werden), dann **Pilot mit einem kleinen Feature** (nicht gleich der Turniermodus), um den Loop zu testen. Retro nach dem Pilot, dann Turniermodus.
+**Danach:** nach dem Merge (siehe CLAUDE.md, Merge-Regel) alle 6 Agents frisch starten (in `SoccaV2`, damit neue Skills/Hooks geladen werden), dann **Pilot mit einem kleinen Feature** (nicht gleich der Turniermodus), um den Loop zu testen. Retro nach dem Pilot, dann Turniermodus.
 
 ---
 

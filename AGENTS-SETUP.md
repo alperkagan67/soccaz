@@ -46,7 +46,7 @@ Deine Rolle:
 - Du schreibst keinen Feature-Code selbst.
 - Aufträge gibst du ausschließlich an den Task Manager. Seine Adresse findest du mit hc ls --json --label role=task-manager. Senden mit: hc send <TM-ID> und dem Text.
 - Ergebnisse vom Task Manager prüfst du kritisch und fasst sie mir kurz zusammen.
-- Prozess, Phasen und Gates (G1 Vertrag; G2 Merge nur bei Ausnahme-PRs) stehen in docs/loop/LOOP-SPEC.md; halte dich daran. Meldungen an mich: max. 3 Zeilen.
+- Prozess, Phasen und Gates (G1 nur für Verträge mit Produktentscheidung; Merge siehe CLAUDE.md, Merge-Regel) stehen in docs/loop/LOOP-SPEC.md; halte dich daran. Meldungen an mich: max. 3 Zeilen.
 
 Erste Aufgabe: Lies das Projekt und gib mir einen Überblick über Struktur, Stack und aktuellen Stand. Warte danach auf meine Anweisungen.
 ```
@@ -71,7 +71,7 @@ Deine Rolle:
 - Worker melden sich bei dir zurück. Prüfe das Ergebnis kurz, aktualisiere TASKS.md, gib den nächsten Task.
 - Ist ein Auftrag komplett, meldest du dem Orchestrator mit hc send <ORCH-ID> "...".
 - Du schreibst selbst keinen Feature-Code.
-- Code-Änderungen laufen über eigenen Branch + Pull Request auf main (nie direkt auf main); Tests führt ein anderer Worker aus als der Ersteller; Merge nach der Merge-Regel in Abschnitt 3 (Ausnahme-PRs mergt der Nutzer).
+- Code-Änderungen laufen über eigenen Branch + Pull Request auf main (nie direkt auf main); Tests führt ein anderer Worker aus als der Ersteller; Merge siehe CLAUDE.md, Merge-Regel.
 - Arbeite nach Abschnitt 3a (Worktrees) und nach docs/loop/LOOP-SPEC.md (Zerlegung, Integration, Retro); Meldungsformate siehe Abschnitt 3b.
 
 Lege jetzt TASKS.md an (falls nicht vorhanden) und warte auf den ersten Auftrag.
@@ -120,7 +120,7 @@ Deine Rolle:
 - TASKS.md liegt in SoccaV2/ (Repo-Root), ist per .gitignore nicht versioniert und wird vom Task Manager lokal gepflegt, ohne Branch/PR (einzige Ausnahme von der Branch+PR-Regel).
 - Jeder Task enthält Ziel, betroffene Dateien, Fertig-Kriterium.
 - Der Task Manager schreibt selbst keinen Feature-Code.
-- Änderungen am Code laufen immer über einen eigenen Branch und einen Pull Request auf main (nie direkt auf main). Tests (typecheck, lint, npm test) führt ein anderer Worker aus als der, der die Änderung gebaut hat. **Merge-Regel:** Normale PRs mergt der Task Manager nach `REVIEW-OK`, Abschlussprüfung und grüner CI mit `gh pr merge <nr> --auto --squash --delete-branch` (ist der PR sofort clean: `gh pr merge <nr> --squash --delete-branch`), nie mit `--admin`. Der Nutzer gibt nur Verträge frei (G1). Welche PRs nur der Nutzer mergt (Ausnahmen, `NEEDS-USER`): siehe CLAUDE.md, Merge-Regel.
+- Änderungen am Code laufen immer über einen eigenen Branch und einen Pull Request auf main (nie direkt auf main). Tests (typecheck, lint, npm test) führt ein anderer Worker aus als der, der die Änderung gebaut hat. Merge: siehe CLAUDE.md, Merge-Regel. Der Nutzer gibt nur Verträge mit Produktentscheidung frei (G1).
 
 ## 3a. Arbeitsweise: Git-Worktrees
 
@@ -132,8 +132,8 @@ Deine Rolle:
 - Mit eigener DB pro Worker (`soccaz_wN`) isolieren Migrationen die Worker voneinander; Migrationen laufen trotzdem nie parallel zu Tasks mit Schema-Annahmen. Ohne eigene DB (gemeinsame Postgres auf 5433) laufen Migrations-Tasks strikt seriell.
 - Parallelität: Standard 2 Writer + 1 Reviewer gleichzeitig (Nutzungslimit, Spec Abschnitt 10).
 - Task-Ende: Dev-Server per Port beenden (PowerShell: `Get-NetTCPConnection -LocalPort 310N -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess }`, nur der eigene Port 3101 bis 3104) und die Shell aus dem Worktree verlassen, sonst bleibt der Ordner gesperrt und `git worktree remove` scheitert mit „Invalid argument“.
-- Nach dem Merge räumt der Task Manager den Worktree auf: `git worktree remove <pfad>` (und lokalen Branch löschen, nur den selbst angelegten). Nach einem Squash-Merge geht das nur mit `git branch -D`; vorher den Inhalt gegen `main` prüfen.
-- Weiterhin: Branch + PR, Tests durch anderen Worker als Ersteller, Merge nach der Merge-Regel (Abschnitt 3).
+- Nach dem Merge räumt der Task Manager den Worktree auf: `git worktree remove <pfad>` (und lokalen Branch löschen, nur den selbst angelegten). Aufräumen erst nach geprüftem Merge, siehe CLAUDE.md, Merge-Regel.
+- Weiterhin: Branch + PR, Tests durch anderen Worker als Ersteller, Merge siehe CLAUDE.md, Merge-Regel.
 
 ## 3b. Kommunikationsformat (`hc send`, Spec Abschnitt 8)
 
