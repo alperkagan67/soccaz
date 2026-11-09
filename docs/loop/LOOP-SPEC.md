@@ -155,7 +155,7 @@
 - Orchestrator melden: `PR bereit: <Link>, alle ACs belegt, CI grün`
 
 ### Phase 8 – Merge
-- **Merge-Regel:** Normale PRs mergt der Task Manager nach `REVIEW-OK`, Abschlussprüfung und grüner CI mit `gh pr merge <nr> --auto --squash --delete-branch` (ist der PR sofort clean: `gh pr merge <nr> --squash --delete-branch`), nie mit `--admin`. Der Nutzer gibt nur Verträge frei (G1). **Ausnahmen, die nur der Nutzer selbst mergt** (`NEEDS-USER`): PRs, die `.claude/`, `.github/`, DB-Migrationen, `package.json`/Lockfile, Zahlungen oder Auth berühren, sowie PRs, die Prozessdateien ändern (`CLAUDE.md`, `AGENTS-SETUP.md`, `docs/loop/`).
+- **Merge-Regel:** Normale PRs mergt der Task Manager nach `REVIEW-OK`, Abschlussprüfung und grüner CI mit `gh pr merge <nr> --auto --squash --delete-branch` (ist der PR sofort clean: `gh pr merge <nr> --squash --delete-branch`), nie mit `--admin`. Der Nutzer gibt nur Verträge frei (G1). Welche PRs nur der Nutzer mergt (Ausnahmen, `NEEDS-USER`): siehe CLAUDE.md, Merge-Regel.
 - Ausnahme-PRs: Task Manager meldet `NEEDS-USER`, der **Nutzer** prüft den PR auf GitHub (Files changed, Checks) und mergt selbst
 - Danach: Task Manager räumt Worktree und lokalen Branch auf (nach Squash-Merge nur mit `git branch -D`, Inhalt vorher gegen `main` prüfen)
 
