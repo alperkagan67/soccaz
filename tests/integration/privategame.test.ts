@@ -384,6 +384,32 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
     }
   });
 
+  it("Abrechnung ohne zweites Bereit, nur 8 von 10 eingeteilten Spielern haben bezahlt: Anteil bleibt Miete ÷ 10, nicht ÷ 8 (kein Mindestwert, kein Fehlbetrag durch die Formel)", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, players } = await prepare(9); // 10 eingeteilt, Anteil 1200
+      const seated = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+      // je Team einer zahlt nicht (nicht der Veranstalter)
+      const unpaid = [match.homeTeamId, match.awayTeamId].map((t) => seated.find((p) => p.teamId === t && p.userId !== organizer.id)!.userId);
+      const payers = players.filter((p) => !unpaid.includes(p.id));
+      for (const p of payers) {
+        await payShare(p.id, match.id);
+        await setReady(p.id, match.id, true);
+      }
+      expect((await reloadMatch(match.id)).status).toBe("confirmed"); // je Team 4 bereit: bestätigt ohne zweites Bereit
+      await db.update(matches).set({ startsAt: new Date(Date.now() - 3 * 3_600_000) }).where(eq(matches.id, match.id));
+      await db.transaction(async (tx) => settleMatch(tx, await reloadMatch(match.id)));
+      const settled = await reloadMatch(match.id);
+      expect(settled.finalShareCents).toBe(1200); // finalShareFor(12000, 8 Zahler, Mindestzahl 8) wäre 1500 > bezahlt
+      expect(await balances(payers)).toEqual(payers.map(() => 3000 - 1200)); // niemand zahlt mehr oder weniger als den Anteil
+      for (const id of unpaid) expect(await walletBalance(db, id)).toBe(3000);
+      expect((await trialBalance()).balanced).toBe(true);
+      // Die nicht gedeckte Miete (2 x 1200) fängt der Deckungs-Job 24 Stunden vor Anstoß ab (M2, AC-9), nicht die Abrechnung.
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
   it("fixPrivateShare gilt nur für Privatspiele: bei einem Teamspiel wird nichts fixiert und nichts erstattet", async () => {
     await setSetting(null, "payments_enabled", true);
     try {
