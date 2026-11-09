@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
-import { GAP_MIN, finalSharePerPlayer, planSchedule, koWinner, knockout, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
+import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, planSchedule, koWinner, knockout, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
@@ -398,6 +398,12 @@ async function insertFixtures(tx: Tx, tournamentId: string, fixtures: Fixture[])
   }
 }
 
+/** Zufallsquelle der Auslosung; Tests setzen eine feste Quelle (null = Standard). */
+let drawRandom: () => number = secureRandom;
+export function setDrawRandom(random: (() => number) | null) {
+  drawRandom = random ?? secureRandom;
+}
+
 /**
  * Erzeugt das K.-o.-Bracket genau einmal, sobald der Preis feststeht, alle Spieler bezahlt haben und jedes Team nach der Zahlung "Bereit" gedrückt hat (`paid_ready_at`).
  * Läuft unter der Turniersperre und setzt `bracket_generated_at`, damit eine zweite Auslösung nichts mehr tut.
@@ -413,7 +419,7 @@ async function maybeGenerateBracket(tx: Tx, t: T) {
   if (!entries.every((e) => e.readyAt && e.paidReadyAt)) return; // alle Teams: Kader vollzählig und nach voller Zahlung bereit
 
   await tx.update(tournaments).set({ status: "running", bracketGeneratedAt: new Date() }).where(eq(tournaments.id, t.id));
-  await insertFixtures(tx, t.id, knockout(entries.map((e) => e.teamId)));
+  await insertFixtures(tx, t.id, knockout(shuffle(entries.map((e) => e.teamId), drawRandom)));
   await createGames(tx, fresh);
   for (const e of entries) await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Das Bracket steht", body: `${fresh.name}: Alle Teams sind bereit, das Bracket ist jetzt sichtbar.`, url: `/turniere/${t.id}` }, tx);
   await audit(null, "tournament.bracket", "tournament", t.id, { after: { teams: entries.length } }, tx);

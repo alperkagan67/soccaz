@@ -18,6 +18,7 @@ import {
   payForTeam,
   registerTeam,
   reopenRosters,
+  setDrawRandom,
   setOrganizer,
   setPaidReady,
   setRosterComplete,
@@ -546,6 +547,25 @@ describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => 
     expect(view.bracketVisible).toBe(true);
     await setPaidReady(squads[0].captain.id, t.id).catch(() => {}); // wiederholter Aufruf ändert nichts
     expect(await bracketRows(t.id)).toHaveLength(3);
+  });
+
+  it("AC-9: Auslosung zufällig mit injizierter Zufallsquelle, nicht die Anmeldereihenfolge, jedes Team genau einmal, genau ein Bracket", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const [A, B, C, D] = squads.map((s) => s.team.id);
+    setDrawRandom(() => 0); // Fisher-Yates mit r = 0: [A,B,C,D] wird zu [B,C,D,A]
+    try {
+      await payAll(t.id, squads);
+    } finally {
+      setDrawRandom(null);
+    }
+    const rows = (await bracketRows(t.id)).filter((r) => r.stage === "ko:4").sort((x, y) => x.slot - y.slot);
+    expect(rows.map((r) => [r.teamA, r.teamB])).toEqual([[B, A], [C, D]]); // Anmeldereihenfolge hätte A-D und B-C ergeben
+    expect(new Set(rows.flatMap((r) => [r.teamA, r.teamB])).size).toBe(4);
+    expect(await bracketRows(t.id)).toHaveLength(3);
+    expect((await statusOf(t.id)).bracketGeneratedAt).not.toBeNull();
   });
 
   it("Freilose: 5 Teams ergeben 4 Spiele, Teams mit Freilos spielen erst in der nächsten Runde", async () => {
