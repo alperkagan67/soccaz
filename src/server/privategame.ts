@@ -116,10 +116,20 @@ async function canManageInvite(tx: Pick<typeof db, "select">, userId: string, ho
   return u?.role === "admin";
 }
 
+export const INVITE_FORBIDDEN = "Nur der Veranstalter kann den Einladungslink verwalten.";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Ist das eine UUID? Prüft Spiel-IDs aus Formularen und Aktionen, bevor sie in Datenbankabfragen oder Pfade gehen. */
+export const isUuid = (value: unknown): value is string => typeof value === "string" && UUID_RE.test(value);
+
+/**
+ * Sperrt das Privatspiel und prüft die Rechte. Für alle Nicht-Berechtigten gibt es dieselbe Meldung (unbekannte oder ungültige ID,
+ * kein Privatspiel, fremdes Spiel): Wer angemeldet ist, kann so nicht herausfinden, ob eine Spiel-ID zu einem Privatspiel gehört.
+ */
 async function lockManagedPrivateGame(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], userId: string, matchId: string) {
+  if (!isUuid(matchId)) throw new DomainError(INVITE_FORBIDDEN);
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
-  if (!match || match.kind !== "private") throw new DomainError("Dieses Spiel gibt es nicht.");
-  if (!(await canManageInvite(tx, userId, match.homeTeamId))) throw new DomainError("Nur der Veranstalter kann den Einladungslink verwalten.");
+  if (!match || match.kind !== "private" || !(await canManageInvite(tx, userId, match.homeTeamId))) throw new DomainError(INVITE_FORBIDDEN);
   return match;
 }
 

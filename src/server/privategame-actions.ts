@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/validation";
 import { parseBerlinLocal } from "@/lib/time";
-import { createPrivateGame, parseRentInput, regenerateGameInvite, revokeGameInvite } from "./privategame";
+import { INVITE_FORBIDDEN, createPrivateGame, isUuid, parseRentInput, regenerateGameInvite, revokeGameInvite } from "./privategame";
 import { requireUser } from "./session";
 import { DomainError } from "./teams";
 
@@ -35,6 +35,7 @@ export async function createPrivateGameAction(_prev: ActionState, f: FormData): 
 }
 
 async function inviteAction(matchId: string, run: (userId: string) => Promise<unknown>): Promise<ActionState> {
+  if (!isUuid(matchId)) return { error: INVITE_FORBIDDEN }; // ungültige ID: dieselbe Meldung wie für Nicht-Berechtigte, kein Datenbankfehler
   const user = await requireUser(`/lobby/${matchId}`);
   try {
     await run(user.id); // die Rechteprüfung (nur der Veranstalter) läuft im Server, nicht in der Oberfläche

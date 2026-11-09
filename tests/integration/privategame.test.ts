@@ -1126,6 +1126,32 @@ describe("Einladungslink zurückziehen und neu erzeugen (T56, AC-10)", () => {
     await expect(regenerateGameInvite(organizer.id, match.id)).rejects.toThrow(/abgesagt|vorbei/);
   });
 
+  it("Neuer Link bei beendetem Spiel wird abgelehnt (Status played)", async () => {
+    const { organizer, match, token } = await game(1);
+    await db.update(matches).set({ status: "played" }).where(eq(matches.id, match.id));
+    await expect(regenerateGameInvite(organizer.id, match.id)).rejects.toThrow(/schon vorbei/);
+    expect((await getGameInvitePreview(token)).status).toBe("valid"); // nichts verändert
+  });
+
+  it("Nicht Berechtigte bekommen immer dieselbe Meldung: unbekannte ID, keine UUID, kein Privatspiel und fremdes Privatspiel sind nicht unterscheidbar", async () => {
+    const { match } = await game(1);
+    const other = await game(0);
+    const stranger = await makeUser("pvfremd");
+    await db.update(matches).set({ kind: "team" }).where(eq(matches.id, other.match.id)); // kein Privatspiel mehr
+    const messages = new Set<string>();
+    for (const id of [match.id, other.match.id, "00000000-0000-4000-8000-000000000000", "keine-uuid", "", "1; drop table matches"]) {
+      for (const fn of [revokeGameInvite, regenerateGameInvite]) {
+        const err = await fn(stranger.id, id).then(() => null, (e: unknown) => e as Error);
+        expect(err, `id=${id}`).toBeInstanceOf(Error);
+        expect(err!.constructor.name, `id=${id}`).toBe("DomainError"); // keine Datenbank-Fehlermeldung
+        messages.add(err!.message);
+      }
+    }
+    expect([...messages]).toEqual(["Nur der Veranstalter kann den Einladungslink verwalten."]);
+    // auch der Veranstalter bekommt bei einer ungültigen ID eine saubere Meldung (kein Datenbankfehler)
+    await expect(revokeGameInvite(other.organizer.id, "keine-uuid")).rejects.toThrow(/Veranstalter/);
+  });
+
   it("Widerruf während jemand die Beitrittsseite offen hat: der Beitritt schlägt kontrolliert fehl (nach Sperre des Spiels erneut geprüft)", async () => {
     const { organizer, match, token } = await game(1);
     const p = await makeUser("pvrace");
