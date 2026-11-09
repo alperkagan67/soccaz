@@ -7,6 +7,7 @@ import { teamStats } from "@/db/schema-community";
 import { gameInvites } from "@/db/schema-matchmaking";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { assignSubstitute, cancelMatch, finalConfirm, getLobby, joinLobby, leaveLobby, payShare, randomSplit, removeParticipant, setReady, unassignParticipant } from "@/server/lobby";
+import { cancelUnderfilledLobbies } from "@/server/scheduled";
 import { cancelUncoveredPrivateGames, createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput, rentCheckAt } from "@/server/privategame";
 import { listBoard } from "@/server/board";
 import { getTeamProfile } from "@/server/profiles";
@@ -854,9 +855,14 @@ describe("Mietprüfung vor Anstoß (T55, AC-9)", () => {
   it("Prüfzeitpunkt: 24 Stunden vor Anstoß bei mindestens 24 Stunden Vorlauf, sonst 1 Stunde vor Anstoß", () => {
     const created = new Date("2026-01-01T10:00:00Z");
     expect(rentCheckAt(new Date("2026-01-04T10:00:00Z"), created).toISOString()).toBe("2026-01-03T10:00:00.000Z"); // 72 h Vorlauf
-    expect(rentCheckAt(new Date("2026-01-02T10:00:00Z"), created).toISOString()).toBe("2026-01-01T10:00:00.000Z"); // genau 24 h Vorlauf
+    expect(rentCheckAt(new Date("2026-01-02T10:00:00Z"), created).toISOString()).toBe("2026-01-01T10:30:00.000Z"); // genau 24 h Vorlauf: Frist wäre die Anlage selbst, also frühestens 30 min danach
     expect(rentCheckAt(new Date("2026-01-02T09:59:00Z"), created).toISOString()).toBe("2026-01-02T08:59:00.000Z"); // 23 h 59 min Vorlauf: 1 h vor Anstoß
-    expect(rentCheckAt(new Date("2026-01-01T20:00:00Z"), created).toISOString()).toBe("2026-01-01T19:00:00.000Z");
+    expect(rentCheckAt(new Date("2026-01-01T20:00:00Z"), created).toISOString()).toBe("2026-01-01T19:00:00.000Z"); // 10 h Vorlauf
+    // Mindest-Zahlfrist: knapp über der Frist liegt der Prüfzeitpunkt frühestens 30 Minuten nach der Anlage
+    expect(rentCheckAt(new Date("2026-01-01T11:05:00Z"), created).toISOString()).toBe("2026-01-01T10:30:00.000Z"); // 1 h 5 min Vorlauf: nicht 10:05
+    expect(rentCheckAt(new Date("2026-01-02T10:05:00Z"), created).toISOString()).toBe("2026-01-01T10:30:00.000Z"); // 24 h 5 min Vorlauf: nicht 10:05
+    expect(rentCheckAt(new Date("2026-01-01T11:00:00Z"), created).toISOString()).toBe("2026-01-01T10:30:00.000Z"); // Mindestvorlauf 1 h
+    expect(rentCheckAt(new Date("2026-01-01T10:20:00Z"), created).toISOString()).toBe("2026-01-01T10:20:00.000Z"); // nie nach dem Anstoß
   });
 
   it("nicht gedeckt: Absage, alle bekommen ihren Anteil zurück, auch ein Aussteiger mit offenem Anspruch; Hauptbuch ausgeglichen; zweiter Lauf tut nichts", () =>
@@ -916,6 +922,32 @@ describe("Mietprüfung vor Anstoß (T55, AC-9)", () => {
       await cancelUncoveredPrivateGames(new Date(m.startsAt.getTime() - 25 * 3_600_000));
       expect(await statusOf(g.match.id)).not.toBe("cancelled");
       await cancelUncoveredPrivateGames(new Date(m.startsAt.getTime() - 23 * 3_600_000));
+      expect(await statusOf(g.match.id)).toBe("cancelled");
+      for (const p of g.players) expect(await balance(p.id)).toBe(3000);
+      expect((await trialBalance()).balanced).toBe(true);
+    }));
+
+  it("Mindest-Zahlfrist: ein Spiel mit 1 Stunde 5 Minuten Vorlauf wird nicht vor Anlage plus 30 Minuten abgesagt, danach schon", () =>
+    withPayments(async () => {
+      const g = await rentGame(2, { startsAt: new Date(Date.now() + 65 * 60_000) });
+      const m = await reloadMatch(g.match.id);
+      await cancelUncoveredPrivateGames(new Date(m.createdAt.getTime() + 20 * 60_000)); // Frist-Zeitpunkt (Anstoß minus 1 h) wäre schon 5 Minuten nach der Anlage
+      expect(await statusOf(g.match.id)).not.toBe("cancelled");
+      await cancelUncoveredPrivateGames(new Date(m.createdAt.getTime() + 31 * 60_000));
+      expect(await statusOf(g.match.id)).toBe("cancelled");
+      for (const p of g.players) expect(await balance(p.id)).toBe(3000);
+    }));
+
+  it("Job-Pfad: cancelUnderfilledLobbies sagt ein bestätigtes, aber ungedecktes Privatspiel ab und zählt es mit", () =>
+    withPayments(async () => {
+      const g = await rentGame(10);
+      for (const p of g.players) await setReady(p.id, g.match.id, true);
+      await finalConfirm(g.organizer.id, g.match.id);
+      await leaveLobby(g.players[9].id, g.match.id); // Anspruch offen, gezahlt sind nur noch 10800 < 12000, das Spiel bleibt bestätigt
+      const m = await reloadMatch(g.match.id);
+      expect(m.status).toBe("confirmed"); // die Regel für unbestätigte Lobbys greift hier nicht
+      const cancelled = await cancelUnderfilledLobbies(new Date(rentCheckAt(m.startsAt, m.createdAt).getTime() + 60_000));
+      expect(cancelled).toBeGreaterThanOrEqual(1);
       expect(await statusOf(g.match.id)).toBe("cancelled");
       for (const p of g.players) expect(await balance(p.id)).toBe(3000);
       expect((await trialBalance()).balanced).toBe(true);

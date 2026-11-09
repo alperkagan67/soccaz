@@ -152,16 +152,22 @@ export async function joinPrivateGame(userId: string, token: string): Promise<{ 
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Zeitpunkt der Mietprüfung, an EINER Stelle: 24 Stunden vor Anstoß, wenn das Spiel bei der Anlage mindestens 24 Stunden Vorlauf hatte;
- * sonst 1 Stunde vor Anstoß (der Mindestvorlauf). Ein kurzfristig angelegtes Spiel wird so nie sofort abgesagt.
+ * Zeitpunkt der Mietprüfung, die Konstanten stehen alle hier:
+ * - Frist: 24 Stunden vor Anstoß, wenn das Spiel bei der Anlage mindestens 24 Stunden Vorlauf hatte, sonst 1 Stunde vor Anstoß.
+ * - Mindest-Zahlfrist: Nach der Anlage bleiben immer mindestens 30 Minuten zum Beitreten und Zahlen, bevor geprüft wird. Der Mindestvorlauf der
+ *   Anlage ist 1 Stunde, der Prüfzeitpunkt liegt deshalb nie nach dem Anstoß.
+ * Prüfzeitpunkt = min(Anstoß, max(Anstoß - Frist, Anlage + Mindest-Zahlfrist)).
  */
 export const RENT_CHECK_HOURS = 24;
 export const RENT_CHECK_SHORT_LEAD_HOURS = 1;
+export const RENT_CHECK_MIN_PAY_WINDOW_MINUTES = 30;
 
 export function rentCheckAt(startsAt: Date, createdAt: Date): Date {
   const leadHours = (startsAt.getTime() - createdAt.getTime()) / 3_600_000;
   const before = leadHours >= RENT_CHECK_HOURS ? RENT_CHECK_HOURS : RENT_CHECK_SHORT_LEAD_HOURS;
-  return new Date(startsAt.getTime() - before * 3_600_000);
+  const byDeadline = startsAt.getTime() - before * 3_600_000;
+  const byPayWindow = createdAt.getTime() + RENT_CHECK_MIN_PAY_WINDOW_MINUTES * 60_000;
+  return new Date(Math.min(startsAt.getTime(), Math.max(byDeadline, byPayWindow)));
 }
 
 /**
@@ -186,12 +192,13 @@ export async function cancelUncoveredPrivateGames(now: Date = new Date()): Promi
         if (!m || m.kind !== "private" || (m.status !== "lobby" && m.status !== "confirmed") || !m.priceCents || m.priceCents <= 0) return;
         const [{ paid }] = await tx.select({ paid: sql<number>`coalesce(sum(${matchParticipants.paidCents}), 0)::int` }).from(matchParticipants).where(eq(matchParticipants.matchId, m.id));
         if (paid >= m.priceCents) return; // Miete gedeckt: nichts zu tun
-        await cancelMatchTx(tx, m, null, "Die Hallenmiete war 24 Stunden vor Anstoß nicht gedeckt. Alle bekommen ihren Anteil zurück.");
+        await cancelMatchTx(tx, m, null, "Die Hallenmiete war zum Prüfzeitpunkt vor Anstoß nicht gedeckt. Alle bekommen ihren Anteil zurück.");
         await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
         cancelled += 1;
       });
     } catch (error) {
-      console.error("cancelUncoveredPrivateGames: Fehler bei Spiel", c.id, error instanceof Error ? error.name : "Fehler");
+      // Match-ID und Fehlermeldung (keine Nutzerdaten), damit ein dauerhaft fehlschlagendes Spiel diagnostizierbar ist
+      console.error("cancelUncoveredPrivateGames: Fehler bei Spiel", c.id, error instanceof Error ? `${error.name}: ${error.message}` : "Fehler");
     }
   }
   return cancelled;
