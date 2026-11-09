@@ -1,6 +1,6 @@
 # 005 – Turniermodus
 Status: Freigegeben (2026-11-09)
-Version: 1
+Version: 2 (AC-8 präzisiert, 2026-11-09)
 
 ## Ziel
 Der Turniermodus existiert im Code weitgehend (Anlegen, Anmelden, Kader, Preis, Zahlung, K.-o.-Bracket, Aufrücken, Absage). Dieser Vertrag schließt die Lücken zwischen Brief und Ist-Zustand, damit ein Organisator (z. B. Moscheen verschiedener Städte im Ramadan) ein privates K.-o.-Turnier sicher durchführen kann: Captains drücken erst nach vollständiger Zahlung ihres Teams auf "Bereit", Spieler können füreinander zahlen, das Bracket entsteht genau einmal und zufällig gelost, und der Organisator kann Ergebnisse eintragen und Streit entscheiden.
@@ -45,7 +45,7 @@ Grundlage: `docs/briefs/turnier-privatspiel.md`, `docs/analysis/ist-analyse.md` 
 | AC-5 | A ist in Team X, B in Team Y | A zahlt für B | Abgelehnt (nur eigenes Team) | tests/integration/tournament.test.ts |
 | AC-6 | Zahlung von A für B, Kader wird wieder geöffnet oder Turnier abgesagt | Erstattung läuft | Betrag geht an A (Zahler), nicht an B | tests/integration/tournament.test.ts |
 | AC-7 | Captain zahlt für einzelne oder alle (bestehendes Verhalten) | Wie bisher | Verhalten unverändert (Regression) | tests/integration/tournament.test.ts |
-| AC-8 | Phase `payment` oder später | Spieler versucht auszutreten oder Team abzumelden | Abgelehnt; nur der Organisator kann Kader wieder öffnen oder Team ersetzen, mit voller Erstattung | tests/integration/tournament.test.ts |
+| AC-8 | Phase `payment` oder später | Spieler versucht auszutreten oder Team abzumelden | Abgelehnt; nur der Organisator kann den Kader öffnen und danach ein Team ersetzen (Reihenfolge: Kader öffnen, dann ersetzen), mit voller Erstattung an den Zahler | tests/integration/tournament.test.ts |
 | AC-9 | Alle Bedingungen erfüllt | Bracket wird erzeugt | Reihenfolge der Teams ist zufällig (nicht Anmeldereihenfolge, Test mit injizierter Zufallsquelle), Freilose korrekt, genau ein Bracket | tests/unit/tournament.test.ts, tests/integration/tournament.test.ts |
 | AC-10 | Turnierspiel, Organisator ist weder Team-Admin noch Plattform-Admin | Organisator trägt Ergebnis ein oder entscheidet Streit | Erlaubt; Sieger rückt automatisch auf. Ein fremder Nutzer wird abgewiesen | tests/integration/tournament.test.ts |
 | AC-11 | Anmeldeschluss erreicht, weniger Teams als `maxTeams` | Organisator wählt "Weitermachen" (≥ 4 Teams) oder "Absagen" | Weitermachen: Bracket mit Freilosen; Absage: Vollerstattung; unter 4 Teams ist nur Absage möglich; Organisator erhält am Anmeldeschluss eine Benachrichtigung | tests/integration/tournament.test.ts |
