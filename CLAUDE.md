@@ -24,13 +24,19 @@ Next.js-Regeln: AGENTS.md (nicht überschreiben, nicht ändern).
 
 ## Konventionen
 
-- Änderungen nur über eigenen Branch + Pull Request, nie direkt auf `main`. Merge nach der Merge-Regel (AGENTS-SETUP.md Abschnitt 3): Task Manager mergt normale PRs per `gh pr merge <nr> --auto --squash --delete-branch`, nie `--admin`; nur der Nutzer mergt PRs mit `.claude/`, `.github/`, DB-Migrationen, `package.json`/Lockfile, Zahlungen, Auth und Prozessdateien (`CLAUDE.md`, `AGENTS-SETUP.md`, `docs/loop/`).
+- Änderungen nur über eigenen Branch + Pull Request, nie direkt auf `main`. Merge siehe Abschnitt „Merge-Regel“.
 - Tests führt ein anderer Worker aus als der Ersteller (Writer ≠ Reviewer).
 - Commit-Autor ist die GitHub-noreply-Adresse (`user.email` repo-lokal, auch in jedem Worktree prüfen).
 - Jeder Commit endet mit `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 - Pro Task nur die genannten Dateien ändern; nichts löschen, verschieben oder überschreiben, was nicht im Task steht.
 - Kein Task ohne maschinellen Check (Test, Typecheck, Lint); Belege = Befehl + Ergebnis.
 - Gearbeitet wird im eigenen Worktree, nicht in SoccaV2 selbst.
+
+## Merge-Regel
+
+- Normale PRs mergt nur der Task Manager, nach `REVIEW-OK`, Abschlussprüfung und grüner CI: `gh pr merge <nr> --auto --squash --delete-branch`, nie `--admin`. Der Orchestrator mergt nie.
+- Ausnahme-PRs mergt nur der Nutzer selbst (`NEEDS-USER`): PRs, die `.claude/`, `.github/`, DB-Migrationen, `package.json`/Lockfile, Zahlungen oder Auth berühren, sowie PRs, die Prozessdateien ändern (`CLAUDE.md`, `AGENTS-SETUP.md`, `docs/loop/`).
+- Ein `NEEDS-USER` übergeht kein Agent.
 
 ## Stolperfallen
 
