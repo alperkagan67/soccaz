@@ -234,12 +234,22 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   await t3.page.reload();
   await t3.page.getByTestId("tournament-team").filter({ hasText: t3.team }).getByRole("button", { name: "Ich zahle für ihn" }).first().click();
   await expect.poll(async () => (await query<{ n: number }>("select count(*)::int as n from tournament_players where tournament_id = $1 and team_id = $2 and paid_by = $3", [tid, teamIds.get(t3.team), t3.id]))[0].n).toBe(1);
-  for (const [i, c] of caps.entries()) {
+  for (const c of caps) {
     await c.page.reload();
     await c.page.waitForLoadState("networkidle");
     await expect(c.page.getByTestId("bracket-hidden")).toBeVisible(); // solange jemand nicht bezahlt hat, bleibt das Bracket verborgen
     await c.page.getByRole("button", { name: /Als Captain für alle offenen Spieler bezahlen/ }).click();
     await expect(c.page.getByTestId("captain-pay-box")).toHaveCount(0, { timeout: 20_000 });
+    expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // auch voll bezahlt: noch kein Bracket, solange niemand "Bereit" gedrückt hat
+  }
+
+  // Bereit gibt es erst nach voller Zahlung; das Bracket entsteht erst, wenn das letzte Team bereit ist
+  for (const [i, c] of caps.entries()) {
+    await c.page.reload();
+    await c.page.waitForLoadState("networkidle");
+    await expect(c.page.getByTestId("bracket-hidden")).toBeVisible();
+    await c.page.getByTestId("paid-ready-box").getByRole("button", { name: "Bereit", exact: true }).click();
+    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-paid-ready", "true", { timeout: 20_000 });
     if (i < 3) expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
   }
   await expect.poll(async () => (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length, { timeout: 20_000 }).toBe(3);

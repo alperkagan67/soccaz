@@ -71,6 +71,7 @@ async function payAll(tid: string, squads: Squad[]) {
     await fund(p.id, 3000);
     await payEntry(p.id, tid);
   }
+  for (const s of squads) await setPaidReady(s.captain.id, tid);
 }
 
 /** Turnier mit vier Teams (je 4 Spieler): alle vollzählig, alle bezahlt, Bracket steht. Anteil 10 Euro. */
@@ -389,6 +390,7 @@ describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => 
       await fund(p.id, 2000);
       await payEntry(p.id, t.id);
     }
+    for (const s of squads.slice(0, 3)) await setPaidReady(s.captain.id, t.id);
     expect(await bracketRows(t.id)).toHaveLength(0);
     let view = (await orgView(o, t.id))!;
     expect(view.bracketVisible).toBe(false);
@@ -398,6 +400,8 @@ describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => 
     // die letzten beiden zahlen gleichzeitig: genau ein Bracket
     for (const p of players.slice(14)) await fund(p.id, 2000);
     await Promise.allSettled(players.slice(14).map((p) => payEntry(p.id, t.id)));
+    expect(await bracketRows(t.id)).toHaveLength(0); // voll bezahlt, aber das letzte Team hat noch nicht "Bereit" gedrückt
+    await setPaidReady(squads[3].captain.id, t.id);
     const rows = await bracketRows(t.id);
     expect(rows).toHaveLength(3); // 2 Halbfinals und das Finale
     view = (await orgView(o, t.id))!;
@@ -419,8 +423,35 @@ describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => 
   it("kostenloses Turnier: das Bracket steht, sobald alle Teams vollzählig sind", async () => {
     const o = await organizer();
     const t = await newTournament(o, { hourlyCents: 0 });
-    for (let i = 0; i < 4; i++) await squad(t.id, 4, true);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    expect(await statusOf(t.id)).toMatchObject({ status: "payment", finalShareCents: 0 });
+    expect(await bracketRows(t.id)).toHaveLength(0);
+    for (const s of squads) await setPaidReady(s.captain.id, t.id);
     expect(await statusOf(t.id)).toMatchObject({ status: "running", finalShareCents: 0 });
+    expect(await bracketRows(t.id)).toHaveLength(3);
+  });
+
+  it("AC-3: Bracket erst, wenn alle Teams Bereit gedrückt haben; parallele Aufrufe ergeben genau ein Bracket; vorher auch serverseitig nichts", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    for (const s of squads) for (const p of s.players) { await fund(p.id, 2000); await payEntry(p.id, t.id); }
+    expect(await bracketRows(t.id)).toHaveLength(0); // alles bezahlt, aber niemand ist bereit
+    for (const s of squads.slice(0, 2)) await setPaidReady(s.captain.id, t.id);
+    expect(await bracketRows(t.id)).toHaveLength(0);
+    let view = (await orgView(o, t.id))!;
+    expect(view.bracketVisible).toBe(false);
+    expect(view.stages).toEqual([]);
+    expect((await statusOf(t.id)).status).toBe("payment");
+    // die letzten zwei gleichzeitig: genau ein Bracket
+    await Promise.allSettled(squads.slice(2).map((s) => setPaidReady(s.captain.id, t.id)));
+    expect(await bracketRows(t.id)).toHaveLength(3);
+    expect((await statusOf(t.id)).status).toBe("running");
+    view = (await orgView(o, t.id))!;
+    expect(view.bracketVisible).toBe(true);
+    await setPaidReady(squads[0].captain.id, t.id).catch(() => {}); // wiederholter Aufruf ändert nichts
     expect(await bracketRows(t.id)).toHaveLength(3);
   });
 

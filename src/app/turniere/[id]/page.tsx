@@ -15,6 +15,7 @@ import {
   payEntryAction,
   payForTeamAction,
   reopenRostersAction,
+  setPaidReadyAction,
   setRosterCompleteAction,
   withdrawTeamAction,
 } from "@/server/tournament-actions";
@@ -190,16 +191,22 @@ export default async function TournamentPage({ params, searchParams }: PageProps
               const paid = team.players.filter((p) => p.paid).length;
               const mine = v?.captainTeamId === team.teamId;
               return (
-                <section key={team.teamId} className="card space-y-2" data-testid="tournament-team" data-ready={team.ready}>
+                <section key={team.teamId} className="card space-y-2" data-testid="tournament-team" data-ready={team.ready} data-paid-ready={team.paidReady}>
                   <div className="flex items-baseline justify-between gap-2">
                     <h3 className="font-semibold"><Link href={`/teams/${team.slug}`} className="hover:text-green">{team.name}</Link></h3>
-                    <span className={`text-xs font-semibold ${team.ready ? "text-green" : "text-muted"}`}>{team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
+                    <span className={`text-xs font-semibold ${team.ready ? "text-green" : "text-muted"}`}>{inPayment && team.paidReady ? "✓ Bereit" : team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
                   </div>
                   <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{priceFixed && !free ? ` · ${paid} bezahlt` : ""}</p>
                   {mine && inPayment && !free && team.dueCents > 0 && (
                     <div className="space-y-1 rounded-lg border border-line p-2" data-testid="captain-pay-box">
                       <ActionButton action={payForTeamAction.bind(null, t.id, undefined)} label={`Als Captain für alle offenen Spieler bezahlen (${formatEuro(team.dueCents)})`} className="btn btn-primary w-full" />
                       <p className="text-xs text-muted">Oder jeder Spieler zahlt für sich, oder du zahlst unten für einzelne Spieler.</p>
+                    </div>
+                  )}
+                  {mine && inPayment && team.dueCents === 0 && team.players.length > 0 && !team.paidReady && (
+                    <div className="space-y-1" data-testid="paid-ready-box">
+                      <ActionButton action={setPaidReadyAction.bind(null, t.id)} label="Bereit" className="btn btn-primary w-full" />
+                      <p className="text-xs text-muted">Euer Team hat komplett bezahlt. Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind.</p>
                     </div>
                   )}
                   <ul className="space-y-1.5 text-sm">
@@ -259,7 +266,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       </section>
 
       {!data.bracketVisible && (inRegistration || inPayment) && (
-        <p className="card text-sm text-muted" data-testid="bracket-hidden">Das Bracket erscheint, sobald alle Teams vollzählig sind und alle Spieler bezahlt haben.</p>
+        <p className="card text-sm text-muted" data-testid="bracket-hidden">Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat.</p>
       )}
     </div>
   );
