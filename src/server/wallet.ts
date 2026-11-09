@@ -89,7 +89,7 @@ export async function fixPrivateShare(tx: Tx, match: MatchRow): Promise<void> {
   const pay = await paymentsEnabled(tx);
   if (pay && share > 0) {
     const short = seated.filter((p) => p.paidCents < share).length;
-    if (short > 0) throw new DomainError(`Der Anteil beträgt jetzt ${formatEuro(share)} pro Spieler (${seated.length} Spieler). ${short} Spieler haben weniger bezahlt und müssen nachzahlen, danach bestätigt ihr erneut.`);
+    if (short > 0) throw new DomainError(`Der Anteil wäre ${formatEuro(share)} pro Spieler (${seated.length} Spieler), ${short} Spieler haben weniger bezahlt. Die Spielerzahl muss sich ändern oder die betroffenen Spieler treten neu bei.`);
   }
   const [fixed] = await tx.update(matches).set({ finalShareCents: share }).where(and(eq(matches.id, match.id), isNull(matches.finalShareCents))).returning({ id: matches.id });
   if (!fixed) return;
@@ -179,8 +179,9 @@ export async function settleMatch(tx: Tx, match: MatchRow): Promise<boolean> {
     .where(and(eq(matchParticipants.matchId, match.id), gt(matchParticipants.paidCents, 0)));
   if (payers.length === 0) return false;
 
-  // Privatspiel mit festem Anteil (zweites Bereit): dieser Anteil gilt, ohne Deckel bei 12 und ohne Mindestzahl
-  const final = m.kind === "private" && m.finalShareCents !== null ? m.finalShareCents : finalShareFor(priceCents, payers.length, minPaid);
+  // Privatspiel: nie finalShareFor (Mindestzahl 8, Deckel 12). Es gilt der feste Anteil (zweites Bereit) oder, solange keiner gesetzt ist,
+  // derselbe Anteil wie beim Bezahlen: Miete geteilt durch die eingeteilten Spieler.
+  const final = m.kind === "private" ? await privateShareNow(tx, m, priceCents) : finalShareFor(priceCents, payers.length, minPaid);
   const [home, away] = [await teamName(tx, m.homeTeamId), await teamName(tx, m.awayTeamId)];
   for (const p of payers) {
     const diff = p.paidCents - final;

@@ -14,7 +14,7 @@ import { getTeamBySlug, listMyTeams } from "@/server/teams";
 import { myAdminTeams } from "@/server/requests";
 import { submitResult } from "@/server/results";
 import { setSetting } from "@/server/settings";
-import { settleMatch } from "@/server/wallet";
+import { fixPrivateShare, settleMatch } from "@/server/wallet";
 import { cleanup, makeUser, reloadMatch } from "./helpers";
 
 beforeAll(async () => {
@@ -300,6 +300,9 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
     }
   });
 
+  // Hinweis zum Guard: Wirksam ist die Vorabprüfung in fixPrivateShare (`final_share_cents !== null` -> return). Das zusätzliche
+  // `AND final_share_cents IS NULL` im UPDATE ist nur eine zweite Absicherung unter dem Spiel-Lock; entfernt man NUR diese Bedingung, ist der
+  // Mutant äquivalent (kein Test kann rot werden). Dieser Test erschlägt die Mutation "Vorabprüfung entfernen".
   it("der Preis bleibt fest: Austritt und erneutes Bestätigen ändern den Anteil nicht (Guard: nur einmal fixieren)", async () => {
     await setSetting(null, "payments_enabled", true);
     try {
@@ -336,11 +339,87 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
       const seated = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
       const leavers = [match.homeTeamId, match.awayTeamId].map((t) => seated.find((p) => p.teamId === t && p.userId !== organizer.id)!.userId);
       for (const id of leavers) await leaveLobby(id, match.id);
-      await expect(finalConfirm(organizer.id, match.id)).rejects.toThrow(/Anteil .* nachzahlen/);
+      await expect(finalConfirm(organizer.id, match.id)).rejects.toThrow(/Anteil wäre .* weniger bezahlt/);
       const m = await reloadMatch(match.id);
       expect(m.finalShareCents).toBeNull();
       expect(m.homeFinalAt).toBeNull();
       expect(m.awayFinalAt).toBeNull();
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("Abrechnung ohne zweites Bereit: Privatspiel rechnet nie mit Mindestzahl 8/Deckel 12, sondern mit Miete ÷ eingeteilte Spieler; Hauptbuch ausgeglichen, kein Fehlbetrag", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      // 8 Spieler zahlen 1500, dann kommen zwei dazu: Anteil 1200
+      const { organizer, match, token, players } = await prepare(7);
+      for (const p of players) await payShare(p.id, match.id);
+      const extra = [await makeUser("pvx"), await makeUser("pvx")];
+      for (const p of extra) {
+        await joinPrivateGame(p.id, token);
+        await fund(p.id, 3000);
+      }
+      await randomSplit(organizer.id, match.id);
+      for (const p of extra) await payShare(p.id, match.id);
+      const all = [...players, ...extra];
+      for (const p of all) await setReady(p.id, match.id, true); // beide Teams >= 4 bereit: bestätigt, aber kein zweites Bereit der Captains
+      const before = await reloadMatch(match.id);
+      expect(before.status).toBe("confirmed");
+      expect(before.finalShareCents).toBeNull();
+
+      await db.update(matches).set({ startsAt: new Date(Date.now() - 3 * 3_600_000) }).where(eq(matches.id, match.id));
+      await db.transaction(async (tx) => settleMatch(tx, await reloadMatch(match.id))); // wie settleDueMatches beim Anstoß
+      const settled = await reloadMatch(match.id);
+      expect(settled.settledAt).not.toBeNull();
+      expect(settled.finalShareCents).toBe(1200); // nicht finalShareFor (1500 bei Mindestzahl 8)
+      expect(await balances(all)).toEqual(all.map(() => 3000 - 1200));
+      const parts = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+      const total = parts.reduce((sum, p) => sum + p.paidCents, 0);
+      expect(total).toBeGreaterThanOrEqual(12_000); // die Miete ist gedeckt
+      expect(total - 12_000).toBeLessThan(all.length); // Überschuss nur der Rundungsrest
+      expect((await trialBalance()).balanced).toBe(true);
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("fixPrivateShare gilt nur für Privatspiele: bei einem Teamspiel wird nichts fixiert und nichts erstattet", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, token, players } = await prepare(7);
+      for (const p of players) await payShare(p.id, match.id); // 1500 je Spieler (8 eingeteilt)
+      const extra = [await makeUser("pvx"), await makeUser("pvx")];
+      for (const p of extra) await joinPrivateGame(p.id, token);
+      await randomSplit(organizer.id, match.id); // jetzt 10 eingeteilt: ein Privatspiel würde 300 je Zahler zurückbuchen
+      await db.update(matches).set({ kind: "team" }).where(eq(matches.id, match.id));
+      await db.transaction(async (tx) => fixPrivateShare(tx, await reloadMatch(match.id)));
+      expect((await reloadMatch(match.id)).finalShareCents).toBeNull();
+      expect(await balances(players)).toEqual(players.map(() => 3000 - 1500));
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("Ersatzspieler, der nach dem Fixieren zahlt, bucht den festen Anteil (nicht den aktuellen Wert)", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, token, players } = await prepare(9);
+      for (const p of players) await payShare(p.id, match.id);
+      for (const p of players) await setReady(p.id, match.id, true);
+      await finalConfirm(organizer.id, match.id);
+      expect((await reloadMatch(match.id)).finalShareCents).toBe(1200);
+      // je Team einer geht (5/5 wird 4/4, 8 eingeteilt), ein Ersatz kommt: 9 eingeteilt, aktueller Wert wäre 1334
+      const seated = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+      const leavers = [match.homeTeamId, match.awayTeamId].map((t) => seated.find((p) => p.teamId === t && p.userId !== organizer.id)!.userId);
+      for (const id of leavers) await leaveLobby(id, match.id);
+      const sub = await makeUser("pvsub");
+      await joinPrivateGame(sub.id, token);
+      await fund(sub.id, 3000);
+      await randomSplit(organizer.id, match.id);
+      await payShare(sub.id, match.id);
+      expect(await walletBalance(db, sub.id)).toBe(3000 - 1200);
+      expect((await trialBalance()).balanced).toBe(true);
     } finally {
       await setSetting(null, "payments_enabled", false);
     }
