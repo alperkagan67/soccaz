@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, like } from "drizzle-orm";
 import { shuffle } from "@/lib/tournament";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, teams } from "@/db/schema";
+import { auditLog, matchParticipants, matches, teamMembers, teams } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { gameInvites } from "@/db/schema-matchmaking";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { assignSubstitute, cancelMatch, finalConfirm, getLobby, joinLobby, leaveLobby, payShare, randomSplit, removeParticipant, setReady, unassignParticipant } from "@/server/lobby";
 import { cancelUnderfilledLobbies } from "@/server/scheduled";
-import { cancelUncoveredPrivateGames, createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput, rentCheckAt, safeErrorLog } from "@/server/privategame";
+import { cancelUncoveredPrivateGames, createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput, regenerateGameInvite, rentCheckAt, revokeGameInvite, safeErrorLog } from "@/server/privategame";
 import { listBoard } from "@/server/board";
 import { getTeamProfile } from "@/server/profiles";
 import { getTeamBySlug, listMyTeams } from "@/server/teams";
@@ -1073,4 +1073,127 @@ describe("Erstattung nach erneutem Austritt (T54-Nachtrag: Schlüssel mit create
       expect(await walletBalance(db, leaver.id)).toBe(2000); // zweite Erstattung
       expect((await trialBalance()).balanced).toBe(true);
     }));
+});
+
+describe("Einladungslink zurückziehen und neu erzeugen (T56, AC-10)", () => {
+  const validInvites = (matchId: string) => db.select().from(gameInvites).where(eq(gameInvites.matchId, matchId));
+
+  it("neu erzeugen: der alte Link ist ungültig (Vorschau und Beitritt), der neue funktioniert, Beigetretene bleiben, nie zwei gültige Links", async () => {
+    const { organizer, match, token, players } = await game(2);
+    const fresh = await regenerateGameInvite(organizer.id, match.id);
+    expect(fresh).not.toBe(token);
+    expect(fresh.length).toBeGreaterThanOrEqual(20); // zufällig wie bisher (16 Byte base64url)
+    expect((await getGameInvitePreview(token)).status).toBe("invalid");
+    const late = await makeUser("pvlate");
+    await expect(joinPrivateGame(late.id, token)).rejects.toThrow(/ungültig/);
+    expect((await getGameInvitePreview(fresh)).status).toBe("valid");
+    expect(await joinPrivateGame(late.id, fresh)).toEqual({ matchId: match.id, already: false });
+    expect(await getGameInviteToken(organizer.id, match.id)).toBe(fresh); // der Veranstalter sieht den neuen Link
+    expect(await validInvites(match.id)).toHaveLength(1);
+    const parts = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+    expect(parts.map((p) => p.userId)).toEqual(expect.arrayContaining([...players.map((p) => p.id), late.id])); // Bereits Beigetretene bleiben
+    expect(parts).toHaveLength(4);
+  });
+
+  it("zurückziehen: kein gültiger Link mehr, alter Link ungültig, danach lässt sich ein neuer erzeugen", async () => {
+    const { organizer, match, token } = await game(1);
+    await revokeGameInvite(organizer.id, match.id);
+    expect(await getGameInviteToken(organizer.id, match.id)).toBeNull();
+    expect((await getGameInvitePreview(token)).status).toBe("invalid");
+    const p = await makeUser("pvrev");
+    await expect(joinPrivateGame(p.id, token)).rejects.toThrow(/ungültig/);
+    await revokeGameInvite(organizer.id, match.id); // zweites Zurückziehen ist harmlos
+    const fresh = await regenerateGameInvite(organizer.id, match.id);
+    expect(await joinPrivateGame(p.id, fresh)).toEqual({ matchId: match.id, already: false });
+  });
+
+  it("Rechte serverseitig: Fremde, normale Spieler und der Captain nur des anderen Teams werden abgewiesen; der Link bleibt unverändert", async () => {
+    const { organizer, match, token, players } = await game(2);
+    const stranger = await makeUser("pvfremd");
+    const captainAway = players[1];
+    await db.insert(teamMembers).values({ teamId: match.awayTeamId, userId: captainAway.id, role: "admin" });
+    for (const actor of [stranger, players[2], captainAway]) {
+      await expect(revokeGameInvite(actor.id, match.id)).rejects.toThrow(/Veranstalter/);
+      await expect(regenerateGameInvite(actor.id, match.id)).rejects.toThrow(/Veranstalter/);
+    }
+    expect(await getGameInviteToken(organizer.id, match.id)).toBe(token);
+    expect((await getGameInvitePreview(token)).status).toBe("valid");
+    // Plattform-Admins dürfen (Fallback)
+    const admin = await makeUser("pvadm", "admin");
+    expect(await regenerateGameInvite(admin.id, match.id)).not.toBe(token);
+    // abgesagtes Spiel: kein neuer Link
+    await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, match.id));
+    await expect(regenerateGameInvite(organizer.id, match.id)).rejects.toThrow(/abgesagt|vorbei/);
+  });
+
+  it("Neuer Link bei beendetem Spiel wird abgelehnt (Status played)", async () => {
+    const { organizer, match, token } = await game(1);
+    await db.update(matches).set({ status: "played" }).where(eq(matches.id, match.id));
+    await expect(regenerateGameInvite(organizer.id, match.id)).rejects.toThrow(/schon vorbei/);
+    expect((await getGameInvitePreview(token)).status).toBe("valid"); // nichts verändert
+  });
+
+  it("Nicht Berechtigte bekommen immer dieselbe Meldung: unbekannte ID, keine UUID, kein Privatspiel und fremdes Privatspiel sind nicht unterscheidbar", async () => {
+    const { match } = await game(1);
+    const other = await game(0);
+    const stranger = await makeUser("pvfremd");
+    await db.update(matches).set({ kind: "team" }).where(eq(matches.id, other.match.id)); // kein Privatspiel mehr
+    const messages = new Set<string>();
+    for (const id of [match.id, other.match.id, "00000000-0000-4000-8000-000000000000", "keine-uuid", "", "1; drop table matches"]) {
+      for (const fn of [revokeGameInvite, regenerateGameInvite]) {
+        const err = await fn(stranger.id, id).then(() => null, (e: unknown) => e as Error);
+        expect(err, `id=${id}`).toBeInstanceOf(Error);
+        expect(err!.constructor.name, `id=${id}`).toBe("DomainError"); // keine Datenbank-Fehlermeldung
+        messages.add(err!.message);
+      }
+    }
+    expect([...messages]).toEqual(["Nur der Veranstalter kann den Einladungslink verwalten."]);
+    // auch der Veranstalter bekommt bei einer ungültigen ID eine saubere Meldung (kein Datenbankfehler)
+    await expect(revokeGameInvite(other.organizer.id, "keine-uuid")).rejects.toThrow(/Veranstalter/);
+  });
+
+  it("Widerruf während jemand die Beitrittsseite offen hat: der Beitritt schlägt kontrolliert fehl (nach Sperre des Spiels erneut geprüft)", async () => {
+    const { organizer, match, token } = await game(1);
+    const p = await makeUser("pvrace");
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    // Der Widerruf hält die Sperre auf dem Spiel; der Beitritt hat den Link schon gelesen und wartet auf die Sperre
+    const revoking = db.transaction(async (tx) => {
+      await tx.select().from(matches).where(eq(matches.id, match.id)).for("update");
+      await hold;
+      await tx.delete(gameInvites).where(eq(gameInvites.matchId, match.id));
+    });
+    await new Promise((r) => setTimeout(r, 150));
+    const joining = joinPrivateGame(p.id, token);
+    const outcome = joining.then(() => "ok", (e: unknown) => e);
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await revoking;
+    const result = await outcome;
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toMatch(/ungültig/);
+    const parts = await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, p.id)));
+    expect(parts).toHaveLength(0);
+    void organizer;
+  });
+
+  it("paralleler Beitritt und Widerruf: nur kontrollierte Fehler, nach dem Widerruf kommt niemand mehr mit dem alten Link hinein", async () => {
+    const { organizer, match, token } = await game(1);
+    const joiners = await Promise.all([makeUser("pvj"), makeUser("pvj"), makeUser("pvj")]);
+    const results = await Promise.allSettled([...joiners.map((u) => joinPrivateGame(u.id, token)), revokeGameInvite(organizer.id, match.id)]);
+    for (const r of results) if (r.status === "rejected") expect(String(r.reason?.message)).toMatch(/ungültig|abgelaufen/);
+    const late = await makeUser("pvj");
+    await expect(joinPrivateGame(late.id, token)).rejects.toThrow(/ungültig/);
+  });
+
+  it("Audit: Zurückziehen und Neuerzeugen werden protokolliert, ohne den Token zu speichern", async () => {
+    const { organizer, match, token } = await game(0);
+    await revokeGameInvite(organizer.id, match.id);
+    const fresh = await regenerateGameInvite(organizer.id, match.id);
+    const list = await db.select().from(auditLog).where(and(eq(auditLog.entityId, match.id), like(auditLog.action, "private.invite%")));
+    expect(list.map((r) => r.action)).toEqual(expect.arrayContaining(["private.invite.revoke", "private.invite.regenerate"]));
+    expect(list.every((r) => r.actorId === organizer.id)).toBe(true);
+    expect(JSON.stringify(list)).not.toContain(token);
+    expect(JSON.stringify(list)).not.toContain(fresh);
+  });
 });
