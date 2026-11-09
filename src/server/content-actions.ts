@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ActionState } from "@/lib/validation";
+import { safeInternalPath } from "@/lib/safe-path";
 import { deleteComment, moderateComment, postComment, reportComment, type ModerationDecision } from "./content";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
@@ -16,7 +17,7 @@ const postSchema = z.object({
 });
 
 function safePath(path: string): string {
-  return path.startsWith("//") ? "/" : path;
+  return safeInternalPath(path, "/");
 }
 
 export async function postCommentAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
