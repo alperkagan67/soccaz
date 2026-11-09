@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { mvpVotes } from "@/db/schema-community";
 import { MVP_WINDOW_HOURS, NO_SHOW_WINDOW_DAYS } from "./stats";
 import { matchEvents, matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
+import { tournamentMatches, tournaments } from "@/db/schema-league";
 import { confirmDeadline, isValidScore, minuteAt, phaseOf, scoreFromGoals } from "@/lib/result-rules";
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
@@ -92,7 +93,9 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
     membership = mine[0]?.teamId ?? null;
   }
   const platformAdmin = viewer?.role === "admin";
-  const canManage = platformAdmin || adminOf.length > 0;
+  // Veranstalter des Turniers: Schiedsrichter im Turnierspiel, außer er ist selbst Team-Admin eines beteiligten Teams
+  const tournamentOrganizer = Boolean(viewer) && adminOf.length === 0 && (await isTournamentOrganizer(db, viewer!.id, { id: match.id, kind: match.kind }));
+  const canManage = platformAdmin || adminOf.length > 0 || tournamentOrganizer;
   const started = match.startsAt.getTime() <= Date.now();
   const openForPlay = (match.status === "lobby" || match.status === "confirmed") && started;
 
@@ -125,11 +128,11 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
           mySide,
           membership,
           canUploadPhoto: started && match.status !== "cancelled" && participants.some((p) => p.userId === viewer.id),
-          canRecord: canManage && openForPlay && !result,
-          canSubmit: canManage && openForPlay && (!result || submitterSide === mySide || platformAdmin),
+          canRecord: (platformAdmin || adminOf.length > 0) && openForPlay && !result,
+          canSubmit: canManage && openForPlay && (!result || submitterSide === mySide || platformAdmin || tournamentOrganizer),
           canConfirm: Boolean(result && !result.disputed && match.status !== "played" && mySide && submitterSide && mySide !== submitterSide),
           canDispute: Boolean(result && !result.disputed && match.status !== "played" && mySide && submitterSide && mySide !== submitterSide),
-          canDecide: platformAdmin && (match.status === "disputed" || openForPlay || Boolean(result)) && match.status !== "cancelled",
+          canDecide: (platformAdmin || tournamentOrganizer) && (match.status === "disputed" || openForPlay || Boolean(result)) && match.status !== "cancelled",
         }
       : null,
   };
@@ -197,6 +200,20 @@ export async function getScoreboard() {
 // Schreiben
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Ist die Person der Veranstalter des Turniers, zu dem dieses Spiel gehört? Nur bei Turnierspielen, geprüft anhand von
+ * `tournaments.organizer_id` in der Datenbank (nie anhand eines Parameters vom Client).
+ */
+async function isTournamentOrganizer(tx: Pick<typeof db, "select">, userId: string, match: { id: string; kind: MatchRow["kind"] }) {
+  if (match.kind !== "tournament") return false;
+  const [row] = await tx
+    .select({ organizerId: tournaments.organizerId })
+    .from(tournamentMatches)
+    .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
+    .where(eq(tournamentMatches.matchId, match.id));
+  return row?.organizerId === userId;
+}
+
 async function loadAdminContext(tx: Tx, userId: string, match: MatchRow) {
   const [u] = await tx.select({ role: users.role }).from(users).where(eq(users.id, userId));
   const rows = await tx
@@ -204,7 +221,10 @@ async function loadAdminContext(tx: Tx, userId: string, match: MatchRow) {
     .from(teamMembers)
     .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), inArray(teamMembers.teamId, [match.homeTeamId, match.awayTeamId])));
   const side: "home" | "away" | null = rows.some((r) => r.teamId === match.homeTeamId) ? "home" : rows.some((r) => r.teamId === match.awayTeamId) ? "away" : null;
-  return { platformAdmin: u?.role === "admin", side };
+  // Der Veranstalter hat im Turnierspiel nur dann Schiedsrichter-Rechte, wenn er nicht selbst Team-Admin eines beteiligten Teams ist
+  // (in eigener Sache gilt er nur als sein Team: die Gegenpartei bestätigt, entscheiden darf dann nur ein Plattform-Admin).
+  const organizer = !side && (await isTournamentOrganizer(tx, userId, match));
+  return { platformAdmin: u?.role === "admin", side, organizer };
 }
 
 async function isAdminOfBoth(tx: Tx, userId: string, match: MatchRow) {
@@ -219,7 +239,7 @@ async function mutateMatch(
   userId: string,
   matchId: string,
   statuses: MatchRow["status"][],
-  fn: (tx: Tx, match: MatchRow, ctx: { platformAdmin: boolean; side: "home" | "away" | null }) => Promise<void>,
+  fn: (tx: Tx, match: MatchRow, ctx: { platformAdmin: boolean; side: "home" | "away" | null; organizer: boolean }) => Promise<void>,
 ) {
   await db.transaction(async (tx) => {
     const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
@@ -299,12 +319,12 @@ async function finishMatch(tx: Tx, match: MatchRow, actorId: string | null) {
 export function submitResult(userId: string, matchId: string, homeScore: number, awayScore: number) {
   validateScores(homeScore, awayScore);
   return mutateMatch(userId, matchId, [...PLAYING, "disputed"], async (tx, match, ctx) => {
-    if (!ctx.platformAdmin && !ctx.side) throw new DomainError("Nur Team-Admins können das Ergebnis melden.");
+    if (!ctx.platformAdmin && !ctx.side && !ctx.organizer) throw new DomainError("Nur Team-Admins können das Ergebnis melden.");
     requireStarted(match);
     const [existing] = await tx.select().from(matchResults).where(eq(matchResults.matchId, matchId));
 
     const bothSides = match.kind === "private" && (await isAdminOfBoth(tx, userId, match));
-    if ((ctx.platformAdmin && !ctx.side) || bothSides) {
+    if ((ctx.platformAdmin && !ctx.side) || ctx.organizer || bothSides) {
       // Plattform-Admin (oder der Veranstalter eines Privatspiels, Captain beider Teams) trägt direkt das endgültige Ergebnis ein
       await upsertFinal(tx, match, userId, homeScore, awayScore, null);
       return;
@@ -404,7 +424,7 @@ export function decideResult(adminId: string, matchId: string, home: number, awa
   const text = reason.trim();
   if (text.length < 3) throw new DomainError("Bitte gib eine Begründung an (mindestens 3 Zeichen).");
   return mutateMatch(adminId, matchId, [...PLAYING, "disputed"], async (tx, match, ctx) => {
-    if (!ctx.platformAdmin) throw new DomainError("Nur Plattform-Admins können entscheiden.");
+    if (!ctx.platformAdmin && !ctx.organizer) throw new DomainError("Nur Plattform-Admins und der Veranstalter des Turniers können entscheiden.");
     requireStarted(match);
     await upsertFinal(tx, match, adminId, home, away, text);
   });

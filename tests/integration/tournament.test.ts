@@ -5,7 +5,7 @@ import { matchParticipants, matches, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { creditWallet, debitWallet, trialBalance, walletBalance } from "@/server/ledger";
-import { confirmResult, submitResult } from "@/server/results";
+import { confirmResult, decideResult, disputeResult, submitResult } from "@/server/results";
 import {
   cancelTournament,
   closeWithJoinedTeams,
@@ -808,6 +808,80 @@ describe("Erstattung geht an den Zahler, Austritt und Abmeldung ab der Zahlungsp
     // zurück in der Anmeldephase gehen Austritt und Abmeldung wieder
     await leavePlayer(pl.id, t.id, pl.id);
     await withdrawTeam(squads[1].captain.id, t.id, squads[1].team.id);
+  });
+});
+
+describe("AC-10: Der Veranstalter trägt Ergebnisse ein und entscheidet Streit", () => {
+  const openSemi = async (tid: string) => {
+    const m = (await bracketRows(tid)).find((r) => r.stage === "ko:4" && r.matchId)!;
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m.matchId!));
+    return m;
+  };
+
+  it("Veranstalter (weder Team-Admin noch Plattform-Admin) trägt direkt ein, Sieger rückt auf; Fremde und andere Veranstalter werden abgewiesen", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningTournament(o);
+    const m = await openSemi(t.id);
+    const stranger = await makeUser("fremd");
+    const otherOrg = await organizer(); // Veranstalter, aber eines anderen Turniers
+    await expect(submitResult(stranger.id, m.matchId!, 2, 1)).rejects.toThrow(/Team-Admins/);
+    await expect(submitResult(otherOrg.id, m.matchId!, 2, 1)).rejects.toThrow(/Team-Admins/);
+    await expect(decideResult(stranger.id, m.matchId!, 2, 1, "ich bestimme")).rejects.toThrow(/entscheiden/);
+    await expect(decideResult(otherOrg.id, m.matchId!, 2, 1, "ich bestimme")).rejects.toThrow(/entscheiden/);
+    expect((await bracketRows(t.id)).find((r) => r.id === m.id)!.scoreA).toBeNull();
+
+    await submitResult(o.id, m.matchId!, 2, 1);
+    const after = (await bracketRows(t.id)).find((r) => r.id === m.id)!;
+    expect(after).toMatchObject({ scoreA: 2, scoreB: 1 });
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("played");
+    const final = (await bracketRows(t.id)).find((r) => r.stage === "ko:2")!;
+    expect([final.teamA, final.teamB]).toContain(m.teamA); // Sieger steht im Finale
+    expect(squads.length).toBe(4);
+  });
+
+  it("Streit: Veranstalter entscheidet, Fremde nicht; Plattform-Admin bleibt Fallback", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningTournament(o);
+    const captains = new Map(squads.map((s) => [s.team.id, s.captain]));
+    const m = await openSemi(t.id);
+    await submitResult(captains.get(m.teamA!)!.id, m.matchId!, 3, 0);
+    await disputeResult(captains.get(m.teamB!)!.id, m.matchId!, "stimmt nicht");
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("disputed");
+    const stranger = await makeUser("fremd");
+    await expect(decideResult(stranger.id, m.matchId!, 0, 3, "ich entscheide")).rejects.toThrow(/entscheiden/);
+    await decideResult(o.id, m.matchId!, 1, 2, "Schiedsrichterbericht");
+    expect((await bracketRows(t.id)).find((r) => r.id === m.id)).toMatchObject({ scoreA: 1, scoreB: 2 });
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("played");
+
+    // Plattform-Admin bleibt Fallback
+    const m2 = (await bracketRows(t.id)).find((r) => r.stage === "ko:4" && r.matchId && r.scoreA === null)!;
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m2.matchId!));
+    const admin = await makeUser("padmin", "admin");
+    await decideResult(admin.id, m2.matchId!, 2, 2, "Admin");
+    expect((await bracketRows(t.id)).find((r) => r.id === m2.id)).toMatchObject({ scoreA: 2, scoreB: 2 });
+  });
+
+  it("Randfall: Ist der Veranstalter zugleich Team-Admin eines beteiligten Teams, gilt er in diesem Spiel nur als dieses Team (Gegenpartei bestätigt, kein Selbst-Bestätigen, keine Selbst-Entscheidung)", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningTournament(o);
+    const captains = new Map(squads.map((s) => [s.team.id, s.captain]));
+    const m = await openSemi(t.id);
+    await db.insert(teamMembers).values({ teamId: m.teamA!, userId: o.id, role: "admin" });
+    await submitResult(o.id, m.matchId!, 5, 0); // nur als Meldung seines Teams
+    let row = (await bracketRows(t.id)).find((r) => r.id === m.id)!;
+    expect(row.scoreA).toBeNull(); // noch nicht endgültig
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).not.toBe("played");
+    await expect(confirmResult(o.id, m.matchId!)).rejects.toThrow(/andere Team/); // bestätigt nicht sein eigenes Ergebnis
+    await expect(decideResult(o.id, m.matchId!, 5, 0, "in eigener Sache")).rejects.toThrow(/entscheiden/);
+    await confirmResult(captains.get(m.teamB!)!.id, m.matchId!); // die Gegenpartei bestätigt
+    row = (await bracketRows(t.id)).find((r) => r.id === m.id)!;
+    expect(row).toMatchObject({ scoreA: 5, scoreB: 0 });
+  });
+
+  it("Regression: Veranstalterrecht gilt nur für Turnierspiele; Plattform-Admin-Pflicht bei anderen Spielen bleibt", async () => {
+    const o = await organizer();
+    const [other] = await db.select({ id: matches.id }).from(matches).limit(1);
+    if (other) await expect(decideResult(o.id, other.id, 1, 0, "grundlos")).rejects.toThrow();
   });
 });
 
