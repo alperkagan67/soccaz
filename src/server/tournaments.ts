@@ -172,6 +172,8 @@ type PlayerRow = typeof tournamentPlayers.$inferSelect;
 
 async function refundPlayer(tx: Tx, t: T, p: PlayerRow, reason: string) {
   if (p.paidCents > 0) {
+    // Wird eine Zahlung erstattet, ist das Team nicht mehr vollständig bezahlt: "Bereit" gilt nicht mehr
+    await tx.update(tournamentTeams).set({ paidReadyAt: null }).where(and(eq(tournamentTeams.tournamentId, t.id), eq(tournamentTeams.teamId, p.teamId)));
     // Die Erstattung geht an den, der gezahlt hat: der Spieler selbst oder der Captain, der für das Team gezahlt hat
     await creditWallet(tx, p.paidBy ?? p.userId, { from: "tournament", amountCents: p.paidCents, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-refund:${t.id}:${p.userId}:${p.joinedAt.getTime()}:${p.paidAt?.getTime() ?? 0}`, reason: `${reason}: ${t.name}` });
   }
@@ -246,7 +248,27 @@ async function rosterReady(tx: Pick<typeof db, "select">, tournamentId: string, 
 
 /** Wer in den Kader kommt oder geht, hebt die "vollzählig"-Meldung des Teams auf (solange der Preis noch nicht feststeht). */
 async function unlockTeam(tx: Tx, tournamentId: string, teamId: string) {
-  await tx.update(tournamentTeams).set({ readyAt: null }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
+  await tx.update(tournamentTeams).set({ readyAt: null, paidReadyAt: null }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
+}
+
+/**
+ * Der Captain drückt "Bereit", nachdem sein Team vollständig bezahlt hat (egal wer gezahlt hat). Nur in der Zahlungsphase vor dem Bracket.
+ * Die Prüfung läuft hier auf dem Server, nicht nur in der Oberfläche. `ready_at` ("Kader vollzählig") bleibt unberührt.
+ */
+export async function setPaidReady(userId: string, tournamentId: string) {
+  await db.transaction(async (tx) => {
+    const t = await lockTournament(tx, tournamentId);
+    if (!paymentOpen(t)) throw new DomainError("Bereit geht erst in der Zahlungsphase, bevor das Bracket steht.");
+    const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
+    if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann Bereit drücken.");
+    const share = shareOf(t);
+    const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, entry.teamId))).for("update");
+    if (players.length === 0 || !players.every((p) => share === 0 || p.paidCents >= share)) throw new DomainError("Bereit geht erst, wenn alle Spieler deines Teams bezahlt haben.");
+    if (!entry.paidReadyAt) {
+      await tx.update(tournamentTeams).set({ paidReadyAt: new Date() }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, entry.teamId)));
+      await audit(userId, "tournament.paidready", "tournament", tournamentId, { after: { teamId: entry.teamId } }, tx);
+    }
+  });
 }
 
 /**
@@ -304,7 +326,7 @@ export async function reopenRosters(userId: string, tournamentId: string) {
       await refundPlayer(tx, t, p, "Rückerstattung: Kader wieder geöffnet");
       await tx.update(tournamentPlayers).set({ paidCents: 0, paidAt: null, paidBy: null }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
     }
-    await tx.update(tournamentTeams).set({ readyAt: null }).where(eq(tournamentTeams.tournamentId, tournamentId));
+    await tx.update(tournamentTeams).set({ readyAt: null, paidReadyAt: null }).where(eq(tournamentTeams.tournamentId, tournamentId));
     await tx.update(tournaments).set({ status: "registration", finalShareCents: null }).where(eq(tournaments.id, tournamentId));
     await notifyUsers([...new Set(players.map((p) => p.userId)), ...new Set(players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])))], { type: "system", title: "Kader wieder offen", body: `${t.name}: Der Veranstalter hat die Kader wieder geöffnet. Bereits gezahlte Anteile wurden erstattet, der Preis wird neu berechnet.`, url: `/turniere/${tournamentId}` }, tx);
     await audit(userId, "tournament.reopen", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length } }, tx);
