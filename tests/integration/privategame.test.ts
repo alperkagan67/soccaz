@@ -240,6 +240,12 @@ describe("Kostenlos und Bereit-Prüfung (T52)", () => {
       // nach der Zahlung des letzten Spielers gelingt es (der Veranstalter ist Captain beider Teams: ein Klick, beide Teams)
       await payShare(late.id, match.id);
       await setReady(late.id, match.id, true);
+      // auch ein bereiter Spieler ohne Zahlung (z. B. nach einer Erstattung) blockiert das Bereit des Captains: die Prüfung steht im Server
+      const victim = others[0];
+      const [before] = await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, victim.id)));
+      await db.update(matchParticipants).set({ paidCents: 0 }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, victim.id)));
+      await expect(finalConfirm(organizer.id, match.id)).rejects.toThrow(/bezahlt/);
+      await db.update(matchParticipants).set({ paidCents: before.paidCents }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, victim.id)));
       await finalConfirm(organizer.id, match.id);
       const m = await reloadMatch(match.id);
       expect(m.homeFinalAt).not.toBeNull();
