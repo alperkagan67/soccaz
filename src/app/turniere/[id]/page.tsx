@@ -220,7 +220,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                         </span>
                         <span className="flex items-center gap-2">
                           <PlayerLight light={lightOf(team.ready, p.paid || (free && inPayment))} />
-                          {inPayment && mine && !free && !p.paid && <ActionButton action={payForTeamAction.bind(null, t.id, p.userId)} label="Ich zahle für ihn" className="btn btn-ghost !min-h-8 !px-2 text-xs" />}
+                          {inPayment && (mine || (v?.myTeamId === team.teamId && p.userId !== user?.id)) && !free && !p.paid && <ActionButton action={payForTeamAction.bind(null, t.id, p.userId)} label="Ich zahle für ihn" className="btn btn-ghost !min-h-8 !px-2 text-xs" />}
                           {inRegistration && !p.isCaptain && (mine || manage) && <ActionButton action={leavePlayerAction.bind(null, t.id, p.userId)} label="Entfernen" confirm="Spieler aus dem Kader nehmen?" />}
                         </span>
                       </li>

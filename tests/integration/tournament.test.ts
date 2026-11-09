@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
-import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
+import { creditWallet, debitWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { confirmResult, submitResult } from "@/server/results";
 import {
   cancelTournament,
@@ -283,6 +283,99 @@ describe("Zahlung: genau der Preis, jeder selbst, nie doppelt", () => {
     expect(await walletBalance(db, a.players[2].id)).toBe(1000);
     expect(await walletBalance(db, a.players[1].id)).toBe(0);
     expect((await trialBalance()).balanced).toBe(true);
+  });
+});
+
+describe("Zahlung füreinander im eigenen Team (AC-4, AC-5)", () => {
+  async function paymentPhase() {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true)); // 16 Spieler, 10 Euro
+    return { o, t, squads };
+  }
+
+  it("AC-4: Spieler A zahlt für Teamkollegen B: B bezahlt, A belastet, paidBy = A", async () => {
+    const { t, squads } = await paymentPhase();
+    const [a, b] = [squads[0].players[1], squads[0].players[2]];
+    await fund(a.id, 3000);
+    await payForTeam(a.id, t.id, b.id);
+    expect(await walletBalance(db, a.id)).toBe(2000);
+    expect(await walletBalance(db, b.id)).toBe(0);
+    const [row] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, b.id)));
+    expect(row).toMatchObject({ paidCents: 1000, paidBy: a.id });
+    // ohne Ziel darf ein normaler Spieler weiterhin nicht für alle zahlen
+    await expect(payForTeam(a.id, t.id)).rejects.toThrow(/Captain/);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-4: zweite (parallele) Zahlung für denselben Spieler wird abgewiesen, nur einmal gebucht", async () => {
+    const { t, squads } = await paymentPhase();
+    const [a, c, b] = [squads[0].players[1], squads[0].players[2], squads[0].players[3]];
+    await fund(a.id, 3000);
+    await fund(c.id, 3000);
+    const tb0 = await tournamentAccount();
+    const res = await Promise.allSettled([payForTeam(a.id, t.id, b.id), payForTeam(c.id, t.id, b.id), payEntry(b.id, t.id)]);
+    expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(await tournamentAccount()).toBe(tb0 + 1000);
+    const [row] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, b.id)));
+    expect(row.paidCents).toBe(1000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-4: ist die Buchung schon vorhanden (created = false), wird nicht still als bezahlt markiert", async () => {
+    const { t, squads } = await paymentPhase();
+    const [a, b] = [squads[0].players[1], squads[0].players[2]];
+    const [row] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, b.id)));
+    const tr = await statusOf(t.id);
+    await fund(a.id, 3000);
+    // eine frühere Buchung mit demselben Schlüssel existiert, die Zeile steht aber noch auf "unbezahlt"
+    await db.transaction((tx) => debitWallet(tx, a.id, { to: "tournament", amountCents: 1000, kind: "tournament_entry", tournamentId: t.id, idempotencyKey: `tournament-entry:${t.id}:${b.id}:${row.joinedAt.getTime()}:${tr.priceRound}`, reason: "vorab" }));
+    await expect(payForTeam(a.id, t.id, b.id)).rejects.toThrow(/schon gebucht|bezahlt/);
+    const [after] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, b.id)));
+    expect(after.paidCents).toBe(0);
+  });
+
+  it("AC-5: Zahlung für einen Spieler eines anderen Teams wird abgelehnt (auch durch einen Captain), Nicht-Kader ebenso", async () => {
+    const { t, squads } = await paymentPhase();
+    const [a, other] = [squads[0].players[1], squads[1].players[1]];
+    await fund(a.id, 3000);
+    await fund(squads[0].captain.id, 3000);
+    await expect(payForTeam(a.id, t.id, other.id)).rejects.toThrow(/nicht in deinem Team/);
+    await expect(payForTeam(squads[0].captain.id, t.id, other.id)).rejects.toThrow(/nicht in deinem Team/);
+    const stranger = await makeUser("fremd");
+    await fund(stranger.id, 3000);
+    await expect(payForTeam(stranger.id, t.id, other.id)).rejects.toThrow(/Kader|Captain/);
+    expect(await walletBalance(db, a.id)).toBe(3000);
+    expect(await walletBalance(db, stranger.id)).toBe(3000);
+    const [row] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, other.id)));
+    expect(row.paidCents).toBe(0);
+  });
+});
+
+describe("paidReady ist für Zuschauer privater Turniere verborgen", () => {
+  it("Zuschauer sehen weder paidReady noch paidReadyAt, Beteiligte schon", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    for (const p of a.players) {
+      await fund(p.id, 3000);
+      await payEntry(p.id, t.id);
+    }
+    await setPaidReady(a.captain.id, t.id);
+    const stranger = await makeUser("fremd");
+    for (const viewer of [null, { id: stranger.id, role: "player" as const }]) {
+      const v = await getTournament(t.id, viewer, "falscher-token");
+      for (const team of v!.teams) {
+        expect(team.paidReady).toBe(false);
+        expect(JSON.stringify(team)).not.toContain("paidReadyAt");
+      }
+    }
+    const member = await getTournament(t.id, { id: a.players[1].id, role: "player" });
+    expect(member!.teams.find((x) => x.teamId === a.team.id)!.paidReady).toBe(true);
+    expect(JSON.stringify(member!.teams)).not.toContain("paidReadyAt");
   });
 });
 

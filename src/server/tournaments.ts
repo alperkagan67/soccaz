@@ -207,7 +207,8 @@ export async function payEntry(userId: string, tournamentId: string) {
     const share = shareOf(t);
     if (share === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
     if (p.paidCents >= share) throw new DomainError("Du hast schon bezahlt.");
-    await debitWallet(tx, userId, { to: "tournament", amountCents: share - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${userId}:${p.joinedAt.getTime()}:${t.priceRound}`, reason: `Anteil Hallenkosten ${t.name}`, actorId: userId });
+    const booked = await debitWallet(tx, userId, { to: "tournament", amountCents: share - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${userId}:${p.joinedAt.getTime()}:${t.priceRound}`, reason: `Anteil Hallenkosten ${t.name}`, actorId: userId });
+    if (!booked.created) throw new DomainError("Dieser Anteil ist schon gebucht.");
     await tx.update(tournamentPlayers).set({ paidCents: share, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
     await audit(userId, "tournament.pay", "tournament", tournamentId, { after: { cents: share } }, tx);
     await maybeGenerateBracket(tx, t);
@@ -215,24 +216,32 @@ export async function payEntry(userId: string, tournamentId: string) {
 }
 
 /**
- * Der Captain zahlt für sein Team: für alle Spieler, die noch nicht bezahlt haben, oder nur für einen einzelnen Spieler (`targetUserId`).
- * Alle anderen Spieler können weiter selbst zahlen. Alles oder nichts: reicht das Guthaben nicht, wird nichts gebucht.
- * Die Erstattung (nur bei Absage oder wenn der Veranstalter den Kader wieder öffnet) geht an den Captain, weil er gezahlt hat.
+ * Zahlung für andere im eigenen Team. Der Captain zahlt für alle offenen Spieler seines Teams oder für einen einzelnen (`targetUserId`);
+ * jeder andere Spieler im Kader darf nur für einen einzelnen Teamkollegen zahlen (`targetUserId` ist Pflicht). Nie für Spieler fremder Teams.
+ * Alles oder nichts: reicht das Guthaben nicht, wird nichts gebucht. Der Buchungsschlüssel hängt nicht vom Zahler ab,
+ * eine zweite Zahlung für denselben Spieler wird daher abgewiesen. Die Erstattung geht an den Zahler (`paidBy`).
  */
 export async function payForTeam(userId: string, tournamentId: string, targetUserId?: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
-    const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
-    if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann für andere Spieler bezahlen.");
+    const [captainEntry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
+    let teamId = captainEntry?.teamId;
+    if (!captainEntry) {
+      if (!targetUserId) throw new DomainError("Nur der Captain eines angemeldeten Teams kann für alle Spieler bezahlen.");
+      const [me] = await tx.select({ teamId: tournamentPlayers.teamId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
+      if (!me) throw new DomainError("Nur Spieler im Kader können für Teamkollegen bezahlen.");
+      teamId = me.teamId;
+    }
     const share = shareOf(t);
     if (share === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
-    const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, entry.teamId))).for("update");
+    const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId!))).for("update");
     if (targetUserId && !players.some((p) => p.userId === targetUserId)) throw new DomainError("Dieser Spieler ist nicht in deinem Team.");
     const open = players.filter((p) => p.paidCents < share && (!targetUserId || p.userId === targetUserId));
     if (open.length === 0) throw new DomainError(targetUserId ? "Dieser Spieler hat schon bezahlt." : "Euer Team ist schon komplett bezahlt.");
     for (const p of open) {
-      await debitWallet(tx, userId, { to: "tournament", amountCents: share - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${p.userId}:${p.joinedAt.getTime()}:${t.priceRound}`, reason: `Anteil Hallenkosten (Captain zahlt) ${t.name}`, actorId: userId });
+      const booked = await debitWallet(tx, userId, { to: "tournament", amountCents: share - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${p.userId}:${p.joinedAt.getTime()}:${t.priceRound}`, reason: userId === p.userId ? `Anteil Hallenkosten ${t.name}` : `Anteil Hallenkosten (bezahlt für Teamkollegen) ${t.name}`, actorId: userId });
+      if (!booked.created) throw new DomainError("Dieser Anteil ist schon gebucht.");
       await tx.update(tournamentPlayers).set({ paidCents: share, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
     }
     await audit(userId, "tournament.payteam", "tournament", tournamentId, { after: { players: open.length, single: Boolean(targetUserId) } }, tx);
@@ -628,11 +637,12 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const teamViews = await Promise.all(
     entries.map(async (e) => {
       const list = players.filter((p) => p.teamId === e.teamId);
+      const { paidReadyAt, ...rest } = e;
       return {
-        ...e,
+        ...rest,
         captainName: spectator ? "–" : (list.find((p) => p.userId === e.captainId)?.name ?? "–"),
         ready: Boolean(e.readyAt), // Team vollzählig gemeldet
-        paidReady: Boolean(e.paidReadyAt), // Captain hat nach voller Zahlung "Bereit" gedrückt
+        paidReady: !spectator && Boolean(paidReadyAt), // Captain hat nach voller Zahlung "Bereit" gedrückt
         dueCents: priceFixed && !spectator ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
         anyPaid: !spectator && list.some((p) => p.paidCents > 0),
         complete: await rosterReady(db, t.id, e.teamId),
