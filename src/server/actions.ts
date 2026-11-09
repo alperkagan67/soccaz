@@ -19,10 +19,10 @@ import { markAllRead, removePushSubscription, savePrefs, savePushSubscription } 
 import { acceptRequest, cancelRequest, createRequest } from "./requests";
 import { castMvpVote, markNoShow } from "./stats";
 import { createInvite, createTeam, DomainError, joinWithInvite } from "./teams";
+import { safeInternalPath } from "@/lib/safe-path";
 
 function safeNext(value: FormDataEntryValue | null): string {
-  const next = typeof value === "string" ? value : "";
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/app";
+  return safeInternalPath(value);
 }
 
 export async function completeOnboardingAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
