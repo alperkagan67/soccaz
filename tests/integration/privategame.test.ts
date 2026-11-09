@@ -168,10 +168,12 @@ describe("Miete ist Pflicht (AC-1)", () => {
 
   it("fehlende, leere oder ungültige Miete wird serverseitig abgewiesen; kein stiller Plattformpreis", async () => {
     const o = await makeUser("pvrent");
-    await expect(createPrivateGame(o.id, without())).rejects.toThrow(/Hallenmiete/);
-    await expect(createPrivateGame(o.id, { ...base, rentCents: null })).rejects.toThrow(/Hallenmiete/);
-    await expect(createPrivateGame(o.id, { ...base, rentCents: undefined })).rejects.toThrow(/Hallenmiete/);
-    for (const bad of [-1, 100_001, 1.5, Number.NaN]) await expect(createPrivateGame(o.id, { ...base, rentCents: bad })).rejects.toThrow(/Hallenmiete/);
+    // fehlende Miete: eigene Meldung "ausdrücklich kostenlos" (nicht die Bereichsmeldung)
+    await expect(createPrivateGame(o.id, without())).rejects.toThrow(/ausdrücklich kostenlos/);
+    await expect(createPrivateGame(o.id, { ...base, rentCents: null })).rejects.toThrow(/ausdrücklich kostenlos/);
+    await expect(createPrivateGame(o.id, { ...base, rentCents: undefined })).rejects.toThrow(/ausdrücklich kostenlos/);
+    // vorhandene, aber ungültige Miete: Bereichsmeldung
+    for (const bad of [-1, 100_001, 1.5, Number.NaN]) await expect(createPrivateGame(o.id, { ...base, rentCents: bad })).rejects.toThrow(/zwischen 0 und 1\.000 Euro/);
     // nach den Fehlversuchen existiert nichts: keine Teams, kein Spiel
     expect(await db.select().from(teams).where(eq(teams.createdBy, o.id))).toHaveLength(0);
   });
