@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, count, eq, gt } from "drizzle-orm";
+import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
@@ -7,7 +7,9 @@ import { gameInvites } from "@/db/schema-matchmaking";
 import { DEFAULT_PRIVATE_PLAYERS, MAX_PRIVATE_PLAYERS, MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
 import { parseEuro } from "@/lib/money";
 import { audit } from "./audit";
+import { cancelMatchTx } from "./lobby";
 import { notifyUsers } from "./notifications";
+import { paymentsEnabled } from "./settings";
 import { privateJoinBlocked } from "./wallet";
 import { DomainError } from "./teams";
 
@@ -144,3 +146,53 @@ export async function joinPrivateGame(userId: string, token: string): Promise<{ 
   });
 }
 
+
+// ---------------------------------------------------------------------------------------------
+// Mietprüfung (AC-9)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Zeitpunkt der Mietprüfung, an EINER Stelle: 24 Stunden vor Anstoß, wenn das Spiel bei der Anlage mindestens 24 Stunden Vorlauf hatte;
+ * sonst 1 Stunde vor Anstoß (der Mindestvorlauf). Ein kurzfristig angelegtes Spiel wird so nie sofort abgesagt.
+ */
+export const RENT_CHECK_HOURS = 24;
+export const RENT_CHECK_SHORT_LEAD_HOURS = 1;
+
+export function rentCheckAt(startsAt: Date, createdAt: Date): Date {
+  const leadHours = (startsAt.getTime() - createdAt.getTime()) / 3_600_000;
+  const before = leadHours >= RENT_CHECK_HOURS ? RENT_CHECK_HOURS : RENT_CHECK_SHORT_LEAD_HOURS;
+  return new Date(startsAt.getTime() - before * 3_600_000);
+}
+
+/**
+ * Prüft Privatspiele mit Miete: Ist die Summe der tatsächlich bezahlten Anteile kleiner als die Miete, wird das Spiel abgesagt und alle
+ * bekommen ihren Anteil zurück (auch offene Ansprüche von Aussteigern; die Absage nutzt dafür die vorhandene Erstattung mit festen Schlüsseln).
+ * Gedeckte Spiele bleiben unverändert, kostenlose und Spiele ohne aktive Zahlungen werden nie abgesagt. Läuft im 5-Minuten-Job, je Spiel in
+ * eigener Transaktion unter der Spielsperre (Zahlungen laufen unter derselben Sperre), ein Fehler bei einem Spiel stoppt die anderen nicht.
+ * Idempotent: ein abgesagtes Spiel wird nicht noch einmal angefasst.
+ */
+export async function cancelUncoveredPrivateGames(now: Date = new Date()): Promise<number> {
+  if (!(await paymentsEnabled())) return 0;
+  const candidates = await db
+    .select({ id: matches.id, startsAt: matches.startsAt, createdAt: matches.createdAt })
+    .from(matches)
+    .where(and(eq(matches.kind, "private"), inArray(matches.status, ["lobby", "confirmed"]), gt(matches.priceCents, 0), sql`${matches.startsAt} > ${now}`));
+  let cancelled = 0;
+  for (const c of candidates) {
+    if (rentCheckAt(c.startsAt, c.createdAt).getTime() > now.getTime()) continue;
+    try {
+      await db.transaction(async (tx) => {
+        const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
+        if (!m || m.kind !== "private" || (m.status !== "lobby" && m.status !== "confirmed") || !m.priceCents || m.priceCents <= 0) return;
+        const [{ paid }] = await tx.select({ paid: sql<number>`coalesce(sum(${matchParticipants.paidCents}), 0)::int` }).from(matchParticipants).where(eq(matchParticipants.matchId, m.id));
+        if (paid >= m.priceCents) return; // Miete gedeckt: nichts zu tun
+        await cancelMatchTx(tx, m, null, "Die Hallenmiete war 24 Stunden vor Anstoß nicht gedeckt. Alle bekommen ihren Anteil zurück.");
+        await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
+        cancelled += 1;
+      });
+    } catch (error) {
+      console.error("cancelUncoveredPrivateGames: Fehler bei Spiel", c.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return cancelled;
+}
