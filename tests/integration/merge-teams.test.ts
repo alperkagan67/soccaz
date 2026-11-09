@@ -40,6 +40,7 @@ describe("AC-1: mergeTeams sperrt beide Teams in fester Reihenfolge", () => {
     }
   });
 
+  // Rauchtest, nicht deterministisch, kein Beweis: keine Mutation macht diesen Test rot (die Race ist hier nicht zuverlässig reproduzierbar).
   it("mergeTeams gegen challengeTeam: genau eines gewinnt, das andere scheitert definiert, kein Deadlock", async () => {
     const admin = await makeUser("mtadmin2", "admin");
     for (let i = 0; i < 8; i++) {
@@ -57,7 +58,7 @@ describe("AC-2: convertLegacyChallenges sperrt die Teams und prüft das Paar", (
       const d = await pair();
       const [r] = await db.insert(matchRequests).values({ teamId: d.ta.id, targetTeamId: d.tb.id, city: "Essen", startsAt: new Date(Date.now() + 5 * 86_400_000) }).returning();
       const res = await Promise.allSettled([convertLegacyChallenges(), challengeTeam(d.b.id, d.tb.id, d.ta.id)]);
-      expectNoDeadlock(res.filter((x) => x.status === "rejected" && x.reason instanceof DomainError));
+      expectNoDeadlock(res); // alle abgelehnten Ergebnisse prüfen, auch Nicht-DomainErrors (z. B. Deadlock "Failed query")
       const rows = await matchesBetween(d.ta.id, d.tb.id);
       expect(rows).toHaveLength(1);
       expect(rows[0].challengeStatus).toBe("pending");
