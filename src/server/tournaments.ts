@@ -268,6 +268,7 @@ export async function setPaidReady(userId: string, tournamentId: string) {
       await tx.update(tournamentTeams).set({ paidReadyAt: new Date() }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, entry.teamId)));
       await audit(userId, "tournament.paidready", "tournament", tournamentId, { after: { teamId: entry.teamId } }, tx);
     }
+    await maybeGenerateBracket(tx, t); // das Bracket entsteht, sobald das letzte Team bereit ist
   });
 }
 
@@ -389,7 +390,7 @@ async function insertFixtures(tx: Tx, tournamentId: string, fixtures: Fixture[])
 }
 
 /**
- * Erzeugt das K.-o.-Bracket genau einmal, sobald der Preis feststeht und alle Spieler bezahlt haben (bei einem kostenlosen Turnier sofort).
+ * Erzeugt das K.-o.-Bracket genau einmal, sobald der Preis feststeht, alle Spieler bezahlt haben und jedes Team nach der Zahlung "Bereit" gedrückt hat (`paid_ready_at`).
  * Läuft unter der Turniersperre und setzt `bracket_generated_at`, damit eine zweite Auslösung nichts mehr tut.
  */
 async function maybeGenerateBracket(tx: Tx, t: T) {
@@ -400,11 +401,12 @@ async function maybeGenerateBracket(tx: Tx, t: T) {
   const share = shareOf(fresh);
   const everyone = await tx.select({ paid: tournamentPlayers.paidCents }).from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
   if (!everyone.every((p) => share === 0 || p.paid >= share)) return;
+  if (!entries.every((e) => e.readyAt && e.paidReadyAt)) return; // alle Teams: Kader vollzählig und nach voller Zahlung bereit
 
   await tx.update(tournaments).set({ status: "running", bracketGeneratedAt: new Date() }).where(eq(tournaments.id, t.id));
   await insertFixtures(tx, t.id, knockout(entries.map((e) => e.teamId)));
   await createGames(tx, fresh);
-  for (const e of entries) await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Das Bracket steht", body: `${fresh.name}: Alle haben bezahlt, das Bracket ist jetzt sichtbar.`, url: `/turniere/${t.id}` }, tx);
+  for (const e of entries) await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Das Bracket steht", body: `${fresh.name}: Alle Teams sind bereit, das Bracket ist jetzt sichtbar.`, url: `/turniere/${t.id}` }, tx);
   await audit(null, "tournament.bracket", "tournament", t.id, { after: { teams: entries.length } }, tx);
 }
 
@@ -576,7 +578,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   if (!t) return null;
 
   const entries = await db
-    .select({ teamId: teams.id, name: teams.name, slug: teams.slug, captainId: tournamentTeams.captainId, readyAt: tournamentTeams.readyAt })
+    .select({ teamId: teams.id, name: teams.name, slug: teams.slug, captainId: tournamentTeams.captainId, readyAt: tournamentTeams.readyAt, paidReadyAt: tournamentTeams.paidReadyAt })
     .from(tournamentTeams)
     .innerJoin(teams, eq(teams.id, tournamentTeams.teamId))
     .where(eq(tournamentTeams.tournamentId, id))
@@ -630,6 +632,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
         ...e,
         captainName: spectator ? "–" : (list.find((p) => p.userId === e.captainId)?.name ?? "–"),
         ready: Boolean(e.readyAt), // Team vollzählig gemeldet
+        paidReady: Boolean(e.paidReadyAt), // Captain hat nach voller Zahlung "Bereit" gedrückt
         dueCents: priceFixed && !spectator ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
         anyPaid: !spectator && list.some((p) => p.paidCents > 0),
         complete: await rosterReady(db, t.id, e.teamId),
