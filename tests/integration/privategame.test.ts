@@ -17,10 +17,16 @@ import { canViewMatch, getMatchPage, submitResult } from "@/server/results";
 import { GET as liveGET } from "@/app/api/spiele/[id]/live/route";
 import OverlayPage from "@/app/overlay/[id]/page";
 import { ALL_MATCHES, mayAnnounceToAll, subscribeToLobby } from "@/server/realtime";
+import { GET as eventsGET } from "@/app/api/spiele/[id]/events/route";
+import { teamCard } from "@/server/cards";
 import { setSetting } from "@/server/settings";
 import { pendingRefunds } from "@/db/schema-finance";
 import { fixPrivateShare, privateListLocked, settleMatch } from "@/server/wallet";
 import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
+
+// Die Events-Route fragt die Sitzung ab (Cookies gibt es im Test nicht): getCurrentUser liefert hier die Person, die der Test gerade spielt.
+const session = vi.hoisted(() => ({ user: null as { id: string; role: "player" | "admin" } | null }));
+vi.mock("@/server/session", () => ({ getCurrentUser: async () => session.user }));
 
 beforeAll(async () => {
   await setSetting(null, "payments_enabled", false);
@@ -1167,6 +1173,64 @@ describe("Kein Zugriff auf Privatspiele für Unbeteiligte (T57, AC-12)", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+it("Events-Route wirklich aufgerufen: anonym und fremd 404 (wie bei nicht vorhandenem Spiel), Veranstalter bekommt den Stream", async () => {
+    const { organizer, match } = await game(3);
+    const stranger = await makeUser("pvstr2");
+    const call = async (user: typeof session.user, id: string) => {
+      session.user = user;
+      const controller = new AbortController();
+      const res = await eventsGET(new Request(`http://localhost/api/spiele/${id}/events`, { signal: controller.signal }), { params: Promise.resolve({ id }) } as never);
+      const out = { status: res.status, type: res.headers.get("content-type"), body: res.status === 200 ? "" : await res.text() };
+      controller.abort();
+      await res.body?.cancel().catch(() => {});
+      return out;
+    };
+    try {
+      const missing = await call(null, crypto.randomUUID());
+      expect(missing.status).toBe(404);
+      for (const user of [null, { id: stranger.id, role: "player" as const }]) {
+        const res = await call(user, match.id);
+        expect(res.status).toBe(404);
+        expect(res.body).toBe(missing.body); // Existenz nicht verraten
+      }
+      const own = await call({ id: organizer.id, role: "player" }, match.id);
+      expect(own.status).toBe(200);
+      expect(own.type).toContain("text/event-stream");
+    } finally {
+      session.user = null;
+    }
+  });
+
+  it("nicht öffentliche Teamspiele (z. B. private Herausforderung): Fremde und Anonyme dürfen nicht ansehen, Team-Admins und Plattform-Admin schon", async () => {
+    const m = await makeMatch();
+    await db.update(matches).set({ visibility: "private" }).where(eq(matches.id, m.match.id));
+    const stranger = await makeUser("pvstr3");
+    const admin = await makeUser("pvadm3", "admin");
+    const may = async (viewer: { id: string; role: "player" | "admin" } | null) => {
+      const page = await getMatchPage(m.match.id, viewer);
+      return Boolean(page && canViewMatch(page));
+    };
+    expect(await may(null)).toBe(false);
+    expect(await may({ id: stranger.id, role: "player" })).toBe(false);
+    expect(await may({ id: m.adminA.id, role: "player" })).toBe(true);
+    expect(await may({ id: m.adminB.id, role: "player" })).toBe(true);
+    expect(await may({ id: admin.id, role: "admin" })).toBe(true);
+  });
+
+  it("Team-Vorschaubild: Spiel-Teams von Privatspielen und archivierte Teams verraten weder Namen noch Stadt (gleiche neutrale Karte wie bei nicht vorhandenem Team)", async () => {
+    const { match } = await game(1);
+    const [priv] = await db.select().from(teams).where(eq(teams.id, match.homeTeamId));
+    const bytes = async (slug: string) => Buffer.from(await (await teamCard(slug)).arrayBuffer());
+    const none = await bytes(`gibt-es-nicht-${crypto.randomUUID()}`);
+    expect((await bytes(priv.slug)).equals(none)).toBe(true);
+    // ein normales Team bekommt dagegen seine eigene Karte
+    const pub = await makeMatch();
+    const [ordinary] = await db.select().from(teams).where(eq(teams.id, pub.home.id));
+    expect((await bytes(ordinary.slug)).equals(none)).toBe(false);
+    await db.update(teams).set({ archivedAt: new Date() }).where(eq(teams.id, ordinary.id));
+    expect((await bytes(ordinary.slug)).equals(none)).toBe(true); // archiviert: wie nicht vorhanden
   });
 
   it("Listen, Rangliste, Statistik: ein gespieltes Privatspiel taucht nirgends öffentlich auf", async () => {

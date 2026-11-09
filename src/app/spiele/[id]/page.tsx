@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { KickoffCountdown } from "@/components/KickoffCountdown";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { MatchClock } from "@/components/MatchClock";
@@ -27,8 +27,8 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const user = await getCurrentUser();
   const page = await getMatchPage(id, user ? { id: user.id, role: user.role } : null);
   if (!page) notFound();
-  if (!canViewMatch(page) && page.match.kind === "private") notFound(); // Privatspiel: Existenz nicht verraten, gleiche Antwort wie bei einem nicht vorhandenen Spiel
-  if (!canViewMatch(page)) redirect(user ? "/app" : `/anmelden?next=${encodeURIComponent(`/spiele/${id}`)}`);
+  // Nicht öffentlich sichtbare Spiele (Privatspiel, private Herausforderung): Existenz nicht verraten, gleiche Antwort wie bei einem nicht vorhandenen Spiel
+  if (!canViewMatch(page)) notFound();
 
   const { match, events, live, result, phase, participants } = page;
   const v = page.viewer;

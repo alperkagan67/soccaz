@@ -161,6 +161,21 @@ test("Privatspiel: Fremde und Anonyme bekommen überall dieselbe Fehlerseite wie
     expect((await card.body()).equals(await cardMissing.body()), `Vorschaubild ${who}`).toBe(true);
   }
 
+  // Auch ein nicht öffentliches Teamspiel (z. B. private Herausforderung) verrät Fremden und Anonymen nichts: Fehlerseite statt Umleitung auf Login oder /app
+  await query("update matches set kind = 'team' where id = $1", [matchId]);
+  for (const [who, other] of [["anonym", anon], ["fremd", stranger]] as const) {
+    await other.goto(`/spiele/${matchId}`);
+    await expect(other, `Teamspiel ${who}`).toHaveURL(new RegExp(`/spiele/${matchId}$`));
+    await expect(other.getByRole("heading", { name: "Seite nicht gefunden" })).toBeVisible();
+  }
+  // Team-Vorschaubild der unsichtbaren Spiel-Teams: neutrale Karte wie bei einem nicht vorhandenen Team
+  await query("update matches set kind = 'private' where id = $1", [matchId]);
+  const slug = (await query<{ slug: string }>("select t.slug from teams t join matches m on m.home_team_id = t.id where m.id = $1", [matchId]))[0].slug;
+  const teamCardRes = await anon.request.get(`/teams/${slug}/opengraph-image`);
+  const teamCardMissing = await anon.request.get(`/teams/gibt-es-nicht-${run}/opengraph-image`);
+  expect(teamCardRes.status()).toBe(200);
+  expect((await teamCardRes.body()).equals(await teamCardMissing.body())).toBe(true);
+
   // Der Veranstalter behält Zugriff auf Seite und Ereignis-Stream
   const page = await org.goto(`/spiele/${matchId}`);
   expect(page?.status()).toBe(200);
