@@ -6,7 +6,7 @@ import { matchParticipants, matches, teams } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { gameInvites } from "@/db/schema-matchmaking";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
-import { assignSubstitute, finalConfirm, getLobby, leaveLobby, payShare, randomSplit, setReady, unassignParticipant } from "@/server/lobby";
+import { assignSubstitute, finalConfirm, getLobby, leaveLobby, payShare, randomSplit, removeParticipant, setReady, unassignParticipant } from "@/server/lobby";
 import { createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput } from "@/server/privategame";
 import { listBoard } from "@/server/board";
 import { getTeamProfile } from "@/server/profiles";
@@ -417,11 +417,13 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
       for (const p of players) await payShare(p.id, match.id); // 1500 je Spieler (8 eingeteilt)
       const extra = [await makeUser("pvx"), await makeUser("pvx")];
       for (const p of extra) await joinPrivateGame(p.id, token);
-      await randomSplit(organizer.id, match.id); // jetzt 10 eingeteilt: ein Privatspiel würde 300 je Zahler zurückbuchen
+      await randomSplit(organizer.id, match.id); // jetzt 10 eingeteilt: die Neuberechnung (T53, AC-5) hat die 300 je Zahler schon erstattet
+      expect(await balances(players)).toEqual(players.map(() => 3000 - 1200));
       await db.update(matches).set({ kind: "team" }).where(eq(matches.id, match.id));
+      const before = await balances(players);
       await db.transaction(async (tx) => fixPrivateShare(tx, await reloadMatch(match.id)));
       expect((await reloadMatch(match.id)).finalShareCents).toBeNull();
-      expect(await balances(players)).toEqual(players.map(() => 3000 - 1500));
+      expect(await balances(players)).toEqual(before); // fixPrivateShare selbst erstattet bei einem Teamspiel nichts
     } finally {
       await setSetting(null, "payments_enabled", false);
     }
@@ -513,4 +515,131 @@ describe("Hallenmiete geteilt, Bestätigung und Ergebnis, nicht in der Rangliste
     for (const p of players.slice(0, 8)) await setReady(p.id, match.id, true);
     await expect(finalConfirm(organizer.id, match.id)).rejects.toThrow(/mindestens 4|bereit/); // zwei Spieler fehlen
   });
+});
+
+describe("Spielerzahl ändert sich vor dem Fixieren (T53, AC-5, AC-6)", () => {
+  const prepare = async (extra: number) => {
+    const g = await game(extra, { rentCents: 12_000 });
+    await randomSplit(g.organizer.id, g.match.id);
+    for (const p of g.players) await fund(p.id, 3000);
+    return g;
+  };
+  const balance = (id: string) => walletBalance(db, id);
+  const paidOf = async (matchId: string, userId: string) => (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId))))[0].paidCents;
+  const withPayments = async (fn: () => Promise<void>) => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      await fn();
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  };
+  /** Ein Captain hat schon "Bereit" gedrückt (das Setzen beider Bereit würde den Preis fixieren). */
+  const captainReady = (matchId: string) => db.update(matches).set({ homeFinalAt: new Date() }).where(eq(matches.id, matchId));
+
+  it("AC-5 Beitritt: zwei Spieler kommen dazu, der Anteil sinkt, zu viel Gezahltes geht sofort zurück, Bereit wird zurückgesetzt", () =>
+    withPayments(async () => {
+      const { organizer, match, token, players } = await prepare(7); // 8 Spieler, Anteil 1500
+      for (const p of players) await payShare(p.id, match.id);
+      expect(await balance(players[1].id)).toBe(1500);
+      await captainReady(match.id);
+      const extra = [await makeUser("pvx"), await makeUser("pvx")];
+      for (const p of extra) {
+        await joinPrivateGame(p.id, token);
+        await fund(p.id, 3000);
+      }
+      await randomSplit(organizer.id, match.id); // 10 Spieler, Anteil 1200
+      for (const p of players) {
+        expect(await balance(p.id), "sofort 300 zurück").toBe(1800);
+        expect(await paidOf(match.id, p.id)).toBe(1200);
+      }
+      const m = await reloadMatch(match.id);
+      expect(m.finalShareCents).toBeNull();
+      expect(m.homeFinalAt).toBeNull();
+      expect(m.awayFinalAt).toBeNull();
+      expect((await trialBalance()).balanced).toBe(true);
+      // die Neuen zahlen gleich den neuen Anteil
+      for (const p of extra) await payShare(p.id, match.id);
+      expect(await balance(extra[0].id)).toBe(1800);
+    }));
+
+  it("AC-5 Austritt: Der Austretende bekommt alles zurück, der Rest muss nachzahlen (Anteil jetzt 1334), nachzahlen klappt genau einmal, Bereit wird zurückgesetzt", () =>
+    withPayments(async () => {
+      const { organizer, match, players } = await prepare(9); // 10 Spieler, Anteil 1200
+      for (const p of players) await payShare(p.id, match.id);
+      await captainReady(match.id);
+      const leaver = players[3];
+      await leaveLobby(leaver.id, match.id);
+      expect(await balance(leaver.id)).toBe(3000);
+      const rest = players.filter((p) => p.id !== leaver.id);
+      for (const p of rest) expect(await paidOf(match.id, p.id)).toBe(1200); // noch nichts nachgefordert abgebucht
+      expect((await reloadMatch(match.id)).homeFinalAt).toBeNull();
+
+      const view = await getLobby(match.id, { id: rest[1].id, role: "player" });
+      expect(view!.payments.reservationCents).toBe(1334); // 12000 / 9 aufgerundet
+      expect(view!.payments.myDueCents).toBe(134);
+
+      // nachzahlen: nur die Differenz, auch bei Doppelklick nur einmal
+      await Promise.allSettled([payShare(rest[1].id, match.id), payShare(rest[1].id, match.id), payShare(rest[1].id, match.id)]);
+      expect(await balance(rest[1].id)).toBe(3000 - 1334);
+      expect(await paidOf(match.id, rest[1].id)).toBe(1334);
+      await payShare(rest[1].id, match.id); // schon voll bezahlt: harmlos
+      expect(await balance(rest[1].id)).toBe(3000 - 1334);
+      void organizer;
+      expect((await trialBalance()).balanced).toBe(true);
+    }));
+
+  it("AC-5 Rauswurf durch den Captain: voller Anteil zurück, Rest bekommt neuen Anteil, Bereit zurückgesetzt", () =>
+    withPayments(async () => {
+      const { organizer, match, players } = await prepare(9);
+      for (const p of players) await payShare(p.id, match.id);
+      for (const p of players) await setReady(p.id, match.id, true); // alle bereit und bezahlt: die bisherige Prüfung "Team komplett" allein setzt Bereit nicht zurück
+      await captainReady(match.id);
+      await removeParticipant(organizer.id, match.id, players[4].id);
+      expect(await balance(players[4].id)).toBe(3000);
+      expect(await paidOf(match.id, players[1].id)).toBe(1200);
+      const m = await reloadMatch(match.id);
+      expect(m.homeFinalAt).toBeNull();
+      expect((await getLobby(match.id, { id: players[1].id, role: "player" }))!.payments.myDueCents).toBe(134);
+      expect((await trialBalance()).balanced).toBe(true);
+    }));
+
+  it("AC-5 parallele Austritte: jeder wird genau einmal erstattet, der Anteil gilt für die endgültige Zahl (8 Spieler: 1500)", () =>
+    withPayments(async () => {
+      const { match, players } = await prepare(9);
+      for (const p of players) await payShare(p.id, match.id);
+      const [a, b] = [players[2], players[3]];
+      await Promise.allSettled([leaveLobby(a.id, match.id), leaveLobby(b.id, match.id), leaveLobby(a.id, match.id)]);
+      expect(await balance(a.id)).toBe(3000);
+      expect(await balance(b.id)).toBe(3000);
+      const view = await getLobby(match.id, { id: players[1].id, role: "player" });
+      expect(view!.payments.reservationCents).toBe(1500);
+      expect(view!.payments.myDueCents).toBe(300);
+      expect((await trialBalance()).balanced).toBe(true);
+    }));
+
+  it("AC-6: Wer weder Captain noch Veranstalter ist, kann niemanden rauswerfen oder einteilen; Rauswurf nur durch den Captain, mit Erstattung", () =>
+    withPayments(async () => {
+      const { organizer, match, token, players } = await prepare(8); // 9 eingeteilte Spieler, Anteil 1334, ein zehnter Platz bleibt für den Wartenden
+      const stranger = await makeUser("pvfremd");
+      const outsider = await makeUser("pvwait");
+      await joinPrivateGame(outsider.id, token); // wartet auf Einteilung
+      const [normal, victim] = [players[1], players[2]];
+      for (const p of players) await payShare(p.id, match.id);
+      await setReady(victim.id, match.id, true);
+      // Rauswurf von bereiten und bezahlten Spielern
+      for (const actor of [stranger, normal]) {
+        await expect(removeParticipant(actor.id, match.id, victim.id)).rejects.toThrow(/Berechtigung/);
+        await expect(removeParticipant(actor.id, match.id, outsider.id)).rejects.toThrow(/Berechtigung/);
+        await expect(unassignParticipant(actor.id, match.id, normal.id)).rejects.toThrow(/Veranstalter/);
+        await expect(randomSplit(actor.id, match.id)).rejects.toThrow(/Veranstalter|Berechtigung/);
+        await expect(assignSubstitute(actor.id, match.id, outsider.id, match.homeTeamId)).rejects.toThrow(/Admins/);
+      }
+      expect(await paidOf(match.id, victim.id)).toBe(1334);
+      expect(await balance(victim.id)).toBe(3000 - 1334);
+      // der Captain darf, mit voller Erstattung
+      await removeParticipant(organizer.id, match.id, victim.id);
+      expect(await balance(victim.id)).toBe(3000);
+      expect((await trialBalance()).balanced).toBe(true);
+    }));
 });

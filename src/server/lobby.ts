@@ -14,7 +14,7 @@ import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { fixPrivateShare, onParticipantLeaves, privateShareNow, refundOnCancel, reserveShare } from "./wallet";
+import { fixPrivateShare, onParticipantLeaves, privateShareNow, recalcPrivateShares, refundOnCancel, reserveShare, seatedCount } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { reservationFor, shareFor } from "@/lib/money";
@@ -133,6 +133,8 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
     reservationCents: priceCents ? (privateShare ?? (match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid))) : null,
     lowestShareCents: priceCents ? (privateShare ?? shareFor(priceCents, 12)) : null,
     finalShareCents: match.finalShareCents,
+    // Privatspiel: so viel muss die angemeldete Person noch zahlen (Anteil gestiegen oder noch nichts gezahlt)
+    myDueCents: match.kind === "private" && privateShare !== null && viewer ? Math.max(privateShare - (participants.find((p) => p.userId === viewer.id)?.paidCents ?? privateShare), 0) : null,
     settled: Boolean(match.settledAt),
     balanceCents: viewer && payEnabled ? await walletBalance(db, viewer.id) : null,
   };
@@ -244,7 +246,10 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
     if (!match) throw new DomainError("Spiel nicht gefunden.");
     if (match.status !== "lobby" && match.status !== "confirmed") throw new DomainError("Dieses Spiel kann nicht mehr geändert werden.");
     if (match.startsAt.getTime() <= Date.now()) throw new DomainError("Der Anstoß ist schon erreicht.");
+    // Privatspiel vor dem Fixieren: Ändert die Aktion die Zahl der eingeteilten Spieler, wird der Anteil neu gerechnet
+    const seatedBefore = match.kind === "private" && match.finalShareCents === null ? await seatedCount(tx, matchId) : null;
     await fn(tx, match);
+    if (seatedBefore !== null && (await seatedCount(tx, matchId)) !== seatedBefore) await recalcPrivateShares(tx, match, userId);
     await evaluateConfirmation(tx, match, userId);
     await revalidateFinal(tx, match.id);
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);
