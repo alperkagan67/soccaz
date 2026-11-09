@@ -13,12 +13,13 @@ const STRENGTH = [
   [5, "5 – Ex-Vereinsspieler, hoher Anspruch"],
 ] as const;
 
-export function TeamForm({ defaultCity }: { defaultCity: string }) {
+export function TeamForm({ defaultCity, next }: { defaultCity: string; next?: string }) {
   const { state, pending, onSubmit } = useFormAction(createTeamAction);
   const fe = state?.fieldErrors ?? {};
 
   return (
     <form onSubmit={onSubmit} className="card space-y-4">
+      {next && <input type="hidden" name="next" value={next} />}
       <div>
         <label className="label" htmlFor="name">Teamname</label>
         <input id="name" name="name" required minLength={3} maxLength={40} className="field" />

@@ -1,11 +1,11 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, teamMembers } from "@/db/schema";
+import { matchParticipants, matches, notifications, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
-import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
-import { confirmResult, submitResult } from "@/server/results";
+import { creditWallet, debitWallet, trialBalance, walletBalance } from "@/server/ledger";
+import { confirmResult, decideResult, disputeResult, submitResult } from "@/server/results";
 import {
   cancelTournament,
   closeWithJoinedTeams,
@@ -15,10 +15,13 @@ import {
   joinAsPlayer,
   leavePlayer,
   payEntry,
+  notifyRegistrationDeadlines,
   payForTeam,
   registerTeam,
   reopenRosters,
+  setDrawRandom,
   setOrganizer,
+  setPaidReady,
   setRosterComplete,
   withdrawTeam,
 } from "@/server/tournaments";
@@ -70,6 +73,7 @@ async function payAll(tid: string, squads: Squad[]) {
     await fund(p.id, 3000);
     await payEntry(p.id, tid);
   }
+  for (const s of squads) await setPaidReady(s.captain.id, tid);
 }
 
 /** Turnier mit vier Teams (je 4 Spieler): alle vollzählig, alle bezahlt, Bracket steht. Anteil 10 Euro. */
@@ -284,6 +288,188 @@ describe("Zahlung: genau der Preis, jeder selbst, nie doppelt", () => {
   });
 });
 
+describe("Zahlung füreinander im eigenen Team (AC-4, AC-5)", () => {
+  async function paymentPhase() {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true)); // 16 Spieler, 10 Euro
+    return { o, t, squads };
+  }
+
+  it("AC-4: Spieler A zahlt für Teamkollegen B: B bezahlt, A belastet, paidBy = A", async () => {
+    const { t, squads } = await paymentPhase();
+    const [a, b] = [squads[0].players[1], squads[0].players[2]];
+    await fund(a.id, 3000);
+    await payForTeam(a.id, t.id, b.id);
+    expect(await walletBalance(db, a.id)).toBe(2000);
+    expect(await walletBalance(db, b.id)).toBe(0);
+    const [row] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, b.id)));
+    expect(row).toMatchObject({ paidCents: 1000, paidBy: a.id });
+    // ohne Ziel darf ein normaler Spieler weiterhin nicht für alle zahlen
+    await expect(payForTeam(a.id, t.id)).rejects.toThrow(/Captain/);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-4: zweite (parallele) Zahlung für denselben Spieler wird abgewiesen, nur einmal gebucht", async () => {
+    const { t, squads } = await paymentPhase();
+    const [a, c, b] = [squads[0].players[1], squads[0].players[2], squads[0].players[3]];
+    await fund(a.id, 3000);
+    await fund(c.id, 3000);
+    const tb0 = await tournamentAccount();
+    const res = await Promise.allSettled([payForTeam(a.id, t.id, b.id), payForTeam(c.id, t.id, b.id), payEntry(b.id, t.id)]);
+    expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(await tournamentAccount()).toBe(tb0 + 1000);
+    const [row] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, b.id)));
+    expect(row.paidCents).toBe(1000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-4: ist die Buchung schon vorhanden (created = false), wird nicht still als bezahlt markiert", async () => {
+    const { t, squads } = await paymentPhase();
+    const [a, b] = [squads[0].players[1], squads[0].players[2]];
+    const [row] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, b.id)));
+    const tr = await statusOf(t.id);
+    await fund(a.id, 3000);
+    // eine frühere Buchung mit demselben Schlüssel existiert, die Zeile steht aber noch auf "unbezahlt"
+    await db.transaction((tx) => debitWallet(tx, a.id, { to: "tournament", amountCents: 1000, kind: "tournament_entry", tournamentId: t.id, idempotencyKey: `tournament-entry:${t.id}:${b.id}:${row.joinedAt.getTime()}:${tr.priceRound}`, reason: "vorab" }));
+    await expect(payForTeam(a.id, t.id, b.id)).rejects.toThrow(/schon gebucht|bezahlt/);
+    const [after] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, b.id)));
+    expect(after.paidCents).toBe(0);
+  });
+
+  it("AC-5: Zahlung für einen Spieler eines anderen Teams wird abgelehnt (auch durch einen Captain), Nicht-Kader ebenso", async () => {
+    const { t, squads } = await paymentPhase();
+    const [a, other] = [squads[0].players[1], squads[1].players[1]];
+    await fund(a.id, 3000);
+    await fund(squads[0].captain.id, 3000);
+    await expect(payForTeam(a.id, t.id, other.id)).rejects.toThrow(/nicht in deinem Team/);
+    await expect(payForTeam(squads[0].captain.id, t.id, other.id)).rejects.toThrow(/nicht in deinem Team/);
+    const stranger = await makeUser("fremd");
+    await fund(stranger.id, 3000);
+    await expect(payForTeam(stranger.id, t.id, other.id)).rejects.toThrow(/Kader|Captain/);
+    expect(await walletBalance(db, a.id)).toBe(3000);
+    expect(await walletBalance(db, stranger.id)).toBe(3000);
+    const [row] = await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, other.id)));
+    expect(row.paidCents).toBe(0);
+  });
+});
+
+describe("paidReady ist für Zuschauer privater Turniere verborgen", () => {
+  it("Zuschauer sehen weder paidReady noch paidReadyAt, Beteiligte schon", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    for (const p of a.players) {
+      await fund(p.id, 3000);
+      await payEntry(p.id, t.id);
+    }
+    await setPaidReady(a.captain.id, t.id);
+    const stranger = await makeUser("fremd");
+    for (const viewer of [null, { id: stranger.id, role: "player" as const }]) {
+      const v = await getTournament(t.id, viewer, "falscher-token");
+      for (const team of v!.teams) {
+        expect(team.paidReady).toBe(false);
+        expect(JSON.stringify(team)).not.toContain("paidReadyAt");
+      }
+    }
+    const member = await getTournament(t.id, { id: a.players[1].id, role: "player" });
+    expect(member!.teams.find((x) => x.teamId === a.team.id)!.paidReady).toBe(true);
+    expect(JSON.stringify(member!.teams)).not.toContain("paidReadyAt");
+  });
+});
+
+const paidReadyOf = async (tid: string, teamId: string) =>
+  (await db.select({ v: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tid), eq(tournamentTeams.teamId, teamId))))[0].v;
+
+describe("Bereit nach Zahlung (paid_ready_at)", () => {
+  it("AC-1: Bereit nur in Phase payment, nur der Captain, nur wenn alle Spieler des Teams bezahlt haben (auch durch andere)", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 3; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    // vor der Zahlungsphase: abgelehnt
+    await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/Zahlung/);
+    squads.push(await squad(t.id, 4, true));
+    expect((await statusOf(t.id)).status).toBe("payment");
+
+    // nichts bezahlt: Fehler, Spalte bleibt leer
+    await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/bezahlt/);
+    expect(await paidReadyOf(t.id, a.team.id)).toBeNull();
+
+    // nur Captain-Recht: normale Spieler und Fremde dürfen nicht
+    await fund(a.players[1].id, 1000);
+    await payEntry(a.players[1].id, t.id);
+    await expect(setPaidReady(a.players[1].id, t.id)).rejects.toThrow(/Captain/);
+    await expect(setPaidReady((await makeUser("fremd")).id, t.id)).rejects.toThrow(/Captain/);
+
+    // teilweise bezahlt: weiter Fehler
+    await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/bezahlt/);
+
+    // der Rest wird vom Captain bezahlt (auch für andere): jetzt gelingt Bereit
+    await fund(a.captain.id, 3000);
+    await payForTeam(a.captain.id, t.id);
+    await setPaidReady(a.captain.id, t.id);
+    expect(await paidReadyOf(t.id, a.team.id)).not.toBeNull();
+    // ready_at ("Kader vollzählig") bleibt unberührt
+    expect((await orgView(o, t.id))!.teams.find((x) => x.teamId === a.team.id)!.ready).toBe(true);
+    // Team B ist unberührt
+    expect(await paidReadyOf(t.id, squads[1].team.id)).toBeNull();
+    // die Bracket-Erzeugung hängt (noch) nicht an Bereit: nicht alle haben bezahlt, also kein Bracket
+    expect((await statusOf(t.id)).bracketGeneratedAt).toBeNull();
+  });
+
+  it("AC-1: Zahlung durch einen Mitspieler genügt (jeder zahlt selbst)", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    for (const p of a.players) {
+      await fund(p.id, 3000);
+      await payEntry(p.id, t.id);
+    }
+    await setPaidReady(a.captain.id, t.id);
+    expect(await paidReadyOf(t.id, a.team.id)).not.toBeNull();
+  });
+
+  it("AC-2: Kaderänderung setzt Bereit zurück", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const s = await squad(t.id, 4, false);
+    await db.update(tournamentTeams).set({ paidReadyAt: new Date() }).where(and(eq(tournamentTeams.tournamentId, t.id), eq(tournamentTeams.teamId, s.team.id)));
+    const late = await makeUser("pl");
+    await db.insert(teamMembers).values({ teamId: s.team.id, userId: late.id, role: "player" });
+    await joinAsPlayer(late.id, t.id, s.team.id);
+    expect(await paidReadyOf(t.id, s.team.id)).toBeNull();
+
+    await db.update(tournamentTeams).set({ paidReadyAt: new Date() }).where(and(eq(tournamentTeams.tournamentId, t.id), eq(tournamentTeams.teamId, s.team.id)));
+    await leavePlayer(late.id, t.id, late.id);
+    expect(await paidReadyOf(t.id, s.team.id)).toBeNull();
+  });
+
+  it("AC-2: Kader wieder öffnen (mit Erstattung) setzt Bereit aller Teams zurück", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    for (const p of a.players) {
+      await fund(p.id, 3000);
+      await payEntry(p.id, t.id);
+    }
+    await setPaidReady(a.captain.id, t.id);
+    expect(await paidReadyOf(t.id, a.team.id)).not.toBeNull();
+    await reopenRosters(o.id, t.id);
+    for (const s of squads) expect(await paidReadyOf(t.id, s.team.id)).toBeNull();
+    // nach dem Wiederöffnen ist Bereit nicht mehr möglich
+    await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/Zahlung/);
+  });
+});
+
 describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => {
   it("vor der letzten Zahlung kein Bracket; nach der letzten genau eines; echte Spiele mit allen Spielern", async () => {
     const o = await organizer();
@@ -299,6 +485,7 @@ describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => 
       await fund(p.id, 2000);
       await payEntry(p.id, t.id);
     }
+    for (const s of squads.slice(0, 3)) await setPaidReady(s.captain.id, t.id);
     expect(await bracketRows(t.id)).toHaveLength(0);
     let view = (await orgView(o, t.id))!;
     expect(view.bracketVisible).toBe(false);
@@ -308,6 +495,8 @@ describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => 
     // die letzten beiden zahlen gleichzeitig: genau ein Bracket
     for (const p of players.slice(14)) await fund(p.id, 2000);
     await Promise.allSettled(players.slice(14).map((p) => payEntry(p.id, t.id)));
+    expect(await bracketRows(t.id)).toHaveLength(0); // voll bezahlt, aber das letzte Team hat noch nicht "Bereit" gedrückt
+    await setPaidReady(squads[3].captain.id, t.id);
     const rows = await bracketRows(t.id);
     expect(rows).toHaveLength(3); // 2 Halbfinals und das Finale
     view = (await orgView(o, t.id))!;
@@ -329,9 +518,55 @@ describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => 
   it("kostenloses Turnier: das Bracket steht, sobald alle Teams vollzählig sind", async () => {
     const o = await organizer();
     const t = await newTournament(o, { hourlyCents: 0 });
-    for (let i = 0; i < 4; i++) await squad(t.id, 4, true);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    expect(await statusOf(t.id)).toMatchObject({ status: "payment", finalShareCents: 0 });
+    expect(await bracketRows(t.id)).toHaveLength(0);
+    for (const s of squads) await setPaidReady(s.captain.id, t.id);
     expect(await statusOf(t.id)).toMatchObject({ status: "running", finalShareCents: 0 });
     expect(await bracketRows(t.id)).toHaveLength(3);
+  });
+
+  it("AC-3: Bracket erst, wenn alle Teams Bereit gedrückt haben; parallele Aufrufe ergeben genau ein Bracket; vorher auch serverseitig nichts", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    for (const s of squads) for (const p of s.players) { await fund(p.id, 2000); await payEntry(p.id, t.id); }
+    expect(await bracketRows(t.id)).toHaveLength(0); // alles bezahlt, aber niemand ist bereit
+    for (const s of squads.slice(0, 2)) await setPaidReady(s.captain.id, t.id);
+    expect(await bracketRows(t.id)).toHaveLength(0);
+    let view = (await orgView(o, t.id))!;
+    expect(view.bracketVisible).toBe(false);
+    expect(view.stages).toEqual([]);
+    expect((await statusOf(t.id)).status).toBe("payment");
+    // die letzten zwei gleichzeitig: genau ein Bracket
+    await Promise.allSettled(squads.slice(2).map((s) => setPaidReady(s.captain.id, t.id)));
+    expect(await bracketRows(t.id)).toHaveLength(3);
+    expect((await statusOf(t.id)).status).toBe("running");
+    view = (await orgView(o, t.id))!;
+    expect(view.bracketVisible).toBe(true);
+    await setPaidReady(squads[0].captain.id, t.id).catch(() => {}); // wiederholter Aufruf ändert nichts
+    expect(await bracketRows(t.id)).toHaveLength(3);
+  });
+
+  it("AC-9: Auslosung zufällig mit injizierter Zufallsquelle, nicht die Anmeldereihenfolge, jedes Team genau einmal, genau ein Bracket", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const [A, B, C, D] = squads.map((s) => s.team.id);
+    setDrawRandom(() => 0); // Fisher-Yates mit r = 0: [A,B,C,D] wird zu [B,C,D,A]
+    try {
+      await payAll(t.id, squads);
+    } finally {
+      setDrawRandom(null);
+    }
+    const rows = (await bracketRows(t.id)).filter((r) => r.stage === "ko:4").sort((x, y) => x.slot - y.slot);
+    expect(rows.map((r) => [r.teamA, r.teamB])).toEqual([[B, A], [C, D]]); // Anmeldereihenfolge hätte A-D und B-C ergeben
+    expect(new Set(rows.flatMap((r) => [r.teamA, r.teamB])).size).toBe(4);
+    expect(await bracketRows(t.id)).toHaveLength(3);
+    expect((await statusOf(t.id)).bracketGeneratedAt).not.toBeNull();
   });
 
   it("Freilose: 5 Teams ergeben 4 Spiele, Teams mit Freilos spielen erst in der nächsten Runde", async () => {
@@ -447,6 +682,63 @@ describe("Sonderfälle: Teams ersetzen, mit weniger Teams starten, Kader wieder 
     await expect(closeWithJoinedTeams(o.id, t2.id)).rejects.toThrow(/weniger als 4/);
   });
 
+  it("AC-11: Anmeldeschluss mit 3, 4 und 5 von 8 Teams: Weitermachen nur ab 4, Absage immer, nur der Veranstalter", async () => {
+    const o = await organizer();
+    const expire = (id: string) => db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 1000) }).where(eq(tournaments.id, id));
+    for (const n of [3, 4, 5]) {
+      const t = await newTournament(o, { maxTeams: 8 });
+      const squads: Squad[] = [];
+      for (let i = 0; i < n; i++) squads.push(await squad(t.id, 4, true));
+      await expire(t.id);
+      const stranger = await makeUser("fremd");
+      await expect(closeWithJoinedTeams(stranger.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(closeWithJoinedTeams(squads[0].captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(cancelTournament(stranger.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(cancelTournament(squads[0].captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+      if (n < 4) {
+        await expect(closeWithJoinedTeams(o.id, t.id)).rejects.toThrow(/weniger als 4/);
+        expect((await statusOf(t.id)).status).toBe("registration");
+        await cancelTournament(o.id, t.id);
+        expect((await statusOf(t.id)).status).toBe("cancelled");
+      } else {
+        await closeWithJoinedTeams(o.id, t.id);
+        expect(await statusOf(t.id)).toMatchObject({ status: "payment", maxTeams: n });
+        // Bedingung "alle angemeldeten Teams bereit und bezahlt" gilt weiter: ohne Zahlung kein Bracket
+        expect(await bracketRows(t.id)).toHaveLength(0);
+        await payAll(t.id, squads);
+        expect((await bracketRows(t.id)).length).toBe(n - 1); // mit Freilosen bei 5 Teams
+      }
+    }
+    // Absage mit Vollerstattung an den Zahler nach Anmeldeschluss
+    const t = await newTournament(o, { maxTeams: 8 });
+    const sq: Squad[] = [];
+    for (let i = 0; i < 4; i++) sq.push(await squad(t.id, 4, true));
+    await expire(t.id);
+    await closeWithJoinedTeams(o.id, t.id);
+    await fund(sq[0].captain.id, 5000);
+    await payForTeam(sq[0].captain.id, t.id);
+    expect(await walletBalance(db, sq[0].captain.id)).toBe(5000 - 4 * 1000);
+    await cancelTournament(o.id, t.id);
+    expect(await walletBalance(db, sq[0].captain.id)).toBe(5000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-11: der Veranstalter bekommt am Anmeldeschluss genau eine Benachrichtigung, auch bei doppeltem Job-Lauf", async () => {
+    const o = await organizer();
+    const countFor = async (tid: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, o.id), eq(notifications.url, `/turniere/${tid}`), eq(notifications.title, "Anmeldeschluss erreicht")))).length;
+    const open = await newTournament(o, { maxTeams: 8 }); // Frist nicht erreicht
+    const t = await newTournament(o, { maxTeams: 8 });
+    const full = await newTournament(o, { maxTeams: 4 });
+    for (let i = 0; i < 4; i++) await squad(full.id, 4, true);
+    for (let i = 0; i < 4; i++) await squad(t.id, 4, true);
+    for (const id of [t.id, full.id]) await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 1000) }).where(eq(tournaments.id, id));
+    await Promise.all([notifyRegistrationDeadlines(), notifyRegistrationDeadlines()]);
+    await notifyRegistrationDeadlines();
+    expect(await countFor(t.id)).toBe(1);
+    expect(await countFor(open.id)).toBe(0); // Frist nicht erreicht
+    expect(await countFor(full.id)).toBe(0); // volles Turnier: unverändert, keine Meldung
+  });
+
   it("Kader wieder öffnen: alles wird erstattet, der Preis wird neu berechnet, Zahlen geht danach wieder sauber", async () => {
     const o = await organizer();
     const t = await newTournament(o);
@@ -511,6 +803,143 @@ describe("Sonderfälle: Teams ersetzen, mit weniger Teams starten, Kader wieder 
     const first = (await bracketRows(r3.t.id)).find((r) => r.matchId)!;
     await play(first, 1, 0, captains);
     await expect(cancelTournament(o.id, r3.t.id)).rejects.toThrow(/schon Ergebnisse/);
+  });
+});
+
+describe("Erstattung geht an den Zahler, Austritt und Abmeldung ab der Zahlungsphase nicht mehr", () => {
+  it("AC-6: Hat A für B bezahlt, geht die Erstattung (Kader öffnen / Absage) an A; genau einmal; auch wenn A nicht mehr im Kader steht", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    const [mate, b] = [a.players[1], a.players[2]];
+    await fund(a.captain.id, 3000);
+    await fund(mate.id, 3000);
+    await payForTeam(a.captain.id, t.id, b.id); // Captain zahlt für B: 10 Euro
+    expect(await walletBalance(db, a.captain.id)).toBe(2000);
+    await reopenRosters(o.id, t.id);
+    expect(await walletBalance(db, a.captain.id)).toBe(3000); // zurück an A
+    expect(await walletBalance(db, b.id)).toBe(0); // nicht an B
+    await expect(reopenRosters(o.id, t.id)).rejects.toThrow(/Zahlung läuft/); // kein zweites Mal
+    expect(await walletBalance(db, a.captain.id)).toBe(3000);
+
+    // Mitspieler zahlt für B, steht danach nicht mehr im Kader (Zeile weg): die Absage erstattet trotzdem an ihn
+    for (const sq of squads) await setRosterComplete(sq.captain.id, t.id, true);
+    await payForTeam(mate.id, t.id, b.id);
+    expect(await walletBalance(db, mate.id)).toBe(2000);
+    await db.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, mate.id)));
+    await cancelTournament(o.id, t.id);
+    expect(await walletBalance(db, mate.id)).toBe(3000);
+    expect(await walletBalance(db, b.id)).toBe(0);
+    await expect(cancelTournament(o.id, t.id)).rejects.toThrow(/schon beendet oder abgesagt/);
+    expect(await walletBalance(db, mate.id)).toBe(3000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-8: Ab der Zahlungsphase lehnt der Server Austritt und Abmeldung ab; Kader öffnen nur der Veranstalter, mit voller Erstattung", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    const pl = a.players[1];
+    await fund(pl.id, 3000);
+    await payEntry(pl.id, t.id);
+    expect((await statusOf(t.id)).status).toBe("payment");
+
+    await expect(leavePlayer(pl.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // Spieler selbst
+    await expect(leavePlayer(a.captain.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // Captain
+    await expect(leavePlayer(o.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // sogar der Veranstalter: Weg ist reopenRosters
+    await expect(withdrawTeam(a.captain.id, t.id, a.team.id)).rejects.toThrow(/Abmeldung/);
+    await expect(withdrawTeam(o.id, t.id, a.team.id)).rejects.toThrow(/Abmeldung/);
+    await expect(reopenRosters(a.captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+    await expect(reopenRosters(pl.id, t.id)).rejects.toThrow(/Veranstalter/);
+    // nichts hat sich geändert
+    expect(await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id))).toHaveLength(16);
+    expect(await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id))).toHaveLength(4);
+    expect(await walletBalance(db, pl.id)).toBe(2000);
+
+    await reopenRosters(o.id, t.id);
+    expect(await walletBalance(db, pl.id)).toBe(3000); // voll erstattet
+    expect((await trialBalance()).balanced).toBe(true);
+    // zurück in der Anmeldephase gehen Austritt und Abmeldung wieder
+    await leavePlayer(pl.id, t.id, pl.id);
+    await withdrawTeam(squads[1].captain.id, t.id, squads[1].team.id);
+  });
+});
+
+describe("AC-10: Der Veranstalter trägt Ergebnisse ein und entscheidet Streit", () => {
+  const openSemi = async (tid: string) => {
+    const m = (await bracketRows(tid)).find((r) => r.stage === "ko:4" && r.matchId)!;
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m.matchId!));
+    return m;
+  };
+
+  it("Veranstalter (weder Team-Admin noch Plattform-Admin) trägt direkt ein, Sieger rückt auf; Fremde und andere Veranstalter werden abgewiesen", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningTournament(o);
+    const m = await openSemi(t.id);
+    const stranger = await makeUser("fremd");
+    const otherOrg = await organizer(); // Veranstalter, aber eines anderen Turniers
+    await expect(submitResult(stranger.id, m.matchId!, 2, 1)).rejects.toThrow(/Team-Admins/);
+    await expect(submitResult(otherOrg.id, m.matchId!, 2, 1)).rejects.toThrow(/Team-Admins/);
+    await expect(decideResult(stranger.id, m.matchId!, 2, 1, "ich bestimme")).rejects.toThrow(/entscheiden/);
+    await expect(decideResult(otherOrg.id, m.matchId!, 2, 1, "ich bestimme")).rejects.toThrow(/entscheiden/);
+    expect((await bracketRows(t.id)).find((r) => r.id === m.id)!.scoreA).toBeNull();
+
+    await submitResult(o.id, m.matchId!, 2, 1);
+    const after = (await bracketRows(t.id)).find((r) => r.id === m.id)!;
+    expect(after).toMatchObject({ scoreA: 2, scoreB: 1 });
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("played");
+    const final = (await bracketRows(t.id)).find((r) => r.stage === "ko:2")!;
+    expect([final.teamA, final.teamB]).toContain(m.teamA); // Sieger steht im Finale
+    expect(squads.length).toBe(4);
+  });
+
+  it("Streit: Veranstalter entscheidet, Fremde nicht; Plattform-Admin bleibt Fallback", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningTournament(o);
+    const captains = new Map(squads.map((s) => [s.team.id, s.captain]));
+    const m = await openSemi(t.id);
+    await submitResult(captains.get(m.teamA!)!.id, m.matchId!, 3, 0);
+    await disputeResult(captains.get(m.teamB!)!.id, m.matchId!, "stimmt nicht");
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("disputed");
+    const stranger = await makeUser("fremd");
+    await expect(decideResult(stranger.id, m.matchId!, 0, 3, "ich entscheide")).rejects.toThrow(/entscheiden/);
+    await decideResult(o.id, m.matchId!, 1, 2, "Schiedsrichterbericht");
+    expect((await bracketRows(t.id)).find((r) => r.id === m.id)).toMatchObject({ scoreA: 1, scoreB: 2 });
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("played");
+
+    // Plattform-Admin bleibt Fallback
+    const m2 = (await bracketRows(t.id)).find((r) => r.stage === "ko:4" && r.matchId && r.scoreA === null)!;
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m2.matchId!));
+    const admin = await makeUser("padmin", "admin");
+    await decideResult(admin.id, m2.matchId!, 2, 2, "Admin");
+    expect((await bracketRows(t.id)).find((r) => r.id === m2.id)).toMatchObject({ scoreA: 2, scoreB: 2 });
+  });
+
+  it("Randfall: Ist der Veranstalter zugleich Team-Admin eines beteiligten Teams, gilt er in diesem Spiel nur als dieses Team (Gegenpartei bestätigt, kein Selbst-Bestätigen, keine Selbst-Entscheidung)", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningTournament(o);
+    const captains = new Map(squads.map((s) => [s.team.id, s.captain]));
+    const m = await openSemi(t.id);
+    await db.insert(teamMembers).values({ teamId: m.teamA!, userId: o.id, role: "admin" });
+    await submitResult(o.id, m.matchId!, 5, 0); // nur als Meldung seines Teams
+    let row = (await bracketRows(t.id)).find((r) => r.id === m.id)!;
+    expect(row.scoreA).toBeNull(); // noch nicht endgültig
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).not.toBe("played");
+    await expect(confirmResult(o.id, m.matchId!)).rejects.toThrow(/andere Team/); // bestätigt nicht sein eigenes Ergebnis
+    await expect(decideResult(o.id, m.matchId!, 5, 0, "in eigener Sache")).rejects.toThrow(/entscheiden/);
+    await confirmResult(captains.get(m.teamB!)!.id, m.matchId!); // die Gegenpartei bestätigt
+    row = (await bracketRows(t.id)).find((r) => r.id === m.id)!;
+    expect(row).toMatchObject({ scoreA: 5, scoreB: 0 });
+  });
+
+  it("Regression: Veranstalterrecht gilt nur für Turnierspiele; Plattform-Admin-Pflicht bei anderen Spielen bleibt", async () => {
+    const o = await organizer();
+    const [other] = await db.select({ id: matches.id }).from(matches).limit(1);
+    if (other) await expect(decideResult(o.id, other.id, 1, 0, "grundlos")).rejects.toThrow();
   });
 });
 

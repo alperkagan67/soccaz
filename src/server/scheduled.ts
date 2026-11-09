@@ -8,6 +8,7 @@ import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
 import { settleMatch } from "./wallet";
 import { teamName } from "./names";
+import { notifyRegistrationDeadlines } from "./tournaments";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 
 /** Erinnert Teilnehmer 24 Stunden, 2 Stunden und 30 Minuten vor dem Anstoß. Pro Spiel und Art genau einmal. */
@@ -59,6 +60,8 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
       cancelled += 1;
     });
   }
+  // Turniere: am Anmeldeschluss bekommt der Veranstalter einmalig eine Meldung (läuft im selben 5-Minuten-Takt)
+  await notifyRegistrationDeadlines(now);
   return cancelled;
 }
 

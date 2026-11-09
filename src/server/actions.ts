@@ -54,8 +54,21 @@ export async function completeOnboardingAction(_prev: ActionState, formData: For
   redirect(safeNext(formData.get("next")));
 }
 
+/**
+ * Rücksprungziel nach dem Team gründen (z. B. zurück ins Turnier). Nur interne Pfade: beginnt mit "/", aber nicht mit "//",
+ * kein Backslash, keine Steuerzeichen. Alles andere ergibt `null` (dann gilt der Standard: die neue Teamseite).
+ * Nicht exportiert: Dateien mit "use server" dürfen nur async-Funktionen exportieren.
+ */
+function internalReturnPath(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string" || value.length > 500) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  if (value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  return value;
+}
+
 export async function createTeamAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const user = await requireUser("/app/teams/neu");
+  const next = internalReturnPath(formData.get("next"));
+  const user = await requireUser(next ? `/app/teams/neu?next=${encodeURIComponent(next)}` : "/app/teams/neu");
   const parsed = teamSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return zodToState(parsed.error);
 
@@ -66,7 +79,7 @@ export async function createTeamAction(_prev: ActionState, formData: FormData): 
     if (error instanceof DomainError) return { error: error.message, fieldErrors: { name: error.message } };
     throw error;
   }
-  redirect(`/teams/${slug}`);
+  redirect(next ?? `/teams/${slug}`);
 }
 
 export async function createInviteAction(teamId: string): Promise<{ token?: string; error?: string }> {
