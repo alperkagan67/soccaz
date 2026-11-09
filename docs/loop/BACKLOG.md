@@ -14,6 +14,7 @@ Reihenfolge von oben nach unten. Der nächste Eintrag ohne offene Produktfragen 
 | 3 | Aus dem T42-Review: `teams/neu/page.tsx:11` Vorab-Muster lässt Tab und Zeilenumbruch durch | offen |
 | 3 | Aus dem T42-Review: `notifyUsers`-URLs (`benachrichtigungen/page.tsx:40`, `admin/finanzen/page.tsx:57`) auf Validierung prüfen | offen |
 | 3 | Aus dem T42-Review: Zähler `sent` in `notifyRegistrationDeadlines` ist bei Rollback zu hoch | offen |
+| 3 | Aus dem Review des Regel-PRs: `docs/loop/BRANCH-PROTECTION.md:7` sagt noch „technisch nur Du per Pull Request nach main“ (veraltet durch die Autonomie-Regel) | offen |
 | 4 | Vertrag 006 Privatspiel (Orchestrator, Produktentscheidungen) | offen |
 
 Status: offen / in Arbeit / fertig.
