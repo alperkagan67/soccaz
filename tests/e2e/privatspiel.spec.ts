@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, devLogin, futureLocal, newUser, onboard, run } from "./helpers";
-import { query } from "./helpers-db";
+import { fundWallet, query, setPlatformSetting, userIdByEmail } from "./helpers-db";
 
 test.setTimeout(180_000);
 
@@ -152,4 +152,86 @@ test("Privatspiel: Einladungslink zurückziehen und neu erzeugen (AC-10)", async
   // ein normaler Spieler sieht die Knöpfe nicht
   await early.reload();
   await expect(early.getByTestId("invite-admin")).toHaveCount(0);
+});
+
+test("Privatspiel: Teilen per WhatsApp enthält den Einladungslink, nur der Veranstalter sieht ihn (AC-14)", async ({ browser }) => {
+  const org = await (await browser.newContext()).newPage();
+  await newUser(org, "pgwa");
+  await org.goto("/app/privatspiel/neu");
+  await org.getByLabel("Anstoß (Datum und Uhrzeit)").fill(futureLocal(6, "18:00"));
+  await org.getByLabel("Halle und Adresse").fill(`E2E Teilenhalle ${run}, Hauptstr. 4`);
+  await org.getByLabel("Kostenlos (0 €)").check();
+  await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
+  await expect(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+  const link = await org.getByTestId("game-invite").getByRole("textbox").inputValue();
+  const href = (await org.getByTestId("game-invite-whatsapp").getAttribute("href"))!;
+  const url = new URL(href);
+  expect(url.hostname).toBe("wa.me");
+  expect(href).toContain(encodeURIComponent(link)); // der vollständige Link ist URL-kodiert im Text
+  expect(url.searchParams.get("text")).toContain(link);
+
+  // ein normaler Mitspieler sieht weder Link noch Teilen-Knopf
+  const p = await (await browser.newContext()).newPage();
+  await newUser(p, "pgwa2");
+  await p.goto(link);
+  await expect(p).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+  await expect(p.getByTestId("game-invite")).toHaveCount(0);
+  await expect(p.getByTestId("game-invite-whatsapp")).toHaveCount(0);
+});
+
+test("Privatspiel: sinkt die Spielerzahl, sieht ein Unterzahler 'Anteil jetzt X, noch Y zu zahlen' und kann nachzahlen (T53-Rest)", async ({ browser }) => {
+  test.setTimeout(240_000);
+  await setPlatformSetting("payments_enabled", true);
+  try {
+    const org = await (await browser.newContext()).newPage();
+    await newUser(org, "pgdue");
+    await org.goto("/app/privatspiel/neu");
+    await org.getByLabel("Anstoß (Datum und Uhrzeit)").fill(futureLocal(6, "19:00"));
+    await org.getByLabel("Halle und Adresse").fill(`E2E Nachzahlhalle ${run}, Hauptstr. 5`);
+    await org.getByLabel("Spieler insgesamt").fill("4");
+    await org.getByLabel("Miete als Betrag").check();
+    await org.getByLabel("Hallenmiete in Euro").fill("100");
+    await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
+    await expect(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+    const matchId = org.url().split("/").pop()!;
+    const link = await org.getByTestId("game-invite").getByRole("textbox").inputValue();
+
+    const others = [];
+    for (const key of ["pgdue1", "pgdue2", "pgdue3"]) {
+      const p = await (await browser.newContext()).newPage();
+      await newUser(p, key);
+      await p.goto(link);
+      await expect(p).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
+      others.push({ key, p });
+    }
+    for (const key of ["pgdue", "pgdue1", "pgdue2", "pgdue3"]) await fundWallet(await userIdByEmail(`${key}-${run}@test.local`), 5000);
+    await org.reload();
+    await org.getByRole("button", { name: "Zufällig einteilen" }).click();
+    await expect.poll(async () => (await query("select 1 from match_participants where match_id = $1 and team_id is null", [matchId])).length).toBe(0);
+
+    // alle vier zahlen 100 / 4 = 25,00 Euro
+    for (const page of [org, ...others.map((o) => o.p)]) {
+      await page.reload();
+      await page.getByRole("button", { name: /25,00.*bezahlen/ }).click();
+      await expect(page.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
+    }
+
+    // einer geht: 3 Spieler, der Anteil steigt auf 33,34 Euro, die anderen zahlen 8,34 Euro nach
+    const leaver = others[2].p;
+    leaver.once("dialog", (d) => void d.accept());
+    await leaver.getByRole("button", { name: "Abmelden" }).click();
+    await expect.poll(async () => (await query("select 1 from match_participants where match_id = $1", [matchId])).length).toBe(3);
+    const stay = others[0].p;
+    await stay.reload();
+    const hint = stay.getByTestId("due-hint");
+    await expect(hint).toContainText("33,34");
+    await expect(hint).toContainText("8,34");
+    await stay.getByRole("button", { name: /8,34.*bezahlen/ }).click();
+    await expect(stay.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
+    await expect(stay.getByTestId("due-hint")).toHaveCount(0);
+    const paid = await query<{ paid_cents: number }>("select paid_cents from match_participants mp join users u on u.id = mp.user_id where mp.match_id = $1 and u.email = $2", [matchId, `pgdue1-${run}@test.local`]);
+    expect(paid[0].paid_cents).toBe(3334);
+  } finally {
+    await setPlatformSetting("payments_enabled", false);
+  }
 });
