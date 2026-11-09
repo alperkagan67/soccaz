@@ -8,6 +8,7 @@ import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
 import { settleMatch } from "./wallet";
 import { teamName } from "./names";
+import { cancelUncoveredPrivateGames } from "./privategame";
 import { notifyRegistrationDeadlines } from "./tournaments";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 
@@ -60,6 +61,8 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
       cancelled += 1;
     });
   }
+  // Privatspiele: Ist die Hallenmiete zum Prüfzeitpunkt nicht gedeckt, wird abgesagt und erstattet (je Spiel isoliert)
+  cancelled += await cancelUncoveredPrivateGames(now);
   // Turniere: am Anmeldeschluss bekommt der Veranstalter einmalig eine Meldung (läuft im selben 5-Minuten-Takt)
   await notifyRegistrationDeadlines(now);
   return cancelled;
