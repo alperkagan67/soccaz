@@ -140,7 +140,14 @@ test("Privatspiel: Fremde und Anonyme bekommen überall dieselbe Fehlerseite wie
     expect(text).not.toContain(`E2E Geheimhalle ${run}`);
     // Live-API, Events-Stream, Overlay: 404
     expect((await page.request.get(`/api/spiele/${matchId}/live`)).status(), `Live ${who}`).toBe(404);
-    expect((await page.request.get(`/api/spiele/${matchId}/events`)).status(), `Events ${who}`).toBe(404);
+    const eventsOf = (url: string) =>
+      page.evaluate(async (u) => {
+        const controller = new AbortController();
+        const res = await fetch(u, { signal: controller.signal });
+        controller.abort(); // der Stream bleibt sonst offen
+        return res.status;
+      }, url);
+    expect(await eventsOf(`/api/spiele/${matchId}/events`), `Events ${who}`).toBe(404);
     const ov = await page.goto(`/overlay/${matchId}`);
     const ovMissing = await page.goto(`/overlay/${missingId}`);
     expect(ov?.status(), `Overlay ${who}`).toBe(ovMissing?.status());

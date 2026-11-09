@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { shuffle } from "@/lib/tournament";
 import { db } from "@/db";
@@ -16,7 +16,7 @@ import { myAdminTeams } from "@/server/requests";
 import { canViewMatch, getMatchPage, submitResult } from "@/server/results";
 import { GET as liveGET } from "@/app/api/spiele/[id]/live/route";
 import OverlayPage from "@/app/overlay/[id]/page";
-import { ALL_MATCHES, subscribeToLobby } from "@/server/realtime";
+import { ALL_MATCHES, mayAnnounceToAll, subscribeToLobby } from "@/server/realtime";
 import { setSetting } from "@/server/settings";
 import { pendingRefunds } from "@/db/schema-finance";
 import { fixPrivateShare, privateListLocked, settleMatch } from "@/server/wallet";
@@ -1152,6 +1152,20 @@ describe("Kein Zugriff auf Privatspiele für Unbeteiligte (T57, AC-12)", () => {
     } finally {
       offGlobal();
       offOwn();
+    }
+  });
+
+  it("Globaler Stream: schlägt das Nachschlagen fehl, wird nichts gemeldet (fail closed) und nichts geworfen", async () => {
+    const { match } = await game(1);
+    expect(await mayAnnounceToAll(match.id)).toBe(false); // Privatspiel
+    expect(await mayAnnounceToAll((await makeMatch()).match.id)).toBe(true); // öffentlich
+    const spy = vi.spyOn(db, "select").mockImplementation(() => {
+      throw new Error("Datenbank nicht erreichbar");
+    });
+    try {
+      await expect(mayAnnounceToAll(crypto.randomUUID())).resolves.toBe(false);
+    } finally {
+      spy.mockRestore();
     }
   });
 
