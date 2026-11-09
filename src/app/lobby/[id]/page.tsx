@@ -108,7 +108,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     .map((t) => ({ teamId: t.id, name: t.name }));
 
   let inviteUrl: string | null = null;
-  const inviteManager = Boolean(isPrivate && user && (v.platformAdmin || v.adminOf.length > 0));
+  // Dieselbe Regel wie auf dem Server (canManageInvite): Team-Admin des Heim-Teams oder Plattform-Admin, nicht jeder Admin des Gast-Teams
+  const inviteManager = Boolean(isPrivate && user && (v.platformAdmin || v.adminOf.includes(match.homeId)));
   if (inviteManager && user) {
     const token = await getGameInviteToken(user.id, match.id);
     if (token) {
