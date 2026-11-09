@@ -27,6 +27,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const user = await getCurrentUser();
   const page = await getMatchPage(id, user ? { id: user.id, role: user.role } : null);
   if (!page) notFound();
+  if (!canViewMatch(page) && page.match.kind === "private") notFound(); // Privatspiel: Existenz nicht verraten, gleiche Antwort wie bei einem nicht vorhandenen Spiel
   if (!canViewMatch(page)) redirect(user ? "/app" : `/anmelden?next=${encodeURIComponent(`/spiele/${id}`)}`);
 
   const { match, events, live, result, phase, participants } = page;
