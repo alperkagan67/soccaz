@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, notifications, teamMembers } from "@/db/schema";
@@ -28,6 +28,19 @@ import {
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 afterAll(cleanup);
+
+// Für den Test "ein Fehler bricht die übrigen Turniere nicht ab": Benachrichtigungen für ein bestimmtes Turnier schlagen fehl.
+const forced = vi.hoisted(() => ({ failUrlSuffix: null as string | null }));
+vi.mock("@/server/notifications", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/server/notifications")>();
+  return {
+    ...orig,
+    notifyUsers: async (...args: Parameters<typeof orig.notifyUsers>) => {
+      if (forced.failUrlSuffix && args[1].url?.endsWith(forced.failUrlSuffix)) throw new Error("erzwungener Fehler");
+      return orig.notifyUsers(...args);
+    },
+  };
+});
 
 const days = (n: number) => new Date(Date.now() + n * 86_400_000);
 let key = 0;
@@ -960,5 +973,67 @@ describe("Lobby-Ansicht", () => {
     expect(team.ready).toBe(true);
     expect(team.dueCents).toBe(3000);
     expect(view.pricing).toMatchObject({ shareCents: 1000, players: 16 });
+  });
+});
+
+describe("Veranstalter in eigener Sache (T43 AC-1)", () => {
+  const openSemis = async (tid: string) => {
+    const rows = (await bracketRows(tid)).filter((r) => r.stage === "ko:4" && r.matchId).sort((a, b) => a.slot - b.slot);
+    for (const m of rows) await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m.matchId!));
+    return rows;
+  };
+  const scoreOf = async (id: string) => (await db.select().from(tournamentMatches).where(eq(tournamentMatches.id, id)))[0].scoreA;
+
+  for (const via of ["Teammitglied", "Turnier-Kader"] as const) {
+    it(`Veranstalter nur als ${via} (ohne Admin-Rolle) eines beteiligten Teams: kein endgültiges Ergebnis, keine Entscheidung; anderes Spiel bleibt erlaubt`, async () => {
+      const o = await organizer();
+      const { t } = await runningTournament(o);
+      const [mine, other] = await openSemis(t.id);
+      if (via === "Teammitglied") await db.insert(teamMembers).values({ teamId: mine.teamA!, userId: o.id, role: "player" });
+      else await db.insert(tournamentPlayers).values({ tournamentId: t.id, teamId: mine.teamA!, userId: o.id });
+
+      await expect(submitResult(o.id, mine.matchId!, 2, 1)).rejects.toThrow(/Team-Admins/);
+      await expect(decideResult(o.id, mine.matchId!, 2, 1, "in eigener Sache")).rejects.toThrow(/entscheiden/);
+      expect(await scoreOf(mine.id)).toBeNull();
+      expect((await db.select().from(matches).where(eq(matches.id, mine.matchId!)))[0].status).not.toBe("played");
+
+      // Spiel ohne Beteiligung seines Teams: weiter erlaubt (AC-10 aus Vertrag 005)
+      await submitResult(o.id, other.matchId!, 2, 1);
+      expect(await scoreOf(other.id)).toBe(2);
+      // Plattform-Admin entscheidet weiterhin
+      const admin = await makeUser("padmin", "admin");
+      await decideResult(admin.id, mine.matchId!, 1, 0, "Admin");
+      expect(await scoreOf(mine.id)).toBe(1);
+    });
+  }
+});
+
+describe("Anmeldeschluss-Job: ein Fehler bricht die übrigen Turniere nicht ab (T43 AC-2)", () => {
+  it("Turnier 1 schlägt fehl, Turnier 2 bekommt genau eine Meldung; Turnier 1 beim nächsten Lauf", async () => {
+    const o = await organizer();
+    const countFor = async (tid: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, o.id), eq(notifications.url, `/turniere/${tid}`), eq(notifications.title, "Anmeldeschluss erreicht")))).length;
+    const t1 = await newTournament(o, { maxTeams: 8 });
+    const t2 = await newTournament(o, { maxTeams: 8 });
+    for (const t of [t1, t2]) for (let i = 0; i < 4; i++) await squad(t.id, 4, true);
+    await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 2 * 3_600_000) }).where(eq(tournaments.id, t1.id)); // zuerst dran
+    await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 3_600_000) }).where(eq(tournaments.id, t2.id));
+
+    forced.failUrlSuffix = t1.id;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(notifyRegistrationDeadlines()).resolves.toBeGreaterThanOrEqual(1); // wirft nicht
+      await notifyRegistrationDeadlines();
+      expect(await countFor(t1.id)).toBe(0);
+      expect(await countFor(t2.id)).toBe(1);
+      const logged = JSON.stringify(err.mock.calls);
+      expect(logged).toContain(t1.id); // Fehler wurde mit Turnier-ID geloggt
+      expect(logged).not.toContain(o.id);
+    } finally {
+      forced.failUrlSuffix = null;
+      err.mockRestore();
+    }
+    await notifyRegistrationDeadlines();
+    expect(await countFor(t1.id)).toBe(1);
+    expect(await countFor(t2.id)).toBe(1);
   });
 });
