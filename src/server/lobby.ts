@@ -14,7 +14,7 @@ import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { fixPrivateShare, onParticipantLeaves, privateShareNow, recalcPrivateShares, refundOnCancel, reserveShare, seatedCount } from "./wallet";
+import { fixPrivateShare, onParticipantLeaves, privateJoinBlocked, privateListLocked, privateShareNow, recalcPrivateShares, refundOnCancel, reserveShare, seatedCount } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { reservationFor, shareFor } from "@/lib/money";
@@ -268,6 +268,8 @@ export async function teamComplete(tx: Tx, matchId: string, teamId: string): Pro
 async function revalidateFinal(tx: Tx, matchId: string) {
   const [m] = await tx.select().from(matches).where(eq(matches.id, matchId));
   if (!m) return;
+  // Privatspiel nach dem Fixieren: Preis, Spielerzahl und "Bereit" der Captains bleiben, auch wenn ein Aussteiger geht oder ein Ersatz noch nicht bereit ist
+  if (m.kind === "private" && m.finalShareCents !== null) return;
   if (m.homeFinalAt && !(await teamComplete(tx, matchId, m.homeTeamId))) await tx.update(matches).set({ homeFinalAt: null }).where(eq(matches.id, matchId));
   if (m.awayFinalAt && !(await teamComplete(tx, matchId, m.awayTeamId))) await tx.update(matches).set({ awayFinalAt: null }).where(eq(matches.id, matchId));
 }
@@ -314,8 +316,11 @@ async function findParticipant(tx: Tx, matchId: string, userId: string) {
   return row ?? null;
 }
 
+const LIST_LOCKED = "Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt: Niemand kann mehr austreten oder entfernt werden. Ersatz regelt ihr selbst.";
+
 export function joinLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match) => {
+    if (await privateJoinBlocked(tx, match)) throw new DomainError("Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt: Es kann nur noch ein Ersatz für einen ausgestiegenen Spieler beitreten.");
     const mine = await tx
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -338,6 +343,7 @@ export function joinLobby(userId: string, matchId: string) {
 export function leaveLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match) => {
     if (!(await findParticipant(tx, matchId, userId))) throw new DomainError("Du bist nicht in dieser Lobby.");
+    if (privateListLocked(match)) throw new DomainError(LIST_LOCKED);
     await onParticipantLeaves(tx, match, userId, { removedByAdmin: false, actorId: userId });
     const me = await findParticipant(tx, matchId, userId);
     if (me?.readyAt && match.startsAt.getTime() - Date.now() < 24 * 3_600_000) await recordLateCancel(tx, userId, matchId);
@@ -485,6 +491,7 @@ export function removeParticipant(actorId: string, matchId: string, targetUserId
       (await isPlatformAdmin(tx, actorId)) ||
       (target.teamId ? await isAdminOf(tx, actorId, target.teamId) : await canManageMatch(tx, actorId, match));
     if (!allowed) throw new DomainError("Dazu hast du keine Berechtigung.");
+    if (privateListLocked(match)) throw new DomainError(LIST_LOCKED);
     await onParticipantLeaves(tx, match, targetUserId, { removedByAdmin: true, actorId });
     await tx
       .delete(matchParticipants)

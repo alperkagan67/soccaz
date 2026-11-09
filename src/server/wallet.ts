@@ -17,6 +17,32 @@ type MatchRow = typeof matches.$inferSelect;
 
 export const FREE_CANCEL_HOURS = 24; // kostenlos abmelden bis 24 Stunden vor dem Anstoß
 
+/** Privatspiel: Ab so vielen Stunden vor dem Anstoß ist die Teilnehmerliste gesperrt (kein Austritt, kein Rauswurf). */
+export const PRIVATE_LIST_LOCK_HOURS = 48;
+/**
+ * Schalter (Produktfrage, Stand T54): Vertragswortlaut AC-8 sperrt in den letzten 48 Stunden auch den Beitritt per Link.
+ * Dann könnte ein Spiel, das kurz vor Anstoß angelegt wird, nie jemanden einladen. Deshalb gilt die Beitrittssperre erst NACH dem Fixieren
+ * (und lässt dann einen Ersatz für einen Ausgestiegenen zu). Auf `true` stellen, um den Beitritt in den letzten 48 Stunden immer zu sperren.
+ */
+const BLOCK_PRIVATE_JOIN_BEFORE_FIX = false;
+
+/** Ist die Teilnehmerliste dieses Privatspiels gesperrt (weniger als 48 Stunden bis Anstoß)? Teamspiel und Turnier: nie. */
+export function privateListLocked(match: Pick<MatchRow, "kind" | "startsAt">): boolean {
+  return match.kind === "private" && match.startsAt.getTime() - Date.now() < PRIVATE_LIST_LOCK_HOURS * 3_600_000;
+}
+
+/**
+ * Darf jetzt niemand mehr neu beitreten? In der Sperrzeit (unter 48 Stunden) nach dem Fixieren nur noch ein Ersatz für einen
+ * ausgestiegenen Spieler (es gibt eine offene Erstattung). Ohne Geldfluss (kostenlos, Zahlungen aus) gibt es nichts zu schützen.
+ */
+export async function privateJoinBlocked(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "kind" | "startsAt" | "finalShareCents" | "priceCents">): Promise<boolean> {
+  if (!privateListLocked(match)) return false;
+  if (match.finalShareCents === null) return BLOCK_PRIVATE_JOIN_BEFORE_FIX;
+  if (!match.priceCents || !(await paymentsEnabled(tx as Tx))) return false;
+  const [open] = await tx.select({ userId: pendingRefunds.userId }).from(pendingRefunds).where(eq(pendingRefunds.matchId, match.id)).limit(1);
+  return !open;
+}
+
 /** Preis des Spiels, falls noch nicht festgelegt aus den Preisregeln (Halle oder Standard) ermitteln und am Spiel speichern. */
 export async function ensurePrice(tx: Tx, match: MatchRow): Promise<{ priceCents: number; costCents: number; match: MatchRow }> {
   if (match.priceCents !== null && match.costCents !== null) return { priceCents: match.priceCents, costCents: match.costCents, match };
@@ -170,7 +196,10 @@ export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: strin
   if (!p || p.paidCents <= 0) return;
 
   const hoursLeft = (match.startsAt.getTime() - Date.now()) / 3_600_000;
-  if (opts.removedByAdmin || hoursLeft >= FREE_CANCEL_HOURS) {
+  // Privatspiel nach dem Fixieren: Anteil und Spielerzahl stehen fest. Der Aussteiger bleibt gebucht, sein Geld kommt erst zurück,
+  // wenn ein Ersatz den gleichen Anteil bezahlt hat (Austritt und Rauswurf sind nur bis 48 Stunden vor Anstoß möglich, siehe lobby.ts).
+  const waitForSubstitute = match.kind === "private" && match.finalShareCents !== null;
+  if (!waitForSubstitute && (opts.removedByAdmin || hoursLeft >= FREE_CANCEL_HOURS)) {
     await refundPaid(tx, match, userId, p.paidCents, opts.removedByAdmin ? "Aus der Lobby entfernt" : "Rechtzeitig abgemeldet", `leave:${match.id}:${userId}:${randomUUID()}`, opts.actorId);
     return;
   }
@@ -182,7 +211,7 @@ export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: strin
   await audit(opts.actorId, "wallet.refund_pending", "match", match.id, { after: { userId, amountCents: p.paidCents } }, tx);
   await notifyUsers(
     [userId],
-    { type: "payment", title: "Abmeldung kurz vor dem Spiel", body: `Dein Anteil von ${formatEuro(p.paidCents)} wird erstattet, sobald ein Ersatzspieler bezahlt hat.`, url: "/app/guthaben" },
+    { type: "payment", title: waitForSubstitute ? "Austritt nach Festlegung des Preises" : "Abmeldung kurz vor dem Spiel", body: `Dein Anteil von ${formatEuro(p.paidCents)} wird erstattet, sobald ein Ersatzspieler bezahlt hat.`, url: "/app/guthaben" },
     tx,
   );
 }
@@ -191,7 +220,7 @@ export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: strin
 export async function settlePendingRefunds(tx: Tx, match: MatchRow) {
   const [first] = await tx.select().from(pendingRefunds).where(eq(pendingRefunds.matchId, match.id)).orderBy(asc(pendingRefunds.createdAt)).limit(1);
   if (!first) return;
-  await creditWallet(tx, first.userId, { from: "revenue", amountCents: first.amountCents, kind: "refund", matchId: match.id, idempotencyKey: `pending:${match.id}:${first.userId}`, reason: "Ersatzspieler hat bezahlt" });
+  await creditWallet(tx, first.userId, { from: "revenue", amountCents: first.amountCents, kind: "refund", matchId: match.id, idempotencyKey: `pending:${match.id}:${first.userId}:${first.createdAt.getTime()}`, reason: "Ersatzspieler hat bezahlt" });
   await tx.delete(pendingRefunds).where(and(eq(pendingRefunds.matchId, match.id), eq(pendingRefunds.userId, first.userId)));
   await notifyUsers([first.userId], { type: "payment", title: "Erstattung", body: `Ein Ersatz hat bezahlt: ${formatEuro(first.amountCents)} sind wieder in deinem Guthaben.`, url: "/app/guthaben" }, tx);
 }
