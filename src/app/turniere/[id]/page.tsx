@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ActionButton } from "@/components/ActionButton";
 import { PlayerLight, type Light } from "@/components/PlayerLight";
 import { formatEuro } from "@/lib/money";
@@ -35,6 +35,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const sp = await searchParams;
   const token = typeof sp.t === "string" ? sp.t : null;
   const user = await getCurrentUser();
+  // Neuer Nutzer über den Einladungslink: erst das Onboarding, danach zurück ins Turnier (der Token bleibt erhalten)
+  if (user && !user.onboardedAt && token) redirect(`/willkommen?next=${encodeURIComponent(`/turniere/${id}?t=${token}`)}`);
   const data = await getTournament(id, user ? { id: user.id, role: user.role } : null, token);
   if (!data) {
     // Gäste mit Einladungslink können sich anmelden; Fremde ohne Link sehen nichts
@@ -83,6 +85,12 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       )}
       {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} />}
       {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} />}
+      {v && data.registrationOpen && !v.isOrganizer && !v.captainTeamId && !v.myTeamId && v.registerableTeams.length === 0 && v.joinableTeamIds.length === 0 && (
+        <section className="card space-y-2" data-testid="no-team-hint">
+          <p className="text-sm">Du hast kein Team, das sich anmelden kann. Gründe ein Team, danach kommst du direkt hierher zurück und meldest es an.</p>
+          <Link href={`/app/teams/neu?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Team gründen</Link>
+        </section>
+      )}
 
       {(inRegistration || inPayment || t.status === "running") && !free && (
         <section className="card space-y-1 text-sm" aria-label="So wird bezahlt" data-testid="pricing-box">
