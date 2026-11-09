@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RefreshWhile } from "@/components/RefreshWhile";
 import { formatEuro } from "@/lib/money";
+import { safeInternalPath } from "@/lib/safe-path";
 import { formatDateTime } from "@/lib/time";
 import { walletBalance, walletStatement } from "@/server/ledger";
 import { activeProvider, getPaymentFor } from "@/server/payments";
@@ -25,7 +26,7 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 function safeBack(value: string | undefined): string | null {
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : null;
+  return safeInternalPath(value, null);
 }
 
 export default async function WalletPage({ searchParams }: PageProps<"/app/guthaben">) {
@@ -71,8 +72,8 @@ export default async function WalletPage({ searchParams }: PageProps<"/app/gutha
           {(payment.status === "canceled" || payment.status === "failed") && "Die Zahlung wurde nicht abgeschlossen. Es wurde nichts abgebucht."}
         </p>
       )}
-      {payment?.status === "succeeded" && (payment.returnTo ?? back) && (
-        <Link href={(payment.returnTo ?? back)!} className="btn btn-primary w-full">Zurück zum Spiel</Link>
+      {payment?.status === "succeeded" && safeBack(payment.returnTo ?? back ?? undefined) && (
+        <Link href={safeBack(payment.returnTo ?? back ?? undefined)!} className="btn btn-primary w-full">Zurück zum Spiel</Link>
       )}
 
       {provider ? (

@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { mvpVotes } from "@/db/schema-community";
 import { MVP_WINDOW_HOURS, NO_SHOW_WINDOW_DAYS } from "./stats";
 import { matchEvents, matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
-import { tournamentMatches, tournaments } from "@/db/schema-league";
+import { tournamentMatches, tournamentPlayers, tournaments } from "@/db/schema-league";
 import { confirmDeadline, isValidScore, minuteAt, phaseOf, scoreFromGoals } from "@/lib/result-rules";
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
@@ -207,11 +207,22 @@ export async function getScoreboard() {
 async function isTournamentOrganizer(tx: Pick<typeof db, "select">, userId: string, match: { id: string; kind: MatchRow["kind"] }) {
   if (match.kind !== "tournament") return false;
   const [row] = await tx
-    .select({ organizerId: tournaments.organizerId })
+    .select({ organizerId: tournaments.organizerId, tournamentId: tournamentMatches.tournamentId, teamA: tournamentMatches.teamA, teamB: tournamentMatches.teamB })
     .from(tournamentMatches)
     .innerJoin(tournaments, eq(tournaments.id, tournamentMatches.tournamentId))
     .where(eq(tournamentMatches.matchId, match.id));
-  return row?.organizerId === userId;
+  if (row?.organizerId !== userId) return false;
+  // In eigener Sache kein Schiedsrichter: Wer Mitglied, Turnier-Kader-Spieler oder Admin eines beteiligten Teams ist, gilt in diesem Spiel nur als dieses Team.
+  const teamIds = [row.teamA, row.teamB].filter((id): id is string => Boolean(id));
+  if (teamIds.length === 0) return true;
+  const [member] = await tx.select({ teamId: teamMembers.teamId }).from(teamMembers).where(and(eq(teamMembers.userId, userId), inArray(teamMembers.teamId, teamIds))).limit(1);
+  if (member) return false;
+  const [player] = await tx
+    .select({ teamId: tournamentPlayers.teamId })
+    .from(tournamentPlayers)
+    .where(and(eq(tournamentPlayers.tournamentId, row.tournamentId), eq(tournamentPlayers.userId, userId), inArray(tournamentPlayers.teamId, teamIds)))
+    .limit(1);
+  return !player;
 }
 
 async function loadAdminContext(tx: Tx, userId: string, match: MatchRow) {

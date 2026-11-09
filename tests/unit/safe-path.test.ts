@@ -36,4 +36,27 @@ describe("safeInternalPath: nur interne Pfade", () => {
   it("kodierte Schrägstriche sind kein Host und gehen als interner Pfad durch", () => {
     expect(safeInternalPath("/%2f/evil")).toBe("/%2f/evil");
   });
+
+  it("Array- und andere Nicht-String-Eingaben (z. B. ?x=a&x=b) ergeben den Fallback", () => {
+    expect(safeInternalPath(["/app", "/x"])).toBe("/app");
+    expect(safeInternalPath(["//evil"], "/teams")).toBe("/teams");
+    expect(safeInternalPath(42)).toBe("/app");
+    expect(safeInternalPath({})).toBe("/app");
+  });
+
+  it("führendes Leerzeichen oder Leerraum vor dem Pfad ist kein interner Pfad", () => {
+    for (const bad of [" /app", " //evil.example", "  /x", ch(160) + "/x"]) expect(safeInternalPath(bad)).toBe("/app");
+  });
+
+  it("prozentkodierte Zeichen werden nicht dekodiert und gehen als interner Pfad durch (der Browser liest sie als Pfad)", () => {
+    expect(safeInternalPath("/%5cevil")).toBe("/%5cevil");
+    expect(safeInternalPath("/%09/evil")).toBe("/%09/evil");
+  });
+
+  it("Fallback null liefert null statt eines Pfads", () => {
+    expect(safeInternalPath(undefined, null)).toBeNull();
+    expect(safeInternalPath(`/${BS}evil.example`, null)).toBeNull();
+    expect(safeInternalPath("//evil", null)).toBeNull();
+    expect(safeInternalPath("/spiele/1?x=2", null)).toBe("/spiele/1?x=2");
+  });
 });
