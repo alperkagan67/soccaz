@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
+import { matchParticipants, matchResults, matches, notifications, teamMembers, teams, users } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, planSchedule, koWinner, knockout, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
@@ -382,6 +382,36 @@ export async function closeWithJoinedTeams(userId: string, tournamentId: string)
     // Sind jetzt alle vorhandenen Teams vollzählig, steht der Preis fest
     await maybeFixPrice(tx, { ...t, maxTeams: n });
   });
+}
+
+/**
+ * Job: Ist der Anmeldeschluss erreicht und das Turnier nicht voll, bekommt der Veranstalter genau eine Benachrichtigung
+ * (Weitermachen ab 4 Teams oder Absagen). Läuft unter der Turniersperre; ein zweiter Lauf findet die Meldung und tut nichts.
+ */
+export async function notifyRegistrationDeadlines(now: Date = new Date()): Promise<number> {
+  const since = new Date(now.getTime() - 14 * 86_400_000);
+  const due = await db
+    .select({ id: tournaments.id })
+    .from(tournaments)
+    .where(and(eq(tournaments.status, "registration"), isNull(tournaments.bracketGeneratedAt), sql`${tournaments.registrationDeadline} <= ${now}`, sql`${tournaments.registrationDeadline} > ${since}`));
+  let sent = 0;
+  for (const { id } of due) {
+    await db.transaction(async (tx) => {
+      const t = await lockTournament(tx, id);
+      if (!registrationOpen(t) || !t.registrationDeadline || t.registrationDeadline.getTime() > now.getTime()) return;
+      const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, id));
+      if (n >= t.maxTeams) return;
+      const url = `/turniere/${id}`;
+      const title = "Anmeldeschluss erreicht";
+      const [already] = await tx.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.userId, t.organizerId), eq(notifications.type, "system"), eq(notifications.url, url), eq(notifications.title, title))).limit(1);
+      if (already) return;
+      const body = n >= MIN_TOURNAMENT_TEAMS
+        ? `${t.name}: ${n} von ${t.maxTeams} Teams sind angemeldet. Du kannst mit diesen Teams weitermachen oder das Turnier absagen.`
+        : `${t.name}: Nur ${n} von ${t.maxTeams} Teams sind angemeldet. Mit weniger als ${MIN_TOURNAMENT_TEAMS} Teams findet das Turnier nicht statt, du kannst es absagen.`;
+      sent += await notifyUsers([t.organizerId], { type: "system", title, body, url }, tx);
+    });
+  }
+  return sent;
 }
 
 async function insertFixtures(tx: Tx, tournamentId: string, fixtures: Fixture[]) {

@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, teamMembers } from "@/db/schema";
+import { matchParticipants, matches, notifications, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { creditWallet, debitWallet, trialBalance, walletBalance } from "@/server/ledger";
@@ -15,6 +15,7 @@ import {
   joinAsPlayer,
   leavePlayer,
   payEntry,
+  notifyRegistrationDeadlines,
   payForTeam,
   registerTeam,
   reopenRosters,
@@ -679,6 +680,63 @@ describe("Sonderfälle: Teams ersetzen, mit weniger Teams starten, Kader wieder 
     for (let i = 0; i < 3; i++) await squad(t2.id, 4, true);
     await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 1000) }).where(eq(tournaments.id, t2.id));
     await expect(closeWithJoinedTeams(o.id, t2.id)).rejects.toThrow(/weniger als 4/);
+  });
+
+  it("AC-11: Anmeldeschluss mit 3, 4 und 5 von 8 Teams: Weitermachen nur ab 4, Absage immer, nur der Veranstalter", async () => {
+    const o = await organizer();
+    const expire = (id: string) => db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 1000) }).where(eq(tournaments.id, id));
+    for (const n of [3, 4, 5]) {
+      const t = await newTournament(o, { maxTeams: 8 });
+      const squads: Squad[] = [];
+      for (let i = 0; i < n; i++) squads.push(await squad(t.id, 4, true));
+      await expire(t.id);
+      const stranger = await makeUser("fremd");
+      await expect(closeWithJoinedTeams(stranger.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(closeWithJoinedTeams(squads[0].captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(cancelTournament(stranger.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(cancelTournament(squads[0].captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+      if (n < 4) {
+        await expect(closeWithJoinedTeams(o.id, t.id)).rejects.toThrow(/weniger als 4/);
+        expect((await statusOf(t.id)).status).toBe("registration");
+        await cancelTournament(o.id, t.id);
+        expect((await statusOf(t.id)).status).toBe("cancelled");
+      } else {
+        await closeWithJoinedTeams(o.id, t.id);
+        expect(await statusOf(t.id)).toMatchObject({ status: "payment", maxTeams: n });
+        // Bedingung "alle angemeldeten Teams bereit und bezahlt" gilt weiter: ohne Zahlung kein Bracket
+        expect(await bracketRows(t.id)).toHaveLength(0);
+        await payAll(t.id, squads);
+        expect((await bracketRows(t.id)).length).toBe(n - 1); // mit Freilosen bei 5 Teams
+      }
+    }
+    // Absage mit Vollerstattung an den Zahler nach Anmeldeschluss
+    const t = await newTournament(o, { maxTeams: 8 });
+    const sq: Squad[] = [];
+    for (let i = 0; i < 4; i++) sq.push(await squad(t.id, 4, true));
+    await expire(t.id);
+    await closeWithJoinedTeams(o.id, t.id);
+    await fund(sq[0].captain.id, 5000);
+    await payForTeam(sq[0].captain.id, t.id);
+    expect(await walletBalance(db, sq[0].captain.id)).toBe(5000 - 4 * 1000);
+    await cancelTournament(o.id, t.id);
+    expect(await walletBalance(db, sq[0].captain.id)).toBe(5000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-11: der Veranstalter bekommt am Anmeldeschluss genau eine Benachrichtigung, auch bei doppeltem Job-Lauf", async () => {
+    const o = await organizer();
+    const countFor = async (tid: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, o.id), eq(notifications.url, `/turniere/${tid}`), eq(notifications.title, "Anmeldeschluss erreicht")))).length;
+    const open = await newTournament(o, { maxTeams: 8 }); // Frist nicht erreicht
+    const t = await newTournament(o, { maxTeams: 8 });
+    const full = await newTournament(o, { maxTeams: 4 });
+    for (let i = 0; i < 4; i++) await squad(full.id, 4, true);
+    for (let i = 0; i < 4; i++) await squad(t.id, 4, true);
+    for (const id of [t.id, full.id]) await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 1000) }).where(eq(tournaments.id, id));
+    await Promise.all([notifyRegistrationDeadlines(), notifyRegistrationDeadlines()]);
+    await notifyRegistrationDeadlines();
+    expect(await countFor(t.id)).toBe(1);
+    expect(await countFor(open.id)).toBe(0); // Frist nicht erreicht
+    expect(await countFor(full.id)).toBe(0); // volles Turnier: unverändert, keine Meldung
   });
 
   it("Kader wieder öffnen: alles wird erstattet, der Preis wird neu berechnet, Zahlen geht danach wieder sauber", async () => {
