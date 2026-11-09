@@ -219,8 +219,11 @@ export async function setTeamVerified(actorId: string, teamId: string, value: bo
 export async function mergeTeams(actorId: string, sourceId: string, targetId: string) {
   if (sourceId === targetId) throw new DomainError("Quelle und Ziel müssen verschiedene Teams sein.");
   await db.transaction(async (tx) => {
-    const [source] = await tx.select().from(teams).where(eq(teams.id, sourceId)).for("update");
-    const [target] = await tx.select().from(teams).where(eq(teams.id, targetId)).for("update");
+    // Beide Team-Zeilen in fester Reihenfolge (nach ID) sperren, wie challengeTeam: mergeTeams(A,B) und mergeTeams(B,A) oder ein
+    // paralleles challengeTeam laufen so nacheinander und ohne Deadlock.
+    const locked = await tx.select().from(teams).where(inArray(teams.id, [sourceId, targetId])).orderBy(teams.id).for("update");
+    const source = locked.find((t) => t.id === sourceId);
+    const target = locked.find((t) => t.id === targetId);
     if (!source || !target) throw new DomainError("Team nicht gefunden.");
 
     const [{ between }] = await tx

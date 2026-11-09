@@ -126,37 +126,58 @@ export async function convertLegacyChallenges(): Promise<number> {
     .where(and(eq(matchRequests.status, "open"), isNotNull(matchRequests.targetTeamId)));
   let converted = 0;
   for (const r of old) {
-    await db.transaction(async (tx) => {
-      const [fresh] = await tx.select().from(matchRequests).where(eq(matchRequests.id, r.id)).for("update");
-      if (!fresh || fresh.status !== "open" || !fresh.targetTeamId) return;
-      const [existing] = await tx.select({ id: matches.id }).from(matches).where(eq(matches.requestId, r.id));
-      if (existing) return;
-      const [match] = await tx
-        .insert(matches)
-        .values({
-          number: fresh.number,
-          requestId: fresh.id,
-          homeTeamId: fresh.teamId,
-          awayTeamId: fresh.targetTeamId,
-          startsAt: fresh.startsAt,
-          durationMin: fresh.durationMin,
-          visibility: "public",
-          schedulingOpen: true,
-          challengeStatus: "pending",
-          schedulingDeadline: new Date(Date.now() + CHALLENGE_REPLY_HOURS * 3_600_000),
-        })
-        .returning();
-      const admins = await tx.select({ userId: teamMembers.userId, teamId: teamMembers.teamId }).from(teamMembers).where(and(inArray(teamMembers.teamId, [fresh.teamId, fresh.targetTeamId]), eq(teamMembers.role, "admin")));
-      if (admins.length) await tx.insert(matchParticipants).values(admins.map((a) => ({ matchId: match.id, userId: a.userId, teamId: a.teamId }))).onConflictDoNothing();
-      await tx.update(matchRequests).set({ status: "matched" }).where(eq(matchRequests.id, fresh.id));
-      await audit(null, "challenge.convert", "match", match.id, { after: { requestId: fresh.id } }, tx);
-      await notifyUsers(
-        await teamAdminIds(tx, fresh.targetTeamId),
-        { type: "request.challenge", title: "Ihr wurdet herausgefordert", body: `${await teamName(tx, fresh.teamId)} fordert ${await teamName(tx, fresh.targetTeamId)} heraus. Nehmt in der Lobby an oder lehnt ab.`, url: `/lobby/${match.id}` },
-        tx,
-      );
-      converted += 1;
-    });
+    try {
+      await db.transaction(async (tx) => {
+        const [fresh] = await tx.select().from(matchRequests).where(eq(matchRequests.id, r.id)).for("update");
+        if (!fresh || fresh.status !== "open" || !fresh.targetTeamId) return;
+        const [existing] = await tx.select({ id: matches.id }).from(matches).where(eq(matches.requestId, r.id));
+        if (existing) return;
+        // Beide Teams in fester Reihenfolge (nach ID) sperren, wie challengeTeam, und das Paar prüfen:
+        // zwischen denselben Teams gibt es nur eine offene Herausforderung.
+        const lockedTeams = await tx.select({ id: teams.id }).from(teams).where(inArray(teams.id, [fresh.teamId, fresh.targetTeamId])).orderBy(teams.id).for("update");
+        if (lockedTeams.length !== 2) return;
+        const pairOpen = await tx
+          .select({ id: matches.id })
+          .from(matches)
+          .where(
+            and(
+              eq(matches.challengeStatus, "pending"),
+              eq(matches.status, "lobby"),
+              inArray(matches.homeTeamId, [fresh.teamId, fresh.targetTeamId]),
+              inArray(matches.awayTeamId, [fresh.teamId, fresh.targetTeamId]),
+            ),
+          );
+        if (pairOpen.length > 0) throw new DomainError("Zwischen euch läuft schon eine Herausforderung.");
+        const [match] = await tx
+          .insert(matches)
+          .values({
+            number: fresh.number,
+            requestId: fresh.id,
+            homeTeamId: fresh.teamId,
+            awayTeamId: fresh.targetTeamId,
+            startsAt: fresh.startsAt,
+            durationMin: fresh.durationMin,
+            visibility: "public",
+            schedulingOpen: true,
+            challengeStatus: "pending",
+            schedulingDeadline: new Date(Date.now() + CHALLENGE_REPLY_HOURS * 3_600_000),
+          })
+          .returning();
+        const admins = await tx.select({ userId: teamMembers.userId, teamId: teamMembers.teamId }).from(teamMembers).where(and(inArray(teamMembers.teamId, [fresh.teamId, fresh.targetTeamId]), eq(teamMembers.role, "admin")));
+        if (admins.length) await tx.insert(matchParticipants).values(admins.map((a) => ({ matchId: match.id, userId: a.userId, teamId: a.teamId }))).onConflictDoNothing();
+        await tx.update(matchRequests).set({ status: "matched" }).where(eq(matchRequests.id, fresh.id));
+        await audit(null, "challenge.convert", "match", match.id, { after: { requestId: fresh.id } }, tx);
+        await notifyUsers(
+          await teamAdminIds(tx, fresh.targetTeamId),
+          { type: "request.challenge", title: "Ihr wurdet herausgefordert", body: `${await teamName(tx, fresh.teamId)} fordert ${await teamName(tx, fresh.targetTeamId)} heraus. Nehmt in der Lobby an oder lehnt ab.`, url: `/lobby/${match.id}` },
+          tx,
+        );
+        converted += 1;
+      });
+    } catch (error) {
+      // Läuft zwischen den Teams schon eine Herausforderung, bleibt die alte Anfrage offen und wird übersprungen
+      if (!(error instanceof DomainError)) throw error;
+    }
   }
   return converted;
 }
