@@ -1,18 +1,15 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
+import { safeInternalPath } from "@/lib/safe-path";
 import { getT } from "@/server/locale";
 import { getCurrentUser, isCurrentSessionBanned } from "@/server/session";
 
 export const metadata: Metadata = { title: "Anmelden" };
 
-function safeNext(value: string | undefined): string {
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : "/app";
-}
-
 export default async function SignInPage({ searchParams }: PageProps<"/anmelden">) {
   const params = await searchParams;
-  const next = safeNext(typeof params.next === "string" ? params.next : undefined);
+  const next = safeInternalPath(params.next);
   if (await getCurrentUser()) redirect(next);
   const banned = await isCurrentSessionBanned();
   const { t } = await getT();

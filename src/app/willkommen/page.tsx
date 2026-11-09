@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { safeInternalPath } from "@/lib/safe-path";
 import { requireLoggedIn } from "@/server/session";
 import { OnboardingForm } from "./OnboardingForm";
 
@@ -8,8 +9,7 @@ export const metadata: Metadata = { title: "Willkommen" };
 export default async function WelcomePage({ searchParams }: PageProps<"/willkommen">) {
   const user = await requireLoggedIn();
   const params = await searchParams;
-  const rawNext = typeof params.next === "string" ? params.next : "/app";
-  const next = rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/app";
+  const next = safeInternalPath(params.next);
   if (user.onboardedAt) redirect(next);
 
   return (
