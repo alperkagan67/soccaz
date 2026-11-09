@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
+import { shuffle } from "@/lib/tournament";
 import { db } from "@/db";
 import { matchParticipants, matches, teams } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
@@ -128,6 +129,27 @@ describe("Teams einteilen", () => {
     expect(again.filter((p) => p.teamId === match.awayTeamId)).toHaveLength(5);
     expect(again.find((p) => p.userId === players[1].id)!.teamId).toBe(parts.find((p) => p.userId === players[1].id)!.teamId); // der Bereite bleibt, wo er ist
     await expect(unassignParticipant(organizer.id, match.id, players[1].id)).rejects.toThrow(/schon bereit/);
+  });
+
+  it("Zufällige Einteilung nutzt die gemischte Reihenfolge (injizierte Zufallsquelle), jeder Spieler genau einmal, abwechselnd auf das kleinere Team", async () => {
+    const seq = (...v: number[]) => () => {
+      let i = 0;
+      return () => v[i++ % v.length];
+    };
+    // jede Quelle wird zweimal frisch erzeugt: einmal für die erwartete Reihenfolge, einmal für die Einteilung
+    for (const make of [() => () => 0, () => () => 0.999999, seq(0.1, 0.8, 0.4, 0.6, 0.3, 0.9, 0.2)]) {
+      const rng = make();
+      const { organizer, match } = await game(7); // 8 Spieler, alle noch ohne Team
+      const pool = (await db.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), isNull(matchParticipants.teamId)))).map((p) => p.userId);
+      expect(pool).toHaveLength(8);
+      const expected = shuffle(pool, make());
+      await randomSplit(organizer.id, match.id, false, rng);
+      const parts = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+      expect(parts.filter((p) => p.teamId === null)).toHaveLength(0);
+      expect(new Set(parts.map((p) => p.userId)).size).toBe(8); // jeder genau einmal
+      // abwechselnd: Position 0, 2, 4, 6 der gemischten Reihenfolge nach Heim, 1, 3, 5, 7 nach Gast
+      expected.forEach((userId, i) => expect(parts.find((p) => p.userId === userId)!.teamId, `Position ${i}`).toBe(i % 2 === 0 ? match.homeTeamId : match.awayTeamId));
+    }
   });
 
   it("12 Spieler: je Team sechs; Teamspiele bleiben bei 5 plus 1 Ersatz", async () => {
