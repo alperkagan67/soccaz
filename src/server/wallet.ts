@@ -48,23 +48,26 @@ export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Pro
     .select({ paidCents: matchParticipants.paidCents })
     .from(matchParticipants)
     .where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
-  if (!p || p.paidCents > 0) return;
+  // Privatspiel: Wer schon etwas gezahlt hat, aber weniger als den (neu gerechneten) Anteil, zahlt die Differenz nach. Sonst zahlt nur, wer noch nichts gezahlt hat.
+  if (!p || (p.paidCents > 0 && match.kind !== "private")) return;
 
   const { priceCents, match: fresh } = await ensurePrice(tx, match);
   if (priceCents === 0) return; // kostenlos: keine Zahlung, keine Reservierung
   const amount = fresh.kind === "private" ? await privateShareNow(tx, fresh, priceCents) : amountToCharge(fresh, priceCents, await minPaidPlayers(tx));
+  const toPay = amount - p.paidCents;
+  if (toPay <= 0) return; // schon voll bezahlt (auch bei Doppelklick)
   await debitWallet(tx, userId, {
     to: "revenue",
-    amountCents: amount,
+    amountCents: toPay,
     kind: "match_share",
     matchId: match.id,
     idempotencyKey: `share:${match.id}:${userId}:${randomUUID()}`,
-    reason: fresh.settledAt ? "Startgebühr (Anteil)" : "Startgebühr (Reservierung)",
+    reason: p.paidCents > 0 ? "Nachzahlung Anteil" : fresh.settledAt ? "Startgebühr (Anteil)" : "Startgebühr (Reservierung)",
     actorId: userId,
   });
   await tx.update(matchParticipants).set({ paidCents: amount, paidAt: new Date() }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
-  await audit(userId, "wallet.share", "match", match.id, { after: { amountCents: amount } }, tx);
-  await settlePendingRefunds(tx, match);
+  await audit(userId, "wallet.share", "match", match.id, { after: { amountCents: toPay, totalPaidCents: amount } }, tx);
+  if (p.paidCents === 0) await settlePendingRefunds(tx, match);
 }
 
 /**
@@ -102,6 +105,52 @@ export async function fixPrivateShare(tx: Tx, match: MatchRow): Promise<void> {
     }
   }
   await audit(null, "wallet.private_fix", "match", match.id, { after: { players: seated.length, finalShareCents: share, rentCents: priceCents } }, tx);
+}
+
+/** Zahl der einem Team zugeteilten Spieler (nur diese zählen für den Anteil im Privatspiel). */
+export async function seatedCount(tx: Pick<Tx, "select">, matchId: string): Promise<number> {
+  const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId)));
+  return n;
+}
+
+/**
+ * Privatspiel vor dem Fixieren: Hat sich die Zahl der eingeteilten Spieler geändert, wird der Anteil neu gerechnet (Miete ÷ neue Zahl).
+ * Zu viel Gezahltes geht sofort als Guthaben zurück (der bezahlte Betrag sinkt auf den neuen Anteil), zu wenig wird nicht automatisch
+ * abgebucht, sondern vom Spieler per `payShare` nachgezahlt (die Differenz). "Bereit" beider Captains wird zurückgesetzt.
+ * Der Aufrufer hält die Zeilensperre auf dem Spiel (genau einmal je Änderung). Rundungsreste (weniger als n Cent) bleiben bei der Plattform.
+ * Erstattungs-Schlüssel enthalten eine Zufallskennung: derselbe Zahlungsstand kann nach mehreren Änderungen mehrfach vorkommen,
+ * Doppelbuchung verhindert die Spielsperre, nicht der Schlüssel.
+ */
+export async function recalcPrivateShares(tx: Tx, match: MatchRow, actorId: string | null): Promise<void> {
+  if (match.kind !== "private") return;
+  const [current] = await tx.select().from(matches).where(eq(matches.id, match.id));
+  if (!current || current.finalShareCents !== null) return; // Preis steht fest: nichts neu rechnen
+  await tx.update(matches).set({ homeFinalAt: null, awayFinalAt: null }).where(eq(matches.id, match.id));
+  if (!(await paymentsEnabled(tx)) || !current.priceCents) {
+    await audit(actorId, "wallet.private_recalc", "match", match.id, { after: { bereitReset: true } }, tx);
+    return;
+  }
+  const seated = await tx
+    .select({ userId: matchParticipants.userId, paidCents: matchParticipants.paidCents })
+    .from(matchParticipants)
+    .where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
+  if (seated.length === 0) return;
+  const share = shareCents(current.priceCents, seated.length);
+  const owing: string[] = [];
+  let refunded = 0;
+  for (const p of seated) {
+    if (p.paidCents > share) {
+      await refundPaid(tx, current, p.userId, p.paidCents - share, "Anteil nach Änderung der Spielerzahl", `private-recalc:${match.id}:${p.userId}:${randomUUID()}`, actorId);
+      await tx.update(matchParticipants).set({ paidCents: share }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, p.userId)));
+      refunded += 1;
+    } else if (p.paidCents > 0 && p.paidCents < share) {
+      owing.push(p.userId);
+    }
+  }
+  if (owing.length) {
+    await notifyUsers(owing, { type: "payment", title: "Anteil hat sich geändert", body: `Die Spielerzahl hat sich geändert: Dein Anteil ist jetzt ${formatEuro(share)}. Bitte zahle den Rest in der Lobby nach.`, url: `/lobby/${match.id}` }, tx);
+  }
+  await audit(actorId, "wallet.private_recalc", "match", match.id, { after: { players: seated.length, shareCents: share, refunded, owing: owing.length } }, tx);
 }
 
 /** Erstattet den Anteil eines Spielers ans Guthaben und setzt seinen bezahlten Betrag auf 0. */
