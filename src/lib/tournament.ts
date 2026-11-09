@@ -48,6 +48,19 @@ export function bracketOrder(size: number): number[] {
 const nextPow2 = (n: number) => 2 ** Math.ceil(Math.log2(Math.max(n, 2)));
 export const koStage = (teamsInRound: number) => `ko:${teamsInRound}`;
 
+/** Zufallszahl in [0, 1) aus dem Betriebssystem (Standard-Zufallsquelle der Auslosung). */
+export const secureRandom = (): number => crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+
+/** Mischt eine Liste (Fisher-Yates), ohne die Eingabe zu ändern. Die Zufallsquelle ist austauschbar, damit Tests deterministisch sind. */
+export function shuffle<T>(items: readonly T[], random: () => number = secureRandom): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 /** K.-o.-Baum für beliebig viele Teams (in Setzreihenfolge). Freilose rücken ohne Spiel eine Runde weiter. Immer n-1 Spiele. */
 export function knockout(teamIds: string[]): Fixture[] {
   const n = teamIds.length;

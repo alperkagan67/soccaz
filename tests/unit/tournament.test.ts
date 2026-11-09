@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bracketOrder, planSchedule, drawGroups, groupCount, groupFixtures, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, finalSharePerPlayer, reservationPerPlayer, shareRange, tournamentTotalCents } from "@/lib/tournament";
+import { shuffle, bracketOrder, planSchedule, drawGroups, groupCount, groupFixtures, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, finalSharePerPlayer, reservationPerPlayer, shareRange, tournamentTotalCents } from "@/lib/tournament";
 
 const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
 const pairKey = (a: string, b: string) => [a, b].sort().join("-");
@@ -24,6 +24,34 @@ describe("Jeder gegen jeden", () => {
   });
   it("n Teams ergeben n(n-1)/2 Spiele", () => {
     for (const n of [2, 3, 6, 7, 8, 11]) expect(roundRobin(ids(n))).toHaveLength((n * (n - 1)) / 2);
+  });
+});
+
+describe("Auslosung (shuffle)", () => {
+  // feste Zufallsquelle: liefert die Werte der Reihe nach
+  const seq = (...v: number[]) => { let i = 0; return () => v[i++ % v.length]; };
+  it("enthält alle Teams genau einmal und verändert die Eingabe nicht", () => {
+    const input = ids(7);
+    const out = shuffle(input, seq(0.1, 0.9, 0.5, 0.3, 0.7, 0.2));
+    expect([...out].sort()).toEqual([...input].sort());
+    expect(input).toEqual(ids(7));
+  });
+  it("feste Zufallsquelle ergibt eine feste Reihenfolge, die nicht der Anmeldereihenfolge entspricht", () => {
+    // Fisher-Yates von hinten: j = floor(r * (i + 1)); r = 0 tauscht jeweils mit Platz 0
+    expect(shuffle(["a", "b", "c", "d"], () => 0)).toEqual(["b", "c", "d", "a"]);
+    expect(shuffle(ids(4), () => 0)).not.toEqual(ids(4));
+    // r knapp unter 1 lässt alles an seinem Platz
+    expect(shuffle(ids(4), () => 0.999999)).toEqual(ids(4));
+  });
+  it("jede Teamzahl 4 bis 32: alle Teams kommen genau einmal ins Bracket, n-1 Spiele (Freilose korrekt)", () => {
+    for (let n = 4; n <= 32; n++) {
+      const f = knockout(shuffle(ids(n), seq(0.37, 0.81, 0.05, 0.62)));
+      expect(f, `n=${n}`).toHaveLength(n - 1);
+      const teams = f.filter((x) => x.round === 1).flatMap((x) => [x.a, x.b]).filter(Boolean);
+      const byeTeams = f.filter((x) => x.round === 2).flatMap((x) => [x.a, x.b]).filter(Boolean);
+      expect(new Set(teams).size, `n=${n}`).toBe(teams.length);
+      expect(new Set([...teams, ...byeTeams]).size).toBeGreaterThanOrEqual(teams.length);
+    }
   });
 });
 
