@@ -50,7 +50,12 @@ describe("Auslosung (shuffle)", () => {
       const teams = f.filter((x) => x.round === 1).flatMap((x) => [x.a, x.b]).filter(Boolean);
       const byeTeams = f.filter((x) => x.round === 2).flatMap((x) => [x.a, x.b]).filter(Boolean);
       expect(new Set(teams).size, `n=${n}`).toBe(teams.length);
-      expect(new Set([...teams, ...byeTeams]).size).toBeGreaterThanOrEqual(teams.length);
+      // gespielte Teams und Freilos-Teams sind disjunkt und ergeben zusammen genau alle n Teams
+      expect(byeTeams.filter((t) => teams.includes(t)), `n=${n}`).toEqual([]);
+      expect([...teams, ...byeTeams].sort(), `n=${n}`).toEqual(ids(n).sort());
+      let size = 1;
+      while (size < n) size *= 2;
+      expect(byeTeams, `n=${n}`).toHaveLength(size - n);
     }
   });
 });
