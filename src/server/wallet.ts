@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { matchParticipants, matches } from "@/db/schema";
 import { pendingRefunds } from "@/db/schema-finance";
-import { finalShareFor, formatEuro, reservationFor } from "@/lib/money";
+import { finalShareFor, formatEuro, reservationFor, shareCents } from "@/lib/money";
 import { audit } from "./audit";
 import { creditWallet, debitWallet } from "./ledger";
 import { teamName } from "./names";
@@ -31,6 +31,16 @@ export function amountToCharge(match: MatchRow, priceCents: number, minPaid: num
   return match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid);
 }
 
+/**
+ * Anteil im Privatspiel: Miete geteilt durch die Zahl der eingeteilten Spieler (aufgerundet, ohne Deckel und ohne Mindestzahl).
+ * Steht der Preis schon fest (zweites Bereit), gilt der feste Anteil. Nur für Privatspiele; Teamspiel und Turnier rechnen weiter mit der Reservierung.
+ */
+export async function privateShareNow(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "finalShareCents">, rentCents: number): Promise<number> {
+  if (match.finalShareCents !== null) return match.finalShareCents;
+  const [{ n }] = await tx.select({ n: sql<number>`count(*)::int` }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
+  return shareCents(rentCents, Math.max(n, 1));
+}
+
 /** Buchung des Anteils beim Bereitmachen. Läuft nur, wenn Zahlungen eingeschaltet sind und der Spieler noch nicht bezahlt hat. */
 export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Promise<void> {
   if (!(await paymentsEnabled(tx))) return;
@@ -41,7 +51,8 @@ export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Pro
   if (!p || p.paidCents > 0) return;
 
   const { priceCents, match: fresh } = await ensurePrice(tx, match);
-  const amount = amountToCharge(fresh, priceCents, await minPaidPlayers(tx));
+  if (priceCents === 0) return; // kostenlos: keine Zahlung, keine Reservierung
+  const amount = fresh.kind === "private" ? await privateShareNow(tx, fresh, priceCents) : amountToCharge(fresh, priceCents, await minPaidPlayers(tx));
   await debitWallet(tx, userId, {
     to: "revenue",
     amountCents: amount,
@@ -54,6 +65,43 @@ export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Pro
   await tx.update(matchParticipants).set({ paidCents: amount, paidAt: new Date() }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
   await audit(userId, "wallet.share", "match", match.id, { after: { amountCents: amount } }, tx);
   await settlePendingRefunds(tx, match);
+}
+
+/**
+ * Zweites Bereit im Privatspiel (beide Captains haben bestätigt): Die Spielerzahl wird festgeschrieben, der Anteil steht fest.
+ * Hat jemand zu viel gezahlt, geht die Differenz sofort zurück (fester Schlüssel je Spieler); hat jemand zu wenig gezahlt, wird abgelehnt
+ * (die ganze Bestätigung wird zurückgerollt; Nachfordern ist Teil der Neuberechnung). Genau einmal: Der Aufrufer hält die Zeilensperre
+ * auf dem Spiel, und nur `final_share_cents IS NULL` darf fixiert werden. Die Abrechnung beim Anstoß (Beleg, Benachrichtigung, `settled_at`)
+ * läuft danach unverändert weiter und übernimmt diesen Anteil.
+ */
+export async function fixPrivateShare(tx: Tx, match: MatchRow): Promise<void> {
+  if (match.kind !== "private") return;
+  const [current] = await tx.select({ finalShareCents: matches.finalShareCents }).from(matches).where(eq(matches.id, match.id));
+  if (!current || current.finalShareCents !== null) return; // schon fixiert
+
+  const { priceCents } = await ensurePrice(tx, match);
+  const seated = await tx
+    .select({ userId: matchParticipants.userId, paidCents: matchParticipants.paidCents })
+    .from(matchParticipants)
+    .where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
+  if (seated.length === 0) return;
+  const share = shareCents(priceCents, seated.length);
+  const pay = await paymentsEnabled(tx);
+  if (pay && share > 0) {
+    const short = seated.filter((p) => p.paidCents < share).length;
+    if (short > 0) throw new DomainError(`Der Anteil beträgt jetzt ${formatEuro(share)} pro Spieler (${seated.length} Spieler). ${short} Spieler haben weniger bezahlt und müssen nachzahlen, danach bestätigt ihr erneut.`);
+  }
+  const [fixed] = await tx.update(matches).set({ finalShareCents: share }).where(and(eq(matches.id, match.id), isNull(matches.finalShareCents))).returning({ id: matches.id });
+  if (!fixed) return;
+  if (pay) {
+    for (const p of seated) {
+      const diff = p.paidCents - share;
+      if (diff <= 0) continue;
+      await refundPaid(tx, match, p.userId, diff, "Anteil nach Festlegung der Spielerzahl", `private-fix:${match.id}:${p.userId}`, null);
+      await tx.update(matchParticipants).set({ paidCents: share }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, p.userId)));
+    }
+  }
+  await audit(null, "wallet.private_fix", "match", match.id, { after: { players: seated.length, finalShareCents: share, rentCents: priceCents } }, tx);
 }
 
 /** Erstattet den Anteil eines Spielers ans Guthaben und setzt seinen bezahlten Betrag auf 0. */
@@ -131,7 +179,8 @@ export async function settleMatch(tx: Tx, match: MatchRow): Promise<boolean> {
     .where(and(eq(matchParticipants.matchId, match.id), gt(matchParticipants.paidCents, 0)));
   if (payers.length === 0) return false;
 
-  const final = finalShareFor(priceCents, payers.length, minPaid);
+  // Privatspiel mit festem Anteil (zweites Bereit): dieser Anteil gilt, ohne Deckel bei 12 und ohne Mindestzahl
+  const final = m.kind === "private" && m.finalShareCents !== null ? m.finalShareCents : finalShareFor(priceCents, payers.length, minPaid);
   const [home, away] = [await teamName(tx, m.homeTeamId), await teamName(tx, m.awayTeamId)];
   for (const p of payers) {
     const diff = p.paidCents - final;

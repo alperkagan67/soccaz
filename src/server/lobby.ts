@@ -14,7 +14,7 @@ import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { onParticipantLeaves, refundOnCancel, reserveShare } from "./wallet";
+import { fixPrivateShare, onParticipantLeaves, privateShareNow, refundOnCancel, reserveShare } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { reservationFor, shareFor } from "@/lib/money";
@@ -124,12 +124,14 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const payEnabled = await paymentsEnabled();
   const minPaid = await minPaidPlayers();
   const priceCents = match.priceCents ?? (await priceFor(db, null, match.durationMin))?.priceCents ?? null;
+  // Privatspiel: Anteil = Miete ÷ eingeteilte Spieler (bzw. der feste Anteil); sonst Reservierung mit Mindestzahl
+  const privateShare = match.kind === "private" && priceCents ? await privateShareNow(db, match, priceCents) : null;
   const payments = {
     enabled: payEnabled,
     priceCents,
     minPaid,
-    reservationCents: priceCents ? (match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid)) : null,
-    lowestShareCents: priceCents ? shareFor(priceCents, 12) : null,
+    reservationCents: priceCents ? (privateShare ?? (match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid))) : null,
+    lowestShareCents: priceCents ? (privateShare ?? shareFor(priceCents, 12)) : null,
     finalShareCents: match.finalShareCents,
     settled: Boolean(match.settledAt),
     balanceCents: viewer && payEnabled ? await walletBalance(db, viewer.id) : null,
@@ -252,7 +254,8 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
 /** Ist das Team komplett? Mindestens so viele Spieler wie nötig, alle bereit und (bei eingeschalteten Zahlungen) alle bezahlt. */
 export async function teamComplete(tx: Tx, matchId: string, teamId: string): Promise<boolean> {
   const rows = await tx.select({ ready: matchParticipants.readyAt, paid: matchParticipants.paidCents }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.teamId, teamId)));
-  const pay = await paymentsEnabled(tx);
+  const [m] = await tx.select({ priceCents: matches.priceCents }).from(matches).where(eq(matches.id, matchId));
+  const pay = (await paymentsEnabled(tx)) && m?.priceCents !== 0; // kostenlos (0 €): keine Zahlungspflicht
   return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (!pay || r.paid > 0));
 }
 
@@ -285,6 +288,8 @@ export function finalConfirm(userId: string, matchId: string) {
     await audit(userId, "lobby.final", "match", matchId, { after: { teamId: admin.teamId } }, tx);
     const [fresh] = await tx.select().from(matches).where(eq(matches.id, matchId));
     const bothDone = Boolean(fresh.homeFinalAt && fresh.awayFinalAt);
+    // Privatspiel: mit dem zweiten Bereit steht die Spielerzahl fest, der Anteil wird fixiert (genau einmal; zu wenig bezahlt -> Fehler, nichts wird bestätigt)
+    if (bothDone) await fixPrivateShare(tx, fresh);
     await notifyUsers(
       [...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
       bothDone
@@ -357,7 +362,7 @@ export function setReady(userId: string, matchId: string, ready: boolean) {
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
     if (ready && match.schedulingOpen) throw new DomainError("Erst müssen die Teams Termin und Ort gemeinsam wählen.");
-    if (ready && (await paymentsEnabled(tx)) && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil.");
+    if (ready && (await paymentsEnabled(tx)) && match.priceCents !== 0 && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil.");
     await tx
       .update(matchParticipants)
       .set({ readyAt: ready ? new Date() : null })

@@ -89,3 +89,19 @@ test("Privatspiel: anlegen, per Link beitreten (auch neu registriert), nicht öf
   // Rangliste und Elo: das Spiel taucht dort nicht auf
   expect((await query("select 1 from matches where id = $1 and kind = 'private' and visibility = 'private'", [matchId])).length).toBe(1);
 });
+
+test("Privatspiel kostenlos: bewusst gewählt, die Lobby zeigt 'kostenlos' statt eines Preisblocks", async ({ browser }) => {
+  const org = await (await browser.newContext()).newPage();
+  await newUser(org, "pgfree");
+  await org.goto("/app/privatspiel/neu");
+  await org.getByLabel("Anstoß (Datum und Uhrzeit)").fill(futureLocal(6, "19:00"));
+  await org.getByLabel("Halle und Adresse").fill(`E2E Gratishalle ${run}, Hauptstr. 2`);
+  await org.getByLabel("Kostenlos (0 €)").check();
+  await expect(org.getByLabel("Hallenmiete in Euro")).toBeDisabled(); // bei kostenlos kein Betrag
+  await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
+  await expect(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+  const matchId = org.url().split("/").pop()!;
+  await expect(org.getByTestId("free-game")).toContainText("kostenlos");
+  await expect(org.getByText(/geteilt durch alle zahlenden Spieler/)).toHaveCount(0); // kein Preisblock "Halle ... 0,00 €"
+  expect((await query<{ price_cents: number }>("select price_cents from matches where id = $1", [matchId]))[0].price_cents).toBe(0);
+});

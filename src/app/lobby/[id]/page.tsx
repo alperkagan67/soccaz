@@ -221,13 +221,26 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
       )}
       {!open && !match.venueName && !(active && v.canManage) && (match.venueText ? <VenueBox name={match.venueText} address={null} city={null} when={formatDateTime(match.startsAt)} lat={null} lng={null} /> : <p className="card text-muted">Spielort noch nicht festgelegt. Die Team-Admins legen den Ort fest.</p>)}
 
-      {payments.enabled && payments.priceCents !== null && (
+      {payments.priceCents === 0 && (
+        <section className="card space-y-1 text-sm" aria-label="Kosten" data-testid="free-game">
+          <h2 className="font-semibold">Kosten</h2>
+          <p>Dieses Spiel ist <strong>kostenlos</strong>. Es wird nichts bezahlt und nichts reserviert.</p>
+        </section>
+      )}
+      {payments.enabled && payments.priceCents !== null && payments.priceCents > 0 && (
         <section className="card space-y-1 text-sm" aria-label="Kosten">
           <h2 className="font-semibold">Kosten</h2>
           <p>
             Halle {match.durationMin} Minuten: <strong>{formatEuro(payments.priceCents)}</strong>, geteilt durch alle zahlenden Spieler.
           </p>
-          {payments.settled && payments.finalShareCents ? (
+          {match.kind === "private" ? (
+            <p className="text-muted">
+              Dein Anteil: <strong className="text-ink">{formatEuro(payments.reservationCents ?? 0)}</strong> (Miete geteilt durch die eingeteilten Spieler).
+              {payments.finalShareCents === null
+                ? " Ändert sich die Spielerzahl, ändert sich der Anteil. Mit dem Bestätigen beider Captains steht er fest."
+                : " Der Anteil steht fest."}
+            </p>
+          ) : payments.settled && payments.finalShareCents ? (
             <p className="text-muted">Abgerechnet: <strong className="text-ink">{formatEuro(payments.finalShareCents)}</strong> pro Spieler.</p>
           ) : (
             <p className="text-muted">

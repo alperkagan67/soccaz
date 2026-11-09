@@ -6,7 +6,7 @@ import { matchParticipants, matches, teams } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { gameInvites } from "@/db/schema-matchmaking";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
-import { assignSubstitute, finalConfirm, getLobby, payShare, randomSplit, setReady, unassignParticipant } from "@/server/lobby";
+import { assignSubstitute, finalConfirm, getLobby, leaveLobby, payShare, randomSplit, setReady, unassignParticipant } from "@/server/lobby";
 import { createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput } from "@/server/privategame";
 import { listBoard } from "@/server/board";
 import { getTeamProfile } from "@/server/profiles";
@@ -198,7 +198,167 @@ describe("Miete ist Pflicht (AC-1)", () => {
     }
   });
 
-  // Kostenlos-Zahlung (keine Buchung, Bereit ohne Bezahlt-Pflicht) gehört zu T52 (wallet.ts/lobby.ts), dort getestet.
+  // Kostenlos-Zahlung (keine Buchung, Bereit ohne Bezahlt-Pflicht): siehe "Kostenlos und Bereit-Prüfung (T52)".
+});
+
+describe("Kostenlos und Bereit-Prüfung (T52)", () => {
+  it("AC-1 kostenlos: payShare bucht nichts und wirft nicht; alle können bereit werden, der Veranstalter bestätigt für beide Teams", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, players } = await game(9, { rentCents: 0 });
+      await randomSplit(organizer.id, match.id);
+      for (const p of players) await payShare(p.id, match.id); // früh beendet: kein debitWallet mit 0
+      for (const p of players) expect(await walletBalance(db, p.id)).toBe(0);
+      for (const p of players) await setReady(p.id, match.id, true); // keine Bezahlt-Pflicht bei 0 €
+      const parts = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+      expect(parts.every((p) => p.paidCents === 0 && p.readyAt !== null)).toBe(true);
+      await finalConfirm(organizer.id, match.id);
+      const confirmed = await reloadMatch(match.id);
+      expect(confirmed.homeFinalAt).not.toBeNull();
+      expect(confirmed.awayFinalAt).not.toBeNull();
+      expect((await trialBalance()).balanced).toBe(true);
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("AC-3: mit aktiven Zahlungen lehnt der Server das Bereit des Captains ab, solange ein Teamspieler nicht bezahlt hat", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, players } = await game(9, { rentCents: 12_000 });
+      await randomSplit(organizer.id, match.id);
+      for (const p of players) await fund(p.id, 3000);
+      const [late, ...others] = players.slice().reverse();
+      for (const p of others) {
+        await payShare(p.id, match.id);
+        await setReady(p.id, match.id, true);
+      }
+      // ein Spieler hat nicht bezahlt: er kann nicht bereit werden, der Captain nicht bestätigen
+      await expect(setReady(late.id, match.id, true)).rejects.toThrow(/zahle zuerst/);
+      await expect(finalConfirm(organizer.id, match.id)).rejects.toThrow(/bezahlt|bereit/);
+      expect((await reloadMatch(match.id)).homeFinalAt).toBeNull();
+      // nach der Zahlung des letzten Spielers gelingt es (der Veranstalter ist Captain beider Teams: ein Klick, beide Teams)
+      await payShare(late.id, match.id);
+      await setReady(late.id, match.id, true);
+      await finalConfirm(organizer.id, match.id);
+      const m = await reloadMatch(match.id);
+      expect(m.homeFinalAt).not.toBeNull();
+      expect(m.awayFinalAt).not.toBeNull();
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+});
+
+describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
+  const prepare = async (extra: number, over: Partial<Parameters<typeof createPrivateGame>[1]> = {}) => {
+    const g = await game(extra, { rentCents: 12_000, ...over });
+    await randomSplit(g.organizer.id, g.match.id);
+    for (const p of g.players) await fund(p.id, 3000);
+    return g;
+  };
+  const balances = (players: { id: string }[]) => Promise.all(players.map((p) => walletBalance(db, p.id)));
+
+  it("Anteil = Miete ÷ eingeteilte Spieler (kein Deckel bei 12, kein Mindestwert); beim zweiten Bereit steht der Preis fest, Überzahlung geht genau einmal zurück, auch bei parallelen Aufrufen", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      // 8 Spieler zahlen 12000 / 8 = 1500 ...
+      const { organizer, match, token, players } = await prepare(7);
+      for (const p of players) await payShare(p.id, match.id);
+      expect(await balances(players)).toEqual(players.map(() => 3000 - 1500));
+      // ... dann kommen zwei dazu: der Anteil sinkt auf 12000 / 10 = 1200, die Neuen zahlen schon den neuen Anteil
+      const extra = [await makeUser("pvx"), await makeUser("pvx")];
+      for (const p of extra) {
+        await joinPrivateGame(p.id, token);
+        await fund(p.id, 3000);
+      }
+      await randomSplit(organizer.id, match.id);
+      for (const p of extra) await payShare(p.id, match.id);
+      expect(await balances(extra)).toEqual([1800, 1800]);
+      const all = [...players, ...extra];
+      for (const p of all) await setReady(p.id, match.id, true);
+
+      // zweites Bereit, zweimal gleichzeitig: Preis fix, Überzahlung (300) genau einmal zurück
+      await Promise.allSettled([finalConfirm(organizer.id, match.id), finalConfirm(organizer.id, match.id)]);
+      const fixed = await reloadMatch(match.id);
+      expect(fixed.finalShareCents).toBe(1200);
+      expect(fixed.homeFinalAt).not.toBeNull();
+      expect(fixed.awayFinalAt).not.toBeNull();
+      expect(fixed.settledAt).toBeNull(); // Abrechnung, Beleg und Benachrichtigung bleiben beim Anstoß
+      expect(await balances(all)).toEqual(all.map(() => 3000 - 1200));
+      const parts = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+      expect(parts.every((p) => p.paidCents === 1200)).toBe(true);
+      expect((await trialBalance()).balanced).toBe(true);
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("der Preis bleibt fest: Austritt und erneutes Bestätigen ändern den Anteil nicht (Guard: nur einmal fixieren)", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, players } = await prepare(9);
+      for (const p of players) await payShare(p.id, match.id);
+      for (const p of players) await setReady(p.id, match.id, true);
+      await finalConfirm(organizer.id, match.id);
+      expect((await reloadMatch(match.id)).finalShareCents).toBe(1200);
+      // Ein Spieler tritt aus (rechtzeitig, mit Erstattung), der Captain bestätigt erneut.
+      // Mit 9 Spielern wäre der Anteil 1334; fest bleibt aber 1200 (der Preis wird nur einmal fixiert), und das Bereit gelingt.
+      const leaver = players[9];
+      await leaveLobby(leaver.id, match.id);
+      await finalConfirm(organizer.id, match.id);
+      const m = await reloadMatch(match.id);
+      expect(m.finalShareCents).toBe(1200);
+      expect(m.homeFinalAt).not.toBeNull();
+      expect(m.awayFinalAt).not.toBeNull();
+      expect(await balances(players.slice(0, 9))).toEqual(players.slice(0, 9).map(() => 3000 - 1200));
+      expect(await walletBalance(db, leaver.id)).toBe(3000); // Austritt vor dem Anstoß: voll erstattet
+      expect((await trialBalance()).balanced).toBe(true);
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("hat jemand weniger als den Anteil bezahlt, wird das zweite Bereit mit klarer Meldung abgelehnt; es wird nichts fixiert", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, players } = await prepare(9);
+      for (const p of players) await payShare(p.id, match.id); // 10 Spieler zahlen je 1200
+      for (const p of players) await setReady(p.id, match.id, true);
+      // zwei Spieler gehen (rechtzeitig, mit Erstattung): 8 Spieler, Anteil wäre 1500, bezahlt sind 1200
+      // je Team einer (5/5 wird 4/4), nicht der Veranstalter
+      const seated = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+      const leavers = [match.homeTeamId, match.awayTeamId].map((t) => seated.find((p) => p.teamId === t && p.userId !== organizer.id)!.userId);
+      for (const id of leavers) await leaveLobby(id, match.id);
+      await expect(finalConfirm(organizer.id, match.id)).rejects.toThrow(/Anteil .* nachzahlen/);
+      const m = await reloadMatch(match.id);
+      expect(m.finalShareCents).toBeNull();
+      expect(m.homeFinalAt).toBeNull();
+      expect(m.awayFinalAt).toBeNull();
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("Abrechnung beim Anstoß übernimmt den festen Anteil (14 Spieler: kein Deckel bei 12), Beleg und Benachrichtigung laufen weiter", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, players } = await prepare(13, { maxPlayers: 14 });
+      for (const p of players) await payShare(p.id, match.id); // 12000 / 14 aufgerundet = 858
+      for (const p of players) await setReady(p.id, match.id, true);
+      await finalConfirm(organizer.id, match.id);
+      expect((await reloadMatch(match.id)).finalShareCents).toBe(858);
+      await db.update(matches).set({ startsAt: new Date(Date.now() - 3 * 3_600_000) }).where(eq(matches.id, match.id));
+      await db.transaction(async (tx) => settleMatch(tx, await reloadMatch(match.id)));
+      const settled = await reloadMatch(match.id);
+      expect(settled.settledAt).not.toBeNull();
+      expect(settled.finalShareCents).toBe(858); // nicht auf 1000 (Deckel 12) umgerechnet
+      expect(await balances(players)).toEqual(players.map(() => 3000 - 858));
+      expect((await trialBalance()).balanced).toBe(true);
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
 });
 
 describe("Hallenmiete geteilt, Bestätigung und Ergebnis, nicht in der Rangliste", () => {
@@ -212,8 +372,8 @@ describe("Hallenmiete geteilt, Bestätigung und Ergebnis, nicht in der Rangliste
         await payShare(p.id, match.id);
         await setReady(p.id, match.id, true);
       }
-      // Reservierung: Miete geteilt durch die Mindestzahl (8) = 15 Euro
-      expect(await walletBalance(db, players[2].id)).toBe(3000 - 1500);
+      // Privatspiel: Anteil = Miete geteilt durch die eingeteilten Spieler (10) = 12 Euro (keine Reservierung mit Mindestzahl 8)
+      expect(await walletBalance(db, players[2].id)).toBe(3000 - 1200);
 
       // der Veranstalter ist Captain beider Teams: ein Klick bestätigt beide
       await finalConfirm(organizer.id, match.id);
