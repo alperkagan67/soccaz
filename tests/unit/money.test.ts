@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ceilDiv, finalShareFor, formatEuro, isValidTopup, parseEuro, reservationFor, shareFor } from "@/lib/money";
+import { ceilDiv, finalShareFor, formatEuro, isValidTopup, parseEuro, reservationFor, roundingRemainderCents, shareCents, shareFor } from "@/lib/money";
 
 describe("Beträge", () => {
   it("parst Eingaben in Cent", () => {
@@ -57,6 +57,73 @@ describe("Anteil pro Spieler (80 EUR und 110 EUR)", () => {
   it("die Reservierung ist nie kleiner als der endgültige Anteil", () => {
     for (let players = 8; players <= 12; players++) {
       expect(reservationFor(8000, 8)).toBeGreaterThanOrEqual(finalShareFor(8000, players, 8));
+    }
+  });
+});
+
+describe("Privatspiel: Anteil pro Spieler (shareCents, roundingRemainderCents)", () => {
+  it("Miete 12000 Cent für jedes n von 4 bis 22: aufgerundet, nie Fehlbetrag, Überschuss kleiner als n", () => {
+    for (let n = 4; n <= 22; n++) {
+      const share = shareCents(12_000, n);
+      expect(share, `n=${n}`).toBe(Math.ceil(12_000 / n));
+      expect(n * share, `n=${n}`).toBeGreaterThanOrEqual(12_000);
+      const rest = roundingRemainderCents(12_000, n);
+      expect(rest, `n=${n}`).toBe(n * share - 12_000);
+      expect(rest, `n=${n}`).toBeGreaterThanOrEqual(0);
+      expect(rest, `n=${n}`).toBeLessThan(n);
+    }
+  });
+
+  it("kein Deckel bei 12 und kein Mindestwert 8: 22 Spieler teilen wirklich durch 22, 4 durch 4", () => {
+    expect(shareCents(12_000, 22)).toBe(546); // ceil(545,45)
+    expect(shareCents(12_000, 4)).toBe(3000);
+    expect(shareFor(12_000, 22)).toBe(1000); // zum Vergleich: die bestehende Teamspiel-Rechnung deckelt bei 12 (bleibt unverändert)
+  });
+
+  it("bekannte Werte", () => {
+    expect(shareCents(12_000, 10)).toBe(1200);
+    expect(roundingRemainderCents(12_000, 10)).toBe(0);
+    expect(shareCents(10_000, 6)).toBe(1667);
+    expect(roundingRemainderCents(10_000, 6)).toBe(2);
+  });
+
+  it("Grenzfälle: Miete 0, 1 Cent, 1000 Euro, n = 1", () => {
+    for (let n = 4; n <= 22; n++) {
+      expect(shareCents(0, n)).toBe(0);
+      expect(roundingRemainderCents(0, n)).toBe(0);
+      expect(shareCents(1, n)).toBe(1);
+      expect(roundingRemainderCents(1, n)).toBe(n - 1);
+      expect(shareCents(100_000, n)).toBe(Math.ceil(100_000 / n));
+      expect(roundingRemainderCents(100_000, n)).toBeLessThan(n);
+    }
+    expect(shareCents(777, 1)).toBe(777);
+    expect(roundingRemainderCents(777, 1)).toBe(0);
+  });
+
+  it("ungültiges n (0, negativ, nicht ganzzahlig, NaN) wirft; ungültige Miete wirft", () => {
+    for (const bad of [0, -1, -4, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => shareCents(12_000, bad), String(bad)).toThrow();
+      expect(() => roundingRemainderCents(12_000, bad), String(bad)).toThrow();
+    }
+    for (const bad of [-1, 10.5, Number.NaN]) {
+      expect(() => shareCents(bad, 10), String(bad)).toThrow();
+      expect(() => roundingRemainderCents(bad, 10), String(bad)).toThrow();
+    }
+  });
+
+  it("Property: für viele Mieten und n nie ein Fehlbetrag, Überschuss immer in [0, n)", () => {
+    let seed = 12345; // einfacher, fester Zufallsgenerator (LCG), damit der Test wiederholbar ist
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31);
+    for (let i = 0; i < 5000; i++) {
+      const rent = next() % 200_001;
+      const n = 1 + (next() % 22);
+      const share = shareCents(rent, n);
+      const rest = roundingRemainderCents(rent, n);
+      expect(n * share, `rent=${rent} n=${n}`).toBeGreaterThanOrEqual(rent);
+      expect(rest, `rent=${rent} n=${n}`).toBe(n * share - rent);
+      expect(rest).toBeGreaterThanOrEqual(0);
+      expect(rest).toBeLessThan(n);
+      expect((share - 1) * n, `rent=${rent} n=${n} minimal`).toBeLessThan(rent || 1); // kleinster Anteil, der reicht
     }
   });
 });
