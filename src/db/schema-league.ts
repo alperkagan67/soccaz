@@ -118,7 +118,8 @@ export const tournamentTeams = pgTable(
     paidBy: uuid("paid_by").references(() => users.id, { onDelete: "set null" }),
     feeCents: integer("fee_cents").notNull().default(0),
     captainId: uuid("captain_id").references(() => users.id, { onDelete: "set null" }), // genau ein Captain pro Team
-    readyAt: timestamp("ready_at", { withTimezone: true }),
+    readyAt: timestamp("ready_at", { withTimezone: true }), // Kader vollzählig
+    paidReadyAt: timestamp("paid_ready_at", { withTimezone: true }), // Captain hat nach voller Zahlung "Bereit" gedrückt
     registeredAt: timestamp("registered_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.tournamentId, t.teamId] })],
