@@ -171,6 +171,16 @@ export function rentCheckAt(startsAt: Date, createdAt: Date): Date {
 }
 
 /**
+ * Log-Text zu einem Fehler ohne Nutzerdaten: nur Fehlername und, falls vorhanden, der SQLSTATE (`cause.code`). Die Meldung von Datenbankfehlern
+ * enthält die SQL-Anweisung samt Parametern (Nutzer-IDs, Beträge, Teamnamen), deshalb wird sie nie geloggt.
+ */
+export function safeErrorLog(error: unknown): string {
+  if (!(error instanceof Error)) return "Fehler";
+  const code = (error as { cause?: { code?: unknown } }).cause?.code ?? (error as { code?: unknown }).code;
+  return typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) ? `${error.name} (SQLSTATE ${code})` : error.name;
+}
+
+/**
  * Prüft Privatspiele mit Miete: Ist die Summe der tatsächlich bezahlten Anteile kleiner als die Miete, wird das Spiel abgesagt und alle
  * bekommen ihren Anteil zurück (auch offene Ansprüche von Aussteigern; die Absage nutzt dafür die vorhandene Erstattung mit festen Schlüsseln).
  * Gedeckte Spiele bleiben unverändert, kostenlose und Spiele ohne aktive Zahlungen werden nie abgesagt. Läuft im 5-Minuten-Job, je Spiel in
@@ -197,8 +207,7 @@ export async function cancelUncoveredPrivateGames(now: Date = new Date()): Promi
         cancelled += 1;
       });
     } catch (error) {
-      // Match-ID und Fehlermeldung (keine Nutzerdaten), damit ein dauerhaft fehlschlagendes Spiel diagnostizierbar ist
-      console.error("cancelUncoveredPrivateGames: Fehler bei Spiel", c.id, error instanceof Error ? `${error.name}: ${error.message}` : "Fehler");
+      console.error("cancelUncoveredPrivateGames: Fehler bei Spiel", c.id, safeErrorLog(error));
     }
   }
   return cancelled;

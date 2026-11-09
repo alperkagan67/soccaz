@@ -8,7 +8,7 @@ import { gameInvites } from "@/db/schema-matchmaking";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { assignSubstitute, cancelMatch, finalConfirm, getLobby, joinLobby, leaveLobby, payShare, randomSplit, removeParticipant, setReady, unassignParticipant } from "@/server/lobby";
 import { cancelUnderfilledLobbies } from "@/server/scheduled";
-import { cancelUncoveredPrivateGames, createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput, rentCheckAt } from "@/server/privategame";
+import { cancelUncoveredPrivateGames, createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput, rentCheckAt, safeErrorLog } from "@/server/privategame";
 import { listBoard } from "@/server/board";
 import { getTeamProfile } from "@/server/profiles";
 import { getTeamBySlug, listMyTeams } from "@/server/teams";
@@ -926,6 +926,19 @@ describe("Mietprüfung vor Anstoß (T55, AC-9)", () => {
       for (const p of g.players) expect(await balance(p.id)).toBe(3000);
       expect((await trialBalance()).balanced).toBe(true);
     }));
+
+  it("Log bei Fehlern enthält weder Meldung noch Parameter: nur Name und SQLSTATE", () => {
+    const userId = "11111111-2222-3333-4444-555555555555";
+    const dbError = new Error(`Failed query: update "match_participants" set ... params: ${userId},12000,Team Rot`, { cause: { code: "40P01" } });
+    dbError.name = "DrizzleQueryError";
+    const text = safeErrorLog(dbError);
+    expect(text).toBe("DrizzleQueryError (SQLSTATE 40P01)");
+    expect(text).not.toContain(userId);
+    expect(text).not.toContain("Team Rot");
+    expect(text).not.toContain("Failed query");
+    expect(safeErrorLog(new Error(`geheim ${userId}`))).toBe("Error"); // ohne SQLSTATE nur der Name
+    expect(safeErrorLog("kein Error-Objekt")).toBe("Fehler");
+  });
 
   it("Mindest-Zahlfrist: ein Spiel mit 1 Stunde 5 Minuten Vorlauf wird nicht vor Anlage plus 30 Minuten abgesagt, danach schon", () =>
     withPayments(async () => {
