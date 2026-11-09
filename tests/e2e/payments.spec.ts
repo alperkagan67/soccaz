@@ -39,6 +39,36 @@ const webhookSecret = () => {
   return process.env.STRIPE_WEBHOOK_SECRET ?? "";
 };
 
+test("Guthaben: der Rückweg nach der Zahlung führt nie auf eine fremde Adresse", async ({ page }) => {
+  await newUser(page, "rd1");
+  const userId = await userIdByEmail(`rd1-${run}@test.local`);
+  const bs = String.fromCharCode(92);
+  const seed = async (returnTo: string | null) => {
+    const [row] = await query<{ id: string }>(
+      "insert into payments (user_id, provider, amount_cents, status, idempotency_key, return_to, completed_at) values ($1, 'dev', 1000, 'succeeded', $2, $3, now()) returning id",
+      [userId, `e2e-redirect:${Math.random()}`, returnTo],
+    );
+    return row.id;
+  };
+  const backLink = page.getByRole("link", { name: "Zurück zum Spiel" });
+
+  // gespeichertes return_to mit Backslash oder fremdem Host: kein Link
+  for (const bad of [`/${bs}evil.example`, "//evil.example", "https://evil.example"]) {
+    await page.goto(`/app/guthaben?zahlung=${await seed(bad)}&status=ok`);
+    await expect(page.getByTestId("balance")).toBeVisible();
+    await expect(backLink).toHaveCount(0);
+    await expect(page.locator('a[href*="evil"]')).toHaveCount(0);
+  }
+  // ?zurueck mit Backslash bei einer erfolgreichen Zahlung ohne eigenes Ziel: kein Link
+  await page.goto(`/app/guthaben?zahlung=${await seed(null)}&status=ok&zurueck=${encodeURIComponent(`/${bs}evil.example`)}`);
+  await expect(page.getByTestId("balance")).toBeVisible();
+  await expect(backLink).toHaveCount(0);
+  await expect(page.locator('a[href*="evil"]')).toHaveCount(0);
+  // Gegenprobe: ein interner Pfad wird verlinkt
+  await page.goto(`/app/guthaben?zahlung=${await seed("/app/teams")}&status=ok`);
+  await expect(backLink).toHaveAttribute("href", "/app/teams");
+});
+
 test("Aufladen mit Test-Anbieter, Rabattcode, Verlauf und PDF-Beleg", async ({ page, browser }) => {
   await newUser(page, "pm1");
   await page.goto("/app/guthaben");
