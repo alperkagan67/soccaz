@@ -120,7 +120,7 @@ Deine Rolle:
 - TASKS.md liegt in SoccaV2/ (Repo-Root), ist per .gitignore nicht versioniert und wird vom Task Manager lokal gepflegt, ohne Branch/PR (einzige Ausnahme von der Branch+PR-Regel).
 - Jeder Task enthält Ziel, betroffene Dateien, Fertig-Kriterium.
 - Der Task Manager schreibt selbst keinen Feature-Code.
-- Änderungen am Code laufen immer über einen eigenen Branch und einen Pull Request auf main (nie direkt auf main). Tests (typecheck, lint, npm test) führt ein anderer Worker aus als der, der die Änderung gebaut hat. **Merge-Regel:** Normale PRs mergt der Task Manager nach `REVIEW-OK`, Abschlussprüfung und grüner CI mit `gh pr merge <nr> --auto --squash --delete-branch` (ist der PR sofort clean: `gh pr merge <nr> --squash --delete-branch`), nie mit `--admin`. Der Nutzer gibt nur Verträge frei (G1). **Ausnahmen, die nur der Nutzer selbst mergt** (`NEEDS-USER`): PRs, die `.claude/`, `.github/`, DB-Migrationen, `package.json`/Lockfile, Zahlungen oder Auth berühren, sowie PRs, die Prozessdateien ändern (`CLAUDE.md`, `AGENTS-SETUP.md`, `docs/loop/`).
+- Änderungen am Code laufen immer über einen eigenen Branch und einen Pull Request auf main (nie direkt auf main). Tests (typecheck, lint, npm test) führt ein anderer Worker aus als der, der die Änderung gebaut hat. **Merge-Regel:** Normale PRs mergt der Task Manager nach `REVIEW-OK`, Abschlussprüfung und grüner CI mit `gh pr merge <nr> --auto --squash --delete-branch` (ist der PR sofort clean: `gh pr merge <nr> --squash --delete-branch`), nie mit `--admin`. Der Nutzer gibt nur Verträge frei (G1). Welche PRs nur der Nutzer mergt (Ausnahmen, `NEEDS-USER`): siehe CLAUDE.md, Merge-Regel.
 
 ## 3a. Arbeitsweise: Git-Worktrees
 
@@ -131,7 +131,7 @@ Deine Rolle:
 - Braucht ein Worker einen Dev-Server, bekommt er einen eigenen Port: worker-1=3101, worker-2=3102, worker-3=3103, worker-4=3104 (3100 bleibt für den Haupt-Dev-Server in SoccaV2).
 - Mit eigener DB pro Worker (`soccaz_wN`) isolieren Migrationen die Worker voneinander; Migrationen laufen trotzdem nie parallel zu Tasks mit Schema-Annahmen. Ohne eigene DB (gemeinsame Postgres auf 5433) laufen Migrations-Tasks strikt seriell.
 - Parallelität: Standard 2 Writer + 1 Reviewer gleichzeitig (Nutzungslimit, Spec Abschnitt 10).
-- Task-Ende: Dev-Server per Port beenden (`npx kill-port 310N`) und die Shell aus dem Worktree verlassen, sonst bleibt der Ordner gesperrt und `git worktree remove` scheitert mit „Invalid argument“.
+- Task-Ende: Dev-Server per Port beenden (PowerShell: `Get-NetTCPConnection -LocalPort 310N -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess }`, nur der eigene Port 3101 bis 3104) und die Shell aus dem Worktree verlassen, sonst bleibt der Ordner gesperrt und `git worktree remove` scheitert mit „Invalid argument“.
 - Nach dem Merge räumt der Task Manager den Worktree auf: `git worktree remove <pfad>` (und lokalen Branch löschen, nur den selbst angelegten). Nach einem Squash-Merge geht das nur mit `git branch -D`; vorher den Inhalt gegen `main` prüfen.
 - Weiterhin: Branch + PR, Tests durch anderen Worker als Ersteller, Merge nach der Merge-Regel (Abschnitt 3).
 

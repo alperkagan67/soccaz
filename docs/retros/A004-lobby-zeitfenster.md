@@ -7,9 +7,9 @@ Was ging schief:
 - Symptom: Das Beenden der Dev-Server per `taskkill` mit Prozessfilter griff nicht. Ursache: Die Ausgabe auf deutschem Windows ist anders (Filter passte nicht). Fix: Server über den Port beenden.
 
 Prävention:
-1. Dev-Server am Task-Ende per Port beenden (`npx kill-port 310N`) und die Shell aus dem Worktree verlassen → AGENTS-SETUP.md (Abschnitt 3a).
+1. Dev-Server am Task-Ende per Port beenden (PowerShell: `Get-NetTCPConnection -LocalPort 310N -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess }`, nur der eigene Port 3101 bis 3104) und die Shell aus dem Worktree verlassen → AGENTS-SETUP.md (Abschnitt 3a).
 2. Standard sind nur 2 Writer + 1 Reviewer wegen des Nutzungslimits → AGENTS-SETUP.md (Abschnitt 3a, gekürzt, Verweis auf Spec Abschnitt 10).
-3. Offener Punkt (nicht in diesem PR): Worktree-Ordner per `permissions.additionalDirectories` in `.claude/settings.json` freigeben. `.claude/` ist ein Ausnahme-PR und wird vom Nutzer gemergt.
+3. Offener Punkt (nicht in diesem PR): Worktree-Ordner per `permissions.additionalDirectories` in `.claude/settings.local.json` freigeben (lokal und per .gitignore ausgeschlossen, nicht in `.claude/settings.json`, sonst landet ein lokaler Pfad im öffentlichen Repo). Der Nutzer legt das lokal selbst an; ein PR ist dafür nicht nötig.
 
 Zusätzlich beschlossen: neue Merge-Regel (Team mergt normale PRs per `gh pr merge --squash`, der Nutzer mergt Ausnahme-PRs), eingearbeitet in CLAUDE.md, AGENTS-SETUP.md und LOOP-SPEC.md.
 
