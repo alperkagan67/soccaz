@@ -728,6 +728,69 @@ describe("Sonderfälle: Teams ersetzen, mit weniger Teams starten, Kader wieder 
   });
 });
 
+describe("Erstattung geht an den Zahler, Austritt und Abmeldung ab der Zahlungsphase nicht mehr", () => {
+  it("AC-6: Hat A für B bezahlt, geht die Erstattung (Kader öffnen / Absage) an A; genau einmal; auch wenn A nicht mehr im Kader steht", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    const [mate, b] = [a.players[1], a.players[2]];
+    await fund(a.captain.id, 3000);
+    await fund(mate.id, 3000);
+    await payForTeam(a.captain.id, t.id, b.id); // Captain zahlt für B: 10 Euro
+    expect(await walletBalance(db, a.captain.id)).toBe(2000);
+    await reopenRosters(o.id, t.id);
+    expect(await walletBalance(db, a.captain.id)).toBe(3000); // zurück an A
+    expect(await walletBalance(db, b.id)).toBe(0); // nicht an B
+    await expect(reopenRosters(o.id, t.id)).rejects.toThrow(/Zahlung läuft/); // kein zweites Mal
+    expect(await walletBalance(db, a.captain.id)).toBe(3000);
+
+    // Mitspieler zahlt für B, steht danach nicht mehr im Kader (Zeile weg): die Absage erstattet trotzdem an ihn
+    for (const sq of squads) await setRosterComplete(sq.captain.id, t.id, true);
+    await payForTeam(mate.id, t.id, b.id);
+    expect(await walletBalance(db, mate.id)).toBe(2000);
+    await db.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, mate.id)));
+    await cancelTournament(o.id, t.id);
+    expect(await walletBalance(db, mate.id)).toBe(3000);
+    expect(await walletBalance(db, b.id)).toBe(0);
+    await expect(cancelTournament(o.id, t.id)).rejects.toThrow(/schon beendet oder abgesagt/);
+    expect(await walletBalance(db, mate.id)).toBe(3000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-8: Ab der Zahlungsphase lehnt der Server Austritt und Abmeldung ab; Kader öffnen nur der Veranstalter, mit voller Erstattung", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const a = squads[0];
+    const pl = a.players[1];
+    await fund(pl.id, 3000);
+    await payEntry(pl.id, t.id);
+    expect((await statusOf(t.id)).status).toBe("payment");
+
+    await expect(leavePlayer(pl.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // Spieler selbst
+    await expect(leavePlayer(a.captain.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // Captain
+    await expect(leavePlayer(o.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // sogar der Veranstalter: Weg ist reopenRosters
+    await expect(withdrawTeam(a.captain.id, t.id, a.team.id)).rejects.toThrow(/Abmeldung/);
+    await expect(withdrawTeam(o.id, t.id, a.team.id)).rejects.toThrow(/Abmeldung/);
+    await expect(reopenRosters(a.captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+    await expect(reopenRosters(pl.id, t.id)).rejects.toThrow(/Veranstalter/);
+    // nichts hat sich geändert
+    expect(await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id))).toHaveLength(16);
+    expect(await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id))).toHaveLength(4);
+    expect(await walletBalance(db, pl.id)).toBe(2000);
+
+    await reopenRosters(o.id, t.id);
+    expect(await walletBalance(db, pl.id)).toBe(3000); // voll erstattet
+    expect((await trialBalance()).balanced).toBe(true);
+    // zurück in der Anmeldephase gehen Austritt und Abmeldung wieder
+    await leavePlayer(pl.id, t.id, pl.id);
+    await withdrawTeam(squads[1].captain.id, t.id, squads[1].team.id);
+  });
+});
+
 describe("Lobby-Ansicht", () => {
   it("Spielernamen, Captain und Zahlungsstatus stehen in der Ansicht", async () => {
     const o = await organizer();
