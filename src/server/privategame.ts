@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
 import { gameInvites } from "@/db/schema-matchmaking";
 import { DEFAULT_PRIVATE_PLAYERS, MAX_PRIVATE_PLAYERS, MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
+import { parseEuro } from "@/lib/money";
 import { audit } from "./audit";
 import { notifyUsers } from "./notifications";
 import { DomainError } from "./teams";
@@ -15,11 +16,25 @@ export type PrivateGameInput = {
   startsAt: Date;
   durationMin: number;
   maxPlayers?: number;
-  /** Hallenmiete in Cent; leer = Standardpreis der Plattform. Sie wird auf die zahlenden Spieler aufgeteilt. */
+  /** Hallenmiete in Cent, Pflicht: 0 ("kostenlos") bis 100.000 (1.000 Euro). Sie wird auf die Spieler aufgeteilt. Fehlt sie, gibt es einen Fehler, keinen Plattformpreis. */
   rentCents?: number | null;
 };
 
 const MIN_LEAD_MS = 60 * 60_000;
+const MAX_RENT_CENTS = 100_000;
+const RENT_ERROR = "Bitte gib die Hallenmiete an (0 bis 1.000 Euro) oder wähle ausdrücklich kostenlos.";
+
+/**
+ * Übersetzt die Formularwahl in Cent: "free" = kostenlos (0), "amount" = der eingegebene Betrag. Ohne ausdrückliche Wahl
+ * oder mit ungültigem Betrag gibt es einen Fehler. Die Obergrenze prüft `createPrivateGame` zusätzlich.
+ */
+export function parseRentInput(mode: string, text: string): number {
+  if (mode === "free") return 0;
+  if (mode !== "amount") throw new DomainError(RENT_ERROR);
+  const cents = text.trim() === "" ? null : parseEuro(text);
+  if (cents === null || cents > MAX_RENT_CENTS) throw new DomainError(RENT_ERROR);
+  return cents;
+}
 const INVITE_DAYS_AFTER_START = 1;
 
 /**
@@ -36,7 +51,9 @@ export async function createPrivateGame(userId: string, input: PrivateGameInput)
   if (Number.isNaN(input.startsAt.getTime()) || input.startsAt.getTime() < Date.now() + MIN_LEAD_MS) throw new DomainError("Der Termin muss mindestens eine Stunde in der Zukunft liegen.");
   const venue = input.venueText.trim().slice(0, 120);
   if (!venue) throw new DomainError("Bitte gib die Halle oder den Ort an.");
-  if (input.rentCents != null && (!Number.isInteger(input.rentCents) || input.rentCents < 0 || input.rentCents > 100_000)) throw new DomainError("Die Hallenmiete liegt zwischen 0 und 1.000 Euro.");
+  const rent = input.rentCents;
+  if (rent === null || rent === undefined) throw new DomainError(RENT_ERROR);
+  if (!Number.isInteger(rent) || rent < 0 || rent > MAX_RENT_CENTS) throw new DomainError("Die Hallenmiete liegt zwischen 0 und 1.000 Euro.");
 
   return db.transaction(async (tx) => {
     const [u] = await tx.select({ id: users.id, banned: users.bannedAt }).from(users).where(eq(users.id, userId));
@@ -53,7 +70,6 @@ export async function createPrivateGame(userId: string, input: PrivateGameInput)
       { teamId: red.id, userId, role: "admin" },
       { teamId: blue.id, userId, role: "admin" },
     ]);
-    const rent = input.rentCents ?? null;
     const [match] = await tx
       .insert(matches)
       .values({
@@ -66,7 +82,8 @@ export async function createPrivateGame(userId: string, input: PrivateGameInput)
         venueText: venue,
         maxPlayers,
         schedulingOpen: false,
-        ...(rent !== null ? { priceCents: rent, costCents: rent } : {}),
+        priceCents: rent,
+        costCents: rent,
       })
       .returning();
     await tx.insert(matchParticipants).values({ matchId: match.id, userId, teamId: null });

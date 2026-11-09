@@ -23,8 +23,14 @@ test("Privatspiel: anlegen, per Link beitreten (auch neu registriert), nicht öf
 
   await org.getByLabel("Anstoß (Datum und Uhrzeit)").fill(futureLocal(5, "19:00"));
   await org.getByLabel("Halle und Adresse").fill(`E2E Kickhalle ${run}, Hauptstr. 1`);
-  await org.getByLabel(/Hallenmiete/).fill("100");
   await expect(org.getByLabel("Spieler insgesamt")).toHaveValue("10"); // Standard sind 10 Spieler
+  // Miete ist Pflicht: ohne ausdrückliche Wahl (Betrag oder kostenlos) wird nichts angelegt
+  await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
+  await expect(org).toHaveURL(/\/app\/privatspiel\/neu/);
+  await expect(org.getByLabel("Miete als Betrag")).not.toBeChecked();
+  await expect(org.getByLabel("Kostenlos (0 €)")).not.toBeChecked();
+  await org.getByLabel("Miete als Betrag").check();
+  await org.getByLabel("Hallenmiete in Euro").fill("100");
   await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
   await expect(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
   const lobbyUrl = org.url();
