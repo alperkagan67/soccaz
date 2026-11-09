@@ -18,6 +18,7 @@ import { onParticipantLeaves, refundOnCancel, reserveShare } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { reservationFor, shareFor } from "@/lib/money";
+import { secureRandom, shuffle } from "@/lib/tournament";
 import { teamRoster, teamStrength, type RosterMember } from "./roster";
 import { walletBalance } from "./ledger";
 
@@ -422,9 +423,9 @@ export function assignSubstitute(actorId: string, matchId: string, targetUserId:
 
 /**
  * Privatspiel: Der Veranstalter lässt die noch nicht eingeteilten Spieler zufällig auf die beiden Teams verteilen.
- * Mit `reshuffle` kommen auch eingeteilte Spieler ohne Zahlung und ohne Bereit in die Verlosung.
+ * Mit `reshuffle` kommen auch eingeteilte Spieler ohne Zahlung und ohne Bereit in die Verlosung. `random` ist die Zufallsquelle (für Tests austauschbar).
  */
-export function randomSplit(actorId: string, matchId: string, reshuffle = false) {
+export function randomSplit(actorId: string, matchId: string, reshuffle = false, random: () => number = secureRandom) {
   return mutateLobby(actorId, matchId, async (tx, match) => {
     if (match.kind !== "private") throw new DomainError("Zufällig einteilen gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
@@ -438,7 +439,7 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false)
     if (pool.length === 0) throw new DomainError("Es wartet niemand auf eine Einteilung.");
     const cap = teamCapacity(match);
     const counts = { [match.homeTeamId]: await teamCount(tx, matchId, match.homeTeamId), [match.awayTeamId]: await teamCount(tx, matchId, match.awayTeamId) };
-    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const shuffled = shuffle(pool, random); // unverzerrt (Fisher-Yates); die Zufallsquelle ist für Tests austauschbar
     let assigned = 0;
     for (const p of shuffled) {
       const target = counts[match.homeTeamId] <= counts[match.awayTeamId] ? match.homeTeamId : match.awayTeamId;
