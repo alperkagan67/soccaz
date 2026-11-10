@@ -1,5 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq, isNull, like } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { shuffle } from "@/lib/tournament";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, teamMembers, teams } from "@/db/schema";
@@ -10,14 +10,23 @@ import { assignSubstitute, cancelMatch, finalConfirm, getLobby, joinLobby, leave
 import { cancelUnderfilledLobbies } from "@/server/scheduled";
 import { cancelUncoveredPrivateGames, createPrivateGame, getGameInvitePreview, getGameInviteToken, joinPrivateGame, parseRentInput, regenerateGameInvite, rentCheckAt, revokeGameInvite, safeErrorLog } from "@/server/privategame";
 import { listBoard } from "@/server/board";
-import { getTeamProfile } from "@/server/profiles";
+import { getPlayerProfile, getTeamProfile, leaderboards } from "@/server/profiles";
 import { getTeamBySlug, listMyTeams } from "@/server/teams";
 import { myAdminTeams } from "@/server/requests";
-import { submitResult } from "@/server/results";
+import { canViewMatch, getMatchPage, submitResult } from "@/server/results";
+import { GET as liveGET } from "@/app/api/spiele/[id]/live/route";
+import OverlayPage from "@/app/overlay/[id]/page";
+import { ALL_MATCHES, mayAnnounceToAll, subscribeToLobby } from "@/server/realtime";
+import { GET as eventsGET } from "@/app/api/spiele/[id]/events/route";
+import { teamCard } from "@/server/cards";
 import { setSetting } from "@/server/settings";
 import { pendingRefunds } from "@/db/schema-finance";
 import { fixPrivateShare, privateListLocked, settleMatch } from "@/server/wallet";
 import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
+
+// Die Events-Route fragt die Sitzung ab (Cookies gibt es im Test nicht): getCurrentUser liefert hier die Person, die der Test gerade spielt.
+const session = vi.hoisted(() => ({ user: null as { id: string; role: "player" | "admin" } | null }));
+vi.mock("@/server/session", () => ({ getCurrentUser: async () => session.user }));
 
 beforeAll(async () => {
   await setSetting(null, "payments_enabled", false);
@@ -1073,6 +1082,169 @@ describe("Erstattung nach erneutem Austritt (T54-Nachtrag: Schlüssel mit create
       expect(await walletBalance(db, leaver.id)).toBe(2000); // zweite Erstattung
       expect((await trialBalance()).balanced).toBe(true);
     }));
+});
+
+describe("Kein Zugriff auf Privatspiele für Unbeteiligte (T57, AC-12)", () => {
+  const live = (id: string) => liveGET(new Request(`http://localhost/api/spiele/${id}/live`), { params: Promise.resolve({ id }) } as never);
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  /** Ein fertig gespieltes Privatspiel (Ergebnis eingetragen) mit Veranstalter, eingeteilten Mitspielern und einem Fremden. */
+  async function playedGame() {
+    const g = await game(9);
+    await randomSplit(g.organizer.id, g.match.id);
+    for (const p of g.players) await setReady(p.id, g.match.id, true);
+    await finalConfirm(g.organizer.id, g.match.id);
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3 * 3_600_000) }).where(eq(matches.id, g.match.id));
+    await submitResult(g.organizer.id, g.match.id, 3, 2);
+    expect((await reloadMatch(g.match.id)).status).toBe("played");
+    return g;
+  }
+
+  it("Live-API: 404 für jeden, Antwort identisch zu einem nicht vorhandenen Spiel, keine Namen oder Orte", async () => {
+    const { match } = await game(3);
+    const [home] = await db.select().from(teams).where(eq(teams.id, match.homeTeamId));
+    const res = await live(match.id);
+    const missing = await live(crypto.randomUUID());
+    expect(res.status).toBe(404);
+    expect(missing.status).toBe(404);
+    const body = await res.text();
+    expect(body).toBe(await missing.text()); // Existenz nicht verraten
+    expect(body).not.toContain(home.name);
+    expect(body).not.toContain(base.venueText);
+  });
+
+  it("Overlay: notFound für jeden, identisch zu einem nicht vorhandenen Spiel", async () => {
+    const { match } = await game(3);
+    const call = (id: string) => OverlayPage({ params: Promise.resolve({ id }) } as never);
+    const a = await call(match.id).then(() => null, (e: { digest?: string; message?: string }) => e);
+    const b = await call(crypto.randomUUID()).then(() => null, (e: { digest?: string; message?: string }) => e);
+    expect(a?.digest).toContain("404");
+    expect(a?.digest).toBe(b?.digest);
+    expect(a?.message).toBe(b?.message);
+  });
+
+  it("Spielseite und Ereignis-Stream: nur Veranstalter und Plattform-Admin dürfen ansehen (Anonyme, Fremde und eingeteilte Mitspieler nicht, wie bisher)", async () => {
+    const { organizer, match, players } = await game(5);
+    await randomSplit(organizer.id, match.id);
+    const stranger = await makeUser("pvstranger");
+    const admin = await makeUser("pvadmin", "admin");
+    const may = async (viewer: { id: string; role: "player" | "admin" } | null) => {
+      const page = await getMatchPage(match.id, viewer);
+      return Boolean(page && canViewMatch(page));
+    };
+    expect(await may(null)).toBe(false);
+    expect(await may({ id: stranger.id, role: "player" })).toBe(false);
+    expect(await may({ id: players[3].id, role: "player" })).toBe(false); // Mitspieler: ihr Hub ist /lobby/{id} (bewusst unverändert)
+    expect(await may({ id: organizer.id, role: "player" })).toBe(true);
+    expect(await may({ id: admin.id, role: "admin" })).toBe(true);
+  });
+
+  it("Globaler Stream: Änderungen an Privatspielen werden nicht gemeldet, öffentliche weiter; der Kanal des Spiels selbst bleibt", async () => {
+    const { match: privateMatch } = await game(3);
+    const pub = await makeMatch();
+    let global = 0;
+    let own = 0;
+    const offGlobal = await subscribeToLobby(ALL_MATCHES, () => (global += 1));
+    const offOwn = await subscribeToLobby(privateMatch.id, () => (own += 1));
+    const notify = (id: string) => db.execute(sql`select pg_notify('lobby', ${id})`);
+    try {
+      await notify(privateMatch.id);
+      await sleep(800);
+      expect(own).toBe(1); // je-Spiel-Kanal unverändert (events/route.ts prüft die Berechtigung)
+      expect(global).toBe(0); // der öffentliche Kanal erfährt nichts über das Privatspiel
+      await notify(pub.match.id);
+      for (let i = 0; i < 40 && global === 0; i++) await sleep(100);
+      expect(global).toBe(1); // öffentliche Spiele melden weiter
+    } finally {
+      offGlobal();
+      offOwn();
+    }
+  });
+
+  it("Globaler Stream: schlägt das Nachschlagen fehl, wird nichts gemeldet (fail closed) und nichts geworfen", async () => {
+    const { match } = await game(1);
+    expect(await mayAnnounceToAll(match.id)).toBe(false); // Privatspiel
+    expect(await mayAnnounceToAll((await makeMatch()).match.id)).toBe(true); // öffentlich
+    const spy = vi.spyOn(db, "select").mockImplementation(() => {
+      throw new Error("Datenbank nicht erreichbar");
+    });
+    try {
+      await expect(mayAnnounceToAll(crypto.randomUUID())).resolves.toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+it("Events-Route wirklich aufgerufen: anonym und fremd 404 (wie bei nicht vorhandenem Spiel), Veranstalter bekommt den Stream", async () => {
+    const { organizer, match } = await game(3);
+    const stranger = await makeUser("pvstr2");
+    const call = async (user: typeof session.user, id: string) => {
+      session.user = user;
+      const controller = new AbortController();
+      const res = await eventsGET(new Request(`http://localhost/api/spiele/${id}/events`, { signal: controller.signal }), { params: Promise.resolve({ id }) } as never);
+      const out = { status: res.status, type: res.headers.get("content-type"), body: res.status === 200 ? "" : await res.text() };
+      controller.abort();
+      await res.body?.cancel().catch(() => {});
+      return out;
+    };
+    try {
+      const missing = await call(null, crypto.randomUUID());
+      expect(missing.status).toBe(404);
+      for (const user of [null, { id: stranger.id, role: "player" as const }]) {
+        const res = await call(user, match.id);
+        expect(res.status).toBe(404);
+        expect(res.body).toBe(missing.body); // Existenz nicht verraten
+      }
+      const own = await call({ id: organizer.id, role: "player" }, match.id);
+      expect(own.status).toBe(200);
+      expect(own.type).toContain("text/event-stream");
+    } finally {
+      session.user = null;
+    }
+  });
+
+  it("nicht öffentliche Teamspiele (z. B. private Herausforderung): Fremde und Anonyme dürfen nicht ansehen, Team-Admins und Plattform-Admin schon", async () => {
+    const m = await makeMatch();
+    await db.update(matches).set({ visibility: "private" }).where(eq(matches.id, m.match.id));
+    const stranger = await makeUser("pvstr3");
+    const admin = await makeUser("pvadm3", "admin");
+    const may = async (viewer: { id: string; role: "player" | "admin" } | null) => {
+      const page = await getMatchPage(m.match.id, viewer);
+      return Boolean(page && canViewMatch(page));
+    };
+    expect(await may(null)).toBe(false);
+    expect(await may({ id: stranger.id, role: "player" })).toBe(false);
+    expect(await may({ id: m.adminA.id, role: "player" })).toBe(true);
+    expect(await may({ id: m.adminB.id, role: "player" })).toBe(true);
+    expect(await may({ id: admin.id, role: "admin" })).toBe(true);
+  });
+
+  it("Team-Vorschaubild: Spiel-Teams von Privatspielen und archivierte Teams verraten weder Namen noch Stadt (gleiche neutrale Karte wie bei nicht vorhandenem Team)", async () => {
+    const { match } = await game(1);
+    const [priv] = await db.select().from(teams).where(eq(teams.id, match.homeTeamId));
+    const bytes = async (slug: string) => Buffer.from(await (await teamCard(slug)).arrayBuffer());
+    const none = await bytes(`gibt-es-nicht-${crypto.randomUUID()}`);
+    expect((await bytes(priv.slug)).equals(none)).toBe(true);
+    // ein normales Team bekommt dagegen seine eigene Karte
+    const pub = await makeMatch();
+    const [ordinary] = await db.select().from(teams).where(eq(teams.id, pub.home.id));
+    expect((await bytes(ordinary.slug)).equals(none)).toBe(false);
+    await db.update(teams).set({ archivedAt: new Date() }).where(eq(teams.id, ordinary.id));
+    expect((await bytes(ordinary.slug)).equals(none)).toBe(true); // archiviert: wie nicht vorhanden
+  });
+
+  it("Listen, Rangliste, Statistik: ein gespieltes Privatspiel taucht nirgends öffentlich auf", async () => {
+    const { organizer, match } = await playedGame();
+    const teamIds = [match.homeTeamId, match.awayTeamId];
+    const board = await listBoard({});
+    expect(board.some((e) => e.kind === "match" && e.id === match.id)).toBe(false);
+    const profile = await getPlayerProfile(organizer.id, null);
+    if (profile && !profile.hidden) expect(profile.results.some((r) => r.matchId === match.id)).toBe(false);
+    const boards = await leaderboards({ monthStart: new Date(Date.now() - 7 * 86_400_000), monthEnd: new Date(Date.now() + 86_400_000) });
+    expect(boards.monthly.some((t) => teamIds.includes(t.id))).toBe(false); // Monatsrangliste
+    expect(boards.teamElo.some((t) => teamIds.includes(t.id))).toBe(false);
+    expect((await db.select().from(teamStats)).some((s) => teamIds.includes(s.teamId))).toBe(false); // Statistik
+  });
 });
 
 describe("Einladungslink zurückziehen und neu erzeugen (T56, AC-10)", () => {

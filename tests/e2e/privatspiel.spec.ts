@@ -108,6 +108,94 @@ test("Privatspiel kostenlos: bewusst gewählt, die Lobby zeigt 'kostenlos' statt
   expect((await query<{ price_cents: number }>("select price_cents from matches where id = $1", [matchId]))[0].price_cents).toBe(0);
 });
 
+test("Privatspiel: Fremde und Anonyme bekommen überall dieselbe Fehlerseite wie bei einem nicht vorhandenen Spiel (AC-12)", async ({ browser }) => {
+  const org = await (await browser.newContext()).newPage();
+  await newUser(org, "pgsecret");
+  await org.goto("/app/privatspiel/neu");
+  await org.getByLabel("Anstoß (Datum und Uhrzeit)").fill(futureLocal(7, "19:00"));
+  await org.getByLabel("Halle und Adresse").fill(`E2E Geheimhalle ${run}, Hauptstr. 3`);
+  await org.getByLabel("Miete als Betrag").check();
+  await org.getByLabel("Hallenmiete in Euro").fill("80");
+  await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
+  await expect(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+  const matchId = org.url().split("/").pop()!;
+  const missingId = "00000000-0000-4000-8000-000000000000";
+
+  const anon = await (await browser.newContext()).newPage();
+  const stranger = await (await browser.newContext()).newPage();
+  await newUser(stranger, "pgstranger");
+
+  for (const [who, page] of [["anonym", anon], ["fremd", stranger]] as const) {
+    // Spielseite: dieselbe Fehlerseite wie bei einem nicht vorhandenen Spiel (die App liefert sie gestreamt mit gleichem Status), keine Umleitung, keine Namen oder Orte
+    const miss = await page.goto(`/spiele/${missingId}`);
+    await expect(page.getByRole("heading", { name: "Seite nicht gefunden" })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const missText = await page.locator("body").innerText();
+    const res = await page.goto(`/spiele/${matchId}`);
+    await expect(page, `Seite ${who}`).toHaveURL(new RegExp(`/spiele/${matchId}$`)); // keine Umleitung auf Login oder /app
+    expect(res?.status()).toBe(miss?.status());
+    await expect(page.getByRole("heading", { name: "Seite nicht gefunden" })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const text = await page.locator("body").innerText();
+    expect(text).toBe(missText);
+    expect(text).not.toContain("Team Rot");
+    expect(text).not.toContain(`E2E Geheimhalle ${run}`);
+    // Live-API, Events-Stream, Overlay: 404
+    expect((await page.request.get(`/api/spiele/${matchId}/live`)).status(), `Live ${who}`).toBe(404);
+    const eventsOf = (url: string) =>
+      page.evaluate(async (u) => {
+        const controller = new AbortController();
+        const res = await fetch(u, { signal: controller.signal });
+        controller.abort(); // der Stream bleibt sonst offen
+        return res.status;
+      }, url);
+    expect(await eventsOf(`/api/spiele/${matchId}/events`), `Events ${who}`).toBe(404);
+    const ov = await page.goto(`/overlay/${matchId}`);
+    const ovMissing = await page.goto(`/overlay/${missingId}`);
+    expect(ov?.status(), `Overlay ${who}`).toBe(ovMissing?.status());
+    await page.goto(`/overlay/${matchId}`);
+    await expect(page.getByTestId("overlay")).toHaveCount(0);
+    await expect(page.locator("body")).toContainText("Seite nicht gefunden");
+    // Vorschaubild: dieselbe neutrale Karte wie bei einem nicht vorhandenen Spiel
+    const card = await page.request.get(`/spiele/${matchId}/opengraph-image`);
+    const cardMissing = await page.request.get(`/spiele/${missingId}/opengraph-image`);
+    expect(card.status()).toBe(200);
+    expect((await card.body()).equals(await cardMissing.body()), `Vorschaubild ${who}`).toBe(true);
+  }
+
+  // Auch ein nicht öffentliches Teamspiel (z. B. private Herausforderung) verrät Fremden und Anonymen nichts: Fehlerseite statt Umleitung auf Login oder /app
+  await query("update matches set kind = 'team' where id = $1", [matchId]);
+  for (const [who, other] of [["anonym", anon], ["fremd", stranger]] as const) {
+    await other.goto(`/spiele/${matchId}`);
+    await expect(other, `Teamspiel ${who}`).toHaveURL(new RegExp(`/spiele/${matchId}$`));
+    await expect(other.getByRole("heading", { name: "Seite nicht gefunden" })).toBeVisible();
+  }
+  // Team-Vorschaubild der unsichtbaren Spiel-Teams: neutrale Karte wie bei einem nicht vorhandenen Team
+  await query("update matches set kind = 'private' where id = $1", [matchId]);
+  const slug = (await query<{ slug: string }>("select t.slug from teams t join matches m on m.home_team_id = t.id where m.id = $1", [matchId]))[0].slug;
+  const teamCardRes = await anon.request.get(`/teams/${slug}/opengraph-image`);
+  const teamCardMissing = await anon.request.get(`/teams/gibt-es-nicht-${run}/opengraph-image`);
+  expect(teamCardRes.status()).toBe(200);
+  expect((await teamCardRes.body()).equals(await teamCardMissing.body())).toBe(true);
+
+  // Der Veranstalter behält Zugriff auf Seite und Ereignis-Stream
+  const page = await org.goto(`/spiele/${matchId}`);
+  expect(page?.status()).toBe(200);
+  await expect(org.getByText("Team Rot").first()).toBeVisible();
+  const eventsStatus = await org.evaluate(async (url) => {
+    const controller = new AbortController();
+    const res = await fetch(url, { signal: controller.signal });
+    controller.abort();
+    return res.status;
+  }, `/api/spiele/${matchId}/events`);
+  expect(eventsStatus).toBe(200);
+  // Die öffentliche Live-API und das Overlay gibt es für Privatspiele auch für den Veranstalter nicht (wie bisher)
+  expect((await org.request.get(`/api/spiele/${matchId}/live`)).status()).toBe(404);
+  // Das Privatspiel steht in keiner öffentlichen Liste
+  await anon.goto("/suche");
+  await expect(anon.getByText(`E2E Geheimhalle ${run}`)).toHaveCount(0);
+});
+
 test("Privatspiel: Einladungslink zurückziehen und neu erzeugen (AC-10)", async ({ browser }) => {
   const org = await (await browser.newContext()).newPage();
   await newUser(org, "pglink");

@@ -294,10 +294,10 @@ export async function leaderboards(filter: { city?: string; monthStart: Date; mo
     await db.execute(sql`
       with m as (
         select mt.home_team_id as team_id, r.home_score as gf, r.away_score as ga from matches mt join match_results r on r.match_id = mt.id
-          where mt.status = 'played' and mt.starts_at >= ${filter.monthStart} and mt.starts_at < ${filter.monthEnd}
+          where mt.status = 'played' and mt.kind <> 'private' and mt.starts_at >= ${filter.monthStart} and mt.starts_at < ${filter.monthEnd}
         union all
         select mt.away_team_id, r.away_score, r.home_score from matches mt join match_results r on r.match_id = mt.id
-          where mt.status = 'played' and mt.starts_at >= ${filter.monthStart} and mt.starts_at < ${filter.monthEnd}
+          where mt.status = 'played' and mt.kind <> 'private' and mt.starts_at >= ${filter.monthStart} and mt.starts_at < ${filter.monthEnd}
       )
       select t.id, t.name, t.slug, t.city, count(*)::int as played,
         sum(case when m.gf > m.ga then 1 else 0 end)::int as wins,
