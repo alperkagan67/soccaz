@@ -64,7 +64,51 @@ components:
 
 > Stand der Dinge (Scan-Modus), gelesen aus `src/app/globals.css`, `src/app/layout.tsx`, `BottomNav`, `Header`, `MyGames`, `LobbyBoard`, `PlayerLight`. Die beschreibenden Teile (North Star, Charakter) sind vom Autor abgeleitet und nicht mit dem Projektinhaber abgestimmt. Quelle der Werte ist `globals.css`; der Frontmatter bildet sie ab, ohne sie zu ändern.
 
-## Overview
+## Verbindliche Richtung: E „Trikot“ (Nutzerentscheid 2026-11-10, Vertrag 007)
+
+Ab Vertrag 007 gilt Richtung E. Alles darunter („Overview“ bis „Do's and Don'ts“) beschreibt den **Ist-Stand vor der Umsetzung** und wird in den Meilensteinen von Vertrag 007 abgelöst; wo beides sich widerspricht, gilt dieser Abschnitt. Der Frontmatter oben bildet bis zur Umsetzung (M1) weiter den Ist-Stand ab. Referenz: `docs/design/richtung-e-trikot.html` (Skizze, dunkel und hell), Kontrastwerte: Tabelle in `docs/design/README.md`, Abschnitt „Teamfarben und Lesbarkeit“.
+
+### Grundsätze
+
+- **Hell und dunkel folgen der Systemeinstellung** (`prefers-color-scheme`). Es gibt keinen eigenen Umschalter und keinen festen Standard.
+- **Orange ist die einzige Akzentfarbe.** Sie steht für die eine nächste Handlung und den aktuellen Stand: Hauptknopf, Mittelknopf „Spiel suchen“, aktiver Navigationsstrich, **aktuelle Station** im Weg bis zum Anstoß (Stationsmarker). Alles andere ist neutral (Fläche, Tinte, gedämpft, Linie) oder Teamfarbe.
+- **Teamfarbe ist Identität, nie Funktion.** Sie färbt die Feldhälfte, den Teamnamen-Chip und kleine Farbmarken. Sie trägt weder Handlung noch Status.
+- **Zustand ist immer Form plus Wort.** Ampel: Ring = in der Lobby, Halbfläche = bereit und bezahlt, Haken = bestätigt, gestrichelt = Platz frei. Die Legende nennt das Wort.
+- **Spielnummer** bleibt als Anzeigetafel-Chip (invertiert: Tinte als Grund, Fläche als Schrift) das wiederkehrende Zeichen.
+
+### Neutrale Töne und Orange (aus der Skizze, bei Umsetzung als Tokens zu übernehmen)
+
+| Rolle | Dunkel | Hell |
+|---|---|---|
+| Grund (`bg`) | `#0f1914` | `#dde5e0` |
+| Fläche (`fl`) | `#1b2a23` | `#f1f5f2` |
+| Fläche 2 (`fl2`, Feld-Grundfläche) | `#24362d` | `#e3eae5` |
+| Tinte (`ink`) | `#eef4f0` | `#12201a` |
+| Gedämpft (`muted`) | `#a3b5ab` | `#4a5a51` |
+| Rahmen/Feldlinie (`rim`) | `#cfe0d6` | `#12201a` |
+| Linie (`line`) | `#3a5043` | `#b3c2b9` |
+| Orange (`o`) / Schrift darauf (`oi`) | `#ff6a1f` / `#1d0a00` | `#c2410c` / `#ffffff` |
+
+Gemessen (WCAG 2.x): Tinte auf Fläche 13,43:1 / 15,30:1, gedämpft auf Fläche 6,96:1 / 6,64:1, Orange mit Schrift 6,69:1 / 5,18:1, Orange gegen Fläche 5,23:1 / 4,71:1. Das helle Orange ist bewusst dunkler als das dunkle, weil `#ff6a1f` auf heller Fläche unter 3:1 fällt.
+
+### Teamfarben
+
+- Jedes Team wählt **eine Trikotfarbe aus der festen 12er-Palette**: Rot `#c8102e`, Bordeaux `#7a1f3d`, Pink `#e9498c`, Violett `#6a3fb5`, Marine `#14284b`, Blau `#1f4fd1`, Himmelblau `#4fb3e8`, Türkis `#0fb5a6`, Grün `#1e9e4a`, Gelb `#f2c200`, Weiß `#f4f4f2`, Schwarz `#15181c`. Freie Farbwahl gibt es nicht. Orange ist ausgeschlossen, damit die Akzentfarbe einmalig bleibt.
+- **Textfarbe nach Kontrast**: auf jeder Teamfarbe Weiß `#ffffff` oder Fast-Schwarz `#0b1118`, je nachdem, welche das größere Verhältnis ergibt. Alle zwölf erreichen mindestens 4,5:1 (Werte in der Tabelle in `docs/design/README.md`). Auch Spielerzeichen auf der Hälfte (Ring, Halbfläche, Haken) nutzen diese Textfarbe.
+- **Ähnliche Teamfarben im selben Spiel sind gesperrt.** Zwei Teams eines Spiels dürfen keine Farben mit einem CIEDE2000-Abstand unter 20 haben (Details und gesperrte Paare in Vertrag 007, AC-9).
+- **Neutraler Rahmen um jede Hälfte** in der Feldlinienfarbe (`rim`): Eine Teamfarbe kann zur Fläche unter 3:1 liegen (Marine auf Dunkel 1,02:1, Gelb auf Hell 1,53:1). Der Rahmen und der Teamname als Text halten die Hälfte lesbar.
+- Teams ohne gewählte Farbe bekommen eine **Standardfarbe aus dem Slug** (stabil, aus der Palette); das Team kann sie jederzeit ändern.
+
+### Lobby-Feld
+
+Zwei Hälften nebeneinander auf neutraler Grundfläche (`fl2`): links Heim, rechts Gast, jede in der Teamfarbe, Mittellinie und Mittelkreis in `rim`. Spieler als Zeichen in der Textfarbe der Hälfte, leere Plätze gestrichelt. Darunter die Teamnamen als Chips in Teamfarbe mit Textfarbe, Elo und Stärke als zweite Zeile. Ab einer Schwelle von Spielern (Privatspiel bis 22) wechselt das Feld in eine Liste mit denselben Zeichen.
+
+### Nicht festgelegt (offen, siehe Vertrag 007)
+
+- **Fehler und Gefahr** (heute Koralle und Rot) haben in E keine eigene Akzentfarbe. Vorschlag: Symbol, Wort und kräftiger Rahmen in Tinte, ohne neue Farbe.
+- Schriften bleiben Outfit und Plus Jakarta Sans; die Skizzen nutzen nur Systemschriften als Platzhalter.
+
+## Overview (Ist-Stand vor Vertrag 007)
 
 **Creative North Star: "Die Hallenanzeige"**
 
