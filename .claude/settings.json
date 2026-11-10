@@ -1,4 +1,7 @@
 {
+  "env": {
+    "IMPECCABLE_LIVE_COPY_AGENT": "chat"
+  },
   "permissions": {
     "deny": [
       "Bash(git push --force*)",
