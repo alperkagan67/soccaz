@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Richtung A: Hallenanzeige (geschärft)</title>
+<style>
+/* Statischer Prototyp, kein Netzwerk. Schriften: nur installierte Systemschriften (Platzhalter für Outfit/Jakarta). */
+:root{
+  --bg:#050b08; --tafel:#0a1510; --tafel2:#0f1f17; --linie:#1b2e24;
+  --ink:#f3f7f4; --muted:#9bb0a5; --signal:#2fd36b; --signal-ink:#04160b;
+  --wartet:#f2b632; --alarm:#ff5d45;
+  --display:"Bahnschrift","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  --text:"Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0}
+body{background:#020504;color:var(--ink);font-family:var(--text);padding:32px 16px;line-height:1.4}
+h1{font-family:var(--display);font-size:1.5rem;margin-bottom:6px;text-wrap:balance}
+.lead{color:var(--muted);max-width:62ch;margin-bottom:28px;font-size:.95rem}
+.row{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.col{width:390px;max-width:100%}
+.cap{font-size:.8rem;color:var(--muted);margin-bottom:8px;max-width:390px}
+.phone{width:390px;max-width:100%;background:var(--bg);border:1px solid var(--linie);border-radius:28px;overflow:hidden;position:relative}
+.screen{padding:16px 16px 12px;min-height:200px}
+.top{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--linie)}
+.brand{font-family:var(--display);font-weight:700;letter-spacing:.14em}
+.saldo{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* Navigation: 5 Punkte, aktiver Punkt = gefüllte Kapsel mit Wort, die anderen nur Symbol + Wort klein */
+.nav{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--linie);background:var(--tafel);padding:6px 6px 10px}
+.nav a{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:56px;justify-content:center;color:var(--muted);text-decoration:none;font-size:.72rem;border-radius:14px}
+.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav a[aria-current]{background:var(--signal);color:var(--signal-ink);font-weight:700}
+.nav a:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.nav .badge{position:relative}
+.nav .badge i{position:absolute;top:-4px;right:-9px;background:var(--wartet);color:#1c1300;font:700 .65rem var(--text);border-radius:99px;min-width:16px;text-align:center;padding:0 4px;font-style:normal}
+
+/* Spielnummer: die Anzeigetafel-Ziffer */
+.nr{font-family:var(--display);font-weight:800;font-variant-numeric:tabular-nums;background:var(--ink);color:#04160b;border-radius:6px;padding:1px 8px;font-size:.95rem;letter-spacing:.02em}
+
+/* Meine Spiele: nächster Schritt zuerst, nicht Rahmen um alles */
+.next h2{font-family:var(--display);font-size:1.15rem;margin:2px 0 12px}
+.game{background:var(--tafel);border:1px solid var(--linie);border-radius:14px;padding:14px;margin-bottom:10px}
+.game .head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.game .paar{font-family:var(--display);font-size:1.1rem;font-weight:700;margin:4px 0 2px}
+.game .wann{color:var(--muted);font-size:.85rem;font-variant-numeric:tabular-nums}
+.todo{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--linie)}
+.todo b{font-size:.9rem}
+.todo small{display:block;color:var(--wartet);font-size:.78rem}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--linie);background:transparent;color:var(--ink);font:600 .9rem var(--text);text-decoration:none}
+.btn.main{background:var(--signal);border-color:var(--signal);color:var(--signal-ink)}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.pill{font-size:.75rem;border-radius:99px;padding:2px 9px;border:1px solid currentColor}
+.pill.wait{color:var(--wartet)} .pill.ok{color:var(--signal)}
+
+/* Lobby-Karte: Kader als Plätze, Status als Wort UND Form */
+.lobby{background:var(--tafel);border:1px solid var(--linie);border-radius:16px;overflow:hidden}
+.lobby .kopf{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--tafel2)}
+.lobby .teams{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:16px 14px 6px}
+.t{font-family:var(--display);font-weight:700;font-size:1.05rem;line-height:1.15}
+.t small{display:block;font:400 .75rem var(--text);color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.t.r{text-align:right}
+.vs{font-size:.75rem;color:var(--muted)}
+.chance{margin:8px 14px 0}
+.bar{display:flex;height:6px;border-radius:99px;overflow:hidden;background:var(--linie)}
+.bar i{display:block;background:var(--signal)}
+.chance p{font-size:.75rem;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+.kader{list-style:none;padding:10px 14px;margin-top:6px;border-top:1px solid var(--linie)}
+.kader li{display:flex;align-items:center;gap:10px;min-height:36px;font-size:.9rem}
+.kader .st{margin-left:auto;font-size:.78rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.dot{width:12px;height:12px;border-radius:50%;flex:none;display:inline-block}
+.dot.in{border:2px solid var(--alarm)}                       /* leerer Ring = in der Lobby */
+.dot.bereit{background:linear-gradient(90deg,var(--wartet) 50%,transparent 50%);border:2px solid var(--wartet)} /* halb = bereit/bezahlt */
+.dot.fest{background:var(--signal);border:2px solid var(--signal)} /* voll = bestätigt */
+.cta{display:flex;gap:8px;align-items:center;padding:12px 14px 14px;border-top:1px solid var(--linie)}
+.cta .grow{flex:1}
+</style>
+</head>
+<body>
+<h1>Richtung A: Hallenanzeige, geschärft</h1>
+<p class="lead">Behält Dunkelgrün und das eine Signalgrün, wirft aber die Neon-Reserve und die Glow-Punkte raus. Spielnummer wird zur weißen Anzeigetafel-Ziffer, der aktive Navigationspunkt zur gefüllten Kapsel. Der nächste Schritt (zahlen, bereit machen) steht als eigene Zeile in der Karte. Ampel: Ring, Halbkreis, Vollkreis plus Wort.</p>
+
+<div class="row">
+
+<!-- 1. Navigation -->
+<div class="col">
+<p class="cap"><b>Navigation.</b> Fünf Ziele, aktiver Punkt als gefüllte Kapsel (Form + Wort, nicht nur Farbe). Hinweiszähler direkt am Symbol „Mein Bereich“.</p>
+<div class="phone">
+  <div class="top"><span class="brand">SOCAZ</span><span class="saldo">Guthaben 12,50&nbsp;€</span></div>
+  <div class="screen" style="min-height:140px;color:var(--muted);font-size:.9rem">Seiteninhalt …</div>
+  <nav class="nav" aria-label="Hauptnavigation">
+    <a href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Start</a>
+    <a href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-4-4"/></svg>Suche</a>
+    <a href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M6.5 12a5.5 5.5 0 0 1 11 0M3 12a9 9 0 0 1 18 0"/></svg>Live</a>
+    <a href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>Rangliste</a>
+    <a href="#" aria-current="page"><span class="badge"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><i>2</i></span>Mein Bereich</a>
+  </nav>
+</div>
+</div>
+
+<!-- 2. Meine Spiele -->
+<div class="col">
+<p class="cap"><b>Meine Spiele.</b> Statt grünem Rahmen um alles: pro Spiel eine Karte, darunter der eine nächste Schritt mit Frist. Nur diese Aktion ist grün.</p>
+<div class="phone"><div class="screen next">
+  <h2>Meine Spiele</h2>
+  <article class="game">
+    <div class="head"><span class="nr">#42</span><span class="pill wait">Wartet auf Zahlung</span></div>
+    <div class="paar">Rasenfreunde 09 – FC Tiefgang</div>
+    <div class="wann">Sa 14.11. · 19:30 Uhr · Halle Nord</div>
+    <div class="todo"><span><b>Dein Anteil: 6,00&nbsp;€</b><small>Noch bis Fr 13.11., 19:30 Uhr</small></span><a class="btn main" href="#">Jetzt zahlen</a></div>
+  </article>
+  <article class="game">
+    <div class="head"><span class="nr">#47</span><span class="pill wait">Gegner gesucht</span></div>
+    <div class="paar">Rasenfreunde 09</div>
+    <div class="wann">So 15.11. · 18:00 bis 21:00 Uhr · 60 Min</div>
+    <div class="todo"><span><b>Eure Lobby ist offen</b><small>Noch kein Gegner</small></span><a class="btn" href="#">Zur Lobby</a></div>
+  </article>
+</div></div>
+</div>
+
+<!-- 3. Lobby-Karte -->
+<div class="col">
+<p class="cap"><b>Lobby-Karte.</b> Paarung groß, Elo klein, Siegchance als dünne Leiste mit Zahl, Kader mit Status-Wort. Genau eine grüne Aktion.</p>
+<div class="phone"><div class="screen" style="padding:12px">
+  <section class="lobby" aria-label="Spiel 42">
+    <div class="kopf"><span class="nr">#42</span><span class="pill wait">Wartet auf Spieler</span></div>
+    <div class="teams">
+      <div class="t">Rasenfreunde 09<small>Elo 1412 · Stärke 3/5</small></div>
+      <span class="vs">gegen</span>
+      <div class="t r">FC Tiefgang<small>Elo 1387 · Stärke 3/5</small></div>
+    </div>
+    <div class="chance"><div class="bar" role="img" aria-label="Siegchance nach Elo: Rasenfreunde 53 Prozent, Tiefgang 47 Prozent"><i style="width:53%"></i></div><p>Siegchance nach Elo: 53 % zu 47 %</p></div>
+    <ul class="kader">
+      <li>Max K. <span class="st"><i class="dot fest"></i>Bestätigt</span></li>
+      <li>Jonas W. <span class="st"><i class="dot bereit"></i>Bereit und bezahlt</span></li>
+      <li>Deniz A. <span class="st"><i class="dot bereit"></i>Bereit und bezahlt</span></li>
+      <li>Leon S. <span class="st"><i class="dot in"></i>In der Lobby</span></li>
+      <li>Ben R. <span class="st"><i class="dot in"></i>In der Lobby</span></li>
+    </ul>
+    <div class="cta"><span class="grow" style="font-size:.8rem;color:var(--muted)">3 von 5 bereit · noch 1 Platz frei</span><a class="btn" href="#">Teilen</a><a class="btn main" href="#">Zur Lobby</a></div>
+  </section>
+</div></div>
+</div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Richtung C: Hallenboden (Spielfeld)</title>
+<style>
+/* Statischer Prototyp, kein Netzwerk. Schriften: installierte Systemschriften (Platzhalter). Grafik komplett als Inline-SVG. */
+:root{
+  --boden:#1a2430; --boden2:#222f3d; --feld:#2a3a4b; --linie:#e9f0f5; --ink:#f2f6f9; --muted:#9db0bf;
+  --ball:#ff6a1f; --ball-ink:#1d0a00; --gruen:#5ad17b; --gelb:#ffd24a;
+  --display:"Bahnschrift","Arial Narrow","Segoe UI",sans-serif;
+  --text:"Segoe UI",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0}
+body{background:#10161d;color:var(--ink);font-family:var(--text);padding:32px 16px;line-height:1.4}
+h1{font-family:var(--display);font-size:1.5rem;margin-bottom:6px;text-wrap:balance}
+.lead{color:var(--muted);max-width:62ch;margin-bottom:28px;font-size:.95rem}
+.row{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.col{width:390px;max-width:100%}
+.cap{font-size:.8rem;color:var(--muted);margin-bottom:8px;max-width:390px}
+.phone{width:390px;max-width:100%;background:var(--boden);border:1px solid #33465a;border-radius:28px;overflow:hidden;position:relative}
+.screen{padding:16px}
+.top{display:flex;align-items:center;justify-content:space-between;padding:12px 16px}
+.brand{font-family:var(--display);font-weight:700;letter-spacing:.12em}
+.saldo{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* Navigation: schwebendes Dock mit großer Mitte „Spiel suchen“ (Daumenreichweite) */
+.dockwrap{padding:0 12px 12px;position:relative}
+.dock{display:grid;grid-template-columns:1fr 1fr 76px 1fr 1fr;align-items:end;background:var(--boden2);border:1px solid #33465a;border-radius:22px;padding:6px 6px 8px;height:72px}
+.dock a{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;color:var(--muted);text-decoration:none;font-size:.72rem;min-height:56px;padding-bottom:2px;border-radius:14px}
+.dock svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.dock a[aria-current]{color:var(--ink);font-weight:700}
+.dock a[aria-current] svg{stroke:var(--ball)}
+.dock a[aria-current]::after{content:"";width:18px;height:3px;border-radius:2px;background:var(--ball);margin-top:1px}
+.dock .mitte{position:relative;top:-22px;min-height:0;padding:0;color:var(--ball-ink)}
+.dock .mitte span.kreis{display:grid;place-items:center;width:64px;height:64px;border-radius:50%;background:var(--ball);border:4px solid var(--boden);box-shadow:0 6px 12px -4px rgba(0,0,0,.6)}
+.dock .mitte svg{stroke:var(--ball-ink);width:28px;height:28px}
+.dock .mitte em{font-style:normal;color:var(--ink);font-size:.7rem;margin-top:4px}
+.dock a:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.dock .z{position:relative}
+.dock .z i{position:absolute;top:-5px;right:-9px;background:var(--gelb);color:#201700;font:700 .65rem var(--text);border-radius:99px;min-width:16px;text-align:center;padding:0 4px;font-style:normal}
+
+h2{font-family:var(--display);font-size:1.2rem;margin:2px 0 12px;letter-spacing:.02em}
+.nr{font-family:var(--display);font-weight:700;color:var(--ball);font-variant-numeric:tabular-nums;font-size:1.05rem}
+
+/* Meine Spiele: Spielfeld-Streifen mit Zeitleiste bis Anstoß */
+.feld{background:var(--boden2);border-radius:16px;padding:14px;margin-bottom:12px;border:1px solid #33465a}
+.feld .h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.paar{font-family:var(--display);font-size:1.15rem;font-weight:700;line-height:1.15}
+.wann{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums;margin-top:4px}
+.weg{margin:12px 0 4px}
+.weg ol{list-style:none;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:.7rem;color:var(--muted);text-align:center}
+.weg li{display:flex;flex-direction:column;align-items:center;gap:4px}
+.weg li::before{content:"";width:16px;height:16px;border-radius:50%;border:2px solid var(--muted)}
+.weg li.fertig{color:var(--ink)} .weg li.fertig::before{background:var(--gruen);border-color:var(--gruen)}
+.weg li.jetzt{color:var(--ink);font-weight:700} .weg li.jetzt::before{border-color:var(--ball);background:radial-gradient(circle,var(--ball) 40%,transparent 45%)}
+.weg .linie{height:2px;background:linear-gradient(90deg,var(--gruen) 0 38%,#3c5166 38% 100%);margin:-30px 12.5% 22px;border-radius:2px}
+.aktion{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px}
+.aktion span{font-size:.85rem}
+.aktion small{display:block;color:var(--gelb)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:99px;border:2px solid #4a6178;background:transparent;color:var(--ink);font:700 .9rem var(--text);text-decoration:none}
+.btn.main{background:var(--ball);border-color:var(--ball);color:var(--ball-ink)}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* Lobby-Karte: Spielfeld von oben, Spieler als Punkte auf ihrer Hälfte */
+.lob{background:var(--boden2);border:1px solid #33465a;border-radius:18px;overflow:hidden}
+.lob .kopf{display:flex;justify-content:space-between;align-items:center;padding:12px 14px}
+.stat{font-size:.75rem;border:1.5px solid currentColor;border-radius:99px;padding:1px 9px;color:var(--gelb)}
+.pitch{margin:0 12px;border-radius:10px;background:var(--feld);padding:8px}
+.pitch svg{display:block;width:100%;height:auto}
+.names{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px 14px 4px}
+.names .t{font-family:var(--display);font-weight:700;font-size:1.05rem;line-height:1.15}
+.names .t small{display:block;font:400 .75rem var(--text);color:var(--muted);font-variant-numeric:tabular-nums;margin-top:2px}
+.names .t:last-child{text-align:right}
+.leg{list-style:none;padding:6px 14px 0;display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:var(--muted)}
+.leg li{display:flex;align-items:center;gap:6px}
+.leg svg{width:14px;height:14px}
+.chance{padding:10px 14px 0;font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.chance .b{display:flex;height:8px;border-radius:99px;overflow:hidden;margin-top:5px;background:#3a4c5e}
+.chance .b i{display:block;width:53%;background:var(--ball)}
+.cta{display:flex;gap:8px;align-items:center;padding:12px 14px 14px}
+.cta .g{flex:1;font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<h1>Richtung C: Hallenboden (Spielfeld)</h1>
+<p class="lead">Das Spielfeld selbst ist die Gestaltungsidee: Hallenboden-Blaugrau, weiße Feldlinien, ein Ballorange als einzige Handlungsfarbe. Die Lobby zeigt beide Teams als Hälften eines Felds, die Spieler als Punkte mit drei Formen (Ring, Halbfläche, Haken) plus Wort in der Legende. „Meine Spiele“ zeigt den Weg bis zum Anstoß in vier Stationen. Navigation: schwebendes Dock mit großem Mittelknopf „Spiel suchen“.</p>
+
+<div class="row">
+
+<div class="col">
+<p class="cap"><b>Navigation.</b> Das Dock liegt in Daumenreichweite. Mitte: die wichtigste Handlung (Spiel suchen), links und rechts je zwei Ziele. Aktives Ziel: orangenes Symbol und Strich.</p>
+<div class="phone">
+  <div class="top"><span class="brand">SOCAZ</span><span class="saldo">Guthaben 12,50&nbsp;€</span></div>
+  <div class="screen" style="min-height:130px;color:var(--muted);font-size:.9rem">Seiteninhalt …</div>
+  <div class="dockwrap"><nav class="dock" aria-label="Hauptnavigation">
+    <a href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Start</a>
+    <a href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.5"/><path d="M6.5 12a5.5 5.5 0 0 1 11 0M3 12a9 9 0 0 1 18 0"/></svg>Live</a>
+    <a href="#" class="mitte" style="align-items:center"><span class="kreis"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-4-4"/></svg></span><em>Spiel suchen</em></a>
+    <a href="#"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg>Rangliste</a>
+    <a href="#" aria-current="page"><span class="z"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><i>2</i></span>Mein Bereich</a>
+  </nav></div>
+</div>
+</div>
+
+<div class="col">
+<p class="cap"><b>Meine Spiele.</b> Pro Spiel ein Weg mit vier Stationen: Gegner, Termin, Kader bereit, Anstoß. Die aktuelle Station ist orange markiert; der Schritt dahinter steht als Satz und Button darunter.</p>
+<div class="phone"><div class="screen">
+  <h2>Meine Spiele</h2>
+  <article class="feld">
+    <div class="h"><span class="nr">#42</span><span class="stat">Zahlung offen</span></div>
+    <div class="paar">Rasenfreunde 09 gegen FC Tiefgang</div>
+    <div class="wann">Sa 14.11. · 19:30 Uhr · Halle Nord</div>
+    <div class="weg" aria-label="Fortschritt">
+      <ol>
+        <li class="fertig">Gegner</li><li class="fertig">Termin</li><li class="jetzt" aria-current="step">Kader bereit</li><li>Anstoß</li>
+      </ol>
+      <div class="linie"></div>
+    </div>
+    <div class="aktion"><span>Dein Anteil 6,00&nbsp;€<small>bis Fr 13.11., 19:30 Uhr</small></span><a class="btn main" href="#">Jetzt zahlen</a></div>
+  </article>
+  <article class="feld">
+    <div class="h"><span class="nr">#47</span><span class="stat">Gegner gesucht</span></div>
+    <div class="paar">Rasenfreunde 09</div>
+    <div class="wann">So 15.11. · 18:00 bis 21:00 Uhr · 60 Min</div>
+    <div class="weg"><ol><li class="jetzt" aria-current="step">Gegner</li><li>Termin</li><li>Kader bereit</li><li>Anstoß</li></ol><div class="linie" style="background:#3c5166"></div></div>
+    <div class="aktion"><span>Eure Lobby ist offen</span><a class="btn" href="#">Zur Lobby</a></div>
+  </article>
+</div></div>
+</div>
+
+<div class="col">
+<p class="cap"><b>Lobby-Karte.</b> Das Feld zeigt beide Hälften. Punkt-Formen: Ring = in der Lobby, Halbfläche = bereit und bezahlt, Haken = bestätigt. Die Legende gibt das Wort dazu; Namen stehen in der Liste darunter im echten Produkt.</p>
+<div class="phone"><div class="screen" style="padding:12px">
+  <section class="lob" aria-label="Spiel 42">
+    <div class="kopf"><span class="nr">#42</span><span class="stat">Wartet auf Spieler</span></div>
+    <div class="pitch">
+      <svg viewBox="0 0 360 200" role="img" aria-label="Spielfeld: links Rasenfreunde 09 mit fünf Spielern, rechts FC Tiefgang noch ohne Aufstellung">
+        <g fill="none" stroke="#e9f0f5" stroke-width="2" opacity=".85">
+          <rect x="6" y="6" width="348" height="188" rx="6"/><line x1="180" y1="6" x2="180" y2="194"/><circle cx="180" cy="100" r="28"/>
+          <rect x="6" y="62" width="40" height="76"/><rect x="314" y="62" width="40" height="76"/>
+        </g>
+        <!-- Heim: fest (Vollkreis+Haken), bereit (Halbfläche), in der Lobby (Ring) -->
+        <g stroke-width="3" stroke="#e9f0f5">
+          <circle cx="90" cy="100" r="11" fill="#5ad17b" stroke="#5ad17b"/><path d="M85 100l4 4 7-8" stroke="#10331b" fill="none"/>
+          <circle cx="70" cy="52" r="11" fill="#ffd24a" stroke="#ffd24a"/><path d="M70 41a11 11 0 0 0 0 22z" fill="#2a3a4b" stroke="none"/>
+          <circle cx="70" cy="148" r="11" fill="#ffd24a" stroke="#ffd24a"/><path d="M70 137a11 11 0 0 0 0 22z" fill="#2a3a4b" stroke="none"/>
+          <circle cx="130" cy="72" r="11" fill="none" stroke="#ff8a6a"/>
+          <circle cx="130" cy="128" r="11" fill="none" stroke="#ff8a6a"/>
+        </g>
+        <!-- Gast: leere Plätze gestrichelt -->
+        <g fill="none" stroke="#9db0bf" stroke-width="2" stroke-dasharray="4 4">
+          <circle cx="270" cy="100" r="11"/><circle cx="290" cy="52" r="11"/><circle cx="290" cy="148" r="11"/><circle cx="230" cy="72" r="11"/><circle cx="230" cy="128" r="11"/>
+        </g>
+      </svg>
+    </div>
+    <div class="names"><div class="t">Rasenfreunde 09<small>Elo 1412 · Stärke 3/5</small></div><div class="t">FC Tiefgang<small>Elo 1387 · Stärke 3/5</small></div></div>
+    <ul class="leg" aria-label="Legende">
+      <li><svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="#ff8a6a" stroke-width="2"/></svg>In der Lobby</li>
+      <li><svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="#ffd24a"/><path d="M7 1a6 6 0 0 0 0 12z" fill="#222f3d"/></svg>Bereit, bezahlt</li>
+      <li><svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="#5ad17b"/><path d="M4 7l2 2 4-4" stroke="#10331b" stroke-width="1.6" fill="none"/></svg>Bestätigt</li>
+    </ul>
+    <div class="chance">Siegchance nach Elo: 53 % zu 47 %<div class="b" role="img" aria-label="53 Prozent Rasenfreunde"><i></i></div></div>
+    <div class="cta"><span class="g">3 von 5 bereit · noch 1 Platz frei</span><a class="btn" href="#">Teilen</a><a class="btn main" href="#">Zur Lobby</a></div>
+  </section>
+</div></div>
+</div>
+
+</div>
+</body>
+</html>
