@@ -6,7 +6,7 @@ import { users } from "@/db/schema";
 import { payments } from "@/db/schema-finance";
 import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
-import { isDeadlineModel, settleMatch } from "./wallet";
+import { isDeadlineModel, leadStart, settleMatch } from "./wallet";
 import { paymentsEnabled } from "./settings";
 import { teamName } from "./names";
 import { cancelUncoveredPrivateGames } from "./privategame";
@@ -89,18 +89,20 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
     .where(and(inArray(matches.kind, ["private", "team"]), eq(matches.legacyShareModel, false), inArray(matches.status, ["lobby", "confirmed"]), sql`${matches.settledAt} is null`, eq(matches.schedulingOpen, false), sql`${matches.startsAt} > ${now}`));
   let cancelled = 0;
   for (const c of candidates) {
-    const due = hasLongLead(c.startsAt, c.createdAt) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt);
+    const due = hasLongLead(c.startsAt, await leadStart(db, c)) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt);
     if (due.getTime() > now.getTime()) continue;
     try {
       await db.transaction(async (tx) => {
         const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
         if (!m || m.settledAt || (m.status !== "lobby" && m.status !== "confirmed") || m.startsAt.getTime() <= now.getTime()) return;
-        if (await bookable(tx, m)) {
-          await settleMatch(tx, m);
+        // Gebucht ist erst, wenn `settleMatch` es bestätigt (kostenlos: nichts zu buchen). Meldet es false (Unterdeckung, Status), wird wie bei
+        // "nicht buchbar" abgesagt und alle erstattet: nie ein Fehlbetrag zu Lasten der Plattform, nie Geld ohne Beleg auf revenue.
+        const free = !m.priceCents || m.finalShareCents === 0;
+        if ((await bookable(tx, m)) && (free || (await settleMatch(tx, m)))) {
           await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
           return;
         }
-        const reason = hasLongLead(m.startsAt, m.createdAt) ? "Zur Frist 48 Stunden vor Anstoß hatten nicht alle bezahlt oder nicht beide Captains bereit gedrückt. Alle bekommen ihren Anteil zurück." : "Eine Stunde vor Anstoß hatten nicht alle bezahlt oder nicht beide Captains bereit gedrückt. Alle bekommen ihren Anteil zurück.";
+        const reason = hasLongLead(m.startsAt, await leadStart(tx, m)) ? "Zur Frist 48 Stunden vor Anstoß hatten nicht alle bezahlt oder nicht beide Captains bereit gedrückt. Alle bekommen ihren Anteil zurück." : "Eine Stunde vor Anstoß hatten nicht alle bezahlt oder nicht beide Captains bereit gedrückt. Alle bekommen ihren Anteil zurück.";
         await cancelMatchTx(tx, m, null, reason);
         await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
         cancelled += 1;
@@ -117,7 +119,8 @@ async function bookable(tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   if (!m.homeFinalAt || !m.awayFinalAt || m.finalShareCents === null) return false;
   if (!m.priceCents || m.finalShareCents === 0) return true;
   const seated = await tx.select({ paid: matchParticipants.paidCents }).from(matchParticipants).where(and(eq(matchParticipants.matchId, m.id), isNotNull(matchParticipants.teamId)));
-  return seated.length > 0 && seated.every((p) => p.paid >= (m.finalShareCents ?? 0));
+  // alle haben ihren Anteil bezahlt UND die Summe deckt den Preis (zu wenige eingeteilte Spieler ergeben sonst einen Fehlbetrag)
+  return seated.length > 0 && seated.every((p) => p.paid >= (m.finalShareCents ?? 0)) && seated.reduce((sum, p) => sum + p.paid, 0) >= m.priceCents;
 }
 
 /** Offene Spielsuchen, deren Anstoß vorbei ist, werden als abgelaufen markiert. */

@@ -46,6 +46,7 @@ describe("Frist-Regel 48 h / 1 h (feste Uhren)", () => {
   });
   it("Austritt: ab 48 Stunden vor Anstoß gesperrt (kurzer Vorlauf liegt immer darin)", () => {
     expect(leaveClosedByTime(start, new Date("2026-03-08T19:59:59Z"))).toBe(false);
+    expect(leaveClosedByTime(start, new Date("2026-03-08T20:00:00Z"))).toBe(true); // genau 48 h: wie der Beitritt zu
     expect(leaveClosedByTime(start, new Date("2026-03-08T20:00:01Z"))).toBe(true);
     expect(leaveClosedByTime(start, new Date("2026-03-09T20:00:00Z"))).toBe(true);
   });

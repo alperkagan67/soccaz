@@ -54,5 +54,5 @@ export function joinClosedByTime(startsAt: Date, createdAt: Date, now: Date): bo
 
 /** Sind Austritt und Rauswurf gesperrt? Ab 48 Stunden vor Anstoß; bei Anlage unter 48 Stunden gilt das von Anfang an. */
 export function leaveClosedByTime(startsAt: Date, now: Date): boolean {
-  return startsAt.getTime() - now.getTime() < FIX_DEADLINE_HOURS * 3_600_000;
+  return startsAt.getTime() - now.getTime() <= FIX_DEADLINE_HOURS * 3_600_000;
 }

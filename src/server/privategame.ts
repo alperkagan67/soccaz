@@ -186,7 +186,7 @@ export async function joinPrivateGame(userId: string, token: string): Promise<{ 
     if (match.status !== "lobby" && match.status !== "confirmed") throw new DomainError("Dieses Spiel ist schon vorbei.");
     const [existing] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
     if (existing) return { matchId: match.id, already: true };
-    if (await joinClosed(tx, match)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst.");
+    if (await joinClosed(tx, match, new Date())) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst.");
     const [{ n }] = await tx.select({ n: count() }).from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
     if (n >= (match.maxPlayers ?? DEFAULT_PRIVATE_PLAYERS)) throw new DomainError("Das Spiel ist schon voll.");
     await tx.insert(matchParticipants).values({ matchId: match.id, userId, teamId: null });

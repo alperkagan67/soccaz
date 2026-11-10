@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, teamMembers } from "@/db/schema";
 import { ledgerEntries, receipts } from "@/db/schema-finance";
 import { abortDeadline, fixDeadline } from "@/lib/deadlines";
+import { audit } from "@/server/audit";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { finalConfirm, joinLobby, leaveLobby, payShare, removeParticipant, setReady } from "@/server/lobby";
 import { createPrivateGame, joinPrivateGame } from "@/server/privategame";
@@ -223,6 +224,91 @@ describe("Frist-Regel: Anlage unter 48 Stunden (Sofortbuchung und 1-h-Abbruch)",
     await closeLobbiesAtDeadline(new Date(abortDeadline(await startOf(g.match.id)).getTime() + 60_000));
     expect(await statusOf(g.match.id)).toBe("cancelled");
     for (const p of g.all) expect(await bal(p.id)).toBe(3000);
+  });
+});
+
+describe("Frist-Regel: Rückgabewert der Buchung, nachträglicher Termin, Ränder", () => {
+  it("settleMatch meldet false (Status nicht bestätigt): zur Frist wird abgesagt und alle erstattet, nie ein Spiel ohne Buchung und Beleg", async () => {
+    const g = await teamGame(72);
+    await payAll(g);
+    await readyAll(g);
+    await bothCaptains(g);
+    await db.update(matches).set({ status: "lobby" }).where(eq(matches.id, g.match.id)); // buchbar nach Preis und Bereit, aber settleMatch verlangt "bestätigt"
+    await closeLobbiesAtDeadline(new Date(fixDeadline(await startOf(g.match.id)).getTime() + 60_000));
+    expect(await statusOf(g.match.id)).toBe("cancelled");
+    for (const p of g.all) expect(await bal(p.id)).toBe(3000);
+    expect(await receiptsOf(g.match.id)).toHaveLength(0);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Unterdeckung zur Frist (Summe der Anteile unter dem Preis): abgesagt und alle erstattet, Hauptbuch ausgeglichen", async () => {
+    const g = await teamGame(72);
+    await payAll(g);
+    await readyAll(g);
+    await bothCaptains(g);
+    await db.update(matches).set({ priceCents: 9000 }).where(eq(matches.id, g.match.id)); // 10 × 800 = 8000 < 9000
+    await closeLobbiesAtDeadline(new Date(fixDeadline(await startOf(g.match.id)).getTime() + 60_000));
+    expect(await statusOf(g.match.id)).toBe("cancelled");
+    for (const p of g.all) expect(await bal(p.id)).toBe(3000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("1-h-Abbruch mit nicht buchbarem Spiel (Status): abgesagt und erstattet", async () => {
+    const g = await teamGame(30);
+    await payAll(g);
+    await readyAll(g);
+    await finalConfirm(g.adminA.id, g.match.id);
+    await db.update(matches).set({ status: "lobby" }).where(eq(matches.id, g.match.id));
+    await expect(finalConfirm(g.adminB.id, g.match.id)).rejects.toThrow(/lässt sich noch nicht buchen/); // Sofortbuchung scheitert ganz
+    const m = await reloadMatch(g.match.id);
+    expect(m.finalShareCents).toBeNull(); // kein halbfixierter Zustand
+    expect(m.awayFinalAt).toBeNull();
+    expect(m.settledAt).toBeNull();
+    await closeLobbiesAtDeadline(new Date(abortDeadline(m.startsAt).getTime() + 60_000));
+    expect(await statusOf(g.match.id)).toBe("cancelled");
+    for (const p of g.all) expect(await bal(p.id)).toBe(3000);
+  });
+
+  it("Termin erst nachträglich festgelegt (Terminwahl): der Vorlauf zählt ab der Terminfestlegung, nicht ab der Anlage", async () => {
+    // vor fünf Tagen angelegt, Termin vor einer Stunde auf morgen vereinbart: kurzer Vorlauf, also Sofortbuchung und 1-h-Abbruch
+    const g = await teamGame(20, 120);
+    await audit(null, "scheduling.locked", "match", g.match.id, { after: { startsAt: (await startOf(g.match.id)).toISOString() } });
+    const newcomer = await makeUser("nc");
+    await db.insert(teamMembers).values({ teamId: g.home.id, userId: newcomer.id, role: "player" });
+    await fund(newcomer.id, 3000);
+    await joinLobby(newcomer.id, g.match.id); // Beitritt offen: die 48-h-Frist gilt für dieses Spiel nicht
+    await payAll(g);
+    await payShare(newcomer.id, g.match.id);
+    const now = new Date(fixDeadline(await startOf(g.match.id)).getTime() + 60_000); // wäre bei Vorlauf ab Anlage längst nach der Frist
+    await closeLobbiesAtDeadline(now);
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+    await readyAll(g);
+    await setReady(newcomer.id, g.match.id, true);
+    await bothCaptains(g); // Sofortbuchung greift
+    expect((await reloadMatch(g.match.id)).settledAt).not.toBeNull();
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+  });
+
+  it("Termin noch offen (Terminwahl läuft): kein Job, Beitritt und Austritt möglich", async () => {
+    const g = await teamGame(24 * 14, 0, 4);
+    await db.update(matches).set({ schedulingOpen: true }).where(eq(matches.id, g.match.id));
+    expect(await closeLobbiesAtDeadline(new Date(Date.now() + 24 * 14 * H))).toBe(0);
+    await leaveLobby(g.all[3].id, g.match.id);
+  });
+
+  it("Ränder: genau zur 48-h-Frist und genau 1 Stunde vor Anstoß wird gehandelt, eine Millisekunde vorher nicht", async () => {
+    const long = await teamGame(72, 0, 4);
+    const lstart = await startOf(long.match.id);
+    await closeLobbiesAtDeadline(new Date(fixDeadline(lstart).getTime() - 1));
+    expect(await statusOf(long.match.id)).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(fixDeadline(lstart));
+    expect(await statusOf(long.match.id)).toBe("cancelled");
+    const short = await teamGame(30, 0, 4);
+    const sstart = await startOf(short.match.id);
+    await closeLobbiesAtDeadline(new Date(abortDeadline(sstart).getTime() - 1));
+    expect(await statusOf(short.match.id)).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(abortDeadline(sstart));
+    expect(await statusOf(short.match.id)).toBe("cancelled");
   });
 });
 
