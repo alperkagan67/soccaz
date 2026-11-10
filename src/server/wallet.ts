@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { matchParticipants, matches } from "@/db/schema";
 import { pendingRefunds } from "@/db/schema-finance";
+import { joinClosedByTime, leaveClosedByTime } from "@/lib/deadlines";
 import { MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
 import { finalShareFor, formatEuro, reservationFor, shareCents } from "@/lib/money";
 import { audit } from "./audit";
@@ -20,28 +21,48 @@ export const FREE_CANCEL_HOURS = 24; // kostenlos abmelden bis 24 Stunden vor de
 
 /** Privatspiel: Ab so vielen Stunden vor dem Anstoß ist die Teilnehmerliste gesperrt (kein Austritt, kein Rauswurf). */
 export const PRIVATE_LIST_LOCK_HOURS = 48;
-/**
- * Schalter (Produktfrage, Stand T54): Vertragswortlaut AC-8 sperrt in den letzten 48 Stunden auch den Beitritt per Link.
- * Dann könnte ein Spiel, das kurz vor Anstoß angelegt wird, nie jemanden einladen. Deshalb gilt die Beitrittssperre erst NACH dem Fixieren
- * (und lässt dann einen Ersatz für einen Ausgestiegenen zu). Auf `true` stellen, um den Beitritt in den letzten 48 Stunden immer zu sperren.
- */
-const BLOCK_PRIVATE_JOIN_BEFORE_FIX = false;
-
-/** Ist die Teilnehmerliste dieses Privatspiels gesperrt (weniger als 48 Stunden bis Anstoß)? Teamspiel und Turnier: nie. */
+/** Ist die Teilnehmerliste dieses Altspiels (Privatspiel des alten Modells) gesperrt (weniger als 48 Stunden bis Anstoß)? Teamspiel und Turnier: nie. */
 export function privateListLocked(match: Pick<MatchRow, "kind" | "startsAt">): boolean {
   return match.kind === "private" && match.startsAt.getTime() - Date.now() < PRIVATE_LIST_LOCK_HOURS * 3_600_000;
 }
 
 /**
- * Darf jetzt niemand mehr neu beitreten? In der Sperrzeit (unter 48 Stunden) nach dem Fixieren nur noch ein Ersatz für einen
- * ausgestiegenen Spieler (es gibt eine offene Erstattung). Ohne Geldfluss (kostenlos, Zahlungen aus) gibt es nichts zu schützen.
+ * Gilt für dieses Spiel die neue Frist-Regel (Verträge 006/008 v3)? Privat- und Teamspiele, die nach der Umstellung angelegt wurden.
+ * Altspiele (`legacyShareModel`) behalten den alten Pfad bis zu ihrem Anstoß, Turniere haben eigene Regeln (M3b).
  */
-export async function privateJoinBlocked(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "kind" | "startsAt" | "finalShareCents" | "priceCents">): Promise<boolean> {
-  if (!privateListLocked(match)) return false;
-  if (match.finalShareCents === null) return BLOCK_PRIVATE_JOIN_BEFORE_FIX;
+export function isDeadlineModel(match: Pick<MatchRow, "kind" | "legacyShareModel">): boolean {
+  return (match.kind === "private" || match.kind === "team") && !match.legacyShareModel;
+}
+
+type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel">;
+
+/**
+ * Gilt die Frist-Regel jetzt auch ohne Privatspiel? Teamspiele halten die Regel nur ein, solange Zahlungen eingeschaltet sind
+ * (ohne Zahlungen läuft die Lobby wie bisher kostenlos, Phase 1); Privatspiele immer.
+ */
+async function deadlineRulesActive(tx: Pick<Tx, "select">, match: DeadlineFields): Promise<boolean> {
+  if (!isDeadlineModel(match)) return false;
+  return match.kind === "private" || (await paymentsEnabled(tx as Tx));
+}
+
+/**
+ * Darf jetzt niemand mehr beitreten? Neue Regel: Mit mindestens 48 Stunden Vorlauf bei der Anlage schließt die Lobby zur 48-h-Frist;
+ * mit kürzerem Vorlauf bleibt der Beitritt offen bis zur Buchung (abgerechnet) oder zum 1-h-Abbruch. Altspiele: wie bisher (Privatspiel nach
+ * dem Fixieren nur noch Ersatz für einen Ausgestiegenen, davor offen).
+ */
+export async function joinClosed(tx: Pick<Tx, "select">, match: DeadlineFields, now: Date = new Date()): Promise<boolean> {
+  if (await deadlineRulesActive(tx, match)) return match.settledAt !== null || joinClosedByTime(match.startsAt, match.createdAt, now);
+  if (match.kind !== "private" || !privateListLocked(match)) return false;
+  if (match.finalShareCents === null) return false;
   if (!match.priceCents || !(await paymentsEnabled(tx as Tx))) return false;
   const [open] = await tx.select({ userId: pendingRefunds.userId }).from(pendingRefunds).where(eq(pendingRefunds.matchId, match.id)).limit(1);
   return !open;
+}
+
+/** Sind Austritt und Rauswurf gesperrt? Neue Regel: ab 48 Stunden vor Anstoß (bei Anlage unter 48 Stunden von Anfang an) und nach der Abrechnung. */
+export async function leaveClosed(tx: Pick<Tx, "select">, match: DeadlineFields, now: Date = new Date()): Promise<boolean> {
+  if (await deadlineRulesActive(tx, match)) return match.settledAt !== null || leaveClosedByTime(match.startsAt, now);
+  return privateListLocked(match);
 }
 
 /** Preis des Spiels, falls noch nicht festgelegt aus den Preisregeln (Halle oder Standard) ermitteln und am Spiel speichern. */
@@ -229,9 +250,9 @@ export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: strin
   const hoursLeft = (match.startsAt.getTime() - Date.now()) / 3_600_000;
   // Privatspiel nach dem Fixieren: Anteil und Spielerzahl stehen fest. Der Aussteiger bleibt gebucht, sein Geld kommt erst zurück,
   // wenn ein Ersatz den gleichen Anteil bezahlt hat (Austritt und Rauswurf sind nur bis 48 Stunden vor Anstoß möglich, siehe lobby.ts).
-  const waitForSubstitute = match.kind === "private" && match.finalShareCents !== null;
-  // Teamspiel im neuen Modell: das Geld ist geparkt, Austritt und Entfernen erstatten sofort (die Festschreibung hebt `mutateLobby` auf)
-  const immediate = match.kind === "team" && usesFixedShareModel(match);
+  const waitForSubstitute = match.kind === "private" && match.finalShareCents !== null && !isDeadlineModel(match);
+  // Neue Frist-Regel (Privat- und Teamspiel): das Geld ist geparkt, Austritt und Entfernen erstatten sofort (die Festschreibung hebt `mutateLobby` auf)
+  const immediate = isDeadlineModel(match);
   if (immediate || (!waitForSubstitute && (opts.removedByAdmin || hoursLeft >= FREE_CANCEL_HOURS))) {
     await refundPaid(tx, match, userId, p.paidCents, opts.removedByAdmin ? "Aus der Lobby entfernt" : "Rechtzeitig abgemeldet", `leave:${match.id}:${userId}:${randomUUID()}`, opts.actorId);
     return;

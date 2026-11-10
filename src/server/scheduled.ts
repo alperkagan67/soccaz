@@ -1,12 +1,13 @@
 import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { invites, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
-import { dueReminders, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
+import { invites, matchParticipants, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
+import { abortDeadline, dueReminders, fixDeadline, hasLongLead, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
 import { users } from "@/db/schema";
 import { payments } from "@/db/schema-finance";
 import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
-import { settleMatch } from "./wallet";
+import { isDeadlineModel, settleMatch } from "./wallet";
+import { paymentsEnabled } from "./settings";
 import { teamName } from "./names";
 import { cancelUncoveredPrivateGames } from "./privategame";
 import { notifyRegistrationDeadlines } from "./tournaments";
@@ -50,8 +51,10 @@ export async function sendMatchReminders(now: Date = new Date()): Promise<number
 /** Sagt Lobbys ab, die ihre Frist erreicht haben, ohne dass beide Teams genug bereite Spieler hatten. */
 export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<number> {
   const lobbies = await db.select().from(matches).where(and(eq(matches.status, "lobby"), eq(matches.schedulingOpen, false), sql`${matches.startsAt} > ${now}`));
+  const pay = await paymentsEnabled();
   let cancelled = 0;
   for (const m of lobbies) {
+    if (pay && isDeadlineModel(m)) continue; // neue Frist-Regel: 48-h-Schließung und 1-h-Abbruch (closeLobbiesAtDeadline), nicht mehr die 24-h-Prüfung
     if (lobbyDeadline(m.startsAt, m.createdAt).getTime() > now.getTime()) continue;
     await db.transaction(async (tx) => {
       const [fresh] = await tx.select().from(matches).where(eq(matches.id, m.id)).for("update");
@@ -61,11 +64,60 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
       cancelled += 1;
     });
   }
-  // Privatspiele: Ist die Hallenmiete zum Prüfzeitpunkt nicht gedeckt, wird abgesagt und erstattet (je Spiel isoliert)
+  // Altspiele (Privatspiel des alten Modells): Ist die Hallenmiete zum Prüfzeitpunkt nicht gedeckt, wird abgesagt und erstattet (je Spiel isoliert)
   cancelled += await cancelUncoveredPrivateGames(now);
+  // Neue Frist-Regel für Privat- und Teamspiele: 48-h-Schließung und 1-h-Abbruch
+  cancelled += await closeLobbiesAtDeadline(now);
   // Turniere: am Anmeldeschluss bekommt der Veranstalter einmalig eine Meldung (läuft im selben 5-Minuten-Takt)
   await notifyRegistrationDeadlines(now);
   return cancelled;
+}
+
+/**
+ * Neue Frist-Regel für Privat- und Teamspiele (Verträge 006/008 v3), je Spiel in eigener Transaktion unter der Spielsperre:
+ * - Anlage mit mindestens 48 Stunden Vorlauf: Zur Frist (Anstoß minus 48 Stunden) wird gebucht (abgerechnet), wenn alle bezahlt haben und beide
+ *   Captains bereit sind; sonst wird abgesagt und alle bekommen ihren Anteil zurück. Es gibt keine 24-h-Prüfung und keinen 1-h-Abbruch.
+ * - Anlage unter 48 Stunden Vorlauf: Gebucht wird sofort (finalConfirm); 1 Stunde vor Anstoß wird abgesagt, was dann noch nicht gebucht ist.
+ * Nachholbar und idempotent: nur noch nicht abgerechnete, aktive Spiele vor dem Anstoß werden angefasst. Nur bei eingeschalteten Zahlungen.
+ * "Gebucht" heißt hier abgerechnet (`settleMatch`): Das Geld liegt schon auf dem Konto revenue, es gibt noch keine Auszahlung an den Veranstalter.
+ */
+export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<number> {
+  if (!(await paymentsEnabled())) return 0;
+  const candidates = await db
+    .select()
+    .from(matches)
+    .where(and(inArray(matches.kind, ["private", "team"]), eq(matches.legacyShareModel, false), inArray(matches.status, ["lobby", "confirmed"]), sql`${matches.settledAt} is null`, eq(matches.schedulingOpen, false), sql`${matches.startsAt} > ${now}`));
+  let cancelled = 0;
+  for (const c of candidates) {
+    const due = hasLongLead(c.startsAt, c.createdAt) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt);
+    if (due.getTime() > now.getTime()) continue;
+    try {
+      await db.transaction(async (tx) => {
+        const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
+        if (!m || m.settledAt || (m.status !== "lobby" && m.status !== "confirmed") || m.startsAt.getTime() <= now.getTime()) return;
+        if (await bookable(tx, m)) {
+          await settleMatch(tx, m);
+          await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
+          return;
+        }
+        const reason = hasLongLead(m.startsAt, m.createdAt) ? "Zur Frist 48 Stunden vor Anstoß hatten nicht alle bezahlt oder nicht beide Captains bereit gedrückt. Alle bekommen ihren Anteil zurück." : "Eine Stunde vor Anstoß hatten nicht alle bezahlt oder nicht beide Captains bereit gedrückt. Alle bekommen ihren Anteil zurück.";
+        await cancelMatchTx(tx, m, null, reason);
+        await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
+        cancelled += 1;
+      });
+    } catch (error) {
+      console.error("closeLobbiesAtDeadline: Fehler bei Spiel", c.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return cancelled;
+}
+
+/** Können wir buchen? Beide Captains bereit, der Preis steht fest und alle eingeteilten Spieler haben ihren Anteil bezahlt (kostenlos: nur "Bereit"). */
+async function bookable(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], m: typeof matches.$inferSelect): Promise<boolean> {
+  if (!m.homeFinalAt || !m.awayFinalAt || m.finalShareCents === null) return false;
+  if (!m.priceCents || m.finalShareCents === 0) return true;
+  const seated = await tx.select({ paid: matchParticipants.paidCents }).from(matchParticipants).where(and(eq(matchParticipants.matchId, m.id), isNotNull(matchParticipants.teamId)));
+  return seated.length > 0 && seated.every((p) => p.paid >= (m.finalShareCents ?? 0));
 }
 
 /** Offene Spielsuchen, deren Anstoß vorbei ist, werden als abgelaufen markiert. */
@@ -127,6 +179,7 @@ export async function settleDueMatches(now: Date = new Date()): Promise<number> 
   const candidates = await db.select().from(matches).where(and(eq(matches.status, "confirmed"), sql`${matches.settledAt} is null`));
   let settled = 0;
   for (const m of candidates) {
+    if (isDeadlineModel(m)) continue; // neue Frist-Regel: gebucht wird zur 48-h-Frist bzw. sofort (closeLobbiesAtDeadline, finalConfirm)
     if (lobbyDeadline(m.startsAt, m.createdAt).getTime() > now.getTime()) continue;
     await db.transaction(async (tx) => {
       const [fresh] = await tx.select().from(matches).where(eq(matches.id, m.id)).for("update");

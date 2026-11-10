@@ -413,7 +413,7 @@ describe("Teamspiel neues Modell (008 M2a): Neuberechnung, Fixierung, Austritt",
   });
 
   it("nach der Abrechnung ist die Liste zu: Austritt, Entfernen und Beitritt werden abgewiesen, keine Buchung, Preis und Hauptbuch unverändert", async () => {
-    const m = await makeMatch({ priceCents: 8000, costCents: 8000, hoursAhead: 20 });
+    const m = await makeMatch({ priceCents: 8000, costCents: 8000, hoursAhead: 100 });
     const all = await squad(m, 10);
     for (const x of all) await payShare(x.id, m.match.id);
     await db.update(matches).set({ status: "confirmed" }).where(eq(matches.id, m.match.id));
@@ -421,9 +421,9 @@ describe("Teamspiel neues Modell (008 M2a): Neuberechnung, Fixierung, Austritt",
     const before = await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id));
     const newcomer = await makeUser("nc");
     await db.insert(teamMembers).values({ teamId: m.home.id, userId: newcomer.id, role: "player" });
-    await expect(leaveLobby(all[9].id, m.match.id)).rejects.toThrow(/abgerechnet/);
-    await expect(removeParticipant(m.adminB.id, m.match.id, all[9].id)).rejects.toThrow(/abgerechnet/);
-    await expect(joinLobby(newcomer.id, m.match.id)).rejects.toThrow(/abgerechnet/);
+    await expect(leaveLobby(all[9].id, m.match.id)).rejects.toThrow(/gesperrt/);
+    await expect(removeParticipant(m.adminB.id, m.match.id, all[9].id)).rejects.toThrow(/gesperrt/);
+    await expect(joinLobby(newcomer.id, m.match.id)).rejects.toThrow(/gesperrt/);
     const after = await reloadMatch(m.match.id);
     expect(after.finalShareCents).toBe(800);
     expect(after.settledAt).not.toBeNull();

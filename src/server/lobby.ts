@@ -12,9 +12,10 @@ import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications"
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
+import { hasLongLead } from "@/lib/deadlines";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { fixShare, onParticipantLeaves, privateJoinBlocked, privateListLocked, privateShareNow, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { fixShare, isDeadlineModel, joinClosed, leaveClosed, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
@@ -251,7 +252,7 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
     if (match.startsAt.getTime() <= Date.now()) throw new DomainError("Der Anstoß ist schon erreicht.");
     // Privatspiel vor dem Fixieren: Ändert die Aktion die Zahl der eingeteilten Spieler, wird der Anteil neu gerechnet
     // Teamspiel (neues Modell): auch nach dem Fixieren, die Zahlenänderung hebt die Festschreibung auf (sofortige Erstattung, "Bereit" zurückgesetzt)
-    const unfixOnChange = match.kind !== "private";
+    const unfixOnChange = isDeadlineModel(match);
     const seatedBefore = usesFixedShareModel(match) && (match.finalShareCents === null || unfixOnChange) ? await seatedCount(tx, matchId) : null;
     await fn(tx, match);
     if (seatedBefore !== null && (await seatedCount(tx, matchId)) !== seatedBefore) {
@@ -307,7 +308,14 @@ export function finalConfirm(userId: string, matchId: string) {
     const [fresh] = await tx.select().from(matches).where(eq(matches.id, matchId));
     const bothDone = Boolean(fresh.homeFinalAt && fresh.awayFinalAt);
     // Privatspiel und neues Teamspiel: mit dem zweiten Bereit steht die Spielerzahl fest, der Anteil wird fixiert (genau einmal; zu wenig bezahlt -> Fehler, nichts wird bestätigt)
-    if (bothDone) await fixShare(tx, fresh);
+    if (bothDone) {
+      await fixShare(tx, fresh);
+      // Anlage unter 48 Stunden Vorlauf: sofort buchen, sobald alle bezahlt haben und beide Captains bereit sind (genau einmal: Spielsperre plus settledAt)
+      if (isDeadlineModel(fresh) && !hasLongLead(fresh.startsAt, fresh.createdAt)) {
+        const [booked] = await tx.select().from(matches).where(eq(matches.id, matchId));
+        if (booked.settledAt === null) await settleMatch(tx, booked);
+      }
+    }
     await notifyUsers(
       [...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
       bothDone
@@ -331,7 +339,7 @@ const LIST_LOCKED = "Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt:
 
 export function joinLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match) => {
-    if (await privateJoinBlocked(tx, match)) throw new DomainError("Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt: Es kann nur noch ein Ersatz für einen ausgestiegenen Spieler beitreten.");
+    if (await joinClosed(tx, match)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst.");
     const mine = await tx
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -354,10 +362,11 @@ export function joinLobby(userId: string, matchId: string) {
 export function leaveLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match) => {
     if (!(await findParticipant(tx, matchId, userId))) throw new DomainError("Du bist nicht in dieser Lobby.");
-    if (privateListLocked(match)) throw new DomainError(LIST_LOCKED);
+    if (await leaveClosed(tx, match)) throw new DomainError(LIST_LOCKED);
     await onParticipantLeaves(tx, match, userId, { removedByAdmin: false, actorId: userId });
     const me = await findParticipant(tx, matchId, userId);
-    if (me?.readyAt && match.startsAt.getTime() - Date.now() < 24 * 3_600_000) await recordLateCancel(tx, userId, matchId);
+    // Wertung bei kurzfristigem Austritt: nur Altspiele und Lobbys ohne Zahlungen; mit der neuen Frist-Regel sind Austritte unter 48 Stunden gesperrt (Backlog 10)
+    if (match.kind === "team" && (match.legacyShareModel || !(await paymentsEnabled(tx))) && me?.readyAt && match.startsAt.getTime() - Date.now() < 24 * 3_600_000) await recordLateCancel(tx, userId, matchId);
     const removed = await tx
       .delete(matchParticipants)
       .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)))
@@ -502,7 +511,7 @@ export function removeParticipant(actorId: string, matchId: string, targetUserId
       (await isPlatformAdmin(tx, actorId)) ||
       (target.teamId ? await isAdminOf(tx, actorId, target.teamId) : await canManageMatch(tx, actorId, match));
     if (!allowed) throw new DomainError("Dazu hast du keine Berechtigung.");
-    if (privateListLocked(match)) throw new DomainError(LIST_LOCKED);
+    if (await leaveClosed(tx, match)) throw new DomainError(LIST_LOCKED);
     await onParticipantLeaves(tx, match, targetUserId, { removedByAdmin: true, actorId });
     await tx
       .delete(matchParticipants)
