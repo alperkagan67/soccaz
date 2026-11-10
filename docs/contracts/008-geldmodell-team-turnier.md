@@ -1,6 +1,6 @@
 # 008 – Geldmodell Teamspiel und Turnier: Miete ÷ tatsächliche Spielerzahl
 Status: Freigegeben (2026-11-10)
-Version: 3 (v3 2026-11-10: kein Mindestvorlauf von 48 h, sofortige Buchung bei kurzem Vorlauf, Captain-Tausch als Folgeauftrag; davor v2 plus Review-Nachbesserung: Frist-Regel 48 h für alle Modi, Geld bleibt in der Lobby geparkt; ersetzt 24-h-Absage und die Ausnahme für das Turnier)
+Version: 3 (v3 plus Nachtrag 1-h-Abbruch 2026-11-10; v3 2026-11-10: kein Mindestvorlauf von 48 h, sofortige Buchung bei kurzem Vorlauf, Captain-Tausch als Folgeauftrag; davor v2 plus Review-Nachbesserung: Frist-Regel 48 h für alle Modi, Geld bleibt in der Lobby geparkt; ersetzt 24-h-Absage und die Ausnahme für das Turnier)
 
 ## Ziel
 Teamspiel und Turnier rechnen wie das Privatspiel (Vertrag 006): Jeder zahlt Miete ÷ tatsächliche Spielerzahl (aufgerundet), ohne Mindestzahl 8, ohne Deckel 12 und ohne Reservierung mit späterer Rückbuchung. Im Teamspiel wird die Spielerzahl mit dem zweiten "Bereit" festgeschrieben. Es gibt nur noch eine Frist, 48 h vor Anstoß (Turnier: vor Turnierstart): Bis dahin ist die Lobby offen, das Geld bleibt geparkt und geht erst bei der Buchung an den Veranstalter; zur Frist schließt die Lobby, und sind nicht alle bezahlt oder nicht alle Captains "Bereit", fällt das Spiel aus und alle werden erstattet. Danach gibt es keine Absage und keine Erstattung. Spiele und Turniere mit weniger als 48 h Vorlauf sind erlaubt (Mindestvorlauf bleibt 1 h): Dort wird sofort gebucht, sobald alle bezahlt haben und beide Captains "Bereit" sind (Turnier: alle Teams voll bezahlt und bereit). Das Turnier nutzt `shareCents` und dieselbe Frist-Regel.
@@ -24,7 +24,10 @@ Teamspiel und Turnier rechnen wie das Privatspiel (Vertrag 006): Jeder zahlt Mie
 - v2 Annahme (bestätigt): Turnier "alle Captains Bereit" heißt: alle angemeldeten Teams haben ihren Kader vollständig bezahlt und "Bereit" gedrückt (`paid_ready_at`). Die Teilnehmerzahl (Teams) bleibt wie im Bestand.
 - Nutzerentscheid v3 (Variante 2), Mindestvorlauf: Es gibt keinen 48-h-Mindestvorlauf. Spiele und Turniere mit weniger als 48 h Vorlauf sind erlaubt; der bisherige Mindestvorlauf von 1 Stunde bleibt, für alle Modi (auch Teamspiel).
 - Nutzerentscheid v3, Vorlauf unter 48 h: Es wird sofort gebucht, sobald alle bezahlt haben UND beide Captains "Bereit" sind (Turnier: alle Teams voll bezahlt + ready). Kein Austritt und kein Rauswurf mit Erstattung, keine Absage-Frist.
-- Annahme (bestätigt) zu Vorlauf unter 48 h: Die Liste ist für Austritt und Rauswurf von Anfang an gesperrt; Beitritt und Zahlung bleiben bis zur Buchung möglich. Wie ein Spiel endet, das unter 48 h nie vollständig wird (Abbruchweg und Erstattung), ist offen und wird im Task geklärt (heute sagt `cancelUnderfilledLobbies` bei zu wenigen bereiten Spielern ab).
+- Annahme (bestätigt) zu Vorlauf unter 48 h: Die Liste ist für Austritt und Rauswurf von Anfang an gesperrt; Beitritt und Zahlung bleiben bis zur Buchung möglich.
+- Nutzerentscheid v3, 1-h-Abbruch (bestätigt): Bei Anlage unter 48 h bleibt die Lobby offen (Beitritt und Zahlung, kein Austritt) bis 1 Stunde vor Anstoß (Turnier: vor dem Start des ersten Spiels). Ist dann nicht alles bezahlt ODER haben nicht beide Captains "Bereit" gedrückt (Turnier: nicht alle Teams voll bezahlt und ready), wird abgesagt und alle bekommen ihr geparktes Geld zurück. Sind vorher alle bezahlt und bereit, wird sofort gebucht.
+- Annahme (bestätigt): Zwei Buchungszeitpunkte. Ab 48 h Vorlauf wird zur 48-h-Frist gebucht, unter 48 h sofort.
+- Annahme (bestätigt): Turnier unter 48 h bis zum Start: Der Anmeldeschluss muss nur vor dem Start liegen, wie heute.
 - Annahme (Altspiele, bestätigt): Der alte 24-h-Pfad (Prüfung 24 h und 1 h vor Anstoß) bleibt ausschließlich für Altspiele, die vor der Umstellung angelegt wurden, und nur bis zu ihrem Anstoß. Neuspiele kennen nur die 48-h-Frist.
 - Die Vorschau im Turnier zeigt eine Spanne aus `shareCents` für minimale/maximale Spielerzahl; der Preis wird erst bei Fixierung verbindlich.
 - Laufende, bereits reservierte Spiele werden nach altem Modell abgerechnet; neues Modell gilt für Spiele, die nach dem Deploy angelegt werden (Flag am Spiel oder Stichtag).
@@ -56,12 +59,14 @@ Teamspiel und Turnier rechnen wie das Privatspiel (Vertrag 006): Jeder zahlt Mie
 | AC-11 | Turnier, 48 h vor dem Start des ersten Spiels | Schließ-Job läuft | Nicht alle bezahlt oder nicht alle Captains "Bereit": Turnier fällt aus, alle erstattet; sonst Buchung genau einmal; danach keine Absage und keine Erstattung | tests/integration/tournament.test.ts |
 | AC-12 | Turnier mit mindestens 48 h bis zum Start des ersten Spiels wird angelegt oder geändert | Anmeldefrist liegt weniger als 48 h vor dem Start des ersten Spiels | Fehler, nicht gespeichert; bei weniger als 48 h Vorlauf bis zum Start gilt diese Regel nicht (siehe AC-14); Mindestvorlauf überall nur 1 h | tests/integration/tournament.test.ts |
 | AC-13 | Teamspiel mit weniger als 48 h Vorlauf (mehr als 1 h), alle haben bezahlt | Beide Captains "Bereit" (auch parallel) | Sofort gebucht, genau einmal, Spiel bestätigt, Liste ganz gesperrt; vorher keine Buchung; Austritt und Rauswurf abgelehnt, keine Erstattung; Anlage unter 1 h abgelehnt | tests/integration/lobby-ready.test.ts |
-| AC-14 | Turnier mit weniger als 48 h bis zum Start des ersten Spiels (ANNAHME: Anmeldeschluss nur vor dem Start, wie heute) | Alle Teams voll bezahlt und "Bereit" | Sofort gebucht, genau einmal; keine Absage-Frist, kein Austritt mit Erstattung | tests/integration/tournament.test.ts |
+| AC-14 | Turnier mit weniger als 48 h bis zum Start des ersten Spiels (Anmeldeschluss nur vor dem Start, wie heute; bestätigt) | Alle Teams voll bezahlt und "Bereit" | Sofort gebucht, genau einmal; keine Absage-Frist, kein Austritt mit Erstattung | tests/integration/tournament.test.ts |
+| AC-15 | Teamspiel mit weniger als 48 h Vorlauf, 1 Stunde vor Anstoß | Nicht alle bezahlt oder nicht beide Captains "Bereit"; der 1-h-Job läuft | Spiel abgesagt, alle erstattet, Hauptbuch ausgeglichen, Lauf genau einmal; bereits gebuchte Spiele werden nicht abgesagt | tests/integration/wallet.test.ts |
+| AC-16 | Turnier mit weniger als 48 h Vorlauf, 1 Stunde vor dem Start des ersten Spiels | Nicht alle Teams voll bezahlt und ready; der 1-h-Job läuft | Turnier abgesagt, alle erstattet, Hauptbuch ausgeglichen, Lauf genau einmal; sind alle bezahlt und ready, ist längst gebucht | tests/integration/tournament.test.ts |
 
 ## Meilensteine (seriell, gemeinsame Dateien `wallet.ts`, `lobby.ts`, `tournaments.ts`)
 - M1: Rechenmodul für Team/Turnier, Reservierung entfällt (AC-1, AC-7, AC-9)
 - M2: Fixierung, Neuberechnung, Austritt mit Erstattung (AC-2, AC-3, AC-4, AC-8)
-- M3: 48-h-Frist, Schließen und Absage (AC-5, AC-6, AC-11, AC-12, AC-13, AC-14), E2E (AC-10)
+- M3: 48-h-Frist, Schließen und Absage (AC-5, AC-6, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16), E2E (AC-10)
 
 ## Betroffene Bereiche
 - `src/lib/money.ts`, `src/lib/lobby-rules.ts`, `src/lib/tournament.ts`
@@ -73,7 +78,7 @@ Teamspiel und Turnier rechnen wie das Privatspiel (Vertrag 006): Jeder zahlt Mie
 - Rundung: Überschuss (< n Cent) bleibt bei der Plattform, nie Fehlbetrag.
 - Nichtzahler zählen im Divisor; Miete gedeckt nur, wenn alle zahlen oder der Captain sie entfernt.
 - Umstellung mitten im Betrieb: Altspiele nicht neu rechnen; der alte 24-h-Pfad läuft für sie nur bis zu ihrem Anstoß (AC-9, bestätigt).
-- Vorlauf unter 48 h: keine Frist, Geld geparkt bis zur sofortigen Buchung; Abbruchweg für nie vollständige Spiele offen (siehe Annahmen).
+- Vorlauf unter 48 h: Lobby offen (Beitritt, Zahlung, kein Austritt) bis 1 h vor Anstoß, dann Absage mit Erstattung oder sofortige Buchung (AC-13 bis AC-16). Der 1-h-Job muss nachholbar sein und gebuchte Spiele nie absagen.
 - Parallele Zahlungen/Austritte: Zeilensperren und idempotente `ledger.post`-Schlüssel.
 - Geparktes Geld: bis zur Buchung internes Konto der Lobby; Absage und Austritt buchen nur zurück.
 - Fällt der Schließ-Job aus, bliebe die Lobby offen: Der Job muss nachholbar sein.
@@ -84,9 +89,9 @@ Teamspiel und Turnier rechnen wie das Privatspiel (Vertrag 006): Jeder zahlt Mie
 - Zahlungen/Erstattungen: Idempotenz, Hauptbuch, Rechte; Security-Review Pflicht. Keine neuen personenbezogenen Daten.
 
 ## Offene Fragen
-- Die v2-Annahmen und die v3-Entscheide (kein 48-h-Mindestvorlauf, sofortige Buchung unter 48 h, Altspiele-Regel) sind bestätigt. Offen: Abbruchweg für Spiele und Turniere unter 48 h, die nie vollständig werden; Turnier unter 48 h bis Start und `registrationDeadline` (AC-14, Annahme).
+- Keine offenen Fragen zum Geldmodell. Bestätigt: v2-Annahmen, v3-Entscheide (kein 48-h-Mindestvorlauf, sofortige Buchung unter 48 h, 1-h-Abbruch, Altspiele-Regel, Turnier-Anmeldeschluss unter 48 h wie heute).
 - Backlog: Captain-Tausch nach der Frist (Folgeauftrag, Nr. 9), Wertung bei Nichterscheinen (Nr. 10).
 - Die Auszahlung an Veranstalter braucht vor Go-live einen Zahlungsdienstleister (siehe `docs/loop/GO-LIVE-AUDIT.md`).
 
 ## End-to-End-Nachweis
-`tests/e2e/payments.spec.ts` und `tests/e2e/turnier-ablauf.spec.ts`: Teamspiel mit 10 Spielern zahlt Miete ÷ 10, beide "Bereit", Preis fix; Austritt mit Erstattung vor der Frist, Liste gesperrt nach der Frist; zweiter Lauf: zur 48-h-Frist nicht alle bezahlt oder nicht beide "Bereit" → Absage und Erstattung; dritter Lauf: Teamspiel mit 30 h Vorlauf bucht sofort nach allen Zahlungen und beiden "Bereit"; Turnier mit 3 Teams zahlt ceil(Preis ÷ tatsächliche Spieler) und folgt derselben 48-h-Frist.
+`tests/e2e/payments.spec.ts` und `tests/e2e/turnier-ablauf.spec.ts`: Teamspiel mit 10 Spielern zahlt Miete ÷ 10, beide "Bereit", Preis fix; Austritt mit Erstattung vor der Frist, Liste gesperrt nach der Frist; zweiter Lauf: zur 48-h-Frist nicht alle bezahlt oder nicht beide "Bereit" → Absage und Erstattung; dritter Lauf: Teamspiel mit 30 h Vorlauf bucht sofort nach allen Zahlungen und beiden "Bereit", vierter Lauf: bei fehlender Zahlung oder fehlendem "Bereit" wird 1 h vor Anstoß abgesagt und erstattet; Turnier mit 3 Teams zahlt ceil(Preis ÷ tatsächliche Spieler) und folgt derselben 48-h-Frist.

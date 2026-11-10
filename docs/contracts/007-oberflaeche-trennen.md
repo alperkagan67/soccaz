@@ -89,7 +89,7 @@ Folgen:
 Neue Daten: eine Farbangabe pro Team (öffentliche Teamangabe, kein Personenbezug). Review: Gäste sehen im Feld nur Initialen; Eingabe nur als Palettenschlüssel, serverseitig validiert; nur Team-Admin darf schreiben; `kind = 'private'`-Teams bleiben unsichtbar.
 
 ## Offene Fragen
-- Keine offenen Produktfragen. Beantwortet am 2026-11-10: Fehler und Gefahr ohne eigene Akzentfarbe (bestätigt); Teamfarbe in der Teilen-Karte des Privatspiels ja (nur dort, nicht im Opengraph-Bild, Annahme: die Teilen-Karte ist die Karte in der Lobby und im WhatsApp-Teilen, nicht das Opengraph-Bild); Privatspiel-Farben wählbar, Standard Rot und Himmelblau.
+- Keine offenen Produktfragen. Beantwortet am 2026-11-10: Fehler und Gefahr ohne eigene Akzentfarbe (bestätigt); Teamfarbe in der Teilen-Karte des Privatspiels ja (nur dort, nicht im Opengraph-Bild; bestätigt: die Teilen-Karte ist die In-App-/WhatsApp-Karte, kein OG-Bild); Privatspiel-Farben wählbar, Standard Rot und Himmelblau.
 
 ## End-to-End-Nachweis
 `tests/e2e/basics.spec.ts`, `phase4.spec.ts`, `lobby-feld.spec.ts`, `team-color.spec.ts`: Navigation, Meine Spiele gruppiert, Teamfarbe wählen, Lobby-Feld in Teamfarben auf 390 px in hell und dunkel mit Screenshot-Prüfung.
