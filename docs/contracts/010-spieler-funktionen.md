@@ -35,8 +35,8 @@ Spieler (bewerten), Captain (Nochmal spielen), Gast (liest), Admin 2 (prüft gem
 | AC-5 | Karte | Nutzer willigt in Kacheln ein | Partnerhallen mit Marker, Klick führt zur Hallenseite; ohne Einwilligung keine Kachel-Anfrage, Liste bleibt | tests/e2e/hallen.spec.ts |
 | AC-6 | Spiel endet | Beide Captains sagen ja | Neue Lobby, gleiche Teams, gleiche Halle, Termin offen; bei einem Nein/Verfall keine Lobby | tests/integration/rematch.test.ts |
 | AC-7 | Nur ein Captain sagt ja, oder 2 Stunden nach Spielende ist abgelaufen | Frist läuft ab | Kein Spiel, Frage verfällt, Hinweis an beide | tests/integration/rematch.test.ts |
-| AC-9 | Spieler hat 1 Tag nach Spielende nicht bewertet | Erinnerung | Genau eine Push-Erinnerung; nach 7 Tagen keine Bewertung mehr möglich | tests/integration/hallenbewertung.test.ts |
 | AC-8 | Halle nicht mehr aktiv/Partner | Spiel endet | Frage erscheint nicht | tests/integration/rematch.test.ts |
+| AC-9 | Spieler hat 1 Tag nach Spielende nicht bewertet | Erinnerung | Genau eine Push-Erinnerung; nach 7 Tagen keine Bewertung mehr möglich | tests/integration/hallenbewertung.test.ts |
 
 ## Meilensteine
 - M1: Bewertung mit Kategorien, Melden (AC-1 bis 4)

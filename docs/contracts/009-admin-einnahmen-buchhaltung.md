@@ -3,7 +3,7 @@ Status: Entwurf (2026-11-10)
 Version: 1
 
 ## Ziel
-Soccaz ist Vermittler. Spieler zahlen genau den Hallenpreis (Miete ÷ Spielerzahl), ohne Gebühr. Soccaz verdient über eine Provision der Halle (Prozent pro Buchung und/oder 10er-Bonus), die nur Admin 1 pro Halle einstellt. Der Admin-Bereich bekommt zwei Rollen (Admin 1 Betreiber, Admin 2 Mitarbeiter), ein unveränderbares Beweisprotokoll für Hallenanfragen, ein Eingriffsprotokoll und eine Buchhaltung (doppelte Buchung, lückenlose Rechnungsnummern, Kalendermodus, DATEV-Export, KI-geprüfte Belege, Sicherung), die nur Admin 1 sieht.
+Soccaz ist Vermittler. Spieler zahlen den Hallenpreis geteilt durch die Spielerzahl (aufgerundet), ohne Gebühr. Soccaz verdient über eine Provision der Halle (Prozent pro Buchung und/oder 10er-Bonus), die nur Admin 1 pro Halle einstellt. Der Admin-Bereich bekommt zwei Rollen (Admin 1 Betreiber, Admin 2 Mitarbeiter), ein unveränderbares Beweisprotokoll für Hallenanfragen, ein Eingriffsprotokoll und eine Buchhaltung (doppelte Buchung, lückenlose Rechnungsnummern, Kalendermodus, DATEV-Export, KI-geprüfte Belege, Sicherung), die nur Admin 1 sieht.
 
 ## Nutzer und Rollen
 - Admin 1 (Seitenbetreiber, Rolle `owner`, genau einer): alles; ernennt/entfernt Admin 2; Buchhaltung, Belege, Provisionen, Einstellungen, Absage und Erstattung.
@@ -31,7 +31,7 @@ Soccaz ist Vermittler. Spieler zahlen genau den Hallenpreis (Miete ÷ Spielerzah
 - Rechnungsnummer aus Zähler-Tabelle mit Zeilensperre (lückenlos auch bei Abbruch), getrennt von Beleg-Nummern `SOC-JJJJ`.
 - Kalendermodus: Tagesmarkierung und Zeiträume täglich/wöchentlich/monatlich/jährlich, Auswertung und Rechnung als PDF, DATEV-Export als CSV (Buchungsstapel).
 - Schlüssel liegen verschlüsselt in der Datenbank (Schlüssel der App aus der Umgebung), nie im Client.
-- Zwei-Faktor für Admin 1 liegt beim Google-Konto (kein Soccaz-Zwang), im GO-LIVE-AUDIT.
+- Zwei-Faktor für Admin 1 liegt beim Google-Konto (kein Soccaz-Zwang), im GO-LIVE-AUDIT (Prüfpunkt E7).
 
 ## Nicht-Ziele
 - Zugang für Hallenbetreiber (Vertrag 011), Spieler-Funktionen (010).

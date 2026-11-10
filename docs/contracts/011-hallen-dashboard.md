@@ -23,6 +23,12 @@ Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur
 - Antwortfrist 12 Stunden, danach keine Zusage mehr möglich. Keine Antwort = abgelehnt: beide Captains werden benachrichtigt und können eine andere Halle oder einen anderen Termin wählen; im Beweisprotokoll als "nicht reagiert" vermerkt. Das Geld bleibt geparkt; kommt bis zur 48-Stunden-Frist keine Zusage zustande, fällt das Spiel aus und alle bekommen Guthaben zurück.
 - Sperrzeiten gehören in 011: Die Halle hat einen Kalender, in dem sie Tage und Uhrzeiten als geschlossen einträgt. Spieler sehen live nur freie Zeiten. Bereits gebuchte Zeiten kann die Halle nicht sperren.
 
+## Zusage und Fristen bei kurzem Vorlauf (Orchestrator-Festlegung, Nutzer kann widersprechen)
+- Die Zusage der Halle ist in allen Fällen Voraussetzung für die Buchung (bei Hallen mit Zugang): Buchung = alle bezahlt + beide Captains bereit + Zusage. Gilt auch für die Sofortbuchung bei Vorlauf unter 48 h. Verträge 006 und 008 werden um diese Bedingung ergänzt.
+- Die Antwortfrist ist 12 Stunden, höchstens aber bis 1 Stunde vor Anstoß. Bei Vorlauf unter 13 Stunden verkürzt sie sich entsprechend.
+- Vorlauf mindestens 48 Stunden: Keine Zusage bis zur 48-Stunden-Frist → Spiel fällt aus, Erstattung an alle (AC-10).
+- Vorlauf unter 48 Stunden: Keine Zusage bis 1 Stunde vor Anstoß → Abbruch wie in 006/008 (Absage, Erstattung an alle); "abgelehnt" nach Ablauf der Antwortfrist gilt auch hier, die Captains können in der verbleibenden Zeit eine andere Halle oder einen anderen Termin wählen.
+
 ## Annahmen (Orchestrator-Vorschlag)
 - Zuordnung als Tabelle (Betreiber ↔ Halle), `managerUserId` wird migriert; Betreiber bekommen keine Admin-Rechte und sehen keine Daten anderer Hallen.
 - Einladung: Admin 1 gibt eine Google-E-Mail frei; der Betreiber meldet sich damit an, die Zuordnung greift beim ersten Login.
@@ -49,9 +55,11 @@ Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur
 | AC-6 | Bewertung der Halle | Betreiber antwortet | Antwort öffentlich unter der Bewertung; nur eigene Halle; meldbar | tests/integration/hallen-dashboard.test.ts |
 | AC-7 | Admin 1 | Ordnet Betreiber zu / entzieht | Wirkt sofort, protokolliert; Admin 2 und Betreiber dürfen es nicht | tests/integration/hallen-dashboard.test.ts |
 | AC-9 | Anfrage an Halle mit Zugang | 12 Stunden ohne Antwort | Anfrage = abgelehnt (Zusage danach abgelehnt), beide Captains benachrichtigt und können andere Halle/Termin wählen, Beweisprotokoll "nicht reagiert", Geld bleibt geparkt | tests/integration/hallen-dashboard.test.ts |
-| AC-10 | Keine Zusage bis 48 h vor Anstoß | Frist-Job läuft | Spiel fällt aus, alle bekommen Guthaben zurück | tests/integration/hallen-dashboard.test.ts |
+| AC-10 | Vorlauf mindestens 48 h, keine Zusage bis 48 h vor Anstoß | Frist-Job läuft | Spiel fällt aus, alle bekommen Guthaben zurück | tests/integration/hallen-dashboard.test.ts |
 | AC-11 | Neue Anfrage | Anfrage entsteht | Betreiber erhält Push und Mail | tests/integration/hallen-dashboard.test.ts |
 | AC-12 | Halle trägt Tage/Uhrzeiten als geschlossen ein | Spieler wählt Zeit bei Suche/Lobby-Anlage | Gesperrte Zeiten nicht wählbar (auch serverseitig abgelehnt); Sperre auf bereits angefragten/gebuchten Slot wird abgelehnt | tests/integration/hallen-kalender.test.ts |
+| AC-13 | Vorlauf unter 48 h, alle bezahlt, beide Captains bereit, Halle mit Zugang hat nicht zugesagt | Sofortbuchung wäre fällig | Keine Buchung; mit Zusage sofort gebucht; ohne Zusage 1 h vor Anstoß Absage + Erstattung an alle | tests/integration/hallen-dashboard.test.ts |
+| AC-14 | Vorlauf unter 13 Stunden | Anfrage entsteht | Antwortfrist endet spätestens 1 h vor Anstoß | tests/integration/hallen-dashboard.test.ts |
 | AC-8 | Gesamtablauf | Zuordnen, Betreiber meldet sich an, bestätigt, antwortet | Beweisprotokoll vollständig, PDF-Export enthält die Entscheidung | tests/e2e/hallen-dashboard.spec.ts |
 
 ## Meilensteine
@@ -59,7 +67,7 @@ Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur
 - M2: Anfragen bestätigen/ablehnen (AC-2, 3)
 - M3: Buchungen, Auszahlungen, Rechnungen (AC-5)
 - M4: Frist, Benachrichtigung, Kalender mit Sperrzeiten (AC-9, 10, 11, 12)
-- M5: Antworten auf Bewertungen, Gesamtablauf (AC-6, 8)
+- M5: Antworten auf Bewertungen, Gesamtablauf (AC-6, 8); erst nach Vertrag 010 (braucht die Bewertungen aus 010 M1), die Umsetzungsreihenfolge bleibt 009, 011 M1 bis M4, 010, 011 M5
 
 ## Betroffene Bereiche
 `src/app/halle/*` (neu strukturiert), `src/server/veto.ts`, `src/server/booking.ts`, Beweisprotokoll (009), Rechnungen (009), Bewertungen (010), `src/db/schema-finance.ts` (Zuordnung, Migration additiv), `src/lib/roles.ts`.

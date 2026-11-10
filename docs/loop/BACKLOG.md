@@ -43,9 +43,9 @@ Reihenfolge von oben nach unten. Der nächste Eintrag ohne offene Produktfragen 
 | 9 | Captain-Tausch nach der Frist (Captain tauscht einen Spieler gegen einen Ersatz, der registrierter Soccaz-Nutzer ist, ohne Zahlung über Soccaz; Folgeauftrag nach der Frist-Regel aus 006 v3 und 008 v3) | offen (Nutzer: Ja; Vertrag/ACs kurz folgen, Produktfragen an Orchestrator) |
 | 10 | Wertung bei Nichterscheinen (ersetzt `recordLateCancel` mit 24-h-Grenze, das mit der 24-h-Regel entfällt; Produktfrage: Wie und ab wann wird ein Nichterscheinen gewertet?) | offen (Produktfrage) |
 | 11 | Vertrag 009 Admin-Bereich, Einnahmemodell, Buchhaltung (nach der Umsetzung von 007/008 und dem Captain-Tausch; Orchestrator schreibt den Vertrag, G1 beim Nutzer, Produktfragen erst gebündelt; Vertragsentwurf: docs/contracts/009-admin-einnahmen-buchhaltung.md) | wartet auf G1 |
-| 12 | Vertrag 011 Hallen-Dashboard (nach 009, vor 010; G1 beim Nutzer; Vertragsentwurf: docs/contracts/011-hallen-dashboard.md) | wartet auf G1 |
-| 13 | Vertrag 010 Spieler-Funktionen: Hallen-Bewertungen (nur wer dort gespielt hat), Karte der Partnerhallen in der Nähe, Knopf "Nochmal spielen" (letztes Spiel mit denselben Teams und derselben Halle neu anlegen); nach 009 und 011; G1 beim Nutzer; Vertragsentwurf: docs/contracts/010-spieler-funktionen.md | wartet auf G1 |
-| 14 | Später/Idee: Zugang für Hallenbetreiber (eigene Buchungen, Auszahlungen, Provisionsrechnungen); siehe Vertrag 011 | offen (Idee) |
+| 12 | Vertrag 011 Hallen-Dashboard, Meilensteine M1 bis M4 (nach 009; Reihenfolge 009, 011 M1 bis M4, 010, 011 M5; G1 beim Nutzer; Vertragsentwurf: docs/contracts/011-hallen-dashboard.md; enthält die Zusage der Halle als Buchungsbedingung für 006/008 v4) | wartet auf G1 |
+| 13 | Vertrag 010 Spieler-Funktionen: Hallen-Bewertungen (nur wer dort gespielt hat), Karte der Partnerhallen in der Nähe, Knopf "Nochmal spielen" (letztes Spiel mit denselben Teams und derselben Halle neu anlegen); nach 009 und 011 M1 bis M4; danach folgt 011 M5 (Antworten auf Bewertungen, braucht 010 M1); G1 beim Nutzer; Vertragsentwurf: docs/contracts/010-spieler-funktionen.md | wartet auf G1 |
+| 14 | Später/Idee: Zugang für Hallenbetreiber (eigene Buchungen, Auszahlungen, Provisionsrechnungen); überholt durch Vertrag 011 (Eintrag 12) | überholt (siehe Vertrag 011) |
 | 15 | Später/Idee: sichtbare Servicegebühr nur für Extras, z. B. Firmenpaket (kein Treueprogramm, keine Rabatte, keine bezahlten Platzierungen) | offen (Idee) |
 
 Status: offen / in Arbeit / fertig.
