@@ -20,3 +20,5 @@ PRs mit DB-Migration, Zahlungen oder Auth, die der Task Manager selbst gemergt h
 | E5 | Anwalt setzt den Partnervertrag mit den Hallen auf (Provision, 10er-Bonus, Ablehnungen). | hoch; ohne Vertrag keine rechtliche Grundlage für Provision und Bonus |
 | E6 | Auszahlung an Hallen und Abzug der Provision laufen über einen Zahlungsdienstleister (z. B. Stripe Connect), nicht über ein privates Konto. | hoch; Geldfluss und Haftung |
 | E7 | Admin-Konto: ein Google-Konto mit Zwei-Faktor-Anmeldung. | mittel; Zugriff auf den Admin-Bereich und damit auf Geldfunktionen |
+| E8 | Backup-Ziel vor Go-live entscheiden: Wohin gehen die Datenbank-Sicherungen (Anbieter, Ort, Verschlüsselung, Aufbewahrung), und wurde eine Wiederherstellung getestet? | hoch; Datenverlust bei Geld- und Buchhaltungsdaten |
+| E9 | Auftragsverarbeitungsvertrag (AVV) mit den KI-Anbietern Claude (Anthropic) und OpenAI abschließen, bevor Belege oder personenbezogene Daten an sie gehen (z. B. KI-Prüfung fotografierter Belege). | hoch; Datenschutz (DSGVO) |
