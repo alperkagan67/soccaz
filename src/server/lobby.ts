@@ -14,7 +14,7 @@ import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { fixPrivateShare, onParticipantLeaves, privateJoinBlocked, privateListLocked, privateShareNow, recalcPrivateShares, refundOnCancel, reserveShare, seatedCount, shareToCharge } from "./wallet";
+import { fixShare, onParticipantLeaves, privateJoinBlocked, privateListLocked, privateShareNow, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
@@ -126,7 +126,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const minPaid = await minPaidPlayers();
   const priceCents = match.priceCents ?? (await priceFor(db, null, match.durationMin))?.priceCents ?? null;
   // Privatspiel und neues Teamspiel: Anteil = Preis ÷ eingeteilte Spieler (bzw. der feste Anteil); Altspiel: Reservierung mit Mindestzahl
-  const newModel = match.kind === "private" || !match.legacyShareModel;
+  const newModel = usesFixedShareModel(match);
   const privateShare = match.kind === "private" && priceCents ? await privateShareNow(db, match, priceCents) : null;
   const currentShare = priceCents ? await shareToCharge(db, match, priceCents) : null;
   const payments = {
@@ -134,10 +134,10 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
     priceCents,
     minPaid,
     reservationCents: currentShare,
-    lowestShareCents: priceCents ? (privateShare ?? (newModel ? shareCents(priceCents, 12) : shareFor(priceCents, 12))) : null,
+    lowestShareCents: priceCents ? (privateShare ?? (newModel ? shareCents(priceCents, teamCapacity(match) * 2) : shareFor(priceCents, 12))) : null,
     finalShareCents: match.finalShareCents,
-    // Privatspiel: so viel muss die angemeldete Person noch zahlen (Anteil gestiegen oder noch nichts gezahlt)
-    myDueCents: match.kind === "private" && privateShare !== null && viewer ? Math.max(privateShare - (participants.find((p) => p.userId === viewer.id)?.paidCents ?? privateShare), 0) : null,
+    // Privatspiel und neues Teamspiel: so viel muss die angemeldete Person noch zahlen (Anteil gestiegen oder noch nichts gezahlt)
+    myDueCents: newModel && currentShare !== null && viewer ? Math.max(currentShare - (participants.find((p) => p.userId === viewer.id)?.paidCents ?? currentShare), 0) : null,
     settled: Boolean(match.settledAt),
     balanceCents: viewer && payEnabled ? await walletBalance(db, viewer.id) : null,
   };
@@ -250,9 +250,14 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
     if (match.status !== "lobby" && match.status !== "confirmed") throw new DomainError("Dieses Spiel kann nicht mehr geändert werden.");
     if (match.startsAt.getTime() <= Date.now()) throw new DomainError("Der Anstoß ist schon erreicht.");
     // Privatspiel vor dem Fixieren: Ändert die Aktion die Zahl der eingeteilten Spieler, wird der Anteil neu gerechnet
-    const seatedBefore = match.kind === "private" && match.finalShareCents === null ? await seatedCount(tx, matchId) : null;
+    // Teamspiel (neues Modell): auch nach dem Fixieren, die Zahlenänderung hebt die Festschreibung auf (sofortige Erstattung, "Bereit" zurückgesetzt)
+    const unfixOnChange = match.kind !== "private";
+    const seatedBefore = usesFixedShareModel(match) && (match.finalShareCents === null || unfixOnChange) ? await seatedCount(tx, matchId) : null;
     await fn(tx, match);
-    if (seatedBefore !== null && (await seatedCount(tx, matchId)) !== seatedBefore) await recalcPrivateShares(tx, match, userId);
+    if (seatedBefore !== null && (await seatedCount(tx, matchId)) !== seatedBefore) {
+      if (unfixOnChange && match.finalShareCents !== null) await tx.update(matches).set({ finalShareCents: null }).where(eq(matches.id, matchId));
+      await recalcShares(tx, match, userId);
+    }
     await evaluateConfirmation(tx, match, userId);
     await revalidateFinal(tx, match.id);
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);
@@ -298,8 +303,8 @@ export function finalConfirm(userId: string, matchId: string) {
     await audit(userId, "lobby.final", "match", matchId, { after: { teamId: admin.teamId } }, tx);
     const [fresh] = await tx.select().from(matches).where(eq(matches.id, matchId));
     const bothDone = Boolean(fresh.homeFinalAt && fresh.awayFinalAt);
-    // Privatspiel: mit dem zweiten Bereit steht die Spielerzahl fest, der Anteil wird fixiert (genau einmal; zu wenig bezahlt -> Fehler, nichts wird bestätigt)
-    if (bothDone) await fixPrivateShare(tx, fresh);
+    // Privatspiel und neues Teamspiel: mit dem zweiten Bereit steht die Spielerzahl fest, der Anteil wird fixiert (genau einmal; zu wenig bezahlt -> Fehler, nichts wird bestätigt)
+    if (bothDone) await fixShare(tx, fresh);
     await notifyUsers(
       [...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
       bothDone

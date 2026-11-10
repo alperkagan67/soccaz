@@ -63,15 +63,28 @@ export function amountToCharge(match: Pick<MatchRow, "settledAt" | "finalShareCe
  * Wertebereich der Spielerzahl), ohne Mindestzahl 8, ohne Deckel 12 und ohne Reservierung. Nach der Abrechnung gilt der feste Anteil.
  * Spiele des alten Modells (`legacyShareModel`) rechnen weiter mit `amountToCharge`.
  */
-export async function teamShareNow(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "finalShareCents" | "settledAt">, priceCents: number): Promise<number> {
-  if (match.settledAt && match.finalShareCents) return match.finalShareCents;
+export async function teamShareNow(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "finalShareCents">, priceCents: number): Promise<number> {
+  if (match.finalShareCents !== null) return match.finalShareCents; // fixiert (zweites Bereit) oder abgerechnet
   return shareCents(priceCents, Math.max(await seatedCount(tx, match.id), MIN_PRIVATE_PLAYERS));
+}
+
+/**
+ * Rechnet das Spiel nach dem Modell "Preis ÷ eingeteilte Spieler" mit Neuberechnung und Fixierung? Privatspiele immer, Teamspiele (nicht Turnier)
+ * nur, wenn sie nach der Umstellung angelegt wurden. Altspiele (`legacyShareModel`) behalten Reservierung und Mindestzahl.
+ */
+export function usesFixedShareModel(match: Pick<MatchRow, "kind" | "legacyShareModel">): boolean {
+  return match.kind === "private" || (match.kind === "team" && !match.legacyShareModel);
+}
+
+/** Divisor des Anteils: eingeteilte Spieler; im Teamspiel mindestens 4 (Wertebereich der Spielerzahl). */
+export function shareDivisor(match: Pick<MatchRow, "kind">, seated: number): number {
+  return match.kind === "private" ? seated : Math.max(seated, MIN_PRIVATE_PLAYERS);
 }
 
 /** Betrag, den ein Spieler jetzt zahlt, je nach Modell: Privatspiel und neues Teamspiel Miete ÷ Spielerzahl, Altspiel die Reservierung. */
 export async function shareToCharge(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "kind" | "finalShareCents" | "settledAt" | "legacyShareModel">, priceCents: number): Promise<number> {
   if (match.kind === "private") return privateShareNow(tx, match, priceCents);
-  if (!match.legacyShareModel) return teamShareNow(tx, match, priceCents);
+  if (usesFixedShareModel(match)) return teamShareNow(tx, match, priceCents);
   return amountToCharge(match, priceCents, await minPaidPlayers(tx));
 }
 
@@ -93,7 +106,7 @@ export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Pro
     .from(matchParticipants)
     .where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
   // Privatspiel: Wer schon etwas gezahlt hat, aber weniger als den (neu gerechneten) Anteil, zahlt die Differenz nach. Sonst zahlt nur, wer noch nichts gezahlt hat.
-  if (!p || (p.paidCents > 0 && match.kind !== "private")) return;
+  if (!p || (p.paidCents > 0 && !usesFixedShareModel(match))) return;
 
   const { priceCents, match: fresh } = await ensurePrice(tx, match);
   if (priceCents === 0) return; // kostenlos: keine Zahlung, keine Reservierung
@@ -106,7 +119,7 @@ export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Pro
     kind: "match_share",
     matchId: match.id,
     idempotencyKey: `share:${match.id}:${userId}:${randomUUID()}`,
-    reason: p.paidCents > 0 ? "Nachzahlung Anteil" : fresh.settledAt ? "Startgebühr (Anteil)" : "Startgebühr (Reservierung)",
+    reason: p.paidCents > 0 ? "Nachzahlung Anteil" : fresh.settledAt || usesFixedShareModel(fresh) ? "Startgebühr (Anteil)" : "Startgebühr (Reservierung)",
     actorId: userId,
   });
   await tx.update(matchParticipants).set({ paidCents: amount, paidAt: new Date() }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
@@ -121,8 +134,8 @@ export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Pro
  * auf dem Spiel, und nur `final_share_cents IS NULL` darf fixiert werden. Die Abrechnung beim Anstoß (Beleg, Benachrichtigung, `settled_at`)
  * läuft danach unverändert weiter und übernimmt diesen Anteil.
  */
-export async function fixPrivateShare(tx: Tx, match: MatchRow): Promise<void> {
-  if (match.kind !== "private") return;
+export async function fixShare(tx: Tx, match: MatchRow): Promise<void> {
+  if (!usesFixedShareModel(match)) return;
   const [current] = await tx.select({ finalShareCents: matches.finalShareCents }).from(matches).where(eq(matches.id, match.id));
   if (!current || current.finalShareCents !== null) return; // schon fixiert
 
@@ -132,7 +145,7 @@ export async function fixPrivateShare(tx: Tx, match: MatchRow): Promise<void> {
     .from(matchParticipants)
     .where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
   if (seated.length === 0) return;
-  const share = shareCents(priceCents, seated.length);
+  const share = shareCents(priceCents, shareDivisor(match, seated.length));
   const pay = await paymentsEnabled(tx);
   if (pay && share > 0) {
     const short = seated.filter((p) => p.paidCents < share).length;
@@ -148,7 +161,7 @@ export async function fixPrivateShare(tx: Tx, match: MatchRow): Promise<void> {
       await tx.update(matchParticipants).set({ paidCents: share }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, p.userId)));
     }
   }
-  await audit(null, "wallet.private_fix", "match", match.id, { after: { players: seated.length, finalShareCents: share, rentCents: priceCents } }, tx);
+  await audit(null, match.kind === "private" ? "wallet.private_fix" : "wallet.team_fix", "match", match.id, { after: { players: seated.length, finalShareCents: share, rentCents: priceCents } }, tx);
 }
 
 /** Zahl der einem Team zugeteilten Spieler (nur diese zählen für den Anteil im Privatspiel). */
@@ -165,8 +178,8 @@ export async function seatedCount(tx: Pick<Tx, "select">, matchId: string): Prom
  * Erstattungs-Schlüssel enthalten eine Zufallskennung: derselbe Zahlungsstand kann nach mehreren Änderungen mehrfach vorkommen,
  * Doppelbuchung verhindert die Spielsperre, nicht der Schlüssel.
  */
-export async function recalcPrivateShares(tx: Tx, match: MatchRow, actorId: string | null): Promise<void> {
-  if (match.kind !== "private") return;
+export async function recalcShares(tx: Tx, match: MatchRow, actorId: string | null): Promise<void> {
+  if (!usesFixedShareModel(match)) return;
   const [current] = await tx.select().from(matches).where(eq(matches.id, match.id));
   if (!current || current.finalShareCents !== null) return; // Preis steht fest: nichts neu rechnen
   await tx.update(matches).set({ homeFinalAt: null, awayFinalAt: null }).where(eq(matches.id, match.id));
@@ -179,7 +192,7 @@ export async function recalcPrivateShares(tx: Tx, match: MatchRow, actorId: stri
     .from(matchParticipants)
     .where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
   if (seated.length === 0) return;
-  const share = shareCents(current.priceCents, seated.length);
+  const share = shareCents(current.priceCents, shareDivisor(match, seated.length));
   const owing: string[] = [];
   let refunded = 0;
   for (const p of seated) {
@@ -217,7 +230,9 @@ export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: strin
   // Privatspiel nach dem Fixieren: Anteil und Spielerzahl stehen fest. Der Aussteiger bleibt gebucht, sein Geld kommt erst zurück,
   // wenn ein Ersatz den gleichen Anteil bezahlt hat (Austritt und Rauswurf sind nur bis 48 Stunden vor Anstoß möglich, siehe lobby.ts).
   const waitForSubstitute = match.kind === "private" && match.finalShareCents !== null;
-  if (!waitForSubstitute && (opts.removedByAdmin || hoursLeft >= FREE_CANCEL_HOURS)) {
+  // Teamspiel im neuen Modell: das Geld ist geparkt, Austritt und Entfernen erstatten sofort (die Festschreibung hebt `mutateLobby` auf)
+  const immediate = match.kind === "team" && usesFixedShareModel(match);
+  if (immediate || (!waitForSubstitute && (opts.removedByAdmin || hoursLeft >= FREE_CANCEL_HOURS))) {
     await refundPaid(tx, match, userId, p.paidCents, opts.removedByAdmin ? "Aus der Lobby entfernt" : "Rechtzeitig abgemeldet", `leave:${match.id}:${userId}:${randomUUID()}`, opts.actorId);
     return;
   }
@@ -277,6 +292,11 @@ export async function settleMatch(tx: Tx, match: MatchRow): Promise<boolean> {
   // Privatspiel: nie finalShareFor (Mindestzahl 8, Deckel 12). Es gilt der feste Anteil (zweites Bereit) oder, solange keiner gesetzt ist,
   // derselbe Anteil wie beim Bezahlen: Miete geteilt durch die eingeteilten Spieler.
   const final = m.kind === "private" ? await privateShareNow(tx, m, priceCents) : m.legacyShareModel ? finalShareFor(priceCents, payers.length, await minPaidPlayers(tx)) : await teamShareNow(tx, m, priceCents);
+  // Teamspiel im neuen Modell: Nie weniger einnehmen als der Preis. Reicht die Summe der Anteile nicht (Nichtzahler), wird nicht abgerechnet.
+  if (m.kind === "team" && !m.legacyShareModel && priceCents > 0 && payers.reduce((sum, p) => sum + Math.min(p.paidCents, final), 0) < priceCents) {
+    await audit(null, "wallet.settle_uncovered", "match", m.id, { after: { payers: payers.length, finalShareCents: final, priceCents } }, tx);
+    return false;
+  }
   const [home, away] = [await teamName(tx, m.homeTeamId), await teamName(tx, m.awayTeamId)];
   for (const p of payers) {
     const diff = p.paidCents - final;
