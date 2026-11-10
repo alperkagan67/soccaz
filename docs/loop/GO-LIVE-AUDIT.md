@@ -15,3 +15,4 @@ PRs mit DB-Migration, Zahlungen oder Auth, die der Task Manager selbst gemergt h
 | Nr. | Was | Risiko |
 |-----|-----|--------|
 | E2 | `BLOCK_PRIVATE_JOIN_BEFORE_FIX=false` in `src/server/wallet.ts`: Der Beitritt zu einem Privatspiel vor dem Fixieren ist immer erlaubt. Der Wortlaut von Vertrag 006 wollte eine Sperre. Vor dem Go-Live bewusst prüfen und entscheiden (Sperre einschalten oder Abweichung im Vertrag festhalten). | mittel; Produktentscheidung, Zahlungsfluss im Privatspiel |
+| E3 | Geld parken in der Lobby braucht vor Go-live einen Zahlungsdienstleister (z. B. Stripe Connect). Bis dahin gibt es nur internes Guthaben und das Hauptbuch, keinen Auszahlungsweg an Veranstalter oder Halle (Verträge 006 v2 und 008 v2). | hoch; ohne Dienstleister darf kein echtes Geld geparkt oder ausgezahlt werden |
