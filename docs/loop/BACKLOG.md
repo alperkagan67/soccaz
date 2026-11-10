@@ -42,9 +42,10 @@ Reihenfolge von oben nach unten. Der nächste Eintrag ohne offene Produktfragen 
 | 8 | B-c Vertrag 007: Oberfläche trennen in Teamspiel, Privatspiel und Turnier, dazu Navigation (Orchestrator schreibt den Vertrag nach 006) | Vertrag freigegeben (007 v2), Umsetzung nach 008 |
 | 9 | Captain-Tausch nach der Frist (Captain tauscht einen Spieler gegen einen Ersatz, der registrierter Soccaz-Nutzer ist, ohne Zahlung über Soccaz; Folgeauftrag nach der Frist-Regel aus 006 v3 und 008 v3) | offen (Nutzer: Ja; Vertrag/ACs kurz folgen, Produktfragen an Orchestrator) |
 | 10 | Wertung bei Nichterscheinen (ersetzt `recordLateCancel` mit 24-h-Grenze, das mit der 24-h-Regel entfällt; Produktfrage: Wie und ab wann wird ein Nichterscheinen gewertet?) | offen (Produktfrage) |
-| 11 | Vertrag 009 Admin-Bereich, Einnahmemodell, Buchhaltung (nach der Umsetzung von 007/008 und dem Captain-Tausch; Orchestrator schreibt den Vertrag, G1 beim Nutzer, Produktfragen erst gebündelt) | offen |
-| 12 | Vertrag 010 Spieler-Funktionen: Hallen-Bewertungen (nur wer dort gespielt hat), Karte der Partnerhallen in der Nähe, Knopf "Nochmal spielen" (letztes Spiel mit denselben Teams und derselben Halle neu anlegen); nach 009; G1 beim Nutzer | offen |
-| 13 | Später/Idee: Zugang für Hallenbetreiber (eigene Buchungen, Auszahlungen, Provisionsrechnungen) | offen (Idee) |
-| 14 | Später/Idee: sichtbare Servicegebühr nur für Extras, z. B. Firmenpaket (kein Treueprogramm, keine Rabatte, keine bezahlten Platzierungen) | offen (Idee) |
+| 11 | Vertrag 009 Admin-Bereich, Einnahmemodell, Buchhaltung (nach der Umsetzung von 007/008 und dem Captain-Tausch; Orchestrator schreibt den Vertrag, G1 beim Nutzer, Produktfragen erst gebündelt; Vertragsentwurf: docs/contracts/009-admin-einnahmen-buchhaltung.md) | wartet auf G1 |
+| 12 | Vertrag 011 Hallen-Dashboard (nach 009, vor 010; G1 beim Nutzer; Vertragsentwurf: docs/contracts/011-hallen-dashboard.md) | wartet auf G1 |
+| 13 | Vertrag 010 Spieler-Funktionen: Hallen-Bewertungen (nur wer dort gespielt hat), Karte der Partnerhallen in der Nähe, Knopf "Nochmal spielen" (letztes Spiel mit denselben Teams und derselben Halle neu anlegen); nach 009 und 011; G1 beim Nutzer; Vertragsentwurf: docs/contracts/010-spieler-funktionen.md | wartet auf G1 |
+| 14 | Später/Idee: Zugang für Hallenbetreiber (eigene Buchungen, Auszahlungen, Provisionsrechnungen); siehe Vertrag 011 | offen (Idee) |
+| 15 | Später/Idee: sichtbare Servicegebühr nur für Extras, z. B. Firmenpaket (kein Treueprogramm, keine Rabatte, keine bezahlten Platzierungen) | offen (Idee) |
 
 Status: offen / in Arbeit / fertig.
