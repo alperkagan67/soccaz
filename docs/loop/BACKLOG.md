@@ -21,9 +21,17 @@ Reihenfolge von oben nach unten. Der nächste Eintrag ohne offene Produktfragen 
 | 3 | Aus Reviews: In `convertLegacyChallenges` (`src/server/challenges.ts`) fängt der `catch`-Block pro Anfrage nach der Transaktion einen `DomainError` und überspringt die Anfrage ohne Log | offen |
 | 3 | Aus Reviews: `ORDER BY asc(userId)` im Pool-SELECT von `randomSplit` (`lobby.ts`) und im zugehörigen Test (stabile Reihenfolge) | offen |
 | 3 | Aus Reviews: `shareCents` (`src/lib/money.ts`) hat keine Obergrenze und keine `Number.isSafeInteger`-Prüfung für die Miete; heute prüft der Aufrufer die Mieten | offen |
-| 4 | Vertrag 006 Privatspiel (Orchestrator, Produktentscheidungen) | in Arbeit (A006, Vertrag gemergt #43) |
+| 3 | Aus A006: Links für eingeteilte Mitspieler auf `/spiele/{id}` laufen ins Leere (404, Mitspieler sind keine Team-Mitglieder): auf `/lobby/{id}/uebersicht` zeigen oder ausblenden (`results.ts:324`, `stats.ts:228`, `app/app/page.tsx:76`, `spieler/[id]/page.tsx:27` und `:47`, `lobby/[id]/page.tsx:145`, `lobby/[id]/uebersicht/page.tsx:131`) | offen |
+| 3 | Aus A006: `teamComplete` und `evaluateConfirmation` prüfen `paidCents > 0` statt `>= Anteil` | offen |
+| 3 | Aus A006: `leaderboards()` (`profiles.ts`): Turnierspiele und private Teamherausforderungen zählen in der Monatsrangliste mit; `visibility = 'public'` statt `kind <> 'private'` wäre strenger (Produktfrage) | offen |
+| 3 | Aus A006: `/api/media/[id]` ist öffentlich cachebar; Fotos eines Privatspiels sind per UUID abrufbar | offen |
+| 3 | Aus A006 (T58): Kommentar der probabilistischen Mutationstests korrigieren (etwa 8 % je Runde statt 1/16) | offen |
+| 3 | Aus A006: Betriebsdokument (`docs/BETRIEB.md`): Was passiert bei Job-Ausfall nach dem Anstoß (Mietprüfung, Absage, Erstattung) | offen |
+| 3 | Aus A006: Produktfrage zu AC-8, Beitrittssperre vor dem Fixieren (Nutzerentscheid, Schalter `BLOCK_PRIVATE_JOIN_BEFORE_FIX`) | offen (Nutzerentscheid) |
+| 4 | Vertrag 006 Privatspiel (Orchestrator, Produktentscheidungen) | fertig (A006, PR #46, Merge folgt) |
 | 5 | B-b Privatsphäre: Lobby-Seite für Fremde neutral („Offene Lobby von {Team}“); `/teams/{slug}`: Kader-Namen nur für Mitglieder und eingeloggte Nutzer, Gäste sehen Teamname, Stadt und Spielerzahl; verbindet den Retro-Kandidaten in Eintrag 3 (anonymer E2E-Kontext, Kader-Namen, „Eure Lobby“-Texte) | offen |
 | 6 | B-a Miete ÷ tatsächliche Spielerzahl für das Teamspiel (ersetzt `min_paid_players = 8` und die Reservierung; gleiche Alles-oder-nichts-Regel mit 24 h; gemeinsames Rechenmodul `shareCents` aus Vertrag 006) und das Turnier (dort nur das Modul nutzen) | offen |
-| 7 | B-c Vertrag 007: Oberfläche trennen in Teamspiel, Privatspiel und Turnier, dazu Navigation (Orchestrator schreibt den Vertrag nach 006) | offen |
+| 7 | Impeccable einrichten (Ausnahme-PR, berührt `.claude/`, daher merged der Nutzer selbst; vor Vertrag 007): Tag `skill-v4.8.1`, nur `plugin/skills/impeccable`, `HERKUNFT.md` mit Herkunft und Tag, Umgebungsvariable `IMPECCABLE_LIVE_COPY_AGENT=chat`, `.gitignore`; der Reviewer liest den Skill-Inhalt (Details im Auftrag t9). Reihenfolge: A006, B-b, B-a, Impeccable, 007 | offen |
+| 8 | B-c Vertrag 007: Oberfläche trennen in Teamspiel, Privatspiel und Turnier, dazu Navigation (Orchestrator schreibt den Vertrag nach 006) | offen |
 
 Status: offen / in Arbeit / fertig.
