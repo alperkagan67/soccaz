@@ -30,7 +30,10 @@ export const metadata: Metadata = {
 export const instant = false;
 
 export const viewport: Viewport = {
-  themeColor: "#030806",
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0f1914" },
+    { media: "(prefers-color-scheme: light)", color: "#dde5e0" },
+  ],
   width: "device-width",
   initialScale: 1,
 };
@@ -40,7 +43,7 @@ async function MobileNav() {
   return (
     <>
       <HtmlLang locale={locale} />
-      <BottomNav signedIn={Boolean(user)} labels={{ start: t("nav.start"), search: t("nav.search"), live: t("nav.liveShort"), ranking: t("nav.ranking"), mine: t("nav.mine"), main: t("nav.main") }} />
+      <BottomNav signedIn={Boolean(user)} labels={{ teamGame: t("nav.teamGame"), privateGame: t("nav.privateGame"), tournaments: t("nav.tournaments"), profile: t("nav.profile"), findGame: t("nav.findGame"), main: t("nav.main") }} />
     </>
   );
 }

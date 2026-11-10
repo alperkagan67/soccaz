@@ -71,7 +71,7 @@ test("Sprache: Englisch wählen, bleibt erhalten, Deutsch bleibt Standard", asyn
   await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: "English" }).click();
   await expect(page.getByRole("heading", { name: /Indoor football/ })).toBeVisible();
-  await expect(page.getByRole("navigation").getByRole("link", { name: "Match requests" }).first()).toBeVisible();
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Open lobbies" }).first()).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await page.goto("/anmelden");
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();

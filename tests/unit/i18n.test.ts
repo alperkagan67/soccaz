@@ -25,4 +25,16 @@ describe("Mehrsprachigkeit", () => {
     expect(isLocale("fr")).toBe(false);
     expect(isLocale(undefined)).toBe(false);
   });
+  it("Begriffe aus Vertrag 007 stehen in allen Sprachdateien (AC-4)", () => {
+    expect(MESSAGES.de["nav.requests"]).toBe("Offene Lobbys");
+    expect(MESSAGES.en["nav.requests"]).toBe("Open lobbies");
+    for (const key of ["nav.teamGame", "nav.privateGame", "nav.tournaments", "nav.profile", "nav.findGame"] as const) {
+      for (const locale of LOCALES) expect(MESSAGES[locale][key].length, locale + "." + key).toBeGreaterThan(0);
+    }
+    expect(MESSAGES.de["nav.teamGame"]).toBe("Teamspiel");
+    expect(MESSAGES.de["nav.privateGame"]).toBe("Privatspiel");
+    expect(MESSAGES.de["nav.findGame"]).toBe("Spiel suchen");
+    // Alte Begriffe sind weg: keine Spielsuchen mehr in den Sprachdateien.
+    for (const locale of LOCALES) for (const [key, value] of Object.entries(MESSAGES[locale])) expect(value, locale + "." + key).not.toMatch(/Spielsuche|[Mm]atch requests?/);
+  });
 });

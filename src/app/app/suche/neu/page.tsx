@@ -5,7 +5,7 @@ import { requireUser } from "@/server/session";
 import { earliestStartInput, myAdminTeams } from "@/server/requests";
 import { RequestForm } from "./RequestForm";
 
-export const metadata: Metadata = { title: "Spielsuche mit festem Termin" };
+export const metadata: Metadata = { title: "Spiel mit festem Termin suchen" };
 
 export default async function NewRequestPage({ searchParams }: PageProps<"/app/suche/neu">) {
   const sp = await searchParams;
@@ -17,8 +17,8 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/app/s
 
   return (
     <section className="mx-auto mt-4 max-w-md space-y-4">
-      <h1 className="text-2xl font-bold">Spielsuche mit festem Termin</h1>
-      <p className="text-sm text-muted">Du legst Zeit und Dauer fest, jedes Team kann die Suche in den offenen Lobbys annehmen. Lieber flexibel? Dann nutze das <Link href="/matchmaking" className="text-green underline">Matchmaking</Link>.</p>
+      <h1 className="text-2xl font-bold">Spiel mit festem Termin suchen</h1>
+      <p className="text-sm text-muted">Du legst Zeit und Dauer fest, jedes Team kann die Suche in den offenen Lobbys annehmen. Lieber flexibel? Dann nutze das <Link href="/matchmaking" className="text-accent-fg underline">Matchmaking</Link>.</p>
       {teams.length === 0 ? (
         <div className="card space-y-3">
           <p className="text-muted">Du brauchst ein Team, bei dem du Team-Admin bist.</p>

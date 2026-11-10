@@ -254,3 +254,87 @@ test("Startseite zeigt offene Matchmaking-Suchen für alle, mit Anmelden zum Ant
   await expect(card.getByRole("link", { name: "Anmelden und Team herausfordern" })).toBeVisible();
   await query("update matchmaking_queue set status = 'cancelled' where team_id = $1", [teamId]);
 });
+
+test("Untere Leiste (Handy): Teamspiel, Privatspiel, Mittelknopf Spiel suchen, Turniere, Profil", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p = await ctx.newPage();
+  await newUser(p, "nav");
+  await p.goto("/");
+  await p.waitForLoadState("networkidle");
+  const nav = p.getByRole("navigation", { name: "Hauptnavigation" });
+  for (const name of ["Teamspiel", "Privatspiel", "Spiel suchen", "Turniere", "Profil"]) await expect(nav.getByRole("link", { name })).toBeVisible();
+  // Mittelknopf liegt in der Mitte der Leiste
+  const box = await nav.getByRole("link", { name: "Spiel suchen" }).boundingBox();
+  expect(Math.abs(box!.x + box!.width / 2 - 195)).toBeLessThan(6);
+  // Touch-Ziele mindestens 44 px
+  for (const name of ["Teamspiel", "Privatspiel", "Spiel suchen", "Turniere", "Profil"]) {
+    const b = await nav.getByRole("link", { name }).boundingBox();
+    expect(b!.height, name).toBeGreaterThanOrEqual(44);
+    expect(b!.width, name).toBeGreaterThanOrEqual(44);
+  }
+  // Der Mittelknopf führt zur Suche und ist dann als aktuelle Seite markiert
+  await nav.getByRole("link", { name: "Spiel suchen" }).click();
+  await expect(p).toHaveURL(/\/suche$/, { timeout: 30_000 });
+  await p.waitForLoadState("networkidle");
+  await expect(nav.getByRole("link", { name: "Spiel suchen" })).toHaveAttribute("aria-current", "page");
+  await expect(p.getByRole("heading", { name: /Offene Lobbys/ })).toBeVisible();
+  // Aktive Seite: Turniere
+  await nav.getByRole("link", { name: "Turniere" }).click();
+  await expect(p).toHaveURL(/\/turniere$/, { timeout: 30_000 });
+  await p.waitForLoadState("networkidle");
+  await expect(nav.getByRole("link", { name: "Turniere" })).toHaveAttribute("aria-current", "page");
+  // Privatspiel und Teamspiel
+  await nav.getByRole("link", { name: "Privatspiel" }).click();
+  await expect(p).toHaveURL(/\/app\/privatspiel\/neu$/, { timeout: 30_000 });
+  await p.waitForLoadState("networkidle");
+  await expect(nav.getByRole("link", { name: "Privatspiel" })).toHaveAttribute("aria-current", "page");
+  // Teamspiel: direkt aufrufen, weil die Dev-Schaltfläche von Next.js im Entwicklungsmodus über dem linken Eintrag liegt.
+  await expect(nav.getByRole("link", { name: "Teamspiel" })).toHaveAttribute("href", "/matchmaking");
+  await p.goto("/matchmaking");
+  await p.waitForLoadState("networkidle");
+  await expect(nav.getByRole("link", { name: "Teamspiel" })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("link", { name: "Profil" }).click();
+  await expect(p).toHaveURL(/\/app$/, { timeout: 30_000 });
+  await p.waitForLoadState("networkidle");
+  await expect(nav.getByRole("link", { name: "Profil" })).toHaveAttribute("aria-current", "page");
+  await ctx.close();
+});
+
+test("Untere Leiste für Gäste: Mittelknopf zur Suche, Profil zur Anmeldung", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p = await ctx.newPage();
+  await p.goto("/");
+  await p.waitForLoadState("networkidle");
+  const nav = p.getByRole("navigation", { name: "Hauptnavigation" });
+  await expect(nav.getByRole("link", { name: "Profil" })).toHaveAttribute("href", /\/anmelden/);
+  await nav.getByRole("link", { name: "Spiel suchen" }).click();
+  await expect(p).toHaveURL(/\/suche$/, { timeout: 30_000 });
+  await p.waitForLoadState("networkidle");
+  await nav.getByRole("link", { name: "Profil" }).click();
+  await expect(p).toHaveURL(/\/anmelden/, { timeout: 30_000 });
+  await p.waitForLoadState("networkidle");
+  await ctx.close();
+});
+
+test("Hell und Dunkel folgen der Systemeinstellung, kein horizontales Scrollen (390 px und Desktop)", async ({ browser }) => {
+  test.setTimeout(300_000); // acht Seiten in zwei Größen, im Entwicklungsmodus mit Kompilierung
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    const ctx = await browser.newContext({ viewport, colorScheme: "dark" });
+    const p = await ctx.newPage();
+    for (const path of ["/", "/suche", "/turniere", "/matchmaking"]) {
+      await p.goto(path);
+      await p.waitForLoadState("networkidle");
+      const bg = (scheme: string) => p.evaluate(() => getComputedStyle(document.body).backgroundColor).then((c) => `${scheme}:${c}`);
+      expect(await bg("dark")).toBe("dark:rgb(15, 25, 20)"); // #0f1914
+      await p.emulateMedia({ colorScheme: "light" }); // Wechsel ohne Neuladen
+      expect(await bg("light")).toBe("light:rgb(221, 229, 224)"); // #dde5e0
+      expect(await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `${path} ${viewport.width}`).toBe(true);
+      await p.emulateMedia({ colorScheme: "dark" });
+    }
+    // Ab sm gibt es die Kopfleiste und keine untere Leiste
+    const nav = p.getByRole("navigation", { name: "Hauptnavigation" });
+    if (viewport.width >= 640) await expect(nav).toBeHidden();
+    else await expect(nav).toBeVisible();
+    await ctx.close();
+  }
+});

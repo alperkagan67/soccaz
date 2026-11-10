@@ -48,14 +48,14 @@ export default async function MatchmakingPage({ searchParams }: PageProps<"/matc
       <section className="space-y-3" aria-labelledby="open-h" id="offen">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <h2 id="open-h" className="text-xl font-bold">Offene Suchen ({searches.length})</h2>
-          <form className="flex gap-2" role="search" aria-label="Offene Suchen filtern">
-            <select name="city" defaultValue={city ?? ""} aria-label="Stadt" className="field !w-auto !min-h-9 !py-1 text-sm">
+          <form className="flex min-w-0 max-w-full gap-2" role="search" aria-label="Offene Suchen filtern">
+            <select name="city" defaultValue={city ?? ""} aria-label="Stadt" className="field !w-auto min-w-0 !min-h-9 !py-1 text-sm">
               <option value="">Alle Städte</option>
               {CITIES.map((c) => (
                 <option key={c}>{c}</option>
               ))}
             </select>
-            <select name="dauer" defaultValue={durationMin ? String(durationMin) : ""} aria-label="Dauer" className="field !w-auto !min-h-9 !py-1 text-sm">
+            <select name="dauer" defaultValue={durationMin ? String(durationMin) : ""} aria-label="Dauer" className="field !w-auto min-w-0 !min-h-9 !py-1 text-sm">
               <option value="">Alle Dauern</option>
               <option value="60">60 Min</option>
               <option value="90">90 Min</option>
@@ -71,7 +71,7 @@ export default async function MatchmakingPage({ searchParams }: PageProps<"/matc
         <section key={m.id} className="card space-y-2" data-testid="my-queue">
           <div className="flex items-center justify-between gap-2">
             <span className="font-semibold">{m.teamName}</span>
-            {m.status === "waiting" ? <span className="text-sm text-yellow">Eure Lobby ist offen: wartet auf einen Gegner</span> : <span className="text-sm text-green">Gegner gefunden</span>}
+            {m.status === "waiting" ? <span className="text-sm text-ink">Eure Lobby ist offen: wartet auf einen Gegner</span> : <span className="text-sm text-accent-fg">Gegner gefunden</span>}
           </div>
           <p className="text-sm text-muted">
             {m.city} · {m.durationMin} Min · seit {formatDateTime(m.createdAt)} Uhr
@@ -94,7 +94,7 @@ export default async function MatchmakingPage({ searchParams }: PageProps<"/matc
       {!user ? (
         <Link href="/anmelden?next=/matchmaking" className="btn btn-primary w-full">Anmelden und Lobby aufmachen</Link>
       ) : adminTeams.length === 0 ? (
-        <p className="card text-sm text-muted">Nur Team-Admins können nach Gegnern suchen. <Link href="/app/teams/neu" className="text-green underline">Team gründen</Link></p>
+        <p className="card text-sm text-muted">Nur Team-Admins können nach Gegnern suchen. <Link href="/app/teams/neu" className="text-accent-fg underline">Team gründen</Link></p>
       ) : free.length > 0 ? (
         <QueueForm teams={free.map((t) => ({ id: t.id, name: t.name, city: t.city }))} minDay={minDay} />
       ) : null}

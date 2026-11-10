@@ -24,7 +24,7 @@ export default async function HelpPage() {
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-3xl font-bold">Hilfe und Fragen</h1>
-        <p className="text-muted">Alles in einfachen Worten. Fehlt etwas? Schreib uns über die <Link href="/kontakt" className="text-green underline">Kontaktseite</Link>.</p>
+        <p className="text-muted">Alles in einfachen Worten. Fehlt etwas? Schreib uns über die <Link href="/kontakt" className="text-accent-fg underline">Kontaktseite</Link>.</p>
       </header>
 
       <section className="space-y-2">
@@ -51,7 +51,7 @@ export default async function HelpPage() {
           <p><strong>Spielsuche:</strong> Du legst selbst ein Spiel mit festem Termin an. Andere Teams sehen es und nehmen es an. Oder du forderst ein bestimmtes Team direkt heraus.</p>
         </Q>
         <Q q="Wo sehe ich, wer gerade einen Gegner sucht?">
-          <p>Unter „Spielsuchen“ (oben) steht die Liste aller offenen Lobbys: Team, Stadt, Dauer, Elo und Spielstärke, Kadergröße, gesuchte Stärke des Gegners, Zeitfenster und Hinweis. Passt eine Suche, nimmst du sie mit einem Klick an. Ihr legt euch dann auf die Zeitfenster dieser Suche fest, danach folgt das Hallen-Veto.</p>
+          <p>Unter „Offene Lobbys“ (oben) steht die Liste aller offenen Lobbys: Team, Stadt, Dauer, Elo und Spielstärke, Kadergröße, gesuchte Stärke des Gegners, Zeitfenster und Hinweis. Passt eine Suche, nimmst du sie mit einem Klick an. Ihr legt euch dann auf die Zeitfenster dieser Suche fest, danach folgt das Hallen-Veto.</p>
         </Q>
         <Q q="Wer legt Termin und Ort fest?">
           <p><strong>1. Termin:</strong> Zuerst einigt ihr euch auf Tag und Uhrzeit. Wir machen Vorschläge aus euren Zeitfenstern, ihr könnt eigene hinzufügen. Stimmen beide Teams für denselben, steht der Termin. Einigt ihr euch nicht rechtzeitig, wird das Spiel abgesagt.</p>
@@ -89,7 +89,7 @@ export default async function HelpPage() {
           </ul>
         </Q>
         <Q q="Kann ich mir Guthaben auszahlen lassen?">
-          <p>Dein Guthaben verfällt nicht. Eine Auszahlung auf dein Konto machen wir auf Anfrage über die <Link href="/kontakt" className="text-green underline">Kontaktseite</Link>.</p>
+          <p>Dein Guthaben verfällt nicht. Eine Auszahlung auf dein Konto machen wir auf Anfrage über die <Link href="/kontakt" className="text-accent-fg underline">Kontaktseite</Link>.</p>
         </Q>
       </section>
 
@@ -118,7 +118,7 @@ export default async function HelpPage() {
           <p>In den Einstellungen unter „Deine Daten“. Vorher muss dein Guthaben auf null sein, du darfst in keinem kommenden Spiel stehen und kein Team allein verwalten. Dort kannst du auch alle deine Daten herunterladen.</p>
         </Q>
         <Q q="Es funktioniert etwas nicht. Wen frage ich?">
-          <p>Schreib uns über die <Link href="/kontakt" className="text-green underline">Kontaktseite</Link>.</p>
+          <p>Schreib uns über die <Link href="/kontakt" className="text-accent-fg underline">Kontaktseite</Link>.</p>
         </Q>
       </section>
     </div>
