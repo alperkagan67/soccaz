@@ -1,6 +1,6 @@
 # 011 – Hallen-Dashboard
 Status: Entwurf (2026-11-10)
-Version: 1
+Version: 2 (Stand 2026-11-11: M4 mit AC-9 bis AC-15, AC-15 Wechsel von Halle oder Termin, AC-16 Mindestvorlauf 2 h bei Hallen mit Zugang, Antwortfrist = Vorlauf minus 1 h)
 
 ## Ziel
 Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur für ihre Halle(n): Sie bestätigen oder lehnen neue Buchungsanfragen ab (Ablehnung mit Pflicht-Begründung), sehen ihre Buchungen, Auszahlungen und die Provisionsrechnungen von Soccaz und antworten auf Bewertungen. Jede Entscheidung landet automatisch im Beweisprotokoll aus 009. Admin 1 ordnet Betreiber ihren Hallen zu.
@@ -20,13 +20,16 @@ Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur
 ## Weitere Entscheidungen (Nutzer, 2026-11-10)
 - Ein Zugang pro Halle, den die Halle mit ihren Mitarbeitern teilt (eine zugeordnete Google-Anmeldung je Halle).
 - Benachrichtigung bei neuen Anfragen: Push und Mail.
-- Antwortfrist 12 Stunden, danach keine Zusage mehr möglich. Keine Antwort = abgelehnt: beide Captains werden benachrichtigt und können eine andere Halle oder einen anderen Termin wählen; im Beweisprotokoll als "nicht reagiert" vermerkt. Das Geld bleibt geparkt; kommt bis zur 48-Stunden-Frist keine Zusage zustande, fällt das Spiel aus und alle bekommen Guthaben zurück.
+- Antwortfrist 12 Stunden, danach keine Zusage mehr möglich. Keine Antwort = abgelehnt: beide Captains werden benachrichtigt und können eine andere Halle oder einen anderen Termin wählen; im Beweisprotokoll als "nicht reagiert" vermerkt. Das Geld bleibt geparkt; kommt bei mindestens 48 h Vorlauf bis zur 48-Stunden-Frist (bei Vorlauf unter 48 h bis 1 Stunde vor Anstoß) keine Zusage zustande, fällt das Spiel aus und alle bekommen Guthaben zurück.
 - Sperrzeiten gehören in 011: Die Halle hat einen Kalender, in dem sie Tage und Uhrzeiten als geschlossen einträgt. Spieler sehen live nur freie Zeiten. Bereits gebuchte Zeiten kann die Halle nicht sperren.
 
 ## Zusage und Fristen bei kurzem Vorlauf (Orchestrator-Festlegung, Nutzer kann widersprechen)
 - Die Zusage der Halle ist in allen Fällen Voraussetzung für die Buchung (bei Hallen mit Zugang): Buchung = alle bezahlt + beide Captains bereit + Zusage. Gilt auch für die Sofortbuchung bei Vorlauf unter 48 h. Verträge 006 und 008 werden um diese Bedingung ergänzt.
 - Die Antwortfrist ist 12 Stunden, höchstens aber bis 1 Stunde vor Anstoß. Bei Vorlauf unter 13 Stunden verkürzt sie sich entsprechend.
 - Vorlauf mindestens 48 Stunden: Keine Zusage bis zur 48-Stunden-Frist → Spiel fällt aus, Erstattung an alle (AC-10).
+- "Halle mit Zugang" = Halle, der in M1 (neue Zuordnungstabelle, Migration additiv) ein Betreiber-Zugang zugeordnet ist; bis M1 gelten alle Hallen als ohne Zugang (keine Zusage nötig, heutiges Verhalten).
+- Bei Hallen mit Zugang beträgt der Mindestvorlauf 2 Stunden (sonst wäre die Antwortfrist null); bei Hallen ohne Zugang bleibt es bei 1 Stunde.
+- Wählen die Captains nach "abgelehnt" eine andere Halle oder einen anderen Termin, wird die Lobby umgestellt und der Anteil neu gerechnet (AC-15); das setzt voraus, dass noch nicht gebucht wurde (Buchung erfolgt erst mit Zusage).
 - Vorlauf unter 48 Stunden: Keine Zusage bis 1 Stunde vor Anstoß → Abbruch wie in 006/008 (Absage, Erstattung an alle); "abgelehnt" nach Ablauf der Antwortfrist gilt auch hier, die Captains können in der verbleibenden Zeit eine andere Halle oder einen anderen Termin wählen.
 
 ## Annahmen (Orchestrator-Vorschlag)
@@ -59,14 +62,16 @@ Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur
 | AC-11 | Neue Anfrage | Anfrage entsteht | Betreiber erhält Push und Mail | tests/integration/hallen-dashboard.test.ts |
 | AC-12 | Halle trägt Tage/Uhrzeiten als geschlossen ein | Spieler wählt Zeit bei Suche/Lobby-Anlage | Gesperrte Zeiten nicht wählbar (auch serverseitig abgelehnt); Sperre auf bereits angefragten/gebuchten Slot wird abgelehnt | tests/integration/hallen-kalender.test.ts |
 | AC-13 | Vorlauf unter 48 h, alle bezahlt, beide Captains bereit, Halle mit Zugang hat nicht zugesagt | Sofortbuchung wäre fällig | Keine Buchung; mit Zusage sofort gebucht; ohne Zusage 1 h vor Anstoß Absage + Erstattung an alle | tests/integration/hallen-dashboard.test.ts |
-| AC-14 | Vorlauf unter 13 Stunden | Anfrage entsteht | Antwortfrist endet spätestens 1 h vor Anstoß | tests/integration/hallen-dashboard.test.ts |
+| AC-14 | Vorlauf unter 13 Stunden | Anfrage entsteht | Antwortfrist = Vorlauf minus 1 h (mindestens 1 h); endet spätestens 1 h vor Anstoß | tests/integration/hallen-dashboard.test.ts |
+| AC-15 | Anfrage gilt nach Ablauf als abgelehnt, Lobby bleibt offen | Captains wählen andere Halle oder anderen Termin | Lobby wird umgestellt, neue Anfrage; Anteil neu gerechnet (nach Wegfall der Fixierung): zu viel Gezahltes als Guthaben zurück, zu wenig wird nachgefordert, "Bereit" beider Teams zurückgesetzt, Hallen-Zusage der alten Halle verfällt | tests/integration/hallen-dashboard.test.ts |
+| AC-16 | Halle mit Zugang, Anlage mit weniger als 2 h Vorlauf | Spiel wird angelegt | Abgelehnt (Mindestvorlauf 2 h bei Hallen mit Zugang); Hallen ohne Zugang weiterhin ab 1 h | tests/integration/hallen-dashboard.test.ts |
 | AC-8 | Gesamtablauf | Zuordnen, Betreiber meldet sich an, bestätigt, antwortet | Beweisprotokoll vollständig, PDF-Export enthält die Entscheidung | tests/e2e/hallen-dashboard.spec.ts |
 
 ## Meilensteine
 - M1: Zuordnung, Rechte, Bereich (AC-1, 4, 7)
 - M2: Anfragen bestätigen/ablehnen (AC-2, 3)
 - M3: Buchungen, Auszahlungen, Rechnungen (AC-5)
-- M4: Frist, Benachrichtigung, Kalender mit Sperrzeiten (AC-9, 10, 11, 12)
+- M4: Frist, Benachrichtigung, Kalender mit Sperrzeiten, Zusage als Buchungsbedingung (AC-9, 10, 11, 12, 13, 14, 15)
 - M5: Antworten auf Bewertungen, Gesamtablauf (AC-6, 8); erst nach Vertrag 010 (braucht die Bewertungen aus 010 M1), die Umsetzungsreihenfolge bleibt 009, 011 M1 bis M4, 010, 011 M5
 
 ## Betroffene Bereiche
