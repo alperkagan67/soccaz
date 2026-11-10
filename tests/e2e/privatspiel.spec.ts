@@ -59,6 +59,8 @@ test("Privatspiel: anlegen, per Link beitreten (auch neu registriert), nicht öf
   await expect(fresh.getByTestId("game-invite-page")).toContainText("lädt dich ein");
   await fresh.getByRole("link", { name: /Anmelden oder registrieren/ }).click();
   await expect(fresh).toHaveURL(/\/anmelden\?next=/);
+  // der Einladungs-Pfad bleibt als internes Rücksprungziel erhalten (kein fremdes Ziel, Token unverändert)
+  expect(new URL(fresh.url()).searchParams.get("next")).toBe(new URL(link).pathname);
   await devLogin(fresh, `pgnew-${run}@test.local`, "Neuer Spieler", new URL(link).pathname);
   await onboard(fresh, "1996-06-06"); // Einrichten für neue Konten
   await expect(fresh).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
@@ -192,4 +194,50 @@ test("Privatspiel: Fremde und Anonyme bekommen überall dieselbe Fehlerseite wie
   // Das Privatspiel steht in keiner öffentlichen Liste
   await anon.goto("/suche");
   await expect(anon.getByText(`E2E Geheimhalle ${run}`)).toHaveCount(0);
+});
+
+test("Privatspiel: Einladungslink zurückziehen und neu erzeugen (AC-10)", async ({ browser }) => {
+  const org = await (await browser.newContext()).newPage();
+  await newUser(org, "pglink");
+  await org.goto("/app/privatspiel/neu");
+  await org.getByLabel("Anstoß (Datum und Uhrzeit)").fill(futureLocal(6, "20:00"));
+  await org.getByLabel("Halle und Adresse").fill(`E2E Linkhalle ${run}, Hauptstr. 3`);
+  await org.getByLabel("Kostenlos (0 €)").check();
+  await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
+  await expect(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+  const matchId = org.url().split("/").pop()!;
+  const oldLink = await org.getByTestId("game-invite").getByRole("textbox").inputValue();
+
+  // ein Spieler tritt mit dem alten Link bei
+  const early = await (await browser.newContext()).newPage();
+  await newUser(early, "pgearly");
+  await early.goto(oldLink);
+  await expect(early).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
+
+  // der Veranstalter zieht den Link zurück: kein Link mehr sichtbar, der alte ist ungültig
+  org.on("dialog", (d) => void d.accept());
+  await org.getByRole("button", { name: "Link zurückziehen" }).click();
+  await expect(org.getByTestId("game-invite")).toHaveCount(0);
+  await expect(org.getByText("Es gibt gerade keinen gültigen Einladungslink.")).toBeVisible();
+  const late = await (await browser.newContext()).newPage();
+  await newUser(late, "pglate");
+  await late.goto(oldLink);
+  await expect(late.getByRole("heading", { name: "Einladung nicht gültig" })).toBeVisible();
+  await expect(late.getByText(/ungültig oder wurde zurückgezogen/)).toBeVisible();
+
+  // neuen Link erzeugen: er funktioniert, der alte bleibt ungültig, Beigetretene bleiben
+  await org.getByRole("button", { name: "Einladungslink erzeugen" }).click();
+  await expect(org.getByTestId("game-invite")).toBeVisible();
+  const newLink = await org.getByTestId("game-invite").getByRole("textbox").inputValue();
+  expect(newLink).not.toBe(oldLink);
+  await late.goto(newLink);
+  await expect(late).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
+  await late.goto(oldLink);
+  await expect(late.getByRole("heading", { name: "Einladung nicht gültig" })).toBeVisible();
+  expect((await query("select 1 from match_participants where match_id = $1", [matchId])).length).toBe(3); // Veranstalter, früher Spieler, später Spieler
+  expect((await query("select 1 from game_invites where match_id = $1", [matchId])).length).toBe(1);
+
+  // ein normaler Spieler sieht die Knöpfe nicht
+  await early.reload();
+  await expect(early.getByTestId("invite-admin")).toHaveCount(0);
 });

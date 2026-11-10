@@ -5,6 +5,8 @@ import { formatDateTime, formatTime, toBerlinInputValue } from "@/lib/time";
 import { formatEuro } from "@/lib/money";
 import { hasFreeSlot, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { ShareLink } from "@/components/ShareLink";
+import { ActionButton } from "@/components/ActionButton";
+import { regenerateGameInviteAction, revokeGameInviteAction } from "@/server/privategame-actions";
 import { PrivateTools } from "./PrivateTools";
 import { getGameInviteToken } from "@/server/privategame";
 import { headers } from "next/headers";
@@ -106,7 +108,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     .map((t) => ({ teamId: t.id, name: t.name }));
 
   let inviteUrl: string | null = null;
-  if (isPrivate && user && (v.platformAdmin || v.adminOf.length > 0)) {
+  // Dieselbe Regel wie auf dem Server (canManageInvite): Team-Admin des Heim-Teams oder Plattform-Admin, nicht jeder Admin des Gast-Teams
+  const inviteManager = Boolean(isPrivate && user && (v.platformAdmin || v.adminOf.includes(match.homeId)));
+  if (inviteManager && user) {
     const token = await getGameInviteToken(user.id, match.id);
     if (token) {
       const h = await headers();
@@ -148,6 +152,13 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
 
       {isPrivate && inviteUrl && (
         <ShareLink url={inviteUrl} title="Einladungslink zum Spiel" shareText={`Privatspiel #${match.number} auf Socaz: komm dazu!`} testId="game-invite" hint={`${participants.length} von ${match.maxPlayers ?? 10} Plätzen belegt. Wer den Link öffnet, meldet sich an oder registriert sich und landet direkt in diesem Spiel.`} />
+      )}
+      {inviteManager && match.status !== "cancelled" && (
+        <section className="flex flex-wrap items-center gap-2" data-testid="invite-admin">
+          {inviteUrl && <ActionButton action={revokeGameInviteAction.bind(null, match.id)} label="Link zurückziehen" confirm="Der bisherige Link wird sofort ungültig. Wer schon im Spiel ist, bleibt drin." />}
+          <ActionButton action={regenerateGameInviteAction.bind(null, match.id)} label={inviteUrl ? "Neuen Link erzeugen" : "Einladungslink erzeugen"} confirm={inviteUrl ? "Der bisherige Link wird ungültig, ein neuer Link wird erzeugt." : undefined} />
+          {!inviteUrl && <p className="text-xs text-muted">Es gibt gerade keinen gültigen Einladungslink.</p>}
+        </section>
       )}
       {isPrivate && v.canManage && active && <PrivateTools matchId={match.id} waiting={pendingStrangers.length} assigned={participants.filter((p) => p.teamId).length} />}
 

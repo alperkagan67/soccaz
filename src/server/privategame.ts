@@ -108,6 +108,54 @@ export async function getGameInviteToken(userId: string, matchId: string): Promi
   return row?.token ?? null;
 }
 
+/** Darf die Person den Einladungslink verwalten? Veranstalter (Team-Admin des Heim-Teams des Privatspiels) und Plattform-Admins, wie beim Anzeigen des Links. */
+async function canManageInvite(tx: Pick<typeof db, "select">, userId: string, homeTeamId: string): Promise<boolean> {
+  const [admin] = await tx.select({ role: teamMembers.role }).from(teamMembers).where(and(eq(teamMembers.teamId, homeTeamId), eq(teamMembers.userId, userId), eq(teamMembers.role, "admin")));
+  if (admin) return true;
+  const [u] = await tx.select({ role: users.role }).from(users).where(eq(users.id, userId));
+  return u?.role === "admin";
+}
+
+export const INVITE_FORBIDDEN = "Nur der Veranstalter kann den Einladungslink verwalten.";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Ist das eine UUID? Prüft Spiel-IDs aus Formularen und Aktionen, bevor sie in Datenbankabfragen oder Pfade gehen. */
+export const isUuid = (value: unknown): value is string => typeof value === "string" && UUID_RE.test(value);
+
+/**
+ * Sperrt das Privatspiel und prüft die Rechte. Für alle Nicht-Berechtigten gibt es dieselbe Meldung (unbekannte oder ungültige ID,
+ * kein Privatspiel, fremdes Spiel): Wer angemeldet ist, kann so nicht herausfinden, ob eine Spiel-ID zu einem Privatspiel gehört.
+ */
+async function lockManagedPrivateGame(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], userId: string, matchId: string) {
+  if (!isUuid(matchId)) throw new DomainError(INVITE_FORBIDDEN);
+  const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
+  if (!match || match.kind !== "private" || !(await canManageInvite(tx, userId, match.homeTeamId))) throw new DomainError(INVITE_FORBIDDEN);
+  return match;
+}
+
+/** Der Veranstalter zieht den Einladungslink zurück: Der alte Link ist sofort ungültig, bereits Beigetretene bleiben im Spiel. */
+export async function revokeGameInvite(userId: string, matchId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const match = await lockManagedPrivateGame(tx, userId, matchId);
+    const removed = await tx.delete(gameInvites).where(eq(gameInvites.matchId, match.id)).returning({ token: gameInvites.token });
+    await audit(userId, "private.invite.revoke", "match", match.id, { after: { revoked: removed.length } }, tx);
+  });
+}
+
+/** Neuer Einladungslink (kryptografisch zufällig). Er widerruft alle alten Links des Spiels, es gibt nie zwei gültige Links. */
+export async function regenerateGameInvite(userId: string, matchId: string): Promise<string> {
+  return db.transaction(async (tx) => {
+    const match = await lockManagedPrivateGame(tx, userId, matchId);
+    if (match.status === "cancelled") throw new DomainError("Dieses Spiel wurde abgesagt.");
+    if (match.status !== "lobby" && match.status !== "confirmed") throw new DomainError("Dieses Spiel ist schon vorbei.");
+    await tx.delete(gameInvites).where(eq(gameInvites.matchId, match.id));
+    const token = randomBytes(16).toString("base64url");
+    await tx.insert(gameInvites).values({ token, matchId: match.id, createdBy: userId, expiresAt: new Date(match.startsAt.getTime() + INVITE_DAYS_AFTER_START * 86_400_000) });
+    await audit(userId, "private.invite.regenerate", "match", match.id, {}, tx); // der Token selbst wird nie protokolliert
+    return token;
+  });
+}
+
 export async function getGameInvitePreview(token: string) {
   await connection();
   const [row] = await db
@@ -131,6 +179,9 @@ export async function joinPrivateGame(userId: string, token: string): Promise<{ 
     if (inv.expiresAt.getTime() < Date.now()) throw new DomainError("Dieser Einladungslink ist abgelaufen. Bitte frag den Veranstalter nach einem neuen.");
     const [match] = await tx.select().from(matches).where(eq(matches.id, inv.matchId)).for("update");
     if (!match || match.kind !== "private") throw new DomainError("Dieses Spiel gibt es nicht mehr.");
+    // Der Link wurde vielleicht zurückgezogen, während wir auf die Sperre gewartet haben: nach der Sperre noch einmal prüfen
+    const [stillValid] = await tx.select({ token: gameInvites.token }).from(gameInvites).where(eq(gameInvites.token, token));
+    if (!stillValid) throw new DomainError("Dieser Einladungslink ist ungültig.");
     if (match.status === "cancelled") throw new DomainError("Dieses Spiel wurde abgesagt.");
     if (match.status !== "lobby" && match.status !== "confirmed") throw new DomainError("Dieses Spiel ist schon vorbei.");
     const [existing] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
