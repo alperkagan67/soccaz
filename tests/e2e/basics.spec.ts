@@ -150,12 +150,19 @@ test("Profile: Steckbrief, Form, Elo-Verlauf, Direktvergleich", async ({ browser
   await expect(anon.getByText("Siegquote")).toBeVisible();
 
   await anon.goto(`/teams/${teamA.slug}`);
+  // Backlog B-b AC-2: Gäste sehen Teamname, Stadt und Spielerzahl, aber keine Spielernamen
+  await expect(anon.getByRole("heading", { name: nameA })).toBeVisible();
+  await expect(anon.getByTestId("roster-guest")).toContainText("1 Spieler im Kader");
+  await expect(anon.getByTestId("member")).toHaveCount(0);
+  expect(await anon.content()).not.toContain("Spieler pfa");
   await expect(anon.getByTestId("sparkline")).toContainText("Elo-Verlauf");
   await expect(anon.getByTestId("form").locator("span")).toHaveCount(2);
   await expect(anon.getByText("Tore pro Spiel").first()).toBeVisible();
 
   // Der Admin des anderen Teams sieht den Direktvergleich
   await b.goto(`/teams/${teamA.slug}`);
+  await expect(b.getByTestId("member").filter({ hasText: "Spieler pfa" })).toBeVisible(); // eingeloggte Nutzer sehen den Kader
+  await expect(b.getByTestId("roster-guest")).toHaveCount(0);
   await expect(b.getByTestId("head-to-head")).toContainText("1 Siege, 0 Remis, 1 Niederlagen");
 });
 

@@ -213,7 +213,30 @@ export async function listPlayers(filter: { q?: string; city?: string; page?: nu
   return { rows: list.slice(0, 30), hasMore: list.length > 30, page };
 }
 
-export async function getTeamProfile(slug: string, vsTeamId?: string | null) {
+/**
+ * Kader eines Teams für die Teamseite. Datenschutz: Namen, IDs und Positionen bekommen nur eingeloggte Nutzer (Mitglieder und Fremde);
+ * Gäste (`viewerId` null) bekommen nur die Anzahl. Die Auswahl passiert hier im Server, nicht erst in der Oberfläche.
+ */
+export async function getTeamRosterView(teamId: string, viewerId: string | null) {
+  if (!viewerId) {
+    // Gäste: nur zählen, die Namen werden gar nicht erst gelesen
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(teamMembers).where(eq(teamMembers.teamId, teamId));
+    return { count: n, members: [] as { userId: string; name: string; position: string | null; role: "admin" | "player"; isVerifiedPro: boolean }[] };
+  }
+  const list = await db
+    .select({ userId: users.id, name: users.name, position: users.position, role: teamMembers.role, isVerifiedPro: users.isVerifiedPro })
+    .from(teamMembers)
+    .innerJoin(users, eq(users.id, teamMembers.userId))
+    .where(eq(teamMembers.teamId, teamId))
+    .orderBy(teamMembers.role, teamMembers.joinedAt);
+  return { count: list.length, members: list };
+}
+
+/**
+ * Teamprofil. Datenschutz: Die Namen der Torjäger gibt es nur für eingeloggte Nutzer (`viewerId`); Gäste und Aufrufe ohne Angabe
+ * bekommen eine leere Liste. Team, Rang und Statistik sind für alle gleich.
+ */
+export async function getTeamProfile(slug: string, vsTeamId?: string | null, viewerId?: string | null) {
   await connection();
   const [team] = await db.select().from(teams).where(eq(teams.slug, slug));
   if (!team || team.archivedAt || team.kind !== "team") return null; // Spiel-Teams von Privatspielen haben keine Seite
@@ -259,13 +282,15 @@ export async function getTeamProfile(slug: string, vsTeamId?: string | null) {
     const ga = (home ? m.awayScore : m.homeScore) ?? 0;
     return (gf > ga ? "W" : gf === ga ? "D" : "L") as "W" | "D" | "L";
   });
-  const topScorers = rows<{ id: string; name: string; goals: number }>(
-    await db.execute(sql`
-      select u.id, u.name, count(*)::int as goals
-      from match_events e join users u on u.id = e.user_id join matches m on m.id = e.match_id
-      where e.type = 'goal' and e.team_id = ${team.id} and m.status = 'played' and m.visibility = 'public' and u.profile_public
-      group by u.id, u.name order by goals desc, u.name limit 3`),
-  );
+  const topScorers = viewerId
+    ? rows<{ id: string; name: string; goals: number }>(
+        await db.execute(sql`
+          select u.id, u.name, count(*)::int as goals
+          from match_events e join users u on u.id = e.user_id join matches m on m.id = e.match_id
+          where e.type = 'goal' and e.team_id = ${team.id} and m.status = 'played' and m.visibility = 'public' and u.profile_public
+          group by u.id, u.name order by goals desc, u.name limit 3`),
+      )
+    : [];
   const played = stats?.matches ?? 0;
   return {
     team,
