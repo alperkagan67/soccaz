@@ -324,6 +324,11 @@ test("Privatspiel: sinkt die Spielerzahl, sieht ein Unterzahler 'Anteil jetzt X,
   }
 });
 
+/**
+ * In der CI läuft der Server langsamer (Server-Aktionen mit Sperren, Zahlungen, Neuberechnung): Anzeigen und Datenbank-Zustände
+ * bekommen 30 Sekunden statt 5. Das ist keine feste Wartezeit, die Prüfung endet, sobald der Zustand da ist.
+ */
+const slow = expect.configure({ timeout: 30_000 });
 const euroRe = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s*"));
 
 test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle zahlen, Bereit, Preis fest, nicht öffentlich (AC-15)", async ({ browser }) => {
@@ -335,11 +340,11 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
     await org.goto("/app/privatspiel/neu");
     await org.getByLabel("Anstoß (Datum und Uhrzeit)").fill(futureLocal(6, "19:00"));
     await org.getByLabel("Halle und Adresse").fill(`E2E Gesamthalle ${run}, Hauptstr. 6`);
-    await expect(org.getByLabel("Spieler insgesamt")).toHaveValue("10");
+    await slow(org.getByLabel("Spieler insgesamt")).toHaveValue("10");
     await org.getByLabel("Miete als Betrag").check();
     await org.getByLabel("Hallenmiete in Euro").fill("100"); // 100 € / 10 Spieler = 10,00 € Anteil
     await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
-    await expect(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+    await slow(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
     const matchId = org.url().split("/").pop()!;
 
     // Link teilen: der WhatsApp-Link enthält den vollständigen Einladungslink
@@ -352,28 +357,28 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
     await fresh.getByRole("link", { name: /Anmelden oder registrieren/ }).click();
     await devLogin(fresh, `pgfullnew-${run}@test.local`, "Neuer Gesamtspieler", new URL(link).pathname);
     await onboard(fresh, "1996-06-06");
-    await expect(fresh).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
+    await slow(fresh).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
     const players = [{ key: "pgfullnew", page: fresh }];
     for (let i = 1; i <= 8; i++) {
       const page = await (await browser.newContext()).newPage();
       await newUser(page, `pgfull${i}`);
       await page.goto(link);
-      await expect(page).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
+      await slow(page).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
       players.push({ key: `pgfull${i}`, page });
     }
     const everyone = [{ key: "pgfull", page: org }, ...players];
     for (const p of everyone) await fundWallet(await userIdByEmail(`${p.key}-${run}@test.local`), 3000);
-    await expect.poll(async () => (await query("select 1 from match_participants where match_id = $1", [matchId])).length).toBe(10);
+    await slow.poll(async () => (await query("select 1 from match_participants where match_id = $1", [matchId])).length).toBe(10);
 
     // Einteilung, dann zahlt jeder seinen Anteil (Miete geteilt durch 10 = 10,00 €)
     org.on("dialog", (d) => void d.accept());
     await org.reload();
     await org.getByRole("button", { name: "Zufällig einteilen" }).click();
-    await expect.poll(async () => (await query("select 1 from match_participants where match_id = $1 and team_id is null", [matchId])).length).toBe(0);
+    await slow.poll(async () => (await query("select 1 from match_participants where match_id = $1 and team_id is null", [matchId])).length).toBe(0);
     for (const p of everyone) {
       await p.page.reload();
       await p.page.getByRole("button", { name: euroRe("10,00 € bezahlen") }).click();
-      await expect(p.page.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
+      await slow(p.page.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
     }
     const paid = await query<{ paid_cents: number }>("select paid_cents from match_participants where match_id = $1", [matchId]);
     expect(paid).toHaveLength(10);
@@ -384,11 +389,11 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
     for (const p of everyone) {
       await p.page.reload();
       await p.page.getByRole("button", { name: "Bereit machen" }).click();
-      await expect(p.page.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
+      await slow(p.page.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
     }
     await org.reload();
     await org.getByRole("button", { name: "Ja, mein Team ist komplett: Spiel bestätigen" }).click();
-    await expect
+    await slow
       .poll(async () => (await query<{ f: number | null; s: string }>("select final_share_cents as f, status as s from matches where id = $1", [matchId]))[0])
       .toMatchObject({ f: 1000, s: "confirmed" }); // Preis steht fest, Spiel ist bestätigt
     const done = (await query<{ h: Date | null; a: Date | null }>("select home_final_at as h, away_final_at as a from matches where id = $1", [matchId]))[0];
@@ -397,27 +402,27 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
     expect((await query<{ n: number }>("select coalesce(sum(paid_cents), 0)::int as n from match_participants where match_id = $1", [matchId]))[0].n).toBe(10_000); // die Miete ist gedeckt
     // nach der Bestätigung beider Captains steht die Spielübersicht mit allen Infos offen
     await org.goto(`/lobby/${matchId}/uebersicht`);
-    await expect(org.getByText(`E2E Gesamthalle ${run}`).first()).toBeVisible();
+    await slow(org.getByText(`E2E Gesamthalle ${run}`).first()).toBeVisible();
     expect(await walletBalanceOf(await userIdByEmail(`pgfull-${run}@test.local`))).toBe(2000);
 
     // nicht öffentlich: nicht in der Suche, Fremde sehen Fehlerseiten wie bei einem nicht vorhandenen Spiel, nicht in der Rangliste
     const anon = await (await browser.newContext()).newPage();
     await anon.goto("/suche");
-    await expect(anon.getByText(`E2E Gesamthalle ${run}`)).toHaveCount(0);
+    await slow(anon.getByText(`E2E Gesamthalle ${run}`)).toHaveCount(0);
     const stranger = await (await browser.newContext()).newPage();
     await newUser(stranger, "pgfullfremd");
     const missing = await stranger.goto("/spiele/00000000-0000-4000-8000-000000000000");
     for (const path of [`/spiele/${matchId}`, `/lobby/${matchId}`]) {
       const response = await stranger.goto(path);
       expect(response?.status(), path).toBe(missing?.status());
-      await expect(stranger.getByText(`E2E Gesamthalle ${run}`)).toHaveCount(0);
+      await slow(stranger.getByText(`E2E Gesamthalle ${run}`)).toHaveCount(0);
     }
     const teamIds = await query<{ home: string; away: string }>("select home_team_id as home, away_team_id as away from matches where id = $1", [matchId]);
     expect((await query("select 1 from team_stats where team_id in ($1, $2)", [teamIds[0].home, teamIds[0].away])).length).toBe(0);
     await anon.goto("/rangliste");
     await anon.waitForLoadState("networkidle");
-    await expect(anon.getByText("Team Rot")).toHaveCount(0);
-    await expect(anon.getByText("Team Blau")).toHaveCount(0);
+    await slow(anon.getByText("Team Rot")).toHaveCount(0);
+    await slow(anon.getByText("Team Blau")).toHaveCount(0);
   } finally {
     await setPlatformSetting("payments_enabled", false);
   }
@@ -436,7 +441,7 @@ test("Privatspiel ohne volle Miete: 24 Stunden vor Anstoß wird abgesagt, alle Z
     await org.getByLabel("Miete als Betrag").check();
     await org.getByLabel("Hallenmiete in Euro").fill("100"); // 100 € / 4 = 25,00 € Anteil
     await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
-    await expect(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
+    await slow(org).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 40_000 });
     const matchId = org.url().split("/").pop()!;
     const link = await org.getByTestId("game-invite").getByRole("textbox").inputValue();
 
@@ -445,7 +450,7 @@ test("Privatspiel ohne volle Miete: 24 Stunden vor Anstoß wird abgesagt, alle Z
       const page = await (await browser.newContext()).newPage();
       await newUser(page, key);
       await page.goto(link);
-      await expect(page).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
+      await slow(page).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
       others.push({ key, page });
     }
     const everyone = [{ key: "pgcov", page: org }, ...others];
@@ -453,28 +458,28 @@ test("Privatspiel ohne volle Miete: 24 Stunden vor Anstoß wird abgesagt, alle Z
     org.on("dialog", (d) => void d.accept());
     await org.reload();
     await org.getByRole("button", { name: "Zufällig einteilen" }).click();
-    await expect.poll(async () => (await query("select 1 from match_participants where match_id = $1 and team_id is null", [matchId])).length).toBe(0);
+    await slow.poll(async () => (await query("select 1 from match_participants where match_id = $1 and team_id is null", [matchId])).length).toBe(0);
 
     // nur der Veranstalter und ein Spieler zahlen (2 x 25,00 = 50,00 € von 100,00 €), zwei zahlen nicht
     const payers = [everyone[0], everyone[1]];
     for (const p of payers) {
       await p.page.reload();
       await p.page.getByRole("button", { name: euroRe("25,00 € bezahlen") }).click();
-      await expect(p.page.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
+      await slow(p.page.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
       expect(await walletBalanceOf(await userIdByEmail(`${p.key}-${run}@test.local`))).toBe(2500);
     }
 
     // Prüfzeitpunkt erreicht (Anstoß in 23 Stunden, angelegt vor 2 Stunden): keine feste Wartezeit, die Zeit wird in der Datenbank gesetzt
     await setMatchTimes(matchId, 23, 2);
     await callJob(baseURL!, "lobby-deadlines");
-    await expect.poll(async () => (await query<{ status: string }>("select status from matches where id = $1", [matchId]))[0].status).toBe("cancelled");
+    await slow.poll(async () => (await query<{ status: string }>("select status from matches where id = $1", [matchId]))[0].status).toBe("cancelled");
 
     // alle Zahlenden haben ihren Anteil zurück, der Veranstalter hat nichts verloren
     for (const p of everyone) expect(await walletBalanceOf(await userIdByEmail(`${p.key}-${run}@test.local`)), p.key).toBe(5000);
     await payers[1].page.reload();
-    await expect(payers[1].page.getByText("Dieses Spiel wurde abgesagt.")).toBeVisible();
+    await slow(payers[1].page.getByText("Dieses Spiel wurde abgesagt.")).toBeVisible();
     await payers[1].page.goto("/app/guthaben");
-    await expect(payers[1].page.getByTestId("statement")).toContainText("Erstattung");
+    await slow(payers[1].page.getByTestId("statement")).toContainText("Erstattung");
   } finally {
     await setPlatformSetting("payments_enabled", false);
   }
