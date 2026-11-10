@@ -15,7 +15,7 @@ export default async function GameInvitePage({ params }: PageProps<"/spiel/[toke
   if (user && !user.onboardedAt) redirect(`/willkommen?next=${encodeURIComponent(`/spiel/${token}`)}`);
 
   if (preview.status !== "valid") {
-    const text = preview.status === "expired" ? "Dieser Einladungslink ist abgelaufen. Bitte den Veranstalter um einen neuen." : preview.status === "cancelled" ? "Dieses Spiel wurde abgesagt." : "Diesen Einladungslink gibt es nicht.";
+    const text = preview.status === "expired" ? "Dieser Einladungslink ist abgelaufen. Bitte den Veranstalter um einen neuen." : preview.status === "cancelled" ? "Dieses Spiel wurde abgesagt." : "Dieser Einladungslink ist ungültig oder wurde zurückgezogen. Bitte den Veranstalter um einen neuen.";
     return <Notice title="Einladung nicht gültig" text={text} />;
   }
   const { game, players } = preview;

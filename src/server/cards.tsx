@@ -72,8 +72,8 @@ export async function matchCard(matchId: string): Promise<ImageResponse> {
 
 export async function teamCard(slug: string): Promise<ImageResponse> {
   await connection();
-  const [t] = await db.select({ name: teams.name, city: teams.city, archivedAt: teams.archivedAt }).from(teams).where(eq(teams.slug, slug));
-  if (!t || t.archivedAt) return plain();
+  const [t] = await db.select({ name: teams.name, city: teams.city, archivedAt: teams.archivedAt, kind: teams.kind }).from(teams).where(eq(teams.slug, slug));
+  if (!t || t.archivedAt || t.kind !== "team") return plain(); // Spiel-Teams von Privatspielen und archivierte Teams gelten als nicht vorhanden
   return new ImageResponse(
     (
       <Frame>

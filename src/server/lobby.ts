@@ -14,7 +14,7 @@ import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { onParticipantLeaves, refundOnCancel, reserveShare } from "./wallet";
+import { fixPrivateShare, onParticipantLeaves, privateJoinBlocked, privateListLocked, privateShareNow, recalcPrivateShares, refundOnCancel, reserveShare, seatedCount } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { reservationFor, shareFor } from "@/lib/money";
@@ -124,13 +124,17 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const payEnabled = await paymentsEnabled();
   const minPaid = await minPaidPlayers();
   const priceCents = match.priceCents ?? (await priceFor(db, null, match.durationMin))?.priceCents ?? null;
+  // Privatspiel: Anteil = Miete ÷ eingeteilte Spieler (bzw. der feste Anteil); sonst Reservierung mit Mindestzahl
+  const privateShare = match.kind === "private" && priceCents ? await privateShareNow(db, match, priceCents) : null;
   const payments = {
     enabled: payEnabled,
     priceCents,
     minPaid,
-    reservationCents: priceCents ? (match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid)) : null,
-    lowestShareCents: priceCents ? shareFor(priceCents, 12) : null,
+    reservationCents: priceCents ? (privateShare ?? (match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid))) : null,
+    lowestShareCents: priceCents ? (privateShare ?? shareFor(priceCents, 12)) : null,
     finalShareCents: match.finalShareCents,
+    // Privatspiel: so viel muss die angemeldete Person noch zahlen (Anteil gestiegen oder noch nichts gezahlt)
+    myDueCents: match.kind === "private" && privateShare !== null && viewer ? Math.max(privateShare - (participants.find((p) => p.userId === viewer.id)?.paidCents ?? privateShare), 0) : null,
     settled: Boolean(match.settledAt),
     balanceCents: viewer && payEnabled ? await walletBalance(db, viewer.id) : null,
   };
@@ -242,7 +246,10 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
     if (!match) throw new DomainError("Spiel nicht gefunden.");
     if (match.status !== "lobby" && match.status !== "confirmed") throw new DomainError("Dieses Spiel kann nicht mehr geändert werden.");
     if (match.startsAt.getTime() <= Date.now()) throw new DomainError("Der Anstoß ist schon erreicht.");
+    // Privatspiel vor dem Fixieren: Ändert die Aktion die Zahl der eingeteilten Spieler, wird der Anteil neu gerechnet
+    const seatedBefore = match.kind === "private" && match.finalShareCents === null ? await seatedCount(tx, matchId) : null;
     await fn(tx, match);
+    if (seatedBefore !== null && (await seatedCount(tx, matchId)) !== seatedBefore) await recalcPrivateShares(tx, match, userId);
     await evaluateConfirmation(tx, match, userId);
     await revalidateFinal(tx, match.id);
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);
@@ -252,7 +259,8 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
 /** Ist das Team komplett? Mindestens so viele Spieler wie nötig, alle bereit und (bei eingeschalteten Zahlungen) alle bezahlt. */
 export async function teamComplete(tx: Tx, matchId: string, teamId: string): Promise<boolean> {
   const rows = await tx.select({ ready: matchParticipants.readyAt, paid: matchParticipants.paidCents }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.teamId, teamId)));
-  const pay = await paymentsEnabled(tx);
+  const [m] = await tx.select({ priceCents: matches.priceCents }).from(matches).where(eq(matches.id, matchId));
+  const pay = (await paymentsEnabled(tx)) && m?.priceCents !== 0; // kostenlos (0 €): keine Zahlungspflicht
   return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (!pay || r.paid > 0));
 }
 
@@ -260,6 +268,8 @@ export async function teamComplete(tx: Tx, matchId: string, teamId: string): Pro
 async function revalidateFinal(tx: Tx, matchId: string) {
   const [m] = await tx.select().from(matches).where(eq(matches.id, matchId));
   if (!m) return;
+  // Privatspiel nach dem Fixieren: Preis, Spielerzahl und "Bereit" der Captains bleiben, auch wenn ein Aussteiger geht oder ein Ersatz noch nicht bereit ist
+  if (m.kind === "private" && m.finalShareCents !== null) return;
   if (m.homeFinalAt && !(await teamComplete(tx, matchId, m.homeTeamId))) await tx.update(matches).set({ homeFinalAt: null }).where(eq(matches.id, matchId));
   if (m.awayFinalAt && !(await teamComplete(tx, matchId, m.awayTeamId))) await tx.update(matches).set({ awayFinalAt: null }).where(eq(matches.id, matchId));
 }
@@ -285,6 +295,8 @@ export function finalConfirm(userId: string, matchId: string) {
     await audit(userId, "lobby.final", "match", matchId, { after: { teamId: admin.teamId } }, tx);
     const [fresh] = await tx.select().from(matches).where(eq(matches.id, matchId));
     const bothDone = Boolean(fresh.homeFinalAt && fresh.awayFinalAt);
+    // Privatspiel: mit dem zweiten Bereit steht die Spielerzahl fest, der Anteil wird fixiert (genau einmal; zu wenig bezahlt -> Fehler, nichts wird bestätigt)
+    if (bothDone) await fixPrivateShare(tx, fresh);
     await notifyUsers(
       [...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
       bothDone
@@ -304,8 +316,11 @@ async function findParticipant(tx: Tx, matchId: string, userId: string) {
   return row ?? null;
 }
 
+const LIST_LOCKED = "Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt: Niemand kann mehr austreten oder entfernt werden. Ersatz regelt ihr selbst.";
+
 export function joinLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match) => {
+    if (await privateJoinBlocked(tx, match)) throw new DomainError("Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt: Es kann nur noch ein Ersatz für einen ausgestiegenen Spieler beitreten.");
     const mine = await tx
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -328,6 +343,7 @@ export function joinLobby(userId: string, matchId: string) {
 export function leaveLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match) => {
     if (!(await findParticipant(tx, matchId, userId))) throw new DomainError("Du bist nicht in dieser Lobby.");
+    if (privateListLocked(match)) throw new DomainError(LIST_LOCKED);
     await onParticipantLeaves(tx, match, userId, { removedByAdmin: false, actorId: userId });
     const me = await findParticipant(tx, matchId, userId);
     if (me?.readyAt && match.startsAt.getTime() - Date.now() < 24 * 3_600_000) await recordLateCancel(tx, userId, matchId);
@@ -357,7 +373,7 @@ export function setReady(userId: string, matchId: string, ready: boolean) {
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
     if (ready && match.schedulingOpen) throw new DomainError("Erst müssen die Teams Termin und Ort gemeinsam wählen.");
-    if (ready && (await paymentsEnabled(tx)) && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil.");
+    if (ready && (await paymentsEnabled(tx)) && match.priceCents !== 0 && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil.");
     await tx
       .update(matchParticipants)
       .set({ readyAt: ready ? new Date() : null })
@@ -475,6 +491,7 @@ export function removeParticipant(actorId: string, matchId: string, targetUserId
       (await isPlatformAdmin(tx, actorId)) ||
       (target.teamId ? await isAdminOf(tx, actorId, target.teamId) : await canManageMatch(tx, actorId, match));
     if (!allowed) throw new DomainError("Dazu hast du keine Berechtigung.");
+    if (privateListLocked(match)) throw new DomainError(LIST_LOCKED);
     await onParticipantLeaves(tx, match, targetUserId, { removedByAdmin: true, actorId });
     await tx
       .delete(matchParticipants)

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { FieldError, SubmitButton } from "@/components/FormBits";
 import { useFormAction } from "@/components/useFormAction";
 import { CITIES } from "@/lib/validation";
@@ -7,6 +8,7 @@ import { createPrivateGameAction } from "@/server/privategame-actions";
 
 export function PrivateGameForm({ min, defaultCity }: { min: string; defaultCity: string | null }) {
   const { state, pending, onSubmit } = useFormAction(createPrivateGameAction);
+  const [rentMode, setRentMode] = useState<"" | "amount" | "free">(""); // bewusst keine Vorauswahl: Miete oder "kostenlos" muss gewählt werden
   const fe = state?.fieldErrors ?? {};
   return (
     <form onSubmit={onSubmit} className="card space-y-4">
@@ -41,12 +43,25 @@ export function PrivateGameForm({ min, defaultCity }: { min: string; defaultCity
         <label className="label" htmlFor="venueText">Halle und Adresse</label>
         <input id="venueText" name="venueText" className="field" maxLength={120} required placeholder="Soccerhalle Buer, Hauptstr. 1" />
       </div>
-      <div>
-        <label className="label" htmlFor="rent">Hallenmiete in Euro (optional)</label>
-        <input id="rent" name="rent" inputMode="decimal" className="field" placeholder="leer = Standardpreis" />
-        <p className="mt-1 text-xs text-muted">Die Miete wird durch die Zahl der zahlenden Spieler geteilt. Jeder zahlt seinen Anteil selbst.</p>
+      <fieldset>
+        <legend className="label">Hallenmiete (Pflicht)</legend>
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 text-sm" htmlFor="rentModeAmount">
+            <input id="rentModeAmount" type="radio" name="rentMode" value="amount" checked={rentMode === "amount"} onChange={() => setRentMode("amount")} required />
+            Miete als Betrag
+          </label>
+          <label className="flex items-center gap-2 text-sm" htmlFor="rentModeFree">
+            <input id="rentModeFree" type="radio" name="rentMode" value="free" checked={rentMode === "free"} onChange={() => setRentMode("free")} required />
+            Kostenlos (0 €)
+          </label>
+        </div>
+        <div className="mt-2">
+          <label className="label" htmlFor="rent">Hallenmiete in Euro</label>
+          <input id="rent" name="rent" inputMode="decimal" className="field" placeholder="z. B. 120 oder 95,50 (höchstens 1.000)" disabled={rentMode !== "amount"} required={rentMode === "amount"} />
+        </div>
+        <p className="mt-1 text-xs text-muted">Die Miete wird durch die Zahl der Spieler geteilt. Jeder zahlt seinen Anteil selbst; bei „kostenlos“ zahlt niemand.</p>
         <FieldError message={fe.rent} />
-      </div>
+      </fieldset>
       <SubmitButton pending={pending}>Privatspiel anlegen</SubmitButton>
       {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
     </form>

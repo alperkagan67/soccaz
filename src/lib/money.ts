@@ -42,3 +42,24 @@ export function finalShareFor(priceCents: number, paidPlayers: number, minPaidPl
 export function isValidTopup(cents: number): boolean {
   return Number.isInteger(cents) && cents >= MIN_TOPUP_CENTS && cents <= MAX_TOPUP_CENTS;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Privatspiel: Miete geteilt durch alle Spieler (ohne Deckel bei 12, ohne Mindestwert)
+// ---------------------------------------------------------------------------------------------
+
+function assertRentAndPlayers(rentCents: number, n: number) {
+  if (!Number.isInteger(rentCents) || rentCents < 0) throw new Error("Miete muss eine ganze Zahl in Cent von mindestens 0 sein");
+  if (!Number.isInteger(n) || n < 1) throw new Error("Spielerzahl muss eine ganze Zahl von mindestens 1 sein");
+}
+
+/** Anteil pro Spieler im Privatspiel: Miete in Cent geteilt durch die Spielerzahl, aufgerundet (rein ganzzahlig gerechnet). */
+export function shareCents(rentCents: number, n: number): number {
+  assertRentAndPlayers(rentCents, n);
+  const rest = rentCents % n;
+  return (rentCents - rest) / n + (rest > 0 ? 1 : 0);
+}
+
+/** Überschuss durch das Aufrunden: alle Anteile zusammen minus die Miete (nie negativ, immer kleiner als die Spielerzahl in Cent). */
+export function roundingRemainderCents(rentCents: number, n: number): number {
+  return n * shareCents(rentCents, n) - rentCents;
+}
