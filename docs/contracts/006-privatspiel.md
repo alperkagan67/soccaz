@@ -1,9 +1,9 @@
 # 006 – Privatspiel: Miete teilen, Fristen, Einladungslink
 Status: Freigegeben (2026-11-10)
-Version: 2 (v2 plus Review-Nachbesserung 2026-11-10: neue Frist-Regel 48 h für alle Modi, Geld bleibt in der Lobby geparkt; ersetzt die 24-h-Regel aus Version 1)
+Version: 3 (v3 2026-11-10: kein Mindestvorlauf von 48 h, sofortige Buchung bei kurzem Vorlauf, Captain-Tausch als Folgeauftrag; davor v2 plus Review-Nachbesserung: neue Frist-Regel 48 h für alle Modi, Geld bleibt in der Lobby geparkt; ersetzt die 24-h-Regel aus Version 1)
 
 ## Ziel
-Eine Person organisiert ein Spiel für ihre Freundesgruppe (Standard 10 Spieler), das nicht öffentlich ist und nur per Einladungslink (z. B. WhatsApp) erreichbar. Das Privatspiel funktioniert im Code weitgehend (Erstellen, Link, Beitritt auch für neu Registrierte, Einteilung manuell/zufällig, keine Rangliste). Dieser Vertrag legt das Geldmodell fest und schließt die Lücken: Jeder zahlt Miete ÷ Spielerzahl, das Geld bleibt in der Lobby geparkt, und das Spiel wird per "Bereit" beider Captains fixiert. Die einzige Frist ist 48 Stunden vor Anstoß: Bis dahin ist die Lobby offen (Zahlen, Bereit, Austritt mit Erstattung). Zur Frist schließt die Lobby automatisch: Haben nicht alle bezahlt oder nicht alle Captains "Bereit" gedrückt, fällt das Spiel aus und alle bekommen ihr Geld zurück; sonst wird gebucht und das Geld geht an den Veranstalter. Danach gibt es keine Absage und keine Erstattung. Der Veranstalter trägt nie einen Fehlbetrag. Das Modell ist zugleich Vorbild für das Teamspiel (eigener Backlog-Eintrag).
+Eine Person organisiert ein Spiel für ihre Freundesgruppe (Standard 10 Spieler), das nicht öffentlich ist und nur per Einladungslink (z. B. WhatsApp) erreichbar. Das Privatspiel funktioniert im Code weitgehend (Erstellen, Link, Beitritt auch für neu Registrierte, Einteilung manuell/zufällig, keine Rangliste). Dieser Vertrag legt das Geldmodell fest und schließt die Lücken: Jeder zahlt Miete ÷ Spielerzahl, das Geld bleibt in der Lobby geparkt, und das Spiel wird per "Bereit" beider Captains fixiert. Die einzige Frist ist 48 Stunden vor Anstoß: Bis dahin ist die Lobby offen (Zahlen, Bereit, Austritt mit Erstattung). Zur Frist schließt die Lobby automatisch: Haben nicht alle bezahlt oder nicht alle Captains "Bereit" gedrückt, fällt das Spiel aus und alle bekommen ihr Geld zurück; sonst wird gebucht und das Geld geht an den Veranstalter. Danach gibt es keine Absage und keine Erstattung. Spiele mit weniger als 48 Stunden Vorlauf sind erlaubt (Mindestvorlauf bleibt 1 Stunde): Dort gibt es keine Frist, es wird sofort gebucht, sobald alle bezahlt haben und beide Captains "Bereit" gedrückt haben. Der Veranstalter trägt nie einen Fehlbetrag. Das Modell ist zugleich Vorbild für das Teamspiel (eigener Backlog-Eintrag).
 
 ## Nutzer und Rollen
 - Veranstalter: legt das Spiel an, ist Team-Admin (Captain) beider Spiel-Teams, teilt ein, wirft Spieler raus, zieht den Link zurück oder erzeugt ihn neu, zahlt selbst seinen Anteil.
@@ -20,7 +20,7 @@ Eine Person organisiert ein Spiel für ihre Freundesgruppe (Standard 10 Spieler)
 - v2, Frist-Regel für alle Modi (Privat, Team, Turnier): Es gibt keine 24-h-Regel und keinen 24-h-Job mehr. Die einzige Frist ist 48 Stunden vor Anstoß.
 - v2, bis zur Frist ist die Lobby offen: Spieler zahlen, Captains drücken "Bereit". Das Geld bleibt in der Lobby geparkt (nicht an Veranstalter oder Halle gebucht) und geht erst bei der Buchung an den Veranstalter.
 - v2, zur 48-h-Frist schließt die Lobby automatisch. Haben nicht alle bezahlt oder nicht alle Captains "Bereit" gedrückt, fällt das Spiel aus und alle bekommen ihr Guthaben zurück. Sonst wird gebucht.
-- v2, nach der Frist gibt es keine Absage und keine Erstattung. Fällt jemand aus, tauscht der Captain den Spieler gegen Ersatz; die Zahlung zwischen beiden läuft außerhalb von Soccaz.
+- v2, nach der Frist gibt es keine Absage und keine Erstattung. Fällt jemand aus, gilt der Folgeauftrag: Captain tauscht gegen Ersatz (der Ersatz ist ein registrierter Soccaz-Nutzer; die Zahlung zwischen beiden läuft außerhalb von Soccaz) (siehe Abschnitt Folgeauftrag).
 - Oberfläche (Teamspiel / Privatspiel / Turnier getrennt) ist Vertrag 007.
 
 ## Annahmen (Orchestrator-Vorschlag, vom Nutzer am 2026-11-09 bestätigt; Neuberechnung vom Nutzer korrigiert; v2-Annahmen am 2026-11-10 vom Orchestrator bestätigt)
@@ -29,8 +29,10 @@ Eine Person organisiert ein Spiel für ihre Freundesgruppe (Standard 10 Spieler)
 - Mit dem zweiten "Bereit" wird die Spielerzahl festgeschrieben und der Preis ist fest. Das Geld bleibt dabei geparkt; die Verbuchung an den Veranstalter folgt erst zur Frist (v2).
 - v2 Annahme (bestätigt): Austritt oder Rauswurf bis 48 h vor Anstoß bedeutet sofortige Erstattung (das Geld ist geparkt). Die Erstattung hebt die Festschreibung auf: Spielerzahl wieder offen, Neuberechnung beim nächsten Beitritt oder Austritt, "Bereit" beider Teams zurückgesetzt. Der alte Austausch eins zu eins mit Erstattung erst bei Ersatzzahlung entfällt vor der Frist.
 - v2 Annahme (bestätigt): Die Buchung ("automatisch buchen") passiert zur 48-h-Frist, nicht mehr beim zweiten "Bereit"; genau einmal (Zeilensperre, idempotenter Schlüssel). Beim zweiten "Bereit" wird nur der Preis fixiert.
-- v2 Annahme (bestätigt): Ab 48 h vor Anstoß ist die Teilnehmerliste gesperrt (kein Austritt, kein Rauswurf, kein neuer Beitritt) und es gibt keine Erstattung. Bis zur Frist ist der Beitritt immer offen; der Schalter `BLOCK_PRIVATE_JOIN_BEFORE_FIX` entfällt mit der Umsetzung. Ein Captain-Tausch nach der Frist ist nicht Teil dieses Vertrags (Nicht-Ziel, Produktfrage im Backlog).
-- Entscheidung des Orchestrators: Mindestvorlauf des Anstoßes bei Anlage ist 48 h, für alle Modi (Privat, Team, Turnier), statt heute 1 h. Ein Spiel mit weniger Vorlauf kann nicht angelegt werden.
+- v2 Annahme (bestätigt): Ab 48 h vor Anstoß ist die Teilnehmerliste gesperrt (kein Austritt, kein Rauswurf, kein neuer Beitritt) und es gibt keine Erstattung. Bis zur Frist ist der Beitritt immer offen; der Schalter `BLOCK_PRIVATE_JOIN_BEFORE_FIX` entfällt mit der Umsetzung. Der Captain-Tausch nach der Frist ist Folgeauftrag (siehe Abschnitt Folgeauftrag).
+- Nutzerentscheid v3 (Variante 2), Mindestvorlauf: Es gibt keinen 48-h-Mindestvorlauf. Spiele mit weniger als 48 h Vorlauf sind erlaubt; der bisherige Mindestvorlauf von 1 Stunde bleibt, für alle Modi.
+- Nutzerentscheid v3, Spiele unter 48 h Vorlauf: Es wird sofort gebucht, sobald alle bezahlt haben (bei "kostenlos" entfällt das) UND beide Captains "Bereit" gedrückt haben. Es gibt dort keinen Austritt und keinen Rauswurf mit Erstattung und keine Absage-Frist.
+- Annahme (bestätigt) zu Spielen unter 48 h: Die Liste ist für Austritt und Rauswurf von Anfang an gesperrt; Beitritt und Zahlung bleiben bis zur Buchung möglich, danach ist die Liste ganz gesperrt. Wie ein Spiel endet, das unter 48 h nie vollständig wird (Abbruchweg und Erstattung des geparkten Geldes), ist offen und wird im Task geklärt.
 - Bei "kostenlos" (0 €) entfällt die Zahlung; "Bereit" beider Captains bleibt Voraussetzung, sonst fällt das Spiel zur Frist aus.
 - "Gedeckt" heißt: alle Teilnehmer haben ihren Anteil bezahlt (Summe der bezahlten Anteile ≥ Miete).
 
@@ -39,11 +41,13 @@ Eine Person organisiert ein Spiel für ihre Freundesgruppe (Standard 10 Spieler)
 - Trennung der Oberfläche und Navigation (007).
 - Privatsphäre-Härtung der öffentlichen Team- und Lobby-Seiten (Backlog-Eintrag 3).
 - Zahlung für andere Spieler (Captain/Spieler zahlen für Mitspieler) im Privatspiel.
-- Captain-Tausch von Spielern nach der Frist (Produktfrage, eigener Backlog-Eintrag).
-- Wertung bei Nichterscheinen: `recordLateCancel` mit 24-h-Grenze entfällt mit der 24-h-Regel; eine Nachfolge-Wertung ist ein eigener Backlog-Eintrag.
+- Wertung bei Nichterscheinen: `recordLateCancel` mit 24-h-Grenze entfällt mit der 24-h-Regel; eine Nachfolge-Wertung ist ein eigener Backlog-Eintrag (Nr. 10).
 - Rangliste oder Statistik für Privatspiele; weiterhin ausgeschlossen.
 - Mehr als zwei Teams, eigene Hallenwahl oder Hallenbuchung durch Spieler.
 - Änderung der Plattform-Gebühren oder der Aufladung.
+
+## Folgeauftrag nach der Frist-Regel
+- Captain-Tausch nach der 48-h-Frist: Ein Captain tauscht einen Spieler gegen einen Ersatz, der registrierter Soccaz-Nutzer ist, ohne Zahlung über Soccaz (Nutzerentscheid 2026-11-10: Ja, Soccaz bekommt die Funktion). Eigener Vertrag mit ACs folgt kurz (Backlog 9); Produktfragen gehen an den Orchestrator. In diesem Vertrag ist er nicht umgesetzt.
 
 ## Akzeptanzkriterien
 | ID | Gegeben | Wenn | Dann | Check (Testdatei) |
@@ -55,7 +59,7 @@ Eine Person organisiert ein Spiel für ihre Freundesgruppe (Standard 10 Spieler)
 | AC-5 | Vor dem zweiten "Bereit", Spieler hat bezahlt | Er tritt aus, sein Captain wirft ihn raus oder jemand tritt bei | Anteil wird neu gerechnet: zu viel Gezahltes geht als Guthaben zurück, zu wenig wird nachgefordert; "Bereit" beider Teams wird zurückgesetzt | tests/integration/privategame.test.ts |
 | AC-6 | Nutzer ist weder Captain des Teams noch Veranstalter | Er versucht einen Spieler rauszuwerfen oder einzuteilen | Abgelehnt; Rauswurf und Entfernen sind für bereite oder bezahlte Spieler nur durch den Captain mit Erstattung möglich | tests/integration/privategame.test.ts |
 | AC-7 | Nach dem zweiten "Bereit" (Preis fest), mehr als 48 h bis Anstoß | Ein Spieler tritt aus oder wird vom Captain entfernt | Sofortige Erstattung des geparkten Anteils, Festschreibung aufgehoben, "Bereit" beider Teams zurückgesetzt; ein Ersatz zahlt den dann gültigen Anteil | tests/integration/privategame.test.ts |
-| AC-8 | Weniger als 48 h bis Anstoß, Lobby geschlossen | Spieler tritt aus, Captain wirft raus oder jemand tritt bei (Server-Aktion) | Abgelehnt, keine Erstattung; der Captain tauscht Spieler nur gegen Ersatz, Zahlung außerhalb von Soccaz | tests/integration/privategame.test.ts |
+| AC-8 | Weniger als 48 h bis Anstoß, Lobby geschlossen | Spieler tritt aus, Captain wirft raus oder jemand tritt bei (Server-Aktion) | Abgelehnt, keine Erstattung; der Captain-Tausch gegen Ersatz ist Folgeauftrag, Zahlung außerhalb von Soccaz | tests/integration/privategame.test.ts |
 | AC-9 | 48 h vor Anstoß (einzige Frist), nicht alle bezahlt (bei kostenlos entfällt das) oder nicht beide Captains "Bereit" | Der Schließ-Job läuft (auch bei "kostenlos": dann zählt nur "Bereit") | Spiel fällt aus, alle bekommen ihren Anteil als Guthaben zurück, Veranstalter trägt keine Differenz; sind alle bezahlt und beide Captains "Bereit": Buchung genau einmal, Geld an den Veranstalter, Spiel bleibt bestätigt; kein 24-h-Job, keine 1-h-Absage | tests/integration/privategame.test.ts |
 | AC-10 | Veranstalter hat einen Einladungslink | Er zieht ihn zurück oder erzeugt einen neuen | Alter Link zeigt "ungültig", neuer Link funktioniert, bereits Beigetretene bleiben im Spiel; Nicht-Veranstalter wird abgelehnt | tests/integration/privategame.test.ts, tests/e2e/privatspiel.spec.ts |
 | AC-11 | Neuer, nicht eingeloggter Nutzer öffnet den Link | Er registriert sich | Er landet im Spiel (Regression) | tests/e2e/privatspiel.spec.ts |
@@ -64,11 +68,13 @@ Eine Person organisiert ein Spiel für ihre Freundesgruppe (Standard 10 Spieler)
 | AC-14 | Veranstalter sieht den Einladungslink | Er klickt auf Teilen per WhatsApp | Der Teilen-Link enthält den Einladungslink | tests/e2e/privatspiel.spec.ts |
 | AC-15 | Gesamtablauf | Anlegen, Link teilen, 10 Spieler treten bei (einer neu registriert), alle zahlen, beide Captains "Bereit", Preis fix, 48-h-Frist erreicht | Spiel ist bestätigt und gebucht, nicht öffentlich, nicht in der Rangliste | tests/e2e/privatspiel.spec.ts |
 | AC-16 | Nach der 48-h-Frist | Jemand versucht Absage oder Erstattung (Server-Aktion, Job) | Abgelehnt bzw. kein Lauf; keine Erstattung | tests/integration/privategame.test.ts |
+| AC-17 | Veranstalter legt ein Spiel mit Anstoß in 30 Stunden an (weniger als 48 h, mehr als 1 h) | Anlage; danach Austritt oder Rauswurf versucht | Anlage gelingt (Mindestvorlauf nur 1 h; Anstoß in unter 1 h wird abgelehnt); Austritt und Rauswurf abgelehnt, keine Erstattung; Beitritt und Zahlung bis zur Buchung möglich | tests/integration/privategame.test.ts |
+| AC-18 | Spiel mit weniger als 48 h Vorlauf, alle haben bezahlt (bei "kostenlos" entfällt das) | Beide Captains haben "Bereit" gedrückt (auch parallel) | Sofort gebucht, genau einmal, Geld an den Veranstalter, Spiel bestätigt, Liste ganz gesperrt; vorher keine Buchung | tests/integration/privategame.test.ts |
 
 ## Meilensteine
 Reihenfolge seriell (gemeinsame Dateien: `wallet.ts`, `lobby.ts`, `privategame.ts`).
 - M1: Rechenmodul, Pflicht-Miete, Bereit/Buchung (AC-1, AC-2, AC-3, AC-4)
-- M2: Austritt, Rauswurf, 48-h-Frist, Schließen und Absage (AC-5, AC-6, AC-7, AC-8, AC-9); AC-16 (keine Absage nach der Frist) gehört zu M3
+- M2: Austritt, Rauswurf, 48-h-Frist, Schließen und Absage (AC-5, AC-6, AC-7, AC-8, AC-9, AC-17, AC-18); AC-16 (keine Absage nach der Frist) gehört zu M3
 - M3: Link, Sichtbarkeit, Rechte, Teilen (AC-10, AC-11, AC-12, AC-13, AC-14, AC-15, AC-16)
 
 ## Betroffene Bereiche
@@ -84,7 +90,7 @@ Reihenfolge seriell (gemeinsame Dateien: `wallet.ts`, `lobby.ts`, `privategame.t
 - Nichtzahler zählen im Divisor mit: Die Miete ist nur gedeckt, wenn alle zahlen oder der Captain sie vorher entfernt.
 - Parallele Zahlungen, Austritte und zweites "Bereit": Zeilensperren und idempotente Buchungsschlüssel (`ledger.post`).
 - Veranstalter ist Captain beider Teams: Ein Mensch drückt beide "Bereit" (zulässig, aber beide Teams müssen vollständig bezahlt sein).
-- Spiel in weniger als 48 h angelegt: Die Frist greift sofort (siehe Annahme); Mindestvorlauf des Anstoßes (heute 1 h) prüfen.
+- Spiel in weniger als 48 h angelegt: keine Frist, Austritt und Rauswurf von Anfang an gesperrt, Geld geparkt bis zur sofortigen Buchung; ein Spiel, das nie vollständig wird, braucht einen Abbruchweg (offen, siehe Annahmen). Mindestvorlauf bleibt 1 h.
 - Geparktes Geld: Bis zur Buchung liegt es in der Lobby (internes Konto), nicht beim Veranstalter. Absage und Austritt buchen nur zurück; Hauptbuch bleibt ausgeglichen.
 - Fällt der Schließ-Job aus, bliebe die Lobby offen: Der Job muss nachholbar sein und nur noch nicht gebuchte Spiele anfassen.
 - Link-Widerruf während jemand die Beitrittsseite offen hat: Beitritt mit altem Token schlägt kontrolliert fehl.
@@ -96,8 +102,8 @@ Reihenfolge seriell (gemeinsame Dateien: `wallet.ts`, `lobby.ts`, `privategame.t
 - Keine neuen personenbezogenen Daten.
 
 ## Offene Fragen
-- Die v2-Annahmen (Austritt = Erstattung mit Aufhebung der Festschreibung, Buchung erst zur Frist, Mindestvorlauf 48 h) sind vom Orchestrator bestätigt. Offen als Produktfrage: Captain-Tausch nach der Frist und Wertung bei Nichterscheinen (Backlog).
+- Die v2-Annahmen (Austritt = Erstattung mit Aufhebung der Festschreibung, Buchung erst zur Frist) und die v3-Entscheide (kein 48-h-Mindestvorlauf, sofortige Buchung unter 48 h) sind bestätigt. Offen: Abbruchweg für Spiele unter 48 h, die nie vollständig werden; Captain-Tausch nach der Frist (Folgeauftrag, Backlog 9) und Wertung bei Nichterscheinen (Backlog 10).
 - Die Auszahlung an den Veranstalter braucht vor Go-live einen Zahlungsdienstleister (siehe `docs/loop/GO-LIVE-AUDIT.md`); bis dahin nur internes Guthaben und Hauptbuch.
 
 ## End-to-End-Nachweis
-`tests/e2e/privatspiel.spec.ts`: Veranstalter legt ein Privatspiel mit Miete an, teilt den Link, 10 Spieler treten bei (einer neu registriert), alle zahlen ihren Anteil, beide Captains drücken "Bereit", der Preis steht fest, das Geld bleibt geparkt, zur 48-h-Frist wird gebucht, das Spiel ist weder öffentlich noch in der Rangliste sichtbar; ein zweiter Lauf prüft, dass ein Spiel, bei dem zur 48-h-Frist nicht alle bezahlt haben oder nicht beide "Bereit" gedrückt haben, ausfällt und alle erstattet werden.
+`tests/e2e/privatspiel.spec.ts`: Veranstalter legt ein Privatspiel mit Miete an, teilt den Link, 10 Spieler treten bei (einer neu registriert), alle zahlen ihren Anteil, beide Captains drücken "Bereit", der Preis steht fest, das Geld bleibt geparkt, zur 48-h-Frist wird gebucht, das Spiel ist weder öffentlich noch in der Rangliste sichtbar; ein dritter Lauf legt ein Spiel mit 30 h Vorlauf an und prüft die sofortige Buchung nach allen Zahlungen und beiden "Bereit"; ein zweiter Lauf prüft, dass ein Spiel, bei dem zur 48-h-Frist nicht alle bezahlt haben oder nicht beide "Bereit" gedrückt haben, ausfällt und alle erstattet werden.
