@@ -33,7 +33,7 @@ function MatchRow({ m, teamId, homeId }: { m: Row; teamId: string; homeId: strin
   const outcome = !played ? null : gf! > ga! ? "Sieg" : gf === ga ? "Remis" : "Niederlage";
   return (
     <li>
-      <Link href={`/spiele/${m.id}`} className="card flex items-center justify-between gap-3 hover:border-green/50">
+      <Link href={`/spiele/${m.id}`} className="card flex items-center justify-between gap-3 hover:border-accent/50">
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold">
             {m.homeName} {played ? `${m.homeScore}:${m.awayScore}` : "gegen"} {m.awayName}
@@ -67,7 +67,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         {team.logoUrl && <Image src={team.logoUrl} alt={`Logo von ${team.name}`} width={72} height={72} unoptimized className="mb-2 size-[72px] rounded-xl object-cover" />}
         <h1 className="text-3xl font-bold">
           {team.name}
-          {team.isVerified && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 align-middle text-xs text-green">Verifiziert</span>}
+          {team.isVerified && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 align-middle text-xs text-accent-fg">Verifiziert</span>}
         </h1>
         <p className="text-muted">
           {team.city} · Spielstärke {team.strength} von 5 · gegründet {formatDate(team.createdAt)}
@@ -75,7 +75,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         {team.bio && <p className="whitespace-pre-line pt-1 text-sm" data-testid="bio">{team.bio}</p>}
         <FormChips form={profile.form} />
         {!admin && !canChallenge && user === null && (
-          <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${team.slug}`)}`} className="text-sm text-green underline">
+          <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${team.slug}`)}`} className="text-sm text-accent-fg underline">
             Anmelden, um dieses Team herauszufordern
           </Link>
         )}
@@ -98,7 +98,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           {jerseys.map((j, i) => (
             <span key={j.id}>
               {i > 0 && ", "}
-              <a href={`/api/sponsor/${j.id}`} rel="sponsored noopener" target="_blank" className="font-semibold text-ink hover:text-green">{j.name}</a>
+              <a href={`/api/sponsor/${j.id}`} rel="sponsored noopener" target="_blank" className="font-semibold text-ink hover:text-accent-fg">{j.name}</a>
             </span>
           ))}
         </p>
@@ -117,7 +117,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           <ul className="flex flex-wrap gap-2">
             {leagues.map((l) => (
               <li key={l.id}>
-                <Link href={`/ligen/${l.id}`} className="rounded-full border border-line px-3 py-1 text-sm hover:border-green/50">
+                <Link href={`/ligen/${l.id}`} className="rounded-full border border-line px-3 py-1 text-sm hover:border-accent/50">
                   {l.name}{l.champion === team.id ? " 🏆" : ""}
                 </Link>
               </li>
@@ -145,7 +145,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           <ol className="space-y-1 text-sm">
             {profile.topScorers.map((s, i) => (
               <li key={s.id} className="flex justify-between">
-                <span><span className="mr-2 text-muted">{i + 1}.</span><Link href={`/spieler/${s.id}`} className="hover:text-green">{s.name}</Link></span>
+                <span><span className="mr-2 text-muted">{i + 1}.</span><Link href={`/spieler/${s.id}`} className="hover:text-accent-fg">{s.name}</Link></span>
                 <span className="font-semibold">{s.goals} Tore</span>
               </li>
             ))}
@@ -185,16 +185,16 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         {user === null && (
           <p className="card text-sm text-muted" data-testid="roster-guest">
             {roster.count} Spieler im Kader. Die Namen sehen angemeldete Nutzer.{" "}
-            <Link href={`/anmelden?next=${encodeURIComponent(`/teams/${team.slug}`)}`} className="text-green underline">Anmelden</Link>
+            <Link href={`/anmelden?next=${encodeURIComponent(`/teams/${team.slug}`)}`} className="text-accent-fg underline">Anmelden</Link>
           </p>
         )}
         <ul className="space-y-2">
           {members.map((m) => (
             <li key={m.userId} className="card space-y-2" data-testid="member">
               <div className="flex items-center justify-between gap-2">
-                <Link href={`/spieler/${m.userId}`} className="min-w-0 hover:text-green">
+                <Link href={`/spieler/${m.userId}`} className="min-w-0 hover:text-accent-fg">
                   <span className="font-semibold">{m.name}</span>
-                  {m.isVerifiedPro && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Profi</span>}
+                  {m.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
                   <span className="block text-sm text-muted">{m.position ?? "Position offen"}</span>
                 </Link>
                 {m.role === "admin" && <span className="text-xs text-muted">Team-Admin</span>}

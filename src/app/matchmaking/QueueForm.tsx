@@ -82,7 +82,7 @@ export function QueueForm({ teams, minDay }: { teams: { id: string; name: string
         </div>
       ))}
       {windows < MAX_WINDOWS && (
-        <button type="button" className="text-sm text-green underline" onClick={() => setWindows((w) => Math.min(w + 1, MAX_WINDOWS))}>
+        <button type="button" className="text-sm text-accent-fg underline" onClick={() => setWindows((w) => Math.min(w + 1, MAX_WINDOWS))}>
           + Weiteres Zeitfenster anbieten (falls ihr zu mehreren Zeiten könnt)
         </button>
       )}

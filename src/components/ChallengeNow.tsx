@@ -31,7 +31,7 @@ export function ChallengeNow({ target, teams, variant = "button" }: { target: { 
             ))}
           </select>
         )}
-        <button onClick={go} disabled={pending} className={variant === "button" ? "btn btn-primary !min-h-9 !px-3 text-sm disabled:opacity-60" : "text-xs text-green underline disabled:opacity-60"}>
+        <button onClick={go} disabled={pending} className={variant === "button" ? "btn btn-primary !min-h-9 !px-3 text-sm disabled:opacity-60" : "text-xs text-accent-fg underline disabled:opacity-60"}>
           {pending ? "Bitte warten…" : `${target.name} herausfordern`}
         </button>
       </span>

@@ -46,7 +46,7 @@ export function OnboardingForm({ defaultName, next }: { defaultName: string; nex
 
       <div>
         <label className="flex items-start gap-3 text-sm">
-          <input type="checkbox" name="terms" className="mt-1 size-5 accent-green" required />
+          <input type="checkbox" name="terms" className="mt-1 size-5 accent-accent" required />
           <span>Ich akzeptiere die Datenschutzerklärung und die Hausordnung.</span>
         </label>
         <FieldError message={fe.terms} />

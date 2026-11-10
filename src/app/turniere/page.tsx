@@ -42,7 +42,7 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
         <ul className="space-y-2">
           {list.map((t) => (
             <li key={t.id}>
-              <Link href={`/turniere/${t.id}`} className="card flex items-center justify-between gap-3 hover:border-green/50">
+              <Link href={`/turniere/${t.id}`} className="card flex items-center justify-between gap-3 hover:border-accent/50">
                 <span>
                   <span className="font-semibold">{t.name}{t.isPrivate && <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-xs text-muted">privat</span>}</span>
                   <span className="block text-sm text-muted">

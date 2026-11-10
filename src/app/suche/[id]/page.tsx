@@ -49,10 +49,10 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
           {challenge ? "Herausforderung" : request.visibility === "private" ? "Private Spielsuche (nur über Link)" : "Öffentliche Spielsuche"}
         </p>
         <h1 className="text-2xl font-bold">
-          <Link href={`/teams/${request.teamSlug}`} className="hover:text-green">{request.teamName}</Link>{" "}
+          <Link href={`/teams/${request.teamSlug}`} className="hover:text-accent-fg">{request.teamName}</Link>{" "}
           {challenge ? (
             <>
-              fordert <Link href={`/teams/${challenge.slug}`} className="hover:text-green">{challenge.name}</Link> heraus
+              fordert <Link href={`/teams/${challenge.slug}`} className="hover:text-accent-fg">{challenge.name}</Link> heraus
             </>
           ) : (
             "sucht einen Gegner"
@@ -76,7 +76,7 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
         <ul className="space-y-1 text-sm">
           {roster.map((m) => (
             <li key={m.userId} className="flex items-center justify-between gap-2">
-              <Link href={`/spieler/${m.userId}`} className="hover:text-green">{m.name}</Link>
+              <Link href={`/spieler/${m.userId}`} className="hover:text-accent-fg">{m.name}</Link>
               <span className="text-xs text-muted">{[m.position, m.elo ? `Elo ${m.elo}` : null, m.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
             </li>
           ))}

@@ -20,7 +20,7 @@ export default async function LeaguesPage({ searchParams }: PageProps<"/ligen">)
         <ul className="space-y-2">
           {leagues.map((l) => (
             <li key={l.id}>
-              <Link href={`/ligen/${l.id}`} className="card flex items-center justify-between gap-3 hover:border-green/50">
+              <Link href={`/ligen/${l.id}`} className="card flex items-center justify-between gap-3 hover:border-accent/50">
                 <span>
                   <span className="font-semibold">{l.name}</span>
                   <span className="block text-sm text-muted">
@@ -28,14 +28,14 @@ export default async function LeaguesPage({ searchParams }: PageProps<"/ligen">)
                   </span>
                 </span>
                 <span className="text-right text-sm">
-                  {l.status === "finished" ? <span className="text-green">Meister: {l.champion ?? "–"}</span> : <span className="text-muted">{l.teams} Teams</span>}
+                  {l.status === "finished" ? <span className="text-accent-fg">Meister: {l.champion ?? "–"}</span> : <span className="text-muted">{l.teams} Teams</span>}
                 </span>
               </Link>
             </li>
           ))}
         </ul>
       )}
-      <Link href={all ? "/ligen" : "/ligen?alle=1"} className="text-sm text-green underline">
+      <Link href={all ? "/ligen" : "/ligen?alle=1"} className="text-sm text-accent-fg underline">
         {all ? "Nur laufende Ligen" : "Auch beendete Ligen zeigen"}
       </Link>
     </div>

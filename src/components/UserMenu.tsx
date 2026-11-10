@@ -51,7 +51,7 @@ export function UserMenu({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={avatarUrl} alt="" width={22} height={22} className="size-[22px] rounded-full object-cover" />
         ) : (
-          <span className="grid size-[22px] place-items-center rounded-full bg-green text-xs font-bold text-black" aria-hidden>
+          <span className="grid size-[22px] place-items-center rounded-full bg-accent text-xs font-bold text-accent-ink" aria-hidden>
             {name.slice(0, 1).toUpperCase()}
           </span>
         )}
@@ -72,7 +72,7 @@ export function UserMenu({
           </Link>
           <Link role="menuitem" href="/app/benachrichtigungen" className={`${item} flex justify-between`} onClick={close}>
             <span>{labels.notifications}</span>
-            {unread > 0 && <span className="rounded-full bg-pink px-1.5 text-xs font-bold text-white">{unread > 9 ? "9+" : unread}</span>}
+            {unread > 0 && <span className="rounded-full bg-accent px-1.5 text-xs font-bold text-accent-ink">{unread > 9 ? "9+" : unread}</span>}
           </Link>
           <Link role="menuitem" href="/app/einstellungen" className={item} onClick={close}>
             {labels.settings}
@@ -86,7 +86,7 @@ export function UserMenu({
             </Link>
           )}
           <form action={signOut} className="border-t border-line pt-1">
-            <button role="menuitem" className={`${item} w-full text-left text-coral`}>
+            <button role="menuitem" className={`${item} w-full text-left text-ink`}>
               {labels.signOut}
             </button>
           </form>

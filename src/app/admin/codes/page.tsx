@@ -61,7 +61,7 @@ export default async function PromoPage() {
               <input id="validUntil" name="validUntil" type="datetime-local" className="field" />
             </div>
           </div>
-          <label className="flex items-center gap-3 text-sm"><input type="checkbox" name="newUsersOnly" className="size-5 accent-green" /> Nur für die erste Aufladung</label>
+          <label className="flex items-center gap-3 text-sm"><input type="checkbox" name="newUsersOnly" className="size-5 accent-accent" /> Nur für die erste Aufladung</label>
           <div>
             <label className="label" htmlFor="note">Notiz (intern)</label>
             <input id="note" name="note" className="field" />
@@ -80,7 +80,7 @@ export default async function PromoPage() {
               <li key={c.id} className="card space-y-1" data-testid={`promo-${c.code}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold">{c.code} <span className="text-sm font-normal text-muted">{c.kind === "percent" ? `${c.value} %` : formatEuro(c.value)}</span></span>
-                  <span className={`text-xs ${c.active ? "text-green" : "text-muted"}`}>{c.active ? "aktiv" : "inaktiv"}</span>
+                  <span className={`text-xs ${c.active ? "text-accent-fg" : "text-muted"}`}>{c.active ? "aktiv" : "inaktiv"}</span>
                 </div>
                 <p className="text-xs text-muted">
                   Verbraucht {formatEuro(c.usedCents)}{c.budgetCents !== null ? ` von ${formatEuro(c.budgetCents)}` : ""}

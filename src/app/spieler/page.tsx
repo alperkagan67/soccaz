@@ -32,10 +32,10 @@ export default async function PlayersPage({ searchParams }: PageProps<"/spieler"
         <ul className="space-y-2">
           {rows.map((p) => (
             <li key={p.id}>
-              <Link href={`/spieler/${p.id}`} className="card flex items-center justify-between hover:border-green/50">
+              <Link href={`/spieler/${p.id}`} className="card flex items-center justify-between hover:border-accent/50">
                 <span>
                   <span className="font-semibold">{p.name}</span>
-                  {p.isVerifiedPro && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Profi</span>}
+                  {p.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
                   <span className="block text-sm text-muted">{[p.city, p.position].filter(Boolean).join(" · ") || "Keine Angaben"}</span>
                 </span>
                 <span className="text-right text-sm text-muted">

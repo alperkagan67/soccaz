@@ -59,10 +59,10 @@ export default async function TeamsPage({ searchParams }: PageProps<"/teams">) {
         <ul className="space-y-2">
           {list.map((t) => (
             <li key={t.id}>
-              <Link href={`/teams/${t.slug}`} className="card flex items-center justify-between gap-3 hover:border-green/50">
+              <Link href={`/teams/${t.slug}`} className="card flex items-center justify-between gap-3 hover:border-accent/50">
                 <span>
                   <span className="font-semibold">{t.name}</span>
-                  {t.isVerified && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Verifiziert</span>}
+                  {t.isVerified && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Verifiziert</span>}
                   <span className="block text-sm text-muted">{t.city} · {t.members} {t.members === 1 ? "Spieler" : "Spieler"}</span>
                 </span>
                 <span className="text-right text-sm text-muted">

@@ -87,7 +87,7 @@ export function ProfileForm({ name, city, position, profilePublic, bio, gamer }:
       </label>
       <SubmitButton pending={pending}>Profil speichern</SubmitButton>
       {state?.error && <FieldError message={state.error} />}
-      {state?.ok && <p className="text-sm text-green" role="status">Gespeichert.</p>}
+      {state?.ok && <p className="text-sm text-accent-fg" role="status">Gespeichert.</p>}
     </form>
   );
 }

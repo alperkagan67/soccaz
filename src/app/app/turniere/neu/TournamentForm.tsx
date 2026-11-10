@@ -64,7 +64,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission }:
         <p>Die Gelder liegen bis zum Turnierende auf einem Treuhandkonto. Danach zahlen wir dir den Betrag abzüglich {commission} % Provision auf dein Guthaben aus.</p>
       </div>
       <label className="flex items-start gap-3 text-sm">
-        <input type="checkbox" name="public" className="mt-1 size-5 accent-green" />
+        <input type="checkbox" name="public" className="mt-1 size-5 accent-accent" />
         <span>
           <span className="block font-semibold">Öffentlich in der Turnierliste zeigen</span>
           <span className="block text-muted">Standard ist privat: Das Turnier ist nur über den Einladungslink erreichbar.</span>

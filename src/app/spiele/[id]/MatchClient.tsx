@@ -65,7 +65,7 @@ export function Recorder({ matchId, home, away, players, hasEvents }: { matchId:
       </div>
 
       {picker && (
-        <div className="space-y-2 rounded-lg border border-green p-3" role="dialog" aria-label="Spieler wählen">
+        <div className="space-y-2 rounded-lg border border-accent p-3" role="dialog" aria-label="Spieler wählen">
           <p className="text-sm">
             {TYPE_LABEL[picker.type]} für <strong>{picker.team.name}</strong>: Wer?
           </p>
@@ -176,13 +176,13 @@ export function DecidePanel({ matchId, home, away, homeScore, awayScore, dispute
 
   return (
     <form
-      className="card space-y-3 border-coral"
+      className="card space-y-3 border-ink"
       onSubmit={(e) => {
         e.preventDefault();
         run(() => decideResultAction(matchId, Number(h), Number(a), reason));
       }}
     >
-      <h2 className="font-semibold text-coral">Plattform-Entscheidung</h2>
+      <h2 className="font-semibold text-ink">Plattform-Entscheidung</h2>
       {disputeReason && <p className="text-sm text-muted">Widerspruch: „{disputeReason}“</p>}
       <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
         <div>
@@ -252,7 +252,7 @@ export function NoShowList({ matchId, players, selfId }: { matchId: string; play
       <ul className="space-y-2">
         {players.filter((p) => p.userId !== selfId).map((p) => (
           <li key={p.userId} className="flex items-center justify-between gap-2 text-sm">
-            <span className={p.noShow ? "text-coral line-through" : ""}>{p.name}</span>
+            <span className={p.noShow ? "text-ink line-through" : ""}>{p.name}</span>
             <button className="btn btn-ghost !min-h-9 !px-3 text-xs" disabled={pending} onClick={() => run(() => markNoShowAction(matchId, p.userId, !p.noShow))}>
               {p.noShow ? "Doch da" : "Nicht erschienen"}
             </button>

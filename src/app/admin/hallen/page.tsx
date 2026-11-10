@@ -97,9 +97,9 @@ export default async function VenuesPage() {
             <input id="contact" name="contact" className="field" />
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
-            <label className="flex items-center gap-2"><input type="checkbox" name="hasShowers" className="size-5 accent-green" /> Duschen</label>
-            <label className="flex items-center gap-2"><input type="checkbox" name="hasParking" className="size-5 accent-green" /> Parkplätze</label>
-            <label className="flex items-center gap-2"><input type="checkbox" name="isPartner" className="size-5 accent-green" /> Partnerhalle</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="hasShowers" className="size-5 accent-accent" /> Duschen</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="hasParking" className="size-5 accent-accent" /> Parkplätze</label>
+            <label className="flex items-center gap-2"><input type="checkbox" name="isPartner" className="size-5 accent-accent" /> Partnerhalle</label>
           </div>
         </ActionForm>
       </section>
@@ -114,10 +114,10 @@ export default async function VenuesPage() {
               <li key={v.id} className="card space-y-2" data-testid={`venue-${v.name}`}>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="font-semibold">{v.name} <span className="text-sm font-normal text-muted">{v.city}</span></span>
-                  <span className={`text-xs ${v.active ? "text-green" : "text-muted"}`}>{v.active ? (v.isPartner ? "Partnerhalle" : "aktiv") : "inaktiv"}</span>
+                  <span className={`text-xs ${v.active ? "text-accent-fg" : "text-muted"}`}>{v.active ? (v.isPartner ? "Partnerhalle" : "aktiv") : "inaktiv"}</span>
                 </div>
                 {!v.verified && (
-                  <p className="text-xs text-yellow">Ungeprüft: Angaben stammen aus OpenStreetMap. Buchbarkeit, Adresse und Preis bitte prüfen.{v.website ? " " : ""}{v.website && <a href={v.website} target="_blank" rel="noopener noreferrer nofollow" className="underline">Webseite</a>}</p>
+                  <p className="text-xs text-ink">Ungeprüft: Angaben stammen aus OpenStreetMap. Buchbarkeit, Adresse und Preis bitte prüfen.{v.website ? " " : ""}{v.website && <a href={v.website} target="_blank" rel="noopener noreferrer nofollow" className="underline">Webseite</a>}</p>
                 )}
                 <p className="text-xs text-muted">{[v.address, v.surface, v.contact, v.hasShowers && "Duschen", v.hasParking && "Parkplätze"].filter(Boolean).join(" · ")}</p>
                 <Rules venueId={v.id} />

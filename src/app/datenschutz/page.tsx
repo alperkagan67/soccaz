@@ -52,7 +52,7 @@ export default async function DatenschutzPage() {
         <h2>Deine Rechte</h2>
         <p>
           Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch. Deine Daten kannst du jederzeit in den{" "}
-          <Link href="/app/einstellungen" className="text-green underline">Einstellungen</Link> herunterladen oder dein Konto löschen. Du kannst dich außerdem bei einer Datenschutzaufsichtsbehörde beschweren.
+          <Link href="/app/einstellungen" className="text-accent-fg underline">Einstellungen</Link> herunterladen oder dein Konto löschen. Du kannst dich außerdem bei einer Datenschutzaufsichtsbehörde beschweren.
         </p>
       </section>
     </LegalPage>

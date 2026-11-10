@@ -37,7 +37,7 @@ export default async function MatchFinancePage({ params }: PageProps<"/admin/fin
       <dl className="grid grid-cols-3 gap-3 text-center">
         <div className="card"><dt className="text-xs text-muted">Einnahmen</dt><dd className="font-bold">{formatEuro(revenue)}</dd></div>
         <div className="card"><dt className="text-xs text-muted">Hallenkosten</dt><dd className="font-bold">{formatEuro(cost)}</dd></div>
-        <div className="card"><dt className="text-xs text-muted">Marge</dt><dd className={`font-bold ${revenue - cost < 0 ? "text-coral" : "text-green"}`}>{formatEuro(revenue - cost)}</dd></div>
+        <div className="card"><dt className="text-xs text-muted">Marge</dt><dd className={`font-bold ${revenue - cost < 0 ? "text-ink" : "text-accent-fg"}`}>{formatEuro(revenue - cost)}</dd></div>
       </dl>
 
       <section className="space-y-2">

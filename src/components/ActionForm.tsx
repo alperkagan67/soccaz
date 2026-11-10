@@ -40,7 +40,7 @@ export function ActionForm({
         {pending ? "Bitte warten…" : submit}
       </button>
       {state?.error && <p className="error" role="alert">{state.error}</p>}
-      {state?.ok && !pending && <p className="text-sm text-green" role="status">{successText}</p>}
+      {state?.ok && !pending && <p className="text-sm text-accent-fg" role="status">{successText}</p>}
     </form>
   );
 }

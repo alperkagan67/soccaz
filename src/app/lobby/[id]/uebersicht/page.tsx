@@ -47,11 +47,11 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
         <p className="text-sm text-muted" data-testid="game-number">Spiel #{match.number}</p>
         <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-bold sm:text-3xl" aria-label={`${match.homeName} gegen ${match.awayName}`}>
           <span>{match.homeName}</span>
-          <span className="rounded-md bg-green px-2 py-0.5 font-heading text-lg font-extrabold text-black" aria-hidden>VS.</span>
+          <span className="rounded-md bg-accent px-2 py-0.5 font-heading text-lg font-extrabold text-accent-ink" aria-hidden>VS.</span>
           <span>{match.awayName}</span>
         </h1>
         <p className="text-lg" data-testid="overview-time">{formatDateTime(match.startsAt)} Uhr · {match.durationMin} Minuten</p>
-        <p className={`text-sm font-semibold ${cancelled ? "text-coral" : "text-green"}`}>{cancelled ? "Abgesagt" : started ? "Das Spiel läuft oder ist vorbei" : "Bestätigt von beiden Captains"}</p>
+        <p className={`text-sm font-semibold ${cancelled ? "text-ink" : "text-accent-fg"}`}>{cancelled ? "Abgesagt" : started ? "Das Spiel läuft oder ist vorbei" : "Bestätigt von beiden Captains"}</p>
       </header>
 
       {!cancelled && started && !played && !result && <MatchClock startsAtIso={match.startsAt.toISOString()} durationMin={match.durationMin} />}
@@ -65,10 +65,10 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
           {played && result ? (
             <>
               <p className="text-center font-heading text-4xl font-extrabold tabular-nums" data-testid="final-score">{result.homeScore} : {result.awayScore}</p>
-              <p className="text-center text-sm text-green">{result.autoConfirmed ? "Ergebnis nach Ablauf der Frist automatisch bestätigt." : "Beide Captains haben das Ergebnis bestätigt."}</p>
+              <p className="text-center text-sm text-accent-fg">{result.autoConfirmed ? "Ergebnis nach Ablauf der Frist automatisch bestätigt." : "Beide Captains haben das Ergebnis bestätigt."}</p>
             </>
           ) : result && result.disputed ? (
-            <p className="text-sm text-coral">Das Ergebnis ist strittig. Ein Plattform-Admin entscheidet.</p>
+            <p className="text-sm text-ink">Das Ergebnis ist strittig. Ein Plattform-Admin entscheidet.</p>
           ) : result ? (
             <>
               <p className="text-center font-heading text-3xl font-extrabold tabular-nums" data-testid="reported-score">{result.homeScore} : {result.awayScore}</p>
@@ -101,12 +101,12 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
         {phone ? (
           <a href={`tel:${phone.replace(/[^+0-9]/g, "")}`} className="btn btn-primary w-full text-lg" data-testid="emergency-phone">{phone}</a>
         ) : (
-          <p className="text-sm text-muted">Die Notfallnummer wird noch nachgetragen. Bis dahin: <Link href="/kontakt" className="text-green underline">Kontaktseite</Link>.</p>
+          <p className="text-sm text-muted">Die Notfallnummer wird noch nachgetragen. Bis dahin: <Link href="/kontakt" className="text-accent-fg underline">Kontaktseite</Link>.</p>
         )}
         {match.venueContact && (
           <p className="text-sm" data-testid="venue-contact">
             <span className="text-muted">Probleme mit der Halle? Kontakt der Halle{match.venueName ? ` (${match.venueName})` : ""}: </span>
-            {/^[+0-9\s()/-]{6,}$/.test(match.venueContact) ? <a href={`tel:${match.venueContact.replace(/[^+0-9]/g, "")}`} className="text-green underline">{match.venueContact}</a> : <span>{match.venueContact}</span>}
+            {/^[+0-9\s()/-]{6,}$/.test(match.venueContact) ? <a href={`tel:${match.venueContact.replace(/[^+0-9]/g, "")}`} className="text-accent-fg underline">{match.venueContact}</a> : <span>{match.venueContact}</span>}
           </p>
         )}
       </section>
@@ -114,11 +114,11 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
       <div className="grid gap-3 sm:grid-cols-2">
         {teams.map((t) => (
           <section key={t.id} className="card space-y-2" data-testid="overview-team">
-            <h2 className="font-semibold"><Link href={`/teams/${t.slug}`} className="hover:text-green">{t.name}</Link></h2>
+            <h2 className="font-semibold"><Link href={`/teams/${t.slug}`} className="hover:text-accent-fg">{t.name}</Link></h2>
             <ul className="space-y-1 text-sm">
               {participants.filter((p) => p.teamId === t.id).map((p) => (
                 <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="overview-player">
-                  <Link href={`/spieler/${p.userId}`} className="hover:text-green">{p.name}</Link>
+                  <Link href={`/spieler/${p.userId}`} className="hover:text-accent-fg">{p.name}</Link>
                   <PlayerLight light={lightFor(p, true)} showLabel={false} />
                 </li>
               ))}
@@ -140,7 +140,7 @@ export default async function MatchOverviewPage({ params }: PageProps<"/lobby/[i
             {clips.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-2" data-testid="clip">
                 <span>
-                  <a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="font-semibold text-green underline">{c.title}</a>
+                  <a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="font-semibold text-accent-fg underline">{c.title}</a>
                   <span className="block text-xs text-muted">von {c.author ?? c.name} · {new URL(c.url).hostname}</span>
                 </span>
                 {(c.userId === user.id || user.role === "admin") && <DeleteClip matchId={match.id} clipId={c.id} />}

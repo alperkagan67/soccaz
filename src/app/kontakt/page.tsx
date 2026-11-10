@@ -16,10 +16,10 @@ export default async function ContactPage() {
         <h2 className="font-semibold">E-Mail</h2>
         {op.email ? (
           <p>
-            <a href={`mailto:${op.email}`} className="text-green underline">{op.email}</a>
+            <a href={`mailto:${op.email}`} className="text-accent-fg underline">{op.email}</a>
           </p>
         ) : (
-          <p className="text-coral">Die Kontaktadresse wird noch eingetragen (Einstellung OPERATOR_EMAIL).</p>
+          <p className="text-ink">Die Kontaktadresse wird noch eingetragen (Einstellung OPERATOR_EMAIL).</p>
         )}
       </section>
       <section className="card space-y-1 text-sm text-muted">
@@ -31,7 +31,7 @@ export default async function ContactPage() {
           <li>Turnier-Veranstalter werden oder dein Team als Profi-Team verifizieren lassen</li>
           <li>Sponsoring und Trikot-Partnerschaften</li>
         </ul>
-        <p className="pt-2">Antworten auf häufige Fragen findest du unter <Link href="/hilfe" className="text-green underline">Hilfe und Fragen</Link>.</p>
+        <p className="pt-2">Antworten auf häufige Fragen findest du unter <Link href="/hilfe" className="text-accent-fg underline">Hilfe und Fragen</Link>.</p>
       </section>
     </div>
   );

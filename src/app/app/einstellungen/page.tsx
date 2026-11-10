@@ -30,7 +30,7 @@ export default async function SettingsPage() {
           )}
           <div className="space-y-1">
             <ImageUpload kind="avatar" refId={user.id} label="Profilbild ändern" />
-            <Link href={`/spieler/${user.id}`} className="block text-sm text-green underline">
+            <Link href={`/spieler/${user.id}`} className="block text-sm text-accent-fg underline">
               Mein Profil ansehen
             </Link>
           </div>
@@ -50,7 +50,7 @@ export default async function SettingsPage() {
           Alle meine Daten herunterladen (JSON)
         </a>
         <details className="space-y-2">
-          <summary className="cursor-pointer text-sm text-coral">Konto löschen</summary>
+          <summary className="cursor-pointer text-sm text-ink">Konto löschen</summary>
           <div className="mt-2">
             <DeleteAccountForm />
           </div>

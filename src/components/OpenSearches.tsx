@@ -34,10 +34,10 @@ export function OpenSearches({ searches, mine, myWaitingTeamIds, loggedIn = true
           <li key={s.id} className="card space-y-3" data-testid="open-search">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <Link href={`/teams/${s.teamSlug}`} className="text-lg font-semibold hover:text-green">
+                <Link href={`/teams/${s.teamSlug}`} className="text-lg font-semibold hover:text-accent-fg">
                   {s.teamName}
                 </Link>
-                {s.verified && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Verifiziert</span>}
+                {s.verified && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Verifiziert</span>}
                 {own && <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-xs text-muted">Euer Team</span>}
                 <p className="text-sm text-muted">
                   {s.city} · {s.durationMin} Minuten

@@ -30,11 +30,11 @@ import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from 
 export const metadata: Metadata = { title: "Lobby", robots: { index: false } };
 
 const STATUS: Record<string, { label: string; tone: string }> = {
-  lobby: { label: "Wartet auf Spieler", tone: "text-yellow" },
-  confirmed: { label: "Bestätigt", tone: "text-green" },
-  cancelled: { label: "Abgesagt", tone: "text-coral" },
+  lobby: { label: "Wartet auf Spieler", tone: "text-ink" },
+  confirmed: { label: "Bestätigt", tone: "text-accent-fg" },
+  cancelled: { label: "Abgesagt", tone: "text-ink" },
   played: { label: "Gespielt", tone: "text-muted" },
-  disputed: { label: "Ergebnis strittig", tone: "text-coral" },
+  disputed: { label: "Ergebnis strittig", tone: "text-ink" },
 };
 
 export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
@@ -132,7 +132,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         </div>
         <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xl font-bold sm:text-3xl" aria-label={`${match.homeName} gegen ${match.awayName}`}>
           <span>{match.homeName}</span>
-          <span className="rounded-md bg-green px-2 py-0.5 font-heading text-lg font-extrabold text-black" aria-hidden>VS.</span>
+          <span className="rounded-md bg-accent px-2 py-0.5 font-heading text-lg font-extrabold text-accent-ink" aria-hidden>VS.</span>
           <span>{match.awayName}</span>
         </h1>
         <p className="text-muted">
@@ -145,7 +145,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         </p>}
         {!user && (
           <p className="text-sm">
-            <Link href={`/anmelden?next=${encodeURIComponent(`/lobby/${match.id}`)}`} className="text-green underline">Anmelden</Link>, um beizutreten oder dein Team herauszufordern.
+            <Link href={`/anmelden?next=${encodeURIComponent(`/lobby/${match.id}`)}`} className="text-accent-fg underline">Anmelden</Link>, um beizutreten oder dein Team herauszufordern.
           </p>
         )}
         {!active && match.status !== "cancelled" && (
@@ -185,7 +185,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             {hallCheck.map((h) => (
               <li key={h.venueId} className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2" data-testid="hall-request" data-state={h.status}>
                 <span>{h.name} <span className="text-xs text-muted">{h.city}</span></span>
-                <span className={`text-xs font-semibold ${h.status === "confirmed" ? "text-green" : h.status === "declined" ? "text-coral" : "text-yellow"}`}>
+                <span className={`text-xs font-semibold ${h.status === "confirmed" ? "text-accent-fg" : h.status === "declined" ? "text-ink" : "text-ink"}`}>
                   {h.status === "confirmed" ? "Frei" : h.status === "declined" ? "Belegt" : h.status === "pending" ? "Wartet auf Antwort" : "Ohne Bestätigung"}
                 </span>
               </li>
@@ -224,7 +224,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           Das Spiel gilt als bestätigt, sobald in beiden Teams mindestens {MIN_READY_PER_TEAM} Spieler bereit sind.
         </p>
       )}
-      {match.status === "cancelled" && <p className="card text-sm text-coral">Dieses Spiel wurde abgesagt.</p>}
+      {match.status === "cancelled" && <p className="card text-sm text-ink">Dieses Spiel wurde abgesagt.</p>}
 
       {!open && match.venueName && <VenueBox name={match.venueName} address={match.venueAddress} city={match.venueCity} when={formatDateTime(match.startsAt)} lat={match.venueLat} lng={match.venueLng} />}
       {!open && !match.venueName && active && v.canManage && (
@@ -298,7 +298,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <section key={t.id} className="card space-y-2">
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="font-semibold">
-                {isPrivate ? t.name : <Link href={`/teams/${t.slug}`} className="hover:text-green">{t.name}</Link>}
+                {isPrivate ? t.name : <Link href={`/teams/${t.slug}`} className="hover:text-accent-fg">{t.name}</Link>}
               </h2>
               <span className="text-xs text-muted">{isPrivate ? "" : `Elo ${strength[t.id].elo}${strength[t.id].matches === 0 ? " (geschätzt)" : ""} · `}{t.count} von {capacity} · bereit {t.ready}/{MIN_READY_PER_TEAM}</span>
             </div>
@@ -307,7 +307,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                 <li key={p.userId} className="flex items-center justify-between gap-2">
                   <span>
                     {p.name}
-                    {p.isVerifiedPro && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Profi</span>}
+                    {p.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
                     {p.isSubstitute && <span className="ml-2 text-xs text-muted">Ersatz</span>}
                     {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                   </span>
@@ -332,7 +332,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                 <ul className="space-y-1 text-sm text-muted">
                   {roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).map((m) => (
                     <li key={m.userId} className="flex items-center justify-between gap-2">
-                      <Link href={`/spieler/${m.userId}`} className="hover:text-green">{m.name}</Link>
+                      <Link href={`/spieler/${m.userId}`} className="hover:text-accent-fg">{m.name}</Link>
                       <span className="text-xs">{[m.position, m.elo ? `Elo ${m.elo}` : null, m.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
                     </li>
                   ))}

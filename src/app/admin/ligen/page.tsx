@@ -59,7 +59,7 @@ export default async function AdminLeaguesPage() {
             <div key={l.id} className="card space-y-3" data-testid="admin-league">
               <div className="flex items-center justify-between gap-2">
                 <span>
-                  <Link href={`/ligen/${l.id}`} className="font-semibold hover:text-green">{l.name}</Link>
+                  <Link href={`/ligen/${l.id}`} className="font-semibold hover:text-accent-fg">{l.name}</Link>
                   <span className="block text-xs text-muted">{l.city ?? "Ganz NRW"} · {l.starts_on} bis {l.ends_on} · {l.status === "finished" ? "beendet" : "läuft"}</span>
                 </span>
                 {l.status !== "finished" && <ActionButton action={finishLeagueAction.bind(null, l.id)} label="Saison beenden" confirm="Saison beenden und Meister festlegen? Das lässt sich nicht zurücknehmen." className="btn btn-danger !min-h-9 !px-3 text-xs" />}

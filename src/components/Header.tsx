@@ -17,7 +17,7 @@ export async function Header() {
   const balance = user ? await walletBalance(db, user.id) : 0;
 
   return (
-    <header className="sticky top-0 z-20 border-b border-green/15 bg-bg/80 backdrop-blur">
+    <header className="sticky top-0 z-20 border-b border-accent/15 bg-bg/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4 sm:px-6">
         <Link href="/" className="flex items-center gap-2" aria-label="Socaz Startseite">
           <Image src="/brand/socca-logo.jpeg" alt="" width={36} height={36} className="rounded-md" priority />
@@ -45,7 +45,7 @@ export async function Header() {
                   <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                 </svg>
                 {unread > 0 && (
-                  <span data-testid="unread-badge" className="absolute -right-1 -top-1 min-w-4 rounded-full bg-pink px-1 text-center text-[10px] font-bold leading-4 text-white">
+                  <span data-testid="unread-badge" className="absolute -right-1 -top-1 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold leading-4 text-accent-ink">
                     {unread > 9 ? "9+" : unread}
                   </span>
                 )}

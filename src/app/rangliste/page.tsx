@@ -73,7 +73,7 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
                   <tr key={t.id} className="border-t border-line">
                     <td className="p-2">{i + 1}</td>
                     <td>
-                      <Link href={`/teams/${t.slug}`} className="font-semibold hover:text-green">
+                      <Link href={`/teams/${t.slug}`} className="font-semibold hover:text-accent-fg">
                         {t.name}
                       </Link>
                       <span className="block text-xs text-muted">{t.city}</span>
@@ -108,7 +108,7 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
               <li key={t.id} className="card flex items-center justify-between">
                 <span>
                   <span className="mr-2 text-muted">{i + 1}.</span>
-                  <Link href={`/teams/${t.slug}`} className="font-semibold hover:text-green">
+                  <Link href={`/teams/${t.slug}`} className="font-semibold hover:text-accent-fg">
                     {t.name}
                   </Link>{" "}
                   <span className="text-xs text-muted">{t.city}</span>
@@ -132,7 +132,7 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
               <li key={p.id} className="card flex items-center justify-between">
                 <span>
                   <span className="mr-2 text-muted">{i + 1}.</span>
-                  <Link href={`/spieler/${p.id}`} className="font-semibold hover:text-green">
+                  <Link href={`/spieler/${p.id}`} className="font-semibold hover:text-accent-fg">
                     {p.name}
                   </Link>
                 </span>
@@ -157,7 +157,7 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
               <li key={p.id} className="card flex items-center justify-between">
                 <span>
                   <span className="mr-2 text-muted">{i + 1}.</span>
-                  <Link href={`/spieler/${p.id}`} className="font-semibold hover:text-green">
+                  <Link href={`/spieler/${p.id}`} className="font-semibold hover:text-accent-fg">
                     {p.name}
                   </Link>
                 </span>

@@ -29,7 +29,7 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
       <header className="space-y-1">
         <p className="text-sm text-muted" data-testid="game-number">Spiel #{lobby.number} · Lobby</p>
         <h1 className="text-2xl font-bold sm:text-3xl" data-testid="open-lobby-title">{isMember ? lobby.team.name : `Offene Lobby von ${lobby.team.name}`}</h1>
-        <p className={`text-sm font-semibold ${open ? "text-yellow" : "text-muted"}`} data-testid="open-lobby-status">
+        <p className={`text-sm font-semibold ${open ? "text-ink" : "text-muted"}`} data-testid="open-lobby-status">
           {open ? (isMember ? "Eure Lobby ist offen und wartet auf einen Gegner" : "Diese Lobby ist offen und wartet auf einen Gegner") : "Diese Lobby ist nicht mehr offen"}
         </p>
         <p className="text-muted">
@@ -39,14 +39,14 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
 
       <section className="card space-y-3" aria-label="Mein Team" data-testid="open-lobby-team">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="font-semibold">{isMember ? "Mein Team" : "Team"}: <Link href={`/teams/${lobby.team.slug}`} className="hover:text-green">{lobby.team.name}</Link></h2>
+          <h2 className="font-semibold">{isMember ? "Mein Team" : "Team"}: <Link href={`/teams/${lobby.team.slug}`} className="hover:text-accent-fg">{lobby.team.name}</Link></h2>
           <span className="text-xs text-muted">{lobby.joinedCount} von {lobby.slots} Plätzen</span>
         </div>
         <ul className="space-y-2 text-sm">
           {joined.map((m) => (
             <li key={m.userId} className="flex items-center justify-between gap-2" data-testid="open-lobby-player">
               <span>
-                <Link href={`/spieler/${m.userId}`} className="hover:text-green">{m.name}</Link>
+                <Link href={`/spieler/${m.userId}`} className="hover:text-accent-fg">{m.name}</Link>
                 {m.isAdmin && <span className="ml-2 text-xs text-muted">Captain</span>}
                 {m.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
               </span>

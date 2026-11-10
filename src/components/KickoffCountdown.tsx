@@ -15,7 +15,7 @@ export function KickoffCountdown({ startsAtIso, compact = false }: { startsAtIso
   }, [startsAtIso]);
 
   if (left === null) return <div className="h-20" aria-hidden />;
-  if (left <= 0) return <p className="text-center text-lg font-bold text-green" data-testid="kickoff-countdown">Anstoß!</p>;
+  if (left <= 0) return <p className="text-center text-lg font-bold text-accent-fg" data-testid="kickoff-countdown">Anstoß!</p>;
   const total = Math.floor(left / 1000);
   const parts = [
     { value: Math.floor(total / 86400), label: "Tage" },

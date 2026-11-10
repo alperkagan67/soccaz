@@ -69,7 +69,7 @@ export default async function AdminProDayPage() {
         {events.map((e) => (
           <div key={e.id} className="card flex flex-wrap items-center justify-between gap-2" data-testid="admin-pro-event">
             <span>
-              <Link href={`/profitag/${e.id}`} className="font-semibold hover:text-green">{e.title}</Link>
+              <Link href={`/profitag/${e.id}`} className="font-semibold hover:text-accent-fg">{e.title}</Link>
               <span className="block text-xs text-muted">{e.proTeam} · {formatDateTime(e.startsAt)} Uhr · {e.slots} Plätze · {e.status === "open" ? "offen" : e.status === "drawn" ? "ausgelost" : "abgesagt"}</span>
             </span>
             {e.status === "open" && (

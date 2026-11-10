@@ -65,7 +65,7 @@ export function TopUpForm({ initialAmount, back }: { initialAmount: string; back
           autoComplete="off"
           maxLength={24}
         />
-        {preview?.message && <p className={`mt-1 text-sm ${preview.ok ? "text-green" : "error"}`} role="status">{preview.message}</p>}
+        {preview?.message && <p className={`mt-1 text-sm ${preview.ok ? "text-accent-fg" : "error"}`} role="status">{preview.message}</p>}
         <FieldError message={fe.promo && fe.promo !== preview?.message ? fe.promo : undefined} />
       </div>
 

@@ -15,10 +15,10 @@ export default async function OverlayPage({ params }: PageProps<"/overlay/[id]">
   const shown = result && (match.status === "played" || result.confirmedHome || result.confirmedAway) ? { home: result.homeScore, away: result.awayScore } : live;
 
   return (
-    <div className="overlay-root fixed left-4 top-4 inline-flex items-stretch overflow-hidden rounded-xl border border-green/40 bg-bg/90 text-white shadow-lg" data-testid="overlay">
+    <div className="overlay-root force-dark fixed left-4 top-4 inline-flex items-stretch overflow-hidden rounded-xl border border-accent/40 bg-bg/90 text-ink shadow-lg" data-testid="overlay">
       <style>{`html, body { background: transparent !important; } body > header, body > footer, body > nav { display: none !important; } main > :not(.overlay-root) { display: none !important; }`}</style>
       <div className="flex min-w-40 items-center justify-end px-4 py-2 text-lg font-bold">{match.homeName}</div>
-      <div className="flex items-center gap-2 bg-green px-4 font-heading text-3xl font-extrabold tabular-nums text-black" aria-label={`Spielstand ${shown.home} zu ${shown.away}`}>
+      <div className="flex items-center gap-2 bg-accent px-4 font-heading text-3xl font-extrabold tabular-nums text-accent-ink" aria-label={`Spielstand ${shown.home} zu ${shown.away}`}>
         <span>{shown.home}</span>
         <span>:</span>
         <span>{shown.away}</span>

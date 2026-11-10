@@ -12,7 +12,7 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString("de-DE", { timeZo
 
 function GameNumber({ n }: { n: number }) {
   return (
-    <span className="rounded-md bg-green px-2 py-0.5 font-heading text-sm font-extrabold text-black" data-testid="game-number">
+    <span className="rounded-md bg-accent px-2 py-0.5 font-heading text-sm font-extrabold text-accent-ink" data-testid="game-number">
       #{n}
     </span>
   );
@@ -29,10 +29,10 @@ function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: 
   return (
     <div className="space-y-2" data-testid="board-team">
       <div>
-        <Link href={`/teams/${team.slug}`} className="font-semibold hover:text-green">
+        <Link href={`/teams/${team.slug}`} className="font-semibold hover:text-accent-fg">
           {team.name}
         </Link>
-        {team.verified && <span className="ml-2 rounded bg-green-soft px-1 py-0.5 text-[10px] text-green">Verifiziert</span>}
+        {team.verified && <span className="ml-2 rounded bg-accent-soft px-1 py-0.5 text-[10px] text-accent-fg">Verifiziert</span>}
         <p className="text-xs text-muted">
           Elo {team.elo}
           {team.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {team.strength}/5 · {team.members} im Kader
@@ -44,10 +44,10 @@ function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: 
         <ul className="space-y-1 text-sm">
           {players.map((p) => (
             <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="board-player" data-light={p.light}>
-              <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-green">
+              <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">
                 {p.name}
                 {p.isSubstitute && <span className="ml-1 text-xs text-muted">Ersatz</span>}
-                {p.isPro && <span className="ml-1 text-[10px] text-green">Profi</span>}
+                {p.isPro && <span className="ml-1 text-[10px] text-accent-fg">Profi</span>}
               </Link>
               <PlayerLight light={p.light} />
             </li>
@@ -64,7 +64,7 @@ function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: 
 function MatchCard({ m, mine, shareBase }: { m: BoardMatch; mine: Mine[]; shareBase: string }) {
   const targetAdmin = m.challengePending && mine.some((t) => t.id === m.away.id);
   const status = m.challengePending ? "Herausforderung: wartet auf Annahme" : m.vetoRunning ? "Hallen-Veto läuft" : m.schedulingOpen ? "Termin wird gewählt" : m.confirmed ? "Bestätigt" : "Wartet auf Spieler";
-  const tone = m.confirmed ? "text-green" : "text-yellow";
+  const tone = m.confirmed ? "text-accent-fg" : "text-ink";
   const url = `${shareBase}/lobby/${m.id}`;
   return (
     <li className="card space-y-3" data-testid="board-entry" data-kind="match">
@@ -83,7 +83,7 @@ function MatchCard({ m, mine, shareBase }: { m: BoardMatch; mine: Mine[]; shareB
       </div>
       <div aria-label="Siegchance">
         <div className="flex h-2 overflow-hidden rounded-full bg-white/10">
-          <div className="bg-green" style={{ width: `${m.winChanceHome}%` }} />
+          <div className="bg-accent" style={{ width: `${m.winChanceHome}%` }} />
         </div>
         <p className="mt-1 text-xs text-muted" data-testid="board-win-chance">
           Siegchance nach Elo: {m.home.name} {m.winChanceHome} % · {m.away.name} {100 - m.winChanceHome} %
@@ -118,7 +118,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2">
           <GameNumber n={s.number} />
-          <span className="text-sm font-semibold text-yellow">{challenge ? "Herausforderung" : "Gegner gesucht"}</span>
+          <span className="text-sm font-semibold text-ink">{challenge ? "Herausforderung" : "Gegner gesucht"}</span>
           {own && <span className="rounded bg-white/10 px-1.5 py-0.5 text-xs text-muted">Euer Team</span>}
         </span>
         <span className="text-sm text-muted">
@@ -128,8 +128,8 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2" data-testid="board-team">
           <div>
-            <Link href={`/teams/${s.team.slug}`} className="font-semibold hover:text-green">{s.team.name}</Link>
-            {s.team.verified && <span className="ml-2 rounded bg-green-soft px-1 py-0.5 text-[10px] text-green">Verifiziert</span>}
+            <Link href={`/teams/${s.team.slug}`} className="font-semibold hover:text-accent-fg">{s.team.name}</Link>
+            {s.team.verified && <span className="ml-2 rounded bg-accent-soft px-1 py-0.5 text-[10px] text-accent-fg">Verifiziert</span>}
             <p className="text-xs text-muted">
               Elo {s.team.elo}
               {s.team.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {s.team.strength}/5 · {s.team.members} im Kader
@@ -138,7 +138,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
           <ul className="space-y-1 text-sm">
             {s.roster.map((p) => (
               <li key={p.userId} className="flex items-center justify-between gap-2">
-                <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-green">{p.name}</Link>
+                <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">{p.name}</Link>
                 <span className="shrink-0 text-xs text-muted">{[p.position, p.elo ? `Elo ${p.elo}` : null, p.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
               </li>
             ))}
@@ -147,7 +147,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
         {challenge && s.target ? (
           <div className="space-y-1 rounded-lg border border-dashed border-line p-3 text-sm" data-testid="challenge-target">
             <p className="text-xs text-muted">Herausgefordert wird</p>
-            <Link href={`/teams/${s.target.slug}`} className="font-semibold hover:text-green">{s.target.name}</Link>
+            <Link href={`/teams/${s.target.slug}`} className="font-semibold hover:text-accent-fg">{s.target.name}</Link>
             <p className="text-xs text-muted">
               Elo {s.target.elo}
               {s.target.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {s.target.strength}/5 · {s.target.members} im Kader
@@ -199,7 +199,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
           </Link>
         )}
         {challenge && !forMe && !own && loggedIn && candidates.length === 0 && <span className="text-xs text-muted">Um herauszufordern, brauchst du ein Team, bei dem du Admin bist.</span>}
-        {challenge && !forMe && !own && <Link href={`/suche/${s.id}`} className="text-xs text-green underline">Details</Link>}
+        {challenge && !forMe && !own && <Link href={`/suche/${s.id}`} className="text-xs text-accent-fg underline">Details</Link>}
         {!loggedIn && !challenge && (
           <Link href={`/anmelden?next=${encodeURIComponent(s.sub === "queue" ? "/matchmaking#offen" : `/suche/${s.id}`)}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
             Anmelden und Team herausfordern

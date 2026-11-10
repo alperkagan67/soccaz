@@ -8,7 +8,7 @@ export function BoardInfo({ blocks, slotMinutes, gapMinutes, winner }: { blocks:
     return (
       <div className="w-full space-y-1 rounded-lg border border-line bg-panel p-3 text-center" data-testid="board-info">
         <p className="text-xs uppercase tracking-wide text-muted">Turniersieger</p>
-        <p className="font-heading text-lg font-extrabold text-green">🏆 {winner}</p>
+        <p className="font-heading text-lg font-extrabold text-accent-fg">🏆 {winner}</p>
       </div>
     );
   }

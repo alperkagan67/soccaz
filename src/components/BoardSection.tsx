@@ -27,7 +27,7 @@ export async function BoardSection({ filter = {}, limit }: { filter?: BoardFilte
       <LobbyBoard entries={shown} mine={mine} myWaitingTeamIds={myWaiting} loggedIn={Boolean(user)} shareBase={process.env.APP_URL ?? `${proto}://${host}`} paymentsOn={payOn} />
       {limit && all.length > limit && (
         <p className="text-sm">
-          <Link href="/suche" className="text-green underline">
+          <Link href="/suche" className="text-accent-fg underline">
             Alle {all.length} offenen Lobbys und Suchen ansehen
           </Link>
         </p>

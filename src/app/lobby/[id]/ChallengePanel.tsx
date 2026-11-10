@@ -6,9 +6,9 @@ import { acceptChallengeAction, declineChallengeAction } from "@/server/matchmak
 /** Direkt-Herausforderung: Das herausgeforderte Team nimmt an oder lehnt ab, das herausfordernde kann zurückziehen. */
 export function ChallengePanel({ matchId, homeName, awayName, role, deadlineText }: { matchId: string; homeName: string; awayName: string; role: "target" | "challenger" | "viewer"; deadlineText: string }) {
   return (
-    <section className="card space-y-3 border-yellow/60" aria-label="Herausforderung" data-testid="challenge-panel">
+    <section className="card space-y-3 border-ink" aria-label="Herausforderung" data-testid="challenge-panel">
       <div>
-        <h2 className="font-semibold text-yellow">Herausforderung wartet auf Annahme</h2>
+        <h2 className="font-semibold text-ink">Herausforderung wartet auf Annahme</h2>
         <p className="text-sm text-muted">
           {homeName} hat {awayName} herausgefordert. Nimmt {awayName} an, beginnt das Hallen-Veto, danach wählt ihr gemeinsam den Termin. Antwort bis {deadlineText}.
         </p>

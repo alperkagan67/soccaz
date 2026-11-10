@@ -20,7 +20,7 @@ function Games({ games }: { games: ClockGame[] }) {
           <span className="shrink-0 text-muted">Platz {g.court}</span>
           <span className="truncate">
             {g.fun ? "Just for fun: " : ""}
-            {g.nameA && g.nameB ? (g.matchId ? <Link href={`/spiele/${g.matchId}`} className="text-green underline">{g.nameA} – {g.nameB}</Link> : `${g.nameA} – ${g.nameB}`) : "Verlierer der Halbfinals"}
+            {g.nameA && g.nameB ? (g.matchId ? <Link href={`/spiele/${g.matchId}`} className="text-accent-fg underline">{g.nameA} – {g.nameB}</Link> : `${g.nameA} – ${g.nameB}`) : "Verlierer der Halbfinals"}
           </span>
         </li>
       ))}
@@ -50,16 +50,16 @@ export function BoardClock({ blocks, slotMinutes, gapMinutes }: { blocks: ClockB
     const elapsed = now - live.start;
     const pct = Math.min(100, Math.round((elapsed / (slotMinutes * 60_000)) * 100));
     return (
-      <div className="w-full space-y-1.5 rounded-lg border border-green/60 bg-panel p-3 text-center" data-testid="board-clock" data-state="live">
-        <p className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wide text-green">
-          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-green" aria-hidden /> Läuft gerade · {live.label}
+      <div className="w-full space-y-1.5 rounded-lg border border-accent/60 bg-panel p-3 text-center" data-testid="board-clock" data-state="live">
+        <p className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wide text-accent-fg">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden /> Läuft gerade · {live.label}
         </p>
         <p className="font-heading text-3xl font-extrabold tabular-nums" role="timer" aria-label="Spielzeit">
           {mmss(elapsed)}
           <span className="ml-1 text-sm font-normal text-muted">/ {slotMinutes}:00</span>
         </p>
         <div className="mx-auto h-1.5 overflow-hidden rounded-full bg-white/10" aria-hidden>
-          <div className="h-full bg-green" style={{ width: `${pct}%` }} />
+          <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
         </div>
         <Games games={live.games} />
       </div>

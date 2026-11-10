@@ -9,7 +9,7 @@ export type FinalTeam = { id: string; name: string; confirmed: boolean; ready: n
 export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers }: { matchId: string; teams: FinalTeam[]; myTeamId: string | null; paymentsOn: boolean; minPlayers: number }) {
   const mine = teams.find((t) => t.id === myTeamId);
   return (
-    <section className="card space-y-3 border-green/60" aria-label="Letzte Bestätigung" data-testid="final-confirm">
+    <section className="card space-y-3 border-accent/60" aria-label="Letzte Bestätigung" data-testid="final-confirm">
       <div>
         <h2 className="font-semibold">Letzte Bestätigung der Captains</h2>
         <p className="text-sm text-muted">
@@ -18,9 +18,9 @@ export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers 
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         {teams.map((t) => (
-          <div key={t.id} className={`rounded-lg border p-3 text-sm ${t.confirmed ? "border-green/60" : "border-line"}`} data-testid="final-team" data-confirmed={t.confirmed}>
+          <div key={t.id} className={`rounded-lg border p-3 text-sm ${t.confirmed ? "border-accent/60" : "border-line"}`} data-testid="final-team" data-confirmed={t.confirmed}>
             <p className="font-semibold">{t.name}</p>
-            <p className={t.confirmed ? "text-green" : "text-muted"}>{t.confirmed ? "✓ Captain hat bestätigt" : "Captain hat noch nicht bestätigt"}</p>
+            <p className={t.confirmed ? "text-accent-fg" : "text-muted"}>{t.confirmed ? "✓ Captain hat bestätigt" : "Captain hat noch nicht bestätigt"}</p>
             <p className="text-xs text-muted">
               {t.ready} von {t.total} bereit{paymentsOn ? `, ${t.paid} bezahlt` : ""}
             </p>
@@ -33,7 +33,7 @@ export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers 
           {!mine.complete && <p className="text-xs text-muted">Noch nicht möglich: Es sind nicht alle in deinem Team bereit{paymentsOn ? " und bezahlt" : ""}.</p>}
         </div>
       )}
-      {mine?.confirmed && <p className="text-sm text-green">Du hast bestätigt. Wir warten auf den Captain des anderen Teams.</p>}
+      {mine?.confirmed && <p className="text-sm text-accent-fg">Du hast bestätigt. Wir warten auf den Captain des anderen Teams.</p>}
     </section>
   );
 }

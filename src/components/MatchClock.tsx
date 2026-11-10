@@ -28,7 +28,7 @@ export function MatchClock({ startsAtIso, durationMin }: { startsAtIso: string; 
         <span className="ml-2 text-sm font-normal text-muted tabular-nums">{String(seconds).padStart(2, "0")} Sek</span>
       </p>
       <div className="mx-auto h-2 max-w-sm overflow-hidden rounded-full bg-white/10" aria-hidden>
-        <div className={over ? "h-full bg-yellow" : "h-full bg-green"} style={{ width: `${pct}%` }} />
+        <div className={over ? "h-full bg-ink" : "h-full bg-accent"} style={{ width: `${pct}%` }} />
       </div>
       <p className="text-xs text-muted">{over ? "Nachspielzeit: Die reguläre Spielzeit ist um." : `von ${durationMin} Minuten`}</p>
     </div>

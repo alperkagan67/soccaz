@@ -32,7 +32,7 @@ export function CommentForm({ targetType, targetId, path, withRating, label }: {
       </div>
       <SubmitButton pending={pending}>Senden</SubmitButton>
       {state?.error && <FieldError message={state.error} />}
-      {state?.ok && <p className="text-sm text-green" role="status">Gespeichert.</p>}
+      {state?.ok && <p className="text-sm text-accent-fg" role="status">Gespeichert.</p>}
     </form>
   );
 }
@@ -59,7 +59,7 @@ export function CommentActions({ commentId, path, mine }: { commentId: string; p
     <span className="flex items-center gap-2">
       <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Grund" aria-label="Grund der Meldung" maxLength={200} className="field !min-h-8 !w-40 !py-1 text-xs" />
       <button
-        className="text-xs text-coral underline"
+        className="text-xs text-ink underline"
         disabled={pending}
         onClick={() =>
           start(async () => {

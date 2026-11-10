@@ -60,7 +60,7 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
             const winA = done && (m.scoreA! > m.scoreB! || (m.scoreA === m.scoreB && m.shootoutWinner === m.teamA));
             const winB = done && (m.scoreB! > m.scoreA! || (m.scoreA === m.scoreB && m.shootoutWinner === m.teamB));
             const row = (name: string | null, score: number | null, win: boolean, badge?: ReactNode) => (
-              <div className={`flex items-center justify-between gap-2 px-3 py-1.5 ${win ? "font-bold text-green" : ""}`}>
+              <div className={`flex items-center justify-between gap-2 px-3 py-1.5 ${win ? "font-bold text-accent-fg" : ""}`}>
                 <span className="truncate">{name ?? <span className="text-muted">offen</span>}</span>
                 {badge}
                 <span className="font-heading tabular-nums">{score ?? ""}</span>
@@ -80,7 +80,7 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
                   )}
                   {m.matchId && !done && (
                     <p className="border-t border-line px-3 py-1 text-center text-xs">
-                      <Link href={`/spiele/${m.matchId}`} className="text-green underline">Zum Spiel</Link>
+                      <Link href={`/spiele/${m.matchId}`} className="text-accent-fg underline">Zum Spiel</Link>
                     </p>
                   )}
                   {m.pendingShootout && manage && m.teamA && m.teamB && (
