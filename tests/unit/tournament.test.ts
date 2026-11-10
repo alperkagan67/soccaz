@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { shuffle, bracketOrder, planSchedule, drawGroups, groupCount, groupFixtures, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, finalSharePerPlayer, reservationPerPlayer, shareRange, tournamentTotalCents } from "@/lib/tournament";
+import { shareCents } from "@/lib/money";
+import { shuffle, bracketOrder, planSchedule, drawGroups, groupCount, groupFixtures, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, finalSharePerPlayer, shareRange, tournamentTotalCents } from "@/lib/tournament";
 
 const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
 const pairKey = (a: string, b: string) => [a, b].sort().join("-");
@@ -188,19 +189,16 @@ describe("Hallenkosten geteilt durch alle Spieler", () => {
     expect(tournamentTotalCents(9500, 45)).toBe(7125);
     expect(tournamentTotalCents(0, 180)).toBe(0);
   });
-  it("Vorauszahlung ist der höchste mögliche Anteil, der endgültige Anteil richtet sich nach der Spielerzahl", () => {
-    expect(reservationPerPlayer(16_000, 8, 4)).toBe(500); // 8 Teams mit mindestens 4 Spielern: 32 Spieler
-    expect(reservationPerPlayer(16_000, 4, 4)).toBe(1000);
+  it("Anteil richtet sich nach der tatsächlichen Spielerzahl (shareCents), keine Reservierung", () => {
     expect(finalSharePerPlayer(16_000, 40)).toBe(400); // 8 Teams mit je 5
     expect(finalSharePerPlayer(16_000, 20)).toBe(800);
     expect(finalSharePerPlayer(10_000, 30)).toBe(334); // aufgerundet: nie unterdeckt
     expect(finalSharePerPlayer(5_000, 0)).toBe(5_000); // nie Division durch null
   });
-  it("Die Vorauszahlung reicht immer: der endgültige Anteil ist nie höher", () => {
-    for (const teams of [4, 5, 8, 16]) {
-      for (const players of [teams * 4, teams * 5, teams * 6]) {
-        expect(finalSharePerPlayer(16_000, players)).toBeLessThanOrEqual(reservationPerPlayer(16_000, teams, 4));
-      }
+  it("Der Anteil entspricht shareCents und deckt die Kosten nie unter", () => {
+    for (const players of [20, 32, 33, 40, 48, 96]) {
+      expect(finalSharePerPlayer(16_000, players)).toBe(shareCents(16_000, players));
+      expect(finalSharePerPlayer(16_000, players) * players).toBeGreaterThanOrEqual(16_000);
     }
   });
   it("Spanne des Anteils vor dem Start", () => {

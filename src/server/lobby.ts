@@ -14,10 +14,10 @@ import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { fixPrivateShare, onParticipantLeaves, privateJoinBlocked, privateListLocked, privateShareNow, recalcPrivateShares, refundOnCancel, reserveShare, seatedCount } from "./wallet";
+import { fixPrivateShare, onParticipantLeaves, privateJoinBlocked, privateListLocked, privateShareNow, recalcPrivateShares, refundOnCancel, reserveShare, seatedCount, shareToCharge } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
-import { reservationFor, shareFor } from "@/lib/money";
+import { shareCents, shareFor } from "@/lib/money";
 import { secureRandom, shuffle } from "@/lib/tournament";
 import { teamRoster, teamStrength, type RosterMember } from "./roster";
 import { walletBalance } from "./ledger";
@@ -60,6 +60,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
       status: matches.status,
       priceCents: matches.priceCents,
       finalShareCents: matches.finalShareCents,
+      legacyShareModel: matches.legacyShareModel,
       settledAt: matches.settledAt,
       homeId: home.id,
       homeName: home.name,
@@ -124,14 +125,16 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
   const payEnabled = await paymentsEnabled();
   const minPaid = await minPaidPlayers();
   const priceCents = match.priceCents ?? (await priceFor(db, null, match.durationMin))?.priceCents ?? null;
-  // Privatspiel: Anteil = Miete ÷ eingeteilte Spieler (bzw. der feste Anteil); sonst Reservierung mit Mindestzahl
+  // Privatspiel und neues Teamspiel: Anteil = Preis ÷ eingeteilte Spieler (bzw. der feste Anteil); Altspiel: Reservierung mit Mindestzahl
+  const newModel = match.kind === "private" || !match.legacyShareModel;
   const privateShare = match.kind === "private" && priceCents ? await privateShareNow(db, match, priceCents) : null;
+  const currentShare = priceCents ? await shareToCharge(db, match, priceCents) : null;
   const payments = {
     enabled: payEnabled,
     priceCents,
     minPaid,
-    reservationCents: priceCents ? (privateShare ?? (match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid))) : null,
-    lowestShareCents: priceCents ? (privateShare ?? shareFor(priceCents, 12)) : null,
+    reservationCents: currentShare,
+    lowestShareCents: priceCents ? (privateShare ?? (newModel ? shareCents(priceCents, 12) : shareFor(priceCents, 12))) : null,
     finalShareCents: match.finalShareCents,
     // Privatspiel: so viel muss die angemeldete Person noch zahlen (Anteil gestiegen oder noch nichts gezahlt)
     myDueCents: match.kind === "private" && privateShare !== null && viewer ? Math.max(privateShare - (participants.find((p) => p.userId === viewer.id)?.paidCents ?? privateShare), 0) : null,

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants } from "@/db/schema";
+import { matchParticipants, matches } from "@/db/schema";
 import { bookingJobs, ledgerEntries, pendingRefunds, receipts } from "@/db/schema-finance";
 import { creditWallet, trialBalance, walletBalance, InsufficientFunds } from "@/server/ledger";
 import { cancelMatch, leaveLobby, removeParticipant, payShare, setReady } from "@/server/lobby";
@@ -25,7 +25,7 @@ const revenueFor = async (matchId: string) => {
 
 /** Zwei Teams mit je 5 bezahlten, bereiten Spielern (Spiel bestätigt, Buchungsauftrag erzeugt). */
 async function confirmedMatch(hoursAhead = 72, durationMin = 60, priceCents = 8000) {
-  const m = await makeMatch({ hoursAhead, durationMin, priceCents, costCents: priceCents });
+  const m = await makeMatch({ legacy: true, hoursAhead, durationMin, priceCents, costCents: priceCents });
   const players = [m.adminA, m.adminB];
   for (let i = 0; i < 4; i++) players.push(await addPlayer(m.match.id, m.home.id), await addPlayer(m.match.id, m.away.id));
   for (const p of players) {
@@ -39,7 +39,7 @@ async function confirmedMatch(hoursAhead = 72, durationMin = 60, priceCents = 80
 describe("Anteil reservieren beim Bereitmachen", () => {
   it("ohne eingeschaltete Zahlungen wird nichts gebucht", async () => {
     await setSetting(null, "payments_enabled", false);
-    const m = await makeMatch();
+    const m = await makeMatch({ legacy: true });
     await payShare(m.adminA.id, m.match.id);
     await setReady(m.adminA.id, m.match.id, true);
     expect(await walletBalance(db, m.adminA.id)).toBe(0);
@@ -48,7 +48,7 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   });
 
   it("zu wenig Guthaben: nicht bereit, nichts gebucht, Fehler nennt den Betrag", async () => {
-    const m = await makeMatch();
+    const m = await makeMatch({ legacy: true });
     await fund(m.adminA.id, 500);
     await expect(payShare(m.adminA.id, m.match.id)).rejects.toBeInstanceOf(InsufficientFunds);
     const p = await participant(m.match.id, m.adminA.id);
@@ -58,14 +58,14 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   });
 
   it("60 Minuten: reserviert 10,00 EUR, 90 Minuten: 13,75 EUR", async () => {
-    const a = await makeMatch({ durationMin: 60, priceCents: 8000 });
+    const a = await makeMatch({ legacy: true, durationMin: 60, priceCents: 8000 });
     await fund(a.adminA.id, 5000);
     await payShare(a.adminA.id, a.match.id);
     await setReady(a.adminA.id, a.match.id, true);
     expect(await walletBalance(db, a.adminA.id)).toBe(4000);
     expect((await participant(a.match.id, a.adminA.id)).paidCents).toBe(1000);
 
-    const b = await makeMatch({ durationMin: 90, priceCents: 11000 });
+    const b = await makeMatch({ legacy: true, durationMin: 90, priceCents: 11000 });
     await fund(b.adminA.id, 5000);
     await payShare(b.adminA.id, b.match.id);
     await setReady(b.adminA.id, b.match.id, true);
@@ -73,7 +73,7 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   });
 
   it("wieder bereit nach Zurücknehmen kostet nicht doppelt", async () => {
-    const m = await makeMatch();
+    const m = await makeMatch({ legacy: true });
     await fund(m.adminA.id, 3000);
     await payShare(m.adminA.id, m.match.id);
     await setReady(m.adminA.id, m.match.id, true);
@@ -85,7 +85,7 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   });
 
   it("Preis wird bei fehlender Regel verständlich abgelehnt", async () => {
-    const m = await makeMatch({ durationMin: 75, priceCents: null, costCents: null });
+    const m = await makeMatch({ legacy: true, durationMin: 75, priceCents: null, costCents: null });
     await fund(m.adminA.id, 3000);
     await expect(payShare(m.adminA.id, m.match.id)).rejects.toThrow(/kein Preis hinterlegt/);
   });
@@ -144,7 +144,7 @@ describe("Bestätigung, Buchungsauftrag und Abrechnung", () => {
 
 describe("Abmelden, Entfernen und Absage", () => {
   it("mehr als 24 Stunden vorher: volle Erstattung sofort", async () => {
-    const m = await makeMatch({ hoursAhead: 72 });
+    const m = await makeMatch({ legacy: true, hoursAhead: 72 });
     const p = await addPlayer(m.match.id, m.home.id);
     await fund(p.id, 2000);
     await payShare(p.id, m.match.id);
@@ -156,7 +156,7 @@ describe("Abmelden, Entfernen und Absage", () => {
   });
 
   it("weniger als 24 Stunden vorher: keine Erstattung, bis ein Ersatz bezahlt hat", async () => {
-    const m = await makeMatch({ hoursAhead: 10 });
+    const m = await makeMatch({ legacy: true, hoursAhead: 10 });
     const leaver = await addPlayer(m.match.id, m.home.id);
     await fund(leaver.id, 2000);
     await payShare(leaver.id, m.match.id);
@@ -182,7 +182,7 @@ describe("Abmelden, Entfernen und Absage", () => {
   });
 
   it("Entfernen durch einen Admin: sofort volle Erstattung, auch kurz vor dem Spiel", async () => {
-    const m = await makeMatch({ hoursAhead: 5 });
+    const m = await makeMatch({ legacy: true, hoursAhead: 5 });
     const p = await addPlayer(m.match.id, m.home.id);
     await fund(p.id, 2000);
     await payShare(p.id, m.match.id);
@@ -192,7 +192,7 @@ describe("Abmelden, Entfernen und Absage", () => {
   });
 
   it("Absage: alle bekommen alles zurück, auch wer kurz vorher ausgestiegen war, Buchung wird zurückgezogen", async () => {
-    const m = await makeMatch({ hoursAhead: 10 });
+    const m = await makeMatch({ legacy: true, hoursAhead: 10 });
     const a = await addPlayer(m.match.id, m.home.id);
     const b = await addPlayer(m.match.id, m.away.id);
     const leaver = await addPlayer(m.match.id, m.home.id);
@@ -221,5 +221,92 @@ describe("Buchführung insgesamt", () => {
   it("Saldenprobe ausgeglichen, jede Bewegung hat eine Gegenseite", async () => {
     const tb = await trialBalance();
     expect(tb.balanced).toBe(true);
+  });
+});
+
+describe("Neues Modell im Teamspiel (008 M1): Preis ÷ tatsächliche Spielerzahl", () => {
+  /** Zwei Teams, n Spieler eingeteilt (die beiden Admins zählen mit), jeder mit Guthaben. */
+  const seat = async (m: Awaited<ReturnType<typeof makeMatch>>, n: number) => {
+    const all = [m.adminA, m.adminB];
+    while (all.length < n) all.push(await addPlayer(m.match.id, all.length % 2 === 0 ? m.home.id : m.away.id));
+    for (const p of all) await fund(p.id, 3000);
+    return all;
+  };
+  const paid = async (matchId: string, userId: string) => (await participant(matchId, userId)).paidCents;
+
+  it("AC-1: der Betrag ist Preis ÷ eingeteilte Spieler, kein Deckel bei 12 und keine Mindestzahl 8 (Einstellung min_paid_players ohne Wirkung)", async () => {
+    await setSetting(null, "min_paid_players", 12);
+    try {
+      const m = await makeMatch({ priceCents: 12_000, costCents: 12_000 });
+      const all = await seat(m, 10);
+      await payShare(all[0].id, m.match.id);
+      expect(await paid(m.match.id, all[0].id)).toBe(1200); // Altmodell mit Mindestzahl 12 wäre 1000, mit Mindestzahl 8 wäre es 1500
+      expect(await walletBalance(db, all[0].id)).toBe(1800);
+      const m2 = await makeMatch({ priceCents: 12_000, costCents: 12_000 });
+      const eleven = await seat(m2, 12);
+      await payShare(eleven[0].id, m2.match.id);
+      expect(await paid(m2.match.id, eleven[0].id)).toBe(1000);
+    } finally {
+      await setSetting(null, "min_paid_players", 8);
+    }
+  });
+
+  it("wenige eingeteilte Spieler: Anteil mindestens durch 4 geteilt, keine Reservierung mit 8", async () => {
+    const m = await makeMatch({ priceCents: 8000, costCents: 8000 });
+    await fund(m.adminA.id, 5000);
+    await payShare(m.adminA.id, m.match.id);
+    expect(await paid(m.match.id, m.adminA.id)).toBe(2000); // 2 eingeteilt: 8000 ÷ 4
+  });
+
+  it("Abrechnung: wer früher mehr gezahlt hat, bekommt die Differenz zurück; Einnahmen sind genau der Preis, Hauptbuch ausgeglichen", async () => {
+    const m = await makeMatch({ priceCents: 8000, costCents: 8000 });
+    const first = m.adminA;
+    await fund(first.id, 5000);
+    await payShare(first.id, m.match.id); // 2 eingeteilt: 2000
+    const rest = [m.adminB];
+    for (let i = 0; i < 8; i++) rest.push(await addPlayer(m.match.id, i % 2 === 0 ? m.home.id : m.away.id));
+    for (const p of rest) {
+      await fund(p.id, 3000);
+      await payShare(p.id, m.match.id);
+      expect(await paid(m.match.id, p.id)).toBe(800); // 10 eingeteilt
+    }
+    await db.update(matches).set({ status: "confirmed" }).where(eq(matches.id, m.match.id));
+    expect(await settleMatch(db as never, await reloadMatch(m.match.id))).toBe(true);
+    expect((await reloadMatch(m.match.id)).finalShareCents).toBe(800);
+    expect(await paid(m.match.id, first.id)).toBe(800);
+    expect(await walletBalance(db, first.id)).toBe(5000 - 800);
+    expect(await revenueFor(m.match.id)).toBe(8000);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Abrechnung teilt durch die eingeteilten Spieler, nicht durch die Zahler (Nichtzahler zählen im Divisor, kein Mindestwert 8)", async () => {
+    const m = await makeMatch({ priceCents: 8000, costCents: 8000 });
+    const all = await seat(m, 6);
+    for (const p of all.slice(0, 4)) await payShare(p.id, m.match.id); // 6 eingeteilt: 8000 ÷ 6 = 1334; zwei zahlen nicht
+    expect(await paid(m.match.id, all[0].id)).toBe(1334);
+    await db.update(matches).set({ status: "confirmed" }).where(eq(matches.id, m.match.id));
+    expect(await settleMatch(db as never, await reloadMatch(m.match.id))).toBe(true);
+    expect((await reloadMatch(m.match.id)).finalShareCents).toBe(1334); // Altmodell: 8000 ÷ 8 = 1000
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-9: Altspiel (legacy_share_model) rechnet mit Reservierung und Mindestzahl, Neuspiel mit Spielerzahl; neue Spiele sind standardmäßig neu", async () => {
+    const oldGame = await makeMatch({ legacy: true, priceCents: 8000, costCents: 8000 });
+    const newGame = await makeMatch({ priceCents: 8000, costCents: 8000 });
+    expect(oldGame.match.legacyShareModel).toBe(true);
+    expect(newGame.match.legacyShareModel).toBe(false);
+    for (const g of [oldGame, newGame]) {
+      const all = await seat(g, 10);
+      await payShare(all[0].id, g.match.id);
+    }
+    expect(await paid(oldGame.match.id, oldGame.adminA.id)).toBe(1000); // 8000 ÷ 8 (Reservierung)
+    expect(await paid(newGame.match.id, newGame.adminA.id)).toBe(800); // 8000 ÷ 10
+    // Altspiel wird beim Abrechnen weiter nach altem Modell berechnet: zwei Zahler, Mindestzahl 8
+    const payers = [oldGame.adminB];
+    for (const p of payers) await payShare(p.id, oldGame.match.id);
+    await db.update(matches).set({ status: "confirmed" }).where(eq(matches.id, oldGame.match.id));
+    expect(await settleMatch(db as never, await reloadMatch(oldGame.match.id))).toBe(true);
+    expect((await reloadMatch(oldGame.match.id)).finalShareCents).toBe(1000); // zwei Zahler, Mindestzahl 8: 8000 ÷ 8
+    expect((await trialBalance()).balanced).toBe(true);
   });
 });

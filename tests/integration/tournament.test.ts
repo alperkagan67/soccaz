@@ -232,6 +232,16 @@ describe("Team vollzählig: erst wenn alle da sind, dann wird der Preis automati
     expect((await orgView(o, t.id))!.pricing).toMatchObject({ shareCents: 800, players: 20 });
   });
 
+  it("M1 AC-7: Anteil = aufgerundet Gesamtpreis ÷ tatsächliche Spieler (keine Reservierung), Vorschau als Spanne", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const before = (await orgView(o, t.id))!.pricing;
+    expect(before.range).toEqual({ lowest: 667, highest: 1000 }); // 160 Euro: 4 Teams mit 6 bzw. 4 Spielern
+    for (const n of [4, 5, 5, 5]) await squad(t.id, n, true);
+    expect(await statusOf(t.id)).toMatchObject({ status: "payment", finalShareCents: 843 }); // 16000 ÷ 19 = 842,1 aufgerundet
+    expect((await orgView(o, t.id))!.pricing).toMatchObject({ shareCents: 843, players: 19 });
+  });
+
   it("in der Zahlungsphase ist der Kader gesperrt", async () => {
     const o = await organizer();
     const t = await newTournament(o);

@@ -16,7 +16,7 @@ const key = () => `f-${Math.random().toString(36).slice(2)}`;
 const fund = (userId: string, cents: number) => creditWallet(db, userId, { from: "clearing", amountCents: cents, kind: "topup", idempotencyKey: key() });
 
 async function settledMatch(priceCents: number) {
-  const m = await makeMatch({ priceCents, costCents: priceCents });
+  const m = await makeMatch({ legacy: true, priceCents, costCents: priceCents });
   const players = [m.adminA, m.adminB];
   for (let i = 0; i < 4; i++) players.push(await addPlayer(m.match.id, m.home.id), await addPlayer(m.match.id, m.away.id));
   for (const p of players) {
@@ -101,7 +101,7 @@ describe("Finanz-Reporting", () => {
 
   it("Alarm: negatives Guthaben und nicht abgerechnetes Spiel", async () => {
     // Spiel hat begonnen, ist bestätigt, hat Zahler, aber keine Abrechnung
-    const c = await makeMatch();
+    const c = await makeMatch({ legacy: true });
     const p = c.adminA;
     await fund(p.id, 2000);
     await payShare(p.id, c.match.id);

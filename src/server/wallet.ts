@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { matchParticipants, matches } from "@/db/schema";
 import { pendingRefunds } from "@/db/schema-finance";
+import { MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
 import { finalShareFor, formatEuro, reservationFor, shareCents } from "@/lib/money";
 import { audit } from "./audit";
 import { creditWallet, debitWallet } from "./ledger";
@@ -53,8 +54,25 @@ export async function ensurePrice(tx: Tx, match: MatchRow): Promise<{ priceCents
 }
 
 /** Betrag, den ein Spieler jetzt zahlt: vor der Abrechnung die Reservierung (höchster Anteil), danach der endgültige Anteil. */
-export function amountToCharge(match: MatchRow, priceCents: number, minPaid: number): number {
+export function amountToCharge(match: Pick<MatchRow, "settledAt" | "finalShareCents">, priceCents: number, minPaid: number): number {
   return match.settledAt && match.finalShareCents ? match.finalShareCents : reservationFor(priceCents, minPaid);
+}
+
+/**
+ * Anteil im Teamspiel nach dem neuen Modell (008): Hallenpreis geteilt durch die Zahl der eingeteilten Spieler (aufgerundet, mindestens 4 wie der
+ * Wertebereich der Spielerzahl), ohne Mindestzahl 8, ohne Deckel 12 und ohne Reservierung. Nach der Abrechnung gilt der feste Anteil.
+ * Spiele des alten Modells (`legacyShareModel`) rechnen weiter mit `amountToCharge`.
+ */
+export async function teamShareNow(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "finalShareCents" | "settledAt">, priceCents: number): Promise<number> {
+  if (match.settledAt && match.finalShareCents) return match.finalShareCents;
+  return shareCents(priceCents, Math.max(await seatedCount(tx, match.id), MIN_PRIVATE_PLAYERS));
+}
+
+/** Betrag, den ein Spieler jetzt zahlt, je nach Modell: Privatspiel und neues Teamspiel Miete ÷ Spielerzahl, Altspiel die Reservierung. */
+export async function shareToCharge(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "kind" | "finalShareCents" | "settledAt" | "legacyShareModel">, priceCents: number): Promise<number> {
+  if (match.kind === "private") return privateShareNow(tx, match, priceCents);
+  if (!match.legacyShareModel) return teamShareNow(tx, match, priceCents);
+  return amountToCharge(match, priceCents, await minPaidPlayers(tx));
 }
 
 /**
@@ -79,7 +97,7 @@ export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Pro
 
   const { priceCents, match: fresh } = await ensurePrice(tx, match);
   if (priceCents === 0) return; // kostenlos: keine Zahlung, keine Reservierung
-  const amount = fresh.kind === "private" ? await privateShareNow(tx, fresh, priceCents) : amountToCharge(fresh, priceCents, await minPaidPlayers(tx));
+  const amount = await shareToCharge(tx, fresh, priceCents);
   const toPay = amount - p.paidCents;
   if (toPay <= 0) return; // schon voll bezahlt (auch bei Doppelklick)
   await debitWallet(tx, userId, {
@@ -250,7 +268,6 @@ export async function refundOnCancel(tx: Tx, match: MatchRow, actorId: string | 
 export async function settleMatch(tx: Tx, match: MatchRow): Promise<boolean> {
   if (!(await paymentsEnabled(tx)) || match.settledAt || match.status !== "confirmed") return false;
   const { priceCents, match: m } = await ensurePrice(tx, match);
-  const minPaid = await minPaidPlayers(tx);
   const payers = await tx
     .select({ userId: matchParticipants.userId, paidCents: matchParticipants.paidCents })
     .from(matchParticipants)
@@ -259,7 +276,7 @@ export async function settleMatch(tx: Tx, match: MatchRow): Promise<boolean> {
 
   // Privatspiel: nie finalShareFor (Mindestzahl 8, Deckel 12). Es gilt der feste Anteil (zweites Bereit) oder, solange keiner gesetzt ist,
   // derselbe Anteil wie beim Bezahlen: Miete geteilt durch die eingeteilten Spieler.
-  const final = m.kind === "private" ? await privateShareNow(tx, m, priceCents) : finalShareFor(priceCents, payers.length, minPaid);
+  const final = m.kind === "private" ? await privateShareNow(tx, m, priceCents) : m.legacyShareModel ? finalShareFor(priceCents, payers.length, await minPaidPlayers(tx)) : await teamShareNow(tx, m, priceCents);
   const [home, away] = [await teamName(tx, m.homeTeamId), await teamName(tx, m.awayTeamId)];
   for (const p of payers) {
     const diff = p.paidCents - final;
