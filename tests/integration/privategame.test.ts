@@ -1369,3 +1369,115 @@ describe("Einladungslink zurückziehen und neu erzeugen (T56, AC-10)", () => {
     expect(JSON.stringify(list)).not.toContain(fresh);
   });
 });
+
+describe("Zufällige Einteilung und Sperren (T58, AC-13)", () => {
+  const sideCounts = async (matchId: string, homeTeamId: string, awayTeamId: string) => {
+    const parts = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, matchId));
+    return { home: parts.filter((p) => p.teamId === homeTeamId).length, away: parts.filter((p) => p.teamId === awayTeamId).length, none: parts.filter((p) => p.teamId === null).length };
+  };
+
+  it("Teams sind bei geraden und ungeraden Zahlen ausgeglichen (Differenz höchstens 1), auch nach einer Einteilung von Hand", async () => {
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const { organizer, match } = await game(n, { maxPlayers: 10 }); // n + 1 Teilnehmer
+      await randomSplit(organizer.id, match.id);
+      const c = await sideCounts(match.id, match.homeTeamId, match.awayTeamId);
+      expect(c.none, `n=${n}`).toBe(0);
+      expect(c.home + c.away, `n=${n}`).toBe(n + 1);
+      expect(Math.abs(c.home - c.away), `n=${n}`).toBeLessThanOrEqual(1);
+    }
+    // 3 von Hand zu Rot, der Rest zufällig: trotzdem ausgeglichen
+    const { organizer, match, players } = await game(6);
+    for (const p of players.slice(0, 3)) await assignSubstitute(organizer.id, match.id, p.id, match.homeTeamId);
+    await randomSplit(organizer.id, match.id);
+    const c = await sideCounts(match.id, match.homeTeamId, match.awayTeamId);
+    expect(c).toEqual({ home: 4, away: 3, none: 0 });
+  });
+
+  it("nur der Veranstalter: Fremde und normale Spieler werden bei Einteilung, Neu-Mischen und Rückgängig abgelehnt; der Zustand bleibt", async () => {
+    const { organizer, match, players } = await game(5);
+    await randomSplit(organizer.id, match.id);
+    const before = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+    const stranger = await makeUser("pvfremd");
+    for (const actor of [stranger, players[2]]) {
+      await expect(randomSplit(actor.id, match.id)).rejects.toThrow(/Veranstalter|Berechtigung/);
+      await expect(randomSplit(actor.id, match.id, true)).rejects.toThrow(/Veranstalter|Berechtigung/);
+      await expect(unassignParticipant(actor.id, match.id, players[3].id)).rejects.toThrow(/Veranstalter/);
+    }
+    const after = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
+    expect(after.map((p) => [p.userId, p.teamId]).sort()).toEqual(before.map((p) => [p.userId, p.teamId]).sort());
+  });
+
+  it("Rückgängig-Sperre: Bereite und Bezahlte bleiben beim Neu-Mischen, lassen sich nicht zurücksetzen und nicht umteilen", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      const { organizer, match, players } = await game(9, { rentCents: 12_000 });
+      await randomSplit(organizer.id, match.id);
+      for (const p of players) await fund(p.id, 3000);
+      const seatOf = async (id: string) => (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, id))))[0].teamId;
+      const [paidOnly, paidReady, free] = [players[1], players[2], players[3]];
+      await payShare(paidOnly.id, match.id);
+      await payShare(paidReady.id, match.id);
+      await setReady(paidReady.id, match.id, true);
+      const seats = [await seatOf(paidOnly.id), await seatOf(paidReady.id)];
+
+      await expect(unassignParticipant(organizer.id, match.id, paidOnly.id)).rejects.toThrow(/schon bereit oder hat bezahlt/);
+      await expect(unassignParticipant(organizer.id, match.id, paidReady.id)).rejects.toThrow(/schon bereit oder hat bezahlt/);
+      // Umteilen eines bereits eingeteilten Spielers geht nicht
+      const otherTeam = seats[0] === match.homeTeamId ? match.awayTeamId : match.homeTeamId;
+      await expect(assignSubstitute(organizer.id, match.id, paidOnly.id, otherTeam)).rejects.toThrow(/wartet nicht/);
+      // Neu-Mischen: nur Spieler ohne Zahlung und ohne Bereit kommen in die Verlosung
+      await randomSplit(organizer.id, match.id, true);
+      expect([await seatOf(paidOnly.id), await seatOf(paidReady.id)]).toEqual(seats);
+      const c = await sideCounts(match.id, match.homeTeamId, match.awayTeamId);
+      expect(c.none).toBe(0);
+      expect(Math.abs(c.home - c.away)).toBeLessThanOrEqual(1);
+      // ein nicht bezahlter Spieler darf zurückgesetzt werden
+      await unassignParticipant(organizer.id, match.id, free.id);
+      expect(await seatOf(free.id)).toBeNull();
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+});
+
+describe("Neu-Mischen schützt Bezahlte und Bereite einzeln (T58 Review, AC-13)", () => {
+  /**
+   * Vier Spieler (zwei je Team) werden geschützt (bezahlt bzw. bereit); dreimal neu mischen: ihre Plätze dürfen sich nie ändern.
+   * Würde die Schutzbedingung fehlen, kämen sie in die Verlosung und landen mit hoher Wahrscheinlichkeit (15/16 je Runde) woanders.
+   */
+  async function expectProtectedStayPut(protect: (matchId: string, userId: string) => Promise<void>, over: Partial<Parameters<typeof createPrivateGame>[1]> = {}, fundAll = false) {
+    const { organizer, match, players } = await game(9, over);
+    if (fundAll) for (const p of players) await fund(p.id, 3000);
+    await randomSplit(organizer.id, match.id);
+    const seat = async () => new Map((await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id))).map((p) => [p.userId, p.teamId]));
+    const seats = await seat();
+    const others = players.filter((p) => p.id !== organizer.id);
+    const home = others.filter((p) => seats.get(p.id) === match.homeTeamId).slice(0, 2);
+    const away = others.filter((p) => seats.get(p.id) === match.awayTeamId).slice(0, 2);
+    expect(home).toHaveLength(2);
+    expect(away).toHaveLength(2);
+    const protectedPlayers = [...home, ...away];
+    for (const p of protectedPlayers) await protect(match.id, p.id);
+    for (let round = 0; round < 3; round++) {
+      await randomSplit(organizer.id, match.id, true);
+      const now = await seat();
+      for (const p of protectedPlayers) expect(now.get(p.id), `Runde ${round + 1}`).toBe(seats.get(p.id));
+      const counts = [...now.values()].reduce((m, t) => m.set(t, (m.get(t) ?? 0) + 1), new Map<string | null, number>());
+      expect(Math.abs((counts.get(match.homeTeamId) ?? 0) - (counts.get(match.awayTeamId) ?? 0))).toBeLessThanOrEqual(1);
+      expect(counts.get(null) ?? 0).toBe(0);
+    }
+  }
+
+  it("mit Zahlungen: Bezahlte (nicht bereit) behalten ihren Platz; nur die Zahlung schützt sie", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      await expectProtectedStayPut((matchId, userId) => payShare(userId, matchId), { rentCents: 12_000 }, true);
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("ohne Zahlungen: Bereite (nicht bezahlt) behalten ihren Platz; nur Bereit schützt sie", async () => {
+    await expectProtectedStayPut((matchId, userId) => setReady(userId, matchId, true));
+  });
+});

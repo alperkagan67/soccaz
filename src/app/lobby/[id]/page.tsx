@@ -107,6 +107,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     .filter((t) => canAdminTeam(t.id) && hasFreeSlot(t.count, capacity))
     .map((t) => ({ teamId: t.id, name: t.name }));
 
+  // Privatspiel: Wer schon etwas gezahlt hat, aber weniger als den (neu gerechneten) Anteil, muss die Differenz nachzahlen
+  const owes = Boolean(isPrivate && payments.enabled && payments.priceCents && payments.priceCents > 0 && payments.finalShareCents === null && v.participant?.teamId && v.participant.paid && (payments.myDueCents ?? 0) > 0);
+
   let inviteUrl: string | null = null;
   // Dieselbe Regel wie auf dem Server (canManageInvite): Team-Admin des Heim-Teams oder Plattform-Admin, nicht jeder Admin des Gast-Teams
   const inviteManager = Boolean(isPrivate && user && (v.platformAdmin || v.adminOf.includes(match.homeId)));
@@ -262,6 +265,15 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         </section>
       )}
 
+      {owes && (
+        <section className="card space-y-1 text-sm" aria-label="Anteil geändert" data-testid="due-hint">
+          <p>
+            Anteil jetzt <strong>{formatEuro(payments.reservationCents ?? 0)}</strong>, noch <strong>{formatEuro(payments.myDueCents ?? 0)}</strong> zu zahlen.
+          </p>
+          <p className="text-muted">Die Spielerzahl hat sich geändert. Du hast schon {formatEuro((payments.reservationCents ?? 0) - (payments.myDueCents ?? 0))} bezahlt; zahle jetzt die Differenz nach.</p>
+        </section>
+      )}
+
       {active && open && mode === "participant" && (
         <section className="card space-y-2" data-testid="ready-later">
           <button className="btn btn-primary w-full" disabled>Bereit machen</button>
@@ -275,7 +287,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
-          pay={payments.enabled && payments.reservationCents !== null ? { reserveCents: payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid), backTo: `/lobby/${match.id}` } : null}
+          pay={payments.enabled && payments.reservationCents !== null ? { reserveCents: owes ? (payments.myDueCents ?? 0) : payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid) && !owes, backTo: `/lobby/${match.id}` } : null}
           teamPaid={{ paid: participants.filter((p) => p.teamId === v.participant?.teamId && p.paid).length, total: participants.filter((p) => p.teamId === v.participant?.teamId).length }}
         />
       )}
