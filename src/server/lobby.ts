@@ -255,6 +255,9 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
     const seatedBefore = usesFixedShareModel(match) && (match.finalShareCents === null || unfixOnChange) ? await seatedCount(tx, matchId) : null;
     await fn(tx, match);
     if (seatedBefore !== null && (await seatedCount(tx, matchId)) !== seatedBefore) {
+      // Nach der Abrechnung (settledAt) ist die Liste im neuen Teamspiel zu: sonst würde erstattet, aber nie neu abgerechnet (Fristregeln folgen in M3).
+      // Der Fehler rollt die ganze Aktion zurück: keine Buchung, keine Entfestschreibung.
+      if (unfixOnChange && match.settledAt !== null) throw new DomainError("Das Spiel ist schon abgerechnet: Die Teilnehmerliste kann nicht mehr geändert werden.");
       if (unfixOnChange && match.finalShareCents !== null) await tx.update(matches).set({ finalShareCents: null }).where(eq(matches.id, matchId));
       await recalcShares(tx, match, userId);
     }

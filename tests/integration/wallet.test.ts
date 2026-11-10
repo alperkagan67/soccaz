@@ -412,6 +412,29 @@ describe("Teamspiel neues Modell (008 M2a): Neuberechnung, Fixierung, Austritt",
     expect((await reloadMatch(m.match.id)).finalShareCents).toBeNull();
   });
 
+  it("nach der Abrechnung ist die Liste zu: Austritt, Entfernen und Beitritt werden abgewiesen, keine Buchung, Preis und Hauptbuch unverändert", async () => {
+    const m = await makeMatch({ priceCents: 8000, costCents: 8000, hoursAhead: 20 });
+    const all = await squad(m, 10);
+    for (const x of all) await payShare(x.id, m.match.id);
+    await db.update(matches).set({ status: "confirmed" }).where(eq(matches.id, m.match.id));
+    expect(await settleMatch(db as never, await reloadMatch(m.match.id))).toBe(true);
+    const before = await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id));
+    const newcomer = await makeUser("nc");
+    await db.insert(teamMembers).values({ teamId: m.home.id, userId: newcomer.id, role: "player" });
+    await expect(leaveLobby(all[9].id, m.match.id)).rejects.toThrow(/abgerechnet/);
+    await expect(removeParticipant(m.adminB.id, m.match.id, all[9].id)).rejects.toThrow(/abgerechnet/);
+    await expect(joinLobby(newcomer.id, m.match.id)).rejects.toThrow(/abgerechnet/);
+    const after = await reloadMatch(m.match.id);
+    expect(after.finalShareCents).toBe(800);
+    expect(after.settledAt).not.toBeNull();
+    expect(await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id))).toHaveLength(before.length);
+    expect(await revenueFor(m.match.id)).toBe(8000);
+    expect(await bal(all[9].id)).toBe(3000 - 800);
+    expect((await participant(m.match.id, all[9].id))).toBeTruthy();
+    expect(await participant(m.match.id, newcomer.id)).toBeUndefined();
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
   it("AC-4: Austritt oder Entfernen nach dem Fixieren (mehr als 48 Stunden vor Anstoß): sofortige Erstattung, Festschreibung aufgehoben, Bereit zurückgesetzt", async () => {
     const m = await makeMatch({ priceCents: 8000, costCents: 8000, hoursAhead: 100 });
     const all = await squad(m, 10);
