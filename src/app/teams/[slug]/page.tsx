@@ -8,12 +8,12 @@ import { ImageUpload } from "@/components/ImageUpload";
 import { FormChips, Sparkline } from "@/components/Sparkline";
 import { StatTile } from "@/components/Stats";
 import { formatDate, formatDateTime } from "@/lib/time";
-import { getTeamProfile } from "@/server/profiles";
+import { getTeamProfile, getTeamRosterView } from "@/server/profiles";
 import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 import { leaguesOfTeam } from "@/server/leagues";
 import { sponsorsOfTeam } from "@/server/sponsors";
-import { getTeamMembers, isTeamAdmin } from "@/server/teams";
+import { isTeamAdmin } from "@/server/teams";
 import { InviteBox } from "./InviteBox";
 import { LeaveTeam, MemberControls, TeamSettings } from "./TeamManage";
 
@@ -50,11 +50,13 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   const { slug } = await params;
   const user = await getCurrentUser();
   const myTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
-  const profile = await getTeamProfile(slug, myTeams.find((t) => t.slug !== slug)?.id ?? null);
+  const profile = await getTeamProfile(slug, myTeams.find((t) => t.slug !== slug)?.id ?? null, user?.id ?? null);
   if (!profile) notFound();
   const { team, stats } = profile;
 
-  const [members, leagues, jerseys] = await Promise.all([getTeamMembers(team.id), leaguesOfTeam(team.id), sponsorsOfTeam(team.id)]);
+  // Datenschutz: Namen des Kaders (und der Torjäger) nur für eingeloggte Nutzer, Gäste sehen nur die Spielerzahl (serverseitig gefiltert)
+  const [roster, leagues, jerseys] = await Promise.all([getTeamRosterView(team.id, user?.id ?? null), leaguesOfTeam(team.id), sponsorsOfTeam(team.id)]);
+  const members = roster.members;
   const admin = user ? await isTeamAdmin(user.id, team.id) : false;
   const isMyTeam = myTeams.some((t) => t.id === team.id); // das eigene Team kann man nicht herausfordern
   const canChallenge = !isMyTeam && myTeams.length > 0;
@@ -127,7 +129,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
       <section aria-label="Kennzahlen" className="grid grid-cols-3 gap-3">
         <StatTile label="Siegquote" value={profile.winRate === null ? "–" : `${profile.winRate} %`} />
         <StatTile label="Tore pro Spiel" value={profile.goalsPerGame ?? "–"} />
-        <StatTile label="Mitglieder" value={members.length} />
+        <StatTile label="Mitglieder" value={roster.count} />
       </section>
       <Sparkline values={profile.eloHistory} label="Elo-Verlauf" />
 
@@ -179,7 +181,13 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold">Kader ({members.length})</h2>
+        <h2 className="text-lg font-semibold">Kader ({roster.count})</h2>
+        {user === null && (
+          <p className="card text-sm text-muted" data-testid="roster-guest">
+            {roster.count} Spieler im Kader. Die Namen sehen angemeldete Nutzer.{" "}
+            <Link href={`/anmelden?next=${encodeURIComponent(`/teams/${team.slug}`)}`} className="text-green underline">Anmelden</Link>
+          </p>
+        )}
         <ul className="space-y-2">
           {members.map((m) => (
             <li key={m.userId} className="card space-y-2" data-testid="member">

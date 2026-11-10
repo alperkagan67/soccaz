@@ -226,7 +226,19 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
     await expect(viewer.getByTestId("open-lobby-team")).toContainText("1 von");
     await expect(viewer.getByTestId("open-lobby-player")).toHaveCount(0);
     await expect(viewer.getByText("Captain")).toHaveCount(0);
+    // Backlog B-b AC-1: Fremde und Gäste sehen die offene Lobby neutral, keine Texte nur für Mitglieder, keine Beitreten-Knöpfe
+    await expect(viewer.getByTestId("open-lobby-title")).toHaveText(`Offene Lobby von ${nameA}`);
+    await expect(viewer.getByTestId("open-lobby-status")).not.toContainText("Eure");
+    await expect(viewer.getByText(/Eure Lobby/)).toHaveCount(0);
+    await expect(viewer.getByText(/Bezahlen und Bereitmachen/)).toHaveCount(0);
+    await expect(viewer.getByRole("button", { name: "Der Lobby beitreten" })).toHaveCount(0);
+    await expect(viewer.getByRole("button", { name: "Lobby verlassen" })).toHaveCount(0);
+    await expect(viewer.getByRole("button", { name: "Lobby schließen" })).toHaveCount(0);
   }
+  await anon.context().close(); // Testhygiene: der anonyme Kontext wird wieder geschlossen
+  // Mitglieder sehen weiter ihre Texte und ihre Knöpfe
+  await expect(a.getByTestId("open-lobby-status")).toContainText("Eure Lobby ist offen");
+  await expect(a.getByTestId("open-lobby-title")).toHaveText(nameA);
   await a.goto("/matchmaking");
   await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
   // die eigene Suche steht auch in der offenen Liste, ohne Annehmen

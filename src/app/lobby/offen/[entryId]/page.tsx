@@ -10,7 +10,7 @@ import { leaveQueueAction, openLobbyJoinAction } from "@/server/matchmaking-acti
 import { getOpenLobby } from "@/server/matchmaking";
 import { getCurrentUser } from "@/server/session";
 
-export const metadata: Metadata = { title: "Eure Lobby", robots: { index: false } };
+export const metadata: Metadata = { title: "Offene Lobby", robots: { index: false } };
 
 /** Übersicht der eigenen offenen Lobby: Das Team mit allen Plätzen, wer schon beigetreten ist, Einladungslink und Warten auf einen Gegner. */
 export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/[entryId]">) {
@@ -28,9 +28,9 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
     <div className="space-y-4">
       <header className="space-y-1">
         <p className="text-sm text-muted" data-testid="game-number">Spiel #{lobby.number} · Lobby</p>
-        <h1 className="text-2xl font-bold sm:text-3xl">{lobby.team.name}</h1>
+        <h1 className="text-2xl font-bold sm:text-3xl" data-testid="open-lobby-title">{isMember ? lobby.team.name : `Offene Lobby von ${lobby.team.name}`}</h1>
         <p className={`text-sm font-semibold ${open ? "text-yellow" : "text-muted"}`} data-testid="open-lobby-status">
-          {open ? "Eure Lobby ist offen und wartet auf einen Gegner" : "Diese Lobby ist nicht mehr offen"}
+          {open ? (isMember ? "Eure Lobby ist offen und wartet auf einen Gegner" : "Diese Lobby ist offen und wartet auf einen Gegner") : "Diese Lobby ist nicht mehr offen"}
         </p>
         <p className="text-muted">
           {lobby.windows.map((w) => `${formatDateTime(new Date(w.from))} bis ${new Date(w.to).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr`).join(" · ")} · {lobby.durationMin} Min · {lobby.city}
@@ -82,14 +82,20 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
             )}
           </div>
         )}
-        <p className="text-xs text-muted">Bezahlen und Bereitmachen geht, sobald ein Gegner da ist und Uhrzeit und Halle feststehen. Nur wenn alle bezahlt haben, können alle auf Bereit drücken. Mindestens {MIN_READY_PER_TEAM} Spieler brauchst du für ein Spiel.</p>
+        {isMember && (
+          <p className="text-xs text-muted">Bezahlen und Bereitmachen geht, sobald ein Gegner da ist und Uhrzeit und Halle feststehen. Nur wenn alle bezahlt haben, können alle auf Bereit drücken. Mindestens {MIN_READY_PER_TEAM} Spieler brauchst du für ein Spiel.</p>
+        )}
       </section>
 
       {open && lobby.viewer.isAdmin && <InviteBox teamId={lobby.team.id} teamName={lobby.team.name} />}
 
       <section className="card space-y-2" aria-label="Gegner">
         <h2 className="font-semibold">Gegner</h2>
-        <p className="text-sm text-muted">Noch kein Gegner. Sobald ein anderes Team auf „Gegen {lobby.team.name} antreten“ klickt, erscheint es hier und ihr wählt gemeinsam die Uhrzeit.</p>
+        <p className="text-sm text-muted">
+          {isMember
+            ? `Noch kein Gegner. Sobald ein anderes Team auf „Gegen ${lobby.team.name} antreten“ klickt, erscheint es hier und ihr wählt gemeinsam die Uhrzeit.`
+            : "Noch kein Gegner."}
+        </p>
         {lobby.note && <p className="text-xs">{lobby.note}</p>}
       </section>
 
