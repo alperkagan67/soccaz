@@ -1267,3 +1267,45 @@ describe("Zufällige Einteilung und Sperren (T58, AC-13)", () => {
     }
   });
 });
+
+describe("Neu-Mischen schützt Bezahlte und Bereite einzeln (T58 Review, AC-13)", () => {
+  /**
+   * Vier Spieler (zwei je Team) werden geschützt (bezahlt bzw. bereit); dreimal neu mischen: ihre Plätze dürfen sich nie ändern.
+   * Würde die Schutzbedingung fehlen, kämen sie in die Verlosung und landen mit hoher Wahrscheinlichkeit (15/16 je Runde) woanders.
+   */
+  async function expectProtectedStayPut(protect: (matchId: string, userId: string) => Promise<void>, over: Partial<Parameters<typeof createPrivateGame>[1]> = {}, fundAll = false) {
+    const { organizer, match, players } = await game(9, over);
+    if (fundAll) for (const p of players) await fund(p.id, 3000);
+    await randomSplit(organizer.id, match.id);
+    const seat = async () => new Map((await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id))).map((p) => [p.userId, p.teamId]));
+    const seats = await seat();
+    const others = players.filter((p) => p.id !== organizer.id);
+    const home = others.filter((p) => seats.get(p.id) === match.homeTeamId).slice(0, 2);
+    const away = others.filter((p) => seats.get(p.id) === match.awayTeamId).slice(0, 2);
+    expect(home).toHaveLength(2);
+    expect(away).toHaveLength(2);
+    const protectedPlayers = [...home, ...away];
+    for (const p of protectedPlayers) await protect(match.id, p.id);
+    for (let round = 0; round < 3; round++) {
+      await randomSplit(organizer.id, match.id, true);
+      const now = await seat();
+      for (const p of protectedPlayers) expect(now.get(p.id), `Runde ${round + 1}`).toBe(seats.get(p.id));
+      const counts = [...now.values()].reduce((m, t) => m.set(t, (m.get(t) ?? 0) + 1), new Map<string | null, number>());
+      expect(Math.abs((counts.get(match.homeTeamId) ?? 0) - (counts.get(match.awayTeamId) ?? 0))).toBeLessThanOrEqual(1);
+      expect(counts.get(null) ?? 0).toBe(0);
+    }
+  }
+
+  it("mit Zahlungen: Bezahlte (nicht bereit) behalten ihren Platz; nur die Zahlung schützt sie", async () => {
+    await setSetting(null, "payments_enabled", true);
+    try {
+      await expectProtectedStayPut((matchId, userId) => payShare(userId, matchId), { rentCents: 12_000 }, true);
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+  });
+
+  it("ohne Zahlungen: Bereite (nicht bezahlt) behalten ihren Platz; nur Bereit schützt sie", async () => {
+    await expectProtectedStayPut((matchId, userId) => setReady(userId, matchId, true));
+  });
+});
