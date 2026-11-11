@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { dbHostAllowed } from "../integration/db-guard";
 
@@ -24,5 +25,12 @@ describe("Datenbank-Waechter der Integrationstests", () => {
     expect(dbHostAllowed(host("postgres://u:p@db.example.com:5432/x?host=localhost"), { GITHUB_ACTIONS: "true" })).toBe(false);
     expect(dbHostAllowed(host("postgres://u:p@postgres:5432/x?host=evil.example.com"), { GITHUB_ACTIONS: "true" })).toBe(true);
     expect(dbHostAllowed(host("postgres://u:p@postgres:5432/x?host=localhost"), {})).toBe(false);
+  });
+  it("Setup und E2E-Seeding nutzen denselben Waechter, kein zweites Host-Array", () => {
+    for (const f of ["tests/integration/setup.ts", "tests/e2e/helpers.ts"]) {
+      const src = readFileSync(f, "utf8");
+      expect(src, f).toContain("dbHostAllowed(");
+      expect(src, f).not.toMatch(/["']127.0.0.1["']/);
+    }
   });
 });
