@@ -17,7 +17,7 @@ Eine Person organisiert ein Spiel für ihre Freundesgruppe (Standard 10 Spieler)
 - Der Veranstalter kann den Einladungslink zurückziehen und neu erzeugen.
 - Miete ist Pflicht (Betrag oder ausdrücklich "kostenlos" = 0 €); kein stiller Plattformpreis.
 - Ablauf: Jeder zahlt seinen Anteil. Hat ein Team vollständig bezahlt, drückt dessen Captain "Bereit". Haben beide Captains "Bereit" gedrückt, steht der Preis fest.
-- v2, Frist-Regel für alle Modi (Privat, Team, Turnier): Es gibt keine 24-h-Regel und keinen 24-h-Job mehr. Die einzige Frist ist 48 Stunden vor Anstoß.
+- v2, Frist-Regel für alle Modi (Privat, Team, Turnier): Es gibt keine 24-h-Frist und keinen 24-h-Job mehr (der 24-h-Mindestvorlauf im Teamspiel ist keine Frist). Die einzige Frist ist 48 Stunden vor Anstoß.
 - v2, bis zur Frist ist die Lobby offen: Spieler zahlen, Captains drücken "Bereit". Das Geld bleibt in der Lobby geparkt (nicht an Veranstalter oder Halle gebucht) und geht erst bei der Buchung an den Veranstalter.
 - v2, zur 48-h-Frist schließt die Lobby automatisch. Haben nicht alle bezahlt oder nicht alle Captains "Bereit" gedrückt, fällt das Spiel aus und alle bekommen ihr Guthaben zurück. Sonst wird gebucht.
 - v2, nach der Frist gibt es keine Absage und keine Erstattung. Fällt jemand aus, gilt der Folgeauftrag: Captain tauscht gegen Ersatz (der Ersatz ist ein registrierter Soccaz-Nutzer; die Zahlung zwischen beiden läuft außerhalb von Soccaz) (siehe Abschnitt Folgeauftrag).

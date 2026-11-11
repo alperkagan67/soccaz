@@ -12,7 +12,7 @@ Teamspiel und Turnier rechnen wie das Privatspiel (Vertrag 006): Jeder zahlt Mie
 - Teamspiel: Anteil = aufgerundet Miete ÷ tatsächliche Spielerzahl (4 bis 22, gerade); `min_paid_players` und Deckel 12 entfallen für diese Berechnung.
 - Spielerzahl wird im Teamspiel wie in 006 mit dem zweiten "Bereit" fixiert; Neuberechnung nur davor.
 - Turnier nutzt nur `shareCents`; keine Reservierung nach `MIN_PLAYERS_PER_TEAM`.
-- v2, Frist-Regel für alle Modi (Privat, Team, Turnier): Keine 24-h-Regel und kein 24-h-Job mehr. Die einzige Frist ist 48 h vor Anstoß (Turnier: 48 h vor dem Start des ersten Spiels, bestätigt).
+- v2, Frist-Regel für alle Modi (Privat, Team, Turnier): Keine 24-h-Frist und kein 24-h-Job mehr (der 24-h-Mindestvorlauf im Teamspiel ist keine Frist). Die einzige Frist ist 48 h vor Anstoß (Turnier: 48 h vor dem Start des ersten Spiels, bestätigt).
 - v2, bis dahin ist die Lobby offen: Spieler zahlen, Captains drücken "Bereit". Das Geld bleibt in der Lobby geparkt (nicht an Veranstalter oder Halle gebucht) und geht erst bei der Buchung an den Veranstalter.
 - v2, zur 48-h-Frist schließt die Lobby automatisch: nicht alle bezahlt ODER nicht alle Captains "Bereit" → Spiel fällt aus, alle bekommen Guthaben zurück. Sonst wird gebucht.
 - v2, danach keine Absage und keine Erstattung. Fällt jemand aus, gilt der Folgeauftrag: Captain tauscht gegen Ersatz (der Ersatz ist ein registrierter Soccaz-Nutzer; die Zahlung zwischen beiden läuft außerhalb von Soccaz) (siehe Abschnitt Folgeauftrag).
