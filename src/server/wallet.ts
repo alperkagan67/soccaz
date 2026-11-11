@@ -11,7 +11,7 @@ import { teamName } from "./names";
 import { notifyUsers } from "./notifications";
 import { priceFor } from "./pricing";
 import { issueReceipt } from "./receipts";
-import { minPaidPlayers, paymentsEnabled } from "./settings";
+import { cardPaymentsEnabled, minPaidPlayers, paymentsEnabled } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
@@ -32,6 +32,16 @@ export function privateListLocked(match: Pick<MatchRow, "kind" | "startsAt">): b
  */
 export function isDeadlineModel(match: Pick<MatchRow, "kind" | "legacyShareModel">): boolean {
   return (match.kind === "private" || match.kind === "team") && !match.legacyShareModel;
+}
+
+/**
+ * Gilt für dieses Spiel das Kartenmodell (Vertrag 012, M1)? Nur bei eingeschaltetem Schalter `card_payments_enabled` und nur für Spiele der Frist-Regel
+ * (Privat- und Teamspiele des neuen Modells). Altspiele (`legacyShareModel`) und Turniere bleiben beim Guthaben, bis M5/M6 sie umstellen.
+ * Im Kartenmodell bewegt die Lobby kein Geld: kein reserveShare, keine Erstattung oder Nachforderung bei Änderung der Spielerzahl, keine Sofortbuchung.
+ * Die Abbuchung (beim Fixieren, zur Frist, sofort) kommt mit M2.
+ */
+export async function cardModeActive(tx: Pick<Tx, "select">, match: Pick<MatchRow, "kind" | "legacyShareModel">): Promise<boolean> {
+  return isDeadlineModel(match) && (await cardPaymentsEnabled(tx as Tx));
 }
 
 type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel" | "schedulingOpen" | "vetoStatus">;
@@ -145,6 +155,7 @@ export async function privateShareNow(tx: Pick<Tx, "select">, match: Pick<MatchR
 /** Buchung des Anteils beim Bereitmachen. Läuft nur, wenn Zahlungen eingeschaltet sind und der Spieler noch nicht bezahlt hat. */
 export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Promise<void> {
   if (!(await paymentsEnabled(tx))) return;
+  if (await cardModeActive(tx, match)) return; // Kartenmodell: nichts reservieren, nichts vom Guthaben buchen
   const [p] = await tx
     .select({ paidCents: matchParticipants.paidCents })
     .from(matchParticipants)
@@ -190,7 +201,8 @@ export async function fixShare(tx: Tx, match: MatchRow): Promise<void> {
     .where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
   if (seated.length === 0) return;
   const share = shareCents(priceCents, shareDivisor(match, seated.length));
-  const pay = await paymentsEnabled(tx);
+  // Kartenmodell: nur Preis und Spielerzahl festschreiben; nichts prüfen, nichts erstatten (abgebucht wird mit M2)
+  const pay = !(await cardModeActive(tx, match)) && (await paymentsEnabled(tx));
   if (pay && share > 0) {
     const short = seated.filter((p) => p.paidCents < share).length;
     if (short > 0) throw new DomainError(`Der Anteil wäre ${formatEuro(share)} pro Spieler (${seated.length} Spieler), ${short} Spieler haben weniger bezahlt. Die Spielerzahl muss sich ändern oder die betroffenen Spieler treten neu bei.`);
@@ -227,7 +239,8 @@ export async function recalcShares(tx: Tx, match: MatchRow, actorId: string | nu
   const [current] = await tx.select().from(matches).where(eq(matches.id, match.id));
   if (!current || current.finalShareCents !== null) return; // Preis steht fest: nichts neu rechnen
   await tx.update(matches).set({ homeFinalAt: null, awayFinalAt: null }).where(eq(matches.id, match.id));
-  if (!(await paymentsEnabled(tx)) || !current.priceCents) {
+  // Kartenmodell: keine Erstattung und keine Nachforderung, der Anteil wird nur neu angezeigt (Miete ÷ eingeteilte Spieler); "Bereit" ist zurückgesetzt
+  if ((await cardModeActive(tx, match)) || !(await paymentsEnabled(tx)) || !current.priceCents) {
     await audit(actorId, "wallet.private_recalc", "match", match.id, { after: { bereitReset: true } }, tx);
     return;
   }
@@ -264,6 +277,7 @@ async function refundPaid(tx: Tx, match: MatchRow, userId: string, paidCents: nu
 /** Wird aufgerufen, wenn jemand die Lobby verlässt oder entfernt wird. Vor dem Anstoß minus 24 Stunden gibt es alles zurück, danach nur gegen Ersatz. */
 export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: string, opts: { removedByAdmin: boolean; actorId: string }) {
   if (!(await paymentsEnabled(tx))) return;
+  if (await cardModeActive(tx, match)) return; // Kartenmodell: es gibt nichts zu erstatten, die Karte wurde nicht belastet
   const [p] = await tx
     .select({ paidCents: matchParticipants.paidCents })
     .from(matchParticipants)
