@@ -15,6 +15,23 @@ jobs:
     name: Typen, Lint, Unit-Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: socaz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Der Build rendert Seiten vor und braucht dafuer eine migrierte Datenbank.
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/socaz
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,6 +42,8 @@ jobs:
       - run: npm run typecheck
       - run: npx eslint src tests scripts
       - run: npm test
+      - run: node scripts/migrate.mjs
+      - run: npm run build
 
   # Browser-Tests in 4 Teilen. Jeder Teil hat einen eigenen Postgres-Dienst (nichts wird geteilt).
   e2e-shard:
