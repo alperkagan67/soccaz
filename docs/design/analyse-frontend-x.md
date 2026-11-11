@@ -5,11 +5,11 @@
 **Status: Degradiert: ja, X gilt noch nicht als fertig.** Grund:
 - (a) `critique`, `audit`, `distill`, `clarify`, `adapt` haben keinen Launcher-Befehl; sie liefen manuell nach vollständig gelesenen Reference-Dateien (Methode in Ordnung, hier ehrlich vermerkt).
 - (b) `detect` per URL läuft auf `/` und `/suche` in einen Timeout (Dauerverbindung per SSE); Ersatz sind Quelltext-Lauf und Playwright-Messung.
-- (c) Nicht prüfbar mit dem Seed: Onboarding, "Link abgelaufen", gefüllte Listen und Fehlerzustände, Formular-Absenden, Konto-Menü des Captains am Handy. Der echte Google-Login ist nicht automatisierbar, der Dev-Login ersetzt ihn (bekannte Lücke). Die Zellen aus (c) folgen, sobald der neue Seed da ist.
+- (c) Mit dem Seed nachgeholt (Abschnitt "Nachlauf mit Seed", 203 von 203 Screenshots angesehen): Onboarding, abgelaufener Einladungslink, gefüllte Listen, Fehlerzustand, Formular-Absenden, Captain-Konto-Menü am Handy. Weiterhin Lücke: echter Google-Login (nicht automatisierbar, Dev-Login ersetzt ihn), Benachrichtigungen mit Einträgen und Guthaben-Verlauf, echtes Karten-Erneuern (kein Stripe), Versand von E-Mail und Push.
 
 **Zähler:** angesehen 138 von 138 Screenshots (23 Seiten × Gast/Spieler/Captain × Handy 390 px/Desktop 1280 px), je Zelle die fünf Befehle einzeln.
 
-**Funde (Rohzählung, viele Wiederholungen je Rolle und Gerät):** 1 P0, 76 P1, 124 P2.
+**Funde (Rohzählung, viele Wiederholungen je Rolle und Gerät):** erste Runde 1 P0, 76 P1, 124 P2; Nachlauf mit Seed zusätzlich 2 P0, 60 P1, 44 P2 (P0 im Nachlauf: Suchbegriff unleserlich, bestätigt X-01; keine Benachrichtigung bei fehlgeschlagener Abbuchung, N4-FZ-2).
 
 **Die 10 schlimmsten Probleme:**
 1. X-01 (P0): Suchfeld auf `/spieler` und `/teams` am Handy auf etwa 48 px gequetscht, Platzhalter abgeschnitten.
@@ -3101,5 +3101,3669 @@ Funde:
 Wichtigste Erkenntnisse: Das Konto-Menü des Captains nennt weder Rolle noch Team und enthält "Guthaben" (CD-ALL-1); die Spielsuche mit festem Termin hat im Quelltext keinen einzigen Link, der das Formular öffnet (CD-ALL-3, "Revanche"-Link leitet auf die Teamseite um); der Einladungslink liegt nur auf der Teamseite, die Teamzeile sieht aus wie jede Karte (CD-AP-1); das Lobby-Formular beginnt am Desktop erst bei y=565 und die Datumsfelder bei y=1046 (CD-MM-1); die gewählte Profilfarbe hat einen weißen Ring auf hellem Grund (CD-ES-1).
 
 ---
+
+
+
+## Nachlauf mit Seed
+
+Nach dem Seed (`scripts/seed-frontend.mts`, nur lokale Dev-DB `soccaz_w2`, Testkonten `@test.local`) wurden die vorher nicht prüfbaren Zellen nachgeholt: Onboarding, abgelaufener Einladungslink, gefüllte Listen, Fehlerzustand (Karte abgelehnt), Formular-Absenden, Konto-Menü des Captains am Handy. Gleiche Regeln wie oben: jeder Screenshot angesehen, je Zelle die fünf Befehle critique, audit, distill, clarify, adapt einzeln (vier Sub-Agents in Serie, ein Dev-Server, ein Browser), `detect` je Seite.
+
+**Zähler: angesehen 203 von 203** Screenshots im Nachlauf (96 Raster-Zellen: Gast 16, Neuer Nutzer 6, Spieler mit Team 26, Spieler ohne Team 10, Captain Rot 26, Captain Grün 12; dazu 107 Zusatzaufnahmen: Onboarding-Schritte, Konto-Menüs, Formular-Zustände, Treffer und Leerzustände, Fehlerzustand mit Betroffenem und Dritten).
+
+| Blatt | Rollen | Angesehen | Neue Funde (P0 / P1 / P2) |
+|---|---|---|---|
+| N1 | Gast, Neuer Nutzer (inkl. Onboarding) | 49 von 49 | 1 / 26 / 22 |
+| N2 | Spieler mit Team, Spieler ohne Team | 64 von 64 | 0 / 12 / 8 |
+| N3 | Captain Rot | 58 von 58 | 0 / 15 / 12 |
+| N4 | Captain Grün (Fehlerzustand), Betroffener, Dritte | 32 von 32 | 1 / 7 / 2 |
+| Summe | | 203 von 203 | 2 / 60 / 44 |
+
+Wichtigste neue Funde aus dem Nachlauf:
+- N4-FZ-2 (P0): Bei fehlgeschlagener Abbuchung entsteht keine Benachrichtigung (nur Audit-Eintrag), `/app/benachrichtigungen` bleibt leer, obwohl die Einstellungen "Zahlungen bekommst du immer" versprechen.
+- N4-FZ-1, -3, -4 (P1): Der Fehlerzustand ist auf `/app`, im Konto-Menü, in den Einstellungen und auf der Guthaben-Seite unsichtbar; es gibt außerhalb der Lobby keinen Ort "Karte erneuern"; die Guthaben-Seiten sagen "Zahlungen noch nicht eingeschaltet, Spiele kostenlos", das Gegenteil des Zustands.
+- N4-FZ-5, -6, -8 (Gruppe Y, nur Beleg, nicht bewertet): Die Lobby zeigt dem Captain nur ein kleines Wort "Abbuchung fehlgeschlagen" ohne Grund und ohne "Karte erneuern"; Dritte sehen den Fehlerzustand namentlich, entgegen 012 AC-12/AC-20; ohne den Schalter `card_payments_enabled` ist der Zustand in der Lobby unsichtbar. Weitergabe an die Gruppe Y.
+- N1-SP-1 (P0): Suchbegriff nach dem Absenden unleserlich, 48-px-Feld (bestätigt X-01).
+- N1: Startzähler "8 Teams" statt 6 sichtbarer (private Spiel-Teams zählen mit); Onboarding: Geburtsdatum unter 16 löscht das Konto ohne Rückfrage, Fehlermeldungen bleiben nach der Korrektur stehen, der Anzeigename wird ohne Hinweis öffentlich, die Einladung ist auf `/willkommen` nicht mehr sichtbar.
+- N2-AP-1, -2, -6: Kasten "Meine aktuellen Spiele" dreifach auf `/`, `/suche`, `/app`; dasselbe Spiel heißt im Kasten "Bereit machen und bezahlen", in der Liste "Wartet auf Spieler"; ein neues Mitglied sieht Spiele, in denen es nicht steht. N2-BE-1: "Team beitreten" endet ohne Rückmeldung.
+- N3-AP-5, -FM-2, -FM-3, -EA-1: eine per Formular erstellte Spielsuche erscheint auf `/app` nirgends; Zeitfenster-Fehler erst unter dem Knopf; nach dem Aufmachen einer Lobby verschwindet das Formular, die Lobby erscheint doppelt; bei abgelaufenem Link wird der Captain an "den Team-Admin" verwiesen, also an sich selbst.
+
+Neue MUSS-WEG-Stellen aus dem Nachlauf (zusätzlich zur Tabelle oben): Guthaben-Link "0,00 €" in der Kopfleiste schon auf `/willkommen`; Guthabenkarte auf `/app` beim frischen Konto; Fristtext und "Jetzt bezahlen" auf `/app/guthaben`; Zahlungshinweis in den Einstellungen; auf der Lobbyseite "Bezahlen und Bereitmachen" und "bezahlt" sowie das Statuswort "Bereit machen und bezahlen" (Gruppe Y, nur Beleg); Guthaben-Satz neben fehlgeschlagener Abbuchung. Details in den Tabellen der Nachlauf-Blätter unten.
+
+Weiterhin nicht prüfbar (bleibt Lücke): echter Google-Login (nicht automatisierbar, der Dev-Login ersetzt ihn), Benachrichtigungen mit Einträgen und Guthaben-Verlauf (Seed legt keine an; außer der Benachrichtigung an den Captain nach einem Beitritt), echtes Karten-Erneuern (kein Stripe), Nachzahl-Weg und "Anteil übernehmen" (M3 nicht gebaut), Versand von E-Mail und Push, mehr als 30 Spieler oder Teams, der Browser-Hinweis bei Pflichtfeldern (für Server-Fehler wurde die Browser-Prüfung abgeschaltet). `detect` per URL bleibt auf `/` und `/suche` im Timeout (Ersatz Quelltext + Playwright). Seed-Änderungen: `seed-neu@test.local` wurde durch den Onboarding-Test gelöscht und neu angelegt, `seed-neu-desktop@test.local` zusätzlich angelegt, Spieler 17 wurde Mitglied von Seed Rot; der Seed wurde danach neu geladen. Der Schalter `card_payments_enabled` steht in der lokalen DB auf `false` (Zeile vorhanden).
+
+### Nachlauf: neue MUSS-WEG-Zeilen
+
+| Seite | Rolle | Fundstelle | Beleg |
+|---|---|---|---|
+| /willkommen | Neuer Nutzer (Desktop) | Kopfleiste: Betragslink "0,00 €" (Guthaben) schon vor dem Abschluss des Onboardings, `Header.tsx:53-55`, Test-ID `header-wallet`; bisher nur für eingerichtete Konten belegt | neu_desktop_willkommen.png, neu_desktop_onboarding-01-formular.png |
+| /einladung/seed-team-gueltig (Weiterleitung auf /willkommen) | Neuer Nutzer (Desktop) | wie oben, Guthaben-Link "0,00 €" in der Kopfleiste auf der Einladungs-Weiterleitung | neu_desktop_einladung-seed-team-gueltig.png |
+| /app (frisches Konto nach Onboarding) | Neuer Nutzer (Handy und Desktop) | Karte "Guthaben 0,00 € / Zahlungen sind noch nicht aktiv, Spiele sind kostenlos" und Kopfleistenlink "0,00 €" (Desktop) auf der ersten Seite eines neuen Kontos; die Rolle "Neuer Nutzer" ist im Dokument bisher nicht belegt (X-05 gilt für Spieler und Captain) | neu_mobil_onboarding-11-erfolg-app.png, neu_desktop_onboarding-11-erfolg-app-nochmal.png |
+| /suche, /spieler, /teams, /matchmaking, /mitspieler, /einladung/* | Gast | keine neuen Fundstellen für Guthaben, Aufladen, Rabattcode oder Altmodelltexte; die Startseite ("Du lädst dein Guthaben auf") steht als GM-ST-1 schon im Dokument | gast_mobil_start.png |
+| / (eingeloggt) | Spieler mit Team (Handy, Desktop) | "Was kostet das?" und "In vier Schritten ... Kostenlos anmelden, bezahlt wird nur deine Hallenmiete. Du lädst dein Guthaben auf" erscheint auch für angemeldete Nutzer mit Team (Altmodelltext, bisher nur für Gäste belegt, GM-ST-1) | spieler01_desktop_start.png, spieler01_mobil_start.png |
+| /app/guthaben | Spieler mit Team (Handy, Desktop) | Vier-Schritte-Text "Du lädst Geld auf (ab 5 Euro) ... Meldest du dich bis 24 Stunden vorher ab, bekommst du alles sofort zurück" (Altmodell, neue Fundstelle mit Fristzusage; Frist-Entscheid siehe D8 Mindestvorlauf 24 h Team, 1 h Privat), Aktion "Jetzt bezahlen" und Rabattcode-Feld bei "Gerade sind Zahlungen noch nicht eingeschaltet" | spieler01_desktop_app-guthaben.png, spieler01_mobil_app-guthaben.png |
+| Konto-Menü, Kopfleiste | Spieler mit Team (Handy: Menü; Desktop: Menü und Leiste) | Eintrag "Guthaben 0,00 €" im Menü und Betragslink "0,00 €" in der Leiste, jetzt per Zusatzbild belegt (Menü nur geöffnet, Zeilen 222 x 36 px); bisher nur aus Quelltext (SM-GL-2, SD-ALL-1) | spieler01_mobil_extra-kontomenue.png, spieler01_desktop_extra-kontomenue.png |
+| /app (nach dem Beitritt) | Spieler ohne Team, dann Mitglied (Handy, Desktop) | Karte "Guthaben 0,00 € / Zahlungen sind noch nicht aktiv, Spiele sind kostenlos" bleibt unverändert, auch als der Kasten "Bereit machen und bezahlen" auf Zahlung hinweist: zwei Aussagen auf einer Seite (neu belegt) | spieler17_mobil_extra-app-nachher.png, spieler17_desktop_extra-app-nachher.png |
+| /app/einstellungen | Spieler mit Team (Handy, Desktop) | "Wichtige Hinweise zu Absagen, Ergebnissen und Zahlungen bekommst du immer" (Prüfen, kein sicherer MUSS WEG, SM-ES-2), unverändert mit Seed | spieler01_desktop_app-einstellungen.png |
+| /, /suche, /spieler, /teams, /matchmaking, /mitspieler, /einladung/*, /app/suche/neu, /app/benachrichtigungen | Spieler mit/ohne Team | keine weiteren neuen Fundstellen für Guthaben, Aufladen, Rabattcode oder Altmodelltexte (Kopfleisten-Betrag "0,00 €" steht schon in SD-ALL-1) | alle Grid-Bilder |
+| /lobby/offen/<id> (Ergebnis von /matchmaking) | Captain | Satz „Bezahlen und Bereitmachen geht, sobald ein Gegner da ist und Uhrzeit und Halle feststehen. Nur wenn alle bezahlt haben, können alle auf Bereit drücken. Mindestens 4 Spieler brauchst du für ein Spiel.“ (Quelltext lobby/offen/[entryId]/page.tsx:86): Zahlung vor Bereit ist ein Altmodell zum Kartenmodell (Vertrag 012); nicht im Dokument, nicht in den Seed-Blättern | captainrot_mobil_extra-matchmaking-erfolg.png, captainrot_desktop_extra-matchmaking-erfolg.png |
+| /lobby/offen/<id> | Captain | Statuswort „Bereit machen und bezahlen“ im Kasten auf /, /suche, /app für #1010 und #1018 (bei Captain mit Karte; Seed-Blatt 2 nennt es nur für Spieler, N2-AP-2/N2-AP-6): ist ein Zahlungsschritt, den die Abbuchung bei Bestätigung ersetzen soll | captainrot_desktop_app.png, captainrot_mobil_start.png |
+| Konto-Menü (alle Seiten) | Captain | Eintrag „Guthaben 0,00 €“ mit Betrag (UserMenu.tsx): im Dokument als Spieler-Handy geführt, jetzt am Captain-Handy bestätigt (die offene Lücke); keine neue Stelle im Quelltext | captainrot_mobil_extra-kontomenue.png |
+| /app/guthaben | Captain | Bezahlknopf „Jetzt bezahlen“ aktiv neben dem Satz „Gerade sind Zahlungen noch nicht eingeschaltet“: schon im Dokument (11 Treffer), hier nur bestätigt | captainrot_mobil_app-guthaben.png |
+| /app/guthaben | Captain, Spieler | Satz „Gerade sind Zahlungen noch nicht eingeschaltet. Spiele kosten daher nichts, dein Guthaben bleibt aber erhalten.“ steht neben einer fehlgeschlagenen Karten-Abbuchung (Seite im Dokument, dieser Widerspruch neu) | captaingruen_mobil_app-guthaben.png, spieler09_mobil_app-guthaben.png |
+| /lobby/<id> (Kartenmodus an) | Captain, Spieler | Fortschrittsleiste „3 Bezahlen“ (Schrittname des Guthabenmodells) neben „Jedes Team macht seine Spieler bereit (Karte hinterlegt).“; Gruppe Y, nur Beleg | captaingruen_desktop_extra-lobby1026-kartenmodus-ein.png |
+| /lobby/<id> (Kartenmodus aus) | Captain | Satz „Jedes Team macht seine Spieler bereit und bezahlt.“ ohne Kartenstatus; Gruppe Y, nur Beleg | captaingruen_desktop_extra-lobby1026-kartenmodus-aus.png |
+| /app | Captain, Spieler | Statuswort „Bereit machen und bezahlen“ (mygame.ts:60) für ein Spiel mit Kartenmodell und fehlgeschlagener Abbuchung; im Dokument für Spieler genannt, hier mit Fehlerzustand bestätigt | captaingruen_desktop_app.png |
+
+### Nachlauf: Fundblätter
+
+Je Zelle: Beleg, Bewertung, fünf Durchgänge (Befehl, angewandter Teil, Ergebnis) und Funde. Vier Blätter: N1 Gast und Neuer Nutzer, N2 Spieler, N3 Captain Rot, N4 Captain Grün (Fehlerzustand). Der Abschnitt MUSS WEG am Ende jedes Blatts steht oben zusammengeführt.
+
+#### Nachlauf-Blatt N1 Gast, Neuer Nutzer (inkl. Onboarding)
+
+Stand: Nachlauf der Gruppe-X-Analyse mit geladenem Seed (Teams Seed Rot/Blau/Grün/Gelb, vier Lobbys, Turniere, Einladungen `seed-team-gueltig` und `seed-team-abgelaufen`), Dev-Server Port 3102, Engine 0.1.19 über den Launcher. Nur gelesen und gemessen, kein Quelltext geändert. Gast = keine Sitzung, Neuer Nutzer = `seed-neu@test.local` ohne Profil. Kennungen: N1 = Nachlauf 1, Kürzel je Seite (ST Start, SU Suche, SP Spieler, TE Teams, MM Matchmaking, MI Mitspieler, EG Einladung gültig, EA Einladung abgelaufen, WK Willkommen, EI Einladung als Neuer, OB Onboarding-Schritte). Vorhandene Funde (X-nn, GM-, GD-) werden nur referenziert.
+
+#### Methode und Grenzen
+
+- Die fünf Reference-Dateien (`critique.md` 819 Zeilen, `audit.md`, `distill.md`, `clarify.md`, `adapt.md`) wurden zu Beginn vollständig gelesen. critique/audit/distill/clarify/adapt haben keinen Launcher-Befehl: sie laufen manuell nach den Dateien, je Durchgang steht in eckigen Klammern der angewandte Teil. critique ist wie in der ersten Runde degradiert (kein Overlay, kein getrennter Sub-Agent für Assessment B; Assessment B = `detect`).
+- `context` (Launcher) lief einmal: PRODUCT.md geladen (Plattform web, Zielgruppe Spieler und Captains am Handy, Kartenmodell nach Vertrag 012).
+- `detect --json --viewport <WxH> <URL>` lief je Seite gegen die Gast-Sicht. Auf `/` und `/suche` Timeout nach 30 s, bei beiden Viewports auch im Wiederholungslauf (Dauerverbindung). Ersatz: Quelltext-Läufe (`src/app/page.tsx`, `src/app/suche`, `src/app/spieler`, `src/app/teams`, `src/app/matchmaking`, `src/app/mitspieler`, `LobbyBoard.tsx`, `Header.tsx`: je keine Funde) und Playwright-Messung. Für `/willkommen`, `/app`, `/einladung/[token]` (Sitzungsseiten) Lauf gegen den Quelltext: keine Funde.
+- Ganzseitige Handy-Bilder zeigen die feste untere Navigation und den Kopfbalken mitten im Bild (Aufnahme-Artefakt) und das runde N (Next-Overlay): kein Fund.
+- Onboarding: Der Dev-Login ersetzt Google. Die Strecke lief mit `seed-neu@test.local` (Handy) und `seed-neu-desktop@test.local` (Desktop, zweites Testkonto, weil der Schritt "unter 16" das Konto löscht und der Erfolgsschritt es einrichtet). Die Browser-Pflichtprüfung (`required`) wurde für die Serverfehler-Schritte per Skript abgeschaltet (`noValidate`), sonst erreicht ein Absenden den Server nicht. Das native Browser-Bubble sieht man nur im Schritt 02.
+- Nicht prüfbar mit dem Seed: gefüllte Mitspielerliste (`/mitspieler` ohne Einträge), Zustand "mehr als 30 Spieler/Teams" (Pager nur an Seite 2 von `/spieler` angesehen, dort verdeckt die Navigation ihn im Ganzseitenbild), Konto-Menü der Neuen (nicht geöffnet), "Bitte warten…" des Absende-Knopfs (zu kurz), echter Google-Login.
+
+#### Gast, Handy (390 x 844)
+
+##### / (Gast, Handy)
+Beleg: gast_mobil_start.png (390 x 5015, gesehen auf 200 x 2576 verkleinert, Texte per Quelltext gegengeprüft)
+Bewertung: Mit gefüllten Daten wird die Startseite sehr lang (5015 px): nach Hero, Karten und Erklärung folgen vier Lobby-Karten mit je zehn Namen. Die Zahlenkacheln (8 Teams, 35 Spieler, 3 Spiele) passen nicht zu dem, was man darunter sieht.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Kognitive-Last-Checkliste, Persona Riley und Casey, Severity] Funde: Zählerkacheln gegen sichtbare Listen (N1-ST-1), bestätigte Lobby unter "Offene Lobbys" (N1-ST-3), öffentliche Klarnamen (N1-ST-4) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y, 4 Responsive, 5 Integrität] Funde: Ampelpunkte haben sr-only-Label (gut, PlayerLight.tsx:28-30); Rot für "In der Lobby" liest sich als Fehler (N1-ST-6); Teilen-Link 32 x 16 px (N1-SU-3); 56 von 90 Zielen unter 44 px (Messung), kein Überlauf |
+| distill (reference/distill.md, manuell) | [Teil: Assess Current State, Information Architecture, Remove Redundancy] Funde: dieselbe Lobby-Liste wie `/suche` auf der Startseite wiederholt, nur mit 4 Einträgen getestet (N1-ST-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Audit the language, Actions, Empty states] Funde: Zähler ohne Erklärung, Siegchance-Zeile (N1-ST-5); Altmodelltexte stehen schon in GM-ST-1 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Content Strategy, Touch] Funde: vier Karten je rund 330 px hoch, keine Kürzung mit "Alle ansehen" sichtbar (N1-ST-2); sonst GM-ST-2, GM-ST-5 |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/` | Navigation timeout nach 30 s, im Wiederholungslauf wieder (Dauerverbindung); Ersatz: Quelltext-Lauf (src/app/page.tsx, src/components/LobbyBoard.tsx, Header.tsx): keine Funde, plus Playwright-Zielmessung (metrics-gast.json) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-ST-1 | P1 | Zählerkacheln "8 Teams, 35 Spieler, 3 Spiele" widersprechen der Seite: `/teams` listet 6 Teams, `/suche` zeigt 4 Lobbys. Ursache im Quelltext `HowItWorks.tsx:14`: Teams zählen ohne `kind = team` (zwei unsichtbare Spiel-Teams `seed-privat-a/b` zählen mit), Spieler zählen auch Admin-, Betreiber- und Demokonten. Vertrauensverlust beim ersten Blick. | gast_mobil_start.png, gast_mobil_teams.png | critique, clarify
+- N1-ST-2 | P1 | Die Lobby-Liste steht ungekürzt am Seitenende (vier Karten von je rund 330 px, Seite 5015 px hoch). Bei vielen Lobbys wird die Startseite endlos; `BoardSection` hat eine `limit`-Option, auf der Startseite war keine Kürzung oder "Alle ansehen" zu sehen (nur mit 4 Einträgen getestet). | gast_mobil_start.png | distill, adapt
+- N1-ST-3 | P1 | Lobby #1003 mit Status "Bestätigt" (5 von 5 bereit, grüne Punkte) steht unter "Offene Lobbys" mit "noch 1 Platz frei" und "Zur Lobby". Ein Gast erkennt nicht, ob er noch beitreten kann oder nur zusehen darf. | gast_mobil_start.png, gast_mobil_suche.png | critique
+- N1-ST-4 | P1 | Klarnamen von Privatpersonen ("Anton Testmann" usw., je Lobby bis zu zehn) sind für Gäste ohne Anmeldung sichtbar, auch auf `/spieler`. Beim Onboarding gibt es keinen Hinweis darauf (siehe N1-OB-8). Datenschutzfrage mit Mindestalter 16: Produktentscheid nötig. | gast_mobil_start.png, gast_mobil_spieler.png | critique
+- N1-ST-5 | P2 | "Siegchance nach Elo: Seed Grün 61 % · Seed Gelb 39 %" in etwa 11 px Schrift, darüber ein einzelner Balken in Akzentfarbe ohne Zuordnung zu Seite oder Teamfarbe. | gast_mobil_start.png | clarify, critique
+- N1-ST-6 | P2 | "In der Lobby" und "noch nicht bereit" sind rote Punkte; Rot liest sich als Fehler oder Absage, der Normalzustand "wartet" wirkt alarmierend. | gast_mobil_suche.png | critique
+
+##### /suche (Gast, Handy)
+Beleg: gast_mobil_suche.png (390 x 3133)
+Bewertung: Mit Daten zeigt sich, dass die Filtermaske den ersten Bildschirm füllt und die erste Lobby-Karte erst unter 640 px beginnt. Die Karten selbst sind gut lesbar (Nummer, Status, zwei Kader, Ampel).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Heuristiken 1, 6, 8, Persona Casey] Funde: Filter vor Liste (bestätigt X-10), Lobby-Status-Mix (N1-ST-3), Klarnamen (N1-ST-4) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 4 Responsive, Zielgrößen] Funde: Link "Teilen" 32 x 16 px, vier Stück (N1-SU-3); 56 von 88 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Progressive disclosure] Funde: sechs Filterfelder vor vier Einträgen (X-10); Filter "Stärke ab/bis" bei vier Lobbys ohne Nutzen (N1-SU-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states, Actions] Funde: "Lobby aufmachen" für Gast ohne Anmeldehinweis (GM-ST-3); Titel "Offene Lobbys anderer Teams" (N1-SU-4); Begriffe Lobby/Suche (N1-SU-1) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Layout, Touch] Funde: Auswahlfeld "Art" abgeschnitten (X-10 bestätigt); Karte bis Karte ohne Anker zurück zu den Filtern |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/suche` | Navigation timeout nach 30 s, im Wiederholungslauf wieder (Dauerverbindung); Ersatz: Quelltext-Lauf src/app/suche: keine Funde, plus Playwright-Zielmessung (metrics-gast.json) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SU-1 | P1 | Dieselben vier Lobbys heißen hier "Offene Lobbys", auf `/matchmaking` steht dazu "Offene Suchen (0)" und "Gerade hat kein Team eine Lobby geöffnet". Zwei Begriffe (Lobby, Suche) für verwandte Dinge, die Zahlen widersprechen sich (siehe N1-MM-1). | gast_mobil_suche.png, gast_mobil_matchmaking.png | clarify
+- N1-SU-2 | P1 | Erste Lobby-Karte beginnt erst bei etwa y = 640 von 844 sichtbaren Pixeln, davon verdeckt die untere Navigation einen Streifen. Filter nach Stärke ("ab/bis") braucht bei wenigen Lobbys niemand. Ergänzt X-10 mit Daten. | gast_mobil_suche.png | distill, adapt
+- N1-SU-3 | P1 | "Teilen" ist ein Textlink von 32 x 16 px (Messung), je Karte einer, direkt neben "Zur Lobby"; am Handy kaum zu treffen. Teilen per WhatsApp ist laut PRODUCT.md ein Kernweg. | gast_mobil_suche.png | audit, adapt
+- N1-SU-4 | P2 | Der Titel "Offene Lobbys anderer Teams" setzt voraus, dass man ein eigenes Team hat; für Gäste und Neue passt "Offene Lobbys" besser. | gast_mobil_suche.png | clarify
+
+##### /spieler (Gast, Handy)
+Beleg: gast_mobil_spieler.png (390 x 3175); Zusatz gast_mobil_extra_spieler-leer.png, gast_mobil_extra_spieler-suchbegriff-lang.png, gast_mobil_extra_spieler-seite2.png
+Bewertung: Die gefüllte Liste (30 Zeilen, 3175 px) zeigt: jede Zeile ist gleich gebaut, die untere Hälfte besteht aus Konten mit "0 Spiele · 0 Tore". Das Suchfeld bleibt auf 48 px gequetscht, ein getippter Begriff ist danach nicht mehr lesbar.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Riley (Randfälle), Heuristik 9] Funde: Suchbegriff unleserlich (N1-SP-1), Leerzustand ohne Weg (N1-SP-4), Konten ohne Spiele (N1-SP-2) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y, 4 Responsive] Funde: Platzhalter-Kontrast 4,1:1 (X-16 bestätigt per detect); Pager-Knopf "Weiter" 36 px hoch (N1-SP-5); 8 von 66 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Teil: Content Simplification, Remove Redundancy] Funde: 30 gleich aussehende Zeilen ohne Staffelung (N1-SP-3) |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states, Forms, Errors] Funde: "Keine Spieler gefunden." nur Text (N1-SP-4); "Seite 1" ohne Gesamtzahl (N1-SP-3) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Layout, Touch] Funde: X-01 mit Daten bestätigt (Suchfeld 48 px); "Profil" leuchtet unten (X-06) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/spieler` | Exit 2: Funde low-contrast (Platzhalter "Name suchen" 4,1:1, = X-16) und overused-font (Plus Jakarta Sans, 98 % des Textes; Schrift ist in DESIGN.md gesetzt, hier nur vermerkt) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-1 | P0 | Nach dem Absenden zeigt das Suchfeld nur drei Zeichen ("zzz", "Tes" bei einem langen Begriff); man sieht nicht, wonach gesucht wurde, und kann den Begriff nicht prüfen oder korrigieren. Verstärkt X-01 (dort Eintippen, hier Kontrolle). | gast_mobil_extra_spieler-leer.png, gast_mobil_extra_spieler-suchbegriff-lang.png | critique, adapt
+- N1-SP-2 | P1 | Das Spielerverzeichnis führt Admin-, Hallenbetreiber-, Veranstalter- und Demokonten ("Seed Admin", "Seed Hallenbetreiber", "Demo Admin A", "Alpha Spieler 1") als Spieler mit "0 Spiele · 0 Tore"; 12 von 30 Zeilen der Seite 1 sind solche Konten. Betriebs- und Testkonten gehören nicht in die öffentliche Liste. | gast_mobil_spieler.png, gast_mobil_extra_spieler-seite2.png | critique
+- N1-SP-3 | P2 | Alle Zeilen sehen gleich aus (Name, Stadt · Position, Spiele · Tore); kein Team, keine Elo, keine Teamfarbe, keine Gesamtzahl ("Seite 1" und "Weiter" ohne "von N"). | gast_mobil_spieler.png | distill, clarify
+- N1-SP-4 | P1 | Leerer Treffer: "Keine Spieler gefunden." als nackter Satz, ohne Hinweis auf Schreibweise, ohne "Suche zurücksetzen" und ohne Alternative (Teams, Mitspieler gesucht). | gast_mobil_extra_spieler-leer.png | clarify
+- N1-SP-5 | P2 | "Weiter" und "Zurück" im Pager sind 36 px hoch (`!min-h-9`), unter den 44 px für Touch. | gast_mobil_spieler.png | adapt
+
+##### /teams (Gast, Handy)
+Beleg: gast_mobil_teams.png (390 x 1107); Zusatz gast_mobil_extra_teams-leer.png
+Bewertung: Sechs Teams ohne Teamfarbe in gleichen Karten; die Reihenfolge ist nach Spielen sortiert, die Elo daneben steigt nicht, es wirkt wie eine Rangliste und ist keine. Das Suchfeld ist wieder 48 px breit.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Heuristiken 2, 4, 8] Funde: Sortierung nicht erkennbar (N1-TE-2), Zählung 6 gegen 8 Teams auf Start (N1-ST-1) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y, 4 Responsive] Funde: Platzhalter "Teamname" 4,1:1 (X-16); 7 von 41 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Teil: Visual Simplification] keine Funde (klare Liste, ein Gewicht je Zeile) |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states] Funde: "Keine Teams gefunden." ohne Weg (N1-TE-3) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation] Funde: X-01 bestätigt; "Teamspiel" leuchtet unten (X-06) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/teams` | Exit 2: low-contrast (X-16) und overused-font; keine neuen Befunde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-TE-1 | P2 | Zeilen ohne Teamfarbe und ohne Wappen (Richtung E arbeitet mit Teamfarben, vgl. X-18): sechs Karten sehen gleich aus. | gast_mobil_teams.png | critique
+- N1-TE-2 | P2 | Sortierung nach Anzahl Spiele, dann Name: Elo steht rechts als Zahl (Blau 1120, Gelb 960, Grün 1040, Rot 1180) und ist nicht geordnet; die Liste erweckt den Eindruck einer Rangliste. Teams "noch ohne Spiel" stehen am Ende. | gast_mobil_teams.png | clarify
+- N1-TE-3 | P1 | Leerer Treffer: "Keine Teams gefunden." ohne "Suche zurücksetzen" und ohne "Team gründen" für Angemeldete. | gast_mobil_extra_teams-leer.png | clarify
+
+##### /matchmaking (Gast, Handy)
+Beleg: gast_mobil_matchmaking.png (390 x 1186); Zusatz gast_mobil_extra_matchmaking-ende-viewport.png
+Bewertung: Der Gast liest eine Captain-Anleitung, danach "Offene Suchen (0)" und eine leere Liste; die einzige Handlung "Anmelden und Lobby aufmachen" steht ganz unten (Oberkante 789 px, Navigation ab 787 px), im ersten Bildschirm nur durch Scrollen erreichbar. Im Ganzseitenbild verdeckt die Navigation sie (Artefakt), im Zusatzbild am Seitenende ist sie sichtbar.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Heuristik 1 und 2] Funde: Widerspruch "0 Suchen" gegen vier Lobbys (N1-MM-1), Gast als "Captain" angesprochen (N1-MM-2) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 4 Responsive] Funde: Auswahl "Alle Dauern" abgeschnitten (N1-MM-3); 10 von 36 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Teil: Information Architecture, Clear next action] Funde: erst vier Schritte Text, dann leere Liste, dann Knopf (N1-MM-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states, Actions] Funde: Leerzustand sagt "Mach eine Lobby auf", der Knopf darunter verlangt Anmeldung ohne Vorankündigung (N1-MM-2) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone] Funde: Hauptknopf unten hinter der festen Navigation; Filter über leerer Liste (N1-MM-4) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/matchmaking` | Exit 2: straggler ("offen." allein in der zweiten Zeile, advisory) und overused-font; keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-MM-1 | P1 | "Offene Suchen (0)" und "Gerade hat kein Team eine Lobby geöffnet" stehen auf einer Seite, die man von `/suche` mit vier offenen Lobbys erreicht. Begriffe Suche und Lobby werden vermischt, die Zahl widerspricht dem Seed (Quelltext: `listOpenSearches` zählt Suchen, nicht Lobbys). | gast_mobil_matchmaking.png, gast_mobil_suche.png | clarify, critique
+- N1-MM-2 | P1 | Die Seite spricht Gäste als Captain an ("Du bist Captain und willst ..."), die Handlung "Anmelden und Lobby aufmachen" steht erst nach vier Schritten Text und einer leeren Liste, am Handy unter der Falz. Ergänzt GM-ST-3 und CM-MM-1 für die Gast-Sicht. | gast_mobil_extra_matchmaking-ende-viewport.png | distill, clarify
+- N1-MM-3 | P2 | Auswahl "Alle Dauern" ist abgeschnitten ("Alle Dauer"), obwohl nur zwei Auswahlfelder nebeneinander stehen. | gast_mobil_matchmaking.png | adapt
+- N1-MM-4 | P2 | Filter (Stadt, Dauer, "Filtern") über einer leeren Liste: bei 0 Einträgen ohne Nutzen, bei vielen ohne Rückmeldung, welche Filter aktiv sind. | gast_mobil_matchmaking.png | distill
+
+##### /mitspieler (Gast, Handy)
+Beleg: gast_mobil_mitspieler.png (390 x 844)
+Bewertung: Leerer Zustand: Anmeldehinweis, Stadtfilter, "Gerade hat sich niemand eingetragen." Die Seite endet nach 600 px; für einen Gast ist nichts zu tun außer Anmelden. Eine gefüllte Liste ist mit dem Seed nicht prüfbar (keine Einträge).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan] Funde: Zweck der Seite für Gast unklar, Leerzustand ohne Weg (N1-MI-1) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y, 4 Responsive] keine Funde (ein h1, Filter mit Label; 8 von 35 kleine Ziele sind die Fußzeile) |
+| distill (reference/distill.md, manuell) | [Teil: Clear next action] Funde: Filter über leerer Liste (N1-MI-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Audit the language, Empty states] Funde: "Fehlt dir jemand? Frag ihn an." erklärt nicht, wer wen anfragt (N1-MI-1) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation] keine Funde (Einspalter, Filter nutzt volle Breite) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/mitspieler` | Exit 2: nur overused-font; keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-MI-1 | P1 | Leerzustand "Gerade hat sich niemand eingetragen." ohne Handlung; die Erklärung "Spieler, die an einem Tag Lust auf ein Spiel haben. Fehlt dir jemand? Frag ihn an." sagt nicht, wie man jemanden anfragt. Für Gäste bleibt nur "Melde dich an". Gefüllter Zustand nicht prüfbar. | gast_mobil_mitspieler.png | clarify, critique
+- N1-MI-2 | P2 | Stadtfilter mit auffälligem Akzent-Knopf "Filtern" steht gleichrangig neben dem Anmeldelink und über einer leeren Liste. | gast_mobil_mitspieler.png | distill
+
+##### /einladung/seed-team-gueltig (Gast, Handy)
+Beleg: gast_mobil_einladung-seed-team-gueltig.png (390 x 844)
+Bewertung: Klar und kurz: Team, Stadt, Kadergröße, ein Knopf. Es fehlt, wer einlädt und was nach dem Klick folgt (Anmeldung, dann ggf. Onboarding). Unten leuchtet "Privatspiel" statt eines neutralen Zustands.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey] Funde: Einladender nicht genannt (N1-EG-1), Kontext geht beim Anmelden und Onboarding verloren (N1-EG-2) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] Funde: falscher aktiver Reiter "Privatspiel" (N1-EG-3); 7 von 33 Zielen unter 44 px (Fußzeile, X-07) |
+| distill (reference/distill.md, manuell) | [Teil: Essence, Clear next action] keine Funde (ein Ziel, ein Knopf) |
+| clarify (reference/clarify.md, manuell) | [Teil: Actions, Message hierarchy] Funde: "Anmelden und beitreten" gut; "gültig bis" fehlt (N1-EG-1) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone] keine Funde (Knopf volle Breite oberhalb der Navigation) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/einladung/seed-team-gueltig` | Exit 2: nur overused-font; keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-EG-1 | P1 | Die Einladung nennt Teamname, Stadt und "5 Spieler im Kader", aber nicht, wer eingeladen hat, kein Wappen, keine Teamfarbe, kein "gültig bis". Für einen Link aus WhatsApp fehlt dem Gast ein Vertrauenssignal. | gast_mobil_einladung-seed-team-gueltig.png | critique, clarify
+- N1-EG-2 | P1 | Nach "Anmelden und beitreten" führt der Weg über `/anmelden` und, für neue Konten, über `/willkommen`; dort steht kein Wort mehr zur Einladung (siehe N1-EI-1). Der Beitritt gelingt am Ende (Knopf "Team beitreten", neu_mobil_onboarding-10-erfolg-ziel.png), aber der Weg ist für den Gast nicht angekündigt. | gast_mobil_einladung-seed-team-gueltig.png | clarify
+- N1-EG-3 | P2 | Untere Navigation: "Privatspiel" ist aktiv, weil `BottomNav.tsx:13` jeden Pfad `/einladung` dem Privatspiel zuordnet; eine Team-Einladung gehört nicht dorthin. Gilt auch angemeldet (neu_mobil_onboarding-10). Ergänzt X-06. | gast_mobil_einladung-seed-team-gueltig.png | audit
+
+##### /einladung/seed-team-abgelaufen (Gast, Handy)
+Beleg: gast_mobil_einladung-seed-team-abgelaufen.png (390 x 844)
+Bewertung: Klare Fehlerseite mit Grund und Folgeschritt, aber ein Sackgassen-Gefühl: Der einzige Knopf "Zur Startseite" hilft nicht, den Link zu erneuern, und der Admin wird nicht genannt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Heuristik 9, Persona Jordan] Funde: kein Weg zur Erneuerung (N1-EA-1) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] Funde: falscher aktiver Reiter (N1-EG-3); sonst keine Funde (ein h1, Kontrast des Fließtexts ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Essence] keine Funde (Titel, Satz, Knopf) |
+| clarify (reference/clarify.md, manuell) | [Teil: Errors: was, warum, wie weiter] Funde: Grund und Folge stehen, "Team-Admin" ohne Namen (N1-EA-1), Laufzeit fehlt (N1-EA-2) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation] keine Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/einladung/seed-team-abgelaufen` | Exit 2: nur overused-font; keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-EA-1 | P1 | "Bitte den Team-Admin um einen neuen Link." ohne Namen des Admins, ohne Link zur Teamseite von Seed Rot, ohne Kontaktweg; der einzige Knopf ist "Zur Startseite" (ghost). Der Gast, der den Link per WhatsApp bekam, muss außerhalb der App weitermachen. | gast_mobil_einladung-seed-team-abgelaufen.png | clarify, critique
+- N1-EA-2 | P2 | "Link abgelaufen" ohne Hinweis auf die Laufzeit (wie lange galt er?) und ohne visuelle Fehlerkennung; die Seite sieht aus wie eine normale Textseite. | gast_mobil_einladung-seed-team-abgelaufen.png | clarify
+
+#### Gast, Desktop (1280 x 800)
+
+##### / (Gast, Desktop)
+Beleg: gast_desktop_start.png (1280 x 3218, gesehen auf 1025 x 2576 verkleinert)
+Bewertung: Der Inhalt sitzt in 720 px Spalte (X-17); gefüllt zeigt sich die Lobby-Karte zweispaltig sehr gut lesbar. Die Zähler und die Lobby-Liste liegen weit unten, die Kopfleiste kennt nur drei Links.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Riley] Funde: Zähler gegen Daten (N1-ST-1), bestätigte Lobby unter offenen (N1-ST-3), Klarnamen (N1-ST-4) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4, 5] Funde: Hero-Beschriftung 3,5 px Innenabstand (X-15), Zeilenlänge (X-14); 59 von 90 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Teil: Information Architecture] Funde: Liste endlos, Kürzung nicht geprüft (N1-ST-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Audit the language] Funde: "Was kostet das?" mit Guthaben/Preis (GM-ST-1), Siegchance (N1-ST-5) |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Multi-column] Funde: zwei Kader nebeneinander gut genutzt; Spalte 720 px (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/` | Navigation timeout nach 30 s, im Wiederholungslauf wieder (Dauerverbindung); Ersatz: Quelltext-Lauf (src/app/page.tsx, src/components/LobbyBoard.tsx, Header.tsx): keine Funde, plus Playwright-Zielmessung (metrics-gast.json) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-ST-1 | siehe Handy-Zelle (Zähler 8/35/3 gegen 6 Teams und 4 Lobbys; Quelltext HowItWorks.tsx:14) | gast_desktop_start.png | critique
+- N1-ST-2 bis N1-ST-6 | siehe Handy-Zelle; auf dem Desktop ist die Lobby-Karte mit Elo, Stärke und Balken lesbarer, N1-ST-5 (Balken ohne Zuordnung) bleibt | gast_desktop_start.png | distill
+
+##### /suche (Gast, Desktop)
+Beleg: gast_desktop_suche.png (1280 x 2032)
+Bewertung: Die Maske in drei Spalten ist kompakter als am Handy, die Liste beginnt bei 490 px. Gute Lesbarkeit; offene Frage bleibt, was bei mehr als vier Einträgen passiert (Quelltext `lobby.ts:627` begrenzt eine Abfrage auf 30, ohne sichtbaren Pager).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Heuristiken 4, 8] Funde: gemischte Status in einer Liste (N1-ST-3), Begriffe Lobby und Suche (N1-SU-1) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] Funde: "Teilen" klein (N1-SU-3 gilt auch hier; 59 von 88 Zielen unter 44 px) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification] Funde: Filter über der Liste, kein Zurücksetzen (N1-SU-5) |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states] keine neuen Funde |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation] Funde: Spalte 720 px mit 280 px Leerraum je Seite (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/suche` | Navigation timeout nach 30 s, im Wiederholungslauf wieder (Dauerverbindung); Ersatz: Quelltext-Lauf src/app/suche: keine Funde, plus Playwright-Zielmessung (metrics-gast.json) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SU-5 | P2 | Kein sichtbarer Hinweis, welche Filter gesetzt sind, und kein "Zurücksetzen"; bei einer Obergrenze von 30 Einträgen im Quelltext (`server/lobby.ts:627`, nicht mit Daten geprüft) fehlt auch ein Pager. | gast_desktop_suche.png | clarify
+- N1-SU-1, N1-SU-3, N1-ST-3, N1-ST-4 | siehe Handy-Zelle | gast_desktop_suche.png | clarify
+
+##### /spieler (Gast, Desktop)
+Beleg: gast_desktop_spieler.png (1280 x 3015, gesehen auf 1094 x 2576)
+Bewertung: Lange, gleichförmige Liste in schmaler Spalte; am Desktop ist das Suchfeld breit genug (kein X-01). Zeilen ohne Statistik füllen die zweite Hälfte der Seite.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Riley] Funde: Konten ohne Spiele (N1-SP-2), Klarnamen (N1-ST-4) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] Funde: Platzhalter-Kontrast (X-16); Pager 36 px (N1-SP-5) |
+| distill (reference/distill.md, manuell) | [Teil: Visual Simplification] Funde: 30 gleiche Zeilen, keine Gruppierung (N1-SP-3) |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states] Funde: wie Handy (N1-SP-4) |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Data tables] Funde: viel Leerraum zwischen Name und Zahlen (N1-SP-6) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/spieler` | Exit 2: low-contrast (X-16) und overused-font |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-6 | P2 | Auf 1280 px nutzen die Zeilen nur zwei Informationen (Name/Stadt/Position links, Spiele/Tore rechts) in 614 px Breite; Desktop-Anpassung (mehr Spalten, Team, Elo) fehlt (zu X-17). | gast_desktop_spieler.png | adapt
+- N1-SP-2, N1-SP-3, N1-SP-4, N1-SP-5 | siehe Handy-Zelle | gast_desktop_spieler.png | critique
+
+##### /teams (Gast, Desktop)
+Beleg: gast_desktop_teams.png (1280 x 923)
+Bewertung: Sechs Teams, klare Karten; ohne Teamfarbe und ohne Pager. Mit 6 Einträgen funktioniert die Seite gut; Verhalten bei vielen Teams nicht prüfbar.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A] Funde: N1-TE-1, N1-TE-2 (Sortierung, keine Farbe) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1] Funde: Platzhalter-Kontrast (X-16); 10 von 41 Zielen unter 44 px (Fußzeile) |
+| distill (reference/distill.md, manuell) | [Teil: Visual Simplification] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states] Funde: wie Handy (N1-TE-3) |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation] Funde: Elo rechts weit vom Namen, Zeile 720 px (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/teams` | Exit 2: low-contrast (X-16) und overused-font |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-TE-1, N1-TE-2, N1-TE-3 | siehe Handy-Zelle | gast_desktop_teams.png | critique
+
+##### /matchmaking (Gast, Desktop)
+Beleg: gast_desktop_matchmaking.png (1280 x 802)
+Bewertung: Auf dem Desktop ist die Handlung "Anmelden und Lobby aufmachen" sichtbar, sonst gilt dasselbe wie am Handy: Captain-Text für Gäste, "Offene Suchen (0)" neben vier offenen Lobbys.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A] Funde: N1-MM-1, N1-MM-2 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 4] Funde: Zeilenlänge etwa 99 Zeichen (detect); 13 von 36 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Teil: Information Architecture] Funde: Anleitung vor Liste (N1-MM-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states] Funde: wie Handy |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation] keine neuen Funde (Knopf volle Spaltenbreite) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/matchmaking` | Exit 2: line-length (etwa 99 Zeichen auf 2 von 3 Zeilen), straggler ("hier."), overused-font |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-MM-5 | P2 | Fließtext auf `/matchmaking` hat etwa 99 Zeichen je Zeile (Vorgabe unter 80), Einleitung und Leerzustand haben einzelne Wörter in der letzten Zeile ("hier."). Ergänzt X-14. | gast_desktop_matchmaking.png | detect (line-length, straggler)
+- N1-MM-1, N1-MM-2, N1-MM-4 | siehe Handy-Zelle | gast_desktop_matchmaking.png | clarify
+
+##### /mitspieler (Gast, Desktop)
+Beleg: gast_desktop_mitspieler.png (1280 x 800)
+Bewertung: Sehr leer: Titel, Hinweisbox, Filter, ein Satz. Die untere Hälfte des Bildschirms bleibt ungenutzt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A] Funde: N1-MI-1 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Teil: Clear next action] Funde: N1-MI-2 |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states] Funde: N1-MI-1 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation] keine neuen Funde |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/mitspieler` | Exit 2: nur overused-font |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-MI-1, N1-MI-2 | siehe Handy-Zelle | gast_desktop_mitspieler.png | clarify
+
+##### /einladung/seed-team-gueltig (Gast, Desktop)
+Beleg: gast_desktop_einladung-seed-team-gueltig.png (1280 x 800)
+Bewertung: Zentrierte, ruhige Einladung; Knopf 384 px breit. Gleiche Lücken wie am Handy (kein Einladender, kein Gültigkeitsdatum), aber ohne Navigationsfehler.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan] Funde: N1-EG-1, N1-EG-2 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Teil: Essence] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Actions] Funde: N1-EG-1 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation] keine Funde (zentriert, Maximalbreite) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/einladung/seed-team-gueltig` | Exit 2: nur overused-font |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-EG-1, N1-EG-2 | siehe Handy-Zelle | gast_desktop_einladung-seed-team-gueltig.png | critique
+
+##### /einladung/seed-team-abgelaufen (Gast, Desktop)
+Beleg: gast_desktop_einladung-seed-team-abgelaufen.png (1280 x 800)
+Bewertung: Gleiche Sackgasse wie am Handy: Erklärung gut, aber kein Weg weiter außer Startseite.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Heuristik 9] Funde: N1-EA-1 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Teil: Essence] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Errors] Funde: N1-EA-1, N1-EA-2 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation] keine Funde |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/einladung/seed-team-abgelaufen` | Exit 2: nur overused-font |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-EA-1, N1-EA-2 | siehe Handy-Zelle | gast_desktop_einladung-seed-team-abgelaufen.png | clarify
+
+#### Neuer Nutzer (seed-neu@test.local), Handy und Desktop
+
+##### /willkommen (Neuer Nutzer, Handy)
+Beleg: neu_mobil_willkommen.png (390 x 1076)
+Bewertung: Das Formular ist kurz und klar, Name vorbelegt. Kopfleiste (Glocke, Konto) und fünf Reiter der unteren Navigation sind schon aktiv, obwohl jeder andere Bereich zurück auf diese Seite leitet.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan und Casey, Onboarding-Fluss] Funde: Navigation führt ins Leere (N1-WK-1), Checkbox ohne Links (N1-WK-2), Anzeigename ohne Hinweis auf Öffentlichkeit (N1-OB-8) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y, 4 Responsive, 5 Integrität] Funde: Fehlerfelder ohne aria-invalid/aria-describedby (Quelltext OnboardingForm.tsx, N1-OB-3); 9 von 41 Zielen unter 44 px (Fußzeile) |
+| distill (reference/distill.md, manuell) | [Teil: Information Architecture, Interaction Simplification] Funde: Kopf- und Fußnavigation lenken ab (N1-WK-1); fünf Felder sind angemessen |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Audit the language] Funde: Position "Flexibel" ohne Erklärung, Stadtliste ohne "andere" (N1-WK-3), Hilfetext zum Geburtsdatum klein (N1-WK-4) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Forms, Thumb zone] Funde: natives Datumsfeld zeigt "dd.mm.yyyy" als Platzhalter (N1-WK-4); sonst Eingaben 44 px hoch, gut |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf (Sitzungsseite, der URL-Lauf sieht nur die Anmeldeseite): keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-WK-1 | P1 | Während des Onboardings sind Kopfleiste (Glocke, Konto-Menü) und die untere Navigation (Teamspiel, Privatspiel, Spiel suchen, Turniere, Profil) voll aktiv, aber jeder Klick in `/app*` führt zurück zu `/willkommen`. Der Neue erlebt tote Klicks. Besser: nur Logo und Abmelden. | neu_mobil_willkommen.png | critique, distill
+- N1-WK-2 | P1 | Die Checkbox "Ich akzeptiere die Datenschutzerklärung und die Hausordnung." enthält keine Links (Quelltext OnboardingForm.tsx, nur Text); man stimmt Texten zu, die man hier nicht öffnen kann. | neu_mobil_willkommen.png | clarify
+- N1-WK-3 | P2 | Stadtauswahl nur aus fester Liste (NRW-Städte, `CITIES`), keine Option "andere Stadt"; Position "Flexibel" ohne Erklärung. Wer nicht aus der Liste kommt, kann das Konto nicht einrichten. | neu_mobil_willkommen.png | clarify
+- N1-WK-4 | P2 | Hilfetext "Socaz ist ab 16. Das Datum wird nur zur Prüfung verwendet und nicht gespeichert." in 12 px grau unter dem Feld; die Folge einer Eingabe unter 16 (Konto wird gelöscht) steht nicht dort (siehe N1-OB-6). | neu_mobil_willkommen.png | clarify
+
+##### /willkommen (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_willkommen.png (1280 x 892)
+Bewertung: Zentriertes Formular in 448 px Breite, ruhig. In der Kopfleiste stehen Glocke, "0,00 €" (Guthaben-Link) und Konto-Menü, obwohl das Konto noch nicht eingerichtet ist.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan und Casey, Onboarding-Fluss] Funde: Navigation führt ins Leere (N1-WK-1), Checkbox ohne Links (N1-WK-2), Anzeigename ohne Hinweis auf Öffentlichkeit (N1-OB-8) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y, 4 Responsive, 5 Integrität] Funde: Fehlerfelder ohne aria-invalid/aria-describedby (Quelltext OnboardingForm.tsx, N1-OB-3); 13 von 41 Zielen unter 44 px (Fußzeile) |
+| distill (reference/distill.md, manuell) | [Teil: Information Architecture, Interaction Simplification] Funde: Kopf- und Fußnavigation lenken ab (N1-WK-1); fünf Felder sind angemessen |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Audit the language] Funde: Position "Flexibel" ohne Erklärung, Stadtliste ohne "andere" (N1-WK-3), Hilfetext zum Geburtsdatum klein (N1-WK-4) |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde (Formular zentriert, Breite begrenzt) |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf (Sitzungsseite, der URL-Lauf sieht nur die Anmeldeseite): keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-WK-1 | siehe Handy-Zelle; auf dem Desktop zusätzlich Guthaben-Link "0,00 €" in der Kopfleiste (MUSS WEG, Header.tsx:53-55) | neu_desktop_willkommen.png | critique
+- N1-WK-2, N1-WK-3, N1-WK-4 | siehe Handy-Zelle | neu_desktop_willkommen.png | clarify
+
+##### /app (Neuer Nutzer, Handy, leitet auf /willkommen)
+Beleg: neu_mobil_app.png (390 x 1076, bildgleich zu /willkommen)
+Bewertung: Die Weiterleitung führt sauber auf `/willkommen?next=%2Fapp`; das Bild ist gleich zum Formular. Nach dem Onboarding landet der Neue wieder auf `/app` (siehe N1-OB-11).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Heuristik 3] keine Funde (Weiterleitung mit Rücksprungziel) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 5] keine Funde |
+| distill (reference/distill.md, manuell) | [Teil: Essence] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Message hierarchy] keine Funde (Überschrift und Satz "Noch ein paar Angaben" erklären den Halt) |
+| adapt (reference/adapt.md, manuell) | [Teil: Navigation] Funde: wie N1-WK-1 |
+| `impeccable detect --json src/app/app` | Quelltext-Lauf (Sitzungsseite, der URL-Lauf sieht nur die Anmeldeseite): keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-WK-1 | siehe `/willkommen` | neu_mobil_app.png | critique
+
+##### /app (Neuer Nutzer, Desktop, leitet auf /willkommen)
+Beleg: neu_desktop_app.png (1280 x 892, bildgleich zu /willkommen)
+Bewertung: Die Weiterleitung führt sauber auf `/willkommen?next=%2Fapp`; das Bild ist gleich zum Formular. Nach dem Onboarding landet der Neue wieder auf `/app` (siehe N1-OB-11).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Heuristik 3] keine Funde (Weiterleitung mit Rücksprungziel) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 5] keine Funde |
+| distill (reference/distill.md, manuell) | [Teil: Essence] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Message hierarchy] keine Funde (Überschrift und Satz "Noch ein paar Angaben" erklären den Halt) |
+| adapt (reference/adapt.md, manuell) | [Teil: Navigation] Funde: wie N1-WK-1 |
+| `impeccable detect --json src/app/app` | Quelltext-Lauf (Sitzungsseite, der URL-Lauf sieht nur die Anmeldeseite): keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-WK-1 | siehe `/willkommen` | neu_desktop_app.png | critique
+
+##### /einladung/seed-team-gueltig (Neuer Nutzer, Handy, leitet auf /willkommen)
+Beleg: neu_mobil_einladung-seed-team-gueltig.png (390 x 1076)
+Bewertung: Der Neue sieht das generische Onboarding-Formular; vom Team, zu dem er eingeladen wurde, ist nichts mehr zu lesen. Die Einladung ist nur im Rücksprungziel `next` gemerkt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Emotional journey, Persona Jordan] Funde: Einladungskontext geht verloren (N1-EI-1) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 5] keine Funde |
+| distill (reference/distill.md, manuell) | [Teil: Essence] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Message hierarchy, Forms] Funde: Überschrift "Willkommen bei Socaz" ohne Bezug zur Einladung (N1-EI-1) |
+| adapt (reference/adapt.md, manuell) | [Teil: Navigation] Funde: wie N1-WK-1 |
+| `impeccable detect --json src/app/einladung/[token]` | Quelltext-Lauf (Sitzungsseite, der URL-Lauf sieht nur die Anmeldeseite): keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-EI-1 | P1 | Wer per Einladungslink kommt und noch kein Profil hat, sieht auf `/willkommen` nichts mehr von "Seed Rot". Er weiß nicht, dass er danach dem Team beitritt (Quelltext `einladung/[token]/page.tsx`: Weiterleitung mit `next`). Ein Satz "Du wurdest zu Seed Rot eingeladen" auf dem Formular fehlt. Das Ziel wird nach dem Onboarding korrekt erreicht (Schritt 10). | neu_mobil_einladung-seed-team-gueltig.png | clarify, critique
+
+##### /einladung/seed-team-gueltig (Neuer Nutzer, Desktop, leitet auf /willkommen)
+Beleg: neu_desktop_einladung-seed-team-gueltig.png (1280 x 892)
+Bewertung: Der Neue sieht das generische Onboarding-Formular; vom Team, zu dem er eingeladen wurde, ist nichts mehr zu lesen. Die Einladung ist nur im Rücksprungziel `next` gemerkt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Emotional journey, Persona Jordan] Funde: Einladungskontext geht verloren (N1-EI-1) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 5] keine Funde |
+| distill (reference/distill.md, manuell) | [Teil: Essence] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Message hierarchy, Forms] Funde: Überschrift "Willkommen bei Socaz" ohne Bezug zur Einladung (N1-EI-1) |
+| adapt (reference/adapt.md, manuell) | [Teil: Navigation] Funde: wie N1-WK-1 |
+| `impeccable detect --json src/app/einladung/[token]` | Quelltext-Lauf (Sitzungsseite, der URL-Lauf sieht nur die Anmeldeseite): keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-EI-1 | siehe Handy-Zelle | neu_desktop_einladung-seed-team-gueltig.png | clarify
+
+#### Onboarding-Strecke (Neuer Nutzer), je Schritt und Gerät
+
+Reihenfolge: 01 Formular, 02 Absenden ohne Auswahl (Browserprüfung), 03 Absenden leer (Serverfehler), 04 Pflichtfelder fehlen, 05 Name zu kurz, 06 unter 16 ausgefüllt, 07 unter 16 abgesendet, 08 neue Anmeldung, 09 gültig ausgefüllt mit 40-Zeichen-Namen, 10 Erfolg (Handy: Einladungsseite, Desktop: `/app`), 11 `/app` als frisches Konto.
+
+#### Onboarding, Handy
+
+##### Onboarding 01 formular (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-01-formular.png
+Bewertung: Ausgangsform: Anzeigename vorbelegt, Stadt, Position, Geburtsdatum, Checkbox, "Los geht's". Sauber, aber ohne Fortschritt und ohne Links zu den Texten der Checkbox.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: nur Verweise (N1-WK-1, N1-WK-2, N1-WK-3, N1-WK-4) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: nur Verweise (N1-WK-1, N1-WK-2, N1-WK-3, N1-WK-4) |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- Verweise (kein neuer Fund): N1-WK-1, N1-WK-2, N1-WK-3, N1-WK-4
+
+##### Onboarding 02 leer-browserpruefung (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-02-leer-browserpruefung.png
+Bewertung: Die Pflichtprüfung stammt vom Browser: ein Bubble am Feld "Stadt" mit englischem Text "Please select an item in the list." (Testbrowser englisch, echte Nutzer sehen ihre Browsersprache). Es meldet immer nur ein Feld, das Bubble verdeckt auf dem Handy die Beschriftung des nächsten Feldes.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-1 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-1 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-1 | P2 | Pflichtfehler kommen vom Browser (Meldung einzeln, Sprache und Stil nicht steuerbar, Bubble verdeckt das nächste Feld); die eigenen Meldungen der Seite ("Bitte wähle eine Stadt.") erscheinen nur, wenn der Server erreicht wird. Zwei Fehlerstile in einem Formular. | neu_mobil_onboarding-02-leer-browserpruefung.png | critique, clarify
+
+##### Onboarding 03 leer-serverfehler (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-03-leer-serverfehler.png
+Bewertung: Fünf Fehlermeldungen auf einmal, jede in einem Rahmen mit dicker dunkler Kontur unter dem Feld. Die Felder selbst sind nicht markiert, die Meldungen sind nicht rot (Vertrag 007), sie wirken wie Fokusrahmen. Am Handy liegen die ersten Meldungen oberhalb des Knopfs, kein Fokus und kein Scrollen auf die erste Meldung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-2, N1-OB-3 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] Funde: bis zu fünf Fehlerkästen statt einer Zusammenfassung (N1-OB-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-2, N1-OB-3 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] Funde: Fehlermeldungen oberhalb des Sichtfelds nach dem Absenden (N1-OB-2) |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-2 | P1 | Bei vielen Fehlern (Schritt 03) gibt es keine Zusammenfassung oben, keinen Fokus auf das erste Feld und kein automatisches Scrollen; am Handy sieht der Neue nach dem Tippen auf "Los geht's" zunächst nur den Knopf, die Meldungen liegen darüber. | neu_mobil_onboarding-03-leer-serverfehler.png | critique, clarify
+- N1-OB-3 | P1 | Fehler als Rahmen mit dicker dunkler Kontur (`globals.css:140`, Vertrag 007 "keine eigene Farbe"): sie sehen wie Fokusrahmen oder Hinweiskästen aus, nicht wie Fehler. Felder tragen weder `aria-invalid` noch `aria-describedby` (Quelltext OnboardingForm.tsx), die Zuordnung geschieht nur durch Nähe; `role=alert` meldet sie dem Screenreader einzeln. | neu_mobil_onboarding-03-leer-serverfehler.png | critique, clarify
+
+##### Onboarding 04 pflichtfelder-fehlen (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-04-pflichtfelder-fehlen.png
+Bewertung: Name und Stadt sind gefüllt, Position, Datum und Zustimmung fehlen: drei Meldungen. Sie bleiben stehen, auch wenn das Feld danach gefüllt wird (siehe 06).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-3, N1-OB-4 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] Funde: bis zu fünf Fehlerkästen statt einer Zusammenfassung (N1-OB-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-3, N1-OB-4 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] Funde: Fehlermeldungen oberhalb des Sichtfelds nach dem Absenden (N1-OB-2) |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-3 | P1 | Fehler als Rahmen mit dicker dunkler Kontur (`globals.css:140`, Vertrag 007 "keine eigene Farbe"): sie sehen wie Fokusrahmen oder Hinweiskästen aus, nicht wie Fehler. Felder tragen weder `aria-invalid` noch `aria-describedby` (Quelltext OnboardingForm.tsx), die Zuordnung geschieht nur durch Nähe; `role=alert` meldet sie dem Screenreader einzeln. | neu_mobil_onboarding-04-pflichtfelder-fehlen.png | critique, clarify
+- N1-OB-4 | P1 | Fehlermeldungen bleiben nach Korrektur stehen, bis erneut abgesendet wird (Schritt 06 zeigt "Bitte wähle eine Position." bei gewählter Position "Abwehr" und "Bitte gib einen Namen an" bei gefülltem Namen). Der Nutzer glaubt, es sei weiter falsch. Ursache: `useFormAction` behält den Zustand bis zum nächsten Absenden. | neu_mobil_onboarding-04-pflichtfelder-fehlen.png | critique, clarify
+
+##### Onboarding 05 name-zu-kurz (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-05-name-zu-kurz.png
+Bewertung: Name "A": "Bitte gib einen Namen an (mindestens 2 Zeichen)." Verständlich. Das Feld hat 40 Zeichen als Obergrenze ohne Zähler.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-5 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-5 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] Funde: Fehlermeldungen oberhalb des Sichtfelds nach dem Absenden (N1-OB-2) |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-5 | P2 | Name: `maxLength 40` schneidet beim Tippen ohne Zähler und ohne Meldung ab; am Handy ist das Feld nach "Bartholomäus Maximilian Alexander Mue" abgeschnitten (Schritt 09). | neu_mobil_onboarding-05-name-zu-kurz.png | critique, clarify
+
+##### Onboarding 06 unter-16-ausgefuellt (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-06-unter-16-ausgefuellt.png
+Bewertung: Alle Felder gefüllt, Datum 05.05.2015 (11 Jahre): Die Meldungen aus Schritt 05 stehen noch, obwohl Name und Position inzwischen stimmen ("Bitte wähle eine Position." bei gewählter Position "Abwehr"). Nichts warnt vor der Folge des Absendens.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-4, N1-OB-6 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-4, N1-OB-6 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] Funde: Fehlermeldungen oberhalb des Sichtfelds nach dem Absenden (N1-OB-2) |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-4 | P1 | Fehlermeldungen bleiben nach Korrektur stehen, bis erneut abgesendet wird (Schritt 06 zeigt "Bitte wähle eine Position." bei gewählter Position "Abwehr" und "Bitte gib einen Namen an" bei gefülltem Namen). Der Nutzer glaubt, es sei weiter falsch. Ursache: `useFormAction` behält den Zustand bis zum nächsten Absenden. | neu_mobil_onboarding-06-unter-16-ausgefuellt.png | critique, clarify
+- N1-OB-6 | P1 | Ein Geburtsdatum unter 16 löscht das Konto sofort und unwiderruflich (Quelltext `actions.ts:33-38`), ohne Rückfrage und ohne Hinweis am Feld. Ein Tippfehler beim Jahr (2012 statt 1992) beendet das Konto. Ein Datum in der Zukunft löscht es ebenso (Prüfung nur über `max` im Datumsfeld). Besser: "Stimmt das Datum? Du wärst dann X Jahre" vor dem Löschen. | neu_mobil_onboarding-06-unter-16-ausgefuellt.png | critique, clarify
+
+##### Onboarding 07 unter-16-ergebnis (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-07-unter-16-ergebnis.png
+Bewertung: Seite "Socaz ist ab 16": klarer Text (Konto gelöscht, Geburtsdatum nie gespeichert), ein Knopf "Zur Startseite", oben der Knopf "Anmelden". Das Konto ist tatsächlich weg (neue Anmeldung legt ein neues Konto an).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 5 Fehlervermeidung] Funde: N1-OB-7 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-7 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-7 | P2 | Die Endseite "Socaz ist ab 16" zeigt oben den Knopf "Anmelden" und sagt nicht, ab wann man wiederkommen kann; nichts verhindert die sofortige Neuanmeldung mit anderem Datum (Produktfrage, keine Optik). | neu_mobil_onboarding-07-unter-16-ergebnis.png | critique, clarify
+
+##### Onboarding 08 formular-nach-neuanmeldung (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-08-formular-nach-neuanmeldung.png
+Bewertung: Nach erneuter Anmeldung: leeres Formular, Name wieder vorbelegt (aus dem Anmeldenamen). Kein Hinweis, dass der Name öffentlich wird.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: N1-OB-8 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-8 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-8 | P1 | "Anzeigename" ist mit dem Namen aus dem Anmeldedienst vorbelegt, ohne Hinweis, dass er öffentlich ist (Spielerliste, Lobbys, Kader, auch für Gäste, siehe N1-ST-4). Ein Satz am Feld fehlt. | neu_mobil_onboarding-08-formular-nach-neuanmeldung.png | critique, clarify
+
+##### Onboarding 09 ausgefuellt-langer-name (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-09-ausgefuellt-langer-name.png
+Bewertung: Gültig ausgefüllt, Name auf 40 Zeichen ("Bartholomäus Maximilian Alexander Muelle"). Am Handy schneidet das Feld mitten im Wort ab, am Desktop passt er. In Ordnung, nur ohne Hinweis auf die Sichtbarkeit des Namens.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: N1-OB-5, N1-OB-8 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-5, N1-OB-8 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-5 | P2 | Name: `maxLength 40` schneidet beim Tippen ohne Zähler und ohne Meldung ab; am Handy ist das Feld nach "Bartholomäus Maximilian Alexander Mue" abgeschnitten (Schritt 09). | neu_mobil_onboarding-09-ausgefuellt-langer-name.png | critique, clarify
+- N1-OB-8 | P1 | "Anzeigename" ist mit dem Namen aus dem Anmeldedienst vorbelegt, ohne Hinweis, dass er öffentlich ist (Spielerliste, Lobbys, Kader, auch für Gäste, siehe N1-ST-4). Ein Satz am Feld fehlt. | neu_mobil_onboarding-09-ausgefuellt-langer-name.png | critique, clarify
+
+##### Onboarding 10 erfolg-ziel (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-10-erfolg-ziel.png
+Bewertung: Nach "Los geht's" ohne Bestätigung direkt am Ziel (Handy: Einladung mit Knopf "Team beitreten", Desktop: `/app`). Die Kopfleiste zeigt noch den alten Namen "Seed" statt "Bartholomäus" (erst nach Neuladen aktuell).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: N1-OB-9, N1-OB-10 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-9, N1-OB-10 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-9 | P2 | Nach dem Absenden zeigt die Kopfleiste noch den alten Namen ("Seed", neu_*_onboarding-10), nach Neuladen "Bartholomäus": die Kopfleiste ist nach der Änderung veraltet. | neu_mobil_onboarding-10-erfolg-ziel.png | critique, clarify
+- N1-OB-10 | P2 | Keine Bestätigung nach dem Onboarding (kein "Willkommen, Name", keine Meldung), der Nutzer landet ohne Übergang auf einer anderen Seite; auf der Einladungsseite (Handy) fehlt "Du bist jetzt angemeldet". | neu_mobil_onboarding-10-erfolg-ziel.png | critique, clarify
+
+##### Onboarding 11 erfolg-app (Neuer Nutzer, Handy)
+Beleg: neu_mobil_onboarding-11-erfolg-app.png
+Bewertung: Frisches Konto auf `/app`: "Hey Bartholomäus", Karte "So startest du" (gut), dann Kartenwand, Guthabenkarte, Kachelraster, "Meine Spiele" und "Meine Teams" nur mit Text. "Lobby aufmachen" dreifach, obwohl ein Konto ohne Team keine Lobby öffnen darf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: N1-OB-11, N1-OB-12 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] Funde: Kartenwand vor Inhalt, Kachelraster (X-03, X-04), Lobby dreifach (N1-OB-12) |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-11, N1-OB-12 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation, Thumb zone, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-11 | P1 | Leerzustand "Meine Spiele": "Noch keine Spiele. Suche einen Gegner oder nimm eine Spielsuche an." als reiner Text ohne Knopf; "Meine Teams" hat den Knopf, "Meine Spiele" nicht. Der Weg von der Leere zur ersten Handlung führt nach oben. | neu_mobil_onboarding-11-erfolg-app.png | critique, clarify
+- N1-OB-12 | P1 | Ein Konto ohne Team sieht "Lobby aufmachen" dreifach (Karte Teamspiel, Kachel, Reiter "Teamspiel" in der Navigation), tatsächlich dürfen nur Team-Admins eine Lobby öffnen (`matchmaking/page.tsx`: "Nur Team-Admins können nach Gegnern suchen"). Verstärkt X-20 für den Neuen: erste Handlung führt in eine Erklärung statt in eine Tat. "Team gründen" steht doppelt (Karte, Abschnitt). | neu_mobil_onboarding-11-erfolg-app.png | critique, clarify
+- Verweise (kein neuer Fund): X-03, X-04, X-05, X-20
+
+#### Onboarding, Desktop
+
+##### Onboarding 01 formular (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-01-formular.png
+Bewertung: Ausgangsform: Anzeigename vorbelegt, Stadt, Position, Geburtsdatum, Checkbox, "Los geht's". Sauber, aber ohne Fortschritt und ohne Links zu den Texten der Checkbox.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: nur Verweise (N1-WK-1, N1-WK-2, N1-WK-3, N1-WK-4) |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: nur Verweise (N1-WK-1, N1-WK-2, N1-WK-3, N1-WK-4) |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- Verweise (kein neuer Fund): N1-WK-1, N1-WK-2, N1-WK-3, N1-WK-4
+
+##### Onboarding 02 leer-browserpruefung (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-02-leer-browserpruefung.png
+Bewertung: Die Pflichtprüfung stammt vom Browser: ein Bubble am Feld "Stadt" mit englischem Text "Please select an item in the list." (Testbrowser englisch, echte Nutzer sehen ihre Browsersprache). Es meldet immer nur ein Feld, das Bubble verdeckt auf dem Handy die Beschriftung des nächsten Feldes.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-1 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-1 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-1 | siehe Handy-Zelle | neu_desktop_onboarding-02-leer-browserpruefung.png | critique, clarify
+
+##### Onboarding 03 leer-serverfehler (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-03-leer-serverfehler.png
+Bewertung: Fünf Fehlermeldungen auf einmal, jede in einem Rahmen mit dicker dunkler Kontur unter dem Feld. Die Felder selbst sind nicht markiert, die Meldungen sind nicht rot (Vertrag 007), sie wirken wie Fokusrahmen. Am Handy liegen die ersten Meldungen oberhalb des Knopfs, kein Fokus und kein Scrollen auf die erste Meldung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-2, N1-OB-3 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] Funde: bis zu fünf Fehlerkästen statt einer Zusammenfassung (N1-OB-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-2, N1-OB-3 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-2 | siehe Handy-Zelle | neu_desktop_onboarding-03-leer-serverfehler.png | critique, clarify
+- N1-OB-3 | siehe Handy-Zelle | neu_desktop_onboarding-03-leer-serverfehler.png | critique, clarify
+
+##### Onboarding 04 pflichtfelder-fehlen (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-04-pflichtfelder-fehlen.png
+Bewertung: Name und Stadt sind gefüllt, Position, Datum und Zustimmung fehlen: drei Meldungen. Sie bleiben stehen, auch wenn das Feld danach gefüllt wird (siehe 06).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-3, N1-OB-4 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] Funde: bis zu fünf Fehlerkästen statt einer Zusammenfassung (N1-OB-2) |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-3, N1-OB-4 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-3 | siehe Handy-Zelle | neu_desktop_onboarding-04-pflichtfelder-fehlen.png | critique, clarify
+- N1-OB-4 | siehe Handy-Zelle | neu_desktop_onboarding-04-pflichtfelder-fehlen.png | critique, clarify
+
+##### Onboarding 05 name-zu-kurz (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-05-name-zu-kurz.png
+Bewertung: Name "A": "Bitte gib einen Namen an (mindestens 2 Zeichen)." Verständlich. Das Feld hat 40 Zeichen als Obergrenze ohne Zähler.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-5 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-5 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-5 | siehe Handy-Zelle | neu_desktop_onboarding-05-name-zu-kurz.png | critique, clarify
+
+##### Onboarding 06 unter-16-ausgefuellt (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-06-unter-16-ausgefuellt.png
+Bewertung: Alle Felder gefüllt, Datum 05.05.2015 (11 Jahre): Die Meldungen aus Schritt 05 stehen noch, obwohl Name und Position inzwischen stimmen ("Bitte wähle eine Position." bei gewählter Position "Abwehr"). Nichts warnt vor der Folge des Absendens.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 9 Fehlerbehebung] Funde: N1-OB-4, N1-OB-6 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] Funde: Fehler ohne aria-invalid (N1-OB-3), Fokus bleibt am Knopf |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-4, N1-OB-6 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-4 | siehe Handy-Zelle | neu_desktop_onboarding-06-unter-16-ausgefuellt.png | critique, clarify
+- N1-OB-6 | siehe Handy-Zelle | neu_desktop_onboarding-06-unter-16-ausgefuellt.png | critique, clarify
+
+##### Onboarding 07 unter-16-ergebnis (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-07-unter-16-ergebnis.png
+Bewertung: Seite "Socaz ist ab 16": klarer Text (Konto gelöscht, Geburtsdatum nie gespeichert), ein Knopf "Zur Startseite", oben der Knopf "Anmelden". Das Konto ist tatsächlich weg (neue Anmeldung legt ein neues Konto an).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 5 Fehlervermeidung] Funde: N1-OB-7 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-7 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-7 | siehe Handy-Zelle | neu_desktop_onboarding-07-unter-16-ergebnis.png | critique, clarify
+
+##### Onboarding 08 formular-nach-neuanmeldung (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-08-formular-nach-neuanmeldung.png
+Bewertung: Nach erneuter Anmeldung: leeres Formular, Name wieder vorbelegt (aus dem Anmeldenamen). Kein Hinweis, dass der Name öffentlich wird.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: N1-OB-8 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-8 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-8 | siehe Handy-Zelle | neu_desktop_onboarding-08-formular-nach-neuanmeldung.png | critique, clarify
+
+##### Onboarding 09 ausgefuellt-langer-name (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-09-ausgefuellt-langer-name.png
+Bewertung: Gültig ausgefüllt, Name auf 40 Zeichen ("Bartholomäus Maximilian Alexander Muelle"). Am Handy schneidet das Feld mitten im Wort ab, am Desktop passt er. In Ordnung, nur ohne Hinweis auf die Sichtbarkeit des Namens.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: N1-OB-5, N1-OB-8 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-5, N1-OB-8 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-5 | siehe Handy-Zelle | neu_desktop_onboarding-09-ausgefuellt-langer-name.png | critique, clarify
+- N1-OB-8 | siehe Handy-Zelle | neu_desktop_onboarding-09-ausgefuellt-langer-name.png | critique, clarify
+
+##### Onboarding 10 erfolg-ziel (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-10-erfolg-ziel.png
+Bewertung: Nach "Los geht's" ohne Bestätigung direkt am Ziel (Handy: Einladung mit Knopf "Team beitreten", Desktop: `/app`). Die Kopfleiste zeigt noch den alten Namen "Seed" statt "Bartholomäus" (erst nach Neuladen aktuell).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: N1-OB-9, N1-OB-10 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-9, N1-OB-10 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-9 | siehe Handy-Zelle | neu_desktop_onboarding-10-erfolg-ziel.png | critique, clarify
+- N1-OB-10 | siehe Handy-Zelle | neu_desktop_onboarding-10-erfolg-ziel.png | critique, clarify
+
+##### Onboarding 11 erfolg-app (Neuer Nutzer, Desktop)
+Beleg: neu_desktop_onboarding-11-erfolg-app-nochmal.png
+Bewertung: Frisches Konto auf `/app`: "Hey Bartholomäus", Karte "So startest du" (gut), dann Kartenwand, Guthabenkarte, Kachelraster, "Meine Spiele" und "Meine Teams" nur mit Text. "Lobby aufmachen" dreifach, obwohl ein Konto ohne Team keine Lobby öffnen darf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Assessment A, Persona Jordan, Emotional journey, Heuristik 1 Systemstatus] Funde: N1-OB-11, N1-OB-12 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1 A11y (Formularfehler, Labels, Fokus), 4 Responsive] keine Funde (Labels vorhanden, Zielhöhen im Formular ausreichend) |
+| distill (reference/distill.md, manuell) | [Teil: Interaction Simplification, Clear next action] Funde: Kartenwand vor Inhalt, Kachelraster (X-03, X-04), Lobby dreifach (N1-OB-12) |
+| clarify (reference/clarify.md, manuell) | [Teil: Forms, Errors, Success states] Funde: N1-OB-11, N1-OB-12 |
+| adapt (reference/adapt.md, manuell) | [Teil: Desktop Adaptation, Forms] keine Funde |
+| `impeccable detect --json src/app/willkommen` | Quelltext-Lauf: keine Funde (der Zustand ist Laufzeit, im Quelltext nicht prüfbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-11 | siehe Handy-Zelle | neu_desktop_onboarding-11-erfolg-app-nochmal.png | critique, clarify
+- N1-OB-12 | siehe Handy-Zelle | neu_desktop_onboarding-11-erfolg-app-nochmal.png | critique, clarify
+- Verweise (kein neuer Fund): X-03, X-04, X-05, X-20
+
+#### Zusatzaufnahmen (Gast, Handy), Fehler- und Leerzustände
+
+##### /spieler?q=zzzz (Gast, Handy, Zusatz)
+Beleg: gast_mobil_extra_spieler-leer.png
+Bewertung: Leerer Treffer: nur der Satz "Keine Spieler gefunden.", das Suchfeld zeigt "zzz" (von vier Zeichen).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Persona Riley, Heuristik 9] Funde: N1-SP-1, N1-SP-4 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Teil: Clear next action] keine neuen Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states, Errors] Funde: N1-SP-1, N1-SP-4 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation] Funde: X-01 (Suchfeld 48 px) |
+| `Zusatzaufnahme, kein eigener detect-Lauf (gleiche Seite wie in der Zelle oben)` | siehe Zelle der Seite |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-1 | siehe Zelle der Seite | gast_mobil_extra_spieler-leer.png | critique, clarify
+- N1-SP-4 | siehe Zelle der Seite | gast_mobil_extra_spieler-leer.png | critique, clarify
+
+##### /teams?q=zzzz (Gast, Handy, Zusatz)
+Beleg: gast_mobil_extra_teams-leer.png
+Bewertung: Leerer Treffer analog; "Keine Teams gefunden." ohne nächsten Schritt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Persona Riley, Heuristik 9] Funde: N1-TE-3, N1-SP-1 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Teil: Clear next action] keine neuen Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states, Errors] Funde: N1-TE-3, N1-SP-1 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation] Funde: X-01 (Suchfeld 48 px) |
+| `Zusatzaufnahme, kein eigener detect-Lauf (gleiche Seite wie in der Zelle oben)` | siehe Zelle der Seite |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-TE-3 | siehe Zelle der Seite | gast_mobil_extra_teams-leer.png | critique, clarify
+- N1-SP-1 | siehe Zelle der Seite | gast_mobil_extra_teams-leer.png | critique, clarify
+
+##### /spieler?page=2 (Gast, Handy, Zusatz)
+Beleg: gast_mobil_extra_spieler-seite2.png
+Bewertung: Zweite Seite der Liste: Betriebskonten (Seed Admin, Hallenbetreiber, Veranstalter) erscheinen als Spieler. Der Pager liegt hinter der festen Navigation und ist im Ganzseitenbild nicht zu sehen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Persona Riley, Heuristik 9] Funde: N1-SP-2, N1-SP-5 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Teil: Clear next action] keine neuen Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states, Errors] Funde: N1-SP-2, N1-SP-5 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation] Funde: X-01 (Suchfeld 48 px) |
+| `Zusatzaufnahme, kein eigener detect-Lauf (gleiche Seite wie in der Zelle oben)` | siehe Zelle der Seite |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-2 | siehe Zelle der Seite | gast_mobil_extra_spieler-seite2.png | critique, clarify
+- N1-SP-5 | siehe Zelle der Seite | gast_mobil_extra_spieler-seite2.png | critique, clarify
+
+##### /spieler?q=<langer Begriff> (Gast, Handy, Zusatz)
+Beleg: gast_mobil_extra_spieler-suchbegriff-lang.png
+Bewertung: Langer Suchbegriff: im Feld sichtbar nur "Tes".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Persona Riley, Heuristik 9] Funde: N1-SP-1 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Teil: Clear next action] keine neuen Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states, Errors] Funde: N1-SP-1 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation] Funde: X-01 (Suchfeld 48 px) |
+| `Zusatzaufnahme, kein eigener detect-Lauf (gleiche Seite wie in der Zelle oben)` | siehe Zelle der Seite |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-1 | siehe Zelle der Seite | gast_mobil_extra_spieler-suchbegriff-lang.png | critique, clarify
+
+##### /matchmaking, Seitenende (Gast, Handy, Zusatz)
+Beleg: gast_mobil_extra_matchmaking-ende-viewport.png
+Bewertung: Am Ende sichtbar: "Offene Suchen (0)", Leerzustand und der Knopf "Anmelden und Lobby aufmachen"; belegt, dass die Handlung erst nach dem Scrollen erreichbar ist.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Teil: Persona Riley, Heuristik 9] Funde: N1-MM-1, N1-MM-2 |
+| audit (reference/audit.md, manuell) | [Teil: Dimension 1, 4] keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Teil: Clear next action] keine neuen Funde |
+| clarify (reference/clarify.md, manuell) | [Teil: Empty states, Errors] Funde: N1-MM-1, N1-MM-2 |
+| adapt (reference/adapt.md, manuell) | [Teil: Mobile Adaptation] Funde: X-01 (Suchfeld 48 px) |
+| `Zusatzaufnahme, kein eigener detect-Lauf (gleiche Seite wie in der Zelle oben)` | siehe Zelle der Seite |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-MM-1 | siehe Zelle der Seite | gast_mobil_extra_matchmaking-ende-viewport.png | critique, clarify
+- N1-MM-2 | siehe Zelle der Seite | gast_mobil_extra_matchmaking-ende-viewport.png | critique, clarify
+
+
+
+#### Nachlauf-Blatt N2 Spieler mit Team, Spieler ohne Team
+
+Stand: Nachlauf der Gruppe-X-Analyse, Teil 2. Dev-Server Port 3102, Engine 0.1.19 über den Launcher, Seed Seed-Beschreibung (analyse-seed.md). Nur gelesen und gemessen, kein Quelltext geändert. Rollen: Spieler mit Team = `seed-spieler-01@test.local` (Anton Testmann, Mitglied Seed Rot, kein Captain); Spieler ohne Team = `seed-spieler-17@test.local` (Quirin Testmann). Kennungen: N2 = Nachlauf 2. Vorhandene Funde (X-nn, SM-, SD-, N1-) werden nur referenziert. Die Doku-Bezeichnung "Spieler" im ersten Fundblatt (SM-/SD-) bezog sich auf Demo Alpha; hier gelten dieselben Muster mit Seed-Daten.
+
+#### Methode und Grenzen
+
+- Die fünf Reference-Dateien (`critique.md` 819 Zeilen, `audit.md`, `distill.md`, `clarify.md`, `adapt.md`) wurden zu Beginn vollständig gelesen. critique/audit/distill/clarify/adapt haben keinen Launcher-Befehl: sie liefen manuell nach den Dateien, je Durchgang steht in eckigen Klammern der angewandte Teil. critique bleibt degradiert (kein Overlay, kein getrennter Assessment-B-Sub-Agent; Assessment B = `detect`).
+- `context` (Launcher) lief einmal: PRODUCT.md geladen (Plattform web, Kartenmodell nach Vertrag 012).
+- `detect --json --viewport <WxH> <URL>` lief je Seite und Viewport (26 Läufe, plus Wiederholung für `/` und `/suche`: erneut Navigation timeout nach 30 s, Dauerverbindung, Ersatz Quelltext-Lauf: keine Funde). `detect` per URL hat keine Sitzung: für `/app*` und `/einladung` wurde die Weiterleitung auf die Anmeldeseite bzw. die Seite ohne Sitzung gemessen; deshalb zusätzlich Quelltext-Läufe (Seitenordner app, einladung, suche, spieler, teams, matchmaking, mitspieler sowie UserMenu.tsx und Header.tsx): je keine Funde. Der Fund `overused-font` (Plus Jakarta Sans, 92 bis 98 %) erscheint auf allen Seiten und ist in DESIGN.md gesetzt: kein Fund.
+- Ganzseitige Handy-Bilder zeigen die feste untere Navigation mitten im Bild und das runde N (Next-Overlay): Aufnahme-Artefakt, kein Fund.
+- Zusatzaufnahmen per Playwright (Dev-Login). Für den Fehlerzustand "leerer Name" wurde die Browser-Pflichtprüfung (`required`) abgeschaltet, sonst erreicht das Absenden den Server.
+- Nicht prüfbar mit dem Seed: gefüllte Benachrichtigungen (Spieler 01 hat keine; die Glocke ohne Zähler ist daher nicht beurteilbar; erst durch den Beitritt von Spieler 17 entsteht eine Meldung für Rot Captain, nicht für 01), Guthaben-Verlauf mit Buchungen (Seed legt kein Hauptbuch an), Zustand "mehr als 30 Spieler/Teams", "Bitte warten…" des Absende-Knopfs, echter Google-Login, `required`-Sprechblase.
+
+#### Geänderte Daten durch die Analyse
+
+- **Beitritt (Zusatz c):** Vorher: `seed-spieler-17@test.local` ohne Team (`spieler17_*_app.png`: "Du bist noch in keinem Team"; Seed Rot mit 5 Spielern im Kader). Aktion: Klick "Team beitreten" auf `/einladung/seed-team-gueltig` (Handy). Nachher: Spieler 17 ist Mitglied von Seed Rot (Rolle Spieler, Kader 6), `/app` zeigt "Meine Teams: Seed Rot"; der Dienst legt einen Audit-Eintrag an und benachrichtigt die Team-Admins (Rot Captain). Der Desktop-Lauf traf Spieler 17 schon als Mitglied an. Rückgängig nur per Seed-Neuaufruf oder durch "Team verlassen" im Konto von 17 (nicht ausgeführt); der Seed löscht Teammitglieder nicht ausdrücklich.
+- Profil speichern und Benachrichtigungen Speichern (Spieler 01) schrieben unveränderte Werte; der Fehlerlauf (leerer Name) speichert nichts. Der Dev-Login legte für beide Konten Sitzungen an.
+
+
+#### Spieler mit Team (Seed Rot, kein Captain)
+
+##### / (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_start.png (Messung 60 von 95 Zielen unter 44 px, Seitenhöhe 5559 px, kein Überlauf)
+Bewertung: Eingeloggt öffnet die Startseite mit dem Kasten "Meine aktuellen Spiele" und schiebt das Hallenfoto darunter; danach noch einmal Karten, Erklärung, Zähler und vier Lobbys: 5559 px. Für ein Mitglied bleibt "Team gründen" die farbige erste Handlung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Kognitive Last (Wand der Optionen), Persona Casey] Funde: dreifacher Kasten (N2-AP-1), eigene Lobbys unmarkiert (N2-SU-3); "Team gründen" im Hero für Mitglied (SM-ST-1), Zähler 8/35/3 (N1-ST-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, Zielgrößen] Funde: 60 von 95 Zielen unter 44 px (Teilen-Link 32 x 16, N1-SU-3); kein Überlauf; Kasten-Knöpfe 44 px (gut) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde: Kasten + Liste + "Meine Spiele"-Wiederholung (N2-AP-1); Lobby-Liste ungekürzt (N1-ST-2) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions] Funde: Altmodelltext "Du lädst dein Guthaben auf" erscheint auch für Angemeldete (MUSS WEG-Tabelle); "VS." gegen "gegen" (N2-AP-5) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation, Content Strategy] Funde: Hero unterhalb von rund 480 px Kasten, Primärknöpfe 3 + 5 (N2-AP-1); sonst N1-ST-2 |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/` | Navigation timeout nach 30 s, Wiederholungslauf wieder (Dauerverbindung); Ersatz: Quelltext-Lauf der Seite und Header.tsx: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-AP-1 | P1 | Der Kasten "Meine aktuellen Spiele" (drei Karten mit je eigenem Primärknopf "Zur Lobby") steht auf `/app`, auf `/` (über dem Hero) und auf `/suche` (vor Filtern und Liste). Er wiederholt dieselben drei Spiele, die weiter unten in "Meine Spiele" und in der Lobby-Liste nochmals stehen: dreifache Wiederholung, auf dem Handy rund 480 px Höhe und drei Primärknöpfe vor jedem eigentlichen Inhalt; auf `/suche` rutscht die Filtermaske unter die Bildschirmmitte. | spieler01_mobil_start.png, spieler01_mobil_suche.png, spieler01_mobil_app.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N2-AP-5 | P2 | Schreibweise uneinheitlich: Kasten "Seed Rot VS. Seed Blau" (Großbuchstaben, Punkt), Liste "Seed Rot gegen Seed Blau"; das Privatspiel zeigt die internen Teamnamen "Seed Privat A VS. Seed Privat B" und bricht am Handy mitten im Namen um ("B" allein in der Zeile). | spieler01_mobil_app.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N2-SU-3 | P1 | Die eigenen Lobbys (#1003, #1001 mit "Anton Testmann" im Kader) stehen ungekennzeichnet in der Liste unter dem Titel "Offene Lobbys anderer Teams"; der Titel ist für den Spieler falsch, es fehlt "Dein Team" oder "Du bist dabei". Der rote Punkt neben dem eigenen Namen (#1001 "In der Lobby") steht neben dem grünen (#1003) ohne Hinweis, welche Handlung nötig ist. | spieler01_desktop_suche.png, spieler01_mobil_suche.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- SM-ST-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_start.png | siehe Durchgangstabelle
+- N1-ST-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_start.png | siehe Durchgangstabelle
+- N1-ST-2 | bereits vorhanden, hier bestätigt | spieler01_mobil_start.png | siehe Durchgangstabelle
+
+##### / (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_start.png (Messung 64 von 95 Zielen unter 44 px, Seitenhöhe 3606 px, kein Überlauf)
+Bewertung: Am Desktop steht der Kasten sauber im Raster über dem Hero; die Lobby-Karten sind zweispaltig lesbar, die eigenen Lobbys (#1003, #1001) sind nicht als eigene erkennbar. Hero zeigt weiter "Team gründen" als Primärknopf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4 Konsistenz, 8 Minimalismus] Funde: Kasten vor Hero (N2-AP-1), eigene Lobbys unmarkiert (N2-SU-3), SM-ST-1/SD-ST-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde: Ampelpunkte mit Textlabel (gut); 64 von 95 Zielen unter 44 px; kein Überlauf |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Wiederholung Kasten/Liste (N2-AP-1); Zählerkacheln gegen Liste (N1-ST-1) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: "Was kostet das?": "Du lädst dein Guthaben auf" (MUSS WEG, neu für Rolle Spieler); "Kostenlos anmelden" bei Angemeldeten sinnlos (siehe MUSS WEG) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation, Layout] Funde: 720-px-Spalte wie X-17; Lobby-Karten gut zweispaltig (kein Fund) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/` | Navigation timeout nach 30 s, Wiederholungslauf wieder (Dauerverbindung); Ersatz: Quelltext-Lauf der Seite und Header.tsx: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-AP-1 | siehe / (Spieler mit Team, Handy) | spieler01_desktop_start.png | wiederholt
+- N2-SU-3 | siehe / (Spieler mit Team, Handy) | spieler01_desktop_start.png | wiederholt
+- SM-ST-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_start.png | siehe Durchgangstabelle
+- N1-ST-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_start.png | siehe Durchgangstabelle
+
+##### /suche (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_suche.png (Messung 60 von 93 Zielen unter 44 px, Seitenhöhe 3661 px, kein Überlauf)
+Bewertung: Auf `/suche` verdrängt der Kasten die Filter nach unten; die erste Lobby-Karte beginnt weit unter dem Bildschirm. Die eigenen Lobbys erscheinen als "Offene Lobbys anderer Teams".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 2, 6] Funde: Titel "anderer Teams" falsch, eigene Lobbys unmarkiert (N2-SU-3); Kasten verdrängt Filter (N2-AP-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] Funde: 60 von 93 Zielen unter 44 px; "Teilen" 32 x 16 (N1-SU-3); Art-Auswahl abgeschnitten (X-10) |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: sechs Filter vor vier Einträgen (N1-SU-2, X-10) |
+| clarify (reference/clarify.md, manuell) | [Actions, Empty states] Funde: "Lobby aufmachen" als Spieler (SM-SU-1); Kader gegen Plätze (N2-SU-4) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Karte bis Karte ohne Anker zurück (N1-SU-2) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/suche` | Navigation timeout nach 30 s, Wiederholungslauf wieder (Dauerverbindung); Ersatz: Quelltext-Lauf der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-SU-3 | siehe / (Spieler mit Team, Handy) | spieler01_mobil_suche.png | wiederholt
+- N2-AP-1 | siehe / (Spieler mit Team, Handy) | spieler01_mobil_suche.png | wiederholt
+- N2-SU-4 | P2 | Zahlen in der Lobby-Karte widersprechen sich auf den ersten Blick: "Stärke 4/5 · 5 im Kader" und "0 von 3 bereit · noch 3 Plätze frei" (Kader 5, dennoch 3 Plätze frei); nach dem Beitritt von Spieler 17 steht "6 im Kader" bei unveränderten "3 Plätzen" (spieler01_desktop_extra-suche-filter-koeln.png). Kader und Lobby-Plätze sind zwei Größen ohne Erklärung. | spieler01_desktop_extra-suche-filter-koeln.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- SM-SU-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_suche.png | siehe Durchgangstabelle
+- N1-SU-2 | bereits vorhanden, hier bestätigt | spieler01_mobil_suche.png | siehe Durchgangstabelle
+- N1-SU-3 | bereits vorhanden, hier bestätigt | spieler01_mobil_suche.png | siehe Durchgangstabelle
+
+##### /suche (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_suche.png (Messung 64 von 93 Zielen unter 44 px, Seitenhöhe 2404 px, kein Überlauf)
+Bewertung: Am Desktop liest sich die Seite gut (Filterraster 3 x 2, zweispaltige Lobbys), aber die eigenen Lobbys stehen unter "anderer Teams", und der Kasten steht noch vor der Filtermaske.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2, 4] Funde: N2-SU-3, N2-AP-1; Schwäche "Lobby aufmachen" für Spieler (SM-SU-1) |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4] Funde: 64 von 93 Zielen unter 44 px; Ampel mit sr-only-Label (gut) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: dieselbe Liste wie auf `/` (N1-ST-2); sonst N2-AP-1 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: Kader/Plätze (N2-SU-4) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/suche` | Navigation timeout nach 30 s, Wiederholungslauf wieder (Dauerverbindung); Ersatz: Quelltext-Lauf der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-SU-3 | siehe / (Spieler mit Team, Handy) | spieler01_desktop_suche.png | wiederholt
+- N2-AP-1 | siehe / (Spieler mit Team, Handy) | spieler01_desktop_suche.png | wiederholt
+- N2-SU-4 | siehe /suche (Spieler mit Team, Handy) | spieler01_desktop_suche.png | wiederholt
+- SM-SU-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_suche.png | siehe Durchgangstabelle
+
+##### /spieler (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_spieler.png (Messung 9 von 68 Zielen unter 44 px, Seitenhöhe 3175 px, kein Überlauf)
+Bewertung: 30 gefüllte Zeilen lesen sich ruhig; das Suchfeld ist weiter auf rund 48 px gequetscht (Platzhalter "Na"). Die eigene Zeile (Anton Testmann) ist nicht markiert, Demo- und Admin-Konten stehen mit 0 Spielen in der Liste.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 6 Erkennen, Persona Casey] Funde: Suchfeld (X-01/N1-SP-1), eigene Zeile unmarkiert (SM-SP-1), Konten ohne Spiele (N1-SP-2) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] Funde: nur 9 von 68 Zielen unter 44 px, Pager 36 px (N1-SP-5); kein Überlauf |
+| distill (reference/distill.md, manuell) | [Information Architecture] Funde: keine Teamzugehörigkeit, keine Elo in den Zeilen (N1-SP-3) |
+| clarify (reference/clarify.md, manuell) | [Empty states] Funde: kein Fund in diesem Zustand; Leerzustand siehe extra-spieler-leer |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation, Touch] Funde: Suchfeld zu schmal (X-01) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/spieler` | 2 Funde: low-contrast (Platzhalter "Name suchen" 4,1:1, = X-16), overused-font (Plus Jakarta Sans 98 %, in DESIGN.md gesetzt, kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- X-01 | bereits vorhanden, hier bestätigt | spieler01_mobil_spieler.png | siehe Durchgangstabelle
+- SM-SP-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_spieler.png | siehe Durchgangstabelle
+- N1-SP-2 | bereits vorhanden, hier bestätigt | spieler01_mobil_spieler.png | siehe Durchgangstabelle
+- N1-SP-3 | bereits vorhanden, hier bestätigt | spieler01_mobil_spieler.png | siehe Durchgangstabelle
+- N1-SP-5 | bereits vorhanden, hier bestätigt | spieler01_mobil_spieler.png | siehe Durchgangstabelle
+
+##### /spieler (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_spieler.png (Messung 13 von 68 Zielen unter 44 px, Seitenhöhe 3015 px, kein Überlauf)
+Bewertung: Am Desktop ist das Suchfeld breit genug; die Liste ist weiter eine 614-px-Spalte mit zwei Informationen je Zeile. Eigener Eintrag nicht markiert.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 6] Funde: SM-SP-1, N1-SP-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: 13 von 68 Zielen unter 44 px; Platzhalter-Kontrast 4,1:1 (X-16) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine neuen Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: keine Funde |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: N1-SP-6 (zwei Infos je Zeile) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/spieler` | 2 Funde: low-contrast (= X-16), overused-font (kein Fund, DESIGN.md); Quelltext: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-SP-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_spieler.png | siehe Durchgangstabelle
+- N1-SP-2 | bereits vorhanden, hier bestätigt | spieler01_desktop_spieler.png | siehe Durchgangstabelle
+- N1-SP-6 | bereits vorhanden, hier bestätigt | spieler01_desktop_spieler.png | siehe Durchgangstabelle
+- X-16 | bereits vorhanden, hier bestätigt | spieler01_desktop_spieler.png | siehe Durchgangstabelle
+
+##### /teams (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_teams.png (Messung 8 von 43 Zielen unter 44 px, Seitenhöhe 1107 px, kein Überlauf)
+Bewertung: Sechs Teamkarten, das eigene Team (Seed Rot, 4. Zeile) ohne Markierung; Elo ungeordnet; das Suchfeld ist wieder auf 48 px gequetscht.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 6] Funde: eigenes Team unmarkiert (SM-TE-1), Suchfeld (X-01), Elo ungeordnet (N1-TE-2), keine Teamfarbe (N1-TE-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 8 von 43 Zielen unter 44 px; Platzhalter-Kontrast (X-16) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: "fordere sie heraus" für Nicht-Admins (SD-TE-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: X-01 |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/teams` | 2 Funde: low-contrast (Platzhalter "Teamname" 4,1:1, = X-16), overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-TE-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_teams.png | siehe Durchgangstabelle
+- X-01 | bereits vorhanden, hier bestätigt | spieler01_mobil_teams.png | siehe Durchgangstabelle
+- N1-TE-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_teams.png | siehe Durchgangstabelle
+- N1-TE-2 | bereits vorhanden, hier bestätigt | spieler01_mobil_teams.png | siehe Durchgangstabelle
+- SD-TE-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_teams.png | siehe Durchgangstabelle
+
+##### /teams (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_teams.png (Messung 12 von 43 Zielen unter 44 px, Seitenhöhe 923 px, kein Überlauf)
+Bewertung: Sechs Karten in einer Spalte, das eigene Team ist nicht hervorgehoben; Demo Alpha/Bravo zeigen "noch ohne Spiel" statt einer Elo-Zahl, was die Reihenfolge der Spalte bricht.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4] Funde: SM-TE-1; "noch ohne Spiel" statt Elo (N1-TE-2) |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: 12 von 43 Zielen unter 44 px; X-16 |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SD-TE-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: gestreckte Spalte (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/teams` | 2 Funde: low-contrast (Platzhalter "Teamname" 4,1:1, = X-16), overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-TE-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_teams.png | siehe Durchgangstabelle
+- N1-TE-2 | bereits vorhanden, hier bestätigt | spieler01_desktop_teams.png | siehe Durchgangstabelle
+- X-17 | bereits vorhanden, hier bestätigt | spieler01_desktop_teams.png | siehe Durchgangstabelle
+
+##### /matchmaking (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_matchmaking.png (Messung 12 von 38 Zielen unter 44 px, Seitenhöhe 1216 px, kein Überlauf)
+Bewertung: Überschrift und Einleitung ("Du bist Captain...") passen nicht zum Spieler; der Hinweis "Nur Team-Admins..." liegt unter der Navigation. "Offene Suchen (0)" widerspricht den vier Lobbys auf `/suche`.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2, 4] Funde: SM-MA-1, N1-MM-1 (0 Suchen gegen 4 Lobbys), N2-MM-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 12 von 38 Zielen unter 44 px; "Alle Dauer" abgeschnitten (N1-MM-3) |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: Filter über leerer Liste (N1-MM-4) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Empty states] Funde: "Team gründen" für Mitglied (N2-MM-1); straggler "offen." (N1-MM-5) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Formular/Hinweis am Seitenende (SM-MA-1) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/matchmaking` | 2 Funde: straggler ("offen." allein in der letzten Zeile, = N1-MM-5), overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-MM-1 | P1 | Spieler01 ist Mitglied von Seed Rot. Der Hinweis unter der Liste lautet trotzdem "Nur Team-Admins können nach Gegnern suchen. Team gründen": für ein bestehendes Mitglied falsch; richtig wäre "Frag Rot Captain (dein Team-Admin)". Die Seite weiß, in welchem Team er ist (Kasten auf `/app`), nutzt es aber nicht. Ergänzt SM-MA-1. | spieler01_desktop_matchmaking.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- SM-MA-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-3 | bereits vorhanden, hier bestätigt | spieler01_mobil_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-4 | bereits vorhanden, hier bestätigt | spieler01_mobil_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-5 | bereits vorhanden, hier bestätigt | spieler01_mobil_matchmaking.png | siehe Durchgangstabelle
+
+##### /matchmaking (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_matchmaking.png (Messung 16 von 38 Zielen unter 44 px, Seitenhöhe 812 px, kein Überlauf)
+Bewertung: Der Hinweis "Nur Team-Admins können nach Gegnern suchen. Team gründen" steht unter der Liste; für Anton, der in Seed Rot spielt, ist er falsch.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2, 9] Funde: N2-MM-1, SD-MM-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: 16 von 38 Zielen unter 44 px; Zeilenlänge 99 Zeichen (N1-MM-5) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Erklärkasten + Absatz + Hinweis dreimal Captain-Aufgabe (SD-MM-1) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N2-MM-1; Begriff Lobby/Suche (N1-MM-1) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/matchmaking` | 3 Funde: line-length (~99 Zeichen, = N1-MM-5), straggler ("hier."), overused-font (kein Fund); Quelltext: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-MM-1 | siehe /matchmaking (Spieler mit Team, Handy) | spieler01_desktop_matchmaking.png | wiederholt
+- SD-MM-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-5 | bereits vorhanden, hier bestätigt | spieler01_desktop_matchmaking.png | siehe Durchgangstabelle
+
+##### /mitspieler (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_mitspieler.png (Messung 8 von 40 Zielen unter 44 px, Seitenhöhe 921 px, kein Überlauf)
+Bewertung: Die Seite ist leer (niemand eingetragen), das Eintragsformular ist schlicht. Stadt ist aus dem Profil vorbelegt, der Filter darunter nicht.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 5 Fehlervermeidung] Funde: N2-MI-1, Leerzustand (N1-MI-1), Sichtbarkeit unklar (SM-MI-2) |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 8 von 40 Zielen unter 44 px; natives Datumsfeld ohne Vorgabe |
+| distill (reference/distill.md, manuell) | [Information Architecture] Funde: Seite nicht verlinkt (SM-MI-3) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Empty states] Funde: N1-MI-1; "Frag ihn an" (SM-MI-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/mitspieler` | 1 Fund: overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-MI-1 | P2 | Im Formular "Ich suche ein Spiel" ist die Stadt aus dem Profil vorbelegt (Köln, gut), der Filter darunter steht auf "Alle Städte": zwei Stadtfelder mit verschiedenen Vorgaben auf derselben Seite, ohne Erklärung, dass die Liste nicht nach Köln gefiltert ist. | spieler01_mobil_mitspieler.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N1-MI-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_mitspieler.png | siehe Durchgangstabelle
+- SM-MI-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_mitspieler.png | siehe Durchgangstabelle
+- SM-MI-2 | bereits vorhanden, hier bestätigt | spieler01_mobil_mitspieler.png | siehe Durchgangstabelle
+- SM-MI-3 | bereits vorhanden, hier bestätigt | spieler01_mobil_mitspieler.png | siehe Durchgangstabelle
+
+##### /mitspieler (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_mitspieler.png (Messung 12 von 40 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf)
+Bewertung: Wie am Handy: Formular oben, leere Liste. Zwei gleich starke Knöpfe ("Eintragen", "Filtern").
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4] Funde: N2-MI-1, N1-MI-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: 12 von 40 Zielen unter 44 px; kein Überlauf |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N1-MI-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/mitspieler` | 1 Fund: overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-MI-1 | siehe /mitspieler (Spieler mit Team, Handy) | spieler01_desktop_mitspieler.png | wiederholt
+- N1-MI-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_mitspieler.png | siehe Durchgangstabelle
+- N1-MI-2 | bereits vorhanden, hier bestätigt | spieler01_desktop_mitspieler.png | siehe Durchgangstabelle
+
+##### /einladung/seed-team-gueltig (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_einladung-seed-team-gueltig.png (Messung 8 von 35 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf)
+Bewertung: Ein bestehendes Mitglied von Seed Rot sieht "Du wurdest eingeladen zu Seed Rot" und "Team beitreten" (bestätigt SM-EL-1 mit echten Daten). Der Reiter "Privatspiel" ist aktiv.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 5] Funde: SM-EL-1, N1-EG-1 (kein Einladender), N1-EG-3 (Reiter) |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 8 von 35 Zielen unter 44 px; Knopf 44 px (gut) |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: kein "Du bist schon Mitglied" (SM-EL-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/einladung/seed-team-gueltig` | 1 Fund: overused-font (kein Fund); Seite per URL ohne Sitzung gemessen; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-EL-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+- N1-EG-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+- N1-EG-3 | bereits vorhanden, hier bestätigt | spieler01_mobil_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+
+##### /einladung/seed-team-gueltig (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_einladung-seed-team-gueltig.png (Messung 12 von 35 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf)
+Bewertung: Zentrierter Block mit Teamname und Knopf; für ein Mitglied irreführend (SM-EL-1).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1] Funde: SM-EL-1, SD-EL-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 12 von 35 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SM-EL-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: 800-px-Seite, Fußzeile direkt unter dem Block (SD-ALL-9) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/einladung/seed-team-gueltig` | 1 Fund: overused-font (kein Fund); Seite per URL ohne Sitzung gemessen; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-EL-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+- SD-EL-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+- SD-ALL-9 | bereits vorhanden, hier bestätigt | spieler01_desktop_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+
+##### /einladung/seed-team-abgelaufen (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_einladung-seed-team-abgelaufen.png (Messung 8 von 35 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf)
+Bewertung: "Link abgelaufen" mit dem Satz "Bitte den Team-Admin um einen neuen Link." Für ein Mitglied sinnlos, kein Name des Admins.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 9 Fehlerbehebung] Funde: N2-EA-1, N1-EA-1, N1-EA-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 8 von 35 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: einziger Knopf "Zur Startseite" (SM-EU-1) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N2-EA-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/einladung/seed-team-abgelaufen` | 1 Fund: overused-font (kein Fund); Seite per URL ohne Sitzung gemessen; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-EA-1 | P2 | Für ein bestehendes Mitglied von Seed Rot ist "Link abgelaufen. Bitte den Team-Admin um einen neuen Link" sinnlos: Die Seite sagt nicht "Du bist schon im Team" und nennt nicht Rot Captain; der Reiter "Privatspiel" ist aktiv (N1-EG-3). Gilt unverändert nach dem Beitritt von Spieler 17. | spieler01_mobil_einladung-seed-team-abgelaufen.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N1-EA-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_einladung-seed-team-abgelaufen.png | siehe Durchgangstabelle
+- N1-EA-2 | bereits vorhanden, hier bestätigt | spieler01_mobil_einladung-seed-team-abgelaufen.png | siehe Durchgangstabelle
+- SM-EU-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_einladung-seed-team-abgelaufen.png | siehe Durchgangstabelle
+
+##### /einladung/seed-team-abgelaufen (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_einladung-seed-team-abgelaufen.png (Messung 12 von 35 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf)
+Bewertung: Wie am Handy, kurze Seite, Fußzeile direkt unter dem Block.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 9] Funde: N2-EA-1, N1-EA-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 12 von 35 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N2-EA-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: SD-ALL-9 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/einladung/seed-team-abgelaufen` | 1 Fund: overused-font (kein Fund); Seite per URL ohne Sitzung gemessen; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-EA-1 | siehe /einladung/seed-team-abgelaufen (Spieler mit Team, Handy) | spieler01_desktop_einladung-seed-team-abgelaufen.png | wiederholt
+- N1-EA-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_einladung-seed-team-abgelaufen.png | siehe Durchgangstabelle
+- SD-ALL-9 | bereits vorhanden, hier bestätigt | spieler01_desktop_einladung-seed-team-abgelaufen.png | siehe Durchgangstabelle
+
+##### /app (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_app.png (Messung 12 von 55 Zielen unter 44 px, Seitenhöhe 2696 px, kein Überlauf)
+Bewertung: Gefülltes `/app`: Kasten oben, dann drei Spielkarten, Guthaben-Karte, Kacheln, "Meine Spiele" (5 Zeilen) und "Meine Teams" mit Seed Rot. Die Spielinformation ist da, aber dreifach und widersprüchlich beschriftet; Halle und eigener Status fehlen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Kognitive Last, Persona Casey, Emotionale Reise] Funde: N2-AP-1, N2-AP-2, N2-AP-4, N2-AP-5; Kartenwand vor Spielen (X-03, SM-AP-1) |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde: 12 von 55 Zielen unter 44 px; Status nur als Text, kein Symbol (N2-AP-2); kein Überlauf |
+| distill (reference/distill.md, manuell) | [Remove Redundancy, Visual Simplification] Funde: Kasten + Liste (N2-AP-1); Schnellzugriff 5 Kacheln (X-04); Guthaben-Karte (MUSS WEG) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions] Funde: "Bereit machen und bezahlen" gegen "Wartet auf Spieler" (N2-AP-2); "Lobby aufmachen" dreifach (X-20) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation, Content Strategy] Funde: Liste hart bei 5 (N2-AP-3); "Meine Teams" mit Button "Team gründen" neben Rolle "Spieler" (SM-AP-2) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): straggler ("nötig.", gehört zu `/anmelden`, = X-13), overused-font; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-AP-1 | siehe / (Spieler mit Team, Handy) | spieler01_mobil_app.png | wiederholt
+- N2-AP-2 | P1 | Widersprüchliche Statuswörter für dasselbe Spiel: #1001 (Rot gegen Blau, Di. 17.11.) heißt im Kasten "Bereit machen und bezahlen", in der Liste darunter "Wartet auf Spieler". Die Liste "Meine Spiele" ist nicht nach Datum sortiert (17.11., 15.11., 14.11., 12.11., 04.11.) und mischt Zukunft, Absage und Vergangenes in einer Spalte; Status nur als graues oder orangefarbenes 12-px-Wort rechts, ohne Form oder Symbol. | spieler01_desktop_app.png, spieler01_mobil_app.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N2-AP-3 | P2 | "Meine Spiele" bricht hart bei fünf Einträgen ab (Seed hat 9 Spiele, davon 3 vergangene Spiele 7/14/21 Tage zurück; sichtbar ist nur eines, "Mi., 04.11. Beendet") ohne "Alle ansehen" und ohne Ergebnis (5:3 steht erst auf der Teamseite). Die Spielhistorie ist von hier nicht erreichbar. | spieler01_desktop_app.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N2-AP-4 | P1 | Das bestätigte Spiel #1003 ("Bestätigt: Das Spiel steht") nennt weder Halle noch Treffpunkt noch den eigenen Status (bin ich bereit, zahle ich?). Für einen Spieler am Handy ist "wo und wann?" die erste Frage; Halle (Seed-Halle Nord) steht nur in der Lobby-Liste auf `/suche`, nicht im Kasten oder in "Meine Spiele". | spieler01_mobil_app.png, spieler01_desktop_app.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N2-AP-5 | siehe / (Spieler mit Team, Handy) | spieler01_mobil_app.png | wiederholt
+- X-03 | bereits vorhanden, hier bestätigt | spieler01_mobil_app.png | siehe Durchgangstabelle
+- X-04 | bereits vorhanden, hier bestätigt | spieler01_mobil_app.png | siehe Durchgangstabelle
+- X-20 | bereits vorhanden, hier bestätigt | spieler01_mobil_app.png | siehe Durchgangstabelle
+- SM-AP-2 | bereits vorhanden, hier bestätigt | spieler01_mobil_app.png | siehe Durchgangstabelle
+
+##### /app (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_app.png (Messung 16 von 55 Zielen unter 44 px, Seitenhöhe 1910 px, kein Überlauf)
+Bewertung: Am Desktop liest sich der gefüllte Zustand klarer (Kasten mit Knopf rechts), die Doppelung von Kasten und Liste bleibt; "Beendet" steht ohne Ergebnis, die Liste hat keine Datumsordnung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4, 8] Funde: N2-AP-1, N2-AP-2, N2-AP-3, N2-AP-4 |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: 16 von 55 Zielen unter 44 px; Hover fehlt (SD-ALL-4) |
+| distill (reference/distill.md, manuell) | [Information Architecture] Funde: Schnellzugriff 2. Reihe mit Lücke (SD-AP-4); Liste (N2-AP-3) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N2-AP-2; Guthaben-Karte (MUSS WEG) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: 720-px-Spalte (X-17); vier Primärknöpfe im ersten Bildschirm (SD-AP-3) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-AP-1 | siehe / (Spieler mit Team, Handy) | spieler01_desktop_app.png | wiederholt
+- N2-AP-2 | siehe /app (Spieler mit Team, Handy) | spieler01_desktop_app.png | wiederholt
+- N2-AP-3 | siehe /app (Spieler mit Team, Handy) | spieler01_desktop_app.png | wiederholt
+- N2-AP-4 | siehe /app (Spieler mit Team, Handy) | spieler01_desktop_app.png | wiederholt
+- SD-AP-3 | bereits vorhanden, hier bestätigt | spieler01_desktop_app.png | siehe Durchgangstabelle
+- SD-AP-4 | bereits vorhanden, hier bestätigt | spieler01_desktop_app.png | siehe Durchgangstabelle
+- X-17 | bereits vorhanden, hier bestätigt | spieler01_desktop_app.png | siehe Durchgangstabelle
+
+##### /app/suche/neu (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_app-suche-neu.png (Messung 9 von 36 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf)
+Bewertung: Ein Mitglied von Seed Rot liest "Du brauchst ein Team, bei dem du Team-Admin bist" und bekommt "Team gründen": falsche Handlung (SM-SN-1). Reiter "Profil" aktiv statt "Spiel suchen".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2, 3] Funde: SM-SN-1, SM-GL-1 (Reiter) |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 9 von 36 Zielen unter 44 px; Seite endet nach 844 px |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: keine neuen Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SM-SN-1, Rollenbegriffe (SM-GL-5) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/suche/neu` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): straggler ("nötig.", gehört zu `/anmelden`, = X-13), overused-font; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-SN-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-suche-neu.png | siehe Durchgangstabelle
+- SM-GL-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-suche-neu.png | siehe Durchgangstabelle
+- SM-GL-5 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-suche-neu.png | siehe Durchgangstabelle
+
+##### /app/suche/neu (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_app-suche-neu.png (Messung 13 von 36 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf)
+Bewertung: Wie am Handy; schmale 448-px-Spalte (SD-SN-1), die Aussage passt nicht zu einem Mitglied.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2] Funde: SM-SN-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 13 von 36 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SM-SN-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: SD-SN-1 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/suche/neu` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-SN-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-suche-neu.png | siehe Durchgangstabelle
+- SD-SN-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-suche-neu.png | siehe Durchgangstabelle
+
+##### /app/einstellungen (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_app-einstellungen.png (Messung 30 von 69 Zielen unter 44 px, Seitenhöhe 2179 px, kein Überlauf)
+Bewertung: Gefülltes Profil (Name, Köln, Abwehr), Profilfarbe ohne sichtbare Auswahl, elf Haken für Benachrichtigungen, darunter "Neue Aufgabe für Admins" für einen Spieler. Seite 2179 px lang.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 7, 10] Funde: Admin-Art für Spieler (SM-ES-1), Profilfarbe (SD-ES-1), Länge (X-08) |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: 30 von 69 Zielen unter 44 px (Checkbox-Zeilen); kein Überlauf |
+| distill (reference/distill.md, manuell) | [Progressive disclosure] Funde: elf Haken ohne Gruppierung (X-08) |
+| clarify (reference/clarify.md, manuell) | [Forms, Success] Funde: Erfolg/Fehler siehe extra-Zellen (N2-ES-1 bis N2-ES-3) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Zwei Speichern-Knöpfe 44 px (gut) aber Abstand zur Navigation |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/einstellungen` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): straggler ("nötig.", gehört zu `/anmelden`, = X-13), overused-font; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-ES-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-einstellungen.png | siehe Durchgangstabelle
+- SD-ES-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-einstellungen.png | siehe Durchgangstabelle
+- X-08 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-einstellungen.png | siehe Durchgangstabelle
+
+##### /app/einstellungen (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_app-einstellungen.png (Messung 34 von 69 Zielen unter 44 px, Seitenhöhe 1967 px, kein Überlauf)
+Bewertung: Der volle Zustand zeigt drei Blöcke mit vier Balken in gleicher Gewichtung ("Profil speichern", "Speichern", "Alle meine Daten..."); Push meldet "noch nicht eingerichtet".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 8] Funde: SD-ES-1, SD-ES-4, SM-ES-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: 34 von 69 Zielen unter 44 px; Checkboxen 20 px (SD-ES-2) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: SD-ES-3 (Konto löschen ohne Guthabenhinweis) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: "Zahlungen bekommst du immer" (SM-ES-2) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/einstellungen` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SD-ES-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-einstellungen.png | siehe Durchgangstabelle
+- SD-ES-2 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-einstellungen.png | siehe Durchgangstabelle
+- SD-ES-3 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-einstellungen.png | siehe Durchgangstabelle
+- SD-ES-4 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-einstellungen.png | siehe Durchgangstabelle
+- SM-ES-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-einstellungen.png | siehe Durchgangstabelle
+- SM-ES-2 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-einstellungen.png | siehe Durchgangstabelle
+
+##### /app/benachrichtigungen (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_app-benachrichtigungen.png (Messung 9 von 35 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf)
+Bewertung: Der Seed erzeugt keine Benachrichtigungen für Spieler 01: Leerzustand "Noch keine Benachrichtigungen." Gefüllte Einträge sind mit dem Seed nicht prüfbar.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1] Funde: Leerzustand ohne Beispiel (SM-BE-1); gefüllter Zustand nicht prüfbar |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 9 von 35 Zielen unter 44 px; "Einstellungen" kleiner Link |
+| distill (reference/distill.md, manuell) | [Information Architecture] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SM-BE-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: SD-ALL-9 (kurze Seite) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/benachrichtigungen` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): straggler ("nötig.", gehört zu `/anmelden`, = X-13), overused-font; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-BE-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-benachrichtigungen.png | siehe Durchgangstabelle
+- SD-ALL-9 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-benachrichtigungen.png | siehe Durchgangstabelle
+
+##### /app/benachrichtigungen (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_app-benachrichtigungen.png (Messung 13 von 35 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf)
+Bewertung: Wie am Handy, kurze Seite, Leerzustand; Seed ohne Benachrichtigung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1] Funde: SM-BE-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 13 von 35 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SM-BE-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: SD-ALL-9 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/benachrichtigungen` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-BE-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-benachrichtigungen.png | siehe Durchgangstabelle
+- SD-ALL-9 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-benachrichtigungen.png | siehe Durchgangstabelle
+
+##### /app/guthaben (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_app-guthaben.png (Messung 9 von 41 Zielen unter 44 px, Seitenhöhe 1519 px, kein Überlauf)
+Bewertung: Mit dem Seed ändert sich nichts: 0,00 Euro, "Noch keine Buchungen/Belege"; ein Verlauf mit Einträgen ist nicht prüfbar (Seed legt kein Hauptbuch an). Aufladen, Rabattcode und Fristtext stehen noch.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: SM-GU-1, X-09, X-05 (alles MUSS WEG, schon im Dokument) |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 9 von 41 Zielen unter 44 px; "Jetzt bezahlen" unter der Navigation verdeckt (Artefakt) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: X-09 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: Fristtext "bis 24 Stunden vorher ab" (siehe MUSS WEG-Tabelle) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: X-09 |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/guthaben` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): straggler ("nötig.", gehört zu `/anmelden`, = X-13), overused-font; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-GU-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-guthaben.png | siehe Durchgangstabelle
+- X-09 | bereits vorhanden, hier bestätigt | spieler01_mobil_app-guthaben.png | siehe Durchgangstabelle
+
+##### /app/guthaben (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_app-guthaben.png (Messung 13 von 41 Zielen unter 44 px, Seitenhöhe 1247 px, kein Überlauf)
+Bewertung: Unverändert gegenüber SD-GU-1/2: Aufladeformular und Erklärung, Leerzustände ohne Daten.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: SD-GU-1, SD-GU-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 13 von 41 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: SD-GU-2 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: siehe MUSS WEG |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/guthaben` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SD-GU-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-guthaben.png | siehe Durchgangstabelle
+- SD-GU-2 | bereits vorhanden, hier bestätigt | spieler01_desktop_app-guthaben.png | siehe Durchgangstabelle
+
+#### Spieler mit Team: Zusatzaufnahmen
+
+##### Konto-Menü (geöffnet, auf /app) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-kontomenue.png
+Bewertung: Das Menü legt sich über die Spielkarten; sieben Einträge, darunter "Guthaben 0,00 €" (MUSS WEG), ohne Hintergrunddämpfung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 3 Kontrolle] Funde: N2-KM-1; Eintrag "Guthaben" (SM-GL-2) |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: sieben Einträge je 222 x 36 px (Messung); Escape schließt (geprüft) |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: Doppelung Mein Bereich/Mein Profil/Konto und Einstellungen |
+| clarify (reference/clarify.md, manuell) | [Actions] Funde: "Konto und Einstellungen" gegen Seitentitel "Einstellungen" |
+| adapt (reference/adapt.md, manuell) | [Mobile, Touch] Funde: 36 px hohe Einträge (N2-KM-1, SM-GL-3) |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-KM-1 | P2 | Konto-Menü am Handy (240 x 336 px, rechtsbündig unter dem Knopf): legt sich über Kasten und Spielkarten, ohne Abdunklung des Hintergrunds und ohne Schließen-Schaltfläche; der geöffnete Menüknopf bekommt einen roten Rahmen, der mit der Akzentfarbe der Primärknöpfe verwechselt wird. Sieben Einträge je 36 px hoch (Messung), ergänzt SM-GL-3. | spieler01_mobil_extra-kontomenue.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- SM-GL-2 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-kontomenue.png | siehe Durchgangstabelle
+- SM-GL-3 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-kontomenue.png | siehe Durchgangstabelle
+
+##### Konto-Menü (geöffnet, auf /app) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-kontomenue.png
+Bewertung: Am Desktop sauber unter dem Knopf, verdeckt aber den Kasten; "Guthaben 0,00 €" bleibt, die Kopfleiste zeigt zusätzlich den Betrag.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: SD-ALL-2, SD-ALL-3; Guthaben doppelt (Leiste und Menü) |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] Funde: Einträge 222 x 36 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Betrag in Leiste und Menü (MUSS WEG) |
+| clarify (reference/clarify.md, manuell) | [Actions] Funde: keine neuen Funde |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SD-ALL-2 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-kontomenue.png | siehe Durchgangstabelle
+- SD-ALL-3 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-kontomenue.png | siehe Durchgangstabelle
+- SD-ALL-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-kontomenue.png | siehe Durchgangstabelle
+
+##### /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-einstellungen-profil-erfolg.png
+Bewertung: Nach dem Klick erscheint kleines "Gespeichert." in roter Akzentfarbe unter dem Knopf; es sieht aus wie eine Fehlermeldung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1 Status] Funde: N2-ES-1, N2-ES-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Funde: Meldung als Status-Region ausgeliefert (gut, aria-live gemessen); Farbe Akzent auf Hellgrund |
+| distill (reference/distill.md, manuell) | [Feedback] Funde: keine Funde über N2-ES-1 |
+| clarify (reference/clarify.md, manuell) | [Success states] Funde: N2-ES-3 (kein Objekt, bleibt stehen) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-1 | P1 | Farbsemantik vertauscht: "Gespeichert." erscheint als kleiner Text in der roten Akzentfarbe (wirkt wie ein Fehler), der Fehler "Der Name braucht 2 bis 60 Zeichen." dagegen in einem schwarz umrandeten Kasten (wirkt wie ein Hinweisfeld). Beides ohne Symbol und ohne Erfolgsgrün/Fehlerfarbe; ergänzt N1-OB-3 um den Erfolgsfall. | spieler01_mobil_extra-einstellungen-profil-erfolg.png, spieler01_mobil_extra-einstellungen-profil-leer.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N2-ES-3 | P2 | "Gespeichert." nennt kein Objekt: Es gibt zwei Formulare mit den Knöpfen "Profil speichern" und "Speichern" auf einer Seite, nach dem zweiten steht nur "Gespeichert." (Benachrichtigungen? alles?). Die Meldung bleibt dauerhaft stehen, auch wenn man danach etwas ändert (ungespeicherter Zustand wird nicht angezeigt). Ergänzt X-08. | spieler01_mobil_extra-einstellungen-prefs-erfolg.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+
+##### /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-einstellungen-profil-erfolg.png
+Bewertung: Wie am Handy: "Gespeichert." klein und rot unter dem Knopf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-ES-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Funde: Status-Region vorhanden (gemessen) |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-ES-3 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-1 | siehe /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Handy) | spieler01_desktop_extra-einstellungen-profil-erfolg.png | wiederholt
+- N2-ES-3 | siehe /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Handy) | spieler01_desktop_extra-einstellungen-profil-erfolg.png | wiederholt
+
+##### /app/einstellungen, Profil speichern (leerer Name) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-einstellungen-profil-leer.png
+Bewertung: Fehler "Der Name braucht 2 bis 60 Zeichen." in schwarz umrandetem Kasten unter dem Knopf; Namensfeld liegt außerhalb des Bildes und ist nicht markiert.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 9] Funde: N2-ES-2, N2-ES-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Funde: Status-Region (alert) vorhanden; Feld ohne Markierung |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify, Errors] Funde: Meldung benennt Problem und Regel (gut), aber nicht das Feld (N2-ES-2) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: Abstand Feld-Meldung rund 700 px |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-2 | P1 | Fehlermeldung steht unter dem Speichern-Knopf, etwa 700 px unter dem Namensfeld (Handy), ohne Markierung des Feldes, ohne Fokus auf das Feld und ohne Hinweis im sichtbaren Bereich, wenn der Knopf nicht in der Nähe ist. (Hinweis: die Browser-Pflichtprüfung wurde für den Lauf abgeschaltet, damit der Serverfehler erscheint; ein echter Nutzer sieht zuerst die Browser-Sprechblase, siehe N1-OB-1.) | spieler01_mobil_extra-einstellungen-profil-leer.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N2-ES-1 | siehe /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Handy) | spieler01_mobil_extra-einstellungen-profil-leer.png | wiederholt
+
+##### /app/einstellungen, Profil speichern (leerer Name) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-einstellungen-profil-leer.png
+Bewertung: Der Fehlerkasten steht direkt unter dem Knopf, das Namensfeld liegt außerhalb des Bildes.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-ES-2, N2-ES-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-ES-2 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-2 | siehe /app/einstellungen, Profil speichern (leerer Name) (Spieler mit Team, Handy) | spieler01_desktop_extra-einstellungen-profil-leer.png | wiederholt
+- N2-ES-1 | siehe /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Handy) | spieler01_desktop_extra-einstellungen-profil-leer.png | wiederholt
+
+##### /app/einstellungen, Speichern (Benachrichtigungen, Erfolg) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-einstellungen-prefs-erfolg.png
+Bewertung: Nach "Speichern" steht "Gespeichert." klein und rot unter dem Knopf; kein Hinweis, was gespeichert wurde.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1] Funde: N2-ES-3, N2-ES-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Funde: Status-Region vorhanden |
+| distill (reference/distill.md, manuell) | [Distill] Funde: elf Haken (X-08) |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-ES-3; Admin-Art (SM-ES-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: Knopf 44 px (gut) |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-3 | siehe /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Handy) | spieler01_mobil_extra-einstellungen-prefs-erfolg.png | wiederholt
+- N2-ES-1 | siehe /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Handy) | spieler01_mobil_extra-einstellungen-prefs-erfolg.png | wiederholt
+- SM-ES-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-einstellungen-prefs-erfolg.png | siehe Durchgangstabelle
+
+##### /app/einstellungen, Speichern (Benachrichtigungen, Erfolg) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-einstellungen-prefs-erfolg.png
+Bewertung: Wie am Handy; elf Haken, Meldung klein und rot.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-ES-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine neuen Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-ES-3 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-3 | siehe /app/einstellungen, Profil speichern (Erfolg) (Spieler mit Team, Handy) | spieler01_desktop_extra-einstellungen-prefs-erfolg.png | wiederholt
+
+##### /spieler?q=Dario (ein Treffer) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-spieler-treffer.png
+Bewertung: Ein Treffer, Suchfeld zeigt nur "Da" (zwei von fünf Zeichen); kein Treffer-Zähler, kein Zurücksetzen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 3] Funde: N1-SP-1, N1-SP-3 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: Feld 48 px (X-01) |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: kein "1 Spieler gefunden" (N1-SP-3) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: X-01 |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-spieler-treffer.png | siehe Durchgangstabelle
+- X-01 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-spieler-treffer.png | siehe Durchgangstabelle
+- N1-SP-3 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-spieler-treffer.png | siehe Durchgangstabelle
+
+##### /spieler?q=Dario (ein Treffer) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-spieler-treffer.png
+Bewertung: Sauber: Suchfeld, ein Treffer, kein Zähler.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N1-SP-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Funde: X-16 (Platzhalter) |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N1-SP-3 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-3 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-spieler-treffer.png | siehe Durchgangstabelle
+- X-16 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-spieler-treffer.png | siehe Durchgangstabelle
+
+##### /spieler?q=zzzz (kein Treffer) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-spieler-leer.png
+Bewertung: "Keine Spieler gefunden." nackt, Suchfeld zeigt nur "zzz".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 9] Funde: N1-SP-1, N1-SP-4 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: X-01 |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify, Empty states] Funde: N1-SP-4 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: X-01 |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-spieler-leer.png | siehe Durchgangstabelle
+- N1-SP-4 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-spieler-leer.png | siehe Durchgangstabelle
+- X-01 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-spieler-leer.png | siehe Durchgangstabelle
+
+##### /spieler?q=zzzz (kein Treffer) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-spieler-leer.png
+Bewertung: "Keine Spieler gefunden." ohne Hilfe, Fußzeile direkt darunter.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N1-SP-4 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N1-SP-4 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: SD-ALL-9 |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-SP-4 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-spieler-leer.png | siehe Durchgangstabelle
+- SD-ALL-9 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-spieler-leer.png | siehe Durchgangstabelle
+
+##### /teams?q=Rot (ein Treffer) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-teams-treffer.png
+Bewertung: Seed Rot allein in der Liste, ohne Hinweis "Dein Team"; Feld zeigt "Ro".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: SM-TE-1, X-01 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: X-01 |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: SM-TE-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: X-01 |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-TE-1 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-teams-treffer.png | siehe Durchgangstabelle
+- X-01 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-teams-treffer.png | siehe Durchgangstabelle
+
+##### /teams?q=Rot (ein Treffer) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-teams-treffer.png
+Bewertung: Ein Treffer ohne Markierung des eigenen Teams.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: SM-TE-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: SM-TE-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-TE-1 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-teams-treffer.png | siehe Durchgangstabelle
+
+##### /teams?q=zzzz (kein Treffer) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-teams-leer.png
+Bewertung: "Keine Teams gefunden." nackt, Feld "zzz", Reiter "Teamspiel" aktiv.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N1-TE-3, X-01 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: X-01 |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N1-TE-3 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: X-01 |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-TE-3 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-teams-leer.png | siehe Durchgangstabelle
+- X-01 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-teams-leer.png | siehe Durchgangstabelle
+
+##### /teams?q=zzzz (kein Treffer) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-teams-leer.png
+Bewertung: "Keine Teams gefunden." ohne Hilfe.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N1-TE-3 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N1-TE-3 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-TE-3 | bereits vorhanden, hier bestätigt | spieler01_desktop_extra-teams-leer.png | siehe Durchgangstabelle
+
+##### /suche?city=Köln (Filter mit Treffern) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-suche-filter-koeln.png
+Bewertung: Filter Köln: Kasten, Filtermaske mit neuem Knopf "Zurücksetzen" (gut), zwei Lobbys von Rot und Blau. Der Spieler sieht seine Lobbys wieder als "anderer Teams".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 3, 6] Funde: N2-SU-3, N2-AP-1; "Zurücksetzen" gut (keine Fund) |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: Filter bleiben gesetzt (gut); Auswahl "Lobbys und Su…" abgeschnitten (X-10) |
+| distill (reference/distill.md, manuell) | [Distill] Funde: N2-AP-1 |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: keine Anzeige, welche Filter aktiv sind (nur im Feld sichtbar) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: Karten ab y=1180 (N2-AP-1) |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-SU-3 | siehe / (Spieler mit Team, Handy) | spieler01_mobil_extra-suche-filter-koeln.png | wiederholt
+- N2-AP-1 | siehe / (Spieler mit Team, Handy) | spieler01_mobil_extra-suche-filter-koeln.png | wiederholt
+- N2-SU-4 | siehe /suche (Spieler mit Team, Handy) | spieler01_mobil_extra-suche-filter-koeln.png | wiederholt
+- X-10 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-suche-filter-koeln.png | siehe Durchgangstabelle
+
+##### /suche?city=Köln (Filter mit Treffern) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-suche-filter-koeln.png
+Bewertung: Filter wirkt, "Zurücksetzen" erscheint; Karten zeigen jetzt "6 im Kader" bei Seed Rot (Folge des Beitritts von Spieler 17).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-SU-4, N2-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: N2-AP-1 |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-SU-4 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-SU-4 | siehe /suche (Spieler mit Team, Handy) | spieler01_desktop_extra-suche-filter-koeln.png | wiederholt
+- N2-SU-3 | siehe / (Spieler mit Team, Handy) | spieler01_desktop_extra-suche-filter-koeln.png | wiederholt
+
+##### /suche?art=suche (Filter ohne Treffer) (Spieler mit Team, Handy)
+Beleg: spieler01_mobil_extra-suche-filter-leer.png
+Bewertung: Leerzustand "Gerade ist keine Lobby offen..." bei aktivem Filter; Kasten und Filter bleiben stehen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 9] Funde: N2-SU-1, N2-AP-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: Meldung unter dem Filter, 100 px hoch; Auswahl "Nur Gegnersuc…" abgeschnitten (X-10) |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify, Empty states] Funde: N2-SU-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-SU-1 | P1 | Leerzustand mit aktivem Filter (Art = "Nur Gegnersuchen"): "Gerade ist keine Lobby offen. Mach eine Lobby für dein Team auf, dann erscheint sie hier für alle." Der Satz nennt den Filter nicht, behauptet etwas Falsches (vier Lobbys sind offen, nur nicht in dieser Art) und fordert den Spieler zu einer Handlung auf, die er nicht ausführen darf (SM-SU-1). "Zurücksetzen" ist als zweiter Knopf vorhanden (gut), aber ohne Bezug zur Meldung. | spieler01_desktop_extra-suche-filter-leer.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- X-10 | bereits vorhanden, hier bestätigt | spieler01_mobil_extra-suche-filter-leer.png | siehe Durchgangstabelle
+
+##### /suche?art=suche (Filter ohne Treffer) (Spieler mit Team, Desktop)
+Beleg: spieler01_desktop_extra-suche-filter-leer.png
+Bewertung: Wie am Handy; Satz ignoriert den Filter und fordert zur Lobby auf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-SU-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-SU-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-SU-1 | siehe /suche?art=suche (Filter ohne Treffer) (Spieler mit Team, Handy) | spieler01_desktop_extra-suche-filter-leer.png | wiederholt
+
+#### Spieler ohne Team
+
+##### /app (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_app.png (Messung 9 von 48 Zielen unter 44 px, Seitenhöhe 2166 px, kein Überlauf)
+Bewertung: Ein Spieler ohne Team bekommt oben die Box "So startest du" (gut), aber dann dieselben drei Karten, Guthaben-Karte und Kacheln wie ein Captain; "Lobby aufmachen" steht viermal.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Persona Jordan] Funde: N2-A17-1, N1-OB-12 (Lobby viermal), X-20 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 9 von 48 Zielen unter 44 px; kein Überlauf |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: "Team gründen" dreimal (Box, Meine Teams, Text); Guthaben-Karte (MUSS WEG) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: "nimm eine Spielsuche an" (SM-AP-3, N1-OB-11) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Box gut, danach lange Kartenwand (X-03) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): straggler ("nötig.", gehört zu `/anmelden`, = X-13), overused-font; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-A17-1 | P1 | "Meine Teams" ohne Team: "Gründe eins oder öffne einen Einladungslink, den dir ein Team-Admin schickt." Kein Weg zur Teamliste (`/teams`), zu "Mitspieler gesucht" (`/mitspieler`, damit ein Team dich findet) oder zum Einladungslink-Eingeben; wer den Link nicht mehr hat, steht an. Die Box "So startest du" nennt dieselben zwei Wege, aber auch "Lobby aufmachen" als Schritt 3, den ein Spieler ohne Team nicht kann. Ergänzt N1-OB-11/12. | spieler17_mobil_app.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N1-OB-12 | bereits vorhanden, hier bestätigt | spieler17_mobil_app.png | siehe Durchgangstabelle
+- N1-OB-11 | bereits vorhanden, hier bestätigt | spieler17_mobil_app.png | siehe Durchgangstabelle
+- X-20 | bereits vorhanden, hier bestätigt | spieler17_mobil_app.png | siehe Durchgangstabelle
+- X-03 | bereits vorhanden, hier bestätigt | spieler17_mobil_app.png | siehe Durchgangstabelle
+
+##### /app (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_app.png (Messung 13 von 48 Zielen unter 44 px, Seitenhöhe 1396 px, kein Überlauf)
+Bewertung: Am Desktop steht die Box "So startest du" über den Spielkarten; die Seite bleibt rollen-blind für einen Spieler ohne Team.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-A17-1, X-20 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 13 von 48 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: dreimal "Team gründen" (N2-A17-1) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N1-OB-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: SD-AP-3/SD-AP-4 gelten |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-A17-1 | siehe /app (Spieler ohne Team, Handy) | spieler17_desktop_app.png | wiederholt
+- X-20 | bereits vorhanden, hier bestätigt | spieler17_desktop_app.png | siehe Durchgangstabelle
+- N1-OB-11 | bereits vorhanden, hier bestätigt | spieler17_desktop_app.png | siehe Durchgangstabelle
+
+##### /teams (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_teams.png (Messung 8 von 43 Zielen unter 44 px, Seitenhöhe 1107 px, kein Überlauf)
+Bewertung: Dieselbe Liste wie für alle; nichts verbindet sie mit dem Wunsch, einem Team beizutreten.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Persona Jordan] Funde: N2-T17-1, X-01, N1-TE-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 8 von 43 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N2-T17-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: X-01 |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/teams` | 2 Funde: low-contrast (Platzhalter "Teamname" 4,1:1, = X-16), overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-T17-1 | P1 | `/teams` für Spieler ohne Team: der Satz "Schau dir Kader und Bilanz an und fordere sie heraus" richtet sich an Captains; es gibt keinen Weg "Diesem Team beitreten" oder "Anfragen", die Zeilen sind nicht als anklickbar erkennbar, und das eigene Fehlen eines Teams wird nicht erwähnt. Ergänzt SD-TE-1. | spieler17_mobil_teams.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- X-01 | bereits vorhanden, hier bestätigt | spieler17_mobil_teams.png | siehe Durchgangstabelle
+- N1-TE-1 | bereits vorhanden, hier bestätigt | spieler17_mobil_teams.png | siehe Durchgangstabelle
+
+##### /teams (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_teams.png (Messung 12 von 43 Zielen unter 44 px, Seitenhöhe 923 px, kein Überlauf)
+Bewertung: Wie am Handy; keine Handlung für Spieler ohne Team.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-T17-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 12 von 43 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N2-T17-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: X-17 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/teams` | 2 Funde: low-contrast (Platzhalter "Teamname" 4,1:1, = X-16), overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-T17-1 | siehe /teams (Spieler ohne Team, Handy) | spieler17_desktop_teams.png | wiederholt
+- X-17 | bereits vorhanden, hier bestätigt | spieler17_desktop_teams.png | siehe Durchgangstabelle
+
+##### /matchmaking (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_matchmaking.png (Messung 12 von 38 Zielen unter 44 px, Seitenhöhe 1216 px, kein Überlauf)
+Bewertung: "Du bist Captain..." für einen Spieler ohne Team; der Hinweis "Team gründen" ist hier immerhin passend, steht aber unter der Navigation.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2] Funde: SM-MA-1, N1-MM-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 12 von 38 Zielen unter 44 px; N1-MM-3 |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: N1-MM-4 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SM-MA-1, N1-MM-5 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/matchmaking` | 2 Funde: straggler ("offen." allein in der letzten Zeile, = N1-MM-5), overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-MA-1 | bereits vorhanden, hier bestätigt | spieler17_mobil_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-1 | bereits vorhanden, hier bestätigt | spieler17_mobil_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-3 | bereits vorhanden, hier bestätigt | spieler17_mobil_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-4 | bereits vorhanden, hier bestätigt | spieler17_mobil_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-5 | bereits vorhanden, hier bestätigt | spieler17_mobil_matchmaking.png | siehe Durchgangstabelle
+
+##### /matchmaking (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_matchmaking.png (Messung 16 von 38 Zielen unter 44 px, Seitenhöhe 812 px, kein Überlauf)
+Bewertung: Wie bei Spieler 01; der Hinweis "Team gründen" passt hier.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: SD-MM-1, N1-MM-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 16 von 38 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: SD-MM-1 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SM-MA-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/matchmaking` | 3 Funde: line-length (~99 Zeichen, = N1-MM-5), straggler ("hier."), overused-font (kein Fund); Quelltext: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SD-MM-1 | bereits vorhanden, hier bestätigt | spieler17_desktop_matchmaking.png | siehe Durchgangstabelle
+- N1-MM-1 | bereits vorhanden, hier bestätigt | spieler17_desktop_matchmaking.png | siehe Durchgangstabelle
+- SM-MA-1 | bereits vorhanden, hier bestätigt | spieler17_desktop_matchmaking.png | siehe Durchgangstabelle
+
+##### /einladung/seed-team-gueltig (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_einladung-seed-team-gueltig.png (Messung 8 von 35 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf)
+Bewertung: Hier stimmt die Einladung: ein Spieler ohne Team sieht Teamname, Stadt, Kader und "Team beitreten". Es fehlen Einladender, Rolle und Frist (N1-EG-1).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 5] Funde: N1-EG-1, N1-EG-3; Ziel gut erreichbar (Knopf 44 px) |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 8 von 35 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: keine Funde (ein Ziel, gut) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: Folge des Beitritts nicht genannt (N2-BE-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/einladung/seed-team-gueltig` | 1 Fund: overused-font (kein Fund); Seite per URL ohne Sitzung gemessen; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-EG-1 | bereits vorhanden, hier bestätigt | spieler17_mobil_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+- N1-EG-3 | bereits vorhanden, hier bestätigt | spieler17_mobil_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+- N2-BE-1 | P1 | "Team beitreten" (Spieler 17, gültiger Link) führt ohne Meldung auf die Teamseite `/teams/seed-rot`: kein "Du bist jetzt im Team Seed Rot", keine Erklärung zur Rolle (Spieler, nicht Captain), kein Hinweis, dass der Team-Admin benachrichtigt wurde, keine nächste Handlung. Das Konto ist ab da permanent Mitglied (siehe Änderung der Seed-Daten). Ein zweiter Klick (Desktop, schon Mitglied) endet gleich still (SD-EL-1). | spieler17_mobil_extra-beitreten-nachher.png, spieler17_desktop_extra-beitreten-nachher.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+
+##### /einladung/seed-team-gueltig (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_einladung-seed-team-gueltig.png (Messung 12 von 35 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf)
+Bewertung: Wie am Handy; der Knopf ist der klare einzige Ziel.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N1-EG-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 12 von 35 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: N2-BE-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: SD-ALL-9 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/einladung/seed-team-gueltig` | 1 Fund: overused-font (kein Fund); Seite per URL ohne Sitzung gemessen; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-EG-1 | bereits vorhanden, hier bestätigt | spieler17_desktop_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+- N2-BE-1 | siehe /einladung/seed-team-gueltig (Spieler ohne Team, Handy) | spieler17_desktop_einladung-seed-team-gueltig.png | wiederholt
+- SD-ALL-9 | bereits vorhanden, hier bestätigt | spieler17_desktop_einladung-seed-team-gueltig.png | siehe Durchgangstabelle
+
+##### /app/suche/neu (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_app-suche-neu.png (Messung 9 von 36 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf)
+Bewertung: "Du brauchst ein Team..." mit "Team gründen": für einen Spieler ohne Team die richtige Antwort, aber ohne zweiten Weg (Einladungslink, Mitspieler gesucht). Reiter "Profil" aktiv.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 3] Funde: N2-A17-1, SM-GL-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 9 von 36 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: SM-GL-5 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine neuen Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/suche/neu` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): straggler ("nötig.", gehört zu `/anmelden`, = X-13), overused-font; Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-A17-1 | siehe /app (Spieler ohne Team, Handy) | spieler17_mobil_app-suche-neu.png | wiederholt
+- SM-GL-1 | bereits vorhanden, hier bestätigt | spieler17_mobil_app-suche-neu.png | siehe Durchgangstabelle
+
+##### /app/suche/neu (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_app-suche-neu.png (Messung 13 von 36 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf)
+Bewertung: Wie am Handy, in der 448-px-Spalte.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-A17-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 13 von 36 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: keine Funde |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: SD-SN-1 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/suche/neu` | per URL ohne Sitzung wurde die Anmeldeseite gemessen (Weiterleitung): overused-font (kein Fund); Quelltext der Seite: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-A17-1 | siehe /app (Spieler ohne Team, Handy) | spieler17_desktop_app-suche-neu.png | wiederholt
+- SD-SN-1 | bereits vorhanden, hier bestätigt | spieler17_desktop_app-suche-neu.png | siehe Durchgangstabelle
+
+#### Spieler ohne Team: Zusatzaufnahmen (Beitritt, danach)
+
+##### /einladung/seed-team-gueltig, nach "Team beitreten" (Ziel /teams/seed-rot) (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_extra-beitreten-nachher.png
+Bewertung: Nach dem Klick landet er ohne Meldung auf der Teamseite von Seed Rot (Kader 6, "Team verlassen", Kommentare). Zustand vorher: kein Team (spieler17_mobil_app.png, Kader 5); nachher: Mitglied, Rolle Spieler.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 9] Funde: N2-BE-1, N2-BE-3 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: Teamseite 2090 px; "Team verlassen" rund 34 px hoch (N2-BE-3) |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify, Success states] Funde: keine Bestätigung (N2-BE-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: Reiter "Teamspiel" aktiv (stimmt hier) |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-BE-1 | siehe /einladung/seed-team-gueltig (Spieler ohne Team, Handy) | spieler17_mobil_extra-beitreten-nachher.png | wiederholt
+- N2-BE-3 | P2 | Auf der Teamseite nach dem Beitritt steht "Team verlassen" als kleiner Knopf (Bildmaß rund 114 x 34 px, Handy) direkt unter dem Kader, ohne Erklärung der Folgen; dazu der Kopf mit Badge "S" ohne Erklärung. (Teamseite gehört nicht zur Gruppe X, nur als Folgezustand gesehen.) | spieler17_mobil_extra-beitreten-nachher.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+
+##### /einladung/seed-team-gueltig, Klick als schon Mitglied (Ziel /teams/seed-rot) (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_extra-beitreten-nachher.png
+Bewertung: Der Desktop-Lauf lief nach dem Handy-Lauf, Spieler 17 war schon Mitglied: der zweite Klick führt wieder still auf die Teamseite (belegt SD-EL-1). Zustand vorher für Desktop: spieler17_desktop_einladung-seed-team-gueltig.png.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-BE-1, SD-EL-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-BE-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-BE-1 | siehe /einladung/seed-team-gueltig (Spieler ohne Team, Handy) | spieler17_desktop_extra-beitreten-nachher.png | wiederholt
+- SD-EL-1 | bereits vorhanden, hier bestätigt | spieler17_desktop_extra-beitreten-nachher.png | siehe Durchgangstabelle
+
+##### /app nach dem Beitritt (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_extra-app-nachher.png
+Bewertung: Aus "So startest du" wurde ein Kasten mit zwei Spielen, dazu "Meine Spiele" mit vier Einträgen und "Meine Teams: Seed Rot, Spieler". Aber auch Spiele, die vor seinem Beitritt waren.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 2] Funde: N2-AP-6, N2-AP-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: 2696 px lang, kein Überlauf |
+| distill (reference/distill.md, manuell) | [Distill] Funde: Guthaben-Karte (MUSS WEG), Kachelraster (X-04) |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: "Bereit machen und bezahlen" für ein Spiel, in dem er nicht steht (N2-AP-6) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-AP-6 | P1 | Nach dem Beitritt sieht das neue Mitglied sofort die Spiele des Teams als "Meine Spiele", auch ein bereits beendetes (04.11.) und ein abgesagtes, sowie im Kasten #1001 mit "Bereit machen und bezahlen", obwohl er in der Lobby #1001 gar nicht als Teilnehmer steht (Lobby-Liste: Anton, Berk, Rot Captain). Wer ist dabei, wer zahlt? Das Kartenmodell (Vertrag 012) bleibt dadurch unklar. | spieler17_mobil_extra-app-nachher.png | critique, audit, distill, clarify, adapt (siehe Durchgangstabelle)
+- N2-AP-1 | siehe / (Spieler mit Team, Handy) | spieler17_mobil_extra-app-nachher.png | wiederholt
+- N2-AP-2 | siehe /app (Spieler mit Team, Handy) | spieler17_mobil_extra-app-nachher.png | wiederholt
+- X-04 | bereits vorhanden, hier bestätigt | spieler17_mobil_extra-app-nachher.png | siehe Durchgangstabelle
+
+##### /app nach dem Beitritt (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_extra-app-nachher.png
+Bewertung: Wie am Handy; "Meine Teams" zeigt Seed Rot, die Spiele des Teams erscheinen ohne Vorgeschichte.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-AP-6, N2-AP-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: N2-AP-1 |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-AP-6 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-AP-6 | siehe /app nach dem Beitritt (Spieler ohne Team, Handy) | spieler17_desktop_extra-app-nachher.png | wiederholt
+- N2-AP-2 | siehe /app (Spieler mit Team, Handy) | spieler17_desktop_extra-app-nachher.png | wiederholt
+
+##### /einladung/seed-team-gueltig, nachdem er Mitglied ist (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_extra-einladung-gueltig-als-mitglied.png
+Bewertung: Nach dem Beitritt zeigt der Link weiter "Team beitreten" mit "6 Spieler im Kader": bestätigt SM-EL-1 auch für das frische Mitglied.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: SM-EL-1, N2-BE-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: SM-EL-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-EL-1 | bereits vorhanden, hier bestätigt | spieler17_mobil_extra-einladung-gueltig-als-mitglied.png | siehe Durchgangstabelle
+- N2-BE-1 | siehe /einladung/seed-team-gueltig (Spieler ohne Team, Handy) | spieler17_mobil_extra-einladung-gueltig-als-mitglied.png | wiederholt
+
+##### /einladung/seed-team-gueltig, nachdem er Mitglied ist (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_extra-einladung-gueltig-als-mitglied.png
+Bewertung: Gleiches Bild: "Team beitreten" bei bestehender Mitgliedschaft.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: SM-EL-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: SM-EL-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: keine neuen Funde |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- SM-EL-1 | bereits vorhanden, hier bestätigt | spieler17_desktop_extra-einladung-gueltig-als-mitglied.png | siehe Durchgangstabelle
+
+##### /einladung/seed-team-abgelaufen (nach dem Beitritt) (Spieler ohne Team, Handy)
+Beleg: spieler17_mobil_extra-einladung-abgelaufen.png
+Bewertung: "Link abgelaufen" mit Verweis auf den Team-Admin; er ist nun Mitglied und weiß nichts davon.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-EA-1, N1-EA-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-EA-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Funde: Reiter "Privatspiel" aktiv (N1-EG-3) |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-EA-1 | siehe /einladung/seed-team-abgelaufen (Spieler mit Team, Handy) | spieler17_mobil_extra-einladung-abgelaufen.png | wiederholt
+- N1-EA-1 | bereits vorhanden, hier bestätigt | spieler17_mobil_extra-einladung-abgelaufen.png | siehe Durchgangstabelle
+- N1-EG-3 | bereits vorhanden, hier bestätigt | spieler17_mobil_extra-einladung-abgelaufen.png | siehe Durchgangstabelle
+
+##### /einladung/seed-team-abgelaufen (nach dem Beitritt) (Spieler ohne Team, Desktop)
+Beleg: spieler17_desktop_extra-einladung-abgelaufen.png
+Bewertung: Wie am Handy.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] Funde: N2-EA-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Funde: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Distill] Funde: keine Funde |
+| clarify (reference/clarify.md, manuell) | [Clarify] Funde: N2-EA-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Funde: SD-ALL-9 |
+| kein eigener detect-Lauf (gleiche Seite wie in der Grundzelle); Zustand nur per Playwright aufgenommen |  |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-EA-1 | siehe /einladung/seed-team-abgelaufen (Spieler mit Team, Handy) | spieler17_desktop_extra-einladung-abgelaufen.png | wiederholt
+- SD-ALL-9 | bereits vorhanden, hier bestätigt | spieler17_desktop_extra-einladung-abgelaufen.png | siehe Durchgangstabelle
+
+
+
+#### Nachlauf-Blatt N3 Captain Rot
+
+Stand: Nachlauf der Gruppe-X-Analyse, Teil 3. Dev-Server Port 3102, Engine 0.1.19 über den Launcher, Seed laut analyse-seed.md (frisch geladen). Nur gelesen, gemessen und Formulare benutzt; kein Quelltext geändert. Rolle: Captain Rot = `seed-captain-rot@test.local` (Rot Captain, Team-Admin von Seed Rot, hat Karte, Veranstalter des Privatspiels #1018). Kennungen: N3 = Nachlauf 3. Vorhandene Funde (X-nn, GM-, GD-, SM-, SD-, CM-, CD-, N1-, N2-) werden nur referenziert.
+
+#### Methode und Grenzen
+
+- Die fünf Reference-Dateien (`critique.md` 819 Zeilen, `audit.md`, `distill.md`, `clarify.md`, `adapt.md`) wurden zu Beginn vollständig gelesen. critique/audit/distill/clarify/adapt haben keinen Launcher-Befehl: sie liefen manuell nach den Dateien, je Durchgang steht in eckigen Klammern der angewandte Teil. critique bleibt degradiert (kein Overlay, kein getrennter Assessment-B-Sub-Agent; Assessment B = `detect`).
+- `context` (Launcher) lief einmal: PRODUCT.md geladen (Plattform web, Kartenmodell nach Vertrag 012). `detect --json --viewport <WxH> <URL>` lief je Seite und Viewport (26 Läufe); `/` und `/suche` liefen bei beiden Viewports wieder in den Timeout nach 30 s (Dauerverbindung), die Wiederholung brachte dasselbe: Ersatz = Quelltext-Lauf (Startseite, Seitenordner suche, spieler, teams, matchmaking, mitspieler, einladung, app sowie UserMenu.tsx, Header.tsx, BottomNav.tsx: je keine Funde). `detect` per URL hat keine Sitzung: für `/app*` und `/einladung*` wurde die Weiterleitung auf die Anmeldeseite bzw. die Seite ohne Sitzung gemessen (daher dort der Hinweis „nötig.“ als straggler der Anmeldeseite, nicht des Captain-Bildes). `overused-font` (Plus Jakarta Sans) ist in DESIGN.md gesetzt: kein Fund.
+- Ganzseitige Handy-Bilder zeigen die feste untere Navigation und die feste Kopfleiste mitten im Bild und das runde N (Next-Overlay): Aufnahme-Artefakt, kein Fund. Das gilt auch für alle Zusatzaufnahmen mit fullPage.
+- Die Browser-Pflichtmeldungen (Chromium, englisch: „Please fill out this field.“) sind Browsertext und stehen im deutschen Browser deutsch; bewertet wird nur, dass die Seite selbst nichts erklärt. Für Server-Fehlerzustände wurden `min`, `required` und `minlength` im DOM abgeschaltet, sonst erreicht das Absenden den Server.
+- Zusatzaufnahmen per Playwright (Dev-Login), Muster `captainrot_<geraet>_extra-<name>.png`. Nicht prüfbar: Teilen-/Kopieren-Knopf des Einladungslinks (nicht angeklickt), Rückfrage bei „Spielsuche zurückziehen“ und „Lobby schließen“ (nicht angeklickt), Push (Server nicht eingerichtet), „Bitte warten…“ des Absende-Knopfs (zu kurz), echter Google-Login.
+
+#### Geänderte Seed-Daten durch die Analyse (vorher/nachher)
+
+| Aktion (Captain Rot) | Vorher | Nachher |
+|---|---|---|
+| Spielsuche (fester Termin) per `/app/suche/neu`, Handy: Mo. 23.11., 19:00, Hinweis „Analyse-Test mobil“ | keine eigene Spielsuche | 1 offene Spielsuche von Seed Rot (öffentlich) |
+| Spielsuche per `/app/suche/neu`, Desktop: Di. 24.11., 19:00, Hinweis „Analyse-Test desktop“ | siehe oben | zweite offene Spielsuche von Seed Rot |
+| Lobby aufmachen per `/matchmaking`, Handy: Di. 24.11., 19:00 bis 21:00 (Spiel #1020) | keine offene Lobby von Seed Rot außer #1010 | #1020 offen |
+| „Suche abbrechen“ (Desktop, auf #1020) | #1020 offen | #1020 abgebrochen |
+| Lobby aufmachen, Desktop: Sa. 21.11., 19:00 bis 21:00 (Spiel #1022) | – | #1022 offen (bleibt bestehen) |
+| Versuch Desktop mit Sa. 25.11. (zu weit weg) | – | abgelehnt: „höchstens 14 Tage“, nichts gespeichert |
+| Profil speichern, Benachrichtigungen speichern (unveränderte Werte), Name leer (abgelehnt) | Name „Rot Captain“ | unverändert |
+| Benachrichtigungen geöffnet | 1 ungelesen (Quirin Testmann ist Seed Rot beigetreten, aus Teil 2) | 0 ungelesen (gelesen markiert) |
+Rückgängig nur per Seed-Neuaufruf (löscht und erzeugt Spiele neu) oder per „Suche abbrechen“/„Spielsuche zurückziehen“ im Konto des Captains (nicht ausgeführt). Zusätzlich liegen weiterhin die Änderungen aus Teil 2 (Quirin Testmann Mitglied von Seed Rot).
+
+#### Zähler
+
+- Angesehen: 26 Grid-Bilder + 32 Zusatzaufnahmen = 58 von 58 Bildern (je Bild einzeln mit Read geöffnet; der Lauf der Zusatzaufnahmen wurde für drei Zustände wiederholt: Anstoß-Raster, Desktop-Lobby gültig und /app nach Erfolg, beide Fassungen angesehen).
+- Durchgänge: je Zelle critique, audit, distill, clarify, adapt als eigene Zeilen (Grid 26 Zellen, Zusatz 32 Zellen = 58 Abschnitte), plus detect je Seite und Viewport (26 Läufe, 4 davon Timeout mit Quelltext-Ersatz).
+- Neue Funde (Erstnennung): P0 0, P1 15, P2 12; gesamt 27.
+
+#### Grid-Zellen (13 Seiten x 2 Geräte)
+
+##### / (Captain Rot, Handy)
+Beleg: captainrot_mobil_start.png (Messung 60 von 95 Zielen unter 44 px, Seitenhöhe 5535 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Eingeloggt öffnet die Startseite mit dem Kasten „Meine aktuellen Spiele“ (drei Karten, drei Primärknöpfe, rund 480 px) und schiebt das Hallenfoto darunter; die Seite hat 5535 px, die Lobbyliste (vier Karten) füllt das untere Drittel. Der Hero-Knopf ist „Team gründen“, obwohl der Captain ein Team hat.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Kognitive Last (Wand der Optionen), Persona Casey] Funde: Kasten + Hero + Karten + Liste, bis zu elf sichtbare Optionen vor dem ersten Scroll (N2-AP-1); N3-ST-1, N3-ST-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 60 von 95 Zielen unter 44 px, Seitenhöhe 5535 px, kein Überlauf, 0 Konsolenfehler; Teilen-Link klein (N1-SU-3) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde: Kasten/Liste/„Meine Spiele“ dreimal dieselben Spiele (N2-AP-1); Lobby-Liste ungekürzt (N1-ST-2) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions] Funde: „Du lädst dein Guthaben auf“ und „Kostenlos anmelden“ für Eingeloggte (MUSS WEG, bekannt); „VS.“ gegen „gegen“ (N2-AP-5); „Bereit machen und bezahlen“ (N2-AP-2); N3-ST-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation, Content Strategy] Funde: Hero unterhalb von etwa 480 px Kasten, Primärknöpfe 3 + 5 (N2-AP-1); sonst N1-ST-2 |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/` | Navigation timeout nach 30 s, Wiederholung wieder Timeout (Dauerverbindung); Ersatz: Quelltext-Lauf der Seite, Header.tsx, UserMenu.tsx, BottomNav.tsx: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-ST-1 | P1 | Der Hero zeigt dem Captain von Seed Rot (Team-Admin, drei laufende Spiele) als einzigen gefüllten Knopf „Team gründen“. Captain-Beleg zu SM-ST-1: die erste Handlung passt nicht zur Rolle; „Lobby aufmachen“ ist grau, „Zur Lobby“ steht im Kasten darüber. | captainrot_mobil_start.png | critique, clarify
+- N3-ST-2 | P2 | Im Kasten „Meine aktuellen Spiele“ steht das selbst angelegte Privatspiel #1018 mit den internen Teamnamen „Seed Privat A VS. Seed Privat B“ und dem Status „Bereit machen und bezahlen“, ohne Hinweis „Privatspiel“ oder „du bist Veranstalter“ und ohne Teilen-Knopf für den Einladungslink (N2-AP-5 für die Rolle Veranstalter). | captainrot_mobil_start.png | critique, clarify
+
+##### / (Captain Rot, Desktop)
+Beleg: captainrot_desktop_start.png (Messung 64 von 95 Zielen unter 44 px, Seitenhöhe 3606 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Am Desktop sitzt der Kasten sauber im Raster über dem Hero, die vier Lobbykarten stehen einspaltig in 720 px Breite. Primärknopf des Hero ist wieder „Team gründen“; die Kopfleiste zeigt „0,00 €“ (Guthaben, MUSS WEG).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4 Konsistenz, 8 Minimalismus, Persona Alex] Funde: Kasten vor Hero (N2-AP-1); N3-ST-1, N3-ST-2; Zähler 8/36/3 (N1-ST-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 64 von 95 Zielen unter 44 px, Seitenhöhe 3606 px, kein Überlauf, 0 Konsolenfehler; Teilen-Link klein (N1-SU-3) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde: Kasten/Liste/„Meine Spiele“ dreimal dieselben Spiele (N2-AP-1); Lobby-Liste ungekürzt (N1-ST-2) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions] Funde: „Du lädst dein Guthaben auf“ und „Kostenlos anmelden“ für Eingeloggte (MUSS WEG, bekannt); „VS.“ gegen „gegen“ (N2-AP-5); „Bereit machen und bezahlen“ (N2-AP-2); N3-ST-2 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation, Layout] Funde: 720-px-Spalte (X-17), Lobbykarten könnten zweispaltig stehen; Kopfleiste nur drei Links (GD-ALL-1) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/` | Navigation timeout nach 30 s, Wiederholung wieder Timeout (Dauerverbindung); Ersatz: Quelltext-Lauf der Seite, Header.tsx, UserMenu.tsx, BottomNav.tsx: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-ST-1 | siehe erste Nennung | captainrot_desktop_start.png | wiederholt
+- N3-ST-2 | siehe erste Nennung | captainrot_desktop_start.png | wiederholt
+
+##### /suche (Captain Rot, Handy)
+Beleg: captainrot_mobil_suche.png (Messung 60 von 93 Zielen unter 44 px, Seitenhöhe 3637 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Der Kasten mit drei Spielen und drei Primärknöpfen schiebt die Filtermaske unter die Bildschirmmitte, die erste Lobbykarte beginnt bei etwa y = 1040 von 3637 px. Die Liste ist gefüllt, aber Eigenes (#1012 bestätigt, #1010) und Fremdes sehen gleich aus.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 6 Wiedererkennung, 8 Minimalismus, Persona Alex] Funde: eigene Lobbys unmarkiert (N2-SU-3), Titel „anderer Teams“ (N1-SU-4), N3-SU-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 60 von 93 Zielen unter 44 px, Seitenhöhe 3637 px, kein Überlauf, 0 Konsolenfehler; Ampelpunkte mit Textlabel (gut), Teilen 32 x 16 px (N1-SU-3) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Kasten gegen Liste (N2-AP-1); Siegchance-Balken je Karte (N1-ST-5) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Empty states] Funde: „Offene Lobbys“ gegen „Offene Suchen“ (N1-SU-1); N3-SU-1; kein Fund zu „Bestätigt“ unter „Offene Lobbys“ (N1-ST-3) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Filter vor Liste (X-10, N1-SU-2) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/suche` | Navigation timeout nach 30 s, Wiederholung wieder Timeout (Dauerverbindung); Ersatz: Quelltext-Lauf der Seite, Header.tsx, UserMenu.tsx, BottomNav.tsx: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-SU-1 | P2 | Alle vier Karten zeigen schon zwei feststehende Teams (Grün/Gelb, Rot/Blau). Der Captain findet keine Karte, bei der ein Team einen Gegner sucht; die Seite sagt nicht, dass Gegnersuchen auf /matchmaking (dort 0) und /app/suche/neu stehen (CD-ALL-3, N1-MM-1, N1-SU-1). | captainrot_mobil_suche.png | critique, distill
+- N2-SU-3 | bestätigt für Captain (zwei eigene Lobbys unmarkiert) | wiederholt
+
+##### /suche (Captain Rot, Desktop)
+Beleg: captainrot_desktop_suche.png (Messung 64 von 93 Zielen unter 44 px, Seitenhöhe 2404 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Am Desktop liegen Titel, „Lobby aufmachen“, Kasten, sechs Filterfelder und vier Lobbykarten in einer 720-px-Spalte; die Filtermaske wirkt neben dem Kasten schwer. Kartenaufbau ist klar lesbar.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 6 Wiedererkennung, 8 Minimalismus, Persona Alex] Funde: eigene Lobbys unmarkiert (N2-SU-3), Titel „anderer Teams“ (N1-SU-4), N3-SU-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 64 von 93 Zielen unter 44 px, Seitenhöhe 2404 px, kein Überlauf, 0 Konsolenfehler; Ampelpunkte mit Textlabel (gut), Teilen 32 x 16 px (N1-SU-3) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Kasten gegen Liste (N2-AP-1); Siegchance-Balken je Karte (N1-ST-5) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Empty states] Funde: „Offene Lobbys“ gegen „Offene Suchen“ (N1-SU-1); N3-SU-1; kein Fund zu „Bestätigt“ unter „Offene Lobbys“ (N1-ST-3) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: einspaltige Karten auf 720 px (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/suche` | Navigation timeout nach 30 s, Wiederholung wieder Timeout (Dauerverbindung); Ersatz: Quelltext-Lauf der Seite, Header.tsx, UserMenu.tsx, BottomNav.tsx: keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-SU-1 | siehe erste Nennung | captainrot_desktop_suche.png | wiederholt
+- N2-SU-3 | bestätigt für Captain (zwei eigene Lobbys unmarkiert) | wiederholt
+
+##### /spieler (Captain Rot, Handy)
+Beleg: captainrot_mobil_spieler.png (Messung 9 von 68 Zielen unter 44 px, Seitenhöhe 3199 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Liste mit 30 Spielern und „Weiter“, Suchfeld wieder auf etwa 48 px gequetscht („Na“, X-01). Der Captain sieht seine eigenen Kadermitglieder (Anton, Berk, Caner, Dario, Quirin) und Demo-Reste („Alpha Spieler 1“, „Bartholomäus Maximilian Alexander Mue…“) ungekennzeichnet.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 7 Effizienz, 6 Wiedererkennung] Funde: N3-SP-1; Verzeichnis führt Demo-/Admin-Konten (N1-SP-2) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 9 von 68 Zielen unter 44 px, Seitenhöhe 3199 px, kein Überlauf, 0 Konsolenfehler; Pager „Weiter“ 36 px (N1-SP-5); Platzhalter-Kontrast 4,1:1 (detect) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine zusätzlichen; Zeilen sind schlank |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „Seite 1“ ohne „von N“ (N1-SP-3) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Suchfeld gequetscht (X-01, N1-SP-1) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/spieler` | low-contrast (placeholder "Name suchen" 4.1:1 (need 4.5:1) — text #89958f on #24362d); plus overused-font (kein Fund) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-SP-1 | P2 | Die eigenen Kadermitglieder (Anton, Berk, Caner, Dario, Quirin) stehen ungekennzeichnet in der Liste; kein Filter „ohne Team“ und keine Einladeaktion, obwohl der Captain hier Verstärkung suchen würde. Ergänzt N1-SP-2 und N1-SP-3. | captainrot_mobil_spieler.png | critique, distill
+
+##### /spieler (Captain Rot, Desktop)
+Beleg: captainrot_desktop_spieler.png (Messung 13 von 68 Zielen unter 44 px, Seitenhöhe 3015 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Suchfeld jetzt in voller Breite lesbar („Name suchen“), 30 Zeilen mit Name, Stadt, Position und Spiele/Tore; die Zeilen nutzen nur zwei Informationen (N1-SP-6). Kader-Kennzeichnung für den Captain fehlt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 7 Effizienz, 6 Wiedererkennung] Funde: N3-SP-1; Verzeichnis führt Demo-/Admin-Konten (N1-SP-2) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 13 von 68 Zielen unter 44 px, Seitenhöhe 3015 px, kein Überlauf, 0 Konsolenfehler; Pager „Weiter“ 36 px (N1-SP-5); Platzhalter-Kontrast 4,1:1 (detect) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine zusätzlichen; Zeilen sind schlank |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „Seite 1“ ohne „von N“ (N1-SP-3) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: wenig Spalten (N1-SP-6) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/spieler` | low-contrast (placeholder "Name suchen" 4.1:1 (need 4.5:1) — text #89958f on #24362d); plus overused-font (kein Fund) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-SP-1 | siehe erste Nennung | captainrot_desktop_spieler.png | wiederholt
+
+##### /teams (Captain Rot, Handy)
+Beleg: captainrot_mobil_teams.png (Messung 8 von 43 Zielen unter 44 px, Seitenhöhe 1107 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Sechs Teams (vier Seed-Teams, zwei Demo-Reste „noch ohne Spiel“), Suchfeld wieder auf 48 px („Tea“, X-01). Seed Rot (6 Spieler, Elo 1180) steht ohne Hinweis „Euer Team“ zwischen den anderen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4 Konsistenz, 6] Funde: N3-TE-1, Sortierung/Elo (N1-TE-2), keine Teamfarbe (N1-TE-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 8 von 43 Zielen unter 44 px, Seitenhöhe 1107 px, kein Überlauf, 0 Konsolenfehler; Platzhalter-Kontrast 4,1:1 |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „noch ohne Spiel“ rechts statt Elo (Demo-Reste, kein Produktfund) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Suchfeld gequetscht (X-01) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/teams` | low-contrast (placeholder "Teamname" 4.1:1 (need 4.5:1) — text #89958f on #24362d); plus overused-font (kein Fund) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-TE-1 | P2 | Das eigene Team Seed Rot ist nicht als „Euer Team“ markiert (auf /matchmaking steht dieses Label), und die Zeile bietet keine Handlung (Herausfordern nur auf der Teamseite). Elo ist die einzige Kennzahl rechts (N1-TE-1, N1-TE-2). | captainrot_mobil_teams.png | critique, clarify
+
+##### /teams (Captain Rot, Desktop)
+Beleg: captainrot_desktop_teams.png (Messung 12 von 43 Zielen unter 44 px, Seitenhöhe 923 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Sechs gleich aussehende Zeilen in 720 px, Suchfeld lesbar; Seed Rot ist nicht markiert, die Sortierung (Spiele, dann Name) wirkt zufällig neben der Elo-Spalte.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4 Konsistenz, 6] Funde: N3-TE-1, Sortierung/Elo (N1-TE-2), keine Teamfarbe (N1-TE-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 12 von 43 Zielen unter 44 px, Seitenhöhe 923 px, kein Überlauf, 0 Konsolenfehler; Platzhalter-Kontrast 4,1:1 |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „noch ohne Spiel“ rechts statt Elo (Demo-Reste, kein Produktfund) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: einspaltig (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/teams` | low-contrast (placeholder "Teamname" 4.1:1 (need 4.5:1) — text #89958f on #24362d); plus overused-font (kein Fund) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-TE-1 | siehe erste Nennung | captainrot_desktop_teams.png | wiederholt
+
+##### /matchmaking (Captain Rot, Handy)
+Beleg: captainrot_mobil_matchmaking.png (Messung 12 von 48 Zielen unter 44 px, Seitenhöhe 1873 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Titel, Erklärung, Vier-Schritte-Kasten, „Offene Suchen (0)“ mit Leerzustand, dann erst das Formular (Team, Stadt, Dauer, Stärke, Hinweis, Zeitfenster) ab etwa y = 760 von 1873 px; Datumsfeld abgeschnitten („dd.mm“, CM-MM-1). Für einen Captain mit offenen Lobbys steht „Gerade hat kein Team eine Lobby geöffnet“.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Persona Jordan/Casey, Heuristik 1 Systemstatus] Funde: N3-MM-1; Formular am Ende (CM-MM-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 12 von 48 Zielen unter 44 px, Seitenhöhe 1873 px, kein Überlauf, 0 Konsolenfehler; Auswahl „Alle Dauern“ abgeschnitten (N1-MM-3, nur Handy); straggler/line-length (detect, N1-MM-5) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy, Progressive Disclosure] Funde: Vier-Schritte-Kasten plus Einleitung sagen dasselbe (N1-MM-2); Filter über leerer Liste (N1-MM-4) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „Offene Suchen“ gegen „Offene Lobbys“ (N1-MM-1, N1-SU-1); „Hallen-Veto“ ohne Erklärung |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Formular unterhalb der Falz, Datumsfeld zu schmal (CM-MM-1) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/matchmaking` | straggler ("offen." alone on the last of 2 lines (13% of the measure)); plus overused-font (kein Fund) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-MM-1 | P1 | Der Captain hat #1010 (Lobby offen) und #1012 (bestätigt), die Seite meldet aber „Offene Suchen (0)“ und „Gerade hat kein Team eine Lobby geöffnet“. Mit eigenen Lobbys im Seed ist der Widerspruch für den Captain direkt sichtbar (N1-MM-1 hatte ihn ohne Daten nur vermutet). | captainrot_mobil_matchmaking.png | critique, clarify
+
+##### /matchmaking (Captain Rot, Desktop)
+Beleg: captainrot_desktop_matchmaking.png (Messung 16 von 48 Zielen unter 44 px, Seitenhöhe 1391 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Das Formular steht im Desktop-Bild vollständig in der Seitenmitte, Erklärung und Leerzustand davor; Felder sind sauber zweispaltig. Der Widerspruch „0 offene Suchen“ gegen die eigenen Lobbys fällt auf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Persona Jordan/Casey, Heuristik 1 Systemstatus] Funde: N3-MM-1; Formular am Ende (CM-MM-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 16 von 48 Zielen unter 44 px, Seitenhöhe 1391 px, kein Überlauf, 0 Konsolenfehler; Auswahl „Alle Dauern“ abgeschnitten (N1-MM-3, nur Handy); straggler/line-length (detect, N1-MM-5) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy, Progressive Disclosure] Funde: Vier-Schritte-Kasten plus Einleitung sagen dasselbe (N1-MM-2); Filter über leerer Liste (N1-MM-4) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „Offene Suchen“ gegen „Offene Lobbys“ (N1-MM-1, N1-SU-1); „Hallen-Veto“ ohne Erklärung |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: Zeilenlänge etwa 99 Zeichen (detect line-length) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/matchmaking` | line-length (~99 chars on 2 of 3 rendered lines (aim for <80)); straggler ("hier." alone on the last of 2 lines (4% of the measure)); plus overused-font (kein Fund) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-MM-1 | siehe erste Nennung | captainrot_desktop_matchmaking.png | wiederholt
+
+##### /mitspieler (Captain Rot, Handy)
+Beleg: captainrot_mobil_mitspieler.png (Messung 8 von 40 Zielen unter 44 px, Seitenhöhe 921 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Kurze Seite: Formular „Ich suche ein Spiel“ (Tag, Stadt Essen vorbelegt, Hinweis), Filter, leere Liste. Für den Captain passt weder Titel noch Formular zur Aufgabe „Mitspieler finden“.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Persona Jordan, Heuristik 2 Realwelt] Funde: N3-MI-1; Leerzustand ohne Handlung (N1-MI-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 8 von 40 Zielen unter 44 px, Seitenhöhe 921 px, kein Überlauf, 0 Konsolenfehler; Datum nativ |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: zwei Stadtfelder (N2-MI-1) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: Titel „Mitspieler gesucht“ gegen Formular „Ich suche ein Spiel“ (N3-MI-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/mitspieler` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-MI-1 | P1 | Für den Captain steht oben „Ich suche ein Spiel“ (Spieler-Sicht); „Wir suchen Mitspieler“ für sein Team fehlt. Leere Liste „Gerade hat sich niemand eingetragen.“ ohne Handlung; „Fehlt dir jemand? Frag ihn an.“ sagt nicht wo (N1-MI-1, N2-MI-1). | captainrot_mobil_mitspieler.png | critique, clarify
+
+##### /mitspieler (Captain Rot, Desktop)
+Beleg: captainrot_desktop_mitspieler.png (Messung 12 von 40 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Dieselbe Seite in einer 720-px-Spalte, Formular breiter, Leerzustand ein Satz; unterhalb viel leere Fläche.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Persona Jordan, Heuristik 2 Realwelt] Funde: N3-MI-1; Leerzustand ohne Handlung (N1-MI-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 12 von 40 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf, 0 Konsolenfehler; Datum nativ |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: zwei Stadtfelder (N2-MI-1) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: Titel „Mitspieler gesucht“ gegen Formular „Ich suche ein Spiel“ (N3-MI-1) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: leere Fläche unten, keine |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/mitspieler` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-MI-1 | siehe erste Nennung | captainrot_desktop_mitspieler.png | wiederholt
+
+##### /einladung/seed-team-gueltig (Captain Rot, Handy)
+Beleg: captainrot_mobil_einladung-seed-team-gueltig.png (Messung 8 von 35 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: „Du wurdest eingeladen zu Seed Rot“, „Essen · 6 Spieler im Kader“, ein Primärknopf „Team beitreten“. Der Betrachter ist Team-Admin dieses Teams. Untere Navigation hebt „Privatspiel“ hervor (N1-EG-3).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2, 9 Fehlervermeidung, Persona Jordan] Funde: N3-EG-1; kein Einladender (N1-EG-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 8 von 35 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf, 0 Konsolenfehler; Primärknopf 44+ px (gut) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine; knapp und klar |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions] Funde: „Team beitreten“ für ein Mitglied unpassend (N3-EG-1, SM-EL-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Navigation „Privatspiel“ aktiv (N1-EG-3) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/einladung/seed-team-gueltig` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-EG-1 | P1 | Der Captain öffnet den Einladungslink seines eigenen Teams: „Du wurdest eingeladen zu Seed Rot“ mit „Team beitreten“, obwohl er Team-Admin ist (Captain-Beleg zu SM-EL-1). Nicht geklickt: ob der Beitritt seine Admin-Rolle berührt. Captain-Funktionen (Link kopieren, Gültigkeit, neu erzeugen) fehlen auf der Seite. | captainrot_mobil_einladung-seed-team-gueltig.png | critique, clarify
+
+##### /einladung/seed-team-gueltig (Captain Rot, Desktop)
+Beleg: captainrot_desktop_einladung-seed-team-gueltig.png (Messung 12 von 35 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Zentrierter Block mit Teamname und Primärknopf in einer 720-px-Spalte; sehr aufgeräumt, aber ohne Einladenden, Teamfarbe oder Wappen (N1-EG-1).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2, 9 Fehlervermeidung, Persona Jordan] Funde: N3-EG-1; kein Einladender (N1-EG-1) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 12 von 35 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf, 0 Konsolenfehler; Primärknopf 44+ px (gut) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine; knapp und klar |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions] Funde: „Team beitreten“ für ein Mitglied unpassend (N3-EG-1, SM-EL-1) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: keine |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/einladung/seed-team-gueltig` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-EG-1 | siehe erste Nennung | captainrot_desktop_einladung-seed-team-gueltig.png | wiederholt
+
+##### /einladung/seed-team-abgelaufen (Captain Rot, Handy)
+Beleg: captainrot_mobil_einladung-seed-team-abgelaufen.png (Messung 8 von 35 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Überschrift „Link abgelaufen“, zwei Sätze, ghost-Knopf „Zur Startseite“; sonst leer. Der Captain wird an sich selbst verwiesen („den Team-Admin“).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 9 Fehlerbehebung] Funde: N3-EA-1; N1-EA-1, N1-EA-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 8 von 35 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf, 0 Konsolenfehler |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Errors] Funde: Rolle des Lesers ungeklärt (N3-EA-1); keine Laufzeitangabe (N1-EA-2) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/einladung/seed-team-abgelaufen` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-EA-1 | P1 | „Bitte den Team-Admin um einen neuen Link“: der Captain ist der Team-Admin von Seed Rot und findet keinen Knopf „Neuen Link erstellen“; einziger Knopf ist „Zur Startseite“ (N1-EA-1, N2-EA-1 für die Rolle Captain). | captainrot_mobil_einladung-seed-team-abgelaufen.png | critique, clarify
+
+##### /einladung/seed-team-abgelaufen (Captain Rot, Desktop)
+Beleg: captainrot_desktop_einladung-seed-team-abgelaufen.png (Messung 12 von 35 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Gleiche Seite, zentriert in 720 px, viel Leerfläche; nichts weist als Fehler (N1-EA-2).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 9 Fehlerbehebung] Funde: N3-EA-1; N1-EA-1, N1-EA-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 12 von 35 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf, 0 Konsolenfehler |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: keine |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Errors] Funde: Rolle des Lesers ungeklärt (N3-EA-1); keine Laufzeitangabe (N1-EA-2) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: keine |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/einladung/seed-team-abgelaufen` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-EA-1 | siehe erste Nennung | captainrot_desktop_einladung-seed-team-abgelaufen.png | wiederholt
+
+##### /app (Captain Rot, Handy)
+Beleg: captainrot_mobil_app.png (Messung 12 von 55 Zielen unter 44 px, Seitenhöhe 2672 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Gefüllte Startseite des Captains: Kasten mit drei Spielen (480 px), drei große Karten, Guthaben-Karte, fünf Kacheln, dann „Meine Spiele“ (fünf Zeilen) und „Meine Teams“. Seite 2672 px; die Reihenfolge ist dieselbe wie für den Spieler, die Rolle Captain zeigt nur das Wort „Team-Admin“ ganz unten.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Kognitive Last, Persona Casey/Alex] Funde: sieben Primär-/Sekundärknöpfe vor „Meine Spiele“ (X-03, X-04); N3-AP-1, N3-AP-2, N3-AP-3; N2-AP-1, N2-AP-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 12 von 55 Zielen unter 44 px, Seitenhöhe 2672 px, kein Überlauf, 0 Konsolenfehler; Privatspiel-Zeile bricht mitten im Namen um („Seed…“) (N2-AP-5) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde: Kasten + Liste + Kacheln wiederholen Handlungen (N2-AP-1, X-04); Guthaben-Karte (MUSS WEG) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „Bereit machen und bezahlen“ gegen „Wartet auf Spieler“ (N2-AP-2); Abgesagt ohne Grund (N3-AP-2); Begriffe (N3-FE-2); Guthaben-Karte (MUSS WEG) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: Kasten und Karten verdrängen die Spiele (X-03) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app` | straggler ("nötig." alone on the last of 2 lines (14% of the measure)); plus overused-font (kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-AP-1 | P1 | „Meine Spiele“ ist absteigend nach Datum sortiert (17.11., 15.11., 14.11., 12.11., 04.11.), der Kasten darüber aufsteigend (14.11., 15.11., 17.11.). Das nächste Spiel (#1012, Sa. 14.11., bestätigt) steht in der Liste an dritter Stelle, Abgesagt und Beendet ohne Trenner dazwischen (N2-AP-2/N2-AP-3 nannten die Sortierung nur am Rande). | captainrot_mobil_app.png | critique, distill
+- N3-AP-2 | P2 | Das abgesagte Spiel (Rot gegen Grün, Do. 12.11.) steht nur mit dem Wort „Abgesagt“ in der Liste: kein Grund, kein Hinweis, wer abgesagt hat, keine Folge (erstatten, neu ansetzen). Für den Captain ist das die wichtigste Zeile der Liste. | captainrot_mobil_app.png | critique, clarify
+- N3-AP-3 | P2 | Die Rolle Captain ist auf /app vor den Spielen nirgends erkennbar: „Team-Admin“ steht nur rechts in „Meine Teams“; der Kasten nennt nicht, wo der Captain etwas tun muss (z. B. #1010: 0 von 3 bereit). Begriffe wechseln (N3-FE-2). | captainrot_mobil_app.png | critique, clarify
+- X-03, X-04, X-05, X-18 | bestätigt (Teamfarbe als Punkt vorhanden, „0 Spiele“ nicht mehr) | wiederholt
+
+##### /app (Captain Rot, Desktop)
+Beleg: captainrot_desktop_app.png (Messung 16 von 55 Zielen unter 44 px, Seitenhöhe 1910 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Dieselben Blöcke in 720 px; Karten dreispaltig, Kacheln drei plus zwei, „Meine Spiele“ als fünf breite Zeilen mit Status rechts. Gut lesbar, aber ohne Gewichtung: Kasten, Karten, Kacheln, Liste, Teams.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Kognitive Last, Persona Casey/Alex] Funde: sieben Primär-/Sekundärknöpfe vor „Meine Spiele“ (X-03, X-04); N3-AP-1, N3-AP-2, N3-AP-3; N2-AP-1, N2-AP-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 16 von 55 Zielen unter 44 px, Seitenhöhe 1910 px, kein Überlauf, 0 Konsolenfehler; Privatspiel-Zeile bricht mitten im Namen um („Seed…“) (N2-AP-5) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde: Kasten + Liste + Kacheln wiederholen Handlungen (N2-AP-1, X-04); Guthaben-Karte (MUSS WEG) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „Bereit machen und bezahlen“ gegen „Wartet auf Spieler“ (N2-AP-2); Abgesagt ohne Grund (N3-AP-2); Begriffe (N3-FE-2); Guthaben-Karte (MUSS WEG) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: 720-px-Spalte (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-AP-1 | siehe erste Nennung | captainrot_desktop_app.png | wiederholt
+- N3-AP-2 | siehe erste Nennung | captainrot_desktop_app.png | wiederholt
+- N3-AP-3 | siehe erste Nennung | captainrot_desktop_app.png | wiederholt
+- X-03, X-04, X-05, X-18 | bestätigt (Teamfarbe als Punkt vorhanden, „0 Spiele“ nicht mehr) | wiederholt
+
+##### /app/suche/neu (Captain Rot, Handy)
+Beleg: captainrot_mobil_app-suche-neu.png (Messung 9 von 44 Zielen unter 44 px, Seitenhöhe 1330 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Sieben Felder in einer Spalte, Team „Seed Rot“, Datum leer, Stärke „4 – Sehr stark“ vorbelegt, Wiederholen, Sichtbarkeit, Hinweis, ein Knopf „Spielsuche erstellen“. Der Absatz oben erklärt nur den Unterschied zum Matchmaking.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 5 Fehlervermeidung, Persona Jordan] Funde: N3-FS-1, N3-FS-4; Länge (X-11) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 9 von 44 Zielen unter 44 px, Seitenhöhe 1330 px, kein Überlauf, 0 Konsolenfehler; Labels vorhanden, Datum nativ |
+| distill (reference/distill.md, manuell) | [Progressive Disclosure] Funde: „Wiederholen“ und „Sichtbarkeit“ für seltene Fälle gleichrangig (X-11) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Forms] Funde: Regel „24 Stunden“ klein unter dem Feld (X-11), Raster fehlt (N3-FS-1) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: native Datumsauswahl am Handy gut; lang (X-11) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/suche/neu` | straggler ("nötig." alone on the last of 2 lines (14% of the measure)); plus overused-font (kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FS-1 | P1 | Der Anstoß hat ein 15-Minuten-Raster (step 900). Wer 20:13 tippt, bekommt nur die Browsermeldung mit zwei Nachbarwerten; der Hinweis unter dem Feld nennt nur „Mindestens 24 Stunden im Voraus“. Das Raster steht nirgends im Formular. | captainrot_mobil_app-suche-neu.png | critique, clarify
+- N3-FS-4 | P2 | Die gesuchte Stärke ist mit der eigenen Stärke (4 „Sehr stark“) vorbelegt, ohne „egal“; /matchmaking bietet „von/bis“ mit „egal“. Der Captain schränkt die Gegnersuche ohne Absicht ein, und die zwei Formulare verhalten sich verschieden. | captainrot_mobil_app-suche-neu.png | critique, distill
+
+##### /app/suche/neu (Captain Rot, Desktop)
+Beleg: captainrot_desktop_app-suche-neu.png (Messung 13 von 44 Zielen unter 44 px, Seitenhöhe 1154 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Formular in einer schmaleren Spalte (448 px) mittig, links und rechts viel Fläche; Aufbau gleich. Gut lesbar, aber sieben Felder ohne Gruppierung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 5 Fehlervermeidung, Persona Jordan] Funde: N3-FS-1, N3-FS-4; Länge (X-11) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 13 von 44 Zielen unter 44 px, Seitenhöhe 1154 px, kein Überlauf, 0 Konsolenfehler; Labels vorhanden, Datum nativ |
+| distill (reference/distill.md, manuell) | [Progressive Disclosure] Funde: „Wiederholen“ und „Sichtbarkeit“ für seltene Fälle gleichrangig (X-11) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Forms] Funde: Regel „24 Stunden“ klein unter dem Feld (X-11), Raster fehlt (N3-FS-1) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: schmale Mitte (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/suche/neu` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FS-1 | siehe erste Nennung | captainrot_desktop_app-suche-neu.png | wiederholt
+- N3-FS-4 | siehe erste Nennung | captainrot_desktop_app-suche-neu.png | wiederholt
+
+##### /app/einstellungen (Captain Rot, Handy)
+Beleg: captainrot_mobil_app-einstellungen.png (Messung 30 von 69 Zielen unter 44 px, Seitenhöhe 2179 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Profil (Name „Rot Captain“, Stadt, Position, Spielerprofil mit sieben Farbpunkten), Benachrichtigungen mit elf angehakten Kästchen, Deine Daten, „Konto löschen“ als kleine Aufklappzeile; 2179 px, drei Absende-Knöpfe. Der Name lautet „Rot Captain“, die Kopfleiste zeigt „Rot“.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1 Systemstatus, 10 Hilfe] Funde: X-08, N2-ES-1..3 für den Captain bestätigt; N3-FE-1, N3-FE-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 30 von 69 Zielen unter 44 px, Seitenhöhe 2179 px, kein Überlauf, 0 Konsolenfehler; Profilfarbe nur über sieben Farbpunkte ohne sichtbare Beschriftung wählbar |
+| distill (reference/distill.md, manuell) | [Progressive Disclosure] Funde: elf Kästchen in einer Reihe, „Deine Daten“ am Ende (X-08) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Forms] Funde: „Neue Aufgabe für Admins“ (N3-FE-2); Push-Hinweis vor den Kanälen (X-08) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: 2179 px, drei Speichern (X-08); 30 von 69 Zielen unter 44 px |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/einstellungen` | straggler ("nötig." alone on the last of 2 lines (14% of the measure)); plus overused-font (kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FE-1 | P1 | „Konto löschen“ (aufgeklappt) nennt weder Team noch laufende Spiele: der Captain ist einziger Team-Admin von Seed Rot mit bestätigtem Spiel #1012 und offener Lobby, der Text sagt nur „Gespielte Spiele und Buchungen bleiben ohne deinen Namen erhalten“. Positiv: Tippwort LÖSCHEN und Folgetext. | captainrot_mobil_app-einstellungen.png | critique, clarify
+- N3-FE-2 | P2 | Begriffe für dieselbe Rolle: „Captain“ (Texte, Lobbyseite), „Team-Admin“ (/app, /einladung), „Admin“ (Kader „Flexibel · Admin“, Benachrichtigung „Neue Aufgabe für Admins“ ohne Erklärung der Aufgabe). | captainrot_mobil_app-einstellungen.png | clarify
+
+##### /app/einstellungen (Captain Rot, Desktop)
+Beleg: captainrot_desktop_app-einstellungen.png (Messung 34 von 69 Zielen unter 44 px, Seitenhöhe 1967 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Dieselben drei Blöcke untereinander in 720 px; die Kästchenliste ist hier kompakter, Hinweis „Push ist auf diesem Server noch nicht eingerichtet.“ steht vor den Kanälen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1 Systemstatus, 10 Hilfe] Funde: X-08, N2-ES-1..3 für den Captain bestätigt; N3-FE-1, N3-FE-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 34 von 69 Zielen unter 44 px, Seitenhöhe 1967 px, kein Überlauf, 0 Konsolenfehler; Profilfarbe nur über sieben Farbpunkte ohne sichtbare Beschriftung wählbar |
+| distill (reference/distill.md, manuell) | [Progressive Disclosure] Funde: elf Kästchen in einer Reihe, „Deine Daten“ am Ende (X-08) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Forms] Funde: „Neue Aufgabe für Admins“ (N3-FE-2); Push-Hinweis vor den Kanälen (X-08) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: 720-px-Spalte (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/einstellungen` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FE-1 | siehe erste Nennung | captainrot_desktop_app-einstellungen.png | wiederholt
+- N3-FE-2 | siehe erste Nennung | captainrot_desktop_app-einstellungen.png | wiederholt
+
+##### /app/benachrichtigungen (Captain Rot, Handy)
+Beleg: captainrot_mobil_app-benachrichtigungen.png (Messung 9 von 36 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Ein Eintrag „Neues Teammitglied: Quirin Testmann ist Seed Rot beigetreten.“ (aus Teil 2), Link „Einstellungen“ oben rechts; die Glocke zeigt „1“ obwohl die Seite gerade geöffnet ist. Sonst leer.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1 Systemstatus] Funde: N3-BE-1, N3-BE-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 9 von 36 Zielen unter 44 px, Seitenhöhe 844 px, kein Überlauf, 0 Konsolenfehler; Glocke als Symbol (Zähler nur als Zahl) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Link „Einstellungen“ neben dem Titel ist sinnvoll; keine |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „Neues Teammitglied“ ohne Verweis auf das Team im Titel; Datum ohne Jahr (N3-BE-2) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/benachrichtigungen` | straggler ("nötig." alone on the last of 2 lines (14% of the measure)); plus overused-font (kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-BE-1 | P2 | Die Glocke zeigt am Handy „1“ auch auf der Seite Benachrichtigungen selbst (Grid-Aufnahme); die Folgeaufnahme derselben Seite zeigt keine Zahl: der Besuch markiert als gelesen, die Kopfleiste ist im selben Aufruf veraltet (vgl. N1-OB-9). | captainrot_mobil_app-benachrichtigungen.png | audit, clarify
+- N3-BE-2 | P2 | Der einzige Eintrag („Neues Teammitglied“) unterscheidet gelesen/ungelesen nur durch die Rahmenfarbe (Quelltext: border-accent), nicht durch Text, Punkt oder Fettung; kein „Alle als gelesen“, Datum ohne Jahr, kein Hinweis, was der Captain tun kann (Rolle vergeben, in die Lobby holen). | captainrot_mobil_app-benachrichtigungen.png | critique, clarify
+
+##### /app/benachrichtigungen (Captain Rot, Desktop)
+Beleg: captainrot_desktop_app-benachrichtigungen.png (Messung 13 von 36 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Derselbe Eintrag, die Glocke zeigt keine Zahl mehr (gelesen markiert). Viel leere Fläche unter dem Eintrag, keine Gruppierung nach Zeit.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1] Funde: N3-BE-2; Glocke ohne Zahl (Status gelesen) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 13 von 36 Zielen unter 44 px, Seitenhöhe 800 px, kein Überlauf, 0 Konsolenfehler; Glocke als Symbol (Zähler nur als Zahl) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Link „Einstellungen“ neben dem Titel ist sinnvoll; keine |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: „Neues Teammitglied“ ohne Verweis auf das Team im Titel; Datum ohne Jahr (N3-BE-2) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: leere Fläche |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/benachrichtigungen` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-BE-1 | siehe erste Nennung | captainrot_desktop_app-benachrichtigungen.png | wiederholt
+- N3-BE-2 | siehe erste Nennung | captainrot_desktop_app-benachrichtigungen.png | wiederholt
+
+##### /app/guthaben (Captain Rot, Handy)
+Beleg: captainrot_mobil_app-guthaben.png (Messung 9 von 41 Zielen unter 44 px, Seitenhöhe 1519 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Altmodell-Seite: „0,00 €“, Vier-Schritte-Erklärung, Aufladen (20/50/100, Betragsfeld, Rabattcode), „Jetzt bezahlen“, Verlauf und Belege leer. Der Satz „Gerade sind Zahlungen noch nicht eingeschaltet“ steht unmittelbar neben einem aktiven Bezahlknopf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4/2] Funde: X-05, X-09, SM-GU-1 (MUSS WEG, im Dokument) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 9 von 41 Zielen unter 44 px, Seitenhöhe 1519 px, kein Überlauf, 0 Konsolenfehler; „Jetzt bezahlen“ unter der Navigation verdeckt (Artefakt) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Betrag doppelt (Schnellwahl/Feld, X-09); ganze Seite entfällt mit 012 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: nur Altmodell, nichts Neues; Widerspruch „Zahlungen nicht eingeschaltet“ gegen „Jetzt bezahlen“ liegt in der Tabelle MUSS WEG des Dokuments (11 Treffer „noch nicht eingeschaltet“) |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation] Funde: keine neuen |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/guthaben` | straggler ("nötig." alone on the last of 2 lines (14% of the measure)); plus overused-font (kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- Keine neuen Funde: der Seite gelten X-05, X-09, SM-GU-1 und die Zeilen der Tabelle MUSS WEG (dort schon mit Rolle Captain geführt).
+
+##### /app/guthaben (Captain Rot, Desktop)
+Beleg: captainrot_desktop_app-guthaben.png (Messung 13 von 41 Zielen unter 44 px, Seitenhöhe 1247 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Dieselbe Seite in 720 px; Aufladen, Rabattcode und leere Kästen „Noch keine Buchungen./Belege.“ (kein Verlauf im Seed, Hauptbuch nicht angelegt).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4/2] Funde: X-05, X-09, SM-GU-1 (MUSS WEG, im Dokument) |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive] 13 von 41 Zielen unter 44 px, Seitenhöhe 1247 px, kein Überlauf, 0 Konsolenfehler; „Jetzt bezahlen“ unter der Navigation verdeckt (Artefakt) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Funde: Betrag doppelt (Schnellwahl/Feld, X-09); ganze Seite entfällt mit 012 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Funde: nur Altmodell, nichts Neues; Widerspruch „Zahlungen nicht eingeschaltet“ gegen „Jetzt bezahlen“ liegt in der Tabelle MUSS WEG des Dokuments (11 Treffer „noch nicht eingeschaltet“) |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation] Funde: 720-px-Spalte |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/guthaben` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt: kein Fund) (ohne Sitzung gemessen: Anmeldeseite bzw. Seite ohne Sitzung; Quelltext-Lauf der Seitenordner zusätzlich: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- Keine neuen Funde: der Seite gelten X-05, X-09, SM-GU-1 und die Zeilen der Tabelle MUSS WEG (dort schon mit Rolle Captain geführt).
+
+#### Zusatzaufnahmen (Konto-Menü, Formulare absenden)
+
+Je Aufnahme ein Abschnitt; die Messwerte stammen aus dem Playwright-Lauf (Menü 240 x 336 px, sieben Einträge je 222 x 36 px). Durchgänge sind je Aufnahme einzeln und knapp, der angewandte Teil steht in den eckigen Klammern. Bei den Formular-Zuständen bedeutet „detect“: Quelltext-Lauf der betroffenen Seitenordner, keine Funde (ein URL-Lauf sieht den Absendezustand nicht).
+
+##### Konto-Menü geöffnet (/app) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-kontomenue.png
+Bewertung: Menü rechtsbündig (240 x 336 px) über dem Kasten, Name „Rot Captain“, sieben Einträge, „Guthaben 0,00 €“ (MUSS WEG) an dritter Stelle, „Abmelden“ abgesetzt. Hintergrund nicht gedimmt, Knopf „Rot“ mit Rahmen als Zustand (gut).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Assessment A, Heuristik 4/6, Persona Casey] Funde: N3-KM-1, N3-KM-2; Guthaben-Eintrag (MUSS WEG, Captain-Handy bestätigt: die offene Lücke) |
+| audit (manuell) | [Dimension 1 A11y, 4] Einträge 222 x 36 px (unter 44), aria-haspopup/expanded vorhanden, Escape schließt (gut) |
+| distill (manuell) | [Remove Redundancy] „Mein Profil“ und „Mein Bereich“ nah beieinander; keine Zusätze nötig |
+| clarify (manuell) | [Audit the language] „Konto und Einstellungen“ gegen Seitentitel „Einstellungen“ (N3-KM-2) |
+| adapt (manuell) | [Mobile Adaptation, Bottom sheets] Menü als Dropdown statt Bottom-Sheet (N2-KM-1); Einträge zu niedrig |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-KM-1 | P2 | Alle sieben Menüeinträge sind 222 x 36 px hoch (Messung), unter 44 px Touchziel; am Handy legt sich das Menü über den Kasten ohne Dimmung (N2-KM-1 für die Rolle Captain bestätigt). | captainrot_mobil_extra-kontomenue.png | audit, adapt
+- N3-KM-2 | P2 | Das Konto-Menü kennt keine Captain-Einträge (Mein Team, Lobby aufmachen, Einladungslink). „Konto und Einstellungen“ heißt auf der Seite „Einstellungen“; „Mein Bereich“ heißt auf der Seite „Hey Rot“: Menütext und Seitentitel weichen ab. | captainrot_mobil_extra-kontomenue.png | clarify, distill
+
+##### Konto-Menü geöffnet (/app) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-kontomenue.png
+Bewertung: Menü hängt unter dem Knopf rechts, deckt die „Zur Lobby“-Knöpfe der ersten beiden Kastenzeilen; Kopfleiste zeigt zusätzlich „0,00 €“ (MUSS WEG, doppelt mit dem Menüeintrag).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Assessment A, Heuristik 4] Funde: Betrag in Leiste und Menü (GD-, MUSS WEG), N3-KM-2 |
+| audit (manuell) | [Dimension 4] Einträge 36 px (Maus ok, Tastatur nutzbar) |
+| distill (manuell) | [Remove Redundancy] Funde: Guthaben doppelt (MUSS WEG) |
+| clarify (manuell) | [Audit the language] Funde: wie Handy |
+| adapt (manuell) | [Desktop Adaptation, Hover] Hover-Zustand sichtbar im Bild; kein Fund |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-KM-1 | siehe erste Nennung | captainrot_desktop_extra-kontomenue.png | wiederholt
+- N3-KM-2 | siehe erste Nennung | captainrot_desktop_extra-kontomenue.png | wiederholt
+
+##### Formular /app/suche/neu: leer absenden (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-suchneu-leer-nativ.png
+Bewertung: Der Browser springt zum Anstoß-Feld mit roter Kontur und Sprechblase „Please fill out this field.“ über der festen Kopfleiste; die Seite selbst zeigt keine Fehlermeldung. Hinweis „Mindestens 24 Stunden“ unverändert.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] Funde: Browserblase nicht steuerbar (N1-OB-1) |
+| audit (manuell) | [Dimension 1] Fokus auf das Feld (gut); Bubble verdeckt Label (Aufnahme-Artefakt) |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Forms] Pflichtfelder nicht als „Pflicht“ gekennzeichnet, nur Browser |
+| adapt (manuell) | [Mobile] Bubble liegt unter der festen Kopfleiste (Artefakt der Aufnahme) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-1 | bestätigt für das Captain-Formular | wiederholt
+
+##### Formular /app/suche/neu: leer absenden (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-suchneu-leer-nativ.png
+Bewertung: Wie am Handy: Sprechblase am Anstoß-Feld, sonst keine Rückmeldung; die Spalte ist schmal (448 px).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] wie Handy |
+| audit (manuell) | [Dimension 1] Fokus gut |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Forms] wie Handy |
+| adapt (manuell) | [Desktop] schmale Mitte (X-17) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-1 | bestätigt | wiederholt
+
+##### Formular /app/suche/neu: 20:13 (Raster) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-suchneu-zu-frueh.png
+Bewertung: Der Browser lehnt 11.11.2026 20:13 mit „Please enter a valid value. The two nearest valid values are … 20:00 and … 20:15“ ab; der Hinweis der Seite nennt das Raster nicht.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 5, 9] Funde: N3-FS-1 |
+| audit (manuell) | [Dimension 1] Meldung nennt gültige Werte (gut) |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Forms] Raster nicht vorab genannt (N3-FS-1) |
+| adapt (manuell) | [Mobile] natives Feld; auf dem Handy öffnet das Zeitrad nur volle Viertelstunden (nicht geprüft) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FS-1 | siehe erste Nennung | captainrot_mobil_extra-suchneu-zu-frueh.png | wiederholt
+
+##### Formular /app/suche/neu: 20:13 (Raster) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-suchneu-zu-frueh.png
+Bewertung: Gleiche Browsermeldung als breiter Kasten über zwei Zeilen („The two nearest valid values are 11.11.2026 20:00 and … 20:15“); Datumsformat in der Meldung weicht von der deutschen Eingabe ab.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 5] Funde: N3-FS-1 |
+| audit (manuell) | [Dimension 1] ok |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Forms] wie Handy |
+| adapt (manuell) | [Desktop] Bubble verdeckt das Feld (Artefakt der Aufnahme) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FS-1 | siehe erste Nennung | captainrot_desktop_extra-suchneu-zu-frueh.png | wiederholt
+
+##### Formular /app/suche/neu: Anstoß unter 24 Stunden (Server-Fehler) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-suchneu-zu-frueh-server.png
+Bewertung: Eingabe 11.11. 20:00 bleibt stehen, direkt unter dem Feld steht im schwarz umrandeten Kasten „Das Spiel muss mindestens 24 Stunden in der Zukunft liegen.“; das Feld selbst ist nicht markiert. Gut, dass die Meldung am Feld steht, schwach, dass sie dem Hinweis darüber gleicht.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] Funde: N3-FS-2; N1-OB-3 (Kastenstil) |
+| audit (manuell) | [Dimension 1] Meldung im Kastenstil, Farbe nicht Fehlerfarbe |
+| distill (manuell) | [Remove Redundancy] Hinweis und Fehler sagen dasselbe (N3-FS-2) |
+| clarify (manuell) | [Errors] Was, warum, wie: Regel genannt, aber kein Vorschlag (z. B. frühester Termin) |
+| adapt (manuell) | [Mobile] Kasten sichtbar ohne Scrollen (gut) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FS-2 | P1 | Zu früher Termin (Server-Fehler): „Das Spiel muss mindestens 24 Stunden in der Zukunft liegen.“ steht direkt unter dem Feld (gut) und die Eingabe bleibt erhalten (gut), aber im dunkel umrandeten Kasten ohne Fehlerfarbe, ohne Markierung des Feldes und ohne Fokus; Hinweis und Fehler wiederholen dieselbe Regel (N1-OB-3). | captainrot_mobil_extra-suchneu-zu-frueh-server.png | critique, clarify
+
+##### Formular /app/suche/neu: Anstoß unter 24 Stunden (Server-Fehler) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-suchneu-zu-frueh-server.png
+Bewertung: Gleicher Fehlertext im Kasten unter dem Feld, Eingabe bleibt; der Knopf „Spielsuche erstellen“ liegt weiter unten ohne Hinweis auf den Fehler.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] Funde: N3-FS-2 |
+| audit (manuell) | [Dimension 1] wie Handy |
+| distill (manuell) | [Remove Redundancy] wie Handy |
+| clarify (manuell) | [Errors] kein frühester Termin genannt |
+| adapt (manuell) | [Desktop] ok |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FS-2 | siehe erste Nennung | captainrot_desktop_extra-suchneu-zu-frueh-server.png | wiederholt
+
+##### Formular /app/suche/neu: Erfolg (Mo. 23.11., 19:00) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-suchneu-erfolg.png
+Bewertung: Weiterleitung auf „Öffentliche Spielsuche · Seed Rot sucht einen Gegner“: Anstoß, Dauer, Stadt, gesuchte Stärke, Hinweis, Kader mit Elo, ein Knopf „Spielsuche zurückziehen“ in voller Breite. Keine Bestätigung, kein Teilen-Link.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1 Systemstatus] Funde: N3-FS-3 |
+| audit (manuell) | [Dimension 4] Knopf 44+ px (gut); Fußzeile 13 Links (X-07) |
+| distill (manuell) | [Remove Redundancy] Kader mit sechs Zeilen und Elo nützlich für Gegner, für den Ersteller redundant |
+| clarify (manuell) | [Success states] fehlender Bestätigungssatz (N3-FS-3) |
+| adapt (manuell) | [Mobile] Rückzug ohne Rückfrage nahe am Daumen (Rückfrage nicht geprüft) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FS-3 | P1 | Erfolg: Weiterleitung auf „Seed Rot sucht einen Gegner“ ohne Bestätigungssatz („Spielsuche erstellt“), ohne Teilen-Link, ohne Weg zurück zu „Meine Spiele“. Der einzige Knopf in voller Breite ist „Spielsuche zurückziehen“ (nicht angeklickt, ob eine Rückfrage kommt). | captainrot_mobil_extra-suchneu-erfolg.png | critique, clarify
+- N3-AP-5 | P1 | Zwei im Formular erstellte Spielsuchen (fester Termin) tauchen auf /app weder im Kasten noch in „Meine Spiele“ auf; es erscheinen nur die Lobby (#1020 bzw. #1022) und dieselben fünf Zeilen. Der Captain findet seine Spielsuche nur über die Weiterleitung (Liste auf fünf gekappt, N2-AP-3; Kasten kennt nur Lobbys). | captainrot_mobil_extra-suchneu-erfolg.png | critique, distill
+
+##### Formular /app/suche/neu: Erfolg (Di. 24.11., 19:00) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-suchneu-erfolg.png
+Bewertung: Dieselbe Spielseite in einer schmalen Spalte; der Ersteller sieht die Seite wie ein Fremder (öffentliche Ansicht), „Spielsuche zurückziehen“ dominiert als einziger Knopf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1, 3] Funde: N3-FS-3 |
+| audit (manuell) | [Dimension 4] ok |
+| distill (manuell) | [Remove Redundancy] Kader/Details wie Handy |
+| clarify (manuell) | [Success states] wie Handy |
+| adapt (manuell) | [Desktop] schmale Spalte (X-17) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FS-3 | siehe erste Nennung | captainrot_desktop_extra-suchneu-erfolg.png | wiederholt
+- N3-AP-5 | siehe erste Nennung | captainrot_desktop_extra-suchneu-erfolg.png | wiederholt
+
+##### Formular /matchmaking: leer absenden (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-matchmaking-leer-nativ.png
+Bewertung: Browserblase „Please fill out this field.“ am Datumsfeld, das nur „dd.mm“ zeigt (zu schmal, CM-MM-1); sonst keine Rückmeldung der Seite.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] N1-OB-1 |
+| audit (manuell) | [Dimension 1] Fokus auf Feld (gut); Datum abgeschnitten |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Forms] drei Pflichtfelder (Datum, von, bis) ohne Pflichtkennzeichnung |
+| adapt (manuell) | [Mobile] drei Felder in einer Zeile zu schmal (CM-MM-1) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- CM-MM-1, N1-OB-1 | bestätigt | wiederholt
+
+##### Formular /matchmaking: leer absenden (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-matchmaking-leer-nativ.png
+Bewertung: Sprechblase am Datumsfeld, die Seite scrollt das Formular in die Mitte; sonst keine Rückmeldung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] N1-OB-1 |
+| audit (manuell) | [Dimension 1] ok |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Forms] wie Handy |
+| adapt (manuell) | [Desktop] Felder breit genug |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N1-OB-1 | bestätigt | wiederholt
+
+##### Formular /matchmaking: von später als bis (Server-Fehler) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-matchmaking-ungueltig.png
+Bewertung: Am Ende des Formulars unter „Lobby aufmachen“ steht im Kasten „Ein Zeitfenster endet vor seinem Beginn.“, am Handy kaum im Blick (Seite rund 1900 px hoch); Felder behalten Werte, sind aber nicht markiert.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] Funde: N3-FM-2; Kastenstil N1-OB-3 |
+| audit (manuell) | [Dimension 1] Meldung role=alert (ActionForm); Fokus bleibt am Knopf |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Errors] nennt Fehler, aber nicht welches Zeitfenster/welcher Wert (bei mehreren Fenstern wichtig) |
+| adapt (manuell) | [Mobile] Meldung unter dem Daumen nach dem Tippen, Felder darüber |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FM-2 | P1 | Drei Fehler („Ein Zeitfenster endet vor seinem Beginn.“, „Kein Zeitfenster passt: … mindestens 60 Minuten lang … 24 Stunden in der Zukunft enden.“, „Zeitfenster dürfen höchstens 14 Tage in der Zukunft liegen.“) stehen unter dem Absendeknopf, am Handy außerhalb des Bildschirms, ohne Feldmarkierung. Die Regeln (24 h, 14 Tage, mind. 60 Min) stehen vorab nicht am Formular, das Datumsfeld hat kein Maximum. „Kein Zeitfenster passt“ für ein Datum in der Vergangenheit ist irreführend. | captainrot_mobil_extra-matchmaking-ungueltig.png | critique, clarify
+
+##### Formular /matchmaking: von später als bis (Server-Fehler) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-matchmaking-ungueltig.png
+Bewertung: Gleiche Meldung unter dem Knopf, Zeitfenster-Felder oberhalb zeigen 21:00 bis 19:00 ohne Markierung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] Funde: N3-FM-2 |
+| audit (manuell) | [Dimension 1] wie Handy |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Errors] wie Handy |
+| adapt (manuell) | [Desktop] ok |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FM-2 | siehe erste Nennung | captainrot_desktop_extra-matchmaking-ungueltig.png | wiederholt
+
+##### Formular /matchmaking: Datum in der Vergangenheit (Server-Fehler) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-matchmaking-ungueltig-vergangen.png
+Bewertung: Eingabe 08.11.2026, 19:00 bis 21:00: „Kein Zeitfenster passt: Es muss mindestens 60 Minuten lang sein und mindestens 24 Stunden in der Zukunft enden.“ Die Meldung nennt zwei Regeln auf einmal; welche verletzt ist, ergibt sich nur durch Nachrechnen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] Funde: N3-FM-2 |
+| audit (manuell) | [Dimension 1] ok |
+| distill (manuell) | [Remove Redundancy] zwei Regeln in einem Satz |
+| clarify (manuell) | [Errors] ein Datum in der Vergangenheit bekommt „Kein Zeitfenster passt“ (irreführend) |
+| adapt (manuell) | [Desktop] ok |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FM-2 | siehe erste Nennung | captainrot_desktop_extra-matchmaking-ungueltig-vergangen.png | wiederholt
+
+##### Formular /matchmaking: Erfolg (#1020) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-matchmaking-erfolg.png
+Bewertung: Weiterleitung auf die Lobbyseite „Spiel #1020 · Lobby“: Kasten „Mein Team: Seed Rot, 1 von 6 Plätzen“, der Captain mit rotem Punkt „Lobby beigetreten“, fünf freie Plätze, fünf Teammitglieder „im Team, aber noch nicht in der Lobby“, „Lobby verlassen“, Hinweis zu Bezahlen und Bereitmachen, „Spieler einladen“, „Gegner“, „Alle offenen Lobbys“ groß neben dem kleinen „Lobby schließen“.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1, 3, Persona Casey] Funde: N3-FM-1 |
+| audit (manuell) | [Dimension 4] „Spieler einladen“ erst nach dem Falz; Randknöpfe unter 44 px (Lobby verlassen/schließen) |
+| distill (manuell) | [Remove Redundancy] Platzhalterzeilen „Wartet auf Spieler 2..6“ fünfmal |
+| clarify (manuell) | [Success states, Language] kein Bestätigungssatz; „Bezahlen und Bereitmachen geht, sobald ein Gegner da ist … Nur wenn alle bezahlt haben“ (Altmodell/zu prüfen, siehe MUSS WEG) |
+| adapt (manuell) | [Mobile] Primäraktion „Einladungslink erstellen“ unter dem Falz |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FM-1 | P1 | Erfolg: Weiterleitung auf die Lobbyseite „Spiel #1020 · Lobby“ ohne Bestätigung. Der Captain steht mit rotem Punkt „Lobby beigetreten“ (Rot = Fehler, N1-ST-6); „Lobby verlassen“ und „Lobby schließen“ sind kleine Randknöpfe, „Alle offenen Lobbys“ ist groß: Hierarchie vertauscht. „Spieler einladen“ liegt am Handy unter dem Bildschirmrand, fünf Teammitglieder stehen ohne Aktion unter „Im Team, aber noch nicht in der Lobby“. | captainrot_mobil_extra-matchmaking-erfolg.png | critique, distill
+
+##### Formular /matchmaking: Erfolg (#1022) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-matchmaking-erfolg.png
+Bewertung: Lobbyseite am Desktop: gleicher Aufbau, die Kachel „Spieler einladen“ mit breitem Primärknopf „Einladungslink erstellen“ ist gut sichtbar; „Lobby verlassen“ und „Lobby schließen“ klein, „Alle offenen Lobbys“ groß.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1, 3] Funde: N3-FM-1 |
+| audit (manuell) | [Dimension 4] Randknöpfe klein |
+| distill (manuell) | [Remove Redundancy] fünf Platzhalterzeilen |
+| clarify (manuell) | [Language] wie Handy (Bezahlen und Bereitmachen) |
+| adapt (manuell) | [Desktop] schmale Spalte (X-17) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FM-1 | siehe erste Nennung | captainrot_desktop_extra-matchmaking-erfolg.png | wiederholt
+
+##### /matchmaking nach dem Aufmachen (Handy) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-matchmaking-nach-erfolg.png
+Bewertung: Das Formular ist verschwunden; „Gerade warten: Essen 1 Team.“, „Offene Suchen (1)“ mit großer Karte „Seed Rot · Euer Team · Elo 1180“, darunter ein zweiter Kasten „Eure Lobby ist offen: wartet auf einen Gegner“ mit „Suche abbrechen“.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] Funde: N3-FM-3 (Doppelung, Formular weg) |
+| audit (manuell) | [Dimension 4] Abbrechen-Knopf 38 px (Bild) |
+| distill (manuell) | [Remove Redundancy] Doppelung Karte/Kasten (N3-FM-3) |
+| clarify (manuell) | [Language] „Suchen“, „Lobby“, „Spiel“ gemischt (N1-SU-1) |
+| adapt (manuell) | [Mobile] Karte 400 px hoch ohne Kernaktion |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FM-3 | P1 | Nach dem Aufmachen verschwindet das Formular ohne Erklärung (eine offene Lobby je Team). „Offene Suchen (1)“ zeigt dieselbe Lobby doppelt (große Karte „Euer Team“ und Kasten „Eure Lobby ist offen“). „Suche abbrechen“ schließt ohne Rückfrage und ohne Meldung, das Formular steht sofort wieder da. | captainrot_mobil_extra-matchmaking-nach-erfolg.png | critique, distill
+
+##### /matchmaking mit offener Lobby (Desktop, #1020 vom Handy) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-matchmaking-nach-erfolg.png
+Bewertung: Gleiche Doppelung am Desktop: große Karte mit Stärke, Kader, Zeitfenster, Hinweis „Analyse-Test mobil“ und darunter der Kasten mit „Suche abbrechen“.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] Funde: N3-FM-3 |
+| audit (manuell) | [Dimension 4] ok |
+| distill (manuell) | [Remove Redundancy] Doppelung |
+| clarify (manuell) | [Language] „Spielstärke (Selbsteinschätzung)“ ok |
+| adapt (manuell) | [Desktop] viel Information in 720 px, gut lesbar |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FM-3 | siehe erste Nennung | captainrot_desktop_extra-matchmaking-nach-erfolg.png | wiederholt
+
+##### /matchmaking nach „Suche abbrechen“ (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-matchmaking-nach-abbruch.png
+Bewertung: Nach dem Abbruch steht die Seite wieder als leere Seite („Offene Suchen (0)“) mit Formular; es gibt keine Meldung, dass die Lobby geschlossen ist.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] Funde: N3-FM-3 |
+| audit (manuell) | [Dimension 1] kein role=status |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Success states] fehlende Bestätigung (N3-FM-3) |
+| adapt (manuell) | [Desktop] Kopfleiste im Bild mitten (Artefakt) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FM-3 | siehe erste Nennung | captainrot_desktop_extra-matchmaking-nach-abbruch.png | wiederholt
+
+##### /app nach dem Aufmachen einer Lobby (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-app-nach-erfolg.png
+Bewertung: Der Kasten zeigt jetzt vier Karten (#1020 oben ergänzt), 600 px hoch; die Spielsuche vom Handy fehlt, „Meine Spiele“ zeigt dieselben fünf Zeilen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] Funde: N3-AP-4, N3-AP-5 |
+| audit (manuell) | [Dimension 4] Seite 2832 px |
+| distill (manuell) | [Remove Redundancy] Kasten wächst mit jeder Lobby (N2-AP-1) |
+| clarify (manuell) | [Language] „Eure Lobby ist offen und wartet auf einen Gegner“ (gut, klar) |
+| adapt (manuell) | [Mobile] vier Primärknöpfe vor den Karten |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-AP-4 | P1 | Nach dem Aufmachen einer Lobby bietet /app „Lobby aufmachen“ weiter dreifach an (Karte, Kachel, Reiter) und „Team gründen“ als orangen Knopf, obwohl das Team schon eine offene Lobby hat und das Formular nicht mehr erscheint (N3-FM-3, N1-OB-12, SM-ST-1). | captainrot_mobil_extra-app-nach-erfolg.png | critique, distill
+- N3-AP-5 | siehe erste Nennung | captainrot_mobil_extra-app-nach-erfolg.png | wiederholt
+
+##### /app nach dem Aufmachen einer Lobby (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-app-nach-erfolg.png
+Bewertung: Vier Zeilen im Kasten (#1022 neu), darunter weiter drei Karten, Guthaben, Kacheln und fünf Zeilen „Meine Spiele“ ohne die beiden Spielsuchen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] Funde: N3-AP-4, N3-AP-5 |
+| audit (manuell) | [Dimension 4] ok |
+| distill (manuell) | [Remove Redundancy] wie Handy |
+| clarify (manuell) | [Language] „Lobby aufmachen“ weiter dreifach |
+| adapt (manuell) | [Desktop] 720 px |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-AP-4 | siehe erste Nennung | captainrot_desktop_extra-app-nach-erfolg.png | wiederholt
+- N3-AP-5 | siehe erste Nennung | captainrot_desktop_extra-app-nach-erfolg.png | wiederholt
+
+##### Einstellungen: Profil speichern (Erfolg) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-einstellungen-profil-gespeichert.png
+Bewertung: Nach „Profil speichern“ steht „Gespeichert.“ in roter Akzentfarbe unter dem Knopf (kleiner Text); weiter unten steht das zweite Formular, das Feedback ist von dort nicht zu sehen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] N2-ES-1, N2-ES-3 für den Captain bestätigt |
+| audit (manuell) | [Dimension 1] Rolle der Meldung im Quelltext nicht geprüft |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Success states] „Gespeichert.“ ohne Objekt (N2-ES-3), Farbe wie Fehler (N2-ES-1) |
+| adapt (manuell) | [Mobile] Meldung unter dem Knopf, außerhalb der Mitte |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-1, N2-ES-3 | bestätigt für Captain | wiederholt
+
+##### Einstellungen: Profil speichern (Erfolg) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-einstellungen-profil-gespeichert.png
+Bewertung: Wie am Handy: „Gespeichert.“ rot unter dem Knopf; am Desktop sichtbar zusammen mit der Notification-Sektion.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] N2-ES-1 |
+| audit (manuell) | [Dimension 1] wie Handy |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Success states] wie Handy |
+| adapt (manuell) | [Desktop] ok |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-1 | bestätigt | wiederholt
+
+##### Einstellungen: Name leer (Server-Fehler) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-einstellungen-name-leer.png
+Bewertung: Der Name ist leer, unter „Profil speichern“ steht im schwarz umrandeten Kasten „Der Name braucht 2 bis 60 Zeichen.“; das Feld ist nicht markiert und liegt 700 px darüber.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] N2-ES-2 für den Captain bestätigt; N1-OB-3 |
+| audit (manuell) | [Dimension 1] Meldung role=alert |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Errors] Regel genannt, Feld nicht genannt (N2-ES-2) |
+| adapt (manuell) | [Mobile] Name oben, Meldung unten, dazwischen das ganze Profil |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-2 | bestätigt | wiederholt
+
+##### Einstellungen: Name leer (Server-Fehler) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-einstellungen-name-leer.png
+Bewertung: Am Desktop liegt Feld und Meldung nur 600 px auseinander, Meldung weiter ohne Fokus oder Markierung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 9] N2-ES-2 |
+| audit (manuell) | [Dimension 1] wie Handy |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Errors] wie Handy |
+| adapt (manuell) | [Desktop] besser sichtbar |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-2 | bestätigt | wiederholt
+
+##### Einstellungen: Benachrichtigungen speichern (Erfolg) (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-einstellungen-prefs-gespeichert.png
+Bewertung: „Gespeichert.“ steht rot unter dem Knopf „Speichern“, ohne Hinweis, was gespeichert wurde (elf Kästchen, zwei Kanäle).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] N2-ES-3 |
+| audit (manuell) | [Dimension 1] role=status (Quelltext PrefsForm) |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Success states] Objekt fehlt (N2-ES-3) |
+| adapt (manuell) | [Mobile] Kästchenzeilen etwa 28 px hoch (Bildmaß, unter 44, X-07) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-3, N3-FE-2 | bestätigt | wiederholt
+
+##### Einstellungen: Benachrichtigungen speichern (Erfolg) (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-einstellungen-prefs-gespeichert.png
+Bewertung: Wie am Handy: rotes „Gespeichert.“ unter „Speichern“.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] N2-ES-3 |
+| audit (manuell) | [Dimension 1] wie Handy |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Success states] wie Handy |
+| adapt (manuell) | [Desktop] ok |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N2-ES-3 | bestätigt | wiederholt
+
+##### Einstellungen: „Konto löschen“ aufgeklappt (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-einstellungen-konto-loeschen.png
+Bewertung: Der Block nennt die Folgen und verlangt das Tippen von LÖSCHEN; „Konto endgültig löschen“ ist ein Rahmenknopf. Der Captain wird nicht auf Team, Spiele und seine Admin-Rolle hingewiesen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 5 Fehlervermeidung, Persona Riley] Funde: N3-FE-1 |
+| audit (manuell) | [Dimension 1] Tippwort-Schutz (gut) |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Destructive actions] Folgetext vorhanden, Rollenfolgen fehlen (N3-FE-1) |
+| adapt (manuell) | [Mobile] Knopf 44 px (gut) |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FE-1 | siehe erste Nennung | captainrot_mobil_extra-einstellungen-konto-loeschen.png | wiederholt
+
+##### Einstellungen: „Konto löschen“ aufgeklappt (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-einstellungen-konto-loeschen.png
+Bewertung: Wie am Handy: zwei Sätze Folgetext, Tippfeld, Rahmenknopf; kein Hinweis auf Team-Admin-Rolle, offene Lobbys oder bestätigtes Spiel.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 5] Funde: N3-FE-1 |
+| audit (manuell) | [Dimension 1] gut |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Destructive actions] wie Handy |
+| adapt (manuell) | [Desktop] ok |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-FE-1 | siehe erste Nennung | captainrot_desktop_extra-einstellungen-konto-loeschen.png | wiederholt
+
+##### /app/benachrichtigungen nach dem Besuch (Captain Rot, Handy)
+Beleg: captainrot_mobil_extra-benachrichtigungen-nach.png
+Bewertung: Die Kopfleiste zeigt jetzt keine Zahl mehr; der Eintrag sieht unverändert aus (kein Unterschied gelesen/ungelesen).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] Funde: N3-BE-1, N3-BE-2 |
+| audit (manuell) | [Dimension 1] Zähler weg (gut) |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Language] „Neues Teammitglied“ ok |
+| adapt (manuell) | [Mobile] keine |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-BE-1 | siehe erste Nennung | captainrot_mobil_extra-benachrichtigungen-nach.png | wiederholt
+- N3-BE-2 | siehe erste Nennung | captainrot_mobil_extra-benachrichtigungen-nach.png | wiederholt
+
+##### /app/benachrichtigungen nach dem Besuch (Captain Rot, Desktop)
+Beleg: captainrot_desktop_extra-benachrichtigungen-nach.png
+Bewertung: Gleiche Seite am Desktop; ohne Zähler an der Glocke, Eintrag unverändert; keine neue Meldung durch das Aufmachen von Lobby und Spielsuche.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (manuell) | [Heuristik 1] Funde: N3-BE-2 |
+| audit (manuell) | [Dimension 1] ok |
+| distill (manuell) | [Remove Redundancy] keine |
+| clarify (manuell) | [Language] wie Handy |
+| adapt (manuell) | [Desktop] leere Fläche |
+| `impeccable detect` (Quelltext der Seite/Komponente) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N3-BE-2 | siehe erste Nennung | captainrot_desktop_extra-benachrichtigungen-nach.png | wiederholt
+
+
+
+#### Nachlauf-Blatt N4 Captain Grün (Fehlerzustand)
+
+Stand: Nachlauf der Gruppe-X-Analyse, Teil 4. Dev-Server Port 3102, Engine 0.1.19 über den Launcher, Seed laut analyse-seed.md (frisch geladen). Nur gelesen, gemessen und Seiten geöffnet; kein Quelltext geändert. Rolle: Captain Grün = `seed-captain-gruen@test.local` (Grün Captain, Team-Admin Seed Grün, `card_status = failed`, Abbuchung `failed`/`card_declined`). Vergleich: `seed-spieler-09@test.local` (Ilias Testmann, `charge_pending`) als Betroffener, `seed-captain-gelb@test.local` als Dritter. Kennung N4 = Nachlauf 4. Vorhandene Funde (X-nn, GM-, GD-, SM-, SD-, CM-, CD-, N1-, N2-, N3-) werden nur referenziert.
+
+#### Methode und Grenzen
+
+- Die fünf Reference-Dateien (`critique.md` 819 Zeilen, `audit.md`, `distill.md`, `clarify.md`, `adapt.md`) wurden zu Beginn vollständig gelesen. critique/audit/distill/clarify/adapt haben keinen Launcher-Befehl: sie liefen manuell, je Durchgang steht in eckigen Klammern der angewandte Teil. critique bleibt degradiert (kein Overlay, kein getrennter Assessment-B-Sub-Agent; Assessment B = `detect`).
+- `context` (Launcher) lief einmal (PRODUCT.md geladen, Plattform web). `detect --json --viewport <WxH> <URL>` lief für alle sechs Seiten und beide Viewports (12 Läufe, kein Timeout; /app-Seiten leiten ohne Sitzung auf die Anmeldeseite weiter, /matchmaking ist öffentlich und wurde echt gemessen). Der Hinweis „nötig.“ (Straggler) gehört der Anmeldeseite, nicht dem Captain-Bild. `overused-font` (Plus Jakarta Sans) ist in DESIGN.md gesetzt: kein Fund. Zusätzlich Quelltext-Läufe für die Seitenordner unter app, matchmaking, lobby/[id] (Gruppe Y) und PlayerLight.tsx: alle ohne Funde außer PlayerLight.tsx (2 advisory design-system-color, Altampel).
+- Ganzseitige Handy-Bilder zeigen die feste untere Navigation mitten im Bild und das runde N (Next-Overlay): Aufnahme-Artefakt, kein Fund.
+- Methodischer Befund: Der Kartenstatus je Platz erscheint nur in der Lobby (Gruppe Y) und nur bei eingeschaltetem Schalter `card_payments_enabled`. Die 12 Grid-Bilder entstanden ohne Schalter; für die Lobby-Belege wurde er in der lokalen Dev-DB kurz gesetzt und danach zurückgesetzt (siehe unten). Seiten der Gruppe Y sind als „Gruppe Y, nur Beleg“ gekennzeichnet und nicht bewertet.
+- Quelltext-Belege (nur gelesen): card-view.ts, payments/charge.ts:101-103 und 170, payments/charge-run.ts:151-153, server/mygame.ts:60, lobby/[id]/page.tsx.
+- Nicht prüfbar: echtes Karten-Erneuern (Stripe nicht eingerichtet, nur „Testkarte hinterlegen“), Nachzahl-Weg und „Anteil übernehmen“ (M3, nicht gebaut), Push, E-Mail bei Fehlschlag (im Code kein Aufruf), echter Google-Login.
+
+#### Geänderte Seed-/Dev-Daten durch die Analyse (vorher/nachher)
+
+| Aktion | Vorher | Nachher |
+|---|---|---|
+| Einstellung `card_payments_enabled` in der lokalen Dev-DB (soccaz_w2), per kleinem Skript außerhalb des Repos (nur localhost:5433, Worker-DB) | keine Zeile (AUS) | kurz `true` für die Lobby-Belege, danach `false` (Zeile mit `false` bleibt, wirkt wie AUS) |
+| Dev-Logins als Captain Grün, Spieler 09, Captain Gelb | – | Sitzungen angelegt; keine Formulare abgesendet |
+Seed-Daten (Spiele, Teilnehmer, Abbuchungen, Teams) blieben unverändert; kein Seed-Neuaufruf nötig.
+
+#### Zähler
+
+- Angesehen: 12 Grid-Bilder + 20 Zusatzaufnahmen (Captain Grün: Konto-Menü 2, Lobby Schalter aus 2, Lobby Schalter an 2; Spieler 09: 4 Seiten x 2, Konto-Menü 2, Lobby 2; Captain Gelb Lobby 2) = 32 von 32 Bildern, je Bild einzeln mit Read geöffnet.
+- Durchgänge: je Zelle critique, audit, distill, clarify, adapt als eigene Zeilen (32 Abschnitte), plus detect je Seite und Viewport (12 URL-Läufe, 8 Quelltext-Läufe).
+- Neue Funde (Erstnennung): P0 1, P1 7, P2 2; gesamt 10.
+
+#### Neue Funde (Erstnennung)
+
+| ID | Prio | Beschreibung | Beleg-Datei | Befehl |
+|---|---|---|---|---|
+| N4-FZ-1 | P1 | Der Fehlerzustand ist auf /app nirgends sichtbar: kein Banner, keine Ampel, kein Kartenhinweis. Der Kasten „Meine aktuellen Spiele“ sagt für #1026 (Abbuchung fehlgeschlagen, Anstoß in zwei Tagen) „Bereit machen und bezahlen“, „Meine Spiele“ sagt „Wartet auf Spieler“. Weder Captain noch Betroffener erfahren hier, dass etwas zu tun ist (Statuswort aus mygame.ts:60 kennt weder Kartenmodell noch Kartenstatus; /app liest card_status nirgends). | captaingruen_desktop_app.png | critique, clarify |
+| N4-FZ-2 | P0 | Bei fehlgeschlagener Abbuchung entsteht keine Benachrichtigung: charge.ts:101-103 und charge-run.ts:151-153 setzen nur card_status=failed und schreiben ein Audit; notifyUsers (Art „payment“) gibt es nur bei Erfolg (charge.ts:170). /app/benachrichtigungen bleibt leer („Noch keine Benachrichtigungen.“), die Glocke zeigt keine Zahl, obwohl Einstellungen versprechen „Wichtige Hinweise zu Absagen, Ergebnissen und Zahlungen bekommst du immer.“ Der Captain erfährt das Problem nur, wenn er die Lobby (Gruppe Y) von sich aus öffnet. Quelltext-Beleg, im Browser bestätigt (leere Liste bei Captain und Betroffenem). | captaingruen_mobil_app-benachrichtigungen.png | critique, clarify |
+| N4-FZ-3 | P1 | Es gibt außerhalb der Lobby keinen Ort „Karte verwalten/erneuern“: /app/einstellungen (Profil, Benachrichtigungen, Daten, Konto löschen), /app/guthaben (nur Aufladen), Konto-Menü und Kopfleiste enthalten nichts zur hinterlegten Karte (Marke, letzte vier Ziffern, Status). Die einzige Handlung „Karte hinterlegen“ steckt im Kartenfeld der Lobby (Gruppe Y). | captaingruen_mobil_app-einstellungen.png | critique, distill |
+| N4-FZ-4 | P1 | Widerspruch zwischen Seiten: /app/guthaben („Gerade sind Zahlungen noch nicht eingeschaltet. Spiele kosten daher nichts“, „Noch keine Buchungen“, „Noch keine Belege“) und die /app-Karte „Zahlungen sind noch nicht aktiv, Spiele sind kostenlos“ stehen neben einer fehlgeschlagenen Abbuchung über 11,43 € in der Lobby. Die Abbuchungszeile (payment_charges) taucht in Verlauf und Belegen nirgends auf. Wer die Karte abgelehnt bekam, liest „kostenlos“ und handelt nicht (zusätzlich MUSS WEG, Guthabenmodell). | captaingruen_mobil_app-guthaben.png | critique, clarify |
+| N4-FZ-5 | P1 | Gruppe Y, nur Beleg: Der Captain mit abgelehnter Karte sieht in der Lobby nur ein kleines Wort „Abbuchung fehlgeschlagen“ neben seinem Namen; das Kartenfeld darüber sagt weiter „Schritt 1: Karte hinterlegen. Dein Anteil von 11,43 € wird zur Frist abgebucht“ mit Zustimmungsfeld und „Testkarte hinterlegen“, wie bei jemandem, der nie eine Karte hatte. Kein Satz „Deine Karte wurde abgelehnt“, kein Hinweis auf Frist/Folge, kein Knopf „Karte erneuern“, kein Nachzahl-Weg (012 AC-20 verlangt ihn, in diesem Stand nicht gebaut). | captaingruen_desktop_extra-lobby1026-kartenmodus-ein.png | critique, clarify |
+| N4-FZ-6 | P1 | Gruppe Y, nur Beleg, Datenschutz: Dritte sehen den Grund namentlich. Captain Gelb und der Spieler Ilias sehen neben „Grün Captain“ die Ampel „Abbuchung fehlgeschlagen“ und neben Kerem „Keine Karte“; die Legende nennt „Abbuchung fehlgeschlagen“ jedem. Vertrag 012 AC-12/AC-20 verlangt für alle außer Betroffenem und Captain/Veranstalter die neutrale rote Ampel „Zahlung ausstehend“ ohne Grund. Die Beschriftung „Zahlung ausstehend“ kommt in card-view.ts nicht vor. | captaingelb_desktop_extra-lobby1026-dritter.png | critique, audit |
+| N4-FZ-7 | P2 | Gruppe Y, nur Beleg, Tonfall: Der Betroffene mit Status „Abbuchung läuft“ liest „Deine Karte ist hinterlegt. Dein Anteil wird zur Frist abgebucht.“ in Warnrot, während seine eigene Zeile „Abbuchung läuft“ zeigt: Erfolgsmeldung in Fehlerfarbe, Text passt nicht zum Zustand. | spieler09_desktop_extra-lobby1026.png | critique, clarify |
+| N4-FZ-8 | P1 | Gruppe Y, nur Beleg: Ohne den Schalter card_payments_enabled (Seed setzt ihn nicht) ist der Fehlerzustand überall unsichtbar: Die Lobby zeigt alle vier Grün-Spieler gleich orange „Bereit“, Text „Jedes Team macht seine Spieler bereit und bezahlt.“, keinen Kartenstatus. Wer den Seed ohne Schalter prüft, sieht den Fehlerzustand nie (Prüfhinweis für M1). | captaingruen_desktop_extra-lobby1026-kartenmodus-aus.png | critique |
+| N4-FZ-9 | P1 | Der Captain mit abgelehnter Karte wird bei Folgehandlungen weder gebremst noch gewarnt: /matchmaking („Lobby aufmachen“, „Gegen Seed Rot antreten“) und /app/suche/neu („Spielsuche erstellen“) laufen ohne Hinweis auf die offene Zahlung; in der Lobby steht „Ja, mein Team ist komplett: Spiel bestätigen“ ohne Bezug zur eigenen Karte. | captaingruen_desktop_matchmaking.png | critique, distill |
+| N4-FZ-10 | P2 | Konto-Menü und Kopfleiste kennen den Zustand nicht: kein Punkt am Avatar, kein Menüpunkt „Karte“, dafür „Guthaben 0,00 €“ (MUSS WEG bekannt). Betroffener (Ilias) und Captain haben identische Menüs und identische /app-Seite. | captaingruen_desktop_extra-kontomenue.png | critique, distill |
+
+#### Zellen
+
+##### /app (Captain Grün, Handy)
+Beleg: captaingruen_mobil_app.png (Messung 11 von 54 Zielen unter 44 px, Höhe 2532 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Der Captain mit abgelehnter Karte sieht eine Seite, die von einer ohne Problem nicht zu unterscheiden ist: Kasten „Meine aktuellen Spiele“ mit zwei Karten „Bereit machen und bezahlen“, Kachelwand, Guthaben-Karte „Zahlungen noch nicht aktiv“, Meine Spiele „Wartet auf Spieler“. Nichts zeigt, dass die Abbuchung für das Spiel in zwei Tagen fehlgeschlagen ist.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1 Systemzustand, 9 Fehlererkennung, Persona Casey/Jordan] Funde: N4-FZ-1, N4-FZ-4; Wand der Optionen (N2-AP-1) bekannt |
+| audit (reference/audit.md, manuell) | [Dimension 4 Responsive, 1 A11y] 11 von 54 Zielen unter 44 px, Höhe 2532 px, kein Überlauf, 0 Konsolenfehler; Fehlerzustand hat keine Textform (nie nur Farbe: hier gar nichts): N4-FZ-1 |
+| distill (reference/distill.md, manuell) | [Remove Redundancy, Clear next action] Kasten, Meine Spiele und Kacheln dreimal dasselbe Spiel (N2-AP-1); keine eine nächste Handlung „Karte klären“: N4-FZ-1 |
+| clarify (reference/clarify.md, manuell) | [Errors, Actions] „Bereit machen und bezahlen“ passt weder zum Kartenmodell noch zum Fehler; „Zahlungen noch nicht aktiv, Spiele sind kostenlos“ widerspricht: N4-FZ-1, N4-FZ-4; „VS.“ gegen „gegen“ (N2-AP-5) |
+| adapt (reference/adapt.md, manuell) | [Mobile, Content Strategy] Eine Statuszeile oben wäre daumengerecht, fehlt: N4-FZ-1; sonst N1-ST-2, N2-AP-1 |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app` | Exit 2: Straggler „nötig.“ (Anmeldeseite nach Weiterleitung, kein Fund dieses Bildes) und overused-font (in DESIGN.md gesetzt, kein Fund); Quelltext `impeccable detect --json src/app/app/page.tsx`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-1 | siehe erste Nennung | captaingruen_mobil_app.png | critique, clarify
+- N4-FZ-4 | siehe erste Nennung | captaingruen_mobil_app.png | critique, clarify
+
+##### /app (Captain Grün, Desktop)
+Beleg: captaingruen_desktop_app.png (15 von 54 Zielen unter 44 px, Höhe 1814 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Am Desktop ist der Fehlerzustand genauso unsichtbar; die Kopfleiste zeigt „0,00 €“ (MUSS WEG), die Kartenwand schiebt „Meine Spiele“ nach unten. Ein Captain würde hier kein Problem vermuten.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 9, Persona Alex] Funde: N4-FZ-1, N4-FZ-4, N4-FZ-10 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] 15 von 54 Zielen unter 44 px, kein Überlauf, 0 Konsolenfehler; N4-FZ-1 |
+| distill (reference/distill.md, manuell) | [Information Architecture] drei Karten, fünf Kacheln, Guthaben-Karte vor Meine Spiele (X-03/X-04); kein Platz für eine Statuszeile: N4-FZ-1 |
+| clarify (reference/clarify.md, manuell) | [Language] wie Handy: N4-FZ-1, N4-FZ-4 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Platz für eine Hinweisleiste über dem Kasten vorhanden, ungenutzt; sonst X-17 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app` | Exit 2: nur overused-font (gesetzt, kein Fund); Quelltext `impeccable detect --json src/app/app/page.tsx`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-1 | P1 | Erstnennung, Text in der Tabelle oben | captaingruen_desktop_app.png | critique, clarify
+- N4-FZ-4 | siehe erste Nennung | captaingruen_desktop_app.png | critique, clarify
+- N4-FZ-10 | siehe erste Nennung | captaingruen_desktop_app.png | critique, distill
+
+##### /app/guthaben (Captain Grün, Handy)
+Beleg: captaingruen_mobil_app-guthaben.png (9 von 41 Zielen unter 44 px, Höhe 1519 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Die Seite erklärt das Guthabenmodell in vier Schritten, bietet Aufladen mit Rabattcode an und sagt „Verlauf: Noch keine Buchungen“; von der fehlgeschlagenen Karten-Abbuchung und der Karte selbst steht nichts. Im Fehlerfall ist die Seite irreführend, nicht nur veraltet.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 2 Realitätsbezug, 9] Funde: N4-FZ-4, N4-FZ-3; MUSS-WEG-Seite (Dokument) |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] 9 von 41 Zielen unter 44 px, Höhe 1519 px, 0 Konsolenfehler; Betragsfeld und Rabattcode beschriftet (gut, aber MUSS WEG) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] vier Schritte, Aufladen, Verlauf, Belege für ein Modell, das entfällt; durch „Karte und Abbuchungen“ ersetzbar: N4-FZ-3 |
+| clarify (reference/clarify.md, manuell) | [Errors, Language] „Zahlungen noch nicht eingeschaltet“ neben Abbuchung: N4-FZ-4; Guthaben/Aufladen/Rabattcode MUSS WEG (Dokument) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Navigationsleiste mitten im Bild = Artefakt; keine neuen Funde |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/guthaben` | Exit 2: Straggler „nötig.“ (Anmeldeseite) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/guthaben`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-4 | P1 | Erstnennung, Text in der Tabelle oben | captaingruen_mobil_app-guthaben.png | critique, clarify
+- N4-FZ-3 | siehe erste Nennung | captaingruen_mobil_app-guthaben.png | critique, distill
+
+##### /app/guthaben (Captain Grün, Desktop)
+Beleg: captaingruen_desktop_app-guthaben.png (13 von 41 Zielen unter 44 px, Höhe 1247 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Wie am Handy: vollständiges Guthabenmodell mit „Jetzt bezahlen“, kein Wort zur Karte oder zur fehlgeschlagenen Abbuchung. Die Betragsanzeige „0,00 €“ steht in Seitenkopf und Kopfleiste doppelt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 2, 9] Funde: N4-FZ-4, N4-FZ-3 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] 13 von 41 Zielen unter 44 px, 0 Konsolenfehler |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Betrag doppelt, Altmodell: N4-FZ-3 |
+| clarify (reference/clarify.md, manuell) | [Errors] N4-FZ-4; MUSS WEG bekannt |
+| adapt (reference/adapt.md, manuell) | [Desktop] schmale 720-px-Spalte (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/guthaben` | Exit 2: nur overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/guthaben`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-4 | siehe erste Nennung | captaingruen_desktop_app-guthaben.png | critique, clarify
+- N4-FZ-3 | siehe erste Nennung | captaingruen_desktop_app-guthaben.png | critique, distill
+
+##### /app/benachrichtigungen (Captain Grün, Handy)
+Beleg: captaingruen_mobil_app-benachrichtigungen.png (9 von 35 Zielen unter 44 px, Höhe 844 px, 0 Konsolenfehler)
+Bewertung: Leer: „Noch keine Benachrichtigungen.“ Der Captain mit abgelehnter Karte bekommt keine Meldung, obwohl Einstellungen „Zahlungen bekommst du immer“ versprechen. Der Leerzustand ist ehrlich, im Fehlerfall aber falsch beruhigend und bietet keine nächste Handlung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Jordan] Funde: N4-FZ-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1] 9 von 35 Zielen unter 44 px, 0 Konsolenfehler; leere Fläche unten |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] keine |
+| clarify (reference/clarify.md, manuell) | [Empty states: first use vs failure] Leerzustand ohne Hinweis auf Zahlungsmeldungen: N4-FZ-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/benachrichtigungen` | Exit 2: Straggler „nötig.“ (Anmeldeseite) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/benachrichtigungen`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-2 | P0 | Erstnennung, Text in der Tabelle oben | captaingruen_mobil_app-benachrichtigungen.png | critique, clarify
+
+##### /app/benachrichtigungen (Captain Grün, Desktop)
+Beleg: captaingruen_desktop_app-benachrichtigungen.png (13 von 35 Zielen unter 44 px, Höhe 800 px, 0 Konsolenfehler)
+Bewertung: Gleich leer, drei Viertel der Fläche ungenutzt; keine Spur der Abbuchung, kein Verweis auf Karte oder Zahlungen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9] Funde: N4-FZ-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1] 13 von 35 Zielen unter 44 px, 0 Konsolenfehler |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] keine |
+| clarify (reference/clarify.md, manuell) | [Empty state] N4-FZ-2 |
+| adapt (reference/adapt.md, manuell) | [Desktop] leere Fläche |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/benachrichtigungen` | Exit 2: nur overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/benachrichtigungen`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-2 | siehe erste Nennung | captaingruen_desktop_app-benachrichtigungen.png | critique, clarify
+
+##### /matchmaking (Captain Grün, Handy)
+Beleg: captaingruen_mobil_matchmaking.png (13 von 50 Zielen unter 44 px, Höhe 2254 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Das Lobby-Formular steht ganz unten (CM-MM-1); der Captain kann „Gegen Seed Rot antreten“ und „Lobby aufmachen“ ohne Hinweis auf die offene Zahlung. Dieselbe Seite wie beim gesunden Captain.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 5 Fehlervermeidung] Funde: N4-FZ-9; CM-MM-1 bekannt |
+| audit (reference/audit.md, manuell) | [Dimension 4] 13 von 50 Zielen unter 44 px, Höhe 2254 px, kein Überlauf |
+| distill (reference/distill.md, manuell) | [Progressive disclosure] Erklärkasten, Liste, Formular (bekannt) |
+| clarify (reference/clarify.md, manuell) | [Actions] „Gegen Seed Rot antreten“ klar; Hinweis auf Zahlung fehlt: N4-FZ-9 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Formular unten (CM-MM-1) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/matchmaking` | Exit 2: zwei Straggler („offen.“, „bist.“, advisory) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/matchmaking`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-9 | siehe erste Nennung | captaingruen_mobil_matchmaking.png | critique, distill
+
+##### /matchmaking (Captain Grün, Desktop)
+Beleg: captaingruen_desktop_matchmaking.png (17 von 50 Zielen unter 44 px, Höhe 1696 px, 0 Konsolenfehler)
+Bewertung: Einspaltig, übersichtlich: Karte „Seed Rot“ mit Primärknopf, darunter das Formular. Keine Warnung wegen der offenen Zahlung; „Seed Grün: Elo 1040, 140 Punkte schwächer“ ist klar.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 5] Funde: N4-FZ-9 |
+| audit (reference/audit.md, manuell) | [Dimension 4] 17 von 50 Zielen unter 44 px, 0 Konsolenfehler |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] keine neuen |
+| clarify (reference/clarify.md, manuell) | [Actions] wie Handy: N4-FZ-9 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Formular unter der Liste statt daneben (CD-MM) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/matchmaking` | Exit 2: line-length (~99 Zeichen im Kopftext) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/matchmaking`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-9 | P1 | Erstnennung, Text in der Tabelle oben | captaingruen_desktop_matchmaking.png | critique, distill
+
+##### /app/suche/neu (Captain Grün, Handy)
+Beleg: captaingruen_mobil_app-suche-neu.png (9 von 44 Zielen unter 44 px, Höhe 1330 px, 0 Konsolenfehler)
+Bewertung: Das Formular „Spiel mit festem Termin suchen“ läuft ohne Rücksicht auf die offene Zahlung; „Mindestens 24 Stunden im Voraus“ ist klar. Der Fehlerzustand beeinflusst nichts.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 5] Funde: N4-FZ-9; CD-ALL-3 bekannt |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] 9 von 44 Zielen unter 44 px, 0 Konsolenfehler |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] keine |
+| clarify (reference/clarify.md, manuell) | [Forms] gut beschriftet; N4-FZ-9 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Navigationsleiste verdeckt Feld im Vollbild (Artefakt) |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/suche/neu` | Exit 2: Straggler „nötig.“ (Anmeldeseite) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/suche`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-9 | siehe erste Nennung | captaingruen_mobil_app-suche-neu.png | critique, distill
+
+##### /app/suche/neu (Captain Grün, Desktop)
+Beleg: captaingruen_desktop_app-suche-neu.png (13 von 44 Zielen unter 44 px, Höhe 1154 px, 0 Konsolenfehler)
+Bewertung: Schmale Formularspalte mittig, sauber; keine Beziehung zum Fehlerzustand.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 5] Funde: N4-FZ-9 |
+| audit (reference/audit.md, manuell) | [Dimension 4] 13 von 44 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] keine |
+| clarify (reference/clarify.md, manuell) | [Forms] wie Handy |
+| adapt (reference/adapt.md, manuell) | [Desktop] schmale Spalte (X-17) |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/suche/neu` | Exit 2: nur overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/suche`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-9 | siehe erste Nennung | captaingruen_desktop_app-suche-neu.png | critique, distill
+
+##### /app/einstellungen (Captain Grün, Handy)
+Beleg: captaingruen_mobil_app-einstellungen.png (30 von 69 Zielen unter 44 px, Höhe 2179 px, kein Überlauf, 0 Konsolenfehler)
+Bewertung: Profil, Benachrichtigungen, Daten, Konto löschen: nichts zu Karte oder Zahlung außer dem Satz „Zahlungen bekommst du immer“. Wer die Karte erneuern will, sucht hier vergeblich. 30 kleine Ziele (Farbpunkte, Kästchen).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 6 Wiedererkennen, 10 Hilfe] Funde: N4-FZ-3, N4-FZ-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4] 30 von 69 Zielen unter 44 px (Profilfarben, Kästchen), Höhe 2179 px |
+| distill (reference/distill.md, manuell) | [Progressive disclosure] zehn Kästchen in einer Reihe (SM-EI) |
+| clarify (reference/clarify.md, manuell) | [Help text] Satz zu Zahlungen verspricht eine Meldung, die nicht entsteht: N4-FZ-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile] kleine Ziele |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/einstellungen` | Exit 2: Straggler „nötig.“ (Anmeldeseite) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/einstellungen`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-3 | P1 | Erstnennung, Text in der Tabelle oben | captaingruen_mobil_app-einstellungen.png | critique, distill
+- N4-FZ-2 | siehe erste Nennung | captaingruen_mobil_app-einstellungen.png | critique, clarify
+
+##### /app/einstellungen (Captain Grün, Desktop)
+Beleg: captaingruen_desktop_app-einstellungen.png (34 von 69 Zielen unter 44 px, Höhe 1967 px, 0 Konsolenfehler)
+Bewertung: Gleicher Inhalt, kein Kartenbereich. Zwischen „Benachrichtigungen“ und „Deine Daten“ wäre der natürliche Ort für „Zahlungsmittel“.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 6, 10] Funde: N4-FZ-3, N4-FZ-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4] 34 von 69 Zielen unter 44 px |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] zehn Kästchen |
+| clarify (reference/clarify.md, manuell) | [Help text] N4-FZ-2 |
+| adapt (reference/adapt.md, manuell) | [Desktop] Kästchen einspaltig, könnten zweispaltig stehen |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/einstellungen` | Exit 2: nur overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/einstellungen`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-3 | siehe erste Nennung | captaingruen_desktop_app-einstellungen.png | critique, distill
+- N4-FZ-2 | siehe erste Nennung | captaingruen_desktop_app-einstellungen.png | critique, clarify
+
+##### Konto-Menü geöffnet (/app) (Captain Grün, Handy)
+Beleg: captaingruen_mobil_extra-kontomenue.png
+Bewertung: Menü: Mein Profil, Mein Bereich, Guthaben 0,00 €, Benachrichtigungen, Konto und Einstellungen, Hilfe, Abmelden. Kein Hinweis, kein Eintrag zur Karte; „Mein Bereich“ führt auf die Seite, auf der man schon ist.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 6] Funde: N4-FZ-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Menüpunkte etwa 40 px hoch; Escape/Klick daneben schließt (gut) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] „Mein Bereich“ auf /app |
+| clarify (reference/clarify.md, manuell) | [Actions] „Guthaben“ MUSS WEG (bekannt) |
+| adapt (reference/adapt.md, manuell) | [Mobile] Popover oben rechts (ein Bottom Sheet läge besser im Daumenbereich) |
+| `impeccable detect` (Quelltext UserMenu.tsx, Header.tsx) | keine Funde (Komponenten wie /app) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-10 | siehe erste Nennung | captaingruen_mobil_extra-kontomenue.png | critique, distill
+
+##### Konto-Menü geöffnet (/app) (Captain Grün, Desktop)
+Beleg: captaingruen_desktop_extra-kontomenue.png
+Bewertung: Gleiches Menü unter dem Avatar; kein Zustand sichtbar, „Guthaben 0,00 €“ doppelt zur Kopfleiste (MUSS WEG).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1] N4-FZ-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1] ok |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Betrag doppelt |
+| clarify (reference/clarify.md, manuell) | [Actions] wie Handy |
+| adapt (reference/adapt.md, manuell) | [Desktop] ok |
+| `impeccable detect` (Quelltext UserMenu.tsx, Header.tsx) | keine Funde (Komponenten wie /app) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-10 | P2 | Erstnennung, Text in der Tabelle oben | captaingruen_desktop_extra-kontomenue.png | critique, distill
+
+##### /lobby/#1026 Kartenmodus aus (Captain Grün, Handy) [Gruppe Y, nur Beleg]
+Beleg: captaingruen_mobil_extra-lobby1026-kartenmodus-aus.png
+Bewertung: Alle vier Grün-Spieler stehen orange „Bereit“; der Fehlerzustand ist unsichtbar, Altmodell-Text „bereit und bezahlt“. Nicht bewertet (Gruppe Y); Beleg für N4-FZ-8.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | Gruppe Y, nur Beleg: N4-FZ-8 |
+| audit (reference/audit.md, manuell) | Gruppe Y, nur Beleg |
+| distill (reference/distill.md, manuell) | Gruppe Y, nur Beleg |
+| clarify (reference/clarify.md, manuell) | Gruppe Y, nur Beleg: „bezahlt“ (MUSS WEG) |
+| adapt (reference/adapt.md, manuell) | Gruppe Y, nur Beleg |
+| `impeccable detect` (Quelltext lobby/[id]) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-8 | siehe erste Nennung | captaingruen_mobil_extra-lobby1026-kartenmodus-aus.png | critique
+
+##### /lobby/#1026 Kartenmodus aus (Captain Grün, Desktop) [Gruppe Y, nur Beleg]
+Beleg: captaingruen_desktop_extra-lobby1026-kartenmodus-aus.png
+Bewertung: Wie Handy; Legende „In der Lobby/Bereit/Bestätigt“. Nicht bewertet; Beleg für N4-FZ-8.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | Gruppe Y, nur Beleg: N4-FZ-8 |
+| audit (reference/audit.md, manuell) | Gruppe Y, nur Beleg |
+| distill (reference/distill.md, manuell) | Gruppe Y, nur Beleg |
+| clarify (reference/clarify.md, manuell) | Gruppe Y, nur Beleg |
+| adapt (reference/adapt.md, manuell) | Gruppe Y, nur Beleg |
+| `impeccable detect` (Quelltext lobby/[id]) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-8 | P1 | Erstnennung, Text in der Tabelle oben | captaingruen_desktop_extra-lobby1026-kartenmodus-aus.png | critique
+
+##### /lobby/#1026 Kartenmodus an (Captain Grün, Handy) [Gruppe Y, nur Beleg]
+Beleg: captaingruen_mobil_extra-lobby1026-kartenmodus-ein.png
+Bewertung: Der Fehlerzustand erscheint erst hier: Zeile „Abbuchung fehlgeschlagen“ neben dem eigenen Namen, aber das Kartenfeld verlangt „Schritt 1: Karte hinterlegen“ wie beim Erstkontakt, ohne Grund und ohne „Karte erneuern“. Beleg für N4-FZ-5, -6, -9; nicht bewertet.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | Gruppe Y, nur Beleg: N4-FZ-5, N4-FZ-6 |
+| audit (reference/audit.md, manuell) | Gruppe Y, nur Beleg: Kartenampel hat Form und Wort (gut, AC-12) |
+| distill (reference/distill.md, manuell) | Gruppe Y, nur Beleg |
+| clarify (reference/clarify.md, manuell) | Gruppe Y, nur Beleg: N4-FZ-5 |
+| adapt (reference/adapt.md, manuell) | Gruppe Y, nur Beleg |
+| `impeccable detect` (Quelltext lobby/[id], PlayerLight.tsx) | lobby/[id]: keine Funde; PlayerLight.tsx: 2 advisory design-system-color (#ef4444, #f59e0b, Altampel) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-5 | siehe erste Nennung | captaingruen_mobil_extra-lobby1026-kartenmodus-ein.png | critique, clarify
+- N4-FZ-6 | siehe erste Nennung | captaingruen_mobil_extra-lobby1026-kartenmodus-ein.png | critique, audit
+- N4-FZ-9 | siehe erste Nennung | captaingruen_mobil_extra-lobby1026-kartenmodus-ein.png | critique, distill
+
+##### /lobby/#1026 Kartenmodus an (Captain Grün, Desktop) [Gruppe Y, nur Beleg]
+Beleg: captaingruen_desktop_extra-lobby1026-kartenmodus-ein.png
+Bewertung: Zweispaltige Teamlisten; „Abbuchung fehlgeschlagen“ in der eigenen Zeile und in der Legende; Kartenfeld ohne Fehlererklärung. Nicht bewertet; Beleg für N4-FZ-5/6.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | Gruppe Y, nur Beleg: N4-FZ-5, N4-FZ-6 |
+| audit (reference/audit.md, manuell) | Gruppe Y, nur Beleg |
+| distill (reference/distill.md, manuell) | Gruppe Y, nur Beleg |
+| clarify (reference/clarify.md, manuell) | Gruppe Y, nur Beleg: N4-FZ-5 |
+| adapt (reference/adapt.md, manuell) | Gruppe Y, nur Beleg |
+| `impeccable detect` (Quelltext lobby/[id]) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-5 | P1 | Erstnennung, Text in der Tabelle oben | captaingruen_desktop_extra-lobby1026-kartenmodus-ein.png | critique, clarify
+- N4-FZ-6 | siehe erste Nennung | captaingruen_desktop_extra-lobby1026-kartenmodus-ein.png | critique, audit
+
+##### /app (Spieler 09 / Ilias, Handy)
+Beleg: spieler09_mobil_app.png (Seite identisch zum Captain bis auf die Rolle „Spieler“)
+Bewertung: Ilias hat den Status „Abbuchung läuft“ (charge_pending) und sieht dieselbe Seite wie der Captain: „Bereit machen und bezahlen“, keine Zahlungs-Ampel. Dazu „Lobby aufmachen“ als erste Handlung ohne Captain-Rolle (X-20).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Casey] N4-FZ-1; X-20 bekannt |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] Messung wie Captain, kein Überlauf |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Kasten/Liste/Kacheln doppelt (N2-AP-1) |
+| clarify (reference/clarify.md, manuell) | [Language] „Bereit machen und bezahlen“: N4-FZ-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile] wie Captain |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app` | Exit 2: Straggler „nötig.“ (Anmeldeseite nach Weiterleitung, kein Fund dieses Bildes) und overused-font (in DESIGN.md gesetzt, kein Fund); Quelltext `impeccable detect --json src/app/app/page.tsx`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-1 | siehe erste Nennung | spieler09_mobil_app.png | critique, clarify
+
+##### /app (Spieler 09 / Ilias, Desktop)
+Beleg: spieler09_desktop_app.png
+Bewertung: Wie der Captain: Betroffener und Dritte sehen /app ohne jeden Zahlungshinweis; „Team gründen“ trotz Team (SM-ST-1).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Jordan] N4-FZ-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] kein Überlauf |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] N2-AP-1 |
+| clarify (reference/clarify.md, manuell) | [Language] N4-FZ-1 |
+| adapt (reference/adapt.md, manuell) | [Desktop] X-17 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app` | Exit 2: nur overused-font (gesetzt, kein Fund); Quelltext `impeccable detect --json src/app/app/page.tsx`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-1 | siehe erste Nennung | spieler09_desktop_app.png | critique, clarify
+
+##### /app/guthaben (Spieler 09 / Ilias, Handy)
+Beleg: spieler09_mobil_app-guthaben.png
+Bewertung: Identisch zum Captain: Guthabenmodell, „Noch keine Buchungen“. Auch der Betroffene (laufende Abbuchung) erfährt hier nichts.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Casey] N4-FZ-4 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] wie Captain |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Altmodell (MUSS WEG) |
+| clarify (reference/clarify.md, manuell) | [Language] N4-FZ-4 |
+| adapt (reference/adapt.md, manuell) | [Mobile] wie Captain |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/guthaben` | Exit 2: Straggler „nötig.“ (Anmeldeseite) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/guthaben`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-4 | siehe erste Nennung | spieler09_mobil_app-guthaben.png | critique, clarify
+
+##### /app/guthaben (Spieler 09 / Ilias, Desktop)
+Beleg: spieler09_desktop_app-guthaben.png
+Bewertung: Wie Captain, keine Abweichung durch Rolle oder Zustand.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Jordan] N4-FZ-4 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] wie Captain |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Altmodell |
+| clarify (reference/clarify.md, manuell) | [Language] N4-FZ-4 |
+| adapt (reference/adapt.md, manuell) | [Desktop] X-17 |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/guthaben` | Exit 2: nur overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/guthaben`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-4 | siehe erste Nennung | spieler09_desktop_app-guthaben.png | critique, clarify
+
+##### /app/benachrichtigungen (Spieler 09 / Ilias, Handy)
+Beleg: spieler09_mobil_app-benachrichtigungen.png
+Bewertung: Leer. Auch bei „Abbuchung läuft“ keine Meldung (die Erfolgsmeldung „Abrechnung“ käme erst nach der Abbuchung).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Casey] N4-FZ-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] wie Captain |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] keine |
+| clarify (reference/clarify.md, manuell) | [Language] Leerzustand: N4-FZ-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/benachrichtigungen` | Exit 2: Straggler „nötig.“ (Anmeldeseite) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/benachrichtigungen`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-2 | siehe erste Nennung | spieler09_mobil_app-benachrichtigungen.png | critique, clarify
+
+##### /app/benachrichtigungen (Spieler 09 / Ilias, Desktop)
+Beleg: spieler09_desktop_app-benachrichtigungen.png
+Bewertung: Gleich leer, Fläche ungenutzt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Jordan] N4-FZ-2 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] wie Captain |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] keine |
+| clarify (reference/clarify.md, manuell) | [Language] N4-FZ-2 |
+| adapt (reference/adapt.md, manuell) | [Desktop] leere Fläche |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/benachrichtigungen` | Exit 2: nur overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/benachrichtigungen`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-2 | siehe erste Nennung | spieler09_desktop_app-benachrichtigungen.png | critique, clarify
+
+##### /app/einstellungen (Spieler 09 / Ilias, Handy)
+Beleg: spieler09_mobil_app-einstellungen.png
+Bewertung: Identisch zum Captain, kein Kartenbereich (Stadt „Köln“ trotz Team in Dortmund ist Seed-Eigenart, kein Fund).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Casey] N4-FZ-3 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] wie Captain, 30 kleine Ziele |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] zehn Kästchen |
+| clarify (reference/clarify.md, manuell) | [Language] N4-FZ-2 (Zusage Zahlungen) |
+| adapt (reference/adapt.md, manuell) | [Mobile] kleine Ziele |
+| `impeccable detect --json --viewport 390x844 http://localhost:3102/app/einstellungen` | Exit 2: Straggler „nötig.“ (Anmeldeseite) und overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/einstellungen`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-3 | siehe erste Nennung | spieler09_mobil_app-einstellungen.png | critique, distill
+
+##### /app/einstellungen (Spieler 09 / Ilias, Desktop)
+Beleg: spieler09_desktop_app-einstellungen.png
+Bewertung: Wie Captain, kein Kartenbereich.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Jordan] N4-FZ-3 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] wie Captain |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] zehn Kästchen |
+| clarify (reference/clarify.md, manuell) | [Language] N4-FZ-2 |
+| adapt (reference/adapt.md, manuell) | [Desktop] einspaltig |
+| `impeccable detect --json --viewport 1280x800 http://localhost:3102/app/einstellungen` | Exit 2: nur overused-font (gesetzt); Quelltext `impeccable detect --json src/app/app/einstellungen`: keine Funde (Exit 0) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-3 | siehe erste Nennung | spieler09_desktop_app-einstellungen.png | critique, distill
+
+##### Konto-Menü (/app) (Spieler 09 / Ilias, Handy)
+Beleg: spieler09_mobil_extra-kontomenue.png
+Bewertung: Menü identisch zum Captain, „Guthaben 0,00 €“ (MUSS WEG).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Casey] N4-FZ-10 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] wie Captain |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Mein Bereich auf /app |
+| clarify (reference/clarify.md, manuell) | [Language] Guthaben MUSS WEG |
+| adapt (reference/adapt.md, manuell) | [Mobile] Popover oben |
+| `impeccable detect` (Quelltext UserMenu.tsx, Header.tsx) | keine Funde (Komponenten wie /app) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-10 | siehe erste Nennung | spieler09_mobil_extra-kontomenue.png | critique, distill
+
+##### Konto-Menü (/app) (Spieler 09 / Ilias, Desktop)
+Beleg: spieler09_desktop_extra-kontomenue.png
+Bewertung: Wie Captain.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Jordan] N4-FZ-10 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] wie Captain |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Betrag doppelt |
+| clarify (reference/clarify.md, manuell) | [Language] wie Captain |
+| adapt (reference/adapt.md, manuell) | [Desktop] ok |
+| `impeccable detect` (Quelltext UserMenu.tsx, Header.tsx) | keine Funde (Komponenten wie /app) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-10 | siehe erste Nennung | spieler09_desktop_extra-kontomenue.png | critique, distill
+
+##### /lobby/#1026 [Gruppe Y, nur Beleg] (Spieler 09 / Ilias, Handy)
+Beleg: spieler09_mobil_extra-lobby1026.png
+Bewertung: Der Betroffene (Abbuchung läuft) liest „Deine Karte ist hinterlegt. Dein Anteil wird zur Frist abgebucht.“ in Warnrot und sieht namentlich den fehlgeschlagenen Zustand des Captains und „Keine Karte“ von Kerem. Beleg für N4-FZ-6, N4-FZ-7; nicht bewertet.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Casey] Gruppe Y, nur Beleg: N4-FZ-6, N4-FZ-7 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] Gruppe Y, nur Beleg |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Gruppe Y, nur Beleg |
+| clarify (reference/clarify.md, manuell) | [Language] Gruppe Y, nur Beleg |
+| adapt (reference/adapt.md, manuell) | [Mobile] Gruppe Y, nur Beleg |
+| `impeccable detect` (Quelltext lobby/[id]) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-6 | siehe erste Nennung | spieler09_mobil_extra-lobby1026.png | critique, audit
+- N4-FZ-7 | siehe erste Nennung | spieler09_mobil_extra-lobby1026.png | critique, clarify
+
+##### /lobby/#1026 [Gruppe Y, nur Beleg] (Spieler 09 / Ilias, Desktop)
+Beleg: spieler09_desktop_extra-lobby1026.png
+Bewertung: Wie Handy; die Legende mit „Abbuchung fehlgeschlagen“ steht auch für den unbeteiligten Spieler da.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Jordan] Gruppe Y, nur Beleg: N4-FZ-6, N4-FZ-7 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] Gruppe Y, nur Beleg |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Gruppe Y, nur Beleg |
+| clarify (reference/clarify.md, manuell) | [Language] Gruppe Y, nur Beleg |
+| adapt (reference/adapt.md, manuell) | [Desktop] Gruppe Y, nur Beleg |
+| `impeccable detect` (Quelltext lobby/[id]) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-6 | siehe erste Nennung | spieler09_desktop_extra-lobby1026.png | critique, audit
+- N4-FZ-7 | P2 | Erstnennung, Text in der Tabelle oben | spieler09_desktop_extra-lobby1026.png | critique, clarify
+
+##### /lobby/#1026 als Dritter, Captain Gelb [Gruppe Y, nur Beleg] (Spieler 09 / Ilias, Handy)
+Beleg: captaingelb_mobil_extra-lobby1026-dritter.png
+Bewertung: Der gegnerische Captain, ein Dritter ohne Zahlungsbeziehung, sieht „Abbuchung fehlgeschlagen“ bei „Grün Captain“ und „Keine Karte“ bei Kerem. Das widerspricht 012 AC-12/AC-20 (neutral „Zahlung ausstehend“, kein Grund). Nicht bewertet, Beleg für N4-FZ-6.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Casey] Gruppe Y, nur Beleg: N4-FZ-6 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] Gruppe Y, nur Beleg |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Gruppe Y, nur Beleg |
+| clarify (reference/clarify.md, manuell) | [Language] Gruppe Y, nur Beleg |
+| adapt (reference/adapt.md, manuell) | [Mobile] Gruppe Y, nur Beleg |
+| `impeccable detect` (Quelltext lobby/[id]) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-6 | siehe erste Nennung | captaingelb_mobil_extra-lobby1026-dritter.png | critique, audit
+
+##### /lobby/#1026 als Dritter, Captain Gelb [Gruppe Y, nur Beleg] (Spieler 09 / Ilias, Desktop)
+Beleg: captaingelb_desktop_extra-lobby1026-dritter.png
+Bewertung: Der gegnerische Captain, ein Dritter ohne Zahlungsbeziehung, sieht „Abbuchung fehlgeschlagen“ bei „Grün Captain“ und „Keine Karte“ bei Kerem. Das widerspricht 012 AC-12/AC-20 (neutral „Zahlung ausstehend“, kein Grund). Nicht bewertet, Beleg für N4-FZ-6.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 9, Persona Jordan] Gruppe Y, nur Beleg: N4-FZ-6 |
+| audit (reference/audit.md, manuell) | [Dimension 4, 1] Gruppe Y, nur Beleg |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] Gruppe Y, nur Beleg |
+| clarify (reference/clarify.md, manuell) | [Language] Gruppe Y, nur Beleg |
+| adapt (reference/adapt.md, manuell) | [Desktop] Gruppe Y, nur Beleg |
+| `impeccable detect` (Quelltext lobby/[id]) | keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- N4-FZ-6 | P1 | Erstnennung, Text in der Tabelle oben | captaingelb_desktop_extra-lobby1026-dritter.png | critique, audit
 
 
