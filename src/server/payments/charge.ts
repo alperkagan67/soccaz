@@ -1,10 +1,14 @@
 // Verbuchung von Karten-Abbuchungen (Vertrag 012, M2a). Es gibt genau EINEN Weg, ein Ergebnis zu verbuchen: applyChargeInTx. Der Webhook (und ab M2b der Job)
 // ruft ihn auf; er ist idempotent und bucht nur Abbuchungen, die in payment_charges stehen und zu Betrag, Kunde und Metadaten passen.
 // Netzaufrufe laufen NIE innerhalb einer Datenbanktransaktion (die Gebühr wird vorher geholt oder in einem eigenen Folgeschritt gebucht).
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, paymentCharges, paymentProfiles } from "@/db/schema";
+import { matchParticipants, matches, paymentCharges, paymentProfiles } from "@/db/schema";
 import { audit } from "../audit";
+import { formatEuro } from "@/lib/money";
+import { notifyUsers } from "../notifications";
+import { issueReceipt } from "../receipts";
+import { teamName } from "../names";
 import { post } from "../ledger";
 import type { Tx } from "../tx";
 import { getPaymentProvider } from "./provider";
@@ -41,11 +45,24 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     return { status: "ignored", reason };
   };
 
-  let [row] = await tx.select().from(paymentCharges).where(eq(paymentCharges.paymentIntentId, r.paymentIntentId)).for("update");
-  if (!row) {
+  // Sperrreihenfolge überall gleich: ERST das Spiel, DANN die Abbuchungszeile (sonst Verklemmung, wenn zwei letzte Zahlungen gleichzeitig eintreffen, weil
+  // jede Buchung und jede Fremdschlüssel-Prüfung die Spielzeile mitsperrt). Darum die Zeile zuerst ohne Sperre suchen, das Spiel sperren, dann die Zeile sperren.
+  const byPi = async (lock: boolean) => {
+    const q = tx.select().from(paymentCharges).where(eq(paymentCharges.paymentIntentId, r.paymentIntentId));
+    return (lock ? await q.for("update") : await q)[0];
+  };
+  const byMeta = async (lock: boolean) => {
     const { matchId, userId } = r.metadata;
-    if (!matchId || !userId || !UUID.test(matchId) || !UUID.test(userId)) return ignore("unknown_payment_intent");
-    [row] = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId))).for("update");
+    if (!matchId || !userId || !UUID.test(matchId) || !UUID.test(userId)) return undefined;
+    const q = tx.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId)));
+    return (lock ? await q.for("update") : await q)[0];
+  };
+  const probe = (await byPi(false)) ?? (await byMeta(false));
+  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, probe.matchId)).for("update");
+  let row: typeof paymentCharges.$inferSelect | undefined = await byPi(true);
+  if (!row) {
+    if (!r.metadata.matchId || !r.metadata.userId || !UUID.test(r.metadata.matchId) || !UUID.test(r.metadata.userId)) return ignore("unknown_payment_intent");
+    row = await byMeta(true);
     if (!row) return ignore("unknown_charge");
     // Die Zeile gehört zu einem ANDEREN PaymentIntent. Derselbe PaymentIntent ist kein Fehler: ein paralleles Ereignis hat ihn gerade gebunden
     // (wir haben auf seine Sperre gewartet) und wird normal weiterverarbeitet, sonst ginge ein succeeded verloren (Geld abgebucht, nicht gebucht).
@@ -75,6 +92,7 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     await tx.update(paymentCharges).set({ status: "succeeded", failureCode: null, updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
     await tx.update(matchParticipants).set({ cardStatus: "charged" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
     await audit(null, "charge.succeeded", "match", row.matchId, { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
+    await settleIfComplete(tx, row.matchId); // der letzte erfolgreiche Spieler bucht das Spiel, egal ob über den Job oder den Webhook
     return { status: "applied" };
   }
 
@@ -129,4 +147,28 @@ export async function bookOpenFees(limit = 50): Promise<number> {
   let booked = 0;
   for (const o of open) if (o.pi && (await bookChargeFee(o.pi)) === "booked") booked += 1;
   return booked;
+}
+
+/**
+ * Phase D: Haben ALLE eingeteilten Spieler erfolgreich gezahlt, ist das Spiel gebucht: settledAt (finalShareCents bleibt), Beleg je Spieler,
+ * Benachrichtigung "Abrechnung". Läuft unter der Spielsperre (zwei gleichzeitig erfolgreiche letzte Zahlungen verpassen sich sonst gegenseitig) und ist
+ * idempotent (settledAt, Beleg je Spieler und Spiel). Teil-Erfolg: nichts passiert, erfolgreiche Zahlungen bleiben bestehen (Nachzahlfenster = M3).
+ */
+export async function settleIfComplete(tx: Tx, matchId: string): Promise<boolean> {
+  const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
+  if (!match || match.settledAt !== null || !["lobby", "confirmed"].includes(match.status)) return false;
+  const rows = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
+  if (rows.length === 0 || rows.some((r) => r.status !== "succeeded")) return false;
+  const seated = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId)));
+  const paid = new Set(rows.map((r) => r.userId));
+  if (seated.length === 0 || seated.some((s) => !paid.has(s.userId))) return false; // jemand ist eingeteilt, aber wurde nie belastet
+
+  await tx.update(matches).set({ settledAt: new Date() }).where(and(eq(matches.id, matchId), isNull(matches.settledAt)));
+  const [home, away] = [await teamName(tx, match.homeTeamId), await teamName(tx, match.awayTeamId)];
+  for (const r of rows) {
+    await issueReceipt(tx, { userId: r.userId, kind: "match", matchId, amountCents: r.amountCents });
+    await notifyUsers([r.userId], { type: "payment", title: "Abrechnung", body: `${home} gegen ${away}: ${formatEuro(r.amountCents)} wurden von deiner Karte abgebucht.`, url: `/lobby/${matchId}` }, tx);
+  }
+  await audit(null, "charge.settled", "match", matchId, { after: { payers: rows.length, totalCents: rows.reduce((s, r) => s + r.amountCents, 0) } }, tx);
+  return true;
 }
