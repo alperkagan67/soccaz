@@ -6,7 +6,7 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { createCardSetupAction } from "@/server/payments/card-actions";
 import { fakeCardReadyAction } from "@/server/payments/fake-card-actions";
-import { STORED_CARD_ACTION_AVAILABLE, activateStoredCard } from "./stored-card";
+import { activateStoredCard } from "./stored-card";
 
 let stripePromise: Promise<Stripe | null> | null = null;
 /** Der öffentliche Schlüssel kommt nur aus NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (nie im Code). Ohne Schlüssel gibt es kein Formular. */
@@ -49,7 +49,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
     >
       <PaymentElement />
       <button className="btn btn-primary w-full" disabled={!stripe || busy} data-testid="card-confirm">{busy ? "Bitte warten…" : "Karte speichern"}</button>
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && <p className="error" role="alert" data-testid="card-error">{error}</p>}
     </form>
   );
 }
@@ -91,7 +91,7 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
   }
 
   const [useNew, setUseNew] = useState(false);
-  const showStored = Boolean(stored) && STORED_CARD_ACTION_AVAILABLE && !fake && !useNew;
+  const showStored = Boolean(stored) && !useNew;
 
   async function useStored() {
     setBusy(true);
@@ -125,7 +125,7 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
         </label>
         <button className="btn btn-primary w-full" disabled={busy || !accepted} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : "Karte für diese Lobby nutzen"}</button>
         <button type="button" className="btn btn-ghost w-full" onClick={() => setUseNew(true)}>Andere Karte hinterlegen</button>
-        {error && <p className="error" role="alert">{error}</p>}
+        {error && <p className="error" role="alert" data-testid="card-error">{error}</p>}
       </div>
     );
   }
@@ -147,7 +147,7 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
           </button>
         </>
       )}
-      {error && <p className="error" role="alert">{error}</p>}
+      {error && <p className="error" role="alert" data-testid="card-error">{error}</p>}
     </div>
   );
 }
