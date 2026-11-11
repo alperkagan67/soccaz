@@ -103,6 +103,17 @@ Gemessen (WCAG 2.x): Tinte auf Fläche 13,43:1 / 15,30:1, gedämpft auf Fläche 
 
 Zwei Hälften nebeneinander auf neutraler Grundfläche (`fl2`): links Heim, rechts Gast, jede in der Teamfarbe, Mittellinie und Mittelkreis in `rim`. Spieler als Zeichen in der Textfarbe der Hälfte, leere Plätze gestrichelt. Darunter die Teamnamen als Chips in Teamfarbe mit Textfarbe, Elo und Stärke als zweite Zeile. Ab einer Schwelle von Spielern (Privatspiel bis 22) wechselt das Feld in eine Liste mit denselben Zeichen.
 
+### Ausnahmen von AC-14 (Orange einzige Akzentfarbe)
+
+Umgesetzt in `src/app/globals.css` (Vertrag 007, M1). Geprüft von `tests/unit/accent.test.ts`; diese Ausnahmen sind bewusst und kein Verstoß:
+
+- **`--accent-fg`**: Orange als Schrift und Strich. Dunkel `#ff6a1f` (wie `--accent`), hell `#b23a0a`, weil `#c2410c` als kleine Schrift auf dem hellen Grund `#dde5e0` nur 4,03:1 erreicht; `#b23a0a` liegt auf Grund und Fläche bei mindestens 4,5:1. Es ist derselbe Orangeton in dunklerer Stufe, keine zweite Akzentfarbe.
+- **`--pc-green`, `--pc-cyan`, `--pc-sky`, `--pc-violet`, `--pc-pink`, `--pc-coral`, `--pc-yellow`**: die sieben wählbaren Profilfarben der Spieler (`src/lib/profile-options.ts`). Sie sind Identität, nie Zustand oder Handlung.
+- **`--card-yellow` (`#f2c200`), `--card-red` (`#c8102e`)**: Gelbe und Rote Karte im Spielverlauf. Sportdaten, beide Werte stammen aus der Teamfarben-Palette.
+- **`.force-dark`**: feste dunkle Werte für das Stream-Overlay, unabhängig von der Systemeinstellung.
+- **`src/server`** (OG-Bilder und Karten, zum Beispiel `cards.tsx` mit `#030806`) ist vom AC-14-Test ausgenommen und steht im Backlog.
+- Noch offen (M4): die Ampel in `PlayerLight` nutzt feste Hex-Werte außerhalb der Tokens, bis sie auf Form plus Wort umgestellt ist.
+
 ### Nicht festgelegt (offen, siehe Vertrag 007)
 
 - **Fehler und Gefahr** (heute Koralle und Rot) haben in E keine eigene Akzentfarbe. Vorschlag: Symbol, Wort und kräftiger Rahmen in Tinte, ohne neue Farbe.
