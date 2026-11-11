@@ -5,7 +5,7 @@
 **Status: Degradiert: ja, X gilt noch nicht als fertig.** Grund:
 - (a) `critique`, `audit`, `distill`, `clarify`, `adapt` haben keinen Launcher-Befehl; sie liefen manuell nach vollständig gelesenen Reference-Dateien (Methode in Ordnung, hier ehrlich vermerkt).
 - (b) `detect` per URL läuft auf `/` und `/suche` in einen Timeout (Dauerverbindung per SSE); Ersatz sind Quelltext-Lauf und Playwright-Messung.
-- (c) Mit dem Seed nachgeholt (Abschnitt "Nachlauf mit Seed", 203 von 203 Screenshots angesehen): Onboarding, abgelaufener Einladungslink, gefüllte Listen, Fehlerzustand, Formular-Absenden, Captain-Konto-Menü am Handy. Weiterhin Lücke: echter Google-Login (nicht automatisierbar, Dev-Login ersetzt ihn), Benachrichtigungen mit Einträgen und Guthaben-Verlauf, echtes Karten-Erneuern (kein Stripe), Versand von E-Mail und Push.
+- (c) Mit dem Seed nachgeholt (Abschnitt "Nachlauf mit Seed", 203 von 203 Screenshots angesehen): Onboarding, abgelaufener Einladungslink, gefüllte Listen, Fehlerzustand, Formular-Absenden, Captain-Konto-Menü am Handy. Zusatz nach dem Seed-Nachtrag (Lobby offen, Spielsuche, Benachrichtigungen, 98 von 98 Screenshots angesehen): siehe Abschnitt "Zusatzabschnitt". Weiterhin Lücke: echter Google-Login (nicht automatisierbar, Dev-Login ersetzt ihn), Benachrichtigungen mit Einträgen und Guthaben-Verlauf, echtes Karten-Erneuern (kein Stripe), Versand von E-Mail und Push.
 
 **Zähler:** angesehen 138 von 138 Screenshots (23 Seiten × Gast/Spieler/Captain × Handy 390 px/Desktop 1280 px), je Zelle die fünf Befehle einzeln.
 
@@ -6765,5 +6765,1814 @@ Bewertung: Der gegnerische Captain, ein Dritter ohne Zahlungsbeziehung, sieht �
 
 Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
 - N4-FZ-6 | P1 | Erstnennung, Text in der Tabelle oben | captaingelb_desktop_extra-lobby1026-dritter.png | critique, audit
+
+
+
+## Zusatzabschnitt: Lobby offen, Spielsuche, Benachrichtigungen (Seed-Nachtrag)
+
+Mit dem Seed-Nachtrag (feste IDs, `analyse-seed.md`, Abschnitt "Nachtrag") sind die drei Seiten prüfbar, die zuvor ohne Daten waren: `/lobby/offen/[id]` (wartend, abgelaufen, angenommen, zurückgezogen), `/suche/[id]` (offen, abgelaufen, angenommen, zurückgezogen, Herausforderung) und `/app/benachrichtigungen` mit Einträgen. Gleiche Regeln wie oben: jeder Screenshot angesehen, je Zelle die fünf Befehle critique, audit, distill, clarify, adapt einzeln, `detect` je Seite und Zustand, zwei Sub-Agents in Serie, ein Dev-Server, ein Browser. Kein neuer Vollnachlauf.
+
+**Zähler: angesehen 98 von 98** (Teil A Lobby und Suche: 60 von 60, davon 48 Rasterbilder = 24 Zellen x 2 Geräte; Teil B Benachrichtigungen: 38 von 38, davon 12 Rasterbilder = 6 Rollen x 2 Geräte).
+
+| Blatt | Seiten | Angesehen | Neue Funde (P0 / P1 / P2) |
+|---|---|---|---|
+| ZA | `/lobby/offen/[id]`, `/suche/[id]` in allen Zuständen und Rollen | 60 von 60 | 0 / 15 / 14 |
+| ZB | `/app/benachrichtigungen` (Gast, Spieler, drei Captains, Spieler ohne Team) | 38 von 38 | 0 / 5 / 18 |
+| Summe | | 98 von 98 | 0 / 20 / 32 |
+
+Schwerste Funde:
+- ZB-S1M-1 (P1): Ungelesen ist optisch nicht von gelesen zu unterscheiden (die Randfarbe `border-accent` verliert gegen `.card`, gemessen gleiche Farbe); korrigiert SM-BE-1.
+- ZB-S1M-2 (P1): Die Liste markiert nach 1,5 s automatisch alles als gelesen; es gibt weder "Alle gelesen" noch Einzelmarkierung.
+- ZB-GRM-1, -GRM-2, -S09M-1 (P1): "Abbuchung fehlgeschlagen" und "Zahlung ausstehend" nennen keinen Betrag, keine Frist, keinen nächsten Schritt; das Ziel der Meldung (die Lobby) kennt den Fehler nicht und bietet kein "Karte erneuern" (Verbindung zu N4-FZ-2/-5; Lobby ist Gruppe Y).
+- ZA (P1): Ein Spieler ohne Admin-Rolle sieht auf `/suche/[id]` "Du brauchst ein eigenes Team" mit "Team gründen", obwohl er ein Team hat.
+- ZA (P1, Produktfrage): Die Spielsuche zeigt Gästen den vollen Kader mit Namen und Elo, die offene Lobby zeigt Fremden nur Zahlen (AC-5).
+- ZA (P1): In den Endzuständen (abgelaufen, angenommen, zurückgezogen) steht der Zustand erst unter dem Kader, die Seite hat keine nächste Handlung; die angenommene Suche verlinkt nicht auf das Spiel.
+- ZA (P1): Gäste sehen bei einer Herausforderung "Anmelden und annehmen", dürfen aber nicht annehmen; es gibt keine Ablehnen-Handlung. Die Einladungslink-Box der Lobby lädt ins Team, nicht in die Lobby, und sagt das nicht.
+
+Neue MUSS-WEG-Stellen (Details in den Tabellen der Blätter unten): Der Satz "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist …" in der Teamsicht der offenen Lobby (auch in abgelaufen und zurückgezogen); der Schritt "Bezahlen" mit "Jedes Team macht seine Spieler bereit und bezahlt" auf dem Spiel, auf das die angenommene Lobby weiterleitet (Gruppe Y, nur Hinweis); die Benachrichtigungstexte im Code nennen Guthaben und verlinken auf `/app/guthaben` (`payments.ts:121`, `finance.ts:199`, `wallet.ts:295/325/336/352/386`). Auf `/suche/[id]` selbst steht kein Guthaben-, Aufladen- oder Rabattcode-Text.
+
+Nicht prüfbar oder nur simuliert: Annehmen-Fehlerfall nur durch Ändern der Team-ID im DOM; Bestätigungsdialoge "Lobby schließen" und "Spielsuche zurückziehen" sowie der WhatsApp-Versand nicht ausgelöst; lange Texte und viele Einträge nur per DOM-Simulation; E-Mail- und Push-Versand und die Anzeige "9+" nur im Quelltext gelesen; die Seed-Texte der Benachrichtigungen weichen vom echten Code ab. `detect` per URL sieht keine Sitzung (Gast-Sicht), zusätzlich Quelltext-Läufe; die angenommene Lobby lief zweimal in den 30-s-Timeout (Ersatz Quelltext, keine Funde). Die fünf Durchgänge bleiben manuell nach den Reference-Dateien (Degradiert: ja, wie oben begründet).
+
+### Zusatz: neue MUSS-WEG-Zeilen
+
+| Seite | Rolle | Fundstelle | Beleg |
+|---|---|---|---|
+| /lobby/offen/[id] | Teammitglied und Captain, alle Zustände (wartend, abgelaufen, zurückgezogen) | Satz "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist ... Nur wenn alle bezahlt haben, können alle auf Bereit drücken. Mindestens 4 Spieler brauchst du für ein Spiel." (page.tsx, Abschnitt "Mein Team") | lobby-wartend_captain-gelb-eigene_mobil.png, lobby-abgelaufen_captain-blau-eigene_desktop.png |
+| /lobby/[id] (Ziel der Weiterleitung, Gruppe Y, nur Hinweis) | Gast, Captain | Schritt "Bezahlen" in der Fortschrittsleiste und Satz "Jedes Team macht seine Spieler bereit und bezahlt." | lobby-angenommen_gast_mobil.png |
+| /suche/[id] nach Annehmen (Ziel /lobby/<neu>, Gruppe Y, nur Hinweis) | Captain | Schritt "3 Bezahlen" und derselbe Satz in der frisch angelegten Lobby | suche-offen_captain-rot-fremd_mobil_extra-annehmen-erfolg.png |
+| /lobby/offen/[id], /suche/[id] (Kopfleiste Desktop) | alle Angemeldeten | "0,00 EUR" in der Kopfleiste auf allen angemeldeten Desktop-Zellen (bereits bekannt, X-05, `Header.tsx`); hier nur bestätigt, nicht neu | lobby-wartend_spieler01-fremd_desktop.png |
+| /app/benachrichtigungen (Texte, die dort erscheinen) | alle angemeldeten Rollen | `src/server/payments.ts:121`: Titel "Guthaben aufgeladen", Text "... wurden gutgeschrieben, dazu ... Bonus", Link `/app/guthaben` | Quelltext (Eintrag entsteht nicht im Seed) |
+| /app/benachrichtigungen | alle angemeldeten Rollen | `src/server/finance.ts:199`, `wallet.ts:295`: Titel "Erstattung", Text "... wurden deinem Guthaben gutgeschrieben (...)", Link `/app/guthaben` | Quelltext |
+| /app/benachrichtigungen | alle angemeldeten Rollen | `wallet.ts:325` (Austritt, Link `/app/guthaben`), `wallet.ts:336` ("sind wieder in deinem Guthaben"), `wallet.ts:352` (Absage-Erstattung, Link `/app/guthaben`), `wallet.ts:386` ("gehen zurück aufs Guthaben") | Quelltext |
+| /app/benachrichtigungen | alle angemeldeten Rollen | Mehrere Zahlungsmeldungen verlinken auf `/app/guthaben` (Seite entfällt mit dem Altmodell): tote Links nach der Entfernung | Quelltext (Zeilen oben) |
+
+### Zusatz: Fundblätter
+
+Je Zelle: Beleg, Bewertung, fünf Durchgänge (Befehl, angewandter Teil, Ergebnis) und Funde. Blatt ZA: `/lobby/offen/[id]` und `/suche/[id]`; Blatt ZB: `/app/benachrichtigungen`.
+
+#### Zusatz-Blatt ZA Lobby offen und Spielsuche
+
+Stand: Zusatzabschnitt der Gruppe-X-Analyse, Teil A. Dev-Server Port 3102, Engine 0.1.19 über den Launcher, Seed laut analyse-seed.md (Nachtrag). Nur gelesen, gemessen und Formulare benutzt; kein Quelltext geändert. Kennungen: ZA-LO = Lobby-Seite, ZA-SU = Spielsuche-Seite. Vorhandene Funde (X-nn, GM-, GD-, SM-, SD-, CM-, CD-, N1- bis N4-) werden nur referenziert.
+
+#### Methode und Grenzen
+
+- Die fünf Reference-Dateien (critique 819 Zeilen, audit 139, distill 111, clarify 94, adapt 318) wurden zu Beginn vollständig gelesen; critique, audit, distill, clarify, adapt haben keinen Launcher-Befehl und liefen manuell nach den Dateien, je Durchgang steht in eckigen Klammern der angewandte Teil. critique bleibt degradiert (kein Overlay, kein getrennter Assessment-B-Sub-Agent; Assessment B = `detect`).
+- `impeccable context` (Launcher) lief einmal: PRODUCT.md geladen (Plattform web, Kartenmodell, Richtung E Trikot). `detect --json --viewport <WxH> <URL>` lief je Seitenzustand und Viewport (18 Läufe) ohne Sitzung (= Gast-Sicht; die Teamsicht ist per URL nicht messbar, sie wurde nur im Screenshot und im Quelltext beurteilt). Die angenommene Lobby (/lobby/offen/...203) lief bei beiden Viewports zweimal in den 30-s-Timeout (Zielseite mit Dauerverbindung); Ersatz Quelltext-Lauf `detect --json` gegen die Seitenordner der Lobby-Seite und der Suche-Seite sowie gegen InviteBox.tsx: je `[]` (keine Funde). `overused-font` (Plus Jakarta Sans) ist in DESIGN.md gesetzt: kein Fund.
+- Ganzseitige Handy-Bilder zeigen die feste untere Navigation, teils die Kopfleiste, mitten im Bild und das runde N (Next-Overlay): Aufnahme-Artefakt, kein Fund; das Badge "Compiling" ebenso.
+- Datenschutz AC-5 (Lobby): Fremde und Gäste sehen nur Zahlen, nur Teammitglieder Namen; Quelltext `getOpenLobby` bestätigt es, die Screenshots auch. Nicht prüfbar: Rückfrage-Dialoge "Lobby schließen" und "Spielsuche zurückziehen" (nicht ausgelöst), reguläre Fehlerfälle des Annehmens (Fehler nur durch DOM-Änderung der Team-ID erzeugt), Teilen über WhatsApp (nicht angeklickt), Push.
+- Zeiten im Seed sind relativ zum Lauf; "abgelaufen" heißt Termin gestern (Di. 10.11.) bei Prüfdatum 11.11.
+
+#### Geänderte Seed-Daten durch diese Analyse (vorher/nachher)
+
+| Aktion | Vorher | Nachher |
+|---|---|---|
+| (a) Spieler 15 (Seed Gelb): "Der Lobby beitreten", dann "Lobby verlassen", je einmal Handy und Desktop | nicht beigetreten, 3 von 6 | nicht beigetreten, 3 von 6 (Zwischenstand 4 von 6); netto unverändert, ggf. Benachrichtigung "lobby.joined" an den Captain |
+| (c) Captain Gelb: "Einladungslink erstellen", je einmal Handy und Desktop | keine neue Einladung | zwei neue Team-Einladungen für Seed Gelb (7 Tage gültig), nicht eingelöst |
+| (b) Captain Rot: Annehmen mit manipulierter Team-ID (Handy und Desktop) | Spielsuche 101 offen | unverändert (Fehlermeldung, nichts gespeichert) |
+| (b) Captain Rot: "Spiel annehmen" regulär (nur Handy) | Spielsuche 101 offen (Seed Blau, Mo. 16.11.) | Spielsuche 101 angenommen; neues Spiel Nr. 1186 "Seed Blau VS. Seed Rot" in Status Lobby; mögliche Benachrichtigung an Seed Blau (nicht geprüft) |
+Rückgängig nur per Seed-Neuaufruf (löscht und erzeugt Spiele, Suchen, Einladungen und Beitritte neu).
+
+#### Zähler
+
+- Angesehen: 48 Zellenbilder + 12 Extra-Aufnahmen = **60 von 60 Bildern** (je Bild einzeln mit Read geöffnet).
+- Durchgänge: je Zelle critique, audit, distill, clarify, adapt als eigene Zeilen (60 Abschnitte), plus detect je Seitenzustand und Viewport (18 Läufe, 2 davon doppelt Timeout mit Quelltext-Ersatz).
+- Eigenständige neue Funde (Erstnennung): P0 0, P1 15, P2 14; gesamt 29. Zeilen in den Zellen (Rohzählung inkl. Wiederholungen) liegen deutlich höher.
+
+#### Zellen
+
+##### Offene Lobby wartend, Gast (gast, mobil)
+Beleg: lobby-wartend_gast_mobil.png (Messung: 8 von 34 Zielen unter 44 px, Höhe 906 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Fremdsicht ohne Namen (AC-5 eingehalten): Teamname, Status "wartet auf einen Gegner", Zeitfenster, "3 von 6 Plätzen". Die Platzliste zeigt aber nur die drei freien Plätze, und es gibt keine Handlung außer "Alle offenen Lobbys". Oben nur "Anmelden"; die untere Navigation hebt "Teamspiel" hervor und zeigt Reiter für Angemeldete (X-06); Fußzeile 4 Zeilen (X-07).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey (mobil), Jordan] Funde ZA-LO-1, ZA-LO-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (8 von 34 Zielen unter 44 px, Höhe 906 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-2, ZA-LO-13 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-1, ZA-LO-4, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-4 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-1 | P1 | Fremd- und Gastsicht der wartenden Lobby zeigt nur "Wartet auf Spieler 4 / 5 / 6 - frei" und "3 von 6 Plätzen". Die drei Beigetretenen fehlen als Zeilen, die Platzliste beginnt bei 4: Das Team wirkt halb leer und "frei" ist für Fremde falsch (Datenschutz AC-5 selbst ist eingehalten). Besser: eine Fortschrittszeile "3 von 6 dabei" ohne nummerierte Platzliste. | lobby-wartend_gast_mobil.png | critique, clarify
+- ZA-LO-2 | P1 | Fremd- und Gastsicht hat keine Handlung außer "Alle offenen Lobbys". Der Quelltext verspricht in der Teamsicht einen Knopf "Gegen Seed Gelb antreten", die Seite selbst bietet ihn keinem Fremden an (Captain eines anderen Teams, Gast: auch kein "Anmelden" im Seiteninhalt). Eine offene Lobby, die man nicht annehmen kann, ist eine Sackgasse. | lobby-wartend_gast_mobil.png | critique, distill
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. Die Seed-Doku nennt 5 Plätze, die Seite zeigt 6 (MAX_PER_TEAM im Code); das Dokument ist veraltet, nicht die Seite. | lobby-wartend_gast_mobil.png | clarify, adapt
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. Fremde sehen "Offene Lobby von Seed Gelb": derselbe Ort heißt je nach Rolle verschieden. | lobby-wartend_gast_mobil.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. | lobby-wartend_gast_mobil.png | clarify, distill
+
+##### Offene Lobby wartend, Gast (gast, desktop)
+Beleg: lobby-wartend_gast_desktop.png (Messung: 11 von 34 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Fremdsicht ohne Namen (AC-5 eingehalten): Teamname, Status "wartet auf einen Gegner", Zeitfenster, "3 von 6 Plätzen". Die Platzliste zeigt aber nur die drei freien Plätze, und es gibt keine Handlung außer "Alle offenen Lobbys". Kopfleiste mit drei Links (GD-ALL-1), Inhalt in 720-px-Spalte (X-17), unterhalb der Karten viel Leerraum.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey (mobil), Jordan] Funde ZA-LO-1, ZA-LO-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (11 von 34 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-2, ZA-LO-13 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-1, ZA-LO-4, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-4 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-1 | P1 | Fremd- und Gastsicht der wartenden Lobby zeigt nur "Wartet auf Spieler 4 / 5 / 6 - frei" und "3 von 6 Plätzen". (Wiederholung, Erstnennung oben) | lobby-wartend_gast_desktop.png | critique, clarify
+- ZA-LO-2 | P1 | Fremd- und Gastsicht hat keine Handlung außer "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-wartend_gast_desktop.png | critique, distill
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_gast_desktop.png | clarify, adapt
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_gast_desktop.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_gast_desktop.png | clarify, distill
+
+##### Offene Lobby wartend, Spieler 01 (Seed Rot, fremd) (spieler01-fremd, mobil)
+Beleg: lobby-wartend_spieler01-fremd_mobil.png (Messung: 9 von 36 Zielen unter 44 px, Höhe 906 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Angemeldeter Fremder sieht dasselbe wie der Gast, nur mit Glocke und Konto: Es gibt keine Rollenunterscheidung und keinen Hinweis, dass Seed Rot (sein Team) ein Gegner sein könnte. Glocke mit Zähler 1, Konto-Chip "Anton"; Seitenhöhe 906 px, ein Bildschirm.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Alex] Funde ZA-LO-1, ZA-LO-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (9 von 36 Zielen unter 44 px, Höhe 906 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-2, ZA-LO-13 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-1, ZA-LO-4, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-4 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-1 | P1 | Fremd- und Gastsicht der wartenden Lobby zeigt nur "Wartet auf Spieler 4 / 5 / 6 - frei" und "3 von 6 Plätzen". (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_mobil.png | critique, clarify
+- ZA-LO-2 | P1 | Fremd- und Gastsicht hat keine Handlung außer "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_mobil.png | critique, distill
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_mobil.png | clarify, adapt
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_mobil.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_mobil.png | clarify, distill
+
+##### Offene Lobby wartend, Spieler 01 (Seed Rot, fremd) (spieler01-fremd, desktop)
+Beleg: lobby-wartend_spieler01-fremd_desktop.png (Messung: 13 von 36 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Angemeldeter Fremder sieht dasselbe wie der Gast, nur mit Glocke und Konto: Es gibt keine Rollenunterscheidung und keinen Hinweis, dass Seed Rot (sein Team) ein Gegner sein könnte. Kopfleiste zeigt "0,00 EUR" (Guthaben, bekannt MUSS WEG, Header.tsx).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Alex] Funde ZA-LO-1, ZA-LO-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (13 von 36 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-2, ZA-LO-13 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-1, ZA-LO-4, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-4 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-1 | P1 | Fremd- und Gastsicht der wartenden Lobby zeigt nur "Wartet auf Spieler 4 / 5 / 6 - frei" und "3 von 6 Plätzen". (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_desktop.png | critique, clarify
+- ZA-LO-2 | P1 | Fremd- und Gastsicht hat keine Handlung außer "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_desktop.png | critique, distill
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_desktop.png | clarify, adapt
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_desktop.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler01-fremd_desktop.png | clarify, distill
+
+##### Offene Lobby wartend, Spieler 13 (Seed Gelb, beigetreten) (spieler13-beigetreten, mobil)
+Beleg: lobby-wartend_spieler13-beigetreten_mobil.png (Messung: 13 von 40 Zielen unter 44 px, Höhe 1239 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Teamsicht mit Namen: drei Beigetretene (Captain, "Mats (du)", Noah), drei freie Plätze, zwei noch nicht Beigetretene, "Lobby verlassen". Die wichtigste Information (ich bin dabei, 3 von 6) ist da, aber die Seite ist lang, die Erklärung zu Bezahlen steht im Altmodell, die Handlung ist ein kleiner Ghost-Knopf. 1239 px lang, "Alle offenen Lobbys" und Gegner-Karte liegen hinter der festen Navigation; "Lobby verlassen" ist ein kleiner Knopf in der Mitte der Karte.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey, Jordan] Funde ZA-LO-8, ZA-LO-9 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (13 von 40 Zielen unter 44 px, Höhe 1239 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-8, ZA-LO-13, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-4, ZA-LO-9, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-4, ZA-LO-15 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist ... Nur wenn alle bezahlt haben, können alle auf Bereit drücken. Mindestens 4 Spieler brauchst du für ein Spiel." Passt nicht zum Kartenmodell (Karte hinterlegen statt bezahlen), steht auch in den Endzuständen (siehe MUSS WEG). | lobby-wartend_spieler13-beigetreten_mobil.png | clarify
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_mobil.png | clarify, adapt
+- ZA-LO-8 | P2 | Beigetreten wird mit einem roten Punkt markiert (Rot = Warnung/Fehler); der Punkt hat nur einen Screenreader-Text, auf dieser Seite keine Legende (die Spielseite hat sie: "In der Lobby / Bereit / Bestätigt"). Zusätzlich steht "Lobby beigetreten" in jeder Zeile wiederholt. | lobby-wartend_spieler13-beigetreten_mobil.png | critique, distill
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. Rückmeldung nur "Bitte warten..." und Zähler (3 -> 4 von 6) plus "(du)"; keine Bestätigung, was Beitreten bedeutet (Zusage? Erinnerung?). Der Wechsel Primärknopf <-> Ghost-Knopf verschiebt die Hervorhebung. | lobby-wartend_spieler13-beigetreten_mobil.png | critique, audit, clarify
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_mobil.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_mobil.png | clarify, distill
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. Die Namen der noch nicht Beigetretenen haben keine Handlung (kein "Erinnern"). | lobby-wartend_spieler13-beigetreten_mobil.png | distill, adapt
+
+##### Offene Lobby wartend, Spieler 13 (Seed Gelb, beigetreten) (spieler13-beigetreten, desktop)
+Beleg: lobby-wartend_spieler13-beigetreten_desktop.png (Messung: 17 von 40 Zielen unter 44 px, Höhe 1007 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Teamsicht mit Namen: drei Beigetretene (Captain, "Mats (du)", Noah), drei freie Plätze, zwei noch nicht Beigetretene, "Lobby verlassen". Die wichtigste Information (ich bin dabei, 3 von 6) ist da, aber die Seite ist lang, die Erklärung zu Bezahlen steht im Altmodell, die Handlung ist ein kleiner Ghost-Knopf. Auf 1280 px wirkt die Karte ruhiger; der Ghost-Knopf bleibt klein, der Hinweistext zieht sich über die ganze Breite (etwa 130 Zeichen pro Zeile).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey, Jordan] Funde ZA-LO-8, ZA-LO-9 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (17 von 40 Zielen unter 44 px, Höhe 1007 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-8, ZA-LO-13, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-4, ZA-LO-9, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-4, ZA-LO-15 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_desktop.png | clarify
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_desktop.png | clarify, adapt
+- ZA-LO-8 | P2 | Beigetreten wird mit einem roten Punkt markiert (Rot = Warnung/Fehler); der Punkt hat nur einen Screenreader-Text, auf dieser Seite keine Legende (die Spielseite hat sie: "In der Lobby / Bereit / Bestätigt"). (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_desktop.png | critique, distill
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_desktop.png | critique, audit, clarify
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_desktop.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_desktop.png | clarify, distill
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler13-beigetreten_desktop.png | distill, adapt
+
+##### Offene Lobby wartend, Spieler 15 (Seed Gelb, nicht beigetreten) (spieler15-nicht-beigetreten, mobil)
+Beleg: lobby-wartend_spieler15-nicht-beigetreten_mobil.png (Messung: 13 von 40 Zielen unter 44 px, Höhe 1239 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Gleiche Karte wie Spieler 13, aber mit dem Primärknopf "Der Lobby beitreten" statt "Lobby verlassen"; "Okan Testmann" steht noch unter "Im Team, aber noch nicht in der Lobby". Der Primärknopf ist klar, nur klein. Der Beitreten-Knopf liegt in der Kartenmitte (y etwa 550 von 1239) und wird nur bei Scroll sichtbar; nicht in der Daumenzone.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey, Jordan] Funde ZA-LO-8, ZA-LO-9 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (13 von 40 Zielen unter 44 px, Höhe 1239 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-8, ZA-LO-13, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-4, ZA-LO-9, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-4, ZA-LO-15 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil.png | clarify
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil.png | clarify, adapt
+- ZA-LO-8 | P2 | Beigetreten wird mit einem roten Punkt markiert (Rot = Warnung/Fehler); der Punkt hat nur einen Screenreader-Text, auf dieser Seite keine Legende (die Spielseite hat sie: "In der Lobby / Bereit / Bestätigt"). (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil.png | critique, distill
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil.png | critique, audit, clarify
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil.png | clarify, distill
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil.png | distill, adapt
+
+##### Offene Lobby wartend, Spieler 15 (Seed Gelb, nicht beigetreten) (spieler15-nicht-beigetreten, desktop)
+Beleg: lobby-wartend_spieler15-nicht-beigetreten_desktop.png (Messung: 17 von 40 Zielen unter 44 px, Höhe 1007 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Gleiche Karte wie Spieler 13, aber mit dem Primärknopf "Der Lobby beitreten" statt "Lobby verlassen"; "Okan Testmann" steht noch unter "Im Team, aber noch nicht in der Lobby". Der Primärknopf ist klar, nur klein. Knopf sitzt linksbündig und bleibt kompakt; keine Verbindung zum Hinweistext darunter.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey, Jordan] Funde ZA-LO-8, ZA-LO-9 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (17 von 40 Zielen unter 44 px, Höhe 1007 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-8, ZA-LO-13, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-4, ZA-LO-9, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-4, ZA-LO-15 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop.png | clarify
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop.png | clarify, adapt
+- ZA-LO-8 | P2 | Beigetreten wird mit einem roten Punkt markiert (Rot = Warnung/Fehler); der Punkt hat nur einen Screenreader-Text, auf dieser Seite keine Legende (die Spielseite hat sie: "In der Lobby / Bereit / Bestätigt"). (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop.png | critique, distill
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop.png | critique, audit, clarify
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop.png | clarify, distill
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop.png | distill, adapt
+
+##### Offene Lobby wartend, Captain Gelb (eigene Lobby) (captain-gelb-eigene, mobil)
+Beleg: lobby-wartend_captain-gelb-eigene_mobil.png (Messung: 14 von 42 Zielen unter 44 px, Höhe 1369 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Besitzersicht mit allen Handlungen: verlassen, Einladungslink erstellen, Lobby schließen. Die Karte ist vollständig, aber sie hat drei gleichrangige Blöcke (Team, Einladung, Gegner), den zweiten Primärknopf "Einladungslink erstellen" in voller Breite und das klein gesetzte "Lobby schließen". 1369 px hoch; "Einladungslink erstellen" vollbreit, das Gegenstück "Alle offenen Lobbys" und "Lobby schließen" teilen sich eine Zeile mit ungleicher Größe.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Casey] Funde ZA-LO-8, ZA-LO-9, ZA-LO-10, ZA-LO-11 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (14 von 42 Zielen unter 44 px, Höhe 1369 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-8, ZA-LO-13, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-4, ZA-LO-9, ZA-LO-11, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-4, ZA-LO-10, ZA-LO-11, ZA-LO-15 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil.png | clarify
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil.png | clarify, adapt
+- ZA-LO-8 | P2 | Beigetreten wird mit einem roten Punkt markiert (Rot = Warnung/Fehler); der Punkt hat nur einen Screenreader-Text, auf dieser Seite keine Legende (die Spielseite hat sie: "In der Lobby / Bereit / Bestätigt"). (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil.png | critique, distill
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil.png | critique, audit, clarify
+- ZA-LO-10 | P2 | Captain: "Lobby schließen" ist ein kleiner Ghost-Knopf (Klasse text-xs, 36 px) rechts neben dem größeren Navigationsknopf "Alle offenen Lobbys": die zerstörende Handlung wirkt wie ein Nebenlink und ist kleiner als die Navigation. Rückfrage per Browser-Dialog (nicht ausgeführt). | lobby-wartend_captain-gelb-eigene_mobil.png | critique, adapt
+- ZA-LO-11 | P1 | Einladungslink-Box "Spieler einladen": Der Link führt ins Team ("Komm in mein Team Seed Gelb auf Socaz"), nicht in die Lobby; die Box sagt das nicht und steht unter der Liste "Im Team, aber noch nicht in der Lobby", in der die schon vorhandenen Teammitglieder (Okan, Paulo) keine Handlung haben. Vor dem Klick ein vollbreiter Primärknopf "Einladungslink erstellen" (zweiter Primärknopf neben dem Beitreten-Knopf), danach nur "Link kopieren" und "WhatsApp" (kein natives Teilen am Handy), Link-Feld am Handy abgeschnitten, "Der Link ist 7 Tage gültig" ohne Bezug zum Lobby-Zeitfenster. | lobby-wartend_captain-gelb-eigene_mobil.png | critique, clarify, adapt
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil.png | clarify, distill
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil.png | distill, adapt
+
+##### Offene Lobby wartend, Captain Gelb (eigene Lobby) (captain-gelb-eigene, desktop)
+Beleg: lobby-wartend_captain-gelb-eigene_desktop.png (Messung: 18 von 42 Zielen unter 44 px, Höhe 1137 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Besitzersicht mit allen Handlungen: verlassen, Einladungslink erstellen, Lobby schließen. Die Karte ist vollständig, aber sie hat drei gleichrangige Blöcke (Team, Einladung, Gegner), den zweiten Primärknopf "Einladungslink erstellen" in voller Breite und das klein gesetzte "Lobby schließen". Primärknopf spannt 686 px, die Schließen-Handlung sitzt klein neben der Navigation.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Casey] Funde ZA-LO-8, ZA-LO-9, ZA-LO-10, ZA-LO-11 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (18 von 42 Zielen unter 44 px, Höhe 1137 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-8, ZA-LO-13, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-4, ZA-LO-9, ZA-LO-11, ZA-LO-12, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-4, ZA-LO-10, ZA-LO-11, ZA-LO-15 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | clarify
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | clarify, adapt
+- ZA-LO-8 | P2 | Beigetreten wird mit einem roten Punkt markiert (Rot = Warnung/Fehler); der Punkt hat nur einen Screenreader-Text, auf dieser Seite keine Legende (die Spielseite hat sie: "In der Lobby / Bereit / Bestätigt"). (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | critique, distill
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | critique, audit, clarify
+- ZA-LO-10 | P2 | Captain: "Lobby schließen" ist ein kleiner Ghost-Knopf (Klasse text-xs, 36 px) rechts neben dem größeren Navigationsknopf "Alle offenen Lobbys": die zerstörende Handlung wirkt wie ein Nebenlink und ist kleiner als die Navigation. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | critique, adapt
+- ZA-LO-11 | P1 | Einladungslink-Box "Spieler einladen": Der Link führt ins Team ("Komm in mein Team Seed Gelb auf Socaz"), nicht in die Lobby; die Box sagt das nicht und steht unter der Liste "Im Team, aber noch nicht in der Lobby", in der die schon vorhandenen Teammitglieder (Okan, Paulo) keine Handlung haben. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | critique, clarify, adapt
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | clarify, distill
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop.png | distill, adapt
+
+##### Offene Lobby abgelaufen, Gast (gast, mobil)
+Beleg: lobby-abgelaufen_gast_mobil.png (Messung: 8 von 34 Zielen unter 44 px, Höhe 966 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Zustand nur über die graue Statuszeile "nicht mehr offen" lesbar, darunter bleiben 6 freie Plätze und "Noch kein Gegner": Die Seite sieht wie eine leere offene Lobby aus. Warum sie zu ist, steht nirgends. Statuszeile in Grau und kleiner Schrift gleichrangig zum Datum; 966 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-LO-5, ZA-LO-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (8 von 34 Zielen unter 44 px, Höhe 966 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-5 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-5, ZA-LO-6, ZA-LO-4 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-4 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0202>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-5 | P1 | Endzustände (abgelaufen, zurückgezogen) unterscheiden sich im Seitentext nicht: beide "Diese Lobby ist nicht mehr offen". Der Grund steht nur im freien Hinweisfeld der Seed-Daten ("Zurückgezogen."). Darunter bleibt die tote Platzliste "Wartet auf Spieler 1 bis 6 - frei" (0 von 6) und in der Teamsicht "Noch kein Gegner. Sobald ein anderes Team ... klickt, erscheint es hier": für eine geschlossene Lobby falsch. | lobby-abgelaufen_gast_mobil.png | critique, clarify, distill
+- ZA-LO-6 | P1 | Endzustand ohne nächste Handlung: Der Captain der geschlossenen Lobby (Blau, Grün) sieht nur "Alle offenen Lobbys". Kein "Neue Lobby aufmachen" (Ziel /matchmaking), Gäste kein Hinweis, warum die Lobby zu ist. | lobby-abgelaufen_gast_mobil.png | critique, clarify
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-abgelaufen_gast_mobil.png | clarify, adapt
+
+##### Offene Lobby abgelaufen, Gast (gast, desktop)
+Beleg: lobby-abgelaufen_gast_desktop.png (Messung: 11 von 34 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Zustand nur über die graue Statuszeile "nicht mehr offen" lesbar, darunter bleiben 6 freie Plätze und "Noch kein Gegner": Die Seite sieht wie eine leere offene Lobby aus. Warum sie zu ist, steht nirgends. Gleiche Anordnung, 6 Zeilen "frei" wirken auf 800 px Höhe wie Leerlauf.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-LO-5, ZA-LO-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (11 von 34 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-5 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-5, ZA-LO-6, ZA-LO-4 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-4 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0202>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-5 | P1 | Endzustände (abgelaufen, zurückgezogen) unterscheiden sich im Seitentext nicht: beide "Diese Lobby ist nicht mehr offen". (Wiederholung, Erstnennung oben) | lobby-abgelaufen_gast_desktop.png | critique, clarify, distill
+- ZA-LO-6 | P1 | Endzustand ohne nächste Handlung: Der Captain der geschlossenen Lobby (Blau, Grün) sieht nur "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-abgelaufen_gast_desktop.png | critique, clarify
+- ZA-LO-4 | P2 | Zeitangabe "Fr., 13.11., 15:41 bis 18:41 Uhr · Sa., 14.11., 15:41 bis 18:41 Uhr · 60 Min · Gelsenkirchen": Fenster (3 Stunden) und Dauer (60 Min) stehen ohne Erklärung nebeneinander, zwei Fenster werden mit Mittelpunkt getrennt und brechen am Handy mitten im Fenster um. (Wiederholung, Erstnennung oben) | lobby-abgelaufen_gast_desktop.png | clarify, adapt
+
+##### Offene Lobby abgelaufen, Captain Blau (eigene) (captain-blau-eigene, mobil)
+Beleg: lobby-abgelaufen_captain-blau-eigene_mobil.png (Messung: 9 von 36 Zielen unter 44 px, Höhe 1239 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Der Captain sieht für seine abgelaufene Lobby alle Mitglieder als "noch nicht in der Lobby", den Altmodelltext zu Bezahlen und den falschen Satz "Sobald ein anderes Team ... klickt, erscheint es hier"; es fehlt jede Handlung zum Neu-Aufmachen. 1239 px, Aktionen fehlen; "Alle offenen Lobbys" ist die einzige Taste.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Jordan] Funde ZA-LO-5, ZA-LO-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (9 von 36 Zielen unter 44 px, Höhe 1239 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-5, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-5, ZA-LO-6, ZA-LO-12 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-15 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0202>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_mobil.png | clarify
+- ZA-LO-5 | P1 | Endzustände (abgelaufen, zurückgezogen) unterscheiden sich im Seitentext nicht: beide "Diese Lobby ist nicht mehr offen". (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_mobil.png | critique, clarify, distill
+- ZA-LO-6 | P1 | Endzustand ohne nächste Handlung: Der Captain der geschlossenen Lobby (Blau, Grün) sieht nur "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_mobil.png | critique, clarify
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_mobil.png | clarify
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_mobil.png | distill, adapt
+
+##### Offene Lobby abgelaufen, Captain Blau (eigene) (captain-blau-eigene, desktop)
+Beleg: lobby-abgelaufen_captain-blau-eigene_desktop.png (Messung: 13 von 36 Zielen unter 44 px, Höhe 1007 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Der Captain sieht für seine abgelaufene Lobby alle Mitglieder als "noch nicht in der Lobby", den Altmodelltext zu Bezahlen und den falschen Satz "Sobald ein anderes Team ... klickt, erscheint es hier"; es fehlt jede Handlung zum Neu-Aufmachen. Alle fünf Namen als Liste, ohne Funktion, Seite wirkt fertig und tot zugleich.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Jordan] Funde ZA-LO-5, ZA-LO-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (13 von 36 Zielen unter 44 px, Höhe 1007 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-5, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-5, ZA-LO-6, ZA-LO-12 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-15 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0202>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_desktop.png | clarify
+- ZA-LO-5 | P1 | Endzustände (abgelaufen, zurückgezogen) unterscheiden sich im Seitentext nicht: beide "Diese Lobby ist nicht mehr offen". (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_desktop.png | critique, clarify, distill
+- ZA-LO-6 | P1 | Endzustand ohne nächste Handlung: Der Captain der geschlossenen Lobby (Blau, Grün) sieht nur "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_desktop.png | critique, clarify
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_desktop.png | clarify
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-abgelaufen_captain-blau-eigene_desktop.png | distill, adapt
+
+##### Offene Lobby angenommen, Gast (Weiterleitung) (gast, mobil)
+Beleg: lobby-angenommen_gast_mobil.png (Messung: 13 von 38 Zielen unter 44 px, Höhe 2064 px, Überlauf false, 0 Konsolenfehler, Titel "Lobby · Socaz", Zieladresse nach Weiterleitung /lobby/<id>)
+Bewertung: Die Adresse der offenen Lobby führt den Gast ohne Zwischenmeldung auf die Spielseite "Seed Rot VS. Seed Blau" (Bestätigt, "in 2 Tagen 23 Std", Schritte Uhrzeit, Halle, Bezahlen). Weiterleitung funktioniert (Adressleiste zeigt /lobby/<id>), aber stumm. Spielseite 2064 px hoch; dev-Badge "Compiling" im Bild ist Entwicklungs-Overlay.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Casey] keine Funde |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (13 von 38 Zielen unter 44 px, Höhe 2064 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-7 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-7 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0203>` | Navigation timeout 30 s, Wiederholung wieder Timeout (Zielseite mit Dauerverbindung); Ersatz Quelltext-Lauf (Quelltext-Lauf des Seitenordners: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-7 | P2 | Weiterleitung der angenommenen Lobby ist stumm: /lobby/offen/<id> springt ohne Hinweis ("Euer Gegner steht fest") auf die Spielseite /lobby/<id>; der Captain landet über einen zweiten Sprung auf /lobby/<id>/uebersicht. Wer die Lobby beobachtet, sieht plötzlich eine andere Seite mit anderem Titel. Die Seite dahinter ist Gruppe Y. | lobby-angenommen_gast_mobil.png | clarify, adapt
+
+##### Offene Lobby angenommen, Gast (Weiterleitung) (gast, desktop)
+Beleg: lobby-angenommen_gast_desktop.png (Messung: 16 von 38 Zielen unter 44 px, Höhe 1362 px, Überlauf false, 0 Konsolenfehler, Titel "Lobby · Socaz", Zieladresse nach Weiterleitung /lobby/<id>)
+Bewertung: Die Adresse der offenen Lobby führt den Gast ohne Zwischenmeldung auf die Spielseite "Seed Rot VS. Seed Blau" (Bestätigt, "in 2 Tagen 23 Std", Schritte Uhrzeit, Halle, Bezahlen). Weiterleitung funktioniert (Adressleiste zeigt /lobby/<id>), aber stumm. Spielseite auf 1362 px, zwei Kader nebeneinander; Gruppe Y.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Casey] keine Funde |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (16 von 38 Zielen unter 44 px, Höhe 1362 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-7 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-7 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0203>` | Navigation timeout 30 s, Wiederholung wieder Timeout; Ersatz Quelltext-Lauf (keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-7 | P2 | Weiterleitung der angenommenen Lobby ist stumm: /lobby/offen/<id> springt ohne Hinweis ("Euer Gegner steht fest") auf die Spielseite /lobby/<id>; der Captain landet über einen zweiten Sprung auf /lobby/<id>/uebersicht. (Wiederholung, Erstnennung oben) | lobby-angenommen_gast_desktop.png | clarify, adapt
+
+##### Offene Lobby angenommen, Captain Rot (Weiterleitung) (captain-rot-eigene, mobil)
+Beleg: lobby-angenommen_captain-rot-eigene_mobil.png (Messung: 24 von 52 Zielen unter 44 px, Höhe 1702 px, Überlauf false, 0 Konsolenfehler, Titel "Spielübersicht · Socaz", Zieladresse nach Weiterleitung /lobby/<id>/uebersicht)
+Bewertung: Der Captain landet nach zwei Sprüngen auf /lobby/<id>/uebersicht (Spielübersicht mit Countdown, Spielort, Notfall, Kader). Der Sprung ist richtig, aber ohne Hinweis; die Seite kennt "Spiel absagen" direkt unter dem Kader. Übersicht 1702 px; Countdown-Kacheln oben, "Spiel absagen" ganz unten (Gruppe Y).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Alex] keine Funde |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (24 von 52 Zielen unter 44 px, Höhe 1702 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-7 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-7 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0203>` | Navigation timeout 30 s, Wiederholung wieder Timeout (Zielseite mit Dauerverbindung); Ersatz Quelltext-Lauf (Quelltext-Lauf des Seitenordners: keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-7 | P2 | Weiterleitung der angenommenen Lobby ist stumm: /lobby/offen/<id> springt ohne Hinweis ("Euer Gegner steht fest") auf die Spielseite /lobby/<id>; der Captain landet über einen zweiten Sprung auf /lobby/<id>/uebersicht. (Wiederholung, Erstnennung oben) | lobby-angenommen_captain-rot-eigene_mobil.png | clarify, adapt
+
+##### Offene Lobby angenommen, Captain Rot (Weiterleitung) (captain-rot-eigene, desktop)
+Beleg: lobby-angenommen_captain-rot-eigene_desktop.png (Messung: 28 von 52 Zielen unter 44 px, Höhe 1228 px, Überlauf false, 0 Konsolenfehler, Titel "Spielübersicht · Socaz", Zieladresse nach Weiterleitung /lobby/<id>/uebersicht)
+Bewertung: Der Captain landet nach zwei Sprüngen auf /lobby/<id>/uebersicht (Spielübersicht mit Countdown, Spielort, Notfall, Kader). Der Sprung ist richtig, aber ohne Hinweis; die Seite kennt "Spiel absagen" direkt unter dem Kader. Übersicht 1228 px, ruhig; Gruppe Y.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Alex] keine Funde |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (28 von 52 Zielen unter 44 px, Höhe 1228 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-7 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-7 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0203>` | Navigation timeout 30 s, Wiederholung wieder Timeout; Ersatz Quelltext-Lauf (keine Funde) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-7 | P2 | Weiterleitung der angenommenen Lobby ist stumm: /lobby/offen/<id> springt ohne Hinweis ("Euer Gegner steht fest") auf die Spielseite /lobby/<id>; der Captain landet über einen zweiten Sprung auf /lobby/<id>/uebersicht. (Wiederholung, Erstnennung oben) | lobby-angenommen_captain-rot-eigene_desktop.png | clarify, adapt
+
+##### Offene Lobby zurückgezogen, Gast (gast, mobil)
+Beleg: lobby-zurueckgezogen_gast_mobil.png (Messung: 8 von 34 Zielen unter 44 px, Höhe 990 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Fast identisch mit "abgelaufen" (derselbe Satz "nicht mehr offen"); die einzige Erklärung ist der Hinweis "Zurückgezogen." in 12 px in der Karte "Gegner". Für Gäste kein Weg weiter außer der Liste. 990 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-LO-5, ZA-LO-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (8 von 34 Zielen unter 44 px, Höhe 990 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-5, ZA-LO-13 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-5, ZA-LO-6, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0204>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-5 | P1 | Endzustände (abgelaufen, zurückgezogen) unterscheiden sich im Seitentext nicht: beide "Diese Lobby ist nicht mehr offen". (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_gast_mobil.png | critique, clarify, distill
+- ZA-LO-6 | P1 | Endzustand ohne nächste Handlung: Der Captain der geschlossenen Lobby (Blau, Grün) sieht nur "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_gast_mobil.png | critique, clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_gast_mobil.png | clarify, distill
+
+##### Offene Lobby zurückgezogen, Gast (gast, desktop)
+Beleg: lobby-zurueckgezogen_gast_desktop.png (Messung: 11 von 34 Zielen unter 44 px, Höhe 810 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Fast identisch mit "abgelaufen" (derselbe Satz "nicht mehr offen"); die einzige Erklärung ist der Hinweis "Zurückgezogen." in 12 px in der Karte "Gegner". Für Gäste kein Weg weiter außer der Liste. 810 px, kurz; die Karte "Gegner" mit dem Hinweis liegt unter der Platzliste.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-LO-5, ZA-LO-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (11 von 34 Zielen unter 44 px, Höhe 810 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-5, ZA-LO-13 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-5, ZA-LO-6, ZA-LO-13 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0204>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-5 | P1 | Endzustände (abgelaufen, zurückgezogen) unterscheiden sich im Seitentext nicht: beide "Diese Lobby ist nicht mehr offen". (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_gast_desktop.png | critique, clarify, distill
+- ZA-LO-6 | P1 | Endzustand ohne nächste Handlung: Der Captain der geschlossenen Lobby (Blau, Grün) sieht nur "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_gast_desktop.png | critique, clarify
+- ZA-LO-13 | P2 | Das freie Hinweisfeld der Lobby ("Offene Lobby, wir sind noch nicht vollzählig.") steht ohne Überschrift in 12-px-Schrift in der Karte "Gegner", gehört aber zur Lobby, nicht zum Gegner. (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_gast_desktop.png | clarify, distill
+
+##### Offene Lobby zurückgezogen, Captain Grün (eigene) (captain-gruen-eigene, mobil)
+Beleg: lobby-zurueckgezogen_captain-gruen-eigene_mobil.png (Messung: 9 von 36 Zielen unter 44 px, Höhe 1263 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Wie bei Blau: tote Platzliste, Altmodelltext, falscher Satz zum Gegner; "Zurückgezogen." nur als Hinweis. Die Handlung "Lobby schließen" ist korrekt weg, aber nichts ersetzt sie. 1263 px; die untere Navigation verdeckt in der Aufnahme die Karte "Gegner" (Aufnahme-Artefakt).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Riley] Funde ZA-LO-5, ZA-LO-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (9 von 36 Zielen unter 44 px, Höhe 1263 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-5, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-5, ZA-LO-6, ZA-LO-12 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-15 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0204>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_mobil.png | clarify
+- ZA-LO-5 | P1 | Endzustände (abgelaufen, zurückgezogen) unterscheiden sich im Seitentext nicht: beide "Diese Lobby ist nicht mehr offen". (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_mobil.png | critique, clarify, distill
+- ZA-LO-6 | P1 | Endzustand ohne nächste Handlung: Der Captain der geschlossenen Lobby (Blau, Grün) sieht nur "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_mobil.png | critique, clarify
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_mobil.png | clarify
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_mobil.png | distill, adapt
+
+##### Offene Lobby zurückgezogen, Captain Grün (eigene) (captain-gruen-eigene, desktop)
+Beleg: lobby-zurueckgezogen_captain-gruen-eigene_desktop.png (Messung: 13 von 36 Zielen unter 44 px, Höhe 1031 px, Überlauf false, 0 Konsolenfehler, Titel "Offene Lobby · Socaz")
+Bewertung: Wie bei Blau: tote Platzliste, Altmodelltext, falscher Satz zum Gegner; "Zurückgezogen." nur als Hinweis. Die Handlung "Lobby schließen" ist korrekt weg, aber nichts ersetzt sie. 1031 px, linksbündig, viel leere rechte Fläche.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Riley] Funde ZA-LO-5, ZA-LO-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (13 von 36 Zielen unter 44 px, Höhe 1031 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-5, ZA-LO-15 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-3, ZA-LO-5, ZA-LO-6, ZA-LO-12 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-15 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0204>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-3 | P1 | Altmodelltext in der Teamsicht: "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist .. (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_desktop.png | clarify
+- ZA-LO-5 | P1 | Endzustände (abgelaufen, zurückgezogen) unterscheiden sich im Seitentext nicht: beide "Diese Lobby ist nicht mehr offen". (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_desktop.png | critique, clarify, distill
+- ZA-LO-6 | P1 | Endzustand ohne nächste Handlung: Der Captain der geschlossenen Lobby (Blau, Grün) sieht nur "Alle offenen Lobbys". (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_desktop.png | critique, clarify
+- ZA-LO-12 | P2 | Titel der Teamsicht ist nur der Teamname ("Seed Gelb"); "Lobby" und "offen" stehen nur in der kleinen grauen Zeile darüber und in der Statuszeile. (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_desktop.png | clarify
+- ZA-LO-15 | P2 | Teamsicht ist lang (Handy 1239 bis 1369 px): Mitglieder, "Im Team, aber noch nicht in der Lobby", Hinweistext, Einladung, Gegner, Schließen. (Wiederholung, Erstnennung oben) | lobby-zurueckgezogen_captain-gruen-eigene_desktop.png | distill, adapt
+
+##### Spielsuche offen, Gast (gast, mobil)
+Beleg: suche-offen_gast_mobil.png (Messung: 13 von 39 Zielen unter 44 px, Höhe 970 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Klare Seite: Eyebrow, Titel, Termindaten, Kader, ein großer Knopf "Anmelden und annehmen". Der Primärweg ist eindeutig; Probleme sind der öffentliche Kader mit Namen und Elo und die Begriffe. Alles auf 970 px, Knopf im unteren Drittel in der Daumenzone; "Köln." allein in letzter Zeile (detect).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Casey] Funde ZA-SU-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11, ZA-SU-13 (13 von 39 Zielen unter 44 px, Höhe 970 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-11, ZA-SU-12, ZA-SU-14 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0101>` | overused-font (kein Fund) + straggler "Köln." allein auf der letzten von 2 Zeilen (ZA-SU-13) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. Die offene Lobby zeigt Fremden bewusst nur die Anzahl (AC-5). Gleiche Daten, zwei Regeln: Produktfrage an den Orchestrator. | suche-offen_gast_mobil.png | critique, audit
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). Ursache: ß-Glyph der Schrift; Prüfung am Schriftschnitt nötig. | suche-offen_gast_mobil.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. Bei einer Herausforderung ist es die Stärke des Herausforderers, nicht die gesuchte. | suche-offen_gast_mobil.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. unausgewogene Überschrift ("heraus" auf eigener Zeile, unbalanced-heading) auf 390 px. | suche-offen_gast_mobil.png | audit, adapt
+- ZA-SU-14 | P2 | Im Kader steht beim Captain "Admin", in der Lobby derselbe Mensch als "Captain": zwei Begriffe für dieselbe Rolle. | suche-offen_gast_mobil.png | clarify
+
+##### Spielsuche offen, Gast (gast, desktop)
+Beleg: suche-offen_gast_desktop.png (Messung: 16 von 39 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Klare Seite: Eyebrow, Titel, Termindaten, Kader, ein großer Knopf "Anmelden und annehmen". Der Primärweg ist eindeutig; Probleme sind der öffentliche Kader mit Namen und Elo und die Begriffe. Knopf über 720 px Breite; Datenzeilen mit Elo rechts außen, weit vom Namen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Casey] Funde ZA-SU-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11, ZA-SU-13 (16 von 39 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-11, ZA-SU-12, ZA-SU-14 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0101>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-offen_gast_desktop.png | critique, audit
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-offen_gast_desktop.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-offen_gast_desktop.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-offen_gast_desktop.png | audit, adapt
+- ZA-SU-14 | P2 | Im Kader steht beim Captain "Admin", in der Lobby derselbe Mensch als "Captain": zwei Begriffe für dieselbe Rolle. (Wiederholung, Erstnennung oben) | suche-offen_gast_desktop.png | clarify
+
+##### Spielsuche offen, Spieler 01 (Seed Rot, kein Admin) (spieler01, mobil)
+Beleg: suche-offen_spieler01_mobil.png (Messung: 14 von 41 Zielen unter 44 px, Höhe 1060 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Spieler sieht statt eines Hinweises auf seinen Captain die falsche Aufforderung "Du brauchst ein eigenes Team" mit dem Knopf "Team gründen". Das ist die irreführendste Zelle der Seite. Textkasten und Ghost-Knopf direkt unter dem Kader; 1060 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Casey] Funde ZA-SU-1, ZA-SU-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11, ZA-SU-13 (14 von 41 Zielen unter 44 px, Höhe 1060 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-1, ZA-SU-11, ZA-SU-12, ZA-SU-14 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0101>` | overused-font (kein Fund) + straggler "Köln." allein auf der letzten von 2 Zeilen (ZA-SU-13) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-1 | P1 | Spieler ohne Admin-Rolle (Mitglied von Seed Rot) sieht "Nur Team-Admins können eine Spielsuche annehmen. Du brauchst ein eigenes Team." und "Team gründen". Falsch: Er hat ein Team, der Captain kann annehmen. Richtig wäre "Frag deinen Captain". Bestätigt SM-GL-6 und X-20 für diese Seite. | suche-offen_spieler01_mobil.png | critique, clarify
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_mobil.png | critique, audit
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-offen_spieler01_mobil.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_mobil.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_mobil.png | audit, adapt
+- ZA-SU-14 | P2 | Im Kader steht beim Captain "Admin", in der Lobby derselbe Mensch als "Captain": zwei Begriffe für dieselbe Rolle. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_mobil.png | clarify
+
+##### Spielsuche offen, Spieler 01 (Seed Rot, kein Admin) (spieler01, desktop)
+Beleg: suche-offen_spieler01_desktop.png (Messung: 18 von 41 Zielen unter 44 px, Höhe 836 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Spieler sieht statt eines Hinweises auf seinen Captain die falsche Aufforderung "Du brauchst ein eigenes Team" mit dem Knopf "Team gründen". Das ist die irreführendste Zelle der Seite. Gleicher Kasten über 720 px; "Team gründen" als Ghost-Knopf in voller Breite.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Casey] Funde ZA-SU-1, ZA-SU-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11, ZA-SU-13 (18 von 41 Zielen unter 44 px, Höhe 836 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-1, ZA-SU-11, ZA-SU-12, ZA-SU-14 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0101>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-1 | P1 | Spieler ohne Admin-Rolle (Mitglied von Seed Rot) sieht "Nur Team-Admins können eine Spielsuche annehmen. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_desktop.png | critique, clarify
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_desktop.png | critique, audit
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-offen_spieler01_desktop.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_desktop.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_desktop.png | audit, adapt
+- ZA-SU-14 | P2 | Im Kader steht beim Captain "Admin", in der Lobby derselbe Mensch als "Captain": zwei Begriffe für dieselbe Rolle. (Wiederholung, Erstnennung oben) | suche-offen_spieler01_desktop.png | clarify
+
+##### Spielsuche offen, Captain Rot (kann annehmen) (captain-rot-fremd, mobil)
+Beleg: suche-offen_captain-rot-fremd_mobil.png (Messung: 14 von 42 Zielen unter 44 px, Höhe 1072 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Annehmen-Kasten ist klar (ein Team, ein Knopf), aber er heißt "Herausforderung annehmen" bei einer öffentlichen Suche und erklärt nicht, was danach passiert. Es gibt keine Rückfrage. "Spiel annehmen" vollbreit unterhalb des Kaders, sichtbar im ersten Bildschirm von 1072 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Casey] Funde ZA-SU-2, ZA-SU-6, ZA-SU-7 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11 (14 von 42 Zielen unter 44 px, Höhe 1072 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-6, ZA-SU-7, ZA-SU-11, ZA-SU-12, ZA-SU-14 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-SU-12 |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0101>` | overused-font (kein Fund) + straggler "Köln." allein auf der letzten von 2 Zeilen (ZA-SU-13) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_mobil.png | critique, audit
+- ZA-SU-6 | P1 | Begriffe: Der Annehmen-Kasten heißt "Herausforderung annehmen", der Knopf "Spiel annehmen", die Seite "Spielsuche"; bei einer öffentlichen Spielsuche (kein Herausforderer) heißt der Kasten trotzdem "Herausforderung annehmen". Bei einer echten Herausforderung gibt es nur Annehmen, kein Ablehnen. Der Besitzerknopf heißt bei einer Herausforderung "Spielsuche zurückziehen". | suche-offen_captain-rot-fremd_mobil.png | clarify, critique
+- ZA-SU-7 | P1 | Annehmen-Formular erklärt nicht, was passiert (es entsteht eine Lobby, Uhrzeit und Halle sind offen, Karte nötig?) und fragt nicht nach, obwohl die Handlung verbindlich ist. Nach dem Absenden folgt ohne Meldung der Sprung in die neue Lobby (Ist es angenommen? Von wem?). Das Formular zeigt nur "Dein Team: Seed Rot". | suche-offen_captain-rot-fremd_mobil.png | critique, clarify
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_mobil.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_mobil.png | clarify, adapt
+- ZA-SU-14 | P2 | Im Kader steht beim Captain "Admin", in der Lobby derselbe Mensch als "Captain": zwei Begriffe für dieselbe Rolle. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_mobil.png | clarify
+
+##### Spielsuche offen, Captain Rot (kann annehmen) (captain-rot-fremd, desktop)
+Beleg: suche-offen_captain-rot-fremd_desktop.png (Messung: 18 von 42 Zielen unter 44 px, Höhe 872 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Annehmen-Kasten ist klar (ein Team, ein Knopf), aber er heißt "Herausforderung annehmen" bei einer öffentlichen Suche und erklärt nicht, was danach passiert. Es gibt keine Rückfrage. Auf 872 px, Kasten und Knopf in voller Breite.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Casey] Funde ZA-SU-2, ZA-SU-6, ZA-SU-7 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11 (18 von 42 Zielen unter 44 px, Höhe 872 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-6, ZA-SU-7, ZA-SU-11, ZA-SU-12, ZA-SU-14 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-SU-12 |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0101>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_desktop.png | critique, audit
+- ZA-SU-6 | P1 | Begriffe: Der Annehmen-Kasten heißt "Herausforderung annehmen", der Knopf "Spiel annehmen", die Seite "Spielsuche"; bei einer öffentlichen Spielsuche (kein Herausforderer) heißt der Kasten trotzdem "Herausforderung annehmen". (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_desktop.png | clarify, critique
+- ZA-SU-7 | P1 | Annehmen-Formular erklärt nicht, was passiert (es entsteht eine Lobby, Uhrzeit und Halle sind offen, Karte nötig?) und fragt nicht nach, obwohl die Handlung verbindlich ist. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_desktop.png | critique, clarify
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_desktop.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_desktop.png | clarify, adapt
+- ZA-SU-14 | P2 | Im Kader steht beim Captain "Admin", in der Lobby derselbe Mensch als "Captain": zwei Begriffe für dieselbe Rolle. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_desktop.png | clarify
+
+##### Spielsuche offen, Captain Blau (eigene) (captain-blau-eigene, mobil)
+Beleg: suche-offen_captain-blau-eigene_mobil.png (Messung: 14 von 41 Zielen unter 44 px, Höhe 970 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Besitzersicht = Fremdblick plus schwarz umrandeter Knopf "Spielsuche zurückziehen"; keine Kennzeichnung "eure Suche", kein Teilen. Knopf vollbreit, 970 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Riley] Funde ZA-SU-9, ZA-SU-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11 (14 von 41 Zielen unter 44 px, Höhe 970 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-10 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-9, ZA-SU-11, ZA-SU-12, ZA-SU-14 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-SU-12 |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0101>` | overused-font (kein Fund) + straggler "Köln." allein auf der letzten von 2 Zeilen (ZA-SU-13) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-9 | P2 | Besitzerknopf "Spielsuche zurückziehen" (btn-danger) sieht aus wie ein neutraler schwarz umrandeter Knopf; die Gefährlichkeit wird nur über die Rückfrage des Browsers (nicht ausgeführt) vermittelt. Bei einer Herausforderung falsch benannt (siehe ZA-SU-6). | suche-offen_captain-blau-eigene_mobil.png | critique, clarify
+- ZA-SU-10 | P2 | Besitzersicht ohne Kennzeichnung "Das ist eure Spielsuche" und ohne Teilen-Link; sie unterscheidet sich vom Fremdblick nur durch den letzten Knopf. | suche-offen_captain-blau-eigene_mobil.png | critique, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-offen_captain-blau-eigene_mobil.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-offen_captain-blau-eigene_mobil.png | clarify, adapt
+- ZA-SU-14 | P2 | Im Kader steht beim Captain "Admin", in der Lobby derselbe Mensch als "Captain": zwei Begriffe für dieselbe Rolle. (Wiederholung, Erstnennung oben) | suche-offen_captain-blau-eigene_mobil.png | clarify
+
+##### Spielsuche offen, Captain Blau (eigene) (captain-blau-eigene, desktop)
+Beleg: suche-offen_captain-blau-eigene_desktop.png (Messung: 18 von 41 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Besitzersicht = Fremdblick plus schwarz umrandeter Knopf "Spielsuche zurückziehen"; keine Kennzeichnung "eure Suche", kein Teilen. Knopf über die ganze Spalte; Besitzer sieht keine Aufrufe, keine Interessenten.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Riley] Funde ZA-SU-9, ZA-SU-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11 (18 von 41 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-10 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-9, ZA-SU-11, ZA-SU-12, ZA-SU-14 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-SU-12 |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0101>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-9 | P2 | Besitzerknopf "Spielsuche zurückziehen" (btn-danger) sieht aus wie ein neutraler schwarz umrandeter Knopf; die Gefährlichkeit wird nur über die Rückfrage des Browsers (nicht ausgeführt) vermittelt. (Wiederholung, Erstnennung oben) | suche-offen_captain-blau-eigene_desktop.png | critique, clarify
+- ZA-SU-10 | P2 | Besitzersicht ohne Kennzeichnung "Das ist eure Spielsuche" und ohne Teilen-Link; sie unterscheidet sich vom Fremdblick nur durch den letzten Knopf. (Wiederholung, Erstnennung oben) | suche-offen_captain-blau-eigene_desktop.png | critique, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-offen_captain-blau-eigene_desktop.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-offen_captain-blau-eigene_desktop.png | clarify, adapt
+- ZA-SU-14 | P2 | Im Kader steht beim Captain "Admin", in der Lobby derselbe Mensch als "Captain": zwei Begriffe für dieselbe Rolle. (Wiederholung, Erstnennung oben) | suche-offen_captain-blau-eigene_desktop.png | clarify
+
+##### Spielsuche abgelaufen, Gast (gast, mobil)
+Beleg: suche-abgelaufen_gast_mobil.png (Messung: 13 von 38 Zielen unter 44 px, Höhe 984 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Titel "Seed Gelb sucht einen Gegner" und alle Daten wie bei einer offenen Suche; der Satz "Diese Spielsuche ist abgelaufen." liegt erst unter dem Kader. Der Hinweis "Termin ist verstrichen" ist Seed-Freitext. Zustand erst nach dem Scrollen unter dem Kader; 984 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-SU-2, ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11 (13 von 38 Zielen unter 44 px, Höhe 984 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0102>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-abgelaufen_gast_mobil.png | critique, audit
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. Keine Handlung für den Besitzer ("Neue Spielsuche"). | suche-abgelaufen_gast_mobil.png | critique, clarify
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-abgelaufen_gast_mobil.png | audit, clarify
+
+##### Spielsuche abgelaufen, Gast (gast, desktop)
+Beleg: suche-abgelaufen_gast_desktop.png (Messung: 16 von 38 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Titel "Seed Gelb sucht einen Gegner" und alle Daten wie bei einer offenen Suche; der Satz "Diese Spielsuche ist abgelaufen." liegt erst unter dem Kader. Der Hinweis "Termin ist verstrichen" ist Seed-Freitext. Kasten am Ende, die Seite passt in 800 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-SU-2, ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11 (16 von 38 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0102>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-abgelaufen_gast_desktop.png | critique, audit
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-abgelaufen_gast_desktop.png | critique, clarify
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-abgelaufen_gast_desktop.png | audit, clarify
+
+##### Spielsuche abgelaufen, Captain Gelb (eigene) (captain-gelb-eigene, mobil)
+Beleg: suche-abgelaufen_captain-gelb-eigene_mobil.png (Messung: 14 von 40 Zielen unter 44 px, Höhe 984 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Besitzer sieht dasselbe wie ein Gast; es fehlt "Neue Spielsuche mit denselben Daten" (Alex-Rotflagge: Wiederholung braucht den ganzen Formulardurchlauf). 984 px; keine Handlung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Jordan] Funde ZA-SU-3, ZA-SU-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11 (14 von 40 Zielen unter 44 px, Höhe 984 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-10 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0102>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-abgelaufen_captain-gelb-eigene_mobil.png | critique, clarify
+- ZA-SU-10 | P2 | Besitzersicht ohne Kennzeichnung "Das ist eure Spielsuche" und ohne Teilen-Link; sie unterscheidet sich vom Fremdblick nur durch den letzten Knopf. (Wiederholung, Erstnennung oben) | suche-abgelaufen_captain-gelb-eigene_mobil.png | critique, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-abgelaufen_captain-gelb-eigene_mobil.png | audit, clarify
+
+##### Spielsuche abgelaufen, Captain Gelb (eigene) (captain-gelb-eigene, desktop)
+Beleg: suche-abgelaufen_captain-gelb-eigene_desktop.png (Messung: 18 von 40 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Besitzer sieht dasselbe wie ein Gast; es fehlt "Neue Spielsuche mit denselben Daten" (Alex-Rotflagge: Wiederholung braucht den ganzen Formulardurchlauf). Keine Handlung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Jordan] Funde ZA-SU-3, ZA-SU-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11 (18 von 40 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-10 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0102>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-abgelaufen_captain-gelb-eigene_desktop.png | critique, clarify
+- ZA-SU-10 | P2 | Besitzersicht ohne Kennzeichnung "Das ist eure Spielsuche" und ohne Teilen-Link; sie unterscheidet sich vom Fremdblick nur durch den letzten Knopf. (Wiederholung, Erstnennung oben) | suche-abgelaufen_captain-gelb-eigene_desktop.png | critique, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-abgelaufen_captain-gelb-eigene_desktop.png | audit, clarify
+
+##### Spielsuche angenommen, Gast (gast, mobil)
+Beleg: suche-angenommen_gast_mobil.png (Messung: 13 von 38 Zielen unter 44 px, Höhe 916 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Gast liest "sucht einen Gegner" und erst am Ende "schon ein Gegner gefunden"; weder Gegner noch Spiel sind verlinkt. 916 px, Kasten am unteren Rand.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-SU-2, ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11 (13 von 38 Zielen unter 44 px, Höhe 916 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-4 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-4, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0103>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-angenommen_gast_mobil.png | critique, audit
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-angenommen_gast_mobil.png | critique, clarify
+- ZA-SU-4 | P1 | Angenommene Suche: "Für diese Spielsuche wurde schon ein Gegner gefunden." nennt weder Gegner noch Termin und verlinkt nicht auf das entstandene Spiel, weder für den Besitzer (Captain Rot) noch für Gäste. | suche-angenommen_gast_mobil.png | clarify, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-angenommen_gast_mobil.png | audit, clarify
+
+##### Spielsuche angenommen, Gast (gast, desktop)
+Beleg: suche-angenommen_gast_desktop.png (Messung: 16 von 38 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Gast liest "sucht einen Gegner" und erst am Ende "schon ein Gegner gefunden"; weder Gegner noch Spiel sind verlinkt. Kasten am Ende der Karte.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-SU-2, ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11 (16 von 38 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-4 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-4, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0103>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-angenommen_gast_desktop.png | critique, audit
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-angenommen_gast_desktop.png | critique, clarify
+- ZA-SU-4 | P1 | Angenommene Suche: "Für diese Spielsuche wurde schon ein Gegner gefunden." nennt weder Gegner noch Termin und verlinkt nicht auf das entstandene Spiel, weder für den Besitzer (Captain Rot) noch für Gäste. (Wiederholung, Erstnennung oben) | suche-angenommen_gast_desktop.png | clarify, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-angenommen_gast_desktop.png | audit, clarify
+
+##### Spielsuche angenommen, Captain Rot (eigene) (captain-rot-eigene, mobil)
+Beleg: suche-angenommen_captain-rot-eigene_mobil.png (Messung: 14 von 40 Zielen unter 44 px, Höhe 916 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Besitzer sieht dieselbe Seite wie der Gast; der Weg zum Spiel (Lobby/Übersicht) fehlt, obwohl er existiert (Spiel in 3 Tagen). 916 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Jordan] Funde ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11 (14 von 40 Zielen unter 44 px, Höhe 916 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-4 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-4, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0103>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-angenommen_captain-rot-eigene_mobil.png | critique, clarify
+- ZA-SU-4 | P1 | Angenommene Suche: "Für diese Spielsuche wurde schon ein Gegner gefunden." nennt weder Gegner noch Termin und verlinkt nicht auf das entstandene Spiel, weder für den Besitzer (Captain Rot) noch für Gäste. (Wiederholung, Erstnennung oben) | suche-angenommen_captain-rot-eigene_mobil.png | clarify, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-angenommen_captain-rot-eigene_mobil.png | audit, clarify
+
+##### Spielsuche angenommen, Captain Rot (eigene) (captain-rot-eigene, desktop)
+Beleg: suche-angenommen_captain-rot-eigene_desktop.png (Messung: 18 von 40 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Besitzer sieht dieselbe Seite wie der Gast; der Weg zum Spiel (Lobby/Übersicht) fehlt, obwohl er existiert (Spiel in 3 Tagen). Wie Gast.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Jordan] Funde ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11 (18 von 40 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-4 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-4, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0103>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-angenommen_captain-rot-eigene_desktop.png | critique, clarify
+- ZA-SU-4 | P1 | Angenommene Suche: "Für diese Spielsuche wurde schon ein Gegner gefunden." nennt weder Gegner noch Termin und verlinkt nicht auf das entstandene Spiel, weder für den Besitzer (Captain Rot) noch für Gäste. (Wiederholung, Erstnennung oben) | suche-angenommen_captain-rot-eigene_desktop.png | clarify, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-angenommen_captain-rot-eigene_desktop.png | audit, clarify
+
+##### Spielsuche zurückgezogen, Gast (gast, mobil)
+Beleg: suche-zurueckgezogen_gast_mobil.png (Messung: 13 von 38 Zielen unter 44 px, Höhe 964 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Auch zurückgezogen zeigt die Seite Kader mit Namen und Elo und den Titel im Präsens; der Satz "wurde zurückgezogen" steht unten. 964 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-SU-2, ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11 (13 von 38 Zielen unter 44 px, Höhe 964 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0104>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_gast_mobil.png | critique, audit
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_gast_mobil.png | critique, clarify
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_gast_mobil.png | audit, clarify
+
+##### Spielsuche zurückgezogen, Gast (gast, desktop)
+Beleg: suche-zurueckgezogen_gast_desktop.png (Messung: 16 von 38 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Auch zurückgezogen zeigt die Seite Kader mit Namen und Elo und den Titel im Präsens; der Satz "wurde zurückgezogen" steht unten. Wie abgelaufen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Riley] Funde ZA-SU-2, ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11 (16 von 38 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0104>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_gast_desktop.png | critique, audit
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_gast_desktop.png | critique, clarify
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_gast_desktop.png | audit, clarify
+
+##### Spielsuche zurückgezogen, Captain Grün (eigene) (captain-gruen-eigene, mobil)
+Beleg: suche-zurueckgezogen_captain-gruen-eigene_mobil.png (Messung: 14 von 40 Zielen unter 44 px, Höhe 964 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Derselbe Befund für den Besitzer; kein "Wieder aufnehmen" oder "Neu einstellen". 964 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Riley] Funde ZA-SU-3, ZA-SU-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11 (14 von 40 Zielen unter 44 px, Höhe 964 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-10 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0104>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_captain-gruen-eigene_mobil.png | critique, clarify
+- ZA-SU-10 | P2 | Besitzersicht ohne Kennzeichnung "Das ist eure Spielsuche" und ohne Teilen-Link; sie unterscheidet sich vom Fremdblick nur durch den letzten Knopf. (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_captain-gruen-eigene_mobil.png | critique, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_captain-gruen-eigene_mobil.png | audit, clarify
+
+##### Spielsuche zurückgezogen, Captain Grün (eigene) (captain-gruen-eigene, desktop)
+Beleg: suche-zurueckgezogen_captain-gruen-eigene_desktop.png (Messung: 18 von 40 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Derselbe Befund für den Besitzer; kein "Wieder aufnehmen" oder "Neu einstellen". Wie abgelaufen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Riley] Funde ZA-SU-3, ZA-SU-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11 (18 von 40 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-10 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0104>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_captain-gruen-eigene_desktop.png | critique, clarify
+- ZA-SU-10 | P2 | Besitzersicht ohne Kennzeichnung "Das ist eure Spielsuche" und ohne Teilen-Link; sie unterscheidet sich vom Fremdblick nur durch den letzten Knopf. (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_captain-gruen-eigene_desktop.png | critique, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-zurueckgezogen_captain-gruen-eigene_desktop.png | audit, clarify
+
+##### Herausforderung, Gast (gast, mobil)
+Beleg: suche-herausforderung_gast_mobil.png (Messung: 14 von 40 Zielen unter 44 px, Höhe 962 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Titel "Seed Rot fordert Seed Gelb heraus" klar; danach "Anmelden und annehmen" für alle, obwohl nur Seed Gelb annehmen darf. Titel bricht auf 2 Zeilen ("heraus" allein), 962 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Casey] Funde ZA-SU-2, ZA-SU-5, ZA-SU-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11, ZA-SU-13 (14 von 40 Zielen unter 44 px, Höhe 962 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-5, ZA-SU-6, ZA-SU-11, ZA-SU-12 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0105>` | overused-font (kein Fund) + unbalanced-heading: letzte von 2 Zeilen nur 25 % so breit (ZA-SU-13) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_mobil.png | critique, audit
+- ZA-SU-5 | P1 | Herausforderung: Gäste sehen den großen Knopf "Anmelden und annehmen", obwohl nur die Team-Admins von Seed Gelb annehmen dürfen. Ein anderer Nutzer liest nach der Anmeldung "Diese Herausforderung gilt Seed Gelb. Nur deren Team-Admins können sie annehmen." Das Versprechen des Knopfes ist falsch. | suche-herausforderung_gast_mobil.png | critique, clarify
+- ZA-SU-6 | P1 | Begriffe: Der Annehmen-Kasten heißt "Herausforderung annehmen", der Knopf "Spiel annehmen", die Seite "Spielsuche"; bei einer öffentlichen Spielsuche (kein Herausforderer) heißt der Kasten trotzdem "Herausforderung annehmen". (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_mobil.png | clarify, critique
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_mobil.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_mobil.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_mobil.png | audit, adapt
+
+##### Herausforderung, Gast (gast, desktop)
+Beleg: suche-herausforderung_gast_desktop.png (Messung: 17 von 40 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Titel "Seed Rot fordert Seed Gelb heraus" klar; danach "Anmelden und annehmen" für alle, obwohl nur Seed Gelb annehmen darf. Titel in einer Zeile, Knopf vollbreit.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan, Casey] Funde ZA-SU-2, ZA-SU-5, ZA-SU-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11, ZA-SU-13 (17 von 40 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-5, ZA-SU-6, ZA-SU-11, ZA-SU-12 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0105>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_desktop.png | critique, audit
+- ZA-SU-5 | P1 | Herausforderung: Gäste sehen den großen Knopf "Anmelden und annehmen", obwohl nur die Team-Admins von Seed Gelb annehmen dürfen. (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_desktop.png | critique, clarify
+- ZA-SU-6 | P1 | Begriffe: Der Annehmen-Kasten heißt "Herausforderung annehmen", der Knopf "Spiel annehmen", die Seite "Spielsuche"; bei einer öffentlichen Spielsuche (kein Herausforderer) heißt der Kasten trotzdem "Herausforderung annehmen". (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_desktop.png | clarify, critique
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_desktop.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_desktop.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-herausforderung_gast_desktop.png | audit, adapt
+
+##### Herausforderung, Captain Gelb (Zielteam) (captain-gelb-ziel, mobil)
+Beleg: suche-herausforderung_captain-gelb-ziel_mobil.png (Messung: 15 von 43 Zielen unter 44 px, Höhe 1064 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Das Zielteam sieht das Formular "Herausforderung annehmen", "Dein Team: Seed Gelb", "Spiel annehmen"; kein Ablehnen, keine Frist, keine Hinweis auf die Benachrichtigung (Glocke 1). 1064 px, "Spiel annehmen" im ersten Bildschirm.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Jordan] Funde ZA-SU-2, ZA-SU-6, ZA-SU-7 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11, ZA-SU-13 (15 von 43 Zielen unter 44 px, Höhe 1064 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-6, ZA-SU-7, ZA-SU-11, ZA-SU-12 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0105>` | overused-font (kein Fund) + unbalanced-heading: letzte von 2 Zeilen nur 25 % so breit (ZA-SU-13) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_mobil.png | critique, audit
+- ZA-SU-6 | P1 | Begriffe: Der Annehmen-Kasten heißt "Herausforderung annehmen", der Knopf "Spiel annehmen", die Seite "Spielsuche"; bei einer öffentlichen Spielsuche (kein Herausforderer) heißt der Kasten trotzdem "Herausforderung annehmen". (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_mobil.png | clarify, critique
+- ZA-SU-7 | P1 | Annehmen-Formular erklärt nicht, was passiert (es entsteht eine Lobby, Uhrzeit und Halle sind offen, Karte nötig?) und fragt nicht nach, obwohl die Handlung verbindlich ist. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_mobil.png | critique, clarify
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_mobil.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_mobil.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_mobil.png | audit, adapt
+
+##### Herausforderung, Captain Gelb (Zielteam) (captain-gelb-ziel, desktop)
+Beleg: suche-herausforderung_captain-gelb-ziel_desktop.png (Messung: 19 von 43 Zielen unter 44 px, Höhe 872 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Das Zielteam sieht das Formular "Herausforderung annehmen", "Dein Team: Seed Gelb", "Spiel annehmen"; kein Ablehnen, keine Frist, keine Hinweis auf die Benachrichtigung (Glocke 1). 872 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Jordan] Funde ZA-SU-2, ZA-SU-6, ZA-SU-7 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-2, ZA-SU-11, ZA-SU-13 (19 von 43 Zielen unter 44 px, Höhe 872 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-6, ZA-SU-7, ZA-SU-11, ZA-SU-12 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0105>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-2 | P1 | Die öffentliche Spielsuche zeigt jedem (auch Gästen, auch bei abgelaufener, zurückgezogener, angenommener Suche) den vollen Kader mit Namen, Position und Elo je Spieler. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_desktop.png | critique, audit
+- ZA-SU-6 | P1 | Begriffe: Der Annehmen-Kasten heißt "Herausforderung annehmen", der Knopf "Spiel annehmen", die Seite "Spielsuche"; bei einer öffentlichen Spielsuche (kein Herausforderer) heißt der Kasten trotzdem "Herausforderung annehmen". (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_desktop.png | clarify, critique
+- ZA-SU-7 | P1 | Annehmen-Formular erklärt nicht, was passiert (es entsteht eine Lobby, Uhrzeit und Halle sind offen, Karte nötig?) und fragt nicht nach, obwohl die Handlung verbindlich ist. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_desktop.png | critique, clarify
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_desktop.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_desktop.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-gelb-ziel_desktop.png | audit, adapt
+
+##### Herausforderung, Captain Rot (Herausforderer, eigene) (captain-rot-eigene, mobil)
+Beleg: suche-herausforderung_captain-rot-eigene_mobil.png (Messung: 15 von 42 Zielen unter 44 px, Höhe 962 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Herausforderer sieht "Spielsuche zurückziehen" für eine Herausforderung; es fehlt der Status "wartet auf Seed Gelb". Titel bricht, Knopf vollbreit.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Riley] Funde ZA-SU-6, ZA-SU-9, ZA-SU-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11, ZA-SU-13 (15 von 42 Zielen unter 44 px, Höhe 962 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-10 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-6, ZA-SU-9, ZA-SU-11, ZA-SU-12 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0105>` | overused-font (kein Fund) + unbalanced-heading: letzte von 2 Zeilen nur 25 % so breit (ZA-SU-13) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-6 | P1 | Begriffe: Der Annehmen-Kasten heißt "Herausforderung annehmen", der Knopf "Spiel annehmen", die Seite "Spielsuche"; bei einer öffentlichen Spielsuche (kein Herausforderer) heißt der Kasten trotzdem "Herausforderung annehmen". (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_mobil.png | clarify, critique
+- ZA-SU-9 | P2 | Besitzerknopf "Spielsuche zurückziehen" (btn-danger) sieht aus wie ein neutraler schwarz umrandeter Knopf; die Gefährlichkeit wird nur über die Rückfrage des Browsers (nicht ausgeführt) vermittelt. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_mobil.png | critique, clarify
+- ZA-SU-10 | P2 | Besitzersicht ohne Kennzeichnung "Das ist eure Spielsuche" und ohne Teilen-Link; sie unterscheidet sich vom Fremdblick nur durch den letzten Knopf. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_mobil.png | critique, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_mobil.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_mobil.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_mobil.png | audit, adapt
+
+##### Herausforderung, Captain Rot (Herausforderer, eigene) (captain-rot-eigene, desktop)
+Beleg: suche-herausforderung_captain-rot-eigene_desktop.png (Messung: 19 von 42 Zielen unter 44 px, Höhe 800 px, Überlauf false, 0 Konsolenfehler, Titel "Spielsuche · Socaz")
+Bewertung: Der Herausforderer sieht "Spielsuche zurückziehen" für eine Herausforderung; es fehlt der Status "wartet auf Seed Gelb". Knopf vollbreit, 800 px.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex, Riley] Funde ZA-SU-6, ZA-SU-9, ZA-SU-10 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-11, ZA-SU-13 (19 von 42 Zielen unter 44 px, Höhe 800 px, kein Überlauf (overflowX false), 0 Konsolenfehler) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-10 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-6, ZA-SU-9, ZA-SU-11, ZA-SU-12 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-SU-12, ZA-SU-13 |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0105>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-6 | P1 | Begriffe: Der Annehmen-Kasten heißt "Herausforderung annehmen", der Knopf "Spiel annehmen", die Seite "Spielsuche"; bei einer öffentlichen Spielsuche (kein Herausforderer) heißt der Kasten trotzdem "Herausforderung annehmen". (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_desktop.png | clarify, critique
+- ZA-SU-9 | P2 | Besitzerknopf "Spielsuche zurückziehen" (btn-danger) sieht aus wie ein neutraler schwarz umrandeter Knopf; die Gefährlichkeit wird nur über die Rückfrage des Browsers (nicht ausgeführt) vermittelt. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_desktop.png | critique, clarify
+- ZA-SU-10 | P2 | Besitzersicht ohne Kennzeichnung "Das ist eure Spielsuche" und ohne Teilen-Link; sie unterscheidet sich vom Fremdblick nur durch den letzten Knopf. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_desktop.png | critique, distill
+- ZA-SU-11 | P2 | Das Wort "Anstoß" wird in der Schrift Outfit mit einem Zeichen gesetzt, das wie ein griechisches Beta aussieht ("Anstoβ"); in der Überschrift der Spielseite ebenso ("Teststraβe"). (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_desktop.png | audit, clarify
+- ZA-SU-12 | P2 | Feldname "Gesuchte Stärke" mit "3 von 5 (Gut eingespielt)": die Skala 1 bis 5 wird nicht erklärt; am Handy bricht der Wert im Klammerteil um. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_desktop.png | clarify, adapt
+- ZA-SU-13 | P2 | detect: Einzelwort in der letzten Zeile ("Köln." im Hinweis, straggler) bzw. (Wiederholung, Erstnennung oben) | suche-herausforderung_captain-rot-eigene_desktop.png | audit, adapt
+
+#### Extra-Aufnahmen
+
+##### Extra (a): Spieler 15 nach "Der Lobby beitreten" (spieler15-nicht-beigetreten, mobil)
+Beleg: lobby-wartend_spieler15-nicht-beigetreten_mobil_extra-beigetreten.png
+Bewertung: Zustand vorher: nicht beigetreten, 3 von 6; nachher 4 von 6, "Okan Testmann (du)" in der Liste, Knopf "Lobby verlassen". Zwischenzustand "Bitte warten..." nach 150 ms. Erfolg lesbar nur am Zähler, es gibt keine Meldung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey] Funde ZA-LO-9, ZA-LO-8 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-8 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-9 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil_extra-beigetreten.png | critique, audit, clarify
+- ZA-LO-8 | P2 | Beigetreten wird mit einem roten Punkt markiert (Rot = Warnung/Fehler); der Punkt hat nur einen Screenreader-Text, auf dieser Seite keine Legende (die Spielseite hat sie: "In der Lobby / Bereit / Bestätigt"). (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil_extra-beigetreten.png | critique, distill
+
+##### Extra (a): Spieler 15 nach "Lobby verlassen" (spieler15-nicht-beigetreten, mobil)
+Beleg: lobby-wartend_spieler15-nicht-beigetreten_mobil_extra-verlassen.png
+Bewertung: Zurück auf 3 von 6; Knopf wieder "Der Lobby beitreten". Verlassen ohne Rückfrage, ohne Hinweis.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey] Funde ZA-LO-9 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-9 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_mobil_extra-verlassen.png | critique, audit, clarify
+
+##### Extra (a): Spieler 15 nach "Der Lobby beitreten" (spieler15-nicht-beigetreten, desktop)
+Beleg: lobby-wartend_spieler15-nicht-beigetreten_desktop_extra-beigetreten.png
+Bewertung: Wie mobil: 4 von 6, "(du)", "Lobby verlassen"; die Liste "Im Team, aber noch nicht in der Lobby" schrumpft auf Paulo.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex] Funde ZA-LO-9, ZA-LO-8 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-LO-8 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-9 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop_extra-beigetreten.png | critique, audit, clarify
+- ZA-LO-8 | P2 | Beigetreten wird mit einem roten Punkt markiert (Rot = Warnung/Fehler); der Punkt hat nur einen Screenreader-Text, auf dieser Seite keine Legende (die Spielseite hat sie: "In der Lobby / Bereit / Bestätigt"). (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop_extra-beigetreten.png | critique, distill
+
+##### Extra (a): Spieler 15 nach "Lobby verlassen" (spieler15-nicht-beigetreten, desktop)
+Beleg: lobby-wartend_spieler15-nicht-beigetreten_desktop_extra-verlassen.png
+Bewertung: Wieder 3 von 6, Ausgangszustand hergestellt; kein Hinweis auf die Rücknahme.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex] Funde ZA-LO-9 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-LO-9 (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-9 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-9 | P1 | Beitreten und Verlassen: "Lobby verlassen" ist ein kleiner Ghost-Knopf (Klasse !min-h-9, 36 px Höhe, unter 44 px) ohne Rückfrage; "Der Lobby beitreten" ist ein kompakter Primärknopf. (Wiederholung, Erstnennung oben) | lobby-wartend_spieler15-nicht-beigetreten_desktop_extra-verlassen.png | critique, audit, clarify
+
+##### Extra (c): Einladungslink-Box nach "Einladungslink erstellen" (captain-gelb-eigene, mobil)
+Beleg: lobby-wartend_captain-gelb-eigene_mobil_extra-einladungslink.png
+Bewertung: Link-Feld (readonly, abgeschnitten), Knöpfe "Link kopieren" und "WhatsApp" (je 44 px hoch), "Der Link ist 7 Tage gültig." Teilen-Knopf = WhatsApp-Link (wa.me, neuer Tab).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey] Funde ZA-LO-11 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-11 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-11 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-11 | P1 | Einladungslink-Box "Spieler einladen": Der Link führt ins Team ("Komm in mein Team Seed Gelb auf Socaz"), nicht in die Lobby; die Box sagt das nicht und steht unter der Liste "Im Team, aber noch nicht in der Lobby", in der die schon vorhandenen Teammitglieder (Okan, Paulo) keine Handlung haben. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil_extra-einladungslink.png | critique, clarify, adapt
+
+##### Extra (c): Einladungslink-Box nach "Link kopieren" (captain-gelb-eigene, mobil)
+Beleg: lobby-wartend_captain-gelb-eigene_mobil_extra-einladungslink-kopiert.png
+Bewertung: Knopf wechselt auf "Kopiert" (roter Rand, 2 s), keine Aria-Ansage getestet; Aufnahme enthält Kopfleiste als Artefakt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Casey] Funde ZA-LO-11 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-11 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] Funde ZA-LO-11 |
+| `impeccable detect --json --viewport 390x844 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-11 | P1 | Einladungslink-Box "Spieler einladen": Der Link führt ins Team ("Komm in mein Team Seed Gelb auf Socaz"), nicht in die Lobby; die Box sagt das nicht und steht unter der Liste "Im Team, aber noch nicht in der Lobby", in der die schon vorhandenen Teammitglieder (Okan, Paulo) keine Handlung haben. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_mobil_extra-einladungslink-kopiert.png | critique, clarify, adapt
+
+##### Extra (c): Einladungslink-Box nach "Einladungslink erstellen" (captain-gelb-eigene, desktop)
+Beleg: lobby-wartend_captain-gelb-eigene_desktop_extra-einladungslink.png
+Bewertung: Linkfeld voll lesbar, zwei gleich breite Knöpfe; Box steht zwischen Mitgliedern und Gegner.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex] Funde ZA-LO-11 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-11 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-11 | P1 | Einladungslink-Box "Spieler einladen": Der Link führt ins Team ("Komm in mein Team Seed Gelb auf Socaz"), nicht in die Lobby; die Box sagt das nicht und steht unter der Liste "Im Team, aber noch nicht in der Lobby", in der die schon vorhandenen Teammitglieder (Okan, Paulo) keine Handlung haben. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop_extra-einladungslink.png | critique, clarify, adapt
+
+##### Extra (c): Einladungslink-Box nach "Link kopieren" (captain-gelb-eigene, desktop)
+Beleg: lobby-wartend_captain-gelb-eigene_desktop_extra-einladungslink-kopiert.png
+Bewertung: Wie mobil: "Kopiert" mit rotem Rand; Zustand sichtbar, aber Farbe und Wort reichen (kein Haken).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Alex] Funde ZA-LO-11 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-LO-11 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] Funde ZA-LO-11 |
+| `impeccable detect --json --viewport 1280x800 <URL /lobby/offen/5eed...0201>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-LO-11 | P1 | Einladungslink-Box "Spieler einladen": Der Link führt ins Team ("Komm in mein Team Seed Gelb auf Socaz"), nicht in die Lobby; die Box sagt das nicht und steht unter der Liste "Im Team, aber noch nicht in der Lobby", in der die schon vorhandenen Teammitglieder (Okan, Paulo) keine Handlung haben. (Wiederholung, Erstnennung oben) | lobby-wartend_captain-gelb-eigene_desktop_extra-einladungslink-kopiert.png | critique, clarify, adapt
+
+##### Extra (b): Annehmen-Formular, Fehlerfall (captain-rot-fremd, mobil)
+Beleg: suche-offen_captain-rot-fremd_mobil_extra-annehmen-fehler.png
+Bewertung: Fehler "Nur Team-Admins können Spielsuchen annehmen." erscheint als schwarz umrandeter Kasten unter dem Knopf; Formular bleibt, kein Fokus auf die Meldung getestet. Erzeugt durch Ändern der Team-ID im DOM.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan] Funde ZA-SU-7 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-8 (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-8, ZA-SU-7 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0101>` | overused-font (kein Fund) + straggler "Köln." allein auf der letzten von 2 Zeilen (ZA-SU-13) (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-8 | P2 | Fehlermeldung im Annehmen-Formular ("Nur Team-Admins können Spielsuchen annehmen.") steht in einem schwarz umrandeten Kasten ohne Warnfarbe oder Symbol unter dem Knopf, ohne Lösungsvorschlag; die Seite bleibt sonst unverändert (Fehler wurde durch Ändern der Team-ID im DOM erzeugt, ein regulärer Fehlerfall war nicht erreichbar). | suche-offen_captain-rot-fremd_mobil_extra-annehmen-fehler.png | clarify, audit
+- ZA-SU-7 | P1 | Annehmen-Formular erklärt nicht, was passiert (es entsteht eine Lobby, Uhrzeit und Halle sind offen, Karte nötig?) und fragt nicht nach, obwohl die Handlung verbindlich ist. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_mobil_extra-annehmen-fehler.png | critique, clarify
+
+##### Extra (b): Annehmen-Formular, Fehlerfall (captain-rot-fremd, desktop)
+Beleg: suche-offen_captain-rot-fremd_desktop_extra-annehmen-fehler.png
+Bewertung: Gleiche Meldung, Kasten über volle Breite; sonst unverändert.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan] Funde ZA-SU-7 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Funde ZA-SU-8 (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-8, ZA-SU-7 |
+| adapt (reference/adapt.md, manuell) | [Desktop Adaptation: Spalte 720 px, Kopfleiste] keine Funde |
+| `impeccable detect --json --viewport 1280x800 <URL /suche/5eed...0101>` | nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, kein Fund); keine weiteren Funde (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-8 | P2 | Fehlermeldung im Annehmen-Formular ("Nur Team-Admins können Spielsuchen annehmen.") steht in einem schwarz umrandeten Kasten ohne Warnfarbe oder Symbol unter dem Knopf, ohne Lösungsvorschlag; die Seite bleibt sonst unverändert (Fehler wurde durch Ändern der Team-ID im DOM erzeugt, ein regulärer Fehlerfall war nicht erreichbar). (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_desktop_extra-annehmen-fehler.png | clarify, audit
+- ZA-SU-7 | P1 | Annehmen-Formular erklärt nicht, was passiert (es entsteht eine Lobby, Uhrzeit und Halle sind offen, Karte nötig?) und fragt nicht nach, obwohl die Handlung verbindlich ist. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_desktop_extra-annehmen-fehler.png | critique, clarify
+
+##### Extra (b): Annehmen-Formular, Erfolg (Weiterleitung in die neue Lobby) (captain-rot-fremd, mobil)
+Beleg: suche-offen_captain-rot-fremd_mobil_extra-annehmen-erfolg.png
+Bewertung: Nach "Spiel annehmen" folgt nach etwa 2 s der Sprung auf /lobby/<neu> "Seed Blau VS. Seed Rot", Status "Wartet auf Spieler", Schritte Uhrzeit, Halle, "3 Bezahlen", Text "Jedes Team macht seine Spieler bereit und bezahlt.", Spielort-Feld, "Spiel absagen". Keine Erfolgsmeldung; Gruppe Y.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan] Funde ZA-SU-7, ZA-SU-16 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-7, ZA-SU-16 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0101>` | overused-font (kein Fund) + straggler "Köln." allein auf der letzten von 2 Zeilen (ZA-SU-13) (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-7 | P1 | Annehmen-Formular erklärt nicht, was passiert (es entsteht eine Lobby, Uhrzeit und Halle sind offen, Karte nötig?) und fragt nicht nach, obwohl die Handlung verbindlich ist. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_mobil_extra-annehmen-erfolg.png | critique, clarify
+- ZA-SU-16 | P1 | Nach dem Annehmen landet der Captain in der Lobby "Seed Blau VS. Seed Rot" mit Schritt "3 Bezahlen" und dem Text "Jedes Team macht seine Spieler bereit und bezahlt." (Altmodell, siehe MUSS WEG), ohne Hinweis, dass er gerade eine Spielsuche angenommen hat; die Seite ist Gruppe Y. | suche-offen_captain-rot-fremd_mobil_extra-annehmen-erfolg.png | clarify, critique
+
+##### Extra (b): alte Such-Adresse nach dem Annehmen (captain-rot-fremd, mobil)
+Beleg: suche-offen_captain-rot-fremd_mobil_extra-nach-annehmen-suche.png
+Bewertung: Die alte Adresse zeigt jetzt "Für diese Spielsuche wurde schon ein Gegner gefunden." ohne Link zur neuen Lobby; Titel weiter "sucht einen Gegner".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A: Kognitive Last, Heuristiken 1/4/9, Persona Jordan] Funde ZA-SU-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] keine Funde (Messung der Grundzelle) |
+| distill (reference/distill.md, manuell) | [Information Architecture, Remove Redundancy] Funde ZA-SU-4 |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Actions, Errors] Funde ZA-SU-3, ZA-SU-4 |
+| adapt (reference/adapt.md, manuell) | [Mobile Adaptation: Touch-Ziele, Reihenfolge, Daumenzone] keine Funde |
+| `impeccable detect --json --viewport 390x844 <URL /suche/5eed...0101>` | overused-font (kein Fund) + straggler "Köln." allein auf der letzten von 2 Zeilen (ZA-SU-13) (Gast-Sicht der Grundseite; der Extra-Zustand ist ohne Sitzung nicht messbar) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZA-SU-3 | P1 | Endzustand steht zuunterst: Titel bleibt "Seed Gelb sucht einen Gegner" (Präsens), Eyebrow "Öffentliche Spielsuche", alle Daten wie bei einer offenen Suche; erst der Kasten unter dem Kader ("abgelaufen", "zurückgezogen", "schon ein Gegner gefunden") nennt den Zustand, am Handy unter der ersten Bildschirmhälfte. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_mobil_extra-nach-annehmen-suche.png | critique, clarify
+- ZA-SU-4 | P1 | Angenommene Suche: "Für diese Spielsuche wurde schon ein Gegner gefunden." nennt weder Gegner noch Termin und verlinkt nicht auf das entstandene Spiel, weder für den Besitzer (Captain Rot) noch für Gäste. (Wiederholung, Erstnennung oben) | suche-offen_captain-rot-fremd_mobil_extra-nach-annehmen-suche.png | clarify, distill
+
+
+
+#### Zusatz-Blatt ZB Benachrichtigungen
+
+#### Methode, Grenzen, geänderte Seed-Daten
+
+- Dev-Server Port 3102, Engine über den Launcher; Seed laut Nachtrag zweimal frisch geladen. Nur gelesen, gemessen und bedient; kein Quelltext geändert, kein Commit. Die fünf Reference-Dateien (`critique.md` 819 Zeilen, `audit.md`, `distill.md`, `clarify.md`, `adapt.md`) wurden zu Beginn vollständig gelesen; die fünf Durchgänge haben keinen Launcher-Befehl und liefen manuell, je Durchgang steht der angewandte Teil in eckigen Klammern. critique bleibt degradiert (kein Overlay, kein getrennter Assessment-B-Sub-Agent; Assessment B = `detect`).
+- `context` (Launcher) lief einmal (PRODUCT.md geladen, Plattform web). `detect --json --viewport 390x844 http://localhost:3102/app/benachrichtigungen`: ein Befund, Straggler "nötig." der Anmeldeseite (ohne Sitzung wird /anmelden gescannt, kein Befund der Seite). `detect --json --viewport 1280x800 ...`: nur overused-font (Plus Jakarta Sans, in DESIGN.md gesetzt, nicht gewertet). `detect --json` gegen den Quelltext (`src/app/app/benachrichtigungen`, `Header.tsx`): `[]`. Kein Timeout.
+- Zustände: "ungelesen" wurde mit abgebrochener POST-Anfrage der Markierung festgehalten (Daten bleiben ungelesen); das rote "1 Issue" bzw. orange "Cache disabled" unten links ist Dev-Overlay. Ganzseitige Handy-Bilder zeigen die feste Navigation mitten im Bild (Aufnahme-Artefakt). "Lange Texte" und "viele Einträge" sind DOM-Simulationen (nichts gespeichert).
+- Seed-Texte weichen vom echten Code ab: echte Absage hängt "Grund: ..." an (`lobby.ts:598`), echtes "Neues Teammitglied" nennt den Namen (`teams.ts:131`), echte Erinnerung nutzt `REMINDER_TEXT` und endet mit "Bist du bereit?" (`scheduled.ts:43`), "Zahlung ausstehend" und "Abbuchung fehlgeschlagen" gibt es im Code nicht (N4-FZ-2). Bewertet ist der Seed-Text als Beispiel.
+- Nicht prüfbar: Versand von E-Mail und Push, mehr als 9 ungelesene (Zähler "9+" nur im Quelltext), echter Google-Login. Ein Seed-Neuaufruf ändert die Spiel-IDs: ältere Lobby-Links sind dann 404 (Seed-Artefakt, kein Fund).
+
+##### Geänderte Seed-Daten (vorher/nachher)
+
+| Aktion | Vorher | Nachher |
+|---|---|---|
+| Seed neu geladen (zweimal, `seed-frontend.mts` mit der Umgebung des Dev-Servers 3102) | nach den 12 Raster-Aufnahmen alles gelesen | 11 Benachrichtigungen, 6 ungelesen, neue Spiel-IDs |
+| Liste ohne Abbruch geöffnet (Glocken-Test captain-rot, spieler09; Klick-Tests teils durch Zeitverlauf bei captain-gelb) | ungelesen | gelesen (Markierung nach 1,5 s) |
+| Übrige Nutzer (spieler01, spieler13, captain-gruen) nur mit abgebrochener Markierung geöffnet | ungelesen | ungelesen |
+| Sprache English in der Fußzeile (spieler01) | Deutsch | Englisch gesetzt, danach der Seed-Stand nicht verändert (Sprache ist Browser-Sitzung des Tests) |
+
+Rückgängig nur per Seed-Neuaufruf. Kein anderer Datensatz verändert.
+
+#### Zähler
+
+- Angesehen: 12 Raster-Bilder + 26 Zusatzaufnahmen = **38 von 38** (je Bild einzeln mit Read geöffnet).
+- Durchgänge: je Zelle critique, audit, distill, clarify, adapt (38 Abschnitte), plus detect (2 Viewports, 1 Quelltext), context einmal; alle gelaufen.
+- Neue Funde (Erstnennung): P0 0, P1 5, P2 18; gesamt 23. Vorhandene Funde (N4-FZ-2, N4-FZ-5, N4-FZ-8, SM-BE-1, SD-ALL-9, SM-GL-3) sind nur referenziert; ZB-S1M-1 korrigiert SM-BE-1.
+
+#### Zellen
+
+##### /app/benachrichtigungen (gast, Handy)
+Beleg: benachrichtigungen_gast_mobil.png (Messung: Weiterleitung auf /anmelden, Höhe 955, 7 von 39 Zielen unter 44 px, 0 Fehler)
+Bewertung: Gast landet auf der Anmeldeseite (bekannt: GM-AN-1); die Benachrichtigungsseite ist ohne Sitzung nicht sichtbar. Die Kopfleiste zeigt "Anmelden" statt Glocke, das ist konsistent.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1 Systemstatus] keine neuen Funde (Weiterleitung `?next=` bereits GM-AN-1) |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] 955 px Höhe, kein Überlauf, 0 Konsolenfehler: keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] "Dev-Login", "AUTH_GOOGLE_ID fehlt" sind Entwicklungstexte (bekannt, GM-AN-*): keine neuen Funde |
+| adapt (reference/adapt.md, manuell) | [Mobile: Touch, Fixleiste] untere Navigation zeigt Reiter für Angemeldete (bekannt SM-GL-1): keine neuen Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (gast, Desktop)
+Beleg: benachrichtigungen_gast_desktop.png (Messung: Weiterleitung auf /anmelden, Höhe 800, 10 von 39 Zielen unter 44 px, 0 Fehler)
+Bewertung: Wie am Handy die Anmeldeseite; Spalte 384 px mittig, Kopfleiste mit drei Links und "Anmelden".
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4] keine Funde (GD-ALL-1 bekannt) |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] keine Funde |
+| adapt (reference/adapt.md, manuell) | [Desktop: Hover, max-width] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler01, Handy)
+Beleg: benachrichtigungen_spieler01_mobil.png (Messung: 9 von 37 Zielen unter 44 px, Höhe 844, kein Überlauf, 0 Fehler; zwei Einträge (Erinnerung ungelesen, Spiel abgesagt gelesen), Glocke mit Zähler 1)
+Bewertung: Zwei Karten, die sich nicht unterscheiden: ungelesen (Erinnerung) und gelesen (abgesagt) sehen gleich aus; nur der Zähler an der Glocke weist auf Ungelesenes hin. Das Bild zeigt den Zähler 1, obwohl die Liste nach 1,8 s schon als gelesen gilt (Zeitfenster der Markierung).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1 und 6, Kognitive Last "Visual hierarchy", Persona Casey] Funde: ZB-S1M-1, ZB-S1M-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4 Responsive] Link "Einstellungen" 89x20 px: ZB-S1M-4; Eintragskarte 358x78 px, Glocke 44x44 px: in Ordnung |
+| distill (reference/distill.md, manuell) | [Information Architecture, Interaction Simplification] Funde: ZB-S1M-2 (kein "Alle gelesen", nichts zu bedienen, alles läuft automatisch) |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Empty/Success states] Funde: ZB-S1M-3 (Zeitangabe), ZB-S1M-5 (Ziel unklar) |
+| adapt (reference/adapt.md, manuell) | [Mobile: Thumbs, Touch targets, Fixleiste] Einträge füllen die Breite, gut zu treffen; "Einstellungen" oben rechts nur klein: ZB-S1M-4 |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-S1M-1 | P1 | Gelesen und ungelesen sind nicht unterscheidbar. Der Quelltext setzt für Ungelesenes `border-accent` (`benachrichtigungen/page.tsx:97`), aber `.card` (unlayered, `globals.css:100`) überstimmt die Utility: gemessene Rahmenfarbe ungelesen = gelesen = rgb(179,194,185); `hover:border-accent` wirkt ebenfalls nicht (Hover-Rahmen unverändert). Korrigiert SM-BE-1 (dort "Rahmenfarbe"): es gibt nicht einmal die Rahmenfarbe, und Farbe allein wäre ohnehin zu wenig (kein Punkt, kein Text, kein fetter Titel). | benachrichtigungen_spieler01_mobil_extra-ungelesen.png | critique, audit
+- ZB-S1M-2 | P1 | Gelesen-Zustand läuft ohne Zutun: `MarkReadOnView.tsx` markiert nach 1,5 s alles als gelesen, auch wenn der Nutzer nichts gesehen hat (Seite im Hintergrund, Telefon sperrt). Es gibt weder "Alle gelesen" noch "Als ungelesen merken" noch Einzelmarkierung (keine Schaltfläche auf der Seite gemessen). Tippt man vor Ablauf auf einen Eintrag, wird der Zeitgeber beim Verlassen gestoppt: Eintrag bleibt ungelesen, die Glocke zeigt auf der Zielseite weiter 1 (gemessen), erst die nächste Listenansicht räumt auf. Die Liste selbst zeigt beim Umschalten keine Rückmeldung (nur der Zähler verschwindet). | benachrichtigungen_spieler01_mobil_extra-ungelesen.png, benachrichtigungen_captain-rot_mobil_extra-nach-lesen.png | critique, distill
+- ZB-S1M-3 | P2 | Zeitangabe "Mi., 11.11., 13:00": ohne Jahr, Wochentag und Datum mit Punktfolge ("Mi., 11.11.,"), keine relative Angabe ("vor 2 Std") und keine Gruppen "Heute", "Gestern", "Früher". Texte mit Zeitbezug werden fest gespeichert ("startet in drei Tagen"), bleiben also später falsch. | benachrichtigungen_spieler01_mobil_extra-ungelesen.png | clarify
+- ZB-S1M-4 | P2 | Link "Einstellungen" oben rechts misst 89x20 px (unter 44, unter 24 in der Höhe), steht als kleiner Textlink neben der Überschrift; die Einstellungen sind der einzige Weg, Benachrichtigungen abzuschalten. | benachrichtigungen_spieler01_mobil_extra-ungelesen.png | audit, adapt
+- ZB-S1M-5 | P2 | Kein Eintrag nennt sein Ziel oder eine Handlung ("Zur Lobby", Pfeil); ob Antippen etwas öffnet, ist nur am Cursor (Desktop) oder gar nicht ablesbar. Einträge ohne Link (`<div>`, z. B. spieler17) sehen genauso aus wie Links. | benachrichtigungen_spieler01_mobil_extra-ungelesen.png | clarify, critique
+
+##### /app/benachrichtigungen (spieler01, Desktop)
+Beleg: benachrichtigungen_spieler01_desktop.png (Messung: 13 von 37 Zielen unter 44 px, Höhe 800, kein Überlauf, 0 Fehler; Glocke ohne Zähler (Liste war gerade als gelesen markiert))
+Bewertung: 720 px breite Spalte mit zwei fast gleichen Karten, darunter 450 px Leere. Die Glocke ohne Zähler zeigt, dass alles gelesen ist, doch die Karten sehen vor und nach der Markierung gleich aus.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 8, Persona Alex] Funde: ZB-S1M-1, ZB-S1M-2 (gelten auch hier) |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y, 4] 13 Ziele unter 44 px (Fußzeile, Textlinks); Tab-Fokus 2 px sichtbar: keine neuen Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] Kopfleiste zeigt Betragslink "0,00 €" (Guthaben): bekanntes MUSS WEG (Header.tsx:53-55), nicht neu |
+| clarify (reference/clarify.md, manuell) | [Audit the language] ZB-S1M-3 gilt auch hier |
+| adapt (reference/adapt.md, manuell) | [Desktop: max-width, Hover] Spalte begrenzt (gut); Hover ohne Wirkung: ZB-S1D-1 |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-S1D-1 | P2 | Kein Hover-Zustand auf der Eintragskarte (Rahmen bleibt gleich), obwohl der Quelltext `hover:border-accent` vorsieht (siehe ZB-S1M-1); am Desktop wirkt die Karte nicht anklickbar. | benachrichtigungen_spieler01_desktop_extra-hover.png | adapt
+
+##### /app/benachrichtigungen (captain-gelb, Handy)
+Beleg: benachrichtigungen_captain-gelb_mobil.png (Messung: 9 von 37 Zielen unter 44 px, Höhe 844, 0 Fehler; Einträge: Herausforderung (ungelesen), Neues Mitglied (gelesen))
+Bewertung: Titel brechen schon bei 30 Zeichen in zwei Zeilen, weil das Datum rechts Breite beansprucht; die Karten werden dadurch 102 px hoch. Ungelesen (Herausforderung) und gelesen (Neues Mitglied) gleich.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 8, Persona Casey] Funde: ZB-S1M-1 (gilt), ZB-GEM-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde (Eintragskarte 358x102) |
+| distill (reference/distill.md, manuell) | [Remove Redundancy] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Titel und Text sagen für Herausforderung fast dasselbe; Termin fehlt: ZB-GEM-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile: Content, kurze Texte] ZB-GEM-1 |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-GEM-1 | P2 | Der Titel teilt die Zeile mit dem Datum (`shrink-0`): mittellange Titel ("Dein Team wurde herausgefordert", "Neues Mitglied in deinem Team") brechen am Handy in zwei Zeilen und stehen bei Datum und Text versetzt; ein Datum in eigener Zeile unter dem Titel wäre ruhiger. | benachrichtigungen_captain-gelb_mobil.png | adapt
+- ZB-GEM-2 | P2 | Die Herausforderung nennt weder Anstoß (So., 15.11., 16:00) noch Stadt oder Frist im Eintrag; der Captain muss öffnen, um zu entscheiden. | benachrichtigungen_captain-gelb_mobil.png | clarify
+
+##### /app/benachrichtigungen (captain-gelb, Desktop)
+Beleg: benachrichtigungen_captain-gelb_desktop.png (Messung: 13 von 37 Zielen unter 44 px, Höhe 800, 0 Fehler)
+Bewertung: Zwei einzeilige Titel, beide Karten gleich; die Herausforderung (zeitkritisch) steht ohne Hervorhebung vor dem Mitglieds-Hinweis.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 8] ZB-S1M-1 gilt; wichtige und unwichtige Meldungen gleich gewichtet: ZB-GED-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Information Architecture] ZB-GED-1 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] "Ein neues Mitglied ist Seed Gelb beigetreten" nennt die Person nicht (Seed-Text; echter Code `teams.ts:131` nennt den Namen): keine Funde am Quelltext |
+| adapt (reference/adapt.md, manuell) | [Desktop: Informationsdichte] keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-GED-1 | P2 | Keine Gewichtung nach Dringlichkeit: Herausforderung (Entscheidung nötig), Abbuchung, Absage und "Neues Mitglied" teilen dieselbe Karte ohne Symbol, Art oder Farbe; die Arten in `notification-types.ts` werden in der Liste nicht gezeigt. | benachrichtigungen_captain-gelb_desktop.png | distill, critique
+
+##### /app/benachrichtigungen (captain-gruen, Handy)
+Beleg: benachrichtigungen_captain-gruen_mobil.png (Messung: 9 von 36 Zielen unter 44 px, Höhe 844, 0 Fehler; Eintrag "Abbuchung fehlgeschlagen" (Zahlungsart))
+Bewertung: Eine einzelne Karte, dreizeilig, sachlich und ohne Hervorhebung: ein Zahlungsfehler sieht aus wie jede Erinnerung. Kein Betrag, keine Frist, keine Handlung; "(Karte abgelehnt)" klingt nach Schuldzuweisung.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 9 Fehlerbehebung, 1, Persona Jordan] Funde: ZB-GRM-1 (Ton), ZB-GRM-2 (Ziel); N4-FZ-2 (Eintrag entsteht im Code gar nicht) bleibt maßgeblich |
+| audit (reference/audit.md, manuell) | [Dimension 1 A11y] kein `role=alert`, `aria-live` 0: eine dringende Zahlungsmeldung wird nicht angekündigt; Kontrast Datum 6,6:1 (ok): ZB-GRM-3 |
+| distill (reference/distill.md, manuell) | [Content Simplification] Text in einem Satz mit Klammer: ZB-GRM-1 |
+| clarify (reference/clarify.md, manuell) | [Errors: was ist passiert, warum, was tun; Tonfall bei Zahlung] Funde: ZB-GRM-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile: Content, Handlung in Daumenreichweite] keine Handlung (Schaltfläche) im Eintrag: ZB-GRM-1 |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-GRM-1 | P1 | Tonfall und Inhalt bei "Abbuchung fehlgeschlagen": "Die Abbuchung deines Anteils für Seed Grün gegen Seed Gelb ist fehlgeschlagen (Karte abgelehnt)." Passiv und technisch, "Karte abgelehnt" klingt wie Vorwurf, kein Betrag, keine Frist, kein nächster Schritt ("Karte erneuern" bis Frist), keine Entwarnung. Vorschlag: was passiert ist (Anteil für Spiel X nicht abgebucht), was jetzt zu tun ist, ohne das Wort "abgelehnt". Zusätzlich: Im Code entsteht der Eintrag nie (N4-FZ-2), der Seed zeigt einen Zustand, den kein Nutzer erreicht. | benachrichtigungen_captain-gruen_mobil.png | clarify, critique
+- ZB-GRM-2 | P1 | Der Eintrag verlinkt auf die Lobby; dort steht weder der Fehler noch "Karte erneuern" (Test ohne Schalter `card_payments_enabled`, N4-FZ-8; Volltext der Lobby enthält kein "fehlgeschlagen"). Wer aus der Meldung kommt, sieht "3 Bezahlen" und "✓ 4 von 4 bereit" und hat keinen Weg zum Beheben (ergänzt N4-FZ-5). | benachrichtigungen_captain-gruen_mobil_extra-ziel-abbuchung-voll.png | critique, clarify
+- ZB-GRM-3 | P2 | Dringende Meldungen werden nicht angekündigt: keine `aria-live`/`role=alert`-Region (0 gemessen), der Zähler an der Glocke ist nur beim Laden korrekt. | benachrichtigungen_captain-gruen_mobil.png | audit
+
+##### /app/benachrichtigungen (captain-gruen, Desktop)
+Beleg: benachrichtigungen_captain-gruen_desktop.png (Messung: 13 von 36 Zielen unter 44 px, Höhe 800, 0 Fehler)
+Bewertung: Eine einzelne Karte, 720 px breit, Fehlertext in einer Zeile; wirkt harmlos. Kopfleiste zeigt weiter "0,00 €" (Guthaben), obwohl der Eintrag eine Kartenabbuchung betrifft.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 2, 9] ZB-GRM-1 gilt; Kopf "0,00 €" und Kartenfehler widersprechen sich (Altmodell, bekannt) |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Errors, Tonfall] ZB-GRM-1 (gilt) |
+| adapt (reference/adapt.md, manuell) | [Desktop: Hover/Fokus] ZB-S1D-1 gilt |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-rot, Handy)
+Beleg: benachrichtigungen_captain-rot_mobil.png (Messung: 9 von 37 Zielen unter 44 px, Höhe 844, 0 Fehler; Einträge: Spiel abgesagt (ungelesen), Spielsuche angenommen (gelesen))
+Bewertung: Absage und angenommene Suche stehen als gleichwertige Karten; die Absage (wichtig) wirkt wie eine gute Nachricht. Der Text nennt weder Spieltermin noch Grund.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 1, 8] ZB-S1M-1 gilt; Absage gleich gewichtet wie gute Nachricht: ZB-GED-1 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 4] Karten 358x78/102: keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] Titel "Spiel abgesagt" und Text "wurde abgesagt" sagen dasselbe: ZB-ROM-1 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] ZB-ROM-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile: Content] keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-ROM-1 | P2 | "Spiel abgesagt: Seed Rot gegen Seed Grün wurde abgesagt." Tautologie, ohne Termin des abgesagten Spiels (Do., 12.11., 16:00) und im Seed ohne Grund (der echte Code in `lobby.ts:598` hängt "Grund: <Text>" an); wer mehrere Spiele gegen dasselbe Team hat, erkennt das Spiel nicht. | benachrichtigungen_captain-rot_mobil.png | clarify
+
+##### /app/benachrichtigungen (captain-rot, Desktop)
+Beleg: benachrichtigungen_captain-rot_desktop.png (Messung: 13 von 37 Zielen unter 44 px, Höhe 800, 0 Fehler)
+Bewertung: Zwei einzeilige Karten, gleiches Muster; Kopf zeigt "0,00 €" (bekannt). Lesbar und ruhig, aber ohne Struktur.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] ZB-S1M-1, ZB-ROM-1 gelten |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] ZB-ROM-1 gilt |
+| adapt (reference/adapt.md, manuell) | [Desktop] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler17, Handy)
+Beleg: benachrichtigungen_spieler17_mobil.png (Messung: 9 von 35 Zielen unter 44 px, Höhe 844, 0 Fehler; ein gelesener Eintrag "Willkommen bei Soccaz", ohne Link (`div`))
+Bewertung: Einzige Meldung, gelesen, kein Link: sieht genauso aus wie die anklickbaren Karten der anderen. Es gibt keinen Leerzustand, der Spieler 17 hat eine Meldung. Der Text nennt den Seed ("Testbenachrichtigung").
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A, Heuristik 4] Nicht-Link sieht wie Link aus: ZB-S1M-5 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] "Soccaz" im Text, "Socaz" in Seitentitel und Logo "SOCAZ": ZB-S17M-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-S17M-1 | P2 | Markenschreibung uneinheitlich: Browser-Titel "Benachrichtigungen · Socaz", Logo "SOCAZ", Seed-Text "Willkommen bei Soccaz". Prüfen, welche gilt (DESIGN.md/PRODUCT.md), und überall angleichen. | benachrichtigungen_spieler17_mobil.png | clarify
+
+##### /app/benachrichtigungen (spieler17, Desktop)
+Beleg: benachrichtigungen_spieler17_desktop.png (Messung: 13 von 35 Zielen unter 44 px, Höhe 800, 0 Fehler)
+Bewertung: Eine Karte, gelesen, ohne Link; darunter viel Leere. Klar, aber kein Hinweis, was künftig hier erscheint.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Assessment A] ZB-S1M-5 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 1, 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] ZB-S17M-1 gilt |
+| adapt (reference/adapt.md, manuell) | [Desktop] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler01, Handy, extra-ungelesen)
+Beleg: benachrichtigungen_spieler01_mobil_extra-ungelesen.png (Zustand vorher: 1 ungelesen (Erinnerung), Markierung per abgebrochener POST-Anfrage unterdrückt; Zähler 1; Rahmenfarbe beider Einträge gemessen gleich)
+Bewertung: Der ungelesene Zustand: kein Unterschied zur gelesenen Karte darunter (ZB-S1M-1). Das rote "1 Issue" unten links ist eine Folge meiner abgebrochenen Anfrage (Dev-Overlay), kein Fund.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1] ZB-S1M-1 bestätigt (Bild + Messung) |
+| audit (reference/audit.md, manuell) | [Dimension 3 Theming] `border-accent` ohne Wirkung gegen unlayered `.card`: ZB-S1M-1 |
+| distill (reference/distill.md, manuell) | [Visual Simplification] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Success states] keine Funde |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler01, Desktop, extra-ungelesen)
+Beleg: benachrichtigungen_spieler01_desktop_extra-ungelesen.png (Zustand vorher: 1 ungelesen, Zähler 1 an der Glocke (orange Kreis mit weißer Zahl))
+Bewertung: Zähler an der Glocke gut lesbar (Kontrast 4,7:1); die Liste verrät nicht, welcher Eintrag ungelesen ist.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1] ZB-S1M-1 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 1] Glocke 44x44, `aria-label` "Benachrichtigungen, 1 ungelesen": gut |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] keine Funde |
+| adapt (reference/adapt.md, manuell) | [Desktop] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler01, Desktop, extra-hover)
+Beleg: benachrichtigungen_spieler01_desktop_extra-hover.png (Maus auf erster Karte; gemessene Rahmenfarbe nachher gleich wie vorher)
+Bewertung: Kein sichtbarer Hover-Zustand; der Quelltext meint `hover:border-accent` (wirkt wegen `.card` nicht).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 4, 6] ZB-S1D-1 |
+| audit (reference/audit.md, manuell) | [Dimension 3] ZB-S1M-1 gilt |
+| distill (reference/distill.md, manuell) | [Interaction] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Actions] keine Funde |
+| adapt (reference/adapt.md, manuell) | [Desktop: Hover] ZB-S1D-1 |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-gruen, Handy, extra-ungelesen)
+Beleg: benachrichtigungen_captain-gruen_mobil_extra-ungelesen.png (Zustand vorher: 1 ungelesen ("Abbuchung fehlgeschlagen", 14:00), Zähler 1)
+Bewertung: Der Zahlungsfehler als ungelesene Meldung wirkt wie jede andere; nur der Zähler an der Glocke ist ein Signal.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 9] ZB-GRM-1 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 1] ZB-GRM-3 gilt |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Errors] ZB-GRM-1 gilt |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-gruen, Desktop, extra-ungelesen)
+Beleg: benachrichtigungen_captain-gruen_desktop_extra-ungelesen.png (Zustand vorher: 1 ungelesen, Zähler 1, Kopf "0,00 €")
+Bewertung: Wie Handy; die Kartenzeile ist am Desktop einzeilig, noch leichter zu überlesen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 9] ZB-GRM-1 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] Kopf "0,00 €" widerspricht Kartenzahlung (bekannt) |
+| clarify (reference/clarify.md, manuell) | [Errors] ZB-GRM-1 gilt |
+| adapt (reference/adapt.md, manuell) | [Desktop] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-gelb, Handy, extra-ungelesen)
+Beleg: benachrichtigungen_captain-gelb_mobil_extra-ungelesen.png (Zustand vorher: Herausforderung ungelesen, Neues Mitglied gelesen; beide Karten gleich)
+Bewertung: Ungelesen und gelesen direkt nebeneinander: der Beleg, dass kein Unterschied sichtbar ist.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1] ZB-S1M-1 bestätigt |
+| audit (reference/audit.md, manuell) | [Dimension 3] keine Funde (siehe ZB-S1M-1) |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] ZB-GEM-2 gilt |
+| adapt (reference/adapt.md, manuell) | [Mobile] ZB-GEM-1 gilt |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler01, Handy, extra-ziel-lobby)
+Beleg: benachrichtigungen_spieler01_mobil_extra-ziel-lobby.png (Klick auf "Erinnerung vor dem Anstoß": Ziel /lobby/<id> leitet auf /uebersicht; Glocke zeigt weiter 1)
+Bewertung: Ziel passt: Spielübersicht mit Anstoß-Countdown, Halle, Kader. Die Glocke zeigt noch 1: Antippen allein markiert nicht (ZB-S1M-2).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 3] Ziel ok |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] Erinnerung "startet in drei Tagen", Ziel "02 Tage 23 Std": ok |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-gruen, Handy, extra-ziel-abbuchung)
+Beleg: benachrichtigungen_captain-gruen_mobil_extra-ziel-abbuchung.png (Klick auf "Abbuchung fehlgeschlagen": Ziel Lobby, Sicht ohne Scrollen)
+Bewertung: Der Kopf der Lobby sagt "Wartet auf Spieler" und "3 Bezahlen", nichts vom Fehler. Eine Karte "Abbuchung fehlgeschlagen" verlinkt auf eine Seite, die den Fehler nicht kennt (ZB-GRM-2).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 2] ZB-GRM-2 bestätigt |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Errors] ZB-GRM-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-gruen, Desktop, extra-ziel-abbuchung)
+Beleg: benachrichtigungen_captain-gruen_desktop_extra-ziel-abbuchung.png (Klick auf "Abbuchung fehlgeschlagen" am Desktop)
+Bewertung: Wie am Handy; die Schritte stehen nebeneinander, der orange Haken "✓ 4 von 4" wirkt wie Erfolg.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 2] ZB-GRM-2 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Errors] ZB-GRM-2 gilt |
+| adapt (reference/adapt.md, manuell) | [Desktop] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-gruen, Handy, extra-ziel-abbuchung-voll)
+Beleg: benachrichtigungen_captain-gruen_mobil_extra-ziel-abbuchung-voll.png (Ganzseite der Ziel-Lobby (2600 px), Volltext ohne "fehlgeschlagen", "abgelehnt", "Karte erneuern"; das orange "Cache disabled" ist Dev-Overlay)
+Bewertung: Auch ganz unten fehlt jeder Hinweis auf die fehlgeschlagene Abbuchung und eine Karten-Handlung: Sackgasse (ZB-GRM-2). "Spiel absagen" steht prominent.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 9, 10] ZB-GRM-2 bestätigt |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Errors] ZB-GRM-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-gelb, Handy, extra-ziel-herausforderung)
+Beleg: benachrichtigungen_captain-gelb_mobil_extra-ziel-herausforderung.png (Klick auf "Dein Team wurde herausgefordert": Ziel /suche/<id>)
+Bewertung: Ziel passt gut: Herausforderung, Anstoß, Kader, Schaltfläche "Spiel annehmen". Es gibt kein "Ablehnen" und keine Frist.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 3 Kontrolle] ZB-GEM-3 |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Actions] ZB-GEM-3 |
+| adapt (reference/adapt.md, manuell) | [Mobile] Schaltfläche voll breit, gut |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-GEM-3 | P2 | Herausforderungsseite: nur "Spiel annehmen", kein "Ablehnen" und keine Frist; wer nicht annehmen will, kann nichts tun, die Meldung bleibt offen. | benachrichtigungen_captain-gelb_mobil_extra-ziel-herausforderung.png | critique
+
+##### /app/benachrichtigungen (captain-gelb, Desktop, extra-ziel-herausforderung)
+Beleg: benachrichtigungen_captain-gelb_desktop_extra-ziel-herausforderung.png (Klick am Desktop; Zähler auf Ziel null (inzwischen gelesen markiert))
+Bewertung: Ziel passt; Glocke ohne Zähler.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 4] ZB-GEM-3 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Actions] ZB-GEM-3 gilt |
+| adapt (reference/adapt.md, manuell) | [Desktop] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-gelb, Handy, extra-ziel-team)
+Beleg: benachrichtigungen_captain-gelb_mobil_extra-ziel-team.png (Klick auf "Neues Mitglied in deinem Team": Ziel /teams/seed-gelb)
+Bewertung: Ziel passt (Teamseite); das neue Mitglied ist nicht hervorgehoben, "gegründet Mittwoch, 11. November 2026" ist Seed. Meldung und Ziel nennen nicht dieselbe Person.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 2] keine Funde (Seed-Text) |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] keine Funde |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-rot, Handy, extra-ziel-abgesagt)
+Beleg: benachrichtigungen_captain-rot_mobil_extra-ziel-abgesagt.png (Klick auf "Spiel abgesagt": Ziel Lobby, Status Abgesagt)
+Bewertung: Ziel passt ("Dieses Spiel wurde abgesagt."), aber der Kopf zeigt "● Live" neben einem abgesagten Spiel, darunter Maps-Schaltflächen und Kader wie bei einem aktiven Spiel.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 2] ZB-ROM-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Information Architecture] abgesagtes Spiel zeigt volle Lobby: ZB-ROM-2 |
+| clarify (reference/clarify.md, manuell) | [Audit the language] "Live" bei abgesagtem Spiel: ZB-ROM-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-ROM-2 | P2 | Zielseite eines abgesagten Spiels zeigt weiter "● Live", Spielort, Maps-Links und Kader; ein klarer Absage-Zustand (Grund, nächster Schritt "Neue Lobby aufmachen") fehlt. | benachrichtigungen_captain-rot_mobil_extra-ziel-abgesagt.png | clarify, distill
+
+##### /app/benachrichtigungen (spieler13, Handy, extra-ziel-offene-lobby)
+Beleg: benachrichtigungen_spieler13_mobil_extra-ziel-offene-lobby.png (Klick auf "Spieler tritt der Lobby bei": Ziel /lobby/offen/<id>)
+Bewertung: Ziel passt (offene Lobby Seed Gelb); der Eintrag "Ein Spieler ist der offenen Lobby ... beigetreten" nennt weder Namen noch Stand.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 2] ZB-S13M-1 |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] ZB-S13M-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-S13M-1 | P2 | "Ein Spieler ist der offenen Lobby von Seed Gelb beigetreten": nennt weder Namen noch Stand (3 von 6); nicht ablesbar, wer neu ist. | benachrichtigungen_spieler13_mobil_extra-ziel-offene-lobby.png | clarify
+
+##### /app/benachrichtigungen (spieler09, Handy, extra-ziel-zahlung)
+Beleg: benachrichtigungen_spieler09_mobil_extra-ziel-zahlung.png (Klick auf "Zahlung ausstehend": Ziel Lobby (Spieler Ilias))
+Bewertung: Ziel zeigt "3 Bezahlen" und "✓ 4 von 4 Spielern bereit": die Meldung "Deine Abbuchung steht noch aus" findet dort kein Gegenstück, kein Betrag, kein eigener Zahlungsstatus.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 6] ZB-S09M-1 |
+| audit (reference/audit.md, manuell) | [Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Errors/Success] ZB-S09M-1 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-S09M-1 | P1 | "Zahlung ausstehend: Deine Abbuchung ... steht noch aus." ohne Betrag, Zeitpunkt und Handlung; die Lobby zeigt dem Spieler keinen eigenen Zahlungsstatus. Der Text kommt im Code nicht vor (Seed-Text), die Art "payment" heißt "Zahlungen und Guthaben" (`notification-types.ts:43`). | benachrichtigungen_spieler09_mobil_extra-ziel-zahlung.png | clarify, critique
+
+##### /app/benachrichtigungen (captain-rot, Handy, extra-glocke)
+Beleg: benachrichtigungen_captain-rot_mobil_extra-glocke.png (Kopf von /app (Mein Bereich) mit Zähler 1 an der Glocke; Klick führt auf /app/benachrichtigungen)
+Bewertung: Glocke mit orangem Zähler gut lesbar, 44-px-Ziel. Sie ist ein Link, kein Menü: keine Vorschau, jeder Blick kostet einen Seitenwechsel.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1, 7] ZB-ROM-3 |
+| audit (reference/audit.md, manuell) | [Dimension 1] `aria-label` "Benachrichtigungen, 1 ungelesen"; Zähler "9+" ab 10 (Quelltext): in Ordnung |
+| distill (reference/distill.md, manuell) | [Interaction Simplification] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] keine Funde |
+| adapt (reference/adapt.md, manuell) | [Mobile: Fixleiste] Glocke oben, nicht in Daumenreichweite; im Konto-Menü doppelt (SM-GL-3) |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-ROM-3 | P2 | Glocke ist nur ein Link auf die ganze Seite; kein Kurzüberblick (letzte Meldungen), keine Möglichkeit, aus der Kopfleiste "Alle gelesen" zu setzen. | benachrichtigungen_captain-rot_mobil_extra-glocke.png | distill
+
+##### /app/benachrichtigungen (spieler09, Desktop, extra-glocke)
+Beleg: benachrichtigungen_spieler09_desktop_extra-glocke.png (Kopf von /app mit Zähler 1 neben "0,00 €")
+Bewertung: Glocke und "0,00 €" (Guthaben) nebeneinander; Zähler gut lesbar. "0,00 €" ist MUSS WEG (bekannt).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 8] keine Funde |
+| audit (reference/audit.md, manuell) | [Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] Betragslink neben Glocke (bekannt) |
+| clarify (reference/clarify.md, manuell) | [Audit the language] keine Funde |
+| adapt (reference/adapt.md, manuell) | [Desktop] ZB-ROM-3 gilt |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (captain-rot, Handy, extra-nach-lesen)
+Beleg: benachrichtigungen_captain-rot_mobil_extra-nach-lesen.png (Nach 4 s auf der Liste: Glocke ohne Zähler, Liste unverändert; Neuladen und Rückkehr auf /app: Zähler null)
+Bewertung: Zähler verschwindet, die Karten bleiben gleich: keine Veränderung und keine Bestätigung ("Alle als gelesen markiert"). Kein veralteter Zähler in diesem Lauf; im Raster stand 1, weil die 1,8 s Wartezeit vor Abschluss der Markierung lagen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1] ZB-S1M-2 bestätigt |
+| audit (reference/audit.md, manuell) | [Dimension 1] kein `aria-live` für die Zähleränderung: ZB-GRM-3 gilt |
+| distill (reference/distill.md, manuell) | [Interaction] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Success states] ZB-S1M-2 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler09, Desktop, extra-nach-lesen)
+Beleg: benachrichtigungen_spieler09_desktop_extra-nach-lesen.png (Nach 4 s: Glocke ohne Zähler (Icon dunkler), Liste unverändert)
+Bewertung: Der einzige Zustandswechsel ist der verschwundene Zähler, ohne Text.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 1] ZB-S1M-2 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 1] keine Funde |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Success states] ZB-S1M-2 gilt |
+| adapt (reference/adapt.md, manuell) | [Desktop] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler18, Handy, extra-leer)
+Beleg: benachrichtigungen_spieler18_mobil_extra-leer.png (Leere Liste; spieler17 hat eine gelesene Meldung (keine Leerliste), spieler18 liefert den Leerzustand)
+Bewertung: "Noch keine Benachrichtigungen." in einer Karte; kurz und ruhig, ohne Beispiel und ohne Hinweis auf die Einstellungen (SM-BE-1). "Alles gelesen" und "nie etwas bekommen" sind nicht getrennt.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 10] SM-BE-1 bestätigt |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Content] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Empty states: first use, no results, failure] SM-BE-1; fehlende Zahlungsmeldung ist nicht erkennbar (N4-FZ-2) |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler18, Desktop, extra-leer)
+Beleg: benachrichtigungen_spieler18_desktop_extra-leer.png (Leere Liste am Desktop)
+Bewertung: Breiter Streifen mit einem Satz, darunter Fußzeile; Seite kurz (Fußzeile y=203), darunter Leere (SD-ALL-9).
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 10] SM-BE-1 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 4] keine Funde |
+| distill (reference/distill.md, manuell) | [Content] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Empty states] SM-BE-1 gilt |
+| adapt (reference/adapt.md, manuell) | [Desktop: kurze Seite] SD-ALL-9 gilt |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler01, Handy, extra-english)
+Beleg: benachrichtigungen_spieler01_mobil_extra-english.png (Sprache English (Schalter in der Fußzeile): Fußzeile, Navigation, Glocke englisch, Seite bleibt deutsch)
+Bewertung: Gemischt: Fußzeile, untere Navigation und Glocke englisch, Überschrift, "Einstellungen" und Meldungen deutsch.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 4] ZB-S1M-6 |
+| audit (reference/audit.md, manuell) | [Dimension 1] `lang="en"` gesetzt, Inhalt deutsch: Screenreader liest falsch |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language, Localization] ZB-S1M-6 |
+| adapt (reference/adapt.md, manuell) | [Mobile] keine Funde |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-S1M-6 | P2 | Nicht übersetzt: In der englischen Fassung bleiben "Benachrichtigungen", "Einstellungen", "Noch keine Benachrichtigungen." und alle gespeicherten Meldungstexte deutsch; `html lang="en"` stimmt nicht zum Inhalt. Die Meldungen sind Fließtext in der Datenbank, keine Schlüssel mit Parametern. | benachrichtigungen_spieler01_mobil_extra-english.png | clarify, adapt
+
+##### /app/benachrichtigungen (spieler01, Handy, extra-lang (DOM-Simulation))
+Beleg: benachrichtigungen_spieler01_mobil_extra-lang.png (DOM-Simulation (nichts gespeichert): ein langer Titel/Text mit 60-Zeichen-Wort, 10 Zusatzeinträge; scrollWidth 485 gegen 390)
+Bewertung: Das lange Wort läuft über die Karte hinaus (Seite 95 px zu breit); der Titel wird vierzeilig. Zwölf Karten ungruppiert, Seite 1840 px lang.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 8, Persona Riley] ZB-S1M-7, ZB-S1M-8 |
+| audit (reference/audit.md, manuell) | [Dimension 4] Überlauf: ZB-S1M-7 |
+| distill (reference/distill.md, manuell) | [Information Architecture] ZB-S1M-8 |
+| clarify (reference/clarify.md, manuell) | [Text breaks at realistic widths] ZB-S1M-7 |
+| adapt (reference/adapt.md, manuell) | [Mobile: Text, Überlauf] ZB-S1M-7 |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-S1M-7 | P2 | Lange Wörter (z. B. Team- oder Hallenname ohne Leerzeichen) laufen aus der Karte; `break-words`/`min-w-0` fehlt (Simulation im DOM: scrollWidth 485 > 390). | benachrichtigungen_spieler01_mobil_extra-lang.png | audit, adapt
+- ZB-S1M-8 | P2 | Keine Gruppierung und keine Begrenzung nach Alter: `listNotifications` liefert höchstens 50 Einträge, ältere werden stillschweigend abgeschnitten, ohne "Ältere laden"; die Liste ist flach, Dringendes und Erinnerungen vermischt. | benachrichtigungen_spieler01_mobil_extra-lang.png | distill, critique
+
+##### /app/benachrichtigungen (spieler01, Desktop, extra-lang (DOM-Simulation))
+Beleg: benachrichtigungen_spieler01_desktop_extra-lang.png (DOM-Simulation: gleicher Test am Desktop, kein Überlauf (scrollWidth 1280))
+Bewertung: Am Desktop bricht das lange Wort sauber in der 720-px-Spalte; zwölf gleiche Karten, 1528 px Seite. Lesbar, aber ohne Struktur.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Heuristik 8] ZB-S1M-8 gilt |
+| audit (reference/audit.md, manuell) | [Dimension 4] kein Überlauf |
+| distill (reference/distill.md, manuell) | [Information Architecture] ZB-S1M-8 gilt |
+| clarify (reference/clarify.md, manuell) | [Text] ZB-S1M-7 trifft hier nicht zu |
+| adapt (reference/adapt.md, manuell) | [Desktop] keine Funde |
+
+Funde: keine neuen (Verweise siehe Tabelle).
+
+##### /app/benachrichtigungen (spieler01, Desktop, extra-fokus)
+Beleg: benachrichtigungen_spieler01_desktop_extra-fokus.png (Tab-Reihenfolge: Logo, 3 Navigationslinks, Glocke, Betrag, Konto-Menü, "Einstellungen", dann die Einträge; Fokusring 2 px sichtbar; hier Fokus auf dem Konto-Menü)
+Bewertung: Tastaturbedienung gut: sichtbarer 2-px-Ring, logische Reihenfolge; kein "Zum Inhalt springen" gemessen.
+
+| Befehl | Ergebnis |
+|---|---|
+| critique (reference/critique.md, manuell) | [Persona Sam, Heuristik 7] ZB-S1D-2 |
+| audit (reference/audit.md, manuell) | [Dimension 1] Fokus sichtbar: ok |
+| distill (reference/distill.md, manuell) | [Redundanz] keine Funde |
+| clarify (reference/clarify.md, manuell) | [Audit the language] keine Funde |
+| adapt (reference/adapt.md, manuell) | [Desktop: Tastatur] ZB-S1D-2 |
+
+Funde (ID | Prio | Beschreibung | Beleg-Datei | Befehl):
+- ZB-S1D-2 | P2 | Acht Tab-Stopps vor dem ersten Eintrag (Logo, drei Navigationslinks, Glocke, Betrag, Konto-Menü, "Einstellungen"); kein "Zum Inhalt springen" gemessen. | benachrichtigungen_spieler01_desktop_extra-fokus.png | audit
+
+#### Zustände Glocke, Klick, "Alle gelesen", Leerzustand (vorher/nachher)
+
+| Test | Vorher | Aktion | Nachher |
+|---|---|---|---|
+| (a) Klick auf ungelesenen Eintrag (spieler01, captain-gruen, captain-gelb, captain-rot, spieler09, spieler13) | Zähler 1, Eintrag ungelesen | Antippen vor 1,5 s | Ziel öffnet; Zähler bleibt 1 (Zeitgeber beim Verlassen gestoppt); erst die nächste Listenansicht markiert |
+| (b) "Alle gelesen" / Markieren | nicht vorhanden (keine Schaltfläche) | Liste 1,5 s offen lassen | alles automatisch gelesen, Zähler weg, Karten sehen gleich aus (ZB-S1M-2) |
+| (c) Glocke (Handy captain-rot, Desktop spieler09) | Zähler 1 auf /app | Glocke tippen | führt auf /app/benachrichtigungen (Link, kein Menü) |
+| (d) Leerzustand | spieler17 hat 1 gelesene Meldung (keine Leerliste) | spieler18 (keine Meldung) geöffnet | "Noch keine Benachrichtigungen." (SM-BE-1) |
 
 
