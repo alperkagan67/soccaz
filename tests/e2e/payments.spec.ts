@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { existsSync } from "node:fs";
+import { formatEuro, shareCents } from "../../src/lib/money";
 import { signStripePayload } from "../../src/lib/stripe-signature";
 import { setupLobby } from "./flows";
 import { closeContexts, closeTestDb, devLogin, newUser, run } from "./helpers";
@@ -34,6 +35,8 @@ test.afterAll(async () => {
 
 const idle = (p: import("@playwright/test").Page) => p.waitForLoadState("networkidle");
 const euro = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s"));
+// Betrag wie in der App formatiert, aber mit normalem Leerzeichen (Playwright normalisiert geschützte Leerzeichen in Namen); euro() macht daraus Whitespace-Muster.
+const eur = (cents: number) => formatEuro(cents).replace(/\s/g, " ");
 const webhookSecret = () => {
   if (existsSync(".env.local")) process.loadEnvFile(".env.local");
   return process.env.STRIPE_WEBHOOK_SECRET ?? "";
@@ -193,6 +196,9 @@ test("Stripe-Webhook: Signatur, Wiederholung, unbezahlt, Fehlschlag", async ({ p
 test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", async ({ browser }) => {
   const { a, matchId } = await setupLobby(browser, "p3");
   const userId = await userIdByEmail(`p3a-${run}@test.local`);
+  // Neues Teamspiel-Modell (Vertrag 008 AC-1, AC-2): Anteil = shareCents(Hallenpreis, eingeteilte Spieler), mindestens 4 Spieler.
+  // Hier sind nur 2 Spieler eingeteilt, gerechnet wird mit 4: 80,00 € / 4 = 20,00 € (früher Reservierung 80,00 € / 8 = 10,00 €).
+  const share = shareCents(8000, 4);
   await a.goto(`/lobby/${matchId}`);
 
   // Kosten sind sichtbar
@@ -200,23 +206,23 @@ test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", 
   await expect(costs).toBeVisible();
   await expect(costs).toContainText(euro("80,00 €"));
   await expect(costs).toContainText(euro("6,67 €"));
-  await expect(a.getByTestId("pay-hint")).toContainText(euro("10,00 €"));
+  await expect(a.getByTestId("pay-hint")).toContainText(euro(eur(share)));
 
   // ohne Guthaben: nicht bezahlt, Hinweis zum Aufladen
-  await a.getByRole("button", { name: euro("10,00 € bezahlen") }).click();
+  await a.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
   await expect(a.getByText(/Dein Guthaben reicht nicht/)).toBeVisible();
   await expect(a.getByText("Bereit", { exact: true })).toHaveCount(0);
   await a.getByRole("link", { name: "Guthaben aufladen" }).click();
-  await expect(a).toHaveURL(/\/app\/guthaben\?betrag=1000&zurueck=/);
-  await expect(a.getByLabel("Betrag in Euro")).toHaveValue("10");
+  await expect(a).toHaveURL(new RegExp(`/app/guthaben\\?betrag=${share}&zurueck=`));
+  await expect(a.getByLabel("Betrag in Euro")).toHaveValue(String(share / 100));
   await a.getByRole("button", { name: "Jetzt bezahlen" }).click();
   await a.getByRole("button", { name: "Zahlung erfolgreich" }).click();
-  await expect(a.getByTestId("balance")).toHaveText(euro("10,00 €"));
+  await expect(a.getByTestId("balance")).toHaveText(euro(eur(share)));
   await a.getByRole("link", { name: "Zurück zum Spiel" }).click();
   await expect(a).toHaveURL(new RegExp(`/lobby/${matchId}`));
 
   // jetzt reicht das Guthaben: erst bezahlen, dann bereit
-  await a.getByRole("button", { name: euro("10,00 € bezahlen") }).click();
+  await a.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
   await expect(a.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
   expect(await walletBalanceOf(userId)).toBe(0);
   await a.getByRole("button", { name: "Bereit machen" }).click();
@@ -231,7 +237,7 @@ test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", 
   // mehr als 24 Stunden vorher abmelden: alles kommt zurück
   a.once("dialog", (d) => d.accept());
   await a.getByRole("main").getByRole("button", { name: "Abmelden" }).click();
-  await expect.poll(() => walletBalanceOf(userId)).toBe(1000);
+  await expect.poll(() => walletBalanceOf(userId)).toBe(share);
   await a.goto("/app/guthaben");
   await expect(a.getByTestId("statement")).toContainText("Erstattung");
 });
@@ -245,20 +251,22 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   const adminA = await userIdByEmail(`p4a-${run}@test.local`);
   const adminB = await userIdByEmail(`p4b-${run}@test.local`);
 
+  // Neues Modell (008): 10 eingeteilte Spieler (4 je Team vorbezahlt + 2 Team-Admins) -> Anteil = shareCents(80,00 €, 10) = 8,00 €.
+  const share = shareCents(8000, 10);
   // 4 Spieler je Team haben schon bezahlt, die beiden Team-Admins bezahlen über die Oberfläche
   const seeded: string[] = [];
   for (let i = 1; i <= 4; i++) {
-    seeded.push(await seedPaidPlayer(matchId, teamA, `p4h${i}`));
-    seeded.push(await seedPaidPlayer(matchId, teamB, `p4g${i}`));
+    seeded.push(await seedPaidPlayer(matchId, teamA, `p4h${i}`, share));
+    seeded.push(await seedPaidPlayer(matchId, teamB, `p4g${i}`, share));
   }
   await fundWallet(adminA, 2000);
   await fundWallet(adminB, 2000);
   await a.goto(`/lobby/${matchId}`);
   await b.goto(`/lobby/${matchId}`);
-  await a.getByRole("button", { name: euro("10,00 € bezahlen") }).click();
+  await a.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
   await expect(a.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
   await a.getByRole("button", { name: "Bereit machen" }).click();
-  await b.getByRole("button", { name: euro("10,00 € bezahlen") }).click();
+  await b.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
   await expect(b.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
   await b.getByRole("button", { name: "Bereit machen" }).click();
   await expect(b.getByTestId("match-status").filter({ hasText: "Bestätigt" })).toBeVisible();
@@ -267,14 +275,14 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   const jobs = await query<{ status: string }>("select status from booking_jobs where match_id = $1", [matchId]);
   expect(jobs).toEqual([{ status: "open" }]);
 
-  // Abrechnung nach Ablauf der Frist: 80 EUR durch 10 Zahler, 2,00 EUR zurück an jeden
+  // Abrechnung nach Ablauf der Frist: 80 EUR durch 10 Zahler; der Anteil stand schon fest, es gibt nichts zurückzuzahlen
   await setMatchTimes(matchId, 10, 13);
   const settled = (await callJob(baseURL!, "settle-matches")) as number;
   expect(settled).toBeGreaterThanOrEqual(1);
   await a.reload();
-  await expect(a.getByRole("region", { name: "Kosten" })).toContainText(euro("Abgerechnet: 8,00 €"));
-  expect(await walletBalanceOf(adminA)).toBe(1200);
-  for (const id of seeded) expect(await walletBalanceOf(id)).toBe(1200);
+  await expect(a.getByRole("region", { name: "Kosten" })).toContainText(euro(`Abgerechnet: ${eur(share)}`));
+  expect(await walletBalanceOf(adminA)).toBe(2000 - share);
+  for (const id of seeded) expect(await walletBalanceOf(id)).toBe(2000 - share);
 
   // --- Admin: Buchung
   const adm = await (await browser.newContext()).newPage();
