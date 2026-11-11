@@ -16,7 +16,8 @@ import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "
 import { fakeCardAllowed } from "@/server/payments/mode";
 import { cardModeActive } from "@/server/wallet";
 import { cardView } from "@/lib/card-view";
-import { getCardStatuses, getStoredCardDisplay } from "@/server/payments/card-status";
+import { getCardDisplays, getStoredCardDisplay } from "@/server/payments/card-status";
+import type { Audience } from "@/lib/card-visibility";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
 import { canViewLobby, getLobby } from "@/server/lobby";
@@ -57,10 +58,14 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const confirmed = match.status === "confirmed";
   // Kartenmodell (Vertrag 012): Schalter card_payments_enabled, Standard AUS = bisheriges Guthaben-Verhalten
   const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Guthabenmodell
-  const cardStatuses = cardOn ? await getCardStatuses(match.id) : {};
+  // Sichtbarkeit je Betrachter wird HIER auf dem Server entschieden (Vertrag 012, AC-12/AC-20): Gäste sehen keinen Status je Person, Mitspieler nur die neutrale
+  // rote Ampel ohne Grund, nur der Betroffene und der Captain/Veranstalter den echten Status. Der Rohstatus erreicht die Seite nie.
+  const audienceOf = (p: { userId: string; teamId: string | null }): Audience =>
+    !user ? "guest" : p.userId === user.id ? "self" : v.platformAdmin || (p.teamId !== null && v.adminOf.includes(p.teamId)) ? "manager" : v.participant ? "member" : "guest";
+  const canSeeLights = Boolean(user && (v.participant || v.platformAdmin || v.adminOf.length > 0));
+  const cardDisplays = cardOn ? await getCardDisplays(match.id, audienceOf) : {};
   const storedCard = cardOn && user ? await getStoredCardDisplay(user.id) : null;
-  const cardStatusOf = (userId: string) => cardStatuses[userId] ?? "none";
-  const hasCard = (userId: string) => cardView(cardStatusOf(userId)).hasCard;
+  const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
@@ -325,7 +330,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
-      {cardOn ? <CardLightLegend /> : <LightLegend paymentsOn={payments.enabled} />}
+      {canSeeLights && (cardOn ? <CardLightLegend /> : <LightLegend paymentsOn={payments.enabled} />)}
       <div className="grid gap-3 sm:grid-cols-2">
         {teamsView.map((t) => (
           <section key={t.id} className="card space-y-2">
@@ -345,7 +350,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                     {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                   </span>
                   <span className="flex items-center gap-2">
-                    {cardOn ? <CardLight status={cardStatusOf(p.userId)} /> : <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel />}
+                    {cardOn ? (cardDisplays[p.userId] ? <CardLight status={cardDisplays[p.userId].status} /> : null) : canSeeLights ? <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel /> : null}
                     {active && p.userId !== user?.id && canAdminTeam(t.id) && (
                       <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} canUnassign={isPrivate && !p.ready && !p.paid} />
                     )}

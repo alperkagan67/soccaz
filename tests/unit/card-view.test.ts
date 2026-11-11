@@ -8,7 +8,7 @@ const expected: Record<CardStatus, { tone: string; label: string; hasCard: boole
   card_ready: { tone: "green", label: "Karte hinterlegt", hasCard: true, filled: true },
   charge_pending: { tone: "neutral", label: "Abbuchung läuft", hasCard: true, filled: false },
   charged: { tone: "green", label: "Karte hinterlegt", hasCard: true, filled: true },
-  failed: { tone: "red", label: "Abbuchung fehlgeschlagen", hasCard: false, filled: false },
+  failed: { tone: "red", label: "Zahlung ausstehend", hasCard: false, filled: false },
 };
 
 describe("cardView: Anzeige je Kartenstatus (Vertrag 012, AC-12)", () => {

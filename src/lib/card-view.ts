@@ -15,7 +15,10 @@ export type CardView = {
   hasCard: boolean;
 };
 
-export function cardView(status: CardStatus): CardView {
+/** "open" = neutrale Anzeige für Dritte (keine Karte ODER Abbuchung offen), siehe card-visibility.ts: nie ein Grund, nie das Wort "fehlgeschlagen". */
+export type CardViewStatus = CardStatus | "open";
+
+export function cardView(status: CardViewStatus): CardView {
   switch (status) {
     case "card_ready":
     case "charged":
@@ -23,7 +26,8 @@ export function cardView(status: CardStatus): CardView {
     case "charge_pending":
       return { tone: "neutral", glyph: "…", filled: false, label: "Abbuchung läuft", hasCard: true };
     case "failed":
-      return { tone: "red", glyph: "!", filled: false, label: "Abbuchung fehlgeschlagen", hasCard: false };
+    case "open":
+      return { tone: "red", glyph: "!", filled: false, label: "Zahlung ausstehend", hasCard: false };
     case "none":
       return { tone: "red", glyph: "✕", filled: false, label: "Keine Karte", hasCard: false };
     default:
