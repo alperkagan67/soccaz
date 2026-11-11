@@ -78,18 +78,18 @@
     --accent-ink: #ffffff;
     --accent-fg: #b23a0a;
     --accent-soft: rgba(194, 65, 12, 0.12);
-  --ok: #0f5f2c;
-  --ok-ink: #ffffff;
-  --ok-soft: rgba(15, 95, 44, 0.1);
-  --warn: #704800;
-  --warn-ink: #ffffff;
-  --warn-soft: rgba(112, 72, 0, 0.1);
-  --danger: #a51d12;
-  --danger-ink: #ffffff;
-  --danger-soft: rgba(165, 29, 18, 0.1);
-  --info: #1a44bd;
-  --info-ink: #ffffff;
-  --info-soft: rgba(26, 68, 189, 0.1);
+    --ok: #0f5f2c;
+    --ok-ink: #ffffff;
+    --ok-soft: rgba(15, 95, 44, 0.1);
+    --warn: #704800;
+    --warn-ink: #ffffff;
+    --warn-soft: rgba(112, 72, 0, 0.1);
+    --danger: #a51d12;
+    --danger-ink: #ffffff;
+    --danger-soft: rgba(165, 29, 18, 0.1);
+    --info: #1a44bd;
+    --info-ink: #ffffff;
+    --info-soft: rgba(26, 68, 189, 0.1);
   --focus: #1a44bd;
   }
 }

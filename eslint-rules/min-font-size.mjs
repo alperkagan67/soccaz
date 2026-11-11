@@ -57,4 +57,5 @@ const rule = {
   },
 };
 
-export default { rules: { "min-font-size": rule } };
+const plugin = { rules: { "min-font-size": rule } };
+export default plugin;
