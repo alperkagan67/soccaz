@@ -7,7 +7,8 @@ import { matchParticipants, matches } from "@/db/schema";
 import { requireUser } from "../session";
 import { DomainError } from "../teams";
 import { assertNoFakeInProduction, getPaymentProvider } from "./provider";
-import { fakeCardAllowed, isCardPaymentsEnabled } from "./mode";
+import { cardModeActive } from "../wallet";
+import { fakeCardAllowed } from "./mode";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -22,8 +23,10 @@ export async function fakeCardReadyAction(matchId: string): Promise<{ error?: st
   if (provider.name !== "fake") return { error: "Nicht verfügbar." };
   const user = await requireUser("/app");
   try {
-    if (!(await isCardPaymentsEnabled())) throw new DomainError("Nicht verfügbar.");
     if (typeof matchId !== "string" || !UUID.test(matchId)) throw new DomainError("Du bist in diesem Spiel nicht angemeldet.");
+    // Nur in einem Spiel, für das das Kartenmodell gilt (Schalter EIN, Frist-Regel-Spiel, keine bezahlten Plätze), sonst Guthaben-Modell
+    const [m] = await db.select({ id: matches.id, kind: matches.kind, legacyShareModel: matches.legacyShareModel }).from(matches).where(eq(matches.id, matchId));
+    if (!m || !(await cardModeActive(db, m))) throw new DomainError("Nicht verfügbar.");
     const open = db.select({ id: matches.id }).from(matches).where(and(eq(matches.id, matchId), inArray(matches.status, ["lobby", "confirmed"])));
     const updated = await db
       .update(matchParticipants)

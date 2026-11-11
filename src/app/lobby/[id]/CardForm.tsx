@@ -98,10 +98,12 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
     setError(undefined);
     try {
       const r = await activateStoredCard(matchId);
-      if (r.error) setError(r.error);
-      else {
+      if (r.ok) {
         setDone(true);
         refreshSoon();
+      } else {
+        setError(r.error);
+        if (r.needsNewCard) setUseNew(true); // gespeicherte Karte unbrauchbar: neues Formular anbieten
       }
     } catch {
       setError("Das hat gerade nicht geklappt. Bitte versuche es noch einmal.");

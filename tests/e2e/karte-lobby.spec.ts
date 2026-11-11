@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { setupLobby } from "./flows";
 import { closeContexts, closeTestDb } from "./helpers";
-import { setPlatformSetting } from "./helpers-db";
+import { query, setPlatformSetting } from "./helpers-db";
 
 // Vertrag 012, M1b: Karte hinterlegen in der Lobby (AC-1 Oberfläche), Ampel mit Wort und Form (AC-12), Texte ohne Guthaben (AC-15 teilweise).
 // Läuft nur, wenn der Entwicklungsserver mit PAYMENTS_FAKE=1 gestartet wurde UND dieser Test-Prozess die Variable ebenfalls hat
@@ -47,4 +47,14 @@ test("Kartenmodell: ohne Karte rot mit Wort, Testkarte hinterlegen, grün mit Wo
   await expect(a.getByTestId("card-ready-text")).toBeVisible({ timeout: 15_000 });
   await expect(a.locator('[data-card-light="green"]').first()).toContainText("Karte hinterlegt");
   await expect(a.getByRole("button", { name: "Ich bin bereit" })).toBeEnabled();
+});
+
+test("Kartenmodell pro Spiel: liegt schon Geld im Spiel (bezahlter Platz), bleibt die Lobby im Guthaben-Modell", async ({ browser }) => {
+  const { a, matchId } = await setupLobby(browser, "km");
+  await query("update match_participants set paid_cents = 100 where match_id = $1", [matchId]);
+  await a.goto(`/lobby/${matchId}`);
+  await expect(a.getByTestId("card-form")).toHaveCount(0);
+  await expect(a.getByTestId("card-hint")).toHaveCount(0);
+  await expect(a.getByTestId("card-light-legend")).toHaveCount(0);
+  await expect(a.getByTestId("light-legend")).toBeVisible();
 });

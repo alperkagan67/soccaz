@@ -10,9 +10,11 @@ import { regenerateGameInviteAction, revokeGameInviteAction } from "@/server/pri
 import { PrivateTools } from "./PrivateTools";
 import { getGameInviteToken } from "@/server/privategame";
 import { headers } from "next/headers";
+import { db } from "@/db";
 import { getCurrentUser } from "@/server/session";
 import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
-import { fakeCardAllowed, isCardPaymentsEnabled } from "@/server/payments/mode";
+import { fakeCardAllowed } from "@/server/payments/mode";
+import { cardModeActive } from "@/server/wallet";
 import { getCardStatuses, getStoredCardDisplay } from "@/server/payments/card-status";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
@@ -53,7 +55,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   if (match.kind === "tournament") redirect(`/spiele/${match.id}`); // Turnierspiele haben keine eigene Lobby: Ergebnis auf der Spielseite, Überblick im Turnier
   const confirmed = match.status === "confirmed";
   // Kartenmodell (Vertrag 012): Schalter card_payments_enabled, Standard AUS = bisheriges Guthaben-Verhalten
-  const cardOn = await isCardPaymentsEnabled();
+  const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Guthabenmodell
   const cardStatuses = cardOn ? await getCardStatuses(match.id) : {};
   const storedCard = cardOn && user ? await getStoredCardDisplay(user.id) : null;
   const cardReady = (userId: string) => cardStatuses[userId] === "card_ready";
