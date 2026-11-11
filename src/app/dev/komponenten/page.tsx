@@ -6,6 +6,8 @@ import { LinkButton } from "@/components/ui/LinkButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { PageShell } from "@/components/ui/PageShell";
 import { SkipLink } from "@/components/ui/SkipLink";
+import { StateMessage } from "@/components/ui/StateMessage";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Counter } from "./Counter";
 
 export const metadata: Metadata = { title: "Komponenten (Entwicklung)", robots: { index: false } };
@@ -62,6 +64,26 @@ export default function KomponentenPage() {
               <IconButton label="Hinzufügen" icon="+" variant="primary" />
               <IconButton label="Löschen" icon="🗑" variant="danger" />
               <IconButton label="Gesperrt" icon="✕" disabled />
+            </div>
+          </section>
+          <section className="space-y-3" aria-labelledby="sta">
+            <h2 id="sta" className="text-lg font-semibold">StatusBadge</h2>
+            <div className="flex flex-wrap items-center gap-3" data-testid="badges">
+              <StatusBadge status="ok" label="Karte hinterlegt" />
+              <StatusBadge status="warn" label="Zahlung ausstehend" />
+              <StatusBadge status="danger" label="Abbuchung fehlgeschlagen" />
+              <StatusBadge status="info" label="Findet statt" />
+              <StatusBadge status="neutral" label="Offen" />
+              <StatusBadge viewer="third" thirdLabel="Dabei" />
+            </div>
+          </section>
+          <section className="space-y-3" aria-labelledby="msg">
+            <h2 id="msg" className="text-lg font-semibold">StateMessage</h2>
+            <div className="grid gap-3 sm:grid-cols-2" data-testid="messages">
+              <StateMessage kind="empty" title="Noch keine Spiele" reason="Du hast noch kein Spiel in deiner Nähe gebucht." action={{ label: "Spiel suchen", href: "/suche" }} />
+              <StateMessage kind="error" title="Abbuchung fehlgeschlagen" reason="Deine Karte wurde abgelehnt, bitte ändere sie." action={{ label: "Karte ändern", href: "/app/karte" }} />
+              <StateMessage kind="ended" title="Die Spielsuche ist abgelaufen" reason="Der Anstoß liegt in der Vergangenheit." action={{ label: "Neue Spielsuche", href: "/app/suche/neu" }} />
+              <StateMessage kind="forbidden" title="Nur für Captains" reason="Dafür brauchst du die Rolle Captain deines Teams." action={{ label: "Zu meinem Team", href: "/app/teams" }} />
             </div>
           </section>
           <section className="space-y-3" aria-labelledby="tas">
