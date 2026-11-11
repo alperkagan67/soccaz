@@ -34,14 +34,18 @@ export function triggerChargesInBackground(matchId: string): Promise<void> {
  */
 export async function markAfterStart(now: Date = new Date()): Promise<number> {
   const rows = await db.execute(sql`
-    update payment_charges c set failure_code = ${AFTER_START}, updated_at = ${now}
-    from matches m
-    where m.id = c.match_id and m.starts_at <= ${now} and c.status in ('pending', 'requires_action')
- and (c.failure_code is null or c.failure_code not in (${UNKNOWN_OUTCOME}, ${AFTER_START}))
-    returning c.match_id, c.user_id`);
-  const perMatch = new Map<string, number>();
-  for (const r of rows.rows as { match_id: string }[]) perMatch.set(r.match_id, (perMatch.get(r.match_id) ?? 0) + 1);
-  for (const [matchId, rowsMarked] of perMatch) await audit(null, "charge.after_start", "match", matchId, { after: { rows: rowsMarked } });
+    select c.id, c.match_id, c.user_id, c.status, c.failure_code
+    from payment_charges c join matches m on m.id = c.match_id
+    where m.starts_at <= ${now} and c.status in ('pending', 'requires_action')
+      and (c.failure_code is null or c.failure_code <> ${UNKNOWN_OUTCOME})
+      and not exists (select 1 from audit_log a where a.action = 'charge.after_start' and a.entity_id = c.match_id::text and a.after ->> 'userId' = c.user_id::text)`);
+  // Je Zeile genau einmal (Idempotenz über das Audit). Ein schon vorhandener Fehlercode (z. B. authentication_required) bleibt erhalten und steht im Audit; sonst wird after_start gesetzt.
+  for (const r of rows.rows as { id: string; match_id: string; user_id: string; status: string; failure_code: string | null }[]) {
+    await db.transaction(async (tx) => {
+      if (r.failure_code === null) await tx.execute(sql`update payment_charges set failure_code = ${AFTER_START}, updated_at = ${now} where id = ${r.id} and failure_code is null`);
+      await audit(null, "charge.after_start", "match", r.match_id, { after: { userId: r.user_id, status: r.status, previousCode: r.failure_code } }, tx);
+    });
+  }
   return rows.rows.length;
 }
 

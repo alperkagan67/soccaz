@@ -74,6 +74,15 @@ export async function exportMyData(userId: string) {
  */
 export async function deleteAccount(userId: string) {
   await db.transaction(async (tx) => {
+    // ZUERST die offenen Spiele des Nutzers sperren (nach id sortiert, wie mergeTeams), DANN die Nutzerzeile. Reihenfolge Spiel -> Nutzer wie in der Abbuchung (Phase A sperrt das Spiel
+    // und nimmt beim Anlegen der Zeilen einen Schlüssel-Share auf die Nutzerzeile): so verklemmt sich nichts, und Phase A kann nicht zwischen die Prüfung und das Anonymisieren geraten.
+    const lockedGames = await tx
+      .select({ id: matches.id })
+      .from(matchParticipants)
+      .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
+      .where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"])))
+      .orderBy(matches.id)
+      .for("update", { of: matches });
     const [user] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
     if (!user || user.bannedAt) throw new DomainError("Dieses Konto gibt es nicht mehr.");
     if (user.role !== "player") throw new DomainError("Dein Konto hat eine Admin-Rolle. Bitte lass sie zuerst entfernen.");
@@ -88,8 +97,8 @@ export async function deleteAccount(userId: string) {
     if (open.length > 0) throw new DomainError("Du bist noch für ein offenes Spiel eingetragen. Bitte melde dich zuerst ab.");
 
     // Läuft für ein offenes Spiel (egal wie lange der Anstoß her ist) eine Kartenabbuchung, bleibt das Konto bis dahin bestehen: Löschen würde Bereit-Status und Spielablauf ändern.
-    const charged = await tx.select({ id: matches.id }).from(matchParticipants).innerJoin(matches, eq(matches.id, matchParticipants.matchId)).where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"])));
-    for (const g of charged) if (await hasChargeRows(tx, g.id)) throw new DomainError("Du hast ein laufendes Spiel mit Abbuchung. Das Konto kann nach dem Spiel gelöscht werden.");
+    // Gelesen unter der Spielsperre von oben. Die Löschung läuft bis zur Klärung über den Support (Zeilen bleiben bis M3 offen, das Spiel wird nie automatisch abgesagt).
+    for (const g of lockedGames) if (await hasChargeRows(tx, g.id)) throw new DomainError("Du hast ein laufendes Spiel mit Abbuchung. Bitte wende dich an den Support; die Löschung wird nach Klärung der Abbuchung durchgeführt.");
 
     const mine = await tx.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.userId, userId));
     for (const m of mine.filter((x) => x.role === "admin")) {

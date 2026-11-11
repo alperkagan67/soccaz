@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, like } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles, stripeEvents, teamMembers } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles, stripeEvents, teamMembers, users } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { fixDeadline } from "@/lib/deadlines";
 import { audit } from "@/server/audit";
@@ -11,7 +11,7 @@ import { createCardSetup } from "@/server/payments/card-setup";
 import { applyStoredCard } from "@/server/payments/stored-card";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { StripeProvider } from "@/server/payments/stripe";
-import { assignSubstitute, cancelMatch, cancelMatchTx, finalConfirm, getLobby, joinAsSubstitute, joinLobby, leaveLobby, randomSplit, removeParticipant, setReady, setVenue, unassignParticipant } from "@/server/lobby";
+import { revalidateFinal, assignSubstitute, cancelMatch, cancelMatchTx, finalConfirm, getLobby, joinAsSubstitute, joinLobby, leaveLobby, randomSplit, removeParticipant, setReady, setVenue, unassignParticipant } from "@/server/lobby";
 import { ATTEMPT_MAX_AGE_MS, CLAIM_LEASE_MS, runCharges } from "@/server/payments/charge-run";
 import { runCardCharges, runChargesIfDue, triggerChargesInBackground } from "@/server/payments/charge-trigger";
 import { FakeProvider } from "@/server/payments/fake";
@@ -394,12 +394,46 @@ describe("T104b: Bestätigungen bleiben, Nachholen, Zusammenführen, Konto, Kart
     return Boolean(m.homeFinalAt && m.awayFinalAt);
   };
 
-  it("setReady ist mit Zeilen gesperrt; setVenue löscht die Captain-Bestätigungen nie (auch wenn ein Platz nicht mehr Karte da zeigt)", async () => {
+  it("setReady und setVenue sind mit Zeilen gesperrt (Ort bleibt); revalidateFinal löscht die Captain-Bestätigungen mit Zeilen nie (auch wenn ein Platz nicht mehr Karte da zeigt)", async () => {
     const g = await withRows();
     await expect(setReady(g.all[3].id, g.match.id, false)).rejects.toThrow(CHARGES_LOCKED);
+    await expect(setVenue(g.adminA.id, g.match.id, "Neue Halle")).rejects.toThrow(CHARGES_LOCKED);
+    expect((await reloadMatch(g.match.id)).venueText).not.toBe("Neue Halle");
     await db.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.all[3].id)));
-    await setVenue(g.adminA.id, g.match.id, "Neue Halle");
+    await db.transaction((tx) => revalidateFinal(tx, g.match.id));
     expect(await finals(g)).toBe(true);
+  });
+
+  it("Konto löschen wartet auf die Spielsperre: eine in diesem Moment committete Abbuchungszeile wird gesehen, das Konto bleibt unangetastet (Race mit Phase A)", async () => {
+    for (let i = 0; i < 3; i++) {
+      const g = await game({ hoursAhead: 24, n: 4 });
+      const user = g.all[2];
+      await db.update(matches).set({ startsAt: new Date(Date.now() - 8 * 3_600_000) }).where(eq(matches.id, g.match.id)); // nur die Abbuchungssperre greift, nicht die 6-h-Regel
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let locked!: () => void;
+      const gotLock = new Promise<void>((r) => (locked = r));
+      // "Phase A": hält die Spielsperre, legt die Zeile an und committet erst nach dem Start der Kontolöschung
+      const phaseA = db.transaction(async (tx) => {
+        await tx.select().from(matches).where(eq(matches.id, g.match.id)).for("update");
+        locked();
+        await gate;
+        await tx.insert(paymentCharges).values({ matchId: g.match.id, userId: user.id, amountCents: 500, idempotencyKey: `charge:${g.match.id}:${user.id}` });
+      });
+      await gotLock;
+      let settled = false;
+      const del = deleteAccount(user.id).then(
+        () => ((settled = true), "geloescht"),
+        (e: Error) => ((settled = true), e.message),
+      );
+      await new Promise((r) => setTimeout(r, 300));
+      expect(settled).toBe(false); // wartet auf die Spielsperre
+      release();
+      await phaseA;
+      expect(await del).toMatch(/laufendes Spiel mit Abbuchung/);
+      const [u] = await db.select().from(users).where(eq(users.id, user.id));
+      expect(u.bannedAt).toBeNull();
+    }
   });
 
   it("Job holt offene Zeilen nach, auch wenn eine Captain-Bestätigung fehlt (Kandidat über offene Zeilen)", async () => {
@@ -453,10 +487,12 @@ describe("T104b: Bestätigungen bleiben, Nachholen, Zusammenführen, Konto, Kart
     const rows = await rowsOf(g);
     const by = (i: number) => rows.find((r) => r.userId === g.all[i].id)!;
     expect(by(0)).toMatchObject({ status: "pending", failureCode: "after_start" });
-    expect(by(1)).toMatchObject({ status: "requires_action", failureCode: "after_start" });
+    expect(by(1)).toMatchObject({ status: "requires_action", failureCode: "authentication_required" }); // vorhandener Code bleibt
     expect(by(2)).toMatchObject({ status: "pending", failureCode: "unknown_outcome" });
     expect(by(3)).toMatchObject({ status: "succeeded" });
-    expect(await auditCount("charge.after_start", g.match.id)).toBe(1);
+    expect(await auditCount("charge.after_start", g.match.id)).toBe(2); // je markierter Zeile einmal (nicht für unknown_outcome)
+    const detail = (await db.select().from(auditLog).where(and(eq(auditLog.action, "charge.after_start"), eq(auditLog.entityId, g.match.id)))).map((a) => a.after as { userId: string; previousCode: string | null });
+    expect(detail.find((d) => d.userId === g.all[1].id)?.previousCode).toBe("authentication_required");
     expect(callsFor(g)).toHaveLength(calls);
   });
 

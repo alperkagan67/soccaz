@@ -298,7 +298,7 @@ export async function teamComplete(tx: Tx, matchId: string, teamId: string): Pro
 const CARD_PRESENT: (string | null)[] = ["card_ready", "charge_pending", "charged"];
 
 /** Wird jemand wieder unbereit oder verlässt die Lobby, gilt die Bestätigung seines Captains nicht mehr. */
-async function revalidateFinal(tx: Tx, matchId: string) {
+export async function revalidateFinal(tx: Tx, matchId: string) {
   // Abbuchungszeilen vorhanden: die Bestätigungen bleiben (sie sind die Grundlage der laufenden Abbuchung; der Job holt offene Zeilen nach)
   if (await hasChargeRows(tx, matchId)) return;
   const [m] = await tx.select().from(matches).where(eq(matches.id, matchId));
@@ -453,6 +453,7 @@ export function setVenue(userId: string, matchId: string, venue: string) {
   const text = venue.trim();
   if (text.length > 120) throw new DomainError("Der Ort darf höchstens 120 Zeichen lang sein.");
   return mutateLobby(userId, matchId, async (tx, match) => {
+    await assertNoCharges(tx, matchId); // die Spieler zahlen für die ursprüngliche Halle: nach der Abbuchung ändert niemand den Ort
     if (match.schedulingOpen) throw new DomainError("Termin und Ort wählen die Teams gemeinsam (Vorschläge unten).");
     if (!(await canManageMatch(tx, userId, match))) throw new DomainError("Nur Team-Admins können den Ort festlegen.");
     await tx.update(matches).set({ venueText: text || null }).where(eq(matches.id, matchId));
