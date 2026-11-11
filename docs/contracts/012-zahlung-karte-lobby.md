@@ -1,6 +1,6 @@
 # 012 – Zahlung in der Lobby: Karte hinterlegen, einmal abbuchen, kein Guthaben
 Status: Entwurf (2026-11-11); G1 beim Nutzer am 2026-11-12
-Version: 2 (v2 2026-11-11: Antworten des Nutzers eingearbeitet: Erstattung immer auf die Karte, Stripe-Gebühr trägt Soccaz, Guthaben fällt ganz weg, "Anteil übernehmen", Nachzahlfenster, Testreihenfolge)
+Version: 3 (v3 2026-11-11: Gesamtnachtrag des Nutzers: Provision 10 % Startwert ohne Untergrenze, Turnier ohne Veranstalter-Konto, Anteil an der Hallenmiete direkt an die Halle, Konto `tournament` entfällt, E-Geld entfällt, Werkzeuge im Backlog; davor v2 2026-11-11: Antworten des Nutzers eingearbeitet: Erstattung immer auf die Karte, Stripe-Gebühr trägt Soccaz, Guthaben fällt ganz weg, "Anteil übernehmen", Nachzahlfenster, Testreihenfolge)
 
 ## Ziel
 Beim Beitritt zu Teamspiel, Privatspiel oder Turnier hinterlegt der Spieler nur eine Karte (Zahlungsmittel); es wird nichts abgebucht. Der Anteil darf sich bis zum Fixieren frei ändern. Beim Fixieren (48 Stunden vor Anstoß; bei weniger Vorlauf sofort) wird der Endanteil einmal abgebucht. "Bereit" heißt "Karte hinterlegt", nicht "bezahlt". Erstattungen gehen immer auf die Karte. Es gibt kein internes Spielerguthaben mehr: Bezahlt wird nur per Stripe; keine Promo-Codes, keine Rabatte, kein Treueprogramm. Der 10er-Bonus ist die Provision der Halle an Soccaz und kein Vorteil für Spieler. Ersetzt in 006 und 008 den Zahlungsfluss; Frist-, Alles-oder-nichts-, Zusage- und Tausch-Regeln bleiben. Grundlage: ADR 0001.
@@ -11,7 +11,9 @@ Spieler (hinterlegt Karte, wird abgebucht), Captain ("Bereit"), Veranstalter, Ad
 ## Entscheidungen (vom Nutzer, 2026-11-11, über den Planer)
 - Modell B "Karte hinterlegen, einmal abbuchen", ohne Hold (Kartenreservierung).
 - Erstattung geht immer auf die Karte.
-- Die Stripe-Gebühr trägt Soccaz. Die Provision pro Halle wird so festgelegt, dass sie die Gebühren sicher deckt ("Provision inklusive Zahlungsabwicklung"). Der Admin-Bereich zeigt je Halle und je Spiel: Provision, Stripe-Gebühren, Rest; Warnung bei Halle im Minus (Teil von Vertrag 009).
+- Die Stripe-Gebühr trägt Soccaz und bleibt bei Erstattungen hängen. Die Provision pro Halle muss sie decken ("Provision inklusive Zahlungsabwicklung"). Admin 1 stellt sie je Halle ein (Vertrag 009), 10 % Startwert, keine feste Untergrenze. Der Admin-Bereich zeigt je Halle und je Spiel: Provision, Stripe-Gebühren, Rest; Warnung, wenn die Provision die echten Gebühren (Karte, 0,25 € je Spieler, Auszahlung) nicht deckt oder eine Halle im Minus liegt (Teil von Vertrag 009).
+- Turnier: Kein Stripe-Konto für den Veranstalter. Die Spieler zahlen ihren Anteil an der Hallenmiete; das Geld geht direkt an die Halle abzüglich Provision. Der Veranstalter organisiert nur und bekommt kein Geld. Keine Preisgelder aus Einsätzen vorerst. Die Veranstalter-Auszahlung (`tournaments.ts:558-559`) und das Hauptbuch-Konto `tournament` entfallen.
+- Werkzeuge (Backlog, bremsen den Zahlungs-Umbau nicht): Stripe CLI (Nutzer installiert selbst), Stripe-Skills, Review-Skills, claude-security vor Geld-PRs und Go-live, CodeQL in der CI. Details im Backlog-Eintrag.
 - Kein Guthaben mehr (Soccaz ist nicht live, nur Testdaten): kein Auslaufen, keine Auszahlung, keine Frist. Promo-Codes, Rabatte, Treueprogramme gibt es nicht. Alle Stellen in 006, 008, 009, 010, 011 werden bereinigt.
 - "Anteil übernehmen": Lobby-Ampel grün (Karte hinterlegt) oder rot (noch nicht). Neben roten Spielern ein Knopf: Wer ihn drückt, übernimmt den Endanteil dieses Spielers und wird beim Fixieren dafür belastet (nicht sofort). Möglich, bis der Countdown "Lobby schließt" abläuft. Bei Absage geht die Erstattung an den Übernehmer. Die bestehende "Zahlung füreinander" (Turnier, PR #36) wird wiederverwendet.
 - Abbuchung scheitert: Nachzahlfenster 2 Stunden, bei Sofortbuchung höchstens bis 1 Stunde vor Anstoß; danach Nachrücker von der Warteliste, sonst Absage mit Erstattung.
@@ -35,7 +37,7 @@ Spieler (hinterlegt Karte, wird abgebucht), Captain ("Bereit"), Veranstalter, Ad
   - Alle Premium-Karten: 0,28 + 0,25 = 0,53 € je Spieler, zusammen 5,30 €; mit Auszahlung 5,65 €.
   - Internationale Karten: 0,315 + 0,25 = 0,565 €, zusammen 5,65 €; mit Auszahlung 6,00 €.
   - Extremfall 22 Spieler, 100 € Halle, internationale Karten: 22 × 0,25 + 3,15 € = 8,65 €, mit Auszahlung 9,00 € (9 %). Gleichzeitig bleibt Stripe-Gebühr bei Erstattung hängen, und ein Dispute kostet 20 €.
-- Folge: Eine Provision von 10 % deckt den Normalfall (etwa 4 bis 6 %) mit Reserve, im Extremfall (viele Spieler, internationale Karten) aber knapp. Die feste Gebühr von 0,25 € je Spieler macht große Gruppen und billige Hallen teurer. Empfehlung: Provision pro Halle mindestens 8 %; 10 % ist als Startwert vertretbar; der Admin-Bereich zeigt Warnung bei Minus (009).
+- Folge: Eine Provision von 10 % deckt den Normalfall (etwa 4 bis 6 %) mit Reserve, im Extremfall (viele Spieler, internationale Karten) aber knapp. Die feste Gebühr von 0,25 € je Spieler macht große Gruppen und billige Hallen teurer. Entscheidung des Nutzers: 10 % Startwert, keine feste Untergrenze; der Admin-Bereich warnt (009), wenn die Provision die echten Gebühren nicht deckt oder eine Halle im Minus liegt.
 
 ## Nicht-Ziele
 - Hold (Option C), Mischzahlung "Guthaben zuerst", Auszahlung an Hallen über Stripe Connect (E3 bis E6), Tarifverhandlung mit Stripe.
@@ -98,9 +100,8 @@ Spieler (hinterlegt Karte, wird abgebucht), Captain ("Bereit"), Veranstalter, Ad
 Security-Review Pflicht (Zahlung, Webhook, Geheimnisse). Nur Stripe-IDs gespeichert, Webhook-Signatur geprüft. Mandat und Kunden-ID in DSGVO-Export und Löschung. Stripe als Auftragsverarbeiter (GO-LIVE-AUDIT).
 
 ## Offene Fragen
-- Turnier-Auszahlung (im Code geprüft): Es gibt keine Preisgelder für Spieler. Beim Abschluss wird aber der Betrag Einsätze minus Kommission als Guthaben-Gutschrift an den Turnier-Veranstalter gebucht (`src/server/tournaments.ts:558-559`, `splitEntryFees`). Ohne Guthaben braucht der Veranstalter einen Auszahlungsweg. Empfehlung: Der Veranstalter bekommt wie eine Halle ein Stripe-Connect-Konto und die Auszahlung läuft per Transfer (M5, gehört zu E6); bis dahin zahlt das Turnier in Testdaten nur im Hauptbuch aus. Alternative: Der Veranstalter verlangt die Einsätze selbst außerhalb von Soccaz (dann entfällt die Kommission). Produktfrage an den Nutzer.
-- Für den Anwalt (GO-LIVE E3 bis E6): Geld liegt zwischen Abbuchung und Auszahlung bei Stripe; ob dafür eine Erlaubnis nötig ist, klärt der Anwalt. E-Geld (E4/E5) entfällt ohne Spielerguthaben (Annahme, zu bestätigen).
-- Mindestprovision pro Halle: Empfehlung mindestens 8 % (siehe Kosten); der Nutzer legt sie fest.
+- Turnier-Anteil (entschieden, Berechnungsweg): Anteil je Spieler = aufgerundet Hallenmiete des Turniers ÷ tatsächliche Spielerzahl (`shareCents`, wie `finalShareCents` heute in `maybeFixPrice`), abgebucht beim Fixieren. Die Provision der Halle (009) wird von der Hallenmiete abgezogen, das Geld geht an die Halle. Die globale Turnier-Kommission (`tournament_commission_percent`) und `splitEntryFees` entfallen, ebenso `entryFeeCents` als Einsatz (nur noch als Fallback ohne Hallenpreis zu klären; Annahme: ohne Hallenpreis kann das Turnier nicht fixiert werden). Vertrag 005 wird angepasst.
+- Für den Anwalt (GO-LIVE): Geld liegt zwischen Abbuchung und Auszahlung bei Stripe; ob dafür eine Erlaubnis nötig ist, klärt der Anwalt. E-Geld (E4/E5) entfällt, weil kein Spielerguthaben mehr existiert (entschieden). Preisgelder aus Einsätzen (inklusive Glücksspielrecht), falls später gewünscht: eigener Prüfpunkt für den Anwalt.
 - Tarife: vor der Umsetzung gegen stripe.com/de/pricing und stripe.com/de/connect/pricing prüfen und im Vertrag eintragen.
 
 ## End-to-End-Nachweis
