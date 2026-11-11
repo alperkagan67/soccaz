@@ -1,6 +1,6 @@
 # 013 – Frontend-Überarbeitung (Richtung E „Trikot“, Seite für Seite)
-Status: Entwurf (2026-11-11); Phase 1 (Analyse, Council, dieser Entwurf) vom Nutzer freigegeben; G1 für den Vertrag steht aus
-Version: 1
+Status: Freigegeben (G1 2026-11-11, durch den Nutzer, mit vier Bedingungen: AC-13 bis AC-15 und die entschiedenen Produktfragen)
+Version: 2
 
 ## Ziel
 Das gesamte Frontend wird überarbeitet, weil der Nutzer Bedienung und Aufbau als „katastrophal“ und „noch fast wie die Vorlage“ beurteilt. Ergebnis: klare Wege, verständliche Texte, gute Bedienung auf dem Handy, ein eigener Look nach `DESIGN.md` (Richtung E „Trikot“) und kein KI-Einheitsaussehen. Vertrag 007 (Navigation, Begriffe, Teamfarbe, Lobby-Feld) bleibt gültig; 013 fasst dessen offene Oberflächenstufen (Meine Spiele, Lobby-Feld) ein und erweitert sie auf alle Seiten (62 Seiten, davon 16 im Admin-Bereich, 34 Komponenten).
@@ -16,6 +16,17 @@ Gast, Spieler, Captain, Veranstalter, Hallenbetreiber (011), Admin 1, Admin 2. G
 - Kein shadcn; nativ plus eigene Bausteine (ADR 0002); das Aussehen kommt komplett aus `DESIGN.md` und Impeccable, keine Standardoptik.
 - Pilot-Test nach M3: mit Freunden in einer Halle und Stripe-Testkarten, ohne Go-live; der Umbau der übrigen Seiten (M4 bis M7) startet erst nach dem Feedback aus dem Pilot.
 - Reihenfolge: Browser-Tests beschleunigen (Ziel unter 10 Minuten) vor dem großen Umbau (nach M1/M2). Die Arbeit an 012 Stufe 3/4 und der Zahlungstest laufen parallel weiter. Offene Oberflächen (012-UI, 009, 011, 010) werden erst auf der Grundlage aus M2 gebaut.
+
+## Freigabe G1 (2026-11-11) und Produktentscheide
+Der Nutzer hat G1 für diesen Vertrag erteilt, mit diesen Bedingungen und Entscheiden:
+- Look-Abnahme nach M2 (Gate M2b, AC-13), Guthaben vor dem Pilot-Test überall weg (AC-14), alle sechs Impeccable-Befehle einzeln auf jeder Seite und Rolle (AC-15).
+- Admin am Handy: nur Übersicht, Moderation, Nutzer sperren, Protokoll lesen; alles andere am Desktop mit Hinweis.
+- Namen, Elo und Position sehen nur angemeldete Nutzer; Gäste sehen Zahlen und Initialen (Sichtbarkeitsmatrix Rolle × Datenfeld).
+- Unter 16: Rückfrage vor dem Löschen, die Endseite erklärt, was passiert. Die Wiederanmeldungsregel ist eine Rechtsfrage (Anwalt, GO-LIVE-AUDIT G16-013).
+- Der Hallenbetreiber bewertet die eigene Halle NICHT.
+- Overlay für nicht öffentliche Spiele: leere, transparente Antwort statt Fehlerseite; die Streamer-Anleitung steht beim Veranstalter.
+- Ligen, Profitag und Stadt-Challenge sind ZURÜCKGESTELLT und AUSGEBLENDET (nicht verlinken, Stadt-Challenge auf `/rangliste` ausblenden), aber NICHT GELÖSCHT (die Firmenliga aus 014 kann darauf aufbauen).
+- Degradiertes oder Blockiertes (Klassifizierer, Impeccable, Playwright) geht sofort als `NEEDS-USER`, spätestens nach 15 Minuten.
 
 ## Annahmen (Orchestrator-Vorschlag)
 - `DESIGN.md` wird in M2 komplett auf Richtung E umgeschrieben (Frontmatter, Tokens, Beispiele); der Ist-Stand-Teil entfällt.
@@ -46,14 +57,17 @@ Gast, Spieler, Captain, Veranstalter, Hallenbetreiber (011), Admin 1, Admin 2. G
 | AC-10 | Hell und dunkel | Systemeinstellung wechselt | Beide Varianten lesbar, keine Farbe außerhalb der Tokens | Screenshots, Impeccable audit |
 | AC-11 | Laufzeit | CI-Dauer | Browser-Tests laufen in unter 10 Minuten (Shards), vor M2 (Umbauplan) | CI-Lauf, Ausnahme-PR `.github/` |
 | AC-12 | Jede Seite | Prüfung gegen die Web Interface Guidelines (sobald der Skill freigegeben ist, Backlog 52) | Jede Seite wird gegen die Web Interface Guidelines geprüft, Funde im PR belegt | PR-Text, Skill `web-design-guidelines` |
+| AC-13 | M2 fertig (Gate M2b, Look-Abnahme) | Start und Lobby sind komplett im neuen Look | Screenshots von Start und Lobby auf Handy 390 px und Desktop 1280 px, jeweils hell UND dunkel (4 Varianten je Seite), gehen als `NEEDS-USER` an den Nutzer; erst nach seinem „Ja“ geht M3 in die Breite | Screenshots als PR-Anhang, Gate durch den Nutzer |
+| AC-14 | Vor dem Pilot-Test | Ein Spieler nutzt die Plattform | Kein Spieler sieht Guthaben: Rabattcode-Feld, `/app/guthaben`, Guthaben in Kopfleiste und Konto-Menü sowie alle Guthaben-Texte (Listen MUSS WEG X, Y1, Y2 aus der Analyse) sind spätestens mit M3 weg. 012 M6 wird geteilt: M6a (Oberfläche und Texte, vor oder in M3), M6b (Code, Schema, Tests entfernen, danach). Voraussetzung für M6a ist 012 M5 (Turnier auf Karte); die Reihenfolge 012 M3b bis M5 liegt vor dem Pilot | Suche in `src/` und E2E: keine Guthaben-Texte und Wege für Spieler, Backlog 58 |
+| AC-15 | Jede Seite und jede Rolle | Impeccable | Alle SECHS Befehle (critique, audit, distill, clarify, adapt, polish) laufen EINZELN auf jeder Seite und Rolle, nicht gebündelt, und werden im PR einzeln genannt; Degradiertes oder Blockiertes ist sofort `NEEDS-USER` (spätestens nach 15 Minuten) | PR-Text (Abschnitte aus AC-1) |
 
 ## Meilensteine
 - M1: Analyse und Umbauplan (nur lesend). Gate: Nutzer-Ja.
-- M2 (6 bis 8 Task-Tage): Grundlage: `DESIGN.md` auf Richtung E umschreiben, Tokens (Typo-Skala, Status, Fokus), Basiskomponenten nach ADR 0002 (`Button`, `PageShell`, `PageHeader`/`PageTitle`/Skip-Link, `StateMessage`, `StatusBadge`, `ConfirmDialog`, `Form`, `DateTimeField`), `format.ts`, Begriffsverzeichnis (`docs/design/begriffe.md`: Findet statt / Preis steht fest / Ergebnis bestätigt), `UserMenu.tsx`-Neubau (natives popover/details, Tastatur- und Fokus-Test per Playwright), Lint- und UI-Regel-Tests, erweiterter Kontrasttest, PR-Vorlage. Voraussetzung: schnellere CI (Backlog 49).
-- M3 (8 bis 10 Task-Tage): Navigation und Einstieg: `AppNav`, Start, Spiel suchen, Meine Spiele (`/app`), Lobby (Dein Stand, Hauptaktion, Captain-Leiste, Fehlerzustand mit Grund und Nachzahl-Weg aus 012 M3b), Neuling/Einladung/Onboarding, Turnierliste, UI-Texte (`lobby/[id]/page.tsx:238`: „Findet statt, sobald in beiden Teams mindestens 4 bereit sind“; `FinalConfirm.tsx:8-14`: „Preis steht fest, sobald beide Captains bestätigen“ statt „Letzte Bestätigung“; `mygame.ts:60`: „Findet statt (Preis folgt)“; Benachrichtigung `match.confirmed` (`lobby.ts` ca. 247, Mail/Push): „Spiel bestätigt“ wird „Spiel findet statt“). Gate: Pilot-Test mit Freunden in einer Halle (Stripe-Testkarten), Feedback.
+- M2 (6 bis 8 Task-Tage), danach Gate M2b (Look-Abnahme, AC-13): Grundlage: `DESIGN.md` auf Richtung E umschreiben, Tokens (Typo-Skala, Status, Fokus), Basiskomponenten nach ADR 0002 (`Button`, `PageShell`, `PageHeader`/`PageTitle`/Skip-Link, `StateMessage`, `StatusBadge`, `ConfirmDialog`, `Form`, `DateTimeField`), `format.ts`, Begriffsverzeichnis (`docs/design/begriffe.md`: Findet statt / Preis steht fest / Ergebnis bestätigt), `UserMenu.tsx`-Neubau (natives popover/details, Tastatur- und Fokus-Test per Playwright), Lint- und UI-Regel-Tests, erweiterter Kontrasttest, PR-Vorlage. Voraussetzung: schnellere CI (Backlog 49).
+- M3 (8 bis 10 Task-Tage): Navigation und Einstieg: `AppNav`, Start, Spiel suchen, Meine Spiele (`/app`), Lobby (Dein Stand, Hauptaktion, Captain-Leiste, Fehlerzustand mit Grund und Nachzahl-Weg aus 012 M3b), Neuling/Einladung/Onboarding, Turnierliste, UI-Texte (`lobby/[id]/page.tsx:238`: „Findet statt, sobald in beiden Teams mindestens 4 bereit sind“; `FinalConfirm.tsx:8-14`: „Preis steht fest, sobald beide Captains bestätigen“ statt „Letzte Bestätigung“; `mygame.ts:60`: „Findet statt (Preis folgt)“; Benachrichtigung `match.confirmed` (`lobby.ts` ca. 247, Mail/Push): „Spiel bestätigt“ wird „Spiel findet statt“). Guthaben-Oberfläche und -Texte sind spätestens mit M3 weg (AC-14, 012 M6a). Gate: Pilot-Test mit Freunden in einer Halle (Stripe-Testkarten), Feedback.
 - M4 (5 bis 7 Task-Tage): Team, Profil, Spielersuche, Ranglisten, Benachrichtigungen, Konto und Einstellungen, Spielsuche für Gäste.
 - M5 (5 bis 6 Task-Tage): Turnier-Detail, Privatspiel anlegen, Zahlen/Karte erneuern (012-Oberflächen), Spiel und Ergebnis.
-- M6 (4 bis 6 Task-Tage): Hallen (öffentlich), `/halle` für Betreiber (011), Spieler-Funktionen (010), Overlay, Hilfe, Rechtliches, Fußzeile; Ligen, Profitag und Stadt-Challenge erst nach Entscheid des Nutzers.
+- M6 (4 bis 6 Task-Tage): Hallen (öffentlich), `/halle` für Betreiber (011), Spieler-Funktionen (010), Overlay, Hilfe, Rechtliches, Fußzeile; Ligen, Profitag und Stadt-Challenge sind zurückgestellt und ausgeblendet, nicht gelöscht (Entscheid 2026-11-11, Backlog 59).
 - M7 (5 bis 7 Task-Tage): Admin-Bereich (Desktop zuerst, Rollen nach 009); am Handy nur Übersicht, Moderation, Nutzer sperren, Protokoll lesen.
 - M8 (3 bis 4 Task-Tage): Abnahme: Impeccable polish und audit über alles, Screenshots Gesamtstrecke.
 - Aufwand gesamt: 36 bis 48 Task-Tage (Summe der Stufen M2 bis M8); Gestaltung, Muster und Reihenfolge: `docs/design/umbauplan-013.md`.
@@ -77,6 +91,7 @@ Keine neuen Daten. Neue Abhängigkeiten (falls Radix, ADR 0002): security-review
 - Entschieden: ADR 0002 ist akzeptiert (Option B+: nativ plus eigene Bausteine, kein shadcn).
 - Reihenfolge innerhalb von M3 bis M6: festgelegt im Umbauplan (`docs/design/umbauplan-013.md`), Gate G1 beim Nutzer.
 - Soll der Pilot-Test eine feste Teilnehmerzahl und Dauer haben? Vorschlag: ein Spiel, 8 bis 10 Spieler, ein Abend.
+- Erledigt mit G1 (2026-11-11): Produktfragen sind entschieden (siehe Abschnitt „Freigabe G1“); neu sind AC-13 bis AC-15.
 - Hinweis für G1: Gegenüber dem ersten Entwurf ändert sich nur AC-11 (Browser-Tests unter 10 Minuten jetzt vor M2 statt vor M3); das ist die einzige AC-Änderung. Die Shards bleiben Voraussetzung: die Anhebung der Zeitgrenze (PR 95) allein ergibt noch 26 Minuten.
 
 ## End-to-End-Nachweis
