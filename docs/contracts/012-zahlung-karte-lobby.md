@@ -58,7 +58,7 @@ Spieler (hinterlegt Karte, wird abgebucht), Captain ("Bereit"), Veranstalter, Ad
 | AC-9 | Fenster abgelaufen, keine Nachrücker | Job läuft | Spiel abgesagt, alle bereits Abgebuchten per Stripe-Refund auf die Karte erstattet, Hauptbuch ausgeglichen | tests/integration/card-charge.test.ts |
 | AC-10 | Webhook doppelt oder verspätet | `payment_intent.succeeded` | Einmal verbucht, keine doppelte Abbuchung | tests/integration/card-charge.test.ts |
 | AC-11 | Dispute | `charge.dispute.created` | Konto `chargeback` gebucht, Admin 1 benachrichtigt, Spieler im Admin markiert | tests/integration/card-charge.test.ts |
-| AC-12 | Lobby mit Spielern ohne Karte | Ampel und Knopf | Spieler mit Karte grün, ohne Karte rot; neben roten Spielern der Knopf "Anteil übernehmen" | tests/e2e/payments.spec.ts |
+| AC-12 | Lobby mit Spielern ohne Karte | Ampel und Knopf | Spieler mit Karte grün, ohne Karte rot; neben roten Spielern der Knopf "Anteil übernehmen". Für Dritte trägt die rote Ampel neutral „Zahlung ausstehend“ (Form und Wort, ohne Grund); nur der Betroffene und der Captain (bzw. Veranstalter) sehen „Abbuchung fehlgeschlagen“ (AC-20) | tests/e2e/payments.spec.ts |
 | AC-13 | Spieler B übernimmt den Anteil von rotem Spieler A | Frist erreicht (Abbuchung) | B wird für A zusätzlich belastet, nicht sofort; bis zum Ablauf des Countdowns "Lobby schließt" möglich, danach abgelehnt; Eintrag `covered_by_user_id` | tests/integration/card-charge.test.ts |
 | AC-14 | Übernahme, Spiel wird abgesagt | Erstattung | Erstattung geht an den Übernehmer (nicht an A); nach Ablauf des Fensters mit Nachrücker: Übernahme verfällt | tests/integration/card-charge.test.ts |
 | AC-15 | Lobbys (Team, Privat; später Turnier) | Oberfläche und Texte | Kein Guthaben, keine Aufladung, keine Codes, keine Rabatte sichtbar; Texte nennen Karte | tests/e2e/payments.spec.ts |
@@ -66,12 +66,22 @@ Spieler (hinterlegt Karte, wird abgebucht), Captain ("Bereit"), Veranstalter, Ad
 | AC-17 | Teamspiel im Stripe-Testmodus | Testkarten durchspielen (erfolgreich, abgelehnt, Authentifizierung nötig) | Alle Fälle aus AC-1 bis AC-14 grün | tests/e2e/payments.spec.ts |
 | AC-18 | Alle Umstellungen fertig (M5) | Entfernen des Guthabens (M6) | Keine Aufladung, kein Wallet-Konto, keine Promo-Tabellen im Code; Hauptbuch bleibt ausgeglichen; Tests angepasst | tests/integration/ledger.test.ts |
 | AC-19 | Mindestbetrag: Miete > 0, Endanteil unter 0,50 EUR (Abbuchung, M2) | Abbuchung zur Frist | Abbuchungsbetrag je Spieler = max(Endanteil, 0,50 EUR); der Überschuss bleibt bei der Plattform (wie der Rundungsüberschuss, Hauptbuch ausgeglichen); kostenlose Spiele (Miete 0) werden nicht abgebucht und nicht angehoben. Anzeige und Mandatstext nennen „Mindestbetrag 0,50 EUR“ (Soll-Wortlaut; die Mandatstext-Konstante im Code passen worker-1/2 an) | tests/integration/card-run.test.ts |
+| AC-20 | Abbuchung eines Spielers ist fehlgeschlagen (Status `failed`, M3) | Lobby-Ansicht von Betroffenem, Captain (bzw. Veranstalter) und allen anderen | Betroffener und Captain (bzw. Veranstalter) sehen „Abbuchung fehlgeschlagen“ mit dem Nachzahl-Weg; alle anderen sehen nur die neutrale rote Ampel „Zahlung ausstehend“ (Form und Wort) und keinen Grund; der Nachrücker-Hinweis ist neutral formuliert (kein Hinweis auf eine fehlgeschlagene Abbuchung); der Grund ist auch in Seitenaufrufen, Antworten und Benachrichtigungen an Dritte nicht enthalten (Datenschutz) | tests/integration/card-charge.test.ts, tests/e2e/payments.spec.ts |
 
 ## Meilensteine (seriell, Schema-Änderungen nie parallel, security-reviewer Pflicht)
 - M1: Stripe-Kunde, Zahlungsmittel, SetupIntent, Webhook-Events, Mandat, "Bereit" = Karte, Ampel (AC-1, 2, 3, 12, 15 teilweise)
 - M2: Abbuchungs-Job, Idempotenz, Hauptbuch, Mindestbetrag (AC-4, 5, 10, 19)
-- M3: Scheitern, Nachzahlfenster, Nachrücker, Absage, "Anteil übernehmen" (AC-6, 7, 8, 9, 13, 14)
+- M3: Scheitern, Nachzahlfenster, Nachrücker, Absage, "Anteil übernehmen", Sichtbarkeit des Scheiterns (AC-6, 7, 8, 9, 13, 14, 20)
 - M4: Dispute, DSGVO, E2E im Stripe-Testmodus für Team- und Privatspiel (AC-11, 16, 17)
+
+M3-Anforderungen aus den Reviews (zusätzlich zu den AC; Backlog 42, 46, 47):
+- `unknown_outcome` (Ausgang unklar) per Stripe-Suche auflösen, nicht raten.
+- Zweiter erfolgreicher PaymentIntent zur selben Zeile: Abgleich und Erstattung (die Zeile bleibt an den ersten PI gebunden).
+- Absage mit Stripe-Refund; die Sperre bei Abbuchungszeilen dafür lockern.
+- Teil-Erfolg und Nachzahlfenster (einzelne Spieler gebucht, andere ausstehend).
+- Zeilen `after_start` (Anstoß schon vorbei) und eine Admin-Liste dafür.
+- Nachzahl-Neuversuch nie mit neuem Schlüssel, ohne vorher bei Stripe zu suchen (`attempt_expired`).
+- Parameter-Mismatch (`StripeIdempotencyError`) behandeln.
 - M5: Turnier auf dasselbe Muster (direkt nach grünen E2E aus M4)
 - M6: Guthaben komplett entfernen (AC-15 ganz, AC-18); Umfang gemäß Schätzung in der Backlog-Beschreibung
 
