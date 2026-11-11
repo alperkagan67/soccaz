@@ -68,5 +68,18 @@ Umsetzungsreihenfolge Geldmodell und Verträge: 006/008 M3a/M3b, 007 M2/M3, Code
 | 30 | E2E-Specs mit Anmeldeschluss genau 48 h vor dem Start (`futureLocal` 6 und 4 Tage, 12:00) scheitern in Zeitumstellungswochen (47 h) an der Validierung; Zeitzone oder Dauer robust machen | offen (niedrig) |
 | 31 | `src/server` (OG-Bilder, Karten, `cards.tsx` mit `#030806`) ist vom AC-14-Test (007) ausgenommen; an Teamfarben und Tokens anpassen (007 M4) | offen (niedrig) |
 | 32 | `tests/integration/tournament.test.ts`: Der Fenstertest wartet fest 400 ms auf den Job (CI-Flake-Risiko); Haken statt Sleep verwenden | offen (niedrig) |
+| 35 | Aus 012 M1 (Review): Der DB-Pool hat weder `max` noch `connectionTimeoutMillis` (`src/db/index.ts:14`); Stripe-Aufrufe aus der Transaktion lösen oder ein globales Limit gleichzeitiger Kartenanlagen setzen (sonst blockieren langsame Stripe-Antworten Verbindungen) | offen (mittel) |
+| 36 | Aus 012 M1 (Review): Die Modusentscheidung (Karte oder Guthaben) einmal pro Aufruf lesen und durchreichen (`payShare` → `reserveShare`), statt mehrfach zu lesen | offen (niedrig) |
+| 37 | `docs/BETRIEB.md`: Zurückschalten des Schalters `card_payments_enabled` von EIN auf AUS beschreiben (offene Karten-Spiele, Abbuchungen im Gange, Webhooks) | offen (niedrig) |
+| 38 | Test: Platz zwischen Vorprüfung und Transaktion gelöscht (`stored-card.ts`); Stripe-Abruf vor dem Rate-Limit prüfen (Reihenfolge) | offen (niedrig) |
+| 39 | Test der Stripe-Request-Optionen (Timeout 8 s, Wiederholung 1) mit Stripe-Client-Mock | offen (niedrig) |
+| 40 | Stripe Elements `appearance` mit Theme `night` ist fest dunkel: hell/dunkel unterstützen (007 M3); `CardLight` und `PlayerLight` nutzen feste Hex-Werte statt Tokens (007 M3/M4; zu Eintrag 25) | offen (niedrig) |
+| 41 | Test der Produktionszweige von `fakeCardReadyAction` (Fake-Karte darf in Produktion nie gehen) | offen (niedrig) |
+| 42 | Aus dem Review von 012 M2b (zu M2b/M3): Eine Wiederholung mit neuem PaymentIntent für dieselbe Zeile wird als `other_payment_intent` ignoriert, sobald die Zeile an PI1 gebunden ist. Entweder denselben Schlüssel nutzen oder die Bindung bewusst lösen; Abgleich und Erstattung bei einem zweiten erfolgreichen PI | offen (mittel) |
+| 43 | Mindestbetrag-Oberfläche (012 AC-19): Die Lobby zeigt `cardShareCents` statt des angehobenen Betrags von 0,50 EUR; der Mandatstext nennt den Mindestbetrag noch nicht (Soll-Wortlaut „Mindestbetrag 0,50 EUR“) | offen (mittel) |
+| 44 | `FOR SHARE` in `claimNext` (`charge-run.ts`) hat keinen Zwei-Verbindungs-Test | offen (niedrig) |
+| 45 | Produktfrage: „Abbuchung fehlgeschlagen“ ist für alle Spieler der Lobby sichtbar (012 AC-12); nur dem Betroffenen und dem Captain zeigen? | offen (Produktfrage) |
+| 46 | Bei `failed` sieht der Spieler wieder „Karte hinterlegen“; die Oberfläche für das Nachzahlfenster kommt mit 012 M3 | offen (012 M3) |
+| 47 | 012 M2b-2: Absage- und Listensperre bei Abbuchungszeilen (Restfenster zwischen Beanspruchung und Stripe-Aufruf); Parameter-Mismatch `StripeIdempotencyError` behandeln; Frist im Auslöser prüfen; Nachzahl-Neuversuch nie mit neuem Schlüssel ohne vorherige Stripe-Suche (`attempt_expired`) | offen (mittel) |
 
 Status: offen / in Arbeit / fertig.

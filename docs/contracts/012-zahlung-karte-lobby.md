@@ -24,6 +24,7 @@ Spieler (hinterlegt Karte, wird abgebucht), Captain ("Bereit"), Veranstalter, Ad
 - Zustand je Teilnehmer: `card_ready`, `charge_pending`, `charged`, `failed` (`charge_due_at`, `grace_until`, `covered_by_user_id` für "Anteil übernehmen").
 - Scheitern (`authentication_required` oder Ablehnung): Push und Mail mit Link zum Nachzahlen (Karte wechseln, 3-D-Secure im Browser). Nach dem Fenster gilt der Spieler als ausgefallen: Platz geht an den Ersten der Warteliste, der sofort abgebucht wird; ohne Nachrücker Absage und Erstattung. Die Lobby bleibt bis zum Ende des Fensters offen; Captain und Spieler sehen "Zahlung ausstehend bei {Initialen}" (Gäste nur Initialen).
 - Rundung: Anteil = aufgerundet Miete ÷ Spielerzahl (`shareCents`); der Überschuss (< Spielerzahl Cent) bleibt bei Soccaz.
+- Mindestbetrag: Abbuchung je Spieler = max(Endanteil, 0,50 EUR) bei Miete > 0 (AC-19); der Überschuss bleibt bei Soccaz, kostenlose Spiele werden nicht abgebucht.
 - Erstattung: Stripe-Refund auf die Zahlungsmethode. Die Stripe-Gebühr der Abbuchung wird nicht zurückerstattet (Annahme, mit Stripe prüfen) und bleibt bei Soccaz.
 - Umschaltung nach Spielart: Teamspiel und Privatspiel zuerst (M1 bis M4), Turnier danach (M5); vorhandene Testspiele dürfen zurückgesetzt werden (Soccaz ist nicht live). Kein dauerhaftes Doppelmodell, daher kein Flag `pay_model`.
 - Hauptbuch (`ledger_entries`) bleibt als Buchhaltung: Karte (Stripe) → Lobby-Geld → Halle/Provision; Erstattung als Gegenbuchung. E-Geld (E4/E5) entfällt, weil kein Spielerguthaben mehr existiert; offen für den Anwalt: Geld liegt zwischen Abbuchung und Auszahlung bei Stripe (Stripe Connect, E3 bis E6).
@@ -64,10 +65,11 @@ Spieler (hinterlegt Karte, wird abgebucht), Captain ("Bereit"), Veranstalter, Ad
 | AC-16 | Nutzerkonto löschen oder exportieren | DSGVO-Anfrage | Stripe-Kunden-ID im Export; Löschung entfernt Kunde und Zahlungsmittel bei Stripe, Buchungsdaten bleiben anonymisiert | tests/integration/account.test.ts |
 | AC-17 | Teamspiel im Stripe-Testmodus | Testkarten durchspielen (erfolgreich, abgelehnt, Authentifizierung nötig) | Alle Fälle aus AC-1 bis AC-14 grün | tests/e2e/payments.spec.ts |
 | AC-18 | Alle Umstellungen fertig (M5) | Entfernen des Guthabens (M6) | Keine Aufladung, kein Wallet-Konto, keine Promo-Tabellen im Code; Hauptbuch bleibt ausgeglichen; Tests angepasst | tests/integration/ledger.test.ts |
+| AC-19 | Mindestbetrag: Miete > 0, Endanteil unter 0,50 EUR (Abbuchung, M2) | Abbuchung zur Frist | Abbuchungsbetrag je Spieler = max(Endanteil, 0,50 EUR); der Überschuss bleibt bei der Plattform (wie der Rundungsüberschuss, Hauptbuch ausgeglichen); kostenlose Spiele (Miete 0) werden nicht abgebucht und nicht angehoben. Anzeige und Mandatstext nennen „Mindestbetrag 0,50 EUR“ (Soll-Wortlaut; die Mandatstext-Konstante im Code passen worker-1/2 an) | tests/integration/card-run.test.ts |
 
 ## Meilensteine (seriell, Schema-Änderungen nie parallel, security-reviewer Pflicht)
 - M1: Stripe-Kunde, Zahlungsmittel, SetupIntent, Webhook-Events, Mandat, "Bereit" = Karte, Ampel (AC-1, 2, 3, 12, 15 teilweise)
-- M2: Abbuchungs-Job, Idempotenz, Hauptbuch (AC-4, 5, 10)
+- M2: Abbuchungs-Job, Idempotenz, Hauptbuch, Mindestbetrag (AC-4, 5, 10, 19)
 - M3: Scheitern, Nachzahlfenster, Nachrücker, Absage, "Anteil übernehmen" (AC-6, 7, 8, 9, 13, 14)
 - M4: Dispute, DSGVO, E2E im Stripe-Testmodus für Team- und Privatspiel (AC-11, 16, 17)
 - M5: Turnier auf dasselbe Muster (direkt nach grünen E2E aus M4)
