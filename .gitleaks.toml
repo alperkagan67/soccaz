@@ -1,11 +1,14 @@
 # Nur bekannte Test-Platzhalter, nie echte Werte. Alles andere bleibt ein Fund.
+# Die Ausnahme gilt nur, wenn Wert UND Datei passen (condition = "AND"): exakte Werte, nur in ci.yml.
 [extend]
 useDefault = true
 
 [[allowlists]]
-description = "Platzhalter fuer CI und lokale Tests (keine echten Geheimnisse)"
-regexTarget = "match"
+description = "Platzhalter fuer CI (keine echten Geheimnisse), nur in .github/workflows/ci.yml"
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^\.github/workflows/ci\.yml$''']
 regexes = [
-  '''ci-only-secret[a-z-]*''',
-  '''whsec_e2e_[a-z_]+''',
+  '''^ci-only-secret-not-used-anywhere-else$''',
+  '''^whsec_e2e_lokaler_testschluessel$''',
 ]
