@@ -38,3 +38,33 @@ export function LightLegend({ paymentsOn = true }: { paymentsOn?: boolean }) {
     </p>
   );
 }
+
+/**
+ * Kartenmodell (Vertrag 012, AC-12): grün = Karte hinterlegt, rot = noch keine Karte. Immer Form UND Wort, nie nur Farbe
+ * (Haken im gefüllten Kreis / Kreuz im Ring).
+ */
+export function CardLight({ ready, showLabel = true }: { ready: boolean; showLabel?: boolean }) {
+  const label = ready ? "Karte hinterlegt" : "Keine Karte";
+  const color = ready ? COLOR.green : COLOR.red;
+  return (
+    <span className="inline-flex items-center gap-1.5" title={label} data-card-light={ready ? "green" : "red"}>
+      <span
+        className="inline-flex size-5 items-center justify-center rounded-full text-xs font-bold leading-none"
+        style={ready ? { background: color, color: "#04130a" } : { border: `2px solid ${color}`, color }}
+        aria-hidden
+      >
+        {ready ? "✓" : "✕"}
+      </span>
+      {showLabel ? <span className="text-xs text-muted">{label}</span> : <span className="sr-only">{label}</span>}
+    </span>
+  );
+}
+
+export function CardLightLegend() {
+  return (
+    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legende der Ampel" data-testid="card-light-legend">
+      <CardLight ready />
+      <CardLight ready={false} />
+    </p>
+  );
+}
