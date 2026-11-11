@@ -171,7 +171,9 @@ test("Captain/Admin desselben Teams und der Plattform-Admin sehen den echten Feh
     "insert into team_members (team_id, user_id, role) select $1, id, 'admin' from users where email = $2",
     [homeTeamId, `krc-${run}@test.local`],
   );
-  const coAdminHtml = (await bodies(coAdmin, url)).html;
+  const coAdminBodies = await bodies(coAdmin, url);
+  const coAdminHtml = coAdminBodies.html;
+  expect(coAdminBodies.rsc).not.toContain("card_declined"); // auch der RSC-Payload des Captains enthält den Rohcode nicht
   expect(coAdminHtml).toContain('data-card-status="failed"');
   // Captain-Block (AC-4): wen es betrifft und warum, ohne Rohcode, ohne Karte-ändern-Formular (das hat nur der Betroffene)
   expect(coAdminHtml).toContain('data-testid="charge-failed-captain"');

@@ -34,11 +34,14 @@ const setSeat = (matchId: string, userId: string, cardStatus: "none" | "card_rea
   db.update(matchParticipants).set({ cardStatus }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
 
 /** Speichert eine Karte im Konto (ohne Spiel) über den echten Weg: SetupIntent anlegen, Ereignis von Stripe zustellen. */
-async function saveCard(userId: string, pm: string) {
+async function preparedCard(userId: string, pm: string, customer?: string) {
   provider.registerCard({ id: pm, brand: "visa", last4: pm.slice(-4).padStart(4, "0") });
   const setup = await createCardSetup(userId, { mandateAccepted: true });
   const profile = await profileOf(userId);
-  const e = provider.signEvent({ id: evtId(), type: "setup_intent.succeeded", object: { id: setup.setupIntentId, customer: profile.stripeCustomerId, payment_method: pm } });
+  return provider.signEvent({ id: evtId(), type: "setup_intent.succeeded", object: { id: setup.setupIntentId, customer: customer ?? profile.stripeCustomerId, payment_method: pm } });
+}
+async function saveCard(userId: string, pm: string) {
+  const e = await preparedCard(userId, pm);
   const res = await handleStripeWebhook(e.rawBody, e.signature);
   expect(res.status).toBe(200);
 }
@@ -98,5 +101,91 @@ describe("AC-5: Karte im Konto ändern", () => {
     await saveCard(g.me.id, "pm_ac_old4");
     await saveCard(g.me.id, "pm_ac_new4");
     expect((await seat(g.match.id, g.me.id)).cardStatus).toBe("none");
+  });
+
+  it("ein Platz in einem Spiel mit angeforderter Absage bleibt failed (cancel_requested_at), ein Spiel im Status confirmed wird bereit, ein abgebuchter Platz bleibt charged", async () => {
+    const cancelling = await game();
+    const confirmed = await game();
+    await saveCard(cancelling.me.id, "pm_ac_old5");
+    // derselbe Nutzer sitzt in drei Spielen: abgesagt (angefordert), bestätigt, abgebucht
+    const mkSeat = async (matchId: string, teamId: string, status: "failed" | "charged") =>
+      db.insert(matchParticipants).values({ matchId, userId: cancelling.me.id, teamId, cardStatus: status }).onConflictDoUpdate({ target: [matchParticipants.matchId, matchParticipants.userId], set: { cardStatus: status } });
+    await mkSeat(confirmed.match.id, confirmed.home.id, "failed");
+    const third = await game();
+    await mkSeat(third.match.id, third.home.id, "charged");
+    await setSeat(cancelling.match.id, cancelling.me.id, "failed");
+    await db.update(matches).set({ cancelRequestedAt: new Date(), cancelReason: "Test" }).where(eq(matches.id, cancelling.match.id));
+    await db.update(matches).set({ status: "confirmed" }).where(eq(matches.id, confirmed.match.id));
+
+    await saveCard(cancelling.me.id, "pm_ac_new5");
+
+    expect((await seat(cancelling.match.id, cancelling.me.id)).cardStatus).toBe("failed"); // Absage angefordert
+    expect((await seat(confirmed.match.id, cancelling.me.id)).cardStatus).toBe("card_ready"); // confirmed ist offen
+    expect((await seat(third.match.id, cancelling.me.id)).cardStatus).toBe("charged"); // nie zurückgesetzt
+  });
+
+  it("mehrere Spiele des Nutzers: alle fehlgeschlagenen Plätze werden bereit", async () => {
+    const a = await game();
+    const b = await game();
+    await saveCard(a.me.id, "pm_ac_old6");
+    await db.insert(matchParticipants).values({ matchId: b.match.id, userId: a.me.id, teamId: b.home.id, cardStatus: "failed" });
+    await setSeat(a.match.id, a.me.id, "failed");
+    await saveCard(a.me.id, "pm_ac_new6");
+    expect((await seat(a.match.id, a.me.id)).cardStatus).toBe("card_ready");
+    expect((await seat(b.match.id, a.me.id)).cardStatus).toBe("card_ready");
+  });
+
+  it("dasselbe Ereignis doppelt zugestellt: die zweite Zustellung ändert nichts (processedAt)", async () => {
+    const g = await game();
+    await saveCard(g.me.id, "pm_ac_old7");
+    const e = await preparedCard(g.me.id, "pm_ac_new7");
+    await setSeat(g.match.id, g.me.id, "failed");
+    expect((await handleStripeWebhook(e.rawBody, e.signature)).status).toBe(200);
+    expect((await seat(g.match.id, g.me.id)).cardStatus).toBe("card_ready");
+    await setSeat(g.match.id, g.me.id, "failed"); // später wieder fehlgeschlagen
+    expect((await handleStripeWebhook(e.rawBody, e.signature)).status).toBe(200); // Stripe stellt dasselbe Ereignis erneut zu
+    expect((await seat(g.match.id, g.me.id)).cardStatus).toBe("failed");
+  });
+
+  it("SetupIntent mit nicht passendem Kunden: nichts ändert sich (weder Karte noch Platz)", async () => {
+    const g = await game();
+    await saveCard(g.me.id, "pm_ac_old8");
+    await setSeat(g.match.id, g.me.id, "failed");
+    const e = await preparedCard(g.me.id, "pm_ac_new8", "cus_ac_fremd");
+    expect((await handleStripeWebhook(e.rawBody, e.signature)).status).toBe(200);
+    expect((await profileOf(g.me.id)).paymentMethodId).toBe("pm_ac_old8");
+    expect((await seat(g.match.id, g.me.id)).cardStatus).toBe("failed");
+  });
+
+  it("parallele Absage: das Ereignis wartet auf die Spielsperre (Spiel zuerst), danach gilt die angeforderte Absage und der Platz bleibt failed", async () => {
+    const g = await game();
+    await saveCard(g.me.id, "pm_ac_old9");
+    await setSeat(g.match.id, g.me.id, "failed");
+    const e = await preparedCard(g.me.id, "pm_ac_new9");
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const lockedP = new Promise<void>((resolve) => (locked = resolve));
+    // Die Absage hält die Spielzeile gesperrt (noch nicht festgeschrieben), während das Ereignis eintrifft
+    const cancelTx = db.transaction(async (tx) => {
+      await tx.select().from(matches).where(eq(matches.id, g.match.id)).for("update");
+      await tx.update(matches).set({ cancelRequestedAt: new Date(), cancelReason: "parallel" }).where(eq(matches.id, g.match.id));
+      locked();
+      await held;
+    });
+    await lockedP;
+    let done = false;
+    const hook = handleStripeWebhook(e.rawBody, e.signature).then((r) => {
+      done = true;
+      return r;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(done).toBe(false); // wartet auf die Spielsperre statt am alten Stand vorbeizuschreiben
+    release();
+    await cancelTx;
+    expect((await hook).status).toBe(200);
+    expect((await seat(g.match.id, g.me.id)).cardStatus).toBe("failed"); // die Absage hat gewonnen
+    expect((await profileOf(g.me.id)).paymentMethodId).toBe("pm_ac_new9"); // die Karte selbst wird trotzdem gespeichert
   });
 });

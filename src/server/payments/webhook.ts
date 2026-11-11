@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
 import { applyChargeInTx, bookChargeFee, type ChargeReport } from "./charge";
@@ -121,6 +121,18 @@ async function processEvent(event: ProviderEvent) {
       const intentId = str(event.object.id);
       const customer = str(event.object.customer);
       if (intentId && customer && card) {
+        // Sperrreihenfolge wie überall: ERST die betroffenen Spiele (sortiert nach id, FOR SHARE: eine parallele Absage/Abbuchung wartet oder hat schon gewonnen), DANN die
+        // Platzzeilen (sortiert), ZULETZT Setup-Intent und Zahlungsprofil des Nutzers. Welche Spiele das sind, steht ohne Sperre fest (Plätze mit failed + das Spiel des Intents);
+        // die Bedingungen werden nach dem Sperren im UPDATE erneut geprüft.
+        const [probe] = await tx.select({ userId: paymentSetupIntents.userId, matchId: paymentSetupIntents.matchId }).from(paymentSetupIntents).where(eq(paymentSetupIntents.id, intentId));
+        if (probe) {
+          const mine = probe.matchId ? or(eq(matchParticipants.cardStatus, "failed"), eq(matchParticipants.matchId, probe.matchId)) : eq(matchParticipants.cardStatus, "failed");
+          const gameIds = (await tx.select({ id: matchParticipants.matchId }).from(matchParticipants).where(and(eq(matchParticipants.userId, probe.userId), mine))).map((g) => g.id).sort();
+          if (gameIds.length > 0) {
+            await tx.select({ id: matches.id }).from(matches).where(inArray(matches.id, gameIds)).orderBy(asc(matches.id)).for("share");
+            await tx.select({ id: matchParticipants.matchId }).from(matchParticipants).where(and(eq(matchParticipants.userId, probe.userId), inArray(matchParticipants.matchId, gameIds))).orderBy(asc(matchParticipants.matchId)).for("update");
+          }
+        }
         const [intent] = await tx.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.id, intentId)).for("update");
         const [profile] = intent ? await tx.select().from(paymentProfiles).where(eq(paymentProfiles.userId, intent.userId)).for("update") : [];
         // Nur wenn der SetupIntent uns gehört und zum Kunden dieses Nutzers passt
