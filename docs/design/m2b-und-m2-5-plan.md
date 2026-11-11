@@ -20,7 +20,7 @@ Annahme zur Nummerierung: M2-1 = Tokens/Design-Fundament (worker-3, `feat/m2-1-t
   - Das Muster „von bis“ (`${formatDateTime(from)} bis ${new Date(to).toLocaleTimeString(…)}`) steht an mindestens vier Stellen (`lobby/offen/[entryId]/page.tsx:36`, `matchmaking/page.tsx:82`, `MyGames.tsx:37`, `lobby/[id]/page.tsx:99`).
 - **Zahl als Text:** `toFixed` an 5 Stellen: `src/server/wallet-actions.ts:36` (Bonus, mit `.replace(".", ",")` per Hand), `src/server/tournaments.ts:325`, `src/lib/promo-rules.ts:38`, `src/app/admin/finanzen/spiel/[id]/page.tsx:65` (Eingabewert), `src/components/Sparkline.tsx:12` (Grafikpunkte, kein Anzeigetext).
 - **Plural von Hand:** 15 Zeilen in 14 Dateien mit `=== 1 ?`/`!== 1 ?` (u. a. `src/app/teams/page.tsx:66`, `src/app/hallen/page.tsx:38`, `src/app/matchmaking/page.tsx:44`, `src/app/spieler/[id]/page.tsx:55`, `src/components/LobbyBoard.tsx:58`). Zwei belegte Fehler: `src/components/OpenSearches.tsx:59` (`s.members === 1 ? "Spieler" : "Spieler"`, beide Zweige gleich) und `src/app/rangliste/page.tsx:44` („1 Siege in 1 Spielen“, Fund Y2-G-08/K17).
-- **Euro im Text:** 54 Zeilen mit „Euro“, „EUR“ oder „€“ außerhalb von `formatEuro`, überwiegend Eingabe-Beschriftungen („Betrag in Euro“), einige feste Beträge in Fließtext (`src/app/app/guthaben/TopUpForm.tsx:52`, `src/app/hilfe/page.tsx:84`; Altmodell).
+- **Euro im Text:** rund 55 bis 75 Zeilen, je nach Zählweise (Suche in `src/` nach „Euro“, „EUR“ oder „€“ außerhalb von `formatEuro`): 54 Zeilen, wenn eine Ziffer direkt davor oder danach steht; 70 Zeilen bei jeder Zeile mit einem der drei Wörter ohne `src/lib/money.ts` und ohne `formatEuro`; die Prüfung von R-T140 zählte 73. Überwiegend Eingabe-Beschriftungen („Betrag in Euro“), einige feste Beträge im Fließtext (`src/app/app/guthaben/TopUpForm.tsx:52`, `src/app/hilfe/page.tsx:84`; Altmodell).
 - **i18n:** `src/lib/i18n.ts` hat 63 Schlüssel (Navigation, Start, Anmeldung, Fußzeile), Deutsch und Englisch; alle anderen Seiten haben harte Texte. Es gibt `translate`/`translator`, aber keinen Plural- oder Zahlenhelfer.
 - **Tests:** `tests/unit/money.test.ts`, `time.test.ts`, `time-series.test.ts` existieren; kein Test für Formatierung als Anzeige, keiner für Begriffe.
 
@@ -32,7 +32,7 @@ Annahme zur Nummerierung: M2-1 = Tokens/Design-Fundament (worker-3, `feat/m2-1-t
 - **i18n-Helfer:** Erweiterung in `src/lib/i18n.ts` um (a) Plural-Schlüssel (`"unit.player": { one, other }`) und (b) die Schlüssel für Standardtexte aus M2-2 (`ui.pending` …). `i18n.ts` ist **gemeinsame Datei**: Änderungen seriell.
 - **Begriffe als Code:** `src/lib/begriffe.ts` enthält die Pflichtbegriffe aus `begriffe.md` als Konstanten (`TERM.findetStatt = "Findet statt"`, `TERM.preisSteht = "Preis steht fest"`, `TERM.preisBestaetigen = "Preis bestätigen"`, `TERM.ergebnisBestaetigt`, `TERM.verlassen`, `TERM.abmelden`, `TERM.kartAendern = "Karte ändern"`, `TERM.zahlungAusstehend`, `TERM.abbuchungFehlgeschlagen`, `TERM.captain`, `TERM.nachruecker`, `TERM.ersatzspieler`, `TERM.teamBereit`, `TERM.zusageHalle`/`TERM.absageHalle`, `TERM.spielniveau`, `TERM.spielstaerke`) und die **verbotenen Synonyme** als Liste (`{ begriff, verboten: RegExp, ausnahmen: string[] }`). Seiten und Komponenten verwenden die Konstanten statt Freitext, sobald sie umgebaut werden (M3 bis M7).
 - **Test gegen verbotene Synonyme:** `tests/unit/begriffe.test.ts` (Vitest ohne DOM, liest `src/**/*.ts(x)` per `node:fs`) zählt Treffer je Wort und Datei. Weil der Bestand heute widerspricht (z. B. „Team-Admin“ in 54 Textzeilen, „Guthaben“ in 43), arbeitet der Test mit einer **Basis-Datei** (`tests/unit/begriffe-baseline.json`: erlaubte Anzahl je Wort und Datei): sie darf nur **sinken**, nie steigen (Ratsche). Neue und umgebaute Dateien starten mit 0. Rechtstexte (`agb`, `datenschutz`, `hausordnung`, nach Entscheid 2) stehen in der Ausnahmeliste.
-- **Lint:** Zusätzlich zur Mindestschrift-Regel (M2-1) eine Regel gegen `toFixed`, `toLocale*String` und `new Intl.*` außerhalb von `format.ts`, `money.ts`, `time.ts` für **Anzeige** (Ratsche über dieselbe Basis-Datei-Idee; `Sparkline.tsx:12` als Ausnahme für Grafikkoordinaten).
+- **Lint:** Zusätzlich zur Mindestschrift-Regel (M2-1) eine ESLint-Regel gegen `toFixed`, `toLocale*String` und `new Intl.*` außerhalb von `format.ts`, `money.ts`, `time.ts` für **Anzeige** (`Sparkline.tsx:12` ist Ausnahme für Grafikkoordinaten). ESLint kann keine JSON-Basisdatei auswerten; die Ratsche läuft deshalb über **ESLint-Bulk-Suppressions**: Das installierte ESLint (9.39.5) hat `--suppress-all`, `--suppress-rule`, `--suppressions-location` und `--prune-suppressions` (per `npx eslint --help` geprüft). Ablauf: Regel als `error` einführen, einmal `npx eslint --suppress-rule <regel> src` erzeugt `eslint-suppressions.json` (Bestandsverstöße je Datei und Regel); neue Verstöße und neue Dateien schlagen sofort an, behobene Stellen müssen mit `--prune-suppressions` aus der Datei entfernt werden (sonst meldet ESLint ungenutzte Unterdrückungen). Die **Begriffe-Ratsche** (verbotene Synonyme in Texten) ist keine ESLint-Regel, sondern der Vitest-Zähltest `tests/unit/begriffe.test.ts` gegen `tests/unit/begriffe-baseline.json`. Alternative ohne Suppressions-Datei: die Regel per `files`-Glob nur auf neue und umgebaute Dateien beschränken (Liste in `eslint.config.mjs`, wächst mit M3 bis M7).
 
 ## A3. Dateien
 | Datei | Änderung |
@@ -42,7 +42,8 @@ Annahme zur Nummerierung: M2-1 = Tokens/Design-Fundament (worker-3, `feat/m2-1-t
 | `src/lib/i18n.ts` | Plural-Schlüssel und Standardschlüssel (gemeinsame Datei, seriell) |
 | `tests/unit/format.test.ts` | neu (Euro, Datum, Spanne, Plural, Ränder: 0, 1, 2, große Zahlen, Sommer-/Winterzeit) |
 | `tests/unit/begriffe.test.ts`, `tests/unit/begriffe-baseline.json` | neu (Ratsche gegen verbotene Synonyme) |
-| `eslint.config.mjs`, `eslint-rules/…` | Regel gegen Fremdformatierung (M2-1 hat den Ordner `eslint-rules/`) |
+| `eslint.config.mjs`, `eslint-rules/…`, `eslint-suppressions.json` | Regel gegen Fremdformatierung mit Bulk-Suppressions (M2-1 hat den Ordner `eslint-rules/`) |
+| `tests/unit/i18n.test.ts` | **bestehende Datei, wird angepasst** (siehe A4, AC 8) |
 | `src/lib/money.ts`, `src/lib/time.ts` | **unverändert** (nur Fassade) |
 
 Die Umstellung der 15 Fremdstellen und der 15 Plural-Stellen gehört nicht zu M2-5, sondern zur jeweiligen Seitengruppe (M3 bis M7), damit M2-5 keine Seiten berührt.
@@ -54,14 +55,15 @@ Die Umstellung der 15 Fremdstellen und der 15 Plural-Stellen gehört nicht zu M2
 4. `format.ts` importiert nichts aus `src/server` oder `src/db`.
 5. Begriffe-Test: Basis-Datei erzeugt aus dem Ist-Stand; Test ist grün; ein neu eingeführtes verbotenes Wort (Probe in Scratch-Kopie) macht ihn rot (Mutation 1 von Hand: Basis-Zahl senken → rot).
 6. Rechtstexte stehen in der Ausnahmeliste, **ohne** dass ihre Dateien angefasst werden (Entscheid 2).
-7. Keine Änderung an `money.ts`/`time.ts`, alle bisherigen Unit- und Integrationstests grün (AC-5).
-8. **Englisch mit Rückfall:** Die englische Tabelle in `src/lib/i18n.ts` darf Schlüssel auslassen (Typ `Partial` statt `Record<MessageKey, string>`; heute zwingt `Record` zu vollständigem Englisch, `i18n.ts:80`). `translate` fällt bei fehlendem englischem Text auf Deutsch zurück, ohne Fehler und ohne Warnung im Browser (der Rückfall steht heute schon in `translate`, Zeile `MESSAGES[locale]?.[key] ?? de[key]`). Test `tests/unit/i18n.test.ts`: (a) fehlender EN-Schlüssel liefert den deutschen Text, (b) vorhandener EN-Schlüssel liefert Englisch, (c) die Pflichtbegriffe aus `begriffe.ts` haben einen englischen Text (Liste der Pflichtbegriffe im Test, Fehlen ist rot), (d) Platzhalter `{count}` bleibt im Rückfall erhalten.
+7. Keine Änderung an `money.ts`/`time.ts`; alle bisherigen Unit- und Integrationstests grün, die bestehende `tests/unit/i18n.test.ts` **nach ihrer Anpassung** (AC 8; ohne Anpassung bricht sie mit `Partial`, siehe dort).
+8. **Englisch mit Rückfall (entschieden (t9, 2026-11-11)):** Englische Schlüssel werden mitgepflegt, übersetzt werden nur die Pflichtbegriffe; fehlende englische Texte fallen ohne Fehler auf Deutsch zurück. Änderungen in `src/lib/i18n.ts`: (1) `const en` von `Record<MessageKey, string>` (Zeile 80) auf `Partial<Record<MessageKey, string>>` und (2) **auch** `MESSAGES` (Zeile 146, `Record<Locale, Record<MessageKey, string>> = { de, en }`) auf `Record<Locale, Partial<Record<MessageKey, string>>>` bzw. `{ de: Record<MessageKey, string>; en: Partial<…> }`, sonst bricht `npm run typecheck`. `translate` fällt schon heute zurück (`MESSAGES[locale]?.[key] ?? de[key]`, Zeile 149) und braucht nur die angepasste Typisierung.
+   **Anpassung der bestehenden `tests/unit/i18n.test.ts`** (sie bricht mit `Partial`): (a) Zeilen 6 bis 9 („jede Sprache hat alle Schlüssel“, Gleichheit der Schlüssel de/en) ersetzen durch: Deutsch vollständig (`Object.keys(MESSAGES.de)` = Schlüssel von `MessageKey`), Englisch nur Teilmenge der deutschen Schlüssel, **keine leeren Texte** in beiden Sprachen, und **jeder Pflichtbegriff aus `begriffe.ts` hat einen englischen Text**; (b) Zeile 14 („Platzhalter sind in allen Sprachen gleich“: `MESSAGES[locale][key]` kann `undefined` sein und lässt `vars(undefined)` werfen) ersetzen durch: Platzhalter nur für vorhandene englische Schlüssel vergleichen; (c) Zeile 32 (`MESSAGES[locale][key].length` im Test „Begriffe aus Vertrag 007“) auf die vorhandenen Schlüssel einschränken oder `?.length`; (d) neu: ein fehlender EN-Schlüssel liefert den deutschen Text ohne Fehler, ein vorhandener EN-Schlüssel liefert Englisch, der Platzhalter `{count}` bleibt im Rückfall erhalten.
 
 ## A5. Beleg-Befehle
 `npm run typecheck`; `npm run lint`; `npm test -- tests/unit/format.test.ts tests/unit/begriffe.test.ts`; `npm test` (alle Unit-Tests); Gegenprobe der Ratsche in Scratch-Kopie (Wort einfügen → rot); `git diff --stat` zeigt nur die Dateien aus A3. Ein Playwright-Lauf ist nicht nötig (keine Seite berührt).
 
 ## A6. Konflikte und Abhängigkeiten
-- **`src/lib/i18n.ts` ist gemeinsame Datei:** M2-2a legt `ui.pending` u. a. an; M2-5 baut Plural-Schlüssel dazu. Reihenfolge: **M2-5 nach M2-2a**, nie parallel auf `i18n.ts`.
+- **`src/lib/i18n.ts` ist gemeinsame Datei:** M2-2a legt `ui.pending` u. a. an; M2-5 baut Plural-Schlüssel und die `Partial`-Typisierung dazu. Reihenfolge: **M2-5 nach M2-2a**, nie parallel auf `i18n.ts`; M2-5 hängt **nicht** von M2-3a/b ab (maßgeblich ist diese Zeile, nicht eine frühere Lesart im Diagramm B6).
 - **`eslint.config.mjs`/`eslint-rules/`:** gehört M2-1 (worker-3) bis zum Merge; die neue Regel erst danach.
 - **`begriffe.md`:** muss gemergt und von t9 entschieden sein (alle 10 Entscheide liegen vor, Dokument noch im Review); die Konstanten folgen dem Verzeichnis wörtlich.
 - **Seiten:** keine; die Umstellung der Fremdstellen erfolgt mit den Seiten (M3 bis M7). Für M2b (Teil B) nutzen Start und Lobby `format.ts` schon.
@@ -111,11 +113,17 @@ Start (entschieden (t9, 2026-11-11)): Zwei Seiten tragen den „Start“: `/` (`
 | Captain | je Team mindestens 4 bereit | „Preis bestätigen“ (heute `FinalConfirm`, „Letzte Bestätigung“) |
 | Captain | nach beiden Bestätigungen | „Preis steht fest“ (Status), Hauptaktion: „Zur Spielübersicht“ |
 
-### B2.4 Was entfällt (Altmodell, AC-14)
-- Lobby: Guthaben-/Reservierungstexte und `LightLegend` im `!cardOn`-Zweig (`page.tsx:277-305,323,328`), `PlayerLight` im Guthaben-Zweig.
-- `/app`: Guthaben-Karte (`app/page.tsx:53-56`, Test-ID `wallet-card`).
-- Navigation: Guthaben in der Kopfleiste (`src/components/Header.tsx:17,53`) und im Konto-Menü (`src/components/UserMenu.tsx:69-70`).
-- Der Rest des Altmodells (`/app/guthaben`, Rabattcodes, Admin-Seiten) ist 012 M6a, nicht M2b. Für die Abnahme gilt: **auf Start und Lobby ist nirgends Guthaben sichtbar**.
+### B2.4 Was entfällt und was bleibt (Altmodell, AC-14; Option B, entschieden (t9, 2026-11-11))
+Entfällt in M2b:
+- Start `/` und Lobby: Guthaben-/Reservierungstexte und `LightLegend` im `!cardOn`-Zweig (`lobby/[id]/page.tsx:277-305,323,328`), `PlayerLight` im Guthaben-Zweig (siehe Risiko B9.1: Altpfad für den Schalter AUS).
+- `/app`: die Guthaben-Karte (`app/page.tsx:53-56`, Test-ID `wallet-card`).
+
+Bleibt in M2b bis 012 M5 (Turnier auf Karte) und fällt mit 012 M6a:
+- Kopfleiste: Guthaben-Betrag und Link (`src/components/Header.tsx:17,53`, Test-ID `header-wallet`).
+- Konto-Menü: Menüpunkt „Guthaben“ (`src/components/UserMenu.tsx:69-70`).
+- Die Seite `/app/guthaben` samt Rabattcodes und den Admin-Seiten.
+
+Für die Abnahme gilt: **auf Start `/`, Start `/app` und Lobby steht im Inhalt kein Guthaben**; der Rest (Kopfleiste, Konto-Menü, `/app/guthaben`) bleibt sichtbar und steht als Vermerk im Abnahme-Paket (B5).
 
 ### B2.5 Navigation
 Der Look von Start und Lobby wirkt nur mit passender Navigation. Laut Umbauplan gehört `AppNav` zu M3. Für M2b braucht es mindestens: `Header` und `BottomNav` im neuen Look, Guthaben raus, aktiver Eintrag mit `aria-current` und Wort. Entschieden (t9, 2026-11-11): In M2b wird die Navigation **nur restylt** (Header/BottomNav im neuen Look, Guthaben raus, aktiver Eintrag mit Wort); die neue Struktur (`AppNav`, fünf Ziele, Mittelknopf) folgt in M3. Das steht im NEEDS-USER-Paket (B5). `src/components/Header.tsx`, `BottomNav.tsx`, `UserMenu.tsx` (M2-4a) und `layout.tsx` sind gemeinsame Dateien (seriell, siehe `m2-komponenten-plan.md` Schritt C).
@@ -144,19 +152,18 @@ Der Nutzer bekommt **einen** Draft-PR (Ausnahme: keine Änderung an `.github/` o
 2. **Was er entscheiden soll** (Ja/Nein je Punkt): (a) Look Richtung E „Trikot“ trifft (Farben, Typografie, Dichte); (b) eine Hauptaktion pro Seite und die feste Aktionsleiste am Handy; (c) „Dein Stand“-Block; (d) Wortwahl der Zustände (Findet statt, Preis steht fest, Abbuchung fehlgeschlagen, Karte ändern); (e) Navigation (Handy unten, Desktop oben) und fehlendes Guthaben.
 3. **Was nicht gefragt wird:** Funktionen und Rechte (unverändert), Rechtstexte (Anwalt), Seiten außerhalb von Start und Lobby.
 4. **Ergebnis:** „Ja“ → M3 startet in der Breite; „Ja mit Änderungen“ → Änderungsliste, nur diese Seiten, neue Abnahme der geänderten Bilder; „Nein“ → Gründe, zurück an Gestaltung (Impeccable `critique` neu).
-5. **Vermerk zur Navigation:** „Navigation nur restylt, neue Struktur folgt in M3.“
+5. **Vermerke:** „Navigation nur restylt, neue Struktur folgt in M3.“ und „Guthaben-Rest (Kopfleiste, Konto-Menü, /app/guthaben) bis 012 M5, wird mit M6a entfernt.“
 6. **Zusammenfassung der Impeccable-Läufe** (Anzahl Funde, offene P1 mit Begründung) und die Test-Belege (typecheck, lint, Unit, Playwright inkl. AC-5: keine URL und keine Test-ID geändert).
 
 ## B6. Abhängigkeiten und Reihenfolge
 ```
-M2-1 Tokens (worker-3)  ->  M2-2a Button  ->  M2-2b/M2-2c  \
-                                     M2-3a Form/DateTimeField, M2-3b ConfirmDialog  ->  M2-5 format.ts
+M2-1 Tokens (worker-3)  ->  M2-2a Button  ->  M2-2b/M2-2c, M2-3a/M2-3b, M2-5 format.ts   (alle nach M2-2a; M2-5 ist unabhängig von M2-3)
 012 M3b (Fehlerzustand, Datenschutz-Fix, feat/charge-m3b, worker-1)  ----------------> M2b Lobby
 Navigation (nur Restyle von Header/BottomNav und UserMenu M2-4a; AppNav M2-4b erst in M3)  --> M2b Start + Lobby
 ```
 - **M2-1 bis M2-5** (s. o.) müssen gemergt sein; M2b nutzt `PageShell`, `PageHeader`, `StatusBadge`, `StateMessage`, `Button`, `ConfirmDialog`, `format.ts`.
 - **012 M3b** (Fehlerzustand mit Grund und Nachzahl-Weg, Datenschutz-Fix „Dritte sehen neutral“, Benachrichtigung bei Fehlschlag) muss **vor der Lobby** in M2b stehen (Umbauplan Abhängigkeiten); der Branch `feat/charge-m3b` läuft bei worker-1. Ohne ihn zeigt die Lobby den Fehlerzustand nicht.
-- **012 M6a-Teil für Start und Lobby:** Guthaben-Texte dieser Seiten und der Kopfleiste/des Menüs werden **in M2b** entfernt (sonst enthält die Abnahme Altmodell); der Rest von 012 M6a bleibt spätestens M3 (AC-14). Voraussetzung für M6a ist 012 M5 (Turnier auf Karte).
+- **Guthaben und 012 M5 (Option B, entschieden (t9, 2026-11-11)):** Das Entfernen in M2b betrifft nur Start-/Lobby-Texte und die `/app`-Karte. Kopfleisten-Betrag, Konto-Menü-Link und `/app/guthaben` bleiben bis **012 M5** (Turnier auf Karte; Voraussetzung für 012 M6a, AC-14 „spätestens mit M3“) und fallen mit M6a. Die Alternative (alles schon in M2b entfernen) wäre nur zulässig, wenn 012 M5 vor M2b gemergt ist; sie ist **verworfen**. Fällt 012 M5 nach M3, bleibt der Guthaben-Rest länger sichtbar als AC-14 vorsieht (Risiko B9.2).
 - **`begriffe.md`** gemergt und die zehn Entscheide von t9 gültig (die Seiten benutzen sie ab M2b).
 - **Seed:** `scripts/seed-frontend.mts` und `card_payments_enabled = true`; `PAYMENTS_FAKE=1` nur für die Fake-Testkarte lokal (nicht in Produktion).
 - **Gemeinsame Dateien seriell:** `globals.css` (M2-1), `layout.tsx`, `Header`, `BottomNav`, `i18n.ts`.
@@ -167,7 +174,7 @@ Navigation (nur Restyle von Header/BottomNav und UserMenu M2-4a; AppNav M2-4b er
 |---|---|
 | Start `/` und `/app` (Aufbau, Altmodell raus, Tests anpassen) | 1,5 bis 2 |
 | Lobby (Aufbau „Dein Stand“, Hauptaktion je Rolle, StatusBadge, StateMessage, ConfirmDialog, Guthaben-Zweig raus) | 2,5 bis 3,5 |
-| Navigation (nur Restyle von Header/BottomNav, Guthaben raus; `AppNav`-Bau in M3) | 1 |
+| Navigation (nur Restyle von Header/BottomNav, Guthaben-Rest bleibt; `AppNav`-Bau in M3) | 1 |
 | Screenshots, Vorher/Nachher, Impeccable (42 Durchgänge), Fixes der Funde | 1,5 bis 2 |
 | Abnahmeschleife mit dem Nutzer (eine Änderungsrunde) | 0,5 bis 1 |
 | **Summe M2b** | **7 bis 9,5** (davon etwa 5,5 bis 7,5 ohnehin in M3 geplant; zusätzlich entsteht vor allem die Abnahmeschleife, etwa 1,5 bis 3 Tage) |
@@ -175,13 +182,20 @@ Navigation (nur Restyle von Header/BottomNav und UserMenu M2-4a; AppNav M2-4b er
 Teil A (M2-5): 1,5 bis 2 Tage (A7). Die Umbauplan-Summe M2 (6 bis 8) und M3 (8 bis 10) ändert sich dadurch nicht in der Summe, wohl aber in der Reihenfolge.
 
 ## B8. Beleg-Befehle (Abnahme M2b)
-`npm run typecheck`; `npm run lint`; `npm test`; `npx playwright test` (alle bisherigen E2E, AC-5: keine URL und keine Test-ID geändert; angepasst werden nur Tests, die Guthaben-Elemente prüfen, mit Begründung im PR); `npx playwright test tests/e2e/ui-regeln.spec.ts tests/e2e/a11y.spec.ts` (M2-2d) auf Start und Lobby; Screenshot-Skript B3; Suche in `src/app/page.tsx`, `src/app/app/page.tsx`, `src/app/lobby/[id]/page.tsx`, `Header.tsx`, `UserMenu.tsx`: kein „Guthaben“; Begriffe-Test (A2) grün; Impeccable-Protokoll (B4).
+`npm run typecheck`; `npm run lint`; `npm test` (inkl. angepasster `tests/unit/i18n.test.ts`); `npx playwright test` (alle bisherigen E2E, AC-5: keine URL und keine Test-ID geändert, **mit einer freigegebenen Ausnahme**, siehe unten); `npx playwright test tests/e2e/ui-regeln.spec.ts tests/e2e/a11y.spec.ts` (M2-2d) auf Start und Lobby; Screenshot-Skript B3; Suche in `src/app/page.tsx`, `src/app/app/page.tsx`, `src/app/lobby/[id]/page.tsx`: kein „Guthaben“ im Inhalt (Kopfleiste und Konto-Menü sind ausgenommen, Option B); Begriffe-Test (A2) grün; Impeccable-Protokoll (B4).
+
+**Freigegebene Ausnahme von AC-5 (t9, 2026-11-11), PR-Text „Ausnahme AC-5: Guthaben-Tests ersetzt“ mit Begründung:**
+- `tests/e2e/basics.spec.ts:28-36` („Guthaben ist immer erreichbar, auch wenn Zahlungen noch aus sind“): Zeilen 32, 34 benutzen `wallet-card` (entfällt). Ersatz: **negativ** prüfen, dass `wallet-card` auf `/app` nicht mehr erscheint (`toHaveCount(0)`) und kein „Guthaben“ im Inhalt steht; der Weg zu `/app/guthaben` läuft über `header-wallet` (bleibt bis M5); Zeile 33 (`header-wallet` zeigt „0,00“) und Zeile 36 (Überschrift „So funktioniert dein Guthaben“) bleiben.
+- `tests/e2e/basics.spec.ts:177` (Konto-Menü-Test: Menüpunkt „Guthaben“): **bleibt unverändert**, weil der Menüpunkt bis M5 bleibt (Option B); ändert sich erst mit M6a.
+- Weitere Tests mit Guthaben in der Lobby, die der Plan benennt, weil sie mit dem Entfernen der Lobby-Texte brechen könnten (Risiko B9.1): `tests/e2e/payments.spec.ts:196-241` („Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden“, prüft „Dein Guthaben reicht nicht“ und den Link „Guthaben aufladen“), `tests/e2e/karte-lobby.spec.ts:52` („bleibt die Lobby im Guthaben-Modell“), `tests/e2e/phase4.spec.ts:218` (`reservation-info`). `tests/e2e/karte-lobby.spec.ts:37-38` prüft schon negativ, dass das Kartenmodell keine Guthaben-Wörter zeigt.
 
 ## B9. Entscheide (t9, 2026-11-11) und Risiken
-Entschieden (t9, 2026-11-11): (1) Start = `/` und `/app`, 12 Pflichtbilder, Guthaben-Karte auf `/app` entfällt; (2) Navigation in M2b nur restylen, `AppNav` in M3; (3) 42 Durchgänge, Sub-Agents seriell, Degradiert offen ausweisen; (4) M2-4a `UserMenu`, M2-4b `AppNav` (Bau in M3); (5) Englisch mit Rückfall auf Deutsch (Teil A, AC 8). Offen ist davon nichts mehr; die folgenden Punkte sind Risiken.
+Entschieden (t9, 2026-11-11): (1) Start = `/` und `/app`, 12 Pflichtbilder, Guthaben-Karte auf `/app` entfällt; (2) Navigation in M2b nur restylen, `AppNav` in M3; (3) 42 Durchgänge, Sub-Agents seriell, Degradiert offen ausweisen; (4) M2-4a `UserMenu`, M2-4b `AppNav` (Bau in M3); (5) Englisch mit Rückfall auf Deutsch (Teil A, AC 8); (6) **Option B für das Guthaben:** nur Start-/Lobby-Texte und `/app`-Karte entfallen in M2b, Kopfleiste, Konto-Menü und `/app/guthaben` bleiben bis 012 M5 und fallen mit M6a; E2E-Ausnahme von AC-5 freigegeben (B8). Die folgenden Punkte bleiben als **Risiken** und offene Fragen bestehen.
 
-1. **012 M3b noch nicht gemergt** (Branch `feat/charge-m3b`): blockiert den Fehlerzustand; Reihenfolge einhalten.
-2. **Zeitzone/Seed-Zeiten:** Spiele liegen relativ zum Seed-Lauf (1 bis 6 Tage); Seed kurz vor den Screenshots neu aufrufen, sonst „abgelaufen“.
-3. **Öffentliches Repository:** keine Screenshots, Pfade oder Mails ins Repo (CLAUDE.md); Anhänge nur am PR.
-4. **Look-Entscheid ist subjektiv:** das Paket muss Vorher/Nachher und eine kurze Begründung der Hauptaktions-Regel enthalten, sonst bleibt „gefällt mir nicht“ ohne Richtung.
-5. **Seriell statt parallel:** 42 Impeccable-Durchgänge nacheinander verlängern die Laufzeit der Abnahme; die Schätzung in B7 (1,5 bis 2 Tage) ist grob.
+1. **Lobby-Altpfad und E2E (offen, t9):** Die Lobby kennt zwei Pfade: Kartenmodell (`cardOn`) und den Guthaben-Pfad (`!cardOn`, Standard solange `card_payments_enabled` AUS ist). Option B verlangt „Guthaben aus den Lobby-Texten“. Zwei Lesarten: (a) **Altpfad bleibt im Code** (nur die Abnahme zeigt das Kartenmodell; der Guthaben-Zweig lebt für Altspiele und Schalter AUS bis M6a): kein E2E bricht, Lobby-Abnahme zeigt Kartenmodell; (b) **Texte endgültig weg**: `payments.spec.ts:196-241`, `karte-lobby.spec.ts:52`, `phase4.spec.ts:218` brechen und müssen als weitere Ausnahme von AC-5 ersetzt werden, und Spiele im Guthaben-Modell hätten keine Anzeige mehr. Empfehlung: (a). Entscheid t9 steht aus.
+2. **Guthaben-Rest länger als AC-14:** Bleibt der Rest (Kopfleiste, Konto-Menü, `/app/guthaben`) bis 012 M5 und liegt M5 nach M3, ist AC-14 („kein Spieler sieht Guthaben, spätestens mit M3“) für diesen Rest nicht erfüllt. Reihenfolge 012 M3b bis M5 vor dem Pilot (AC-14) einhalten oder den Pilot-Termin anpassen.
+3. **012 M3b noch nicht gemergt** (Branch `feat/charge-m3b`): blockiert den Fehlerzustand; Reihenfolge einhalten.
+4. **Zeitzone/Seed-Zeiten:** Spiele liegen relativ zum Seed-Lauf (1 bis 6 Tage); Seed kurz vor den Screenshots neu aufrufen, sonst „abgelaufen“.
+5. **Öffentliches Repository:** keine Screenshots, Pfade oder Mails ins Repo (CLAUDE.md); Anhänge nur am PR.
+6. **Look-Entscheid ist subjektiv:** das Paket muss Vorher/Nachher und eine kurze Begründung der Hauptaktions-Regel enthalten, sonst bleibt „gefällt mir nicht“ ohne Richtung.
+7. **Seriell statt parallel:** 42 Impeccable-Durchgänge nacheinander verlängern die Laufzeit der Abnahme; die Schätzung in B7 (1,5 bis 2 Tage) ist grob.
