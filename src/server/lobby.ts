@@ -15,7 +15,7 @@ import { createBookingJob, withdrawBookingJob } from "./booking";
 import { hasLongLead } from "@/lib/deadlines";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { fixShare, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { cardModeActive, fixShare, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
@@ -269,11 +269,19 @@ async function mutateLobby(userId: string, matchId: string, fn: (tx: Tx, match: 
   });
 }
 
-/** Ist das Team komplett? Mindestens so viele Spieler wie nötig, alle bereit und (bei eingeschalteten Zahlungen) alle bezahlt. */
+/**
+ * Ist das Team komplett? Mindestens so viele Spieler wie nötig, alle bereit und (bei eingeschalteten Zahlungen) alle bezahlt.
+ * Kartenmodell (Vertrag 012): statt "bezahlt" muss jeder eingeteilte Spieler eine Karte hinterlegt haben (card_status card_ready).
+ */
 export async function teamComplete(tx: Tx, matchId: string, teamId: string): Promise<boolean> {
-  const rows = await tx.select({ ready: matchParticipants.readyAt, paid: matchParticipants.paidCents }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.teamId, teamId)));
-  const [m] = await tx.select({ priceCents: matches.priceCents }).from(matches).where(eq(matches.id, matchId));
-  const pay = (await paymentsEnabled(tx)) && m?.priceCents !== 0; // kostenlos (0 €): keine Zahlungspflicht
+  const rows = await tx
+    .select({ ready: matchParticipants.readyAt, paid: matchParticipants.paidCents, card: matchParticipants.cardStatus })
+    .from(matchParticipants)
+    .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.teamId, teamId)));
+  const [m] = await tx.select({ id: matches.id, priceCents: matches.priceCents, kind: matches.kind, legacyShareModel: matches.legacyShareModel }).from(matches).where(eq(matches.id, matchId));
+  const free = m?.priceCents === 0; // kostenlos (0 €): keine Zahlungspflicht
+  if (m && (await cardModeActive(tx, m))) return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (free || r.card === "card_ready"));
+  const pay = (await paymentsEnabled(tx)) && !free;
   return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (!pay || r.paid > 0));
 }
 
@@ -296,7 +304,10 @@ export function finalConfirm(userId: string, matchId: string) {
       .from(teamMembers)
       .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), inArray(teamMembers.teamId, [match.homeTeamId, match.awayTeamId])));
     if (!admin) throw new DomainError("Nur der Captain kann die Lobby zum Schluss bestätigen.");
-    if (!(await teamComplete(tx, matchId, admin.teamId))) throw new DomainError(`Es müssen mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle in deinem Team bereit und bezahlt.`);
+    const card = await cardModeActive(tx, match);
+    if (!(await teamComplete(tx, matchId, admin.teamId))) {
+      throw new DomainError(card ? `Es müssen mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle in deinem Team bereit sein und eine Karte hinterlegt haben.` : `Es müssen mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle in deinem Team bereit und bezahlt.`);
+    }
     const both = match.kind === "private" && (await isAdminOf(tx, userId, match.homeTeamId)) && (await isAdminOf(tx, userId, match.awayTeamId));
     if (both) {
       if (!(await teamComplete(tx, matchId, match.homeTeamId)) || !(await teamComplete(tx, matchId, match.awayTeamId))) throw new DomainError(`Es müssen in beiden Teams mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle bereit und bezahlt.`);
@@ -312,7 +323,8 @@ export function finalConfirm(userId: string, matchId: string) {
     if (bothDone) {
       await fixShare(tx, fresh);
       // Anlage unter 48 Stunden Vorlauf: sofort buchen, sobald alle bezahlt haben und beide Captains bereit sind (genau einmal: Spielsperre plus settledAt)
-      if (isDeadlineModel(fresh) && !hasLongLead(fresh.startsAt, await leadStart(tx, fresh))) {
+      // Kartenmodell (M1): keine Buchung und keine Abbuchung, das kommt mit M2; das zweite Bereit schreibt nur Preis und Spielerzahl fest
+      if (!card && isDeadlineModel(fresh) && !hasLongLead(fresh.startsAt, await leadStart(tx, fresh))) {
         const [booked] = await tx.select().from(matches).where(eq(matches.id, matchId));
         const free = !booked.priceCents || booked.finalShareCents === 0;
         // Zahlungen an und Preis > 0: Lässt sich nicht buchen (z. B. Unterdeckung), scheitert die Bestätigung ganz; die Transaktion rollt zurück,
@@ -389,6 +401,7 @@ export function payShare(userId: string, matchId: string) {
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
     if (match.schedulingOpen || match.vetoStatus === "halls" || match.vetoStatus === "running") throw new DomainError("Bezahlen geht, sobald Uhrzeit und Halle feststehen.");
+    if (await cardModeActive(tx, match)) throw new DomainError("Bezahlt wird per Karte: Hinterlege eine Karte. Abgebucht wird erst, wenn der Anteil feststeht.");
     await reserveShare(tx, match, userId);
   });
 }
@@ -399,7 +412,10 @@ export function setReady(userId: string, matchId: string, ready: boolean) {
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
     if (ready && match.schedulingOpen) throw new DomainError("Erst müssen die Teams Termin und Ort gemeinsam wählen.");
-    if (ready && (await paymentsEnabled(tx)) && match.priceCents !== 0 && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil.");
+    if (ready && (await cardModeActive(tx, match))) {
+      // Kartenmodell: "Bereit" heißt "Karte hinterlegt" (Vertrag 012, AC-2); es wird nichts bezahlt
+      if (match.priceCents !== 0 && me.cardStatus !== "card_ready") throw new DomainError("Bitte hinterlege zuerst eine Karte.");
+    } else if (ready && (await paymentsEnabled(tx)) && match.priceCents !== 0 && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil.");
     await tx
       .update(matchParticipants)
       .set({ readyAt: ready ? new Date() : null })

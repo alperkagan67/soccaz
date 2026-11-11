@@ -24,6 +24,14 @@ export async function paymentsEnabled(exec: Exec = db): Promise<boolean> {
   return (await getSetting<boolean>("payments_enabled", false, exec)) === true;
 }
 
+/**
+ * Kartenmodell (Vertrag 012) eingeschaltet? Standard AUS = Guthaben, Bezahlen und Parken wie bisher. EIN: In neuen Teamspielen und Privatspielen heißt "Bereit"
+ * "Karte hinterlegt"; es gibt weder Guthabenprüfung noch -buchung in der Lobby, und die Spielerzahl ändert nur den angezeigten Anteil. Einstellung ohne Schema (Key in settings).
+ */
+export async function cardPaymentsEnabled(exec: Exec = db): Promise<boolean> {
+  return (await getSetting<boolean>("card_payments_enabled", false, exec)) === true;
+}
+
 /** Mindestzahl zahlender Spieler, ab der ein Spiel stattfindet und durch die der Hallenpreis höchstens geteilt wird. */
 export async function minPaidPlayers(exec: Exec = db): Promise<number> {
   const n = await getSetting<number>("min_paid_players", 8, exec);
