@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams } from "@/db/schema";
 import { matchmakingQueue } from "@/db/schema-matchmaking";
+import { effectiveColorKey } from "@/lib/team-color";
 
 export type MyGame = {
   kind: "game";
@@ -11,6 +12,8 @@ export type MyGame = {
   number: number;
   home: string;
   away: string;
+  homeColor: string | null; // Palettenschlüssel (gewählt oder Standard aus dem Slug); null bei Spiel-Teams von Privatspielen (kommen mit M3/M4)
+  awayColor: string | null;
   startsAt: Date;
   timeOpen: boolean;
   phase: string; // kurzer Satz: Was ist gerade dran?
@@ -25,7 +28,7 @@ export async function myCurrent(userId: string): Promise<{ games: MyGame[]; open
   const home = alias(teams, "home");
   const away = alias(teams, "away");
   const rows = await db
-    .select({ id: matches.id, number: matches.number, startsAt: matches.startsAt, schedulingOpen: matches.schedulingOpen, challengeStatus: matches.challengeStatus, vetoStatus: matches.vetoStatus, status: matches.status, homeId: matches.homeTeamId, awayId: matches.awayTeamId, homeName: home.name, awayName: away.name })
+    .select({ id: matches.id, number: matches.number, startsAt: matches.startsAt, schedulingOpen: matches.schedulingOpen, challengeStatus: matches.challengeStatus, vetoStatus: matches.vetoStatus, status: matches.status, homeId: matches.homeTeamId, awayId: matches.awayTeamId, homeName: home.name, awayName: away.name, homeKind: home.kind, awayKind: away.kind, homeSlug: home.slug, awaySlug: away.slug, homeColor: home.color, awayColor: away.color })
     .from(matches)
     .innerJoin(home, eq(home.id, matches.homeTeamId))
     .innerJoin(away, eq(away.id, matches.awayTeamId))
@@ -55,7 +58,7 @@ export async function myCurrent(userId: string): Promise<{ games: MyGame[]; open
             : m.vetoStatus === "running"
               ? captain ? "Hallen-Veto läuft: Der Captain bannt" : "Hallen-Veto läuft"
               : m.status === "confirmed" ? "Bestätigt: Das Spiel steht" : "Bereit machen und bezahlen";
-    return { kind: "game", id: m.id, number: m.number, home: m.homeName, away: m.awayName, startsAt: m.startsAt, timeOpen: m.schedulingOpen, phase, captain, confirmed: m.status === "confirmed" };
+    return { kind: "game", id: m.id, number: m.number, home: m.homeName, away: m.awayName, homeColor: m.homeKind === "team" ? effectiveColorKey(m.homeColor, m.homeSlug) : null, awayColor: m.awayKind === "team" ? effectiveColorKey(m.awayColor, m.awaySlug) : null, startsAt: m.startsAt, timeOpen: m.schedulingOpen, phase, captain, confirmed: m.status === "confirmed" };
   });
   const open = await db
     .select({ id: matchmakingQueue.id, number: matchmakingQueue.number, team: teams.name, teamId: teams.id, windows: matchmakingQueue.windows, durationMin: matchmakingQueue.durationMin })

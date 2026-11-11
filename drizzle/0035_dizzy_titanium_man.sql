@@ -1,0 +1,2 @@
+ALTER TABLE "teams" ADD COLUMN "color" text;--> statement-breakpoint
+ALTER TABLE "teams" ADD CONSTRAINT "teams_color_check" CHECK ("color" is null or "color" in ('red', 'burgundy', 'pink', 'violet', 'navy', 'blue', 'skyblue', 'teal', 'green', 'yellow', 'white', 'black'));

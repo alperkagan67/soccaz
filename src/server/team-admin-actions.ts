@@ -6,7 +6,7 @@ import { db } from "@/db";
 import { teams } from "@/db/schema";
 import type { ActionState } from "@/lib/validation";
 import { requireUser } from "./session";
-import { dissolveTeam, leaveTeam, removeMember, revokeInvites, setMemberRole, updateTeam } from "./team-admin";
+import { dissolveTeam, leaveTeam, removeMember, revokeInvites, setMemberRole, setTeamColor, updateTeam } from "./team-admin";
 import { DomainError } from "./teams";
 
 async function slugOf(teamId: string): Promise<string | null> {
@@ -30,6 +30,11 @@ async function guarded(teamId: string, fn: () => Promise<void>): Promise<ActionS
 export async function updateTeamAction(teamId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
   const user = await requireUser("/app");
   return guarded(teamId, () => updateTeam(user.id, teamId, { name: String(f.get("name") ?? ""), city: String(f.get("city") ?? ""), strength: Number(f.get("strength")), bio: String(f.get("bio") ?? "") }));
+}
+
+export async function setTeamColorAction(teamId: string, color: string): Promise<ActionState> {
+  const user = await requireUser("/app");
+  return guarded(teamId, () => setTeamColor(user.id, teamId, String(color)));
 }
 
 export async function setMemberRoleAction(teamId: string, targetId: string, role: "admin" | "player"): Promise<ActionState> {
