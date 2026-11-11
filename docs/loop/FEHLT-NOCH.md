@@ -20,3 +20,4 @@ Das Repo ist öffentlich: Hier stehen nur die NAMEN der fehlenden Angaben, nie S
 | Impressum, AGB, Datenschutz (Endfassung) | Rechtsseiten der App | rechtssicherer Betrieb | ja | Anwalt |
 | Rechnungsvorlage Firma | Rechnungsfunktion (009) | Rechnungen an Firmen | ja | Steuerberater |
 | Dependabot in den Repo-Einstellungen aktivieren | GitHub, Settings > Code security (Dependabot alerts und version updates) | wöchentliche Update-PRs für npm und GitHub Actions (nach Merge von `.github/dependabot.yml`) | nein | Nutzer |
+| Code-Scanning „Default setup“ in den Repo-Einstellungen AUS lassen bzw. abschalten | GitHub, Settings > Code security > Code scanning | sonst scheitert der Upload des CodeQL-Workflows (`.github/workflows/codeql.yml`) | nein | Nutzer |
