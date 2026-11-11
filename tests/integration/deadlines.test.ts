@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, teamMembers } from "@/db/schema";
+import { auditLog, matchParticipants, matches, teamMembers } from "@/db/schema";
 import { ledgerEntries, receipts } from "@/db/schema-finance";
-import { abortDeadline, fixDeadline } from "@/lib/deadlines";
+import { abortDeadline, fixDeadline, hasLongLead } from "@/lib/deadlines";
 import { audit } from "@/server/audit";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { finalConfirm, joinLobby, leaveLobby, payShare, removeParticipant, setReady } from "@/server/lobby";
+import { assertMinLead } from "@/server/min-lead";
 import { createPrivateGame, joinPrivateGame } from "@/server/privategame";
 import { cancelUnderfilledLobbies, closeLobbiesAtDeadline, settleDueMatches } from "@/server/scheduled";
 import { setSetting } from "@/server/settings";
@@ -81,6 +82,7 @@ describe("Frist-Regel: 48-h-Schließung (Anlage mit mindestens 48 Stunden Vorlau
     expect(await statusOf(g.match.id)).toBe("cancelled");
     for (const p of g.all) expect(await bal(p.id)).toBe(3000);
     expect((await entriesOf(g.match.id)).filter((e) => e.kind === "refund")).toHaveLength(9);
+    expect(await db.select().from(auditLog).where(and(eq(auditLog.entity, "match"), eq(auditLog.entityId, g.match.id), eq(auditLog.action, "match.cancel")))).toHaveLength(1); // genau eine Absage
     expect((await trialBalance()).balanced).toBe(true);
   });
 
@@ -213,6 +215,7 @@ describe("Frist-Regel: Anlage unter 48 Stunden (Sofortbuchung und 1-h-Abbruch)",
     expect(await statusOf(g.match.id)).toBe("cancelled");
     for (const p of g.all) expect(await bal(p.id)).toBe(3000);
     expect((await entriesOf(g.match.id)).filter((e) => e.kind === "refund")).toHaveLength(7);
+    expect(await db.select().from(auditLog).where(and(eq(auditLog.entity, "match"), eq(auditLog.entityId, g.match.id), eq(auditLog.action, "match.cancel")))).toHaveLength(1); // genau eine Absage
     expect((await trialBalance()).balanced).toBe(true);
   });
 
@@ -309,6 +312,70 @@ describe("Frist-Regel: Rückgabewert der Buchung, nachträglicher Termin, Rände
     expect(await statusOf(short.match.id)).not.toBe("cancelled");
     await closeLobbiesAtDeadline(abortDeadline(sstart));
     expect(await statusOf(short.match.id)).toBe("cancelled");
+  });
+});
+
+describe("Frist-Regel: Veto, Karenz, gebuchte Spiele, Ränder, Mindestvorlauf", () => {
+  const vetoDone = (matchId: string, at: Date) => db.insert(auditLog).values({ action: "veto.done", entity: "match", entityId: matchId, at });
+
+  it("Termin spät vereinbart, Hallen-Veto läuft: niemand kann zahlen, also wird nicht abgesagt (Repro: vor 240 Stunden angelegt, Anstoß in 30 Stunden)", async () => {
+    const g = await teamGame(30, 240, 8);
+    await db.update(matches).set({ vetoStatus: "halls" }).where(eq(matches.id, g.match.id));
+    const start = await startOf(g.match.id);
+    await closeLobbiesAtDeadline(new Date(abortDeadline(start).getTime() + 60_000)); // sogar nach dem 1-h-Abbruch
+    await closeLobbiesAtDeadline(new Date(start.getTime() - 30 * 60_000));
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+    await db.update(matches).set({ vetoStatus: "running" }).where(eq(matches.id, g.match.id));
+    await closeLobbiesAtDeadline(new Date(abortDeadline(start).getTime() + 60_000));
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+    await leaveLobby(g.all[7].id, g.match.id); // die Listensperre gilt dann auch nicht
+  });
+
+  it("Veto fertig: die Frist zählt ab dem Ende des Vetos mit 12 Stunden Karenz, aber nie näher als 15 Minuten vor Anstoß", async () => {
+    const g = await teamGame(30, 240, 8);
+    await db.update(matches).set({ vetoStatus: "done" }).where(eq(matches.id, g.match.id));
+    const start = await startOf(g.match.id);
+    await vetoDone(g.match.id, new Date(start.getTime() - 5 * H)); // Zahlen ab 5 Stunden vor Anstoß möglich: Karenz reicht bis Anstoß, also gilt 15 Minuten vor Anstoß
+    await closeLobbiesAtDeadline(new Date(abortDeadline(start).getTime() + 60_000));
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(new Date(start.getTime() - 16 * 60_000));
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(new Date(start.getTime() - 15 * 60_000));
+    expect(await statusOf(g.match.id)).toBe("cancelled");
+  });
+
+  it("ein bereits gebuchtes Spiel wird nie abgesagt, auch wenn sich Preis, Bereit oder Status danach ändern", async () => {
+    const g = await teamGame(30);
+    await payAll(g);
+    await readyAll(g);
+    await bothCaptains(g);
+    expect((await reloadMatch(g.match.id)).settledAt).not.toBeNull();
+    await db.update(matches).set({ homeFinalAt: null, finalShareCents: null, status: "lobby" }).where(eq(matches.id, g.match.id)); // nicht mehr buchbar
+    const at = new Date(abortDeadline(await startOf(g.match.id)).getTime() + 60_000);
+    await Promise.all([closeLobbiesAtDeadline(at), closeLobbiesAtDeadline(at)]);
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+    expect((await entriesOf(g.match.id)).filter((e) => e.kind === "refund")).toHaveLength(0);
+  });
+
+  it("Rand des langen Vorlaufs: genau 48 Stunden bei der Anlage gelten als lang, eine Millisekunde weniger als kurz", async () => {
+    const exact = await teamGame(72, 0, 4);
+    const estart = await startOf(exact.match.id);
+    await db.update(matches).set({ createdAt: new Date(estart.getTime() - 48 * H) }).where(eq(matches.id, exact.match.id));
+    const shortOne = await teamGame(72, 0, 4);
+    const sstart = await startOf(shortOne.match.id);
+    await db.update(matches).set({ createdAt: new Date(sstart.getTime() - 48 * H + 1) }).where(eq(matches.id, shortOne.match.id));
+    expect(hasLongLead(estart, new Date(estart.getTime() - 48 * H))).toBe(true);
+    expect(hasLongLead(sstart, new Date(sstart.getTime() - 48 * H + 1))).toBe(false);
+    await closeLobbiesAtDeadline(new Date(estart.getTime() - 36 * H + 1000)); // 48-h-Frist plus 12 Stunden Karenz ab Anlage
+    expect(await statusOf(exact.match.id)).toBe("cancelled"); // lang: die 48-h-Frist gilt
+    expect(await statusOf(shortOne.match.id)).not.toBe("cancelled"); // kurz: erst 1 h vor Anstoß
+  });
+
+  it("zentraler Mindestvorlauf: ein Termin unter einer Stunde wird abgewiesen, genau eine Stunde geht", () => {
+    const now = new Date("2026-05-01T10:00:00Z");
+    expect(() => assertMinLead(new Date("2026-05-01T11:00:00Z"), now)).not.toThrow();
+    expect(() => assertMinLead(new Date("2026-05-01T10:59:59.999Z"), now)).toThrow(/Stunde/);
+    expect(() => assertMinLead(new Date("invalid"), now)).toThrow(/Stunde/);
   });
 });
 

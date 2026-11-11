@@ -1,3 +1,4 @@
+import { assertMinLead } from "./min-lead";
 import { and, asc, count, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, teamMembers, teams } from "@/db/schema";
@@ -55,6 +56,7 @@ export async function proposeOption(userId: string, matchId: string, input: { st
     const match = await lockOpenMatch(tx, matchId);
     const teamId = await adminTeam(tx, userId, match);
     if (!optionStillValid(input.startsAt, new Date())) throw new DomainError("Der Termin muss mindestens 24 Stunden in der Zukunft liegen.");
+    assertMinLead(input.startsAt); // zentraler Mindestvorlauf (1 Stunde) als Untergrenze, falls die 24-h-Regel der Terminwahl einmal gelockert wird
     if (match.timeWindows?.length && !inWindows(input.startsAt, match.durationMin, match.timeWindows)) throw new DomainError("Die Uhrzeit muss im vereinbarten Zeitfenster liegen.");
     const [{ n }] = await tx.select({ n: count() }).from(matchOptions).where(and(eq(matchOptions.matchId, matchId), eq(matchOptions.proposedByTeam, teamId)));
     if (n >= MAX_OPTIONS_PER_TEAM) throw new DomainError(`Ihr könnt höchstens ${MAX_OPTIONS_PER_TEAM} Vorschläge machen.`);
@@ -99,6 +101,7 @@ export async function voteOption(userId: string, matchId: string, optionId: stri
     const [o] = await tx.select().from(matchOptions).where(and(eq(matchOptions.id, optionId), eq(matchOptions.matchId, matchId)));
     if (!o) throw new DomainError("Vorschlag nicht gefunden.");
     if (!optionStillValid(o.startsAt, new Date())) throw new DomainError("Dieser Termin liegt zu nah. Bitte wähle einen anderen oder schlage einen neuen vor.");
+    assertMinLead(o.startsAt);
     await tx
       .insert(matchOptionVotes)
       .values({ matchId, teamId, optionId, votedBy: userId })
@@ -121,6 +124,7 @@ async function lockIfAgreed(tx: Tx, match: MatchRow): Promise<boolean> {
   const id = agreedOption(votes, match.homeTeamId, match.awayTeamId);
   if (!id) return false;
   const [o] = await tx.select().from(matchOptions).where(eq(matchOptions.id, id));
+  if (o) assertMinLead(o.startsAt); // Termin unter einer Stunde wird beim Setzen abgewiesen
   if (!o || !optionStillValid(o.startsAt, new Date())) return false;
 
   await tx.update(matches).set({ startsAt: o.startsAt, schedulingOpen: false, schedulingDeadline: null }).where(eq(matches.id, match.id));

@@ -1,12 +1,12 @@
 import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, matchParticipants, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
-import { abortDeadline, dueReminders, fixDeadline, hasLongLead, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
+import { abortDeadline, dueReminders, dueWithGrace, fixDeadline, hasLongLead, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
 import { users } from "@/db/schema";
 import { payments } from "@/db/schema-finance";
 import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
-import { isDeadlineModel, leadStart, settleMatch } from "./wallet";
+import { isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
 import { paymentsEnabled } from "./settings";
 import { teamName } from "./names";
 import { cancelUncoveredPrivateGames } from "./privategame";
@@ -86,15 +86,17 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
   const candidates = await db
     .select()
     .from(matches)
-    .where(and(inArray(matches.kind, ["private", "team"]), eq(matches.legacyShareModel, false), inArray(matches.status, ["lobby", "confirmed"]), sql`${matches.settledAt} is null`, eq(matches.schedulingOpen, false), sql`${matches.startsAt} > ${now}`));
+    .where(and(inArray(matches.kind, ["private", "team"]), eq(matches.legacyShareModel, false), inArray(matches.status, ["lobby", "confirmed"]), sql`${matches.settledAt} is null`, eq(matches.schedulingOpen, false), inArray(matches.vetoStatus, ["none", "done"]), sql`${matches.startsAt} > ${now}`));
   let cancelled = 0;
   for (const c of candidates) {
-    const due = hasLongLead(c.startsAt, await leadStart(db, c)) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt);
+    const payOpenAt = await leadStart(db, c);
+    const due = dueWithGrace(hasLongLead(c.startsAt, payOpenAt) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt), payOpenAt, c.startsAt);
     if (due.getTime() > now.getTime()) continue;
     try {
       await db.transaction(async (tx) => {
         const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
         if (!m || m.settledAt || (m.status !== "lobby" && m.status !== "confirmed") || m.startsAt.getTime() <= now.getTime()) return;
+        if (!payAndReadyPossible(m)) return; // Zahlen und Bereit sind noch gesperrt (Termin oder Hallen-Veto): keine Absage
         // Gebucht ist erst, wenn `settleMatch` es bestätigt (kostenlos: nichts zu buchen). Meldet es false (Unterdeckung, Status), wird wie bei
         // "nicht buchbar" abgesagt und alle erstattet: nie ein Fehlbetrag zu Lasten der Plattform, nie Geld ohne Beleg auf revenue.
         const free = !m.priceCents || m.finalShareCents === 0;

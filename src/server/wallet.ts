@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { auditLog, matchParticipants, matches } from "@/db/schema";
 import { pendingRefunds } from "@/db/schema-finance";
 import { joinClosedByTime, leaveClosedByTime } from "@/lib/deadlines";
@@ -34,19 +34,24 @@ export function isDeadlineModel(match: Pick<MatchRow, "kind" | "legacyShareModel
   return (match.kind === "private" || match.kind === "team") && !match.legacyShareModel;
 }
 
-type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel" | "schedulingOpen">;
+type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel" | "schedulingOpen" | "vetoStatus">;
+
+/** Können die Spieler jetzt überhaupt zahlen und "Bereit" drücken? Nicht, solange Termin oder Hallen-Veto laufen (lobby.ts sperrt beides). Dann gibt es keine Frist. */
+export function payAndReadyPossible(match: Pick<MatchRow, "schedulingOpen" | "vetoStatus">): boolean {
+  return !match.schedulingOpen && match.vetoStatus !== "halls" && match.vetoStatus !== "running";
+}
 
 /**
- * Ab wann zählt der Vorlauf? Meist ab der Anlage. Bei Teamspielen, deren Termin erst nachträglich festgelegt wird (Terminwahl, Herausforderung),
- * ab dem Zeitpunkt der Terminfestlegung (Audit-Eintrag "scheduling.locked"): sonst wäre ein Spiel, das vor Tagen angelegt und für morgen vereinbart
- * wurde, schon über die 48-h-Frist hinaus, bevor jemand zahlen konnte. Es gibt dafür keine eigene Spalte (keine Migration).
+ * Ab wann zählt der Vorlauf? Meist ab der Anlage. Bei Teamspielen, deren Termin erst nachträglich festgelegt wird (Terminwahl, Herausforderung) oder
+ * die ein Hallen-Veto durchlaufen, ab dem letzten dieser Zeitpunkte (Audit-Einträge "scheduling.locked" und "veto.done"): sonst wäre ein Spiel, das vor
+ * Tagen angelegt und für morgen vereinbart wurde, schon über die 48-h-Frist hinaus, bevor jemand zahlen konnte. Keine eigene Spalte (keine Migration).
  */
 export async function leadStart(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "kind" | "createdAt">): Promise<Date> {
   if (match.kind !== "team") return match.createdAt;
   const [row] = await tx
     .select({ at: sql<Date | null>`max(${auditLog.at})`.mapWith(auditLog.at) })
     .from(auditLog)
-    .where(and(eq(auditLog.entity, "match"), eq(auditLog.entityId, match.id), eq(auditLog.action, "scheduling.locked")));
+    .where(and(eq(auditLog.entity, "match"), eq(auditLog.entityId, match.id), inArray(auditLog.action, ["scheduling.locked", "veto.done"])));
   return row?.at ?? match.createdAt;
 }
 
@@ -67,7 +72,7 @@ async function deadlineRulesActive(tx: Pick<Tx, "select">, match: DeadlineFields
 export async function joinClosed(tx: Pick<Tx, "select">, match: DeadlineFields, now: Date): Promise<boolean> {
   if (await deadlineRulesActive(tx, match)) {
     if (match.settledAt !== null) return true;
-    if (match.schedulingOpen) return false; // Termin steht noch nicht fest: noch keine Frist
+    if (!payAndReadyPossible(match)) return false; // Termin oder Hallen-Veto laufen: zahlen geht noch nicht, also noch keine Frist
     return joinClosedByTime(match.startsAt, await leadStart(tx, match), now);
   }
   if (match.kind !== "private" || !privateListLocked(match)) return false;
@@ -79,7 +84,7 @@ export async function joinClosed(tx: Pick<Tx, "select">, match: DeadlineFields, 
 
 /** Sind Austritt und Rauswurf gesperrt? Neue Regel: ab 48 Stunden vor Anstoß (bei Anlage unter 48 Stunden von Anfang an) und nach der Abrechnung. */
 export async function leaveClosed(tx: Pick<Tx, "select">, match: DeadlineFields, now: Date): Promise<boolean> {
-  if (await deadlineRulesActive(tx, match)) return match.settledAt !== null || (!match.schedulingOpen && leaveClosedByTime(match.startsAt, now));
+  if (await deadlineRulesActive(tx, match)) return match.settledAt !== null || (payAndReadyPossible(match) && leaveClosedByTime(match.startsAt, now));
   return privateListLocked(match);
 }
 

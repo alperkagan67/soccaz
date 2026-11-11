@@ -7,6 +7,7 @@ import { gameInvites } from "@/db/schema-matchmaking";
 import { DEFAULT_PRIVATE_PLAYERS, MAX_PRIVATE_PLAYERS, MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
 import { parseEuro } from "@/lib/money";
 import { audit } from "./audit";
+import { assertMinLead } from "./min-lead";
 import { cancelMatchTx } from "./lobby";
 import { notifyUsers } from "./notifications";
 import { paymentsEnabled } from "./settings";
@@ -23,7 +24,6 @@ export type PrivateGameInput = {
   rentCents?: number | null;
 };
 
-const MIN_LEAD_MS = 60 * 60_000;
 const MAX_RENT_CENTS = 100_000;
 const RENT_ERROR = "Bitte gib die Hallenmiete an (0 bis 1.000 Euro) oder wähle ausdrücklich kostenlos.";
 
@@ -51,7 +51,7 @@ export async function createPrivateGame(userId: string, input: PrivateGameInput)
     throw new DomainError(`Die Spielerzahl muss gerade sein, zwischen ${MIN_PRIVATE_PLAYERS} und ${MAX_PRIVATE_PLAYERS}.`);
   }
   if (![60, 90].includes(input.durationMin)) throw new DomainError("Ein Spiel dauert 60 oder 90 Minuten.");
-  if (Number.isNaN(input.startsAt.getTime()) || input.startsAt.getTime() < Date.now() + MIN_LEAD_MS) throw new DomainError("Der Termin muss mindestens eine Stunde in der Zukunft liegen.");
+  assertMinLead(input.startsAt); // zentraler Mindestvorlauf (1 Stunde)
   const venue = input.venueText.trim().slice(0, 120);
   if (!venue) throw new DomainError("Bitte gib die Halle oder den Ort an.");
   const rent = input.rentCents;

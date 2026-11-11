@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abortDeadline, dueReminders, fixDeadline, hasLongLead, joinClosedByTime, leaveClosedByTime, lobbyDeadline } from "@/lib/deadlines";
+import { abortDeadline, dueReminders, dueWithGrace, fixDeadline, hasLongLead, hasMinLead, joinClosedByTime, leaveClosedByTime, lobbyDeadline } from "@/lib/deadlines";
 
 const h = (n: number) => n * 3_600_000;
 
@@ -49,5 +49,22 @@ describe("Frist-Regel 48 h / 1 h (feste Uhren)", () => {
     expect(leaveClosedByTime(start, new Date("2026-03-08T20:00:00Z"))).toBe(true); // genau 48 h: wie der Beitritt zu
     expect(leaveClosedByTime(start, new Date("2026-03-08T20:00:01Z"))).toBe(true);
     expect(leaveClosedByTime(start, new Date("2026-03-09T20:00:00Z"))).toBe(true);
+  });
+});
+
+describe("Karenz und Mindestvorlauf (feste Uhren)", () => {
+  const start = new Date("2026-03-10T20:00:00Z");
+  it("Karenz: die Frist liegt frühestens 12 Stunden nach dem Zeitpunkt, ab dem gezahlt werden kann, aber nie näher als 15 Minuten vor Anstoß", () => {
+    // Zahlen ab 5 Stunden vor Anstoß: die Karenz reicht über den Anstoß hinaus, die Frist ist 15 Minuten vor Anstoß
+    expect(dueWithGrace(abortDeadline(start), new Date("2026-03-10T15:00:00Z"), start).toISOString()).toBe("2026-03-10T19:45:00.000Z");
+    // 24 Stunden Vorlauf: die Karenz ist längst abgelaufen, der Abbruch bleibt 1 Stunde vor Anstoß
+    expect(dueWithGrace(abortDeadline(start), new Date("2026-03-09T20:00:00Z"), start).toISOString()).toBe("2026-03-10T19:00:00.000Z");
+    // 50 Stunden Vorlauf: die 48-h-Frist läge 2 Stunden nach dem Start der Zahlung, die Karenz schiebt sie auf 12 Stunden danach
+    expect(dueWithGrace(fixDeadline(start), new Date("2026-03-08T18:00:00Z"), start).toISOString()).toBe("2026-03-09T06:00:00.000Z");
+  });
+  it("Mindestvorlauf: genau eine Stunde ist erlaubt, eine Millisekunde weniger nicht", () => {
+    const now = new Date("2026-03-10T19:00:00Z");
+    expect(hasMinLead(start, now)).toBe(true);
+    expect(hasMinLead(start, new Date(now.getTime() + 1))).toBe(false);
   });
 });

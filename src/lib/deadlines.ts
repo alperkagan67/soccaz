@@ -47,9 +47,27 @@ export function abortDeadline(startsAt: Date): Date {
   return new Date(startsAt.getTime() - ABORT_BEFORE_START_HOURS * 3_600_000);
 }
 
-/** Ist der Beitritt geschlossen? Mit langem Vorlauf ab der 48-h-Frist; mit kurzem Vorlauf nie (offen bis zur Buchung oder zum Abbruch). */
-export function joinClosedByTime(startsAt: Date, createdAt: Date, now: Date): boolean {
-  return hasLongLead(startsAt, createdAt) && now.getTime() >= fixDeadline(startsAt).getTime();
+export const PAY_GRACE_HOURS = 12; // Karenz: nach dem Zeitpunkt, ab dem Zahlen und Bereit möglich sind, bleiben mindestens so viele Stunden (wie die alte Lobby-Frist)
+export const LAST_CHECK_BEFORE_START_MINUTES = 15; // die Karenz schiebt eine Frist nie näher als 15 Minuten an den Anstoß
+export const MIN_LEAD_HOURS = 1; // Mindestvorlauf für jedes Spiel: der Termin muss mindestens eine Stunde in der Zukunft liegen
+
+/** Hat der Termin mindestens eine Stunde Vorlauf? */
+export function hasMinLead(startsAt: Date, now: Date): boolean {
+  return startsAt.getTime() - now.getTime() >= MIN_LEAD_HOURS * 3_600_000;
+}
+
+/**
+ * Frist mit Karenz: frühestens `PAY_GRACE_HOURS` nach dem Zeitpunkt, ab dem Zahlen und Bereit möglich wurden (Anlage, Terminfestlegung, Ende des
+ * Hallen-Vetos), aber nie später als 15 Minuten vor Anstoß. Ohne die Karenz würde ein spät vereinbartes Spiel abgesagt, bevor jemand zahlen konnte.
+ */
+export function dueWithGrace(baseDue: Date, payOpenAt: Date, startsAt: Date): Date {
+  const withGrace = Math.max(baseDue.getTime(), payOpenAt.getTime() + PAY_GRACE_HOURS * 3_600_000);
+  return new Date(Math.min(withGrace, startsAt.getTime() - LAST_CHECK_BEFORE_START_MINUTES * 60_000));
+}
+
+/** Ist der Beitritt geschlossen? Mit langem Vorlauf ab der 48-h-Frist (mit Karenz); mit kurzem Vorlauf nie (offen bis zur Buchung oder zum Abbruch). */
+export function joinClosedByTime(startsAt: Date, payOpenAt: Date, now: Date): boolean {
+  return hasLongLead(startsAt, payOpenAt) && now.getTime() >= dueWithGrace(fixDeadline(startsAt), payOpenAt, startsAt).getTime();
 }
 
 /** Sind Austritt und Rauswurf gesperrt? Ab 48 Stunden vor Anstoß; bei Anlage unter 48 Stunden gilt das von Anfang an. */
