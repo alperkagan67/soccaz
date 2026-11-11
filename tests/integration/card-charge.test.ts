@@ -334,3 +334,56 @@ describe("Hauptbuch und Guthaben bleiben getrennt", () => {
     }
   });
 });
+
+describe("parallele Ereignisse desselben PaymentIntents vor der Bindung", () => {
+  const variants: [string, string][] = [
+    ["payment_intent.requires_action", "payment_intent.succeeded"],
+    ["payment_intent.succeeded", "payment_intent.requires_action"],
+    ["payment_intent.succeeded", "payment_intent.succeeded"],
+    ["payment_intent.payment_failed", "payment_intent.succeeded"],
+    ["payment_intent.succeeded", "payment_intent.payment_failed"],
+  ];
+  it("genau eine Buchung, Zeile succeeded, Platz charged, Hauptbuch ausgeglichen (alle Reihenfolgen, mehrfach wiederholt)", async () => {
+    for (let round = 0; round < 3; round++) {
+      for (const [first, second] of variants) {
+        const c = await charge(800, { piId: null });
+        c.piId = nid("pi_par");
+        const body = (type: string) => piObject(c, type === "payment_intent.payment_failed" ? { last_payment_error: { code: "card_declined" } } : {});
+        const results = await Promise.all([send(first, body(first)), send(second, body(second))]);
+        expect(results.map((r) => r.status)).toEqual([200, 200]);
+        expect(await rowOf(c), `${first}+${second}`).toMatchObject({ status: "succeeded", paymentIntentId: c.piId });
+        expect((await seatOf(c)).cardStatus).toBe("charged");
+        const entries = await ledgerOf(c);
+        expect(entries).toHaveLength(1);
+        expect(entries[0].idempotencyKey).toBe(`charge:${c.piId}`);
+        expect(await auditsFor("charge.ignored", c.piId)).toBe(0); // nichts als "anderer PaymentIntent" verworfen
+      }
+    }
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("ein wirklich anderer PaymentIntent für dieselbe Zeile wird weiter ignoriert", async () => {
+    const c = await charge(800, { piId: null });
+    c.piId = nid("pi_eins");
+    await send("payment_intent.requires_action", piObject(c));
+    await send("payment_intent.succeeded", piObject(c, { id: nid("pi_zwei") }));
+    expect((await rowOf(c)).status).toBe("requires_action");
+    expect(await ledgerOf(c)).toHaveLength(0);
+  });
+});
+
+describe("Rangfolge succeeded > failed > requires_action > pending", () => {
+  it("ein verspätetes requires_action überschreibt failed nicht; failed überschreibt requires_action", async () => {
+    const a = await charge();
+    await send("payment_intent.payment_failed", piObject(a, { last_payment_error: { code: "card_declined" } }));
+    await send("payment_intent.requires_action", piObject(a));
+    expect(await rowOf(a)).toMatchObject({ status: "failed", failureCode: "card_declined" });
+    expect((await seatOf(a)).cardStatus).toBe("failed");
+
+    const b = await charge();
+    await send("payment_intent.requires_action", piObject(b));
+    expect((await rowOf(b)).status).toBe("requires_action");
+    await send("payment_intent.payment_failed", piObject(b, { last_payment_error: { code: "expired_card" } }));
+    expect(await rowOf(b)).toMatchObject({ status: "failed", failureCode: "expired_card" });
+  });
+});

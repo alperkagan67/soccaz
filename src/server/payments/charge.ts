@@ -24,6 +24,7 @@ export type ChargeReport = {
 
 export type ApplyResult = { status: "applied" | "already" | "ignored"; reason?: string };
 
+const RANK: Record<string, number> = { pending: 0, requires_action: 1, failed: 2, succeeded: 3 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const cleanCode = (c: string | null) => (typeof c === "string" && /^[a-z0-9_.-]{1,64}$/i.test(c) ? c : c ? "unknown" : null);
 
@@ -46,7 +47,9 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     if (!matchId || !userId || !UUID.test(matchId) || !UUID.test(userId)) return ignore("unknown_payment_intent");
     [row] = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId))).for("update");
     if (!row) return ignore("unknown_charge");
-    if (row.paymentIntentId !== null) return ignore("other_payment_intent"); // die Zeile gehört schon zu einem anderen PaymentIntent
+    // Die Zeile gehört zu einem ANDEREN PaymentIntent. Derselbe PaymentIntent ist kein Fehler: ein paralleles Ereignis hat ihn gerade gebunden
+    // (wir haben auf seine Sperre gewartet) und wird normal weiterverarbeitet, sonst ginge ein succeeded verloren (Geld abgebucht, nicht gebucht).
+    if (row.paymentIntentId !== null && row.paymentIntentId !== r.paymentIntentId) return ignore("other_payment_intent");
   }
   if (r.metadata.matchId !== null && r.metadata.matchId !== row.matchId) return ignore("metadata_mismatch");
   if (r.metadata.userId !== null && r.metadata.userId !== row.userId) return ignore("metadata_mismatch");
@@ -55,6 +58,8 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   if (!profile || r.customerId !== profile.stripeCustomerId) return ignore("customer_mismatch");
 
   if (row.status === "succeeded") return { status: "already" };
+  // Rangfolge succeeded > failed > requires_action > pending: ein verspätetes, "schwächeres" Ereignis überschreibt nichts
+  if (r.outcome !== "succeeded" && RANK[r.outcome] < RANK[row.status]) return { status: "already" };
   if (row.paymentIntentId === null) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
 
   if (r.outcome === "succeeded") {
