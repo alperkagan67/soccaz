@@ -1,7 +1,7 @@
 # M3-Plan: Navigation und Einstieg (Vertrag 013, M3)
 Stand: 2026-11-11 · Code-Stand `origin/main` 31e0aa2 · Verfasser: worker-4 (Plan, Doku, kein Code) · Status: Entwurf, Review offen
 
-Zweck: Plan für M3 (Umbauplan: 8 bis 10 Task-Tage): `AppNav`, Start, Spiel suchen, Meine Spiele (`/app`), Lobby (Dein Stand, Hauptaktion, Captain-Leiste, Fehlerzustand), Neuling/Einladung/Onboarding, Turnierliste. Der Plan ändert keinen Code und keinen Vertrag. **Er trifft keine Entscheide; offene Punkte stehen als Fragen in Abschnitt 10.**
+Zweck: Plan für M3 (Umbauplan: 8 bis 10 Task-Tage): Navigation (`AppNav`), Start, Spiel suchen, Meine Spiele (`/app`), Lobby (Dein Stand, Hauptaktion, Captain-Leiste, Fehlerzustand), Neuling/Einladung/Onboarding, Turnierliste. Der Plan ändert keinen Code und keinen Vertrag. **Er trifft keine eigenen Entscheide; F1 (Leiste) ist von t9 entschieden und eingearbeitet, die übrigen offenen Punkte stehen als Fragen in Abschnitt 10.3.**
 
 Quellen: `docs/design/umbauplan-013.md` (Abschnitt 2 und M3-Zeile, Branch `docs/013-freigabe`), Vertrag 013 (AC-1 bis AC-15, Meilenstein M3), Vertrag 007 (AC-1 bis AC-4: Leiste, „Meine Spiele“, Begriffe), `docs/design/analyse-frontend-verdichtung.md` (Cluster K06, K08, K11, K12, K14; Top-30-Funde), die Funde der Analysen X/Y1/Y2 mit den im Text genannten IDs, `docs/design/begriffe.md` (Branch `docs/begriffe-entwurf`, Entscheide 1 bis 10 von t9), `docs/design/m2-komponenten-plan.md` (M2-2/M2-3), `docs/design/m2b-und-m2-5-plan.md` (M2b, M2-5), Backlog 58 und 63.
 
@@ -31,12 +31,14 @@ M2 (M2-1 bis M2-5) → M2b (Look-Abnahme Start/Lobby, Option B) → 012 M3b bis 
 - `src/components/Footer.tsx` (28 Zeilen): **14 Links** (Hilfe, Kontakt, Livescore, Rangliste, Teams, Impressum, Datenschutz, AGB, Hausordnung, Lobby aufmachen, Spieler, Hallen, Mitspieler gesucht, „Für Hallenbetreiber“) und Sprachumschalter (Fund Y2-C-25: 14 Textlinks).
 - Funde: X-06 (falscher aktiver Reiter, Gäste sehen Reiter für Angemeldete), Y1-GD-26 (Navigation kennt kein „Turniere“ in Kopfleiste/Fußzeile; `Header.tsx:26-35`, `Footer.tsx:10-23`), K11 (145 Funde), K14 (65 Funde: stille Sperren, Rolle nicht sichtbar).
 
-### 2.2 Ziel (Umbauplan Abschnitt 2, K11)
-- **Ein Link-Modell** (z. B. `src/lib/nav.ts`: Ziele, Matcher, Icons, Rollenbereiche) für `Header` (ab `sm`) und `BottomNav` (Handy): **fünf Ziele: Start/Meine Spiele, Spiel suchen (Mittelknopf, Orange), Turniere, Team, Profil.** `AppNav` (M2-4b) rendert beide Darstellungen aus diesem Modell.
-- Aktiver Eintrag mit `aria-current="page"` und **Wort** (nicht nur Strich/Farbe).
-- Rollenbereiche (Hallenbetreiber, Admin) im **Profilmenü** (`UserMenu`), nicht in der Hauptnavigation; die Rolle steht im Menü (K14).
-- Fußzeile **nur Rechtliches** (Impressum, Datenschutz, AGB, Hausordnung, Hilfe, Kontakt, Sprache); die übrigen 8 Links wandern in die Navigation oder entfallen (Frage F2).
-- Gäste: Mittelknopf führt zur Suche, Profil zur Anmeldung (007 AC-2); Gäste sehen keine Reiter für Angemeldete (X-06).
+### 2.2 Ziel (Vertrag 007 AC-1 / Nutzerentscheid Q6, F1 entschieden (t9, 2026-11-11, bindend))
+- **Die Leiste ist die aus Vertrag 007 AC-1:** **Teamspiel | Privatspiel | Spiel suchen (Mittelknopf, Orange) | Turniere | Profil**, auf dem Handy unten **und** auf dem Desktop oben, gleiche Ziele, gleiche Reihenfolge. Aktiver Eintrag mit `aria-current="page"` und **Wort**. Der Umbauplan Abschnitt 2 ist darauf angeglichen (`umbauplan-013.md`, Branch `docs/013-freigabe`).
+- **Ein Link-Modell** (z. B. `src/lib/nav.ts`: Ziele, Matcher, Icons, Rollenbereiche) für `Header` (ab `sm`) und `BottomNav` (Handy); `AppNav` (M2-4b) rendert beide Darstellungen aus diesem Modell. Heute sind es zwei getrennte Listen (`BottomNav.tsx`: die fünf Ziele; `Header.tsx`: „Offene Lobbys“, „Livescore“, „Rangliste“).
+- **Startseite = Logo (`/`).** Für Angemeldete ist **„Meine Spiele“ (`/app`) der Einstieg im Profil-Tab** (Profil → Meine Spiele, nach Modus gruppiert, Teilbereich B); der Profil-Eintrag zeigt heute schon auf `/app`.
+- **„Spiel suchen“ führt in einen Auswahlschritt:** Teamspiel suchen / Privatspiel anlegen / Turnier. Der Auswahlschritt wird **auf `/suche` geplant** (URL und Überschrift „Offene Lobbys“ bleiben, damit die bestehenden Tests unverändert laufen, Abschnitt 8): oben ein Auswahlblock mit den drei Wegen (Teamspiel: Lobby aufmachen bzw. Offene Lobbys ansehen; Privatspiel anlegen: `/app/privatspiel/neu`; Turnier: `/turniere`), darunter die Liste der offenen Lobbys. Die Komponente `GameModes` (Teamspiel/Privatspiel/Turnier mit Test-IDs `game-modes`, `mode-team`, `mode-private`, `mode-tournament`) liefert die Inhalte; **sie bleibt auf `/app` unverändert** (Tests `privatspiel.spec.ts:15-20`, `phase4.spec.ts:365`), der Auswahlblock auf `/suche` ist eine zweite Verwendung (Frage F9).
+- Rollenbereiche (Hallenbetreiber, Admin) im **Profilmenü** (`UserMenu`), nicht in der Leiste; die Rolle steht im Menü (K14).
+- Fußzeile **nur Rechtliches** (Impressum, Datenschutz, AGB, Hausordnung, Hilfe, Kontakt, Sprache); die übrigen 8 Links (Livescore, Rangliste, Teams, Lobby aufmachen, Spieler, Hallen, Mitspieler gesucht, „Für Hallenbetreiber“) wandern in den Auswahlschritt, in Seiten der Leiste oder entfallen (Frage F2).
+- Gäste: Mittelknopf führt zur Suche (`/suche`), Profil zur Anmeldung (007 AC-2); Gäste sehen keine Reiter für Angemeldete (X-06).
 
 ### 2.3 Dateien
 `src/lib/nav.ts` (neu), `src/components/AppNav.tsx` (neu, M2-4b-Vorbereitung ausbauen), `src/components/Header.tsx`, `src/components/BottomNav.tsx`, `src/components/UserMenu.tsx`, `src/components/Footer.tsx`, `src/app/layout.tsx` (Skip-Link und `PageShell`, siehe `m2-komponenten-plan.md` Schritt C), `src/lib/i18n.ts` (Schlüssel `nav.*`), Tests.
@@ -45,7 +47,9 @@ M2 (M2-1 bis M2-5) → M2b (Look-Abnahme Start/Lobby, Option B) → 012 M3b bis 
 `LinkButton`/`IconButton` (Glocke), `StatusBadge` (ungelesen), `SkipLink`, `UserMenu` (M2-4a), `format.ts` (Zähler).
 
 ### 2.5 ACs
-1. Genau ein Link-Modell; Header und BottomNav zeigen dieselben fünf Ziele in derselben Reihenfolge und Beschriftung (Unit-Test: beide Darstellungen aus demselben Array).
+1. Genau ein Link-Modell; Header (Desktop, oben) und BottomNav (Handy, unten) zeigen dieselben fünf Ziele Teamspiel, Privatspiel, Spiel suchen, Turniere, Profil in derselben Reihenfolge und Beschriftung (Unit-Test: beide Darstellungen aus demselben Array). Hrefs unverändert: Teamspiel `/matchmaking`, Privatspiel `/app/privatspiel/neu`, Spiel suchen `/suche`, Turniere `/turniere`, Profil `/app` (für Gäste `/anmelden?next=…`).
+1a. **Desktop-Leiste mit eigenem zugänglichem Namen:** Die Desktop-Navigation darf **nicht** den Namen „Hauptnavigation“ tragen (oder die Mobil-Leiste ist dort ausgeblendet), weil `pwa.spec.ts:107-110` auf dem Desktop prüft, dass die Navigation „Hauptnavigation“ **versteckt** ist (Abschnitt 8). Beispiel: Desktop-Leiste mit einem anderen Namen ohne diese Zeichenfolge.
+1b. **„Spiel suchen“ → `/suche` mit Auswahlblock** (Teamspiel suchen / Privatspiel anlegen / Turnier) und weiterhin der Überschrift „Offene Lobbys“; der Mittelknopf ist dort `aria-current="page"`.
 2. Aktiver Eintrag: `aria-current="page"` **und** sichtbares Wort; der Matcher markiert für jede Seite genau einen Eintrag (E2E über alle Zielrouten); der in X-06 beschriebene Fehlmatch ist behoben.
 3. Touch-Ziele ≥ 44 px, Mittelknopf Orange nur für „Spiel suchen“ (K09), kein horizontales Scrollen auf 390 px (AC-3).
 4. Tastatur: Tab-Reihenfolge Skip-Link → Navigation → Inhalt, Fokus-Ring sichtbar (AC-4).
@@ -55,7 +59,7 @@ M2 (M2-1 bis M2-5) → M2b (Look-Abnahme Start/Lobby, Option B) → 012 M3b bis 
 8. Guthaben-Rest (Kopfleiste/Menü) ist nach M6a entfernt; M3 baut ihn nicht neu.
 
 ### 2.6 Beleg-Befehle
-`npm run typecheck`; `npm run lint`; `npm test -- tests/unit/nav.test.ts` (neu); `npx playwright test tests/e2e/basics.spec.ts tests/e2e/a11y.spec.ts tests/e2e/ui-regeln.spec.ts` (Navigation Handy 390 und Desktop 1280, Gast/Spieler); bestehende Tests, die die alte Leiste prüfen, siehe Abschnitt 8.
+`npm run typecheck`; `npm run lint`; `npm test -- tests/unit/nav.test.ts` (neu); `npx playwright test tests/e2e/basics.spec.ts tests/e2e/pwa.spec.ts tests/e2e/a11y.spec.ts tests/e2e/ui-regeln.spec.ts` (Leiste Handy 390 und Desktop 1280, Gast/Spieler; **`basics.spec.ts:258-312` und `pwa.spec.ts:62-81,107-110` laufen unverändert grün**).
 
 ## 3. Teilbereich B: Meine Spiele `/app` (K06, K08), Task M3-2
 
@@ -67,6 +71,7 @@ M2 (M2-1 bis M2-5) → M2b (Look-Abnahme Start/Lobby, Option B) → 012 M3b bis 
 - Vertrag 007 AC-3 (schon gültig): „Meine Spiele“ in Gruppen Teamspiele, Privatspiele, Turniere; Turnierliste zeigt Status; Weg bis Anstoß in vier Stationen, jetzige Station orange, Teamfarben als kleine Marken.
 
 ### 3.2 Ziel
+- **Einstieg:** „Meine Spiele“ (`/app`) ist der Profil-Tab der Leiste (Profil → Meine Spiele, F1 entschieden (t9, 2026-11-11, bindend)); die Seite bleibt `/app`, die Gruppierung nach Modus gilt dort.
 - `PageHeader` mit **„Dein Stand“** (nächstes Spiel, was fehlt) und **einer Hauptaktion** (z. B. nächste Handlung im nächsten Spiel; ohne Spiel: „Spiel suchen“).
 - „Meine Spiele“ **nach Modus gruppiert** (Teamspiele, Privatspiele, Turniere), je Spiel Status mit `StatusBadge` (Wort + Symbol) und Station im Weg bis Anstoß; Fehlerzustand (z. B. „Abbuchung fehlgeschlagen“) als `StateMessage`-Hinweis oben (N4-FZ-1).
 - Leerzustand: Titel, Grund, genau eine nächste Handlung (K08).
@@ -194,23 +199,25 @@ Aufbau und Zeilen siehe `m2b-und-m2-5-plan.md` B2.2: `h1` `:147`, Schritt-Chips 
 ## 7. Task-Schnitt, Reihenfolge, Writer
 | Task | Inhalt | Dateien (Kern) | Voraussetzung |
 |---|---|---|---|
-| M3-1 | AppNav, Link-Modell, Header/BottomNav/Footer/UserMenu, Layout | `lib/nav.ts`, `AppNav.tsx`, `Header.tsx`, `BottomNav.tsx`, `Footer.tsx`, `UserMenu.tsx`, `layout.tsx`, `i18n.ts` | M2 komplett, 012 M5 + M6a, M2b „Ja“ |
-| M3-2 | Meine Spiele `/app` | `app/app/page.tsx`, `MyGames.tsx`, `GameModes.tsx`, `lobby.ts` (`myMatches`), `mygame.ts` | M3-1 gemergt (Navigation steht) |
-| M3-3 | Lobby | `app/lobby/[id]/*`, `LobbyBoard.tsx`, `PlayerLight.tsx`, `card-view.ts` | M3-1, 012 M3b |
+| M3-1 | Leiste (007 AC-1), Link-Modell, Auswahlblock `/suche`, Header/BottomNav/Footer/UserMenu, Layout | `lib/nav.ts`, `AppNav.tsx`, `Header.tsx`, `BottomNav.tsx`, `Footer.tsx`, `UserMenu.tsx`, `layout.tsx`, `app/suche/page.tsx`, `i18n.ts` | M2 komplett, 012 M5 + M6a, M2b „Ja“ |
+| M3-2 | Meine Spiele `/app` | `app/app/page.tsx`, `MyGames.tsx`, `GameModes.tsx` (Optik, Test-IDs bleiben), `mygame.ts` | M3-1 und **M3-3** (`myMatches` liefert `kind`) gemergt |
+| M3-3 | Lobby **und Server `myMatches` (`kind`, `lobby.ts:606`)** | `app/lobby/[id]/*`, `LobbyBoard.tsx`, `PlayerLight.tsx`, `card-view.ts`, `src/server/lobby.ts` (Texte **und** `myMatches`) | M3-1, 012 M3b |
 | M3-4 | Neuling/Einladung/Onboarding | `app/willkommen/*`, `app/einladung/*`, `app/spiel/*` | M3-1 |
 | M3-5 | Turnierliste/Phasen | `app/turniere/*`, `tournaments.ts` (Texte) | M3-1, 012 M5 |
 | M3-6 | Abnahme-Lauf: Impeccable-Protokoll, Screenshots, Fixes | – | M3-2 bis M3-5 |
 
-- **Writer:** M3-1 zuerst (allein, wegen gemeinsamer Dateien). Danach höchstens **2 Writer** parallel, jeweils zwei Tasks mit disjunkten Dateien: (M3-2 ‖ M3-3) oder (M3-4 ‖ M3-5). M3-2 und M3-3 sind disjunkt (kein gemeinsames Modul außer `lobby.ts`: M3-2 ändert nur `myMatches`, M3-3 nur Texte und Kartenpfad; **vor dem Start abstimmen oder seriell**). M3-3 ändert `LobbyClient.tsx`, M3-4 braucht dort eine Stelle (5.3): M3-4 danach oder die Stelle in M3-3.
+- **Writer:** M3-1 zuerst (allein, wegen gemeinsamer Dateien). Die Server-Änderung `myMatches` (`kind`) gehört nach Entscheid t9 in **M3-3**, weil dieser Task `src/server/lobby.ts` ohnehin ändert; dadurch gibt es **keine zwei Tasks auf `lobby.ts`**. Folge: M3-2 (Meine Spiele) startet erst nach M3-3. Danach höchstens **2 Writer** parallel mit disjunkten Dateien: (M3-3 ‖ M3-4) → (M3-2 ‖ M3-5) → M3-6. M3-3 ändert `LobbyClient.tsx`; die Neuling-Stelle dort (5.3) gehört ebenfalls M3-3, M3-4 fasst diese Datei nicht an (Abstimmung beider Tasks).
 - `i18n.ts` bleibt gemeinsame Datei: neue Schlüssel nur in einem Commit je Task, in dem die Konflikte auflösbar sind (Frage F6).
 - Reviewer ≠ Writer je Task; Review von Datei + Impeccable-Belegen.
 
-## 8. Bestehende Tests und freigabepflichtige Ausnahmen (AC-5)
-Diese Tests prüfen die heutige Navigation oder Texte und würden brechen; jede Änderung ist eine **begründete Ausnahme von AC-5** und braucht eine Freigabe (Frage F1):
-- `tests/e2e/basics.spec.ts:258-300` („Untere Leiste (Handy): Teamspiel, Privatspiel, Mittelknopf Spiel suchen, Turniere, Profil“) und `:303` (Gäste-Leiste): erwarten die Einträge **Teamspiel** und **Privatspiel** (Vertrag 007 AC-1, Nutzerentscheid Q6 vom 2026-11-10); `AppNav` laut Umbauplan hat **Start, Spiel suchen, Turniere, Team, Profil**. Das ist ein **Widerspruch** zwischen Vertrag 007 AC-1 und dem Umbauplan (Frage F1).
-- `tests/e2e/basics.spec.ts:28-36` ist durch M2b/M6a schon angepasst (Guthaben).
-- `tests/e2e/matchmaking.spec.ts:78-80` (`my-games`, `my-game`, „Zur Lobby“) und `tests/e2e/privatspiel.spec.ts:17-18` (`game-modes`, `mode-team`): bleiben, solange die Test-IDs bleiben.
-- Hilfe-Texte und `i18n.test.ts`: nach M2-5 angepasst.
+## 8. Bestehende Tests: keine AC-5-Ausnahme nötig (F1 entschieden (t9, 2026-11-11, bindend))
+Mit der Leiste aus 007 AC-1 bleiben alle bisherigen Tests unverändert. Der Plan hält sie als **Randbedingungen** fest:
+- `tests/e2e/basics.spec.ts:258-300` und `:303-312`: Handy-Leiste Teamspiel, Privatspiel, Spiel suchen (Mitte), Turniere, Profil; Hrefs `/matchmaking`, `/app/privatspiel/neu`, `/suche`, `/turniere`, `/app`; Touch-Ziele ≥ 44 px; Mittelknopf mittig (±6 px bei 390 px); nach Klick auf „Spiel suchen“ URL `/suche$` und Überschrift „Offene Lobbys“; Gäste: Profil → `/anmelden`, „Spiel suchen“ → `/suche$`.
+- `tests/e2e/pwa.spec.ts:62-81` (Handy: Leiste mit aktivem Eintrag, Profil → `/app` für Angemeldete, `/anmelden` für Gäste, „Turniere“) und **`:107-110` (Desktop: die Navigation „Hauptnavigation“ ist versteckt)**: Die Desktop-Leiste von F1 braucht daher einen anderen zugänglichen Namen (2.5, AC 1a).
+- `tests/e2e/privatspiel.spec.ts:15-20` und `tests/e2e/phase4.spec.ts:365`: `game-modes`, `mode-team`, `mode-private`, `mode-tournament` auf `/app`; `GameModes` bleibt dort unverändert.
+- `tests/e2e/matchmaking.spec.ts:78-80` (`my-games`, `my-game`, „Zur Lobby“) bleibt.
+- `tests/e2e/basics.spec.ts:28-36` ist durch M2b angepasst (`wallet-card`); `:177` (Menüpunkt „Guthaben“) fällt mit M6a (bis dahin unverändert).
+- `i18n.test.ts`: nach M2-5 angepasst.
 
 ## 9. Impeccable-Durchgänge und Screenshot-Matrix
 Sechs Befehle **einzeln** (critique, audit, distill, clarify, adapt, polish) je Seite und Rolle (AC-6, AC-15); Sub-Agents seriell. Vorschlag zur Zählung (Seite × Rolle):
@@ -249,7 +256,7 @@ Die Zählung ist ein Vorschlag aus AC-15; eine Kürzung ist ein Entscheid (Frage
 Zwei Writer parallel verkürzen die Laufzeit, nicht die Task-Tage.
 
 ### 10.2 Risiken
-1. **Widerspruch 007 AC-1 / Umbauplan:** Die Leiste mit Teamspiel/Privatspiel (Nutzerentscheid Q6) steht gegen die fünf Ziele der `AppNav`; E2E `basics.spec.ts:258-300` bricht (Abschnitt 8, F1).
+1. **Desktop-Leiste und `pwa.spec.ts:107-110`:** Die Leiste gilt jetzt auch oben auf dem Desktop; trägt sie den Namen „Hauptnavigation“, bricht der Test „Desktop: keine untere Leiste“ (Abschnitt 8). Zugänglichen Namen und Ausblenden der Handy-Leiste bewusst trennen. (Der frühere Widerspruch 007 AC-1 / Umbauplan ist durch t9 entschieden.)
 2. **Voraussetzungen verzögern M3:** 012 M3b bis M5 und M6a liegen davor; ohne sie gibt es keinen Fehlerzustand, kein Turnier auf Karte und noch Guthaben-Reste.
 3. **Gemeinsame Dateien:** `layout.tsx`, `Header`, `BottomNav`, `UserMenu`, `Footer`, `i18n.ts` verlangen M3-1 zuerst und seriell.
 4. **Server-Änderung in „Meine Spiele“:** `myMatches` braucht `kind`; Integrationstests und `mygame.ts` prüfen, damit keine Zahlungs-/Rechtepfade berührt werden (Datenschutz: nur eigene Spiele).
@@ -258,11 +265,13 @@ Zwei Writer parallel verkürzen die Laufzeit, nicht die Task-Tage.
 7. **Rechtstexte unberührt:** Die Begriffsabweichungen in AGB/Datenschutz/Hausordnung (G17-013) bleiben; M3 ändert sie nicht.
 
 ### 10.3 Offene Fragen (nicht entschieden)
-- **F1:** Wie wird der Widerspruch Vertrag 007 AC-1 (Teamspiel, Privatspiel, Turniere, Profil + Mittelknopf; Entscheid Q6) gegen Umbauplan (Start, Spiel suchen, Turniere, Team, Profil) aufgelöst, und wer gibt die AC-5-Ausnahme für `basics.spec.ts:258-300` frei?
+- **F1 (entschieden (t9, 2026-11-11, bindend)):** Es gilt die Leiste aus Vertrag 007 AC-1 (Teamspiel | Privatspiel | Spiel suchen | Turniere | Profil), Handy unten und Desktop oben; „Meine Spiele“ im Profil-Tab; „Spiel suchen“ führt in einen Auswahlschritt. Keine AC-5-Ausnahme, `basics.spec.ts:258-300/:303` unverändert. Server-Änderung `myMatches` (`kind`) in M3-3.
 - **F2:** Welche der 14 Fußzeilen-Links gehören in die Navigation (z. B. Livescore, Rangliste, Teams, Spieler, Hallen, Mitspieler gesucht, „Lobby aufmachen“, „Für Hallenbetreiber“) und welche entfallen?
 - **F3:** Sind 138 Impeccable-Durchgänge (23 Seite-Rolle-Kombinationen × 6) so gewollt, oder gilt für Seiten mit gleichen Komponenten eine Zusammenfassung?
 - **F4:** Gehört `AppNav` in M3-1 allein, oder soll `UserMenu`-Erweiterung (Rollenbereiche) eigener Task sein?
 - **F5:** Wortwahl der Turnier-Phase „Zahlung läuft“ (Phase vs. „Zahlung ausstehend“ je Spieler).
 - **F6:** `i18n.ts` pro Bereich aufteilen (Dateien je Namensraum) oder weiter eine Datei mit seriellen Commits?
-- **F7:** Soll „Meine Spiele“ auf `/app` bleiben oder auf `/` für Angemeldete wandern („Start/Meine Spiele“ als ein Ziel)?
+- **F7 (durch F1 erledigt):** „Meine Spiele“ bleibt auf `/app` als Profil-Tab.
 - **F8:** Wo erscheint der Fehlerzustand „Abbuchung fehlgeschlagen“ zusätzlich zu Lobby und `/app` (Benachrichtigung, Glocke)? (Fund N4-FZ-2: keine Benachrichtigung; 012 M3b)
+- **F9:** Auswahlschritt „Spiel suchen“: Als Block oben auf `/suche` (URL und Überschrift „Offene Lobbys“ bleiben, Tests unverändert) oder als eigene Seite? Eine eigene Seite bräche `basics.spec.ts:276-279/310-312` (URL `/suche$`) und wäre eine AC-5-Ausnahme; bitte bestätigen, dass der Block auf `/suche` gemeint ist.
+- **F10:** Welche Inhalte der Desktop-Kopfleiste (heute „Offene Lobbys“, „Livescore“, „Rangliste“) bleiben neben den fünf Zielen, und wie heißt die Desktop-Navigation für Screenreader (Name ohne „Hauptnavigation“, siehe 2.5 AC 1a)?
