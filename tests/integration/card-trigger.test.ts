@@ -6,6 +6,7 @@ import { ledgerEntries } from "@/db/schema-finance";
 import { fixDeadline } from "@/lib/deadlines";
 import { audit } from "@/server/audit";
 import { deleteAccount } from "@/server/account";
+import { creditWallet } from "@/server/ledger";
 import { mergeTeams } from "@/server/admin";
 import { createCardSetup } from "@/server/payments/card-setup";
 import { applyStoredCard } from "@/server/payments/stored-card";
@@ -510,6 +511,30 @@ describe("T104b: Bestätigungen bleiben, Nachholen, Zusammenführen, Konto, Kart
     provider.setChargeOutcome(g.all[0].id, "error"); // wie der 409-Fall im Lauf: Fehler => pending, kein failed
     await runCharges(g.match.id);
     expect((await rowsOf(g)).find((r) => r.userId === g.all[0].id)).toMatchObject({ status: "pending", failureCode: null });
+  });
+
+  it("manualRefund-Muster (Nutzer zuerst, dann Ledger-Eintrag mit match_id) parallel zu deleteAccount für ein offenes Spiel: kein Deadlock", async () => {
+    const g = await game({ hoursAhead: 24, n: 4 });
+    const user = g.all[1];
+    let userLocked!: () => void;
+    const gotUser = new Promise<void>((r) => (userLocked = r));
+    let go!: () => void;
+    const gate = new Promise<void>((r) => (go = r));
+    const refund = db.transaction(async (tx) => {
+      await tx.select({ id: users.id }).from(users).where(eq(users.id, user.id)).for("update"); // wie finance.manualRefund
+      userLocked();
+      await gate; // deleteAccount hält jetzt die Spielsperre und wartet auf die Nutzerzeile
+      await creditWallet(tx, user.id, { from: "revenue", amountCents: 100, kind: "refund", matchId: g.match.id, idempotencyKey: `mr-${Math.random().toString(36).slice(2)}` }); // FK Key-Share auf das Spiel
+    });
+    await gotUser;
+    const del = deleteAccount(user.id).then(
+      () => "geloescht",
+      (e: Error) => e.message,
+    );
+    await new Promise((r) => setTimeout(r, 400));
+    go();
+    await expect(refund).resolves.toBeUndefined(); // kein Deadlock auf dieser Seite
+    expect(await del).not.toMatch(/deadlock/i);
   });
 
   it("expireScheduling stoppt nicht an einem Spiel mit Zeilen (Absagesperre): Fehler je Spiel isoliert, Status bleibt", async () => {

@@ -82,7 +82,11 @@ export async function deleteAccount(userId: string) {
       .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
       .where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"])))
       .orderBy(matches.id)
-      .for("update", { of: matches });
+      // NO KEY UPDATE statt UPDATE: hält Phase A, claimNext und mutateLobby (FOR UPDATE/FOR SHARE) fern, verträgt sich aber mit Fremdschlüssel-Einfügern (Key-Share auf das Spiel,
+      // z. B. manualRefund: Nutzer zuerst, dann Ledger-Eintrag mit match_id). So gibt es keinen Zyklus Nutzer -> Spiel gegen Spiel -> Nutzer.
+      // Bekannter, sehr enger Rest-Zyklus: mergeTeams sperrt Team -> Spiele, dieser Pfad Spiel -> Team (archiviert unten das Team des einzigen Admins). Folge wäre der Abbruch einer
+      // der beiden Transaktionen (Deadlock-Erkennung), nichts wird beschädigt; siehe docs/BETRIEB.md.
+      .for("no key update", { of: matches });
     const [user] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
     if (!user || user.bannedAt) throw new DomainError("Dieses Konto gibt es nicht mehr.");
     if (user.role !== "player") throw new DomainError("Dein Konto hat eine Admin-Rolle. Bitte lass sie zuerst entfernen.");

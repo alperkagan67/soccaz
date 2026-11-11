@@ -38,7 +38,7 @@ export async function markAfterStart(now: Date = new Date()): Promise<number> {
     from payment_charges c join matches m on m.id = c.match_id
     where m.starts_at <= ${now} and c.status in ('pending', 'requires_action')
       and (c.failure_code is null or c.failure_code <> ${UNKNOWN_OUTCOME})
-      and not exists (select 1 from audit_log a where a.action = 'charge.after_start' and a.entity_id = c.match_id::text and a.after ->> 'userId' = c.user_id::text)`);
+      and not exists (select 1 from audit_log a where a.entity = 'match' and a.action = 'charge.after_start' and a.entity_id = c.match_id::text and a.after ->> 'userId' = c.user_id::text)`);
   // Je Zeile genau einmal (Idempotenz über das Audit). Ein schon vorhandener Fehlercode (z. B. authentication_required) bleibt erhalten und steht im Audit; sonst wird after_start gesetzt.
   for (const r of rows.rows as { id: string; match_id: string; user_id: string; status: string; failure_code: string | null }[]) {
     await db.transaction(async (tx) => {
