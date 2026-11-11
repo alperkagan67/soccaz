@@ -153,22 +153,91 @@ describe("EIN: AC-3 Spielerzahl ändert sich, keine Geldbewegung", () => {
     expect((await seat(g.match.id, extra.id)).cardStatus).toBe("none"); // neuer Platz: erst Karte, dann Bereit
   });
 
-  it("selbst wenn ein Platz noch einen Altbetrag (paid_cents) trägt, wird bei Austritt und Zahlenänderung nichts erstattet oder nachgefordert", async () => {
-    const g = await game(72, 8);
-    const [stays, leaves] = [g.all[2], g.all[5]];
-    await db.update(matchParticipants).set({ paidCents: 2000 }).where(and(eq(matchParticipants.matchId, g.match.id), inArray(matchParticipants.userId, [stays.id, leaves.id])));
-    const before = (await ledgerOf(g.match.id, g.ids)).length;
-    await leaveLobby(leaves.id, g.match.id); // Zahl ändert sich: im AUS-Modus gäbe es Erstattung/Nachforderung
-    expect((await ledgerOf(g.match.id, g.ids)).length).toBe(before);
-    expect((await seat(g.match.id, stays.id)).paidCents).toBe(2000);
-    expect(await walletBalance(db, leaves.id)).toBe(3000);
-  });
-
   it("Spielerzahl-Änderung ohne bezahlte Plätze erzeugt in keinem Fall Ledger-Einträge (mehrere Änderungen hintereinander)", async () => {
     const g = await game(72, 10);
     const before = (await ledgerOf(g.match.id, g.ids)).length;
     for (const p of [g.all[4], g.all[6], g.all[8]]) await leaveLobby(p.id, g.match.id);
     expect((await ledgerOf(g.match.id, g.ids)).length).toBe(before);
+  });
+});
+
+describe("Umschalten Aus -> Ein im laufenden Betrieb: bezahlte Spiele bleiben im Guthabenmodell", () => {
+  const sw = (on: boolean) => setSetting(null, "card_payments_enabled", on);
+  const refunds = async (g: Game) => (await ledgerOf(g.match.id, g.ids)).filter((e) => e.kind === "refund");
+
+  it("Spieler zahlt (AUS), Schalter EIN, er tritt aus: Erstattung wie vorher, Guthaben zurück, Hauptbuch ausgeglichen", async () => {
+    await sw(false);
+    const g = await game(72, 10);
+    await payShare(g.adminA.id, g.match.id); // 80 EUR / 10 = 8,00
+    const payer = g.all[2];
+    await payShare(payer.id, g.match.id);
+    expect(await walletBalance(db, payer.id)).toBe(3000 - 800);
+    await sw(true);
+    expect(await cardModeActive(db, await reloadMatch(g.match.id))).toBe(false); // Geld im Spiel: Guthabenmodell
+    await leaveLobby(payer.id, g.match.id);
+    expect(await walletBalance(db, payer.id)).toBe(3000); // erstattet
+    expect((await refunds(g)).length).toBeGreaterThanOrEqual(1);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Rauswurf eines bezahlten Platzes nach dem Umschalten erstattet ebenfalls", async () => {
+    await sw(false);
+    const g = await game(72, 10);
+    const payer = g.all[4];
+    await payShare(payer.id, g.match.id);
+    await sw(true);
+    const teamAdmin = (await seat(g.match.id, payer.id)).teamId === g.home.id ? g.adminA : g.adminB;
+    await removeParticipant(teamAdmin.id, g.match.id, payer.id);
+    expect(await walletBalance(db, payer.id)).toBe(3000);
+  });
+
+  it("Spielerzahl-Änderung bei bezahltem Spiel: Altverhalten (Differenz zurück aufs Guthaben)", async () => {
+    await sw(false);
+    const g = await game(72, 8);
+    await payShare(g.adminA.id, g.match.id); // 80 EUR / 8 = 10,00
+    await sw(true);
+    await joinLobbyExtra(g); // 9 Spieler: 8,89; Differenz geht zurück
+    expect((await seat(g.match.id, g.adminA.id)).paidCents).toBe(889);
+    expect((await refunds(g)).length).toBe(1);
+    expect(await walletBalance(db, g.adminA.id)).toBe(3000 - 889);
+  });
+
+  it("Überzahlung beim Fixieren wird bei bezahltem Spiel erstattet; ein bezahlter Spieler braucht keine Karte und blockiert sein Team nicht", async () => {
+    await sw(false);
+    const g = await game(72, 10);
+    for (const pl of g.all) await payShare(pl.id, g.match.id); // alle zahlen 8,00
+    await db.update(matchParticipants).set({ paidCents: 1200 }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.all[3].id))); // einer hat zu viel bezahlt
+    await sw(true);
+    await readyAll(g); // ohne Kartenstatus: bezahlt zählt
+    await bothCaptains(g);
+    const m = await reloadMatch(g.match.id);
+    expect(m.finalShareCents).toBe(800);
+    expect((await seat(g.match.id, g.all[3].id)).paidCents).toBe(800);
+    expect((await refunds(g)).length).toBe(1); // die 4,00 EUR Überzahlung
+  });
+
+  it("unbezahltes Spiel läuft im Kartenmodell; sobald dort ein Platz bezahlt wäre, gilt es nicht mehr, und wenn der letzte bezahlte Platz geht, wird es wieder Kartenmodell", async () => {
+    await sw(false);
+    const g = await game(72, 6);
+    const payer = g.all[2];
+    await payShare(payer.id, g.match.id);
+    await sw(true);
+    expect(await cardModeActive(db, await reloadMatch(g.match.id))).toBe(false);
+    const other = await game(72, 6);
+    expect(await cardModeActive(db, await reloadMatch(other.match.id))).toBe(true);
+    await expect(payShare(other.adminA.id, other.match.id)).rejects.toThrow(/Karte/);
+    await leaveLobby(payer.id, g.match.id); // letzter bezahlter Platz geht
+    expect(await cardModeActive(db, await reloadMatch(g.match.id))).toBe(true);
+  });
+
+  it("im bezahlten Spiel können weitere Spieler weiter vom Guthaben zahlen (kein Mischzustand)", async () => {
+    await sw(false);
+    const g = await game(72, 6);
+    await payShare(g.adminA.id, g.match.id);
+    await sw(true);
+    await payShare(g.adminB.id, g.match.id); // Guthabenmodell: gelingt
+    expect((await seat(g.match.id, g.adminB.id)).paidCents).toBeGreaterThan(0);
+    await expect(setReady(g.all[2].id, g.match.id, true)).rejects.toThrow(/zahle zuerst/); // nicht Karte
   });
 });
 

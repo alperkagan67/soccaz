@@ -278,7 +278,7 @@ export async function teamComplete(tx: Tx, matchId: string, teamId: string): Pro
     .select({ ready: matchParticipants.readyAt, paid: matchParticipants.paidCents, card: matchParticipants.cardStatus })
     .from(matchParticipants)
     .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.teamId, teamId)));
-  const [m] = await tx.select({ priceCents: matches.priceCents, kind: matches.kind, legacyShareModel: matches.legacyShareModel }).from(matches).where(eq(matches.id, matchId));
+  const [m] = await tx.select({ id: matches.id, priceCents: matches.priceCents, kind: matches.kind, legacyShareModel: matches.legacyShareModel }).from(matches).where(eq(matches.id, matchId));
   const free = m?.priceCents === 0; // kostenlos (0 €): keine Zahlungspflicht
   if (m && (await cardModeActive(tx, m))) return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (free || r.card === "card_ready"));
   const pay = (await paymentsEnabled(tx)) && !free;

@@ -37,11 +37,17 @@ export function isDeadlineModel(match: Pick<MatchRow, "kind" | "legacyShareModel
 /**
  * Gilt für dieses Spiel das Kartenmodell (Vertrag 012, M1)? Nur bei eingeschaltetem Schalter `card_payments_enabled` und nur für Spiele der Frist-Regel
  * (Privat- und Teamspiele des neuen Modells). Altspiele (`legacyShareModel`) und Turniere bleiben beim Guthaben, bis M5/M6 sie umstellen.
- * Im Kartenmodell bewegt die Lobby kein Geld: kein reserveShare, keine Erstattung oder Nachforderung bei Änderung der Spielerzahl, keine Sofortbuchung.
+ * Betrieb: `card_payments_enabled` nur umlegen, wenn kein offenes Spiel mit bezahlten Plätzen existiert; solche Spiele bleiben bis zum Ende im Guthabenmodell
+ * (siehe unten und docs/BETRIEB.md). Im Kartenmodell bewegt die Lobby kein Geld: kein reserveShare, keine Erstattung oder Nachforderung bei Änderung der Spielerzahl, keine Sofortbuchung.
  * Die Abbuchung (beim Fixieren, zur Frist, sofort) kommt mit M2.
  */
-export async function cardModeActive(tx: Pick<Tx, "select">, match: Pick<MatchRow, "kind" | "legacyShareModel">): Promise<boolean> {
-  return isDeadlineModel(match) && (await cardPaymentsEnabled(tx as Tx));
+export async function cardModeActive(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "kind" | "legacyShareModel">): Promise<boolean> {
+  if (!isDeadlineModel(match) || !(await cardPaymentsEnabled(tx as Tx))) return false;
+  // Umschalten im laufenden Betrieb: Liegt schon Geld im Spiel (ein Platz mit paid_cents > 0 aus dem Guthabenmodell), bleibt das Spiel im Guthabenmodell,
+  // bis es leer oder abgesagt ist. Pro Spiel gibt es nie einen Mischzustand, solange Geld darin liegt; Austritt, Neuberechnung und Fixieren erstatten dann wie bisher.
+  // Gelesen wird in der Transaktion des Aufrufers unter der Spielsperre (Zahlung und Moduswechsel können sich nicht überholen).
+  const [paid] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), gt(matchParticipants.paidCents, 0))).limit(1);
+  return !paid;
 }
 
 type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel" | "schedulingOpen" | "vetoStatus">;
@@ -277,7 +283,6 @@ async function refundPaid(tx: Tx, match: MatchRow, userId: string, paidCents: nu
 /** Wird aufgerufen, wenn jemand die Lobby verlässt oder entfernt wird. Vor dem Anstoß minus 24 Stunden gibt es alles zurück, danach nur gegen Ersatz. */
 export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: string, opts: { removedByAdmin: boolean; actorId: string }) {
   if (!(await paymentsEnabled(tx))) return;
-  if (await cardModeActive(tx, match)) return; // Kartenmodell: es gibt nichts zu erstatten, die Karte wurde nicht belastet
   const [p] = await tx
     .select({ paidCents: matchParticipants.paidCents })
     .from(matchParticipants)
