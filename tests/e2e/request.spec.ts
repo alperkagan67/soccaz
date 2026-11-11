@@ -167,22 +167,33 @@ test("Gast sieht keine Namen in der Spielsuche (Payload-Ebene)", async ({ browse
   await expect(a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
   const url = a.url();
 
-  // Gast: HTML und RSC-Payload (ohne Cookies) enthalten weder Namen noch Spieler-Links
+  // Angemeldet unverändert: Name und Link zum Spieler; daraus die Spieler-ID für die Gast-Prüfung
+  await b.goto(url);
+  const nameLink = b.getByTestId("request-roster").getByRole("link", { name: "Spieler ga" });
+  await expect(nameLink).toBeVisible();
+  const userId = /\/spieler\/([0-9a-f-]{36})$/.exec((await nameLink.getAttribute("href")) ?? "")?.[1];
+  expect(userId).toBeTruthy();
+
+  // Gast (ohne Cookies): HTML und RSC-Payload enthalten weder Namen noch die rohe Spieler-ID
   for (const headers of [{} as Record<string, string>, { RSC: "1" }]) {
     const res = await request.get(url, { headers });
     expect(res.ok()).toBe(true);
     const body = await res.text();
     expect(body).toContain(team);
     expect(body).not.toContain("Spieler ga");
-    expect(body).not.toContain("/spieler/");
+    expect(body).not.toContain(userId!);
   }
+
+  // Im Kader-Bereich des Gasts: Anzahl und Initialen, keine Links, keine Admin-/Positions-/Elo-Angaben
   const guest = await (await browser.newContext()).newPage();
   await guest.goto(url);
-  const box = guest.getByTestId("request-roster-guest");
-  await expect(box).toContainText("1 Spieler im Kader");
-  await expect(box.getByRole("listitem")).toHaveText(["SG"]);
-
-  // Angemeldet unverändert: Name und Link zum Spieler
-  await b.goto(url);
-  await expect(b.getByTestId("request-roster").getByRole("link", { name: "Spieler ga" })).toBeVisible();
+  const roster = guest.getByTestId("request-roster");
+  await expect(roster.getByTestId("request-roster-guest")).toContainText("1 Spieler im Kader");
+  await expect(roster.getByRole("listitem")).toHaveText(["SG"]);
+  await expect(roster.getByRole("link")).toHaveCount(0);
+  const rosterHtml = await roster.innerHTML();
+  expect(rosterHtml).not.toContain("/spieler/");
+  expect(rosterHtml).not.toContain(userId!);
+  const guestHtml = await roster.getByTestId("request-roster-guest").innerHTML(); // Team-Elo steht in der Kopfzeile des Bereichs, nicht im Gast-Kader
+  expect(guestHtml).not.toMatch(/Admin|Elo|Mittelfeld|Torwart|Sturm|Abwehr/);
 });
