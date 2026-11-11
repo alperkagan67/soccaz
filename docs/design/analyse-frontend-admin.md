@@ -4,11 +4,11 @@ Stand: Basis `main` (034247c), Dev-Server Port 3102 mit `PAYMENTS_FAKE=1`, Seed 
 
 ## Kurzfassung (für den Nutzer)
 
-**Status: Degradiert: ja.** (a) `critique`, `audit`, `distill`, `clarify`, `adapt` haben keinen Launcher-Befehl; sie liefen manuell nach vollständig gelesenen Reference-Dateien, ohne Overlay und ohne eigenen Assessment-Sub-Agent (Methode ok, ehrlich vermerkt). (b) `detect` per URL sieht keine Sitzung (Anmeldeseite) und hängt bei Seiten mit ID-URL; Ersatz: Lauf gegen den Quelltext aller Admin-Ordner (0 Funde). (c) Nicht prüfbar: echte Erstattung, "Saison beenden", "Jetzt auslosen", "Absagen", "Zusammenführen" (nur bis zur Rückfrage), native `confirm`/`prompt`-Dialoge (nur Text), Bildschirmtastatur/iOS, CSV-Download am Handy, Mail- und Push-Versand, Stripe-Echtzahlung. Das Hauptbuch ist im Seed bewusst leer (nur 2 Testzeilen aus Analyseläufen).
+**Status: Degradiert: ja.** (a) `critique`, `audit`, `distill`, `clarify`, `adapt` haben keinen Launcher-Befehl; sie liefen manuell nach vollständig gelesenen Reference-Dateien, ohne Overlay und ohne eigenen Assessment-Sub-Agent (Methode ok, ehrlich vermerkt). (b) `detect` per URL sieht keine Sitzung (Anmeldeseite) und ist für Seiten mit ID-URL ohne Sitzung nicht möglich (nur Quelltext); die 15 URL-Läufe liefen ohne Timeout; zusätzlich Lauf gegen den Quelltext aller Admin-Ordner (0 Funde). (c) Nicht prüfbar: echte Erstattung, "Saison beenden", "Jetzt auslosen", "Absagen", "Zusammenführen" (nur bis zur Rückfrage), native `confirm`/`prompt`-Dialoge (nur Text), Bildschirmtastatur/iOS, CSV-Download am Handy, Mail- und Push-Versand, Stripe-Echtzahlung. Das Hauptbuch ist im Seed bewusst leer (nur 2 Testzeilen aus Analyseläufen).
 
 **Zähler:** angesehen **175 von 175** Screenshots: Admin Desktop 54 von 54 (16 Seiten + 38 Zusatz), Admin Handy 59 von 59 (16 + 43), Teilrollen und Zugriff 62 von 62 (50 Matrixzellen + 12 Zusatz). Je Seite, Rolle und Gerät die fünf Befehle einzeln.
 
-**Funde (Rohzählung):** 1 P0, 69 P1, 77 P2 (Desktop 1 / 39 / 45, Handy 0 / 23 / 21, Rollen 0 / 7 / 11).
+**Funde (Rohzählung):** 1 P0, 69 P1, 77 P2 (Desktop 1 / 39 / 45, Handy 0 / 23 / 21, Rollen 0 / 7 / 11). Das Fundverzeichnis im Blatt Teilrollen ist ein Index (Wiederholung, IDs kommen zweimal vor) und zählt nicht zusätzlich.
 
 **Die 10 schlimmsten Probleme:**
 1. AD-HA-1 (P0): `/admin/hallen` "Betreiber zuweisen" ist in allen Karten zerquetscht (Label bricht auf etwa 60 px, E-Mail-Feld nur etwa 40 px), am Handy gleich.
@@ -22,7 +22,7 @@ Stand: Basis `main` (034247c), Dev-Server Port 3102 mit `PAYMENTS_FAKE=1`, Seed 
 9. AM-ALL-9 (P1, Klärung): Alle 14 Bereiche sind am Handy gleich angeboten, auch unbrauchbare; Vorschlag: am Handy nur Aufgaben der Übersicht, Moderation, Nutzer sperren, Protokoll lesen.
 10. Die 14-Punkte-Navigation bricht am Handy um und gewichtet alles gleich (Seitenübergreifende Admin-Funde in den Blättern).
 
-**MUSS WEG (nur Altmodell Guthaben/Aufladen/Wallet und Rabatt-/Promo-Codes):** die ganze Seite `/admin/codes` samt Nav-Punkt "Codes" (Rolle Finanzen); "Guthaben 0,00 €" im Konto-Menü; Guthaben-Kasten und Aufladungs-/Bonus-Kacheln auf `/app` (Umleitungsziel der Teilrollen); Einstellungs-Text "aus dem Guthaben"; Guthaben-Spalten und -Texte auf den Finanzseiten. Details je Seite im Abschnitt MUSS WEG. **Klärung:** Stripe, Hauptbuch für Provision und Gebühren und Erstattung auf die Karte sind Zielmodell (Vertrag 012) und stehen daher NICHT unter MUSS WEG (siehe AD-EI-1).
+**MUSS WEG (nur Altmodell Guthaben/Aufladen/Wallet und Rabatt-/Promo-Codes):** die ganze Seite `/admin/codes` samt Nav-Punkt "Codes" (Rolle Finanzen); "Guthaben 0,00 €" im Konto-Menü; Guthaben-Kasten und Aufladungs-/Bonus-Kacheln auf `/app` (Umleitungsziel der Teilrollen); Einstellungs-Text "aus dem Guthaben"; Guthaben-Spalten und -Texte auf den Finanzseiten. Details je Seite im Abschnitt MUSS WEG (13 Fundstellen; weitere 7 Zeilen mit Stripe-, Hauptbuch- oder Geld-Bezug stehen in der Klärungstabelle). **Klärung:** Stripe, Hauptbuch für Provision und Gebühren und Erstattung auf die Karte sind Zielmodell (Vertrag 012) und stehen daher NICHT unter MUSS WEG (siehe AD-EI-1).
 
 **Zugriff gemessen:** Moderation sieht 2 von 16 Seiten, Finanzen 5, Hallen-Buchung 3, Spieler und Hallenbetreiber 0, Gast 0; Desktop und Handy gleich; die Navigation zeigt nur erlaubte Punkte. Ausführlich in den Fundblättern (Zugriffsmatrix).
 
@@ -56,18 +56,14 @@ Für alle Rollen wurden zusätzlich Status und Zielpfad aller 16 Seiten gemessen
 
 Nur Altmodell (Guthaben, Aufladen, Wallet, Rabatt- und Promo-Codes, Guthaben-Texte und -Spalten). Zusammengeführt aus den drei Fundblättern, gleiche Zeilen nur einmal.
 
-**Vorsicht bei gemischten Zeilen:** Einige Zeilen (Finanzen-Kacheln, Spiel-Finanzen, CSV-Export, Standardpreise und Marge auf `/admin/hallen`, Einleitung auf `/admin/buchungen`) nennen neben Altmodell-Teilen (Aufladungen, Offene Guthaben, Rabatt-Boni, Guthaben-Spalten, Rabattcodes) auch Elemente, die im Zielmodell bleiben könnten (Zahlungsgebühren, Marge/Provision, Hallenkosten, Erstattungen, Hauptbuch-Export, Preisregeln). Als MUSS WEG gelten nur die Guthaben-, Aufladungs-, Bonus- und Rabattcode-Teile; der Rest ist Klärung für den Umbauplan (Vertrag 012: Provision inklusive Zahlungsabwicklung, Stripe-Gebühren im Admin).
+**Abgrenzung (nach Review R-T121):** In diese Tabelle gehören nur Guthaben-, Aufladungs-, Bonus- und Rabattcode-Teile (**13 Zeilen**). Alles, was Stripe, Hauptbuch (Provision, Gebühren), Erstattung auf die Karte, Preisregeln oder Marge betrifft, steht in der Klärungstabelle darunter (**7 Zeilen**) und ist nicht MUSS WEG (Vertrag 012).
 
 | Seite | Rolle | Fundstelle | Beleg |
 |---|---|---|---|
 | alle Admin-Seiten | Admin | Kopfleiste: Link "0,00 EUR" (Guthaben, Test-ID `header-wallet`, X-05) | admin_desktop_uebersicht.png |
 | /admin/codes | Admin | ganze Seite "Rabattcodes": Neuer Code, Prozent der Aufladung, Mindestaufladung, Hoechstbonus, Gesamtbudget, "Nur fuer die erste Aufladung", "Alle Codes", Menuepunkt "Codes", PromoToggle | admin_desktop_codes.png |
-| /admin/finanzen | Admin | Kacheln "Aufladungen", "Offene Guthaben (Schuld an Spieler)", "Rabatt-Boni", "Zahlungsgebuehren", "Marge", "Einnahmen", "Hallenkosten", "Erstattungen"; Alarme "nicht im Ledger", "Haengende Zahlungen"; Abschnitt "Spiele im Monat" mit Zahlern und Anteil | admin_desktop_finanzen.png |
-| /admin/finanzen/ausgaben | Admin | Verweis auf Spiel-Finanzen in der Liste (Link "Seed Gruen gegen Seed Blau" zu `/admin/finanzen/spiel/...`); Ausgabenerfassung selbst bleibt unklar (Kartenmodell: Halle, Provision?), Rueckfrage noetig | admin_desktop_finanzen-ausgaben.png |
-| /admin/finanzen/spiel/ID | Admin | ganze Seite: Einnahmen, Spielerzahlungen "bezahlt/zurueck/netto", "Ausnahme-Erstattung buchen", Buchungen "(debit an credit)", Typen Aufladung, Gebuehr, Bonus, Startgebuehr, Rueckbuchung | admin_desktop_finanzen-spiel-ID.png |
-| /admin/finanzen/export | Admin | CSV "Datum;Buchungs-ID;Art;Soll;Haben;Betrag EUR;Spiel;Zahlungs-ID;Nutzer;Grund" (Hauptbuch-Export, Knopf "CSV fuer 2026-11") | admin_desktop_finanzen.png |
-| /admin/buchungen | Admin | Einleitung "Bestaetigte und bezahlte Spiele ... Die Kosten buchst du unter Finanzen", "Spieler zahlen 80,00 EUR", "Halle kostet 70,00 EUR", Link "Finanzen zu diesem Spiel" | admin_desktop_buchungen.png |
-| /admin/hallen | Admin | Abschnitt "Standardpreise", Preisregeln "Spieler zahlen (Euro)", "Halle kostet uns (Euro)", "Marge", Zeilen "Spieler 85,00 EUR · Kosten 65,00 EUR · Marge 20,00 EUR" (Geldmodell, Provision) | admin_desktop_hallen.png |
+| /admin/finanzen | Admin | Kacheln "Aufladungen", "Offene Guthaben (Schuld an Spieler)", "Rabatt-Boni" (nur diese Guthaben-/Aufladungs-/Bonus-Kacheln) | admin_desktop_finanzen.png |
+| /admin/finanzen/spiel/ID | Admin | nur die Buchungstypen "Aufladung" und "Bonus" (Guthaben-/Bonus-Buchungen) in der Liste der Buchungen | admin_desktop_finanzen-spiel-ID.png |
 | /admin/protokoll | Admin | Eintrag `promo.create · promo_code` (Seed), Objekttypen "promo_code" im Verlauf (folgt mit /admin/codes) | admin_desktop_protokoll.png |
 | Navigation | Admin | Menuepunkte "Finanzen" und "Codes" in `layout.tsx` (Rechte `finance`); Rolle `finance` ("Finanzen") im Rollen-Dropdown bleibt zu pruefen | admin_desktop_uebersicht.png |
 | alle Admin-Seiten (Handy) | Admin | Konto-Menue (Tipp auf "Seed" in der Kopfleiste): Eintrag "Guthaben 0,00 EUR" (am Handy steht der Guthaben-Link nicht in der Kopfleiste, sondern im Menue; Desktop-Blatt nennt den Kopfleisten-Link) | admin_mobil_uebersicht_extra-konto-menue.png |
@@ -78,13 +74,19 @@ Nur Altmodell (Guthaben, Aufladen, Wallet, Rabatt- und Promo-Codes, Guthaben-Tex
 | /app (Umleitungsziel) | Moderation, Finanzen, Hallen-Buchung, Spieler mit Halle, Spieler | Kasten "Guthaben 0,00 EUR, Zahlungen sind noch nicht aktiv, Spiele sind kostenlos" auf der Startseite, zu der jede Umleitung fuehrt; Kopfleiste "0,00 EUR" (AD-ALL-6 nennt sie fuer Admin) | moderator_desktop_nutzer.png, spieler_desktop_uebersicht.png, halle_desktop_uebersicht.png |
 | /admin/finanzen | Finanzen | Kacheln "Aufladungen", "Rabatt-Boni", "Offene Guthaben (Schuld an Spieler)" sind auch fuer die Rolle Finanzen sichtbar (Fundstelle im Admin-Blatt bekannt; hier nur die Rolle neu) | finanz_desktop_finanzen.png |
 
-### Klärung: Stripe-Bezug (nicht MUSS WEG, Zielmodell Vertrag 012)
+### Klärung: Stripe-, Hauptbuch- und Geld-Bezug (nicht MUSS WEG, Zielmodell Vertrag 012)
 
-Diese Zeilen wurden von einem Durchlauf als Altmodell vermutet; Stripe, Hauptbuch für Provision/Gebühren und Erstattung auf die Karte bleiben jedoch Zielmodell. Bitte im Umbauplan prüfen.
+Diese Zeilen wurden von den Durchläufen als Altmodell vermutet oder nennen Altmodell und Zielmodell gemischt; Stripe, Hauptbuch für Provision und Gebühren, Erstattung auf die Karte, Preisregeln und Marge bleiben jedoch Zielmodell. Bitte im Umbauplan prüfen.
 
 | Seite | Rolle | Fundstelle | Beleg |
 |---|---|---|---|
 | /admin/einstellungen | Admin | "Zahlungen einschalten ... zahlt seinen Anteil aus dem Guthaben", "Mindestzahl zahlender Spieler" (Anteil, Reservierung), "Zahlungsanbieter: Stripe (Karte, PayPal, SEPA)" (Klaerung noetig, Vertrag 012) | admin_desktop_einstellungen.png |
+| /admin/finanzen | Admin | Kacheln "Zahlungsgebuehren", "Marge", "Einnahmen", "Hallenkosten", "Erstattungen"; Alarme "nicht im Ledger", "Haengende Zahlungen"; Abschnitt "Spiele im Monat" (Provision, Stripe-Gebuehren, Erstattung auf die Karte sind Zielmodell, Vertrag 012; Klaerung, nicht MUSS WEG) | admin_desktop_finanzen.png |
+| /admin/finanzen/spiel/ID | Admin | Einnahmen, Spielerzahlungen "bezahlt/zurueck/netto", "Ausnahme-Erstattung buchen", Buchungen "(debit an credit)", Typen Gebuehr, Startgebuehr, Rueckbuchung (Hauptbuch, Erstattung: Zielmodell; Klaerung, nicht MUSS WEG) | admin_desktop_finanzen-spiel-ID.png |
+| /admin/finanzen/ausgaben | Admin | Verweis auf Spiel-Finanzen in der Liste (Link "Seed Gruen gegen Seed Blau" zu `/admin/finanzen/spiel/...`); Ausgabenerfassung selbst bleibt unklar (Kartenmodell: Halle, Provision?), Rueckfrage noetig | admin_desktop_finanzen-ausgaben.png |
+| /admin/finanzen/export | Admin | CSV "Datum;Buchungs-ID;Art;Soll;Haben;Betrag EUR;Spiel;Zahlungs-ID;Nutzer;Grund" (Hauptbuch-Export, Knopf "CSV fuer 2026-11") | admin_desktop_finanzen.png |
+| /admin/buchungen | Admin | Einleitung "Bestaetigte und bezahlte Spiele ... Die Kosten buchst du unter Finanzen", "Spieler zahlen 80,00 EUR", "Halle kostet 70,00 EUR", Link "Finanzen zu diesem Spiel" | admin_desktop_buchungen.png |
+| /admin/hallen | Admin | Abschnitt "Standardpreise", Preisregeln "Spieler zahlen (Euro)", "Halle kostet uns (Euro)", "Marge", Zeilen "Spieler 85,00 EUR · Kosten 65,00 EUR · Marge 20,00 EUR" (Geldmodell, Provision) | admin_desktop_hallen.png |
 
 ## Fundblätter
 
@@ -1878,6 +1880,9 @@ Bewertung: Kurze, klare Seite: Titel, Erklaersatz, pro Anfrage Halle, Termin, Te
 Verweise: AR-HA-3 (siehe Erstnennung). Keine neuen Funde in dieser Zelle.
 
 #### Fundverzeichnis (Erstnennung)
+
+Hinweis: Dieses Verzeichnis ist ein Index der Funde in den Zellen oben (Wiederholung, jede ID kommt zweimal vor) und zählt nicht zusätzlich.
+
 
 | ID | Prio | Beschreibung | Beleg-Datei | Befehl |
 |---|---|---|---|---|
