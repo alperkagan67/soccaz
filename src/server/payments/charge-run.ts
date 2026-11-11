@@ -90,9 +90,17 @@ type Claimed = { id: string; matchId: string; userId: string; amountCents: numbe
 /**
  * Beansprucht die nächste sendefähige Zeile (pending, ohne PaymentIntent, nicht gerade in Arbeit) in einer kurzen Transaktion.
  * FOR UPDATE SKIP LOCKED: Zeilen, die ein anderer Lauf gerade beansprucht, werden übersprungen. Zu alte Zeilen werden failed (attempt_expired), nie gesendet.
+ * Der Spielzustand wird bei JEDEM Versuch neu geprüft (Wiederholungen laufen bis zu 20 Stunden): Ist das Spiel abgesagt, abgerechnet, gestartet oder das
+ * Kartenmodell nicht mehr aktiv (Schalter AUS, Guthaben-Platz), wird nichts gesendet; die offenen Zeilen werden failed (match_closed).
+ * Sperrwahl: die Spielzeile wird kurz mit FOR SHARE gelesen, und zwar VOR den Abbuchungszeilen (Reihenfolge Spiel -> Zeile wie überall, kein Verklemmen).
+ * FOR SHARE hält Absage, Abrechnung und Moduswechsel (alle FOR UPDATE auf dem Spiel) für die Dauer der Beanspruchung fern. Offen bleibt das Fenster zwischen
+ * Beanspruchung und Stripe-Aufruf (Netz darf nicht unter Sperre laufen); es wird in M2b-2 dadurch geschlossen, dass Absage und Listenänderung bei
+ * vorhandenen Abbuchungszeilen gesperrt sind.
  */
 async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
   return db.transaction(async (tx) => {
+    const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("share");
+    const open = Boolean(match) && ["lobby", "confirmed"].includes(match.status) && match.settledAt === null && match.startsAt.getTime() > now.getTime() && (await cardModeActive(tx, match));
     const rows = await tx.execute(sql`
       select id, match_id, user_id, amount_cents, idempotency_key, attempt_started_at, updated_at
       from payment_charges
@@ -100,6 +108,10 @@ async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
       order by created_at, id
       for update skip locked`);
     for (const row of rows.rows as { id: string; match_id: string; user_id: string; amount_cents: number; idempotency_key: string; attempt_started_at: Date | null; updated_at: Date }[]) {
+      if (!open) {
+        await failRow(tx, row.id, row.match_id, row.user_id, "match_closed"); // kein Stripe-Aufruf
+        continue;
+      }
       const started = row.attempt_started_at ? new Date(row.attempt_started_at).getTime() : null;
       if (started !== null && now.getTime() - started > ATTEMPT_MAX_AGE_MS) {
         await failRow(tx, row.id, row.match_id, row.user_id, "attempt_expired");

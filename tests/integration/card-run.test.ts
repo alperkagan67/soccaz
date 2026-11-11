@@ -381,3 +381,75 @@ describe("Reihenfolge und Struktur", () => {
     expect((await ledgerOf(h)).filter((e) => e.kind === "fee")).toHaveLength(4);
   });
 });
+
+describe("Wiederholung prüft den Spielzustand erneut (nichts senden, wenn das Spiel zu ist)", () => {
+  /** Alle Sendeversuche scheitern per Netzfehler: Zeilen stehen, pending, ohne PaymentIntent. */
+  async function stuck(n = 4) {
+    const g = await game({ n });
+    for (const p of g.all) provider.setChargeOutcome(p.id, "error");
+    await runCharges(g.match.id);
+    expect(piCalls()).toHaveLength(n);
+    for (const p of g.all) provider.setChargeOutcome(p.id, "succeeded");
+    return g;
+  }
+  const later = () => new Date(Date.now() + CLAIM_LEASE_MS + 5_000);
+  async function expectClosed(g: G, calls: number) {
+    expect(piCalls()).toHaveLength(calls); // nichts gesendet
+    const rows = await rowsOf(g);
+    expect(rows.every((x) => x.status === "failed" && x.failureCode === "match_closed" && x.paymentIntentId === null)).toBe(true);
+    expect(await shares(g)).toHaveLength(0);
+    expect(await auditCount("charge.failed", g.match.id)).toBeGreaterThanOrEqual(rows.length);
+  }
+
+  it("Spiel nach Phase A abgesagt: der Wiederholungslauf sendet nichts, Zeilen failed (match_closed)", async () => {
+    const g = await stuck();
+    await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, g.match.id));
+    await runCharges(g.match.id, later());
+    await expectClosed(g, 4);
+  });
+
+  it("Spiel inzwischen abgerechnet", async () => {
+    const g = await stuck();
+    await db.update(matches).set({ settledAt: new Date() }).where(eq(matches.id, g.match.id));
+    await runCharges(g.match.id, later());
+    await expectClosed(g, 4);
+  });
+
+  it("Spiel inzwischen gestartet (Anstoß erreicht)", async () => {
+    const g = await stuck();
+    const m = await matchOf(g);
+    await runCharges(g.match.id, new Date(m.startsAt.getTime() + 60_000));
+    await expectClosed(g, 4);
+  });
+
+  it("Schalter inzwischen AUS", async () => {
+    const g = await stuck();
+    await setSetting(null, "card_payments_enabled", false);
+    await runCharges(g.match.id, later());
+    await expectClosed(g, 4);
+  });
+
+  it("Modus weg: ein Platz hat inzwischen Guthaben bezahlt", async () => {
+    const g = await stuck();
+    await db.update(matchParticipants).set({ paidCents: 800 }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.all[0].id)));
+    await runCharges(g.match.id, later());
+    await expectClosed(g, 4);
+  });
+
+  it("Gegenprobe: Spiel unverändert offen => der Wiederholungslauf sendet (gleicher Schlüssel) und bucht", async () => {
+    const g = await stuck();
+    await runCharges(g.match.id, later());
+    expect(piCalls()).toHaveLength(8);
+    expect((await matchOf(g)).settledAt).not.toBeNull();
+    expect((await rowsOf(g)).every((x) => x.status === "succeeded")).toBe(true);
+  });
+
+  it("bereits gebundene (processing) und erfolgreiche Zeilen bleiben von der Zustandsprüfung unberührt", async () => {
+    const g = await game({ n: 4 });
+    for (const p of g.all) provider.setChargeOutcome(p.id, "processing");
+    await runCharges(g.match.id);
+    await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, g.match.id));
+    await runCharges(g.match.id, later());
+    expect((await rowsOf(g)).every((x) => x.status === "pending" && x.paymentIntentId !== null)).toBe(true); // der Webhook entscheidet
+  });
+});
