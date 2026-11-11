@@ -89,5 +89,6 @@ Umsetzungsreihenfolge Geldmodell und Verträge: 006/008 M3a/M3b, 007 M2/M3, Code
 | 53 | 014 Firmen/Kollegenteams (Entwurf `docs/contracts/014-firmen-kollegenteams.md`): wartet auf G1 (Geld und Recht), Reihenfolge nach 013 | offen (wartet auf G1) |
 | 54 | Seed-Guard-Tests ergänzen (`seed-guard.test` / `seed-admin.test`): falscher Port bei erlaubtem Host, falscher DB-Name, Fragment `#`. Restrisiko: ein SSH-Tunnel auf `localhost:5433` mit DB-Name `soccav2` passiert den Guard (Basis- und Admin-Seed); prüfen, ob zusätzlicher Schutz nötig ist (Quelle: security-reviewer zu `feat/seed-admin`) | offen |
 | 55 | Mindestzahl 4/8 (Altmodell-Rest) gegen Vertrag 008:6 (ohne Mindestzahl 8) prüfen: nur Prüfauftrag, kein Umbau ohne Befund. Code: `lobby-rules.ts:4,10-12` (`isConfirmable`), `lobby.ts:229-253` | offen |
+| 56 | Seed-Skripte `seed-demo.mjs:7`, `seed-lobby.mts:7`, `seed-tournament.mts:16` prüfen nur den Hostnamen ohne Query-Check (`?host=` umgehbar): auf `scripts/lib/seed-guard.ts` umstellen. `tests/integration/helpers.ts:13` und `seed-frontend.test.ts` bauen den Pool direkt aus `DATABASE_URL` (unkritisch, nach der `setup.ts`-Prüfung) | offen |
 
 Status: offen / in Arbeit / fertig.
