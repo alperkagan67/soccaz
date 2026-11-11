@@ -6,7 +6,8 @@ import { users } from "@/db/schema";
 import { payments } from "@/db/schema-finance";
 import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
-import { isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
+import { cardModeActive, hasChargeRows, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
+import { chargeEligibility } from "./payments/charge-run";
 import { paymentsEnabled } from "./settings";
 import { teamName } from "./names";
 import { cancelUncoveredPrivateGames } from "./privategame";
@@ -59,6 +60,7 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
     await db.transaction(async (tx) => {
       const [fresh] = await tx.select().from(matches).where(eq(matches.id, m.id)).for("update");
       if (!fresh || fresh.status !== "lobby") return;
+      if (await hasChargeRows(tx, fresh.id)) return; // Abbuchung angelaufen: der Job storniert nie (Erstattung auf die Karte = M3)
       await cancelMatchTx(tx, fresh, null, "Zu wenige bereite Spieler bis zur Frist.");
       await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
       cancelled += 1;
@@ -98,6 +100,11 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
         const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
         if (!m || m.settledAt || (m.status !== "lobby" && m.status !== "confirmed") || m.startsAt.getTime() <= now.getTime()) return;
         if (!payAndReadyPossible(m)) return; // Zahlen und Bereit sind noch gesperrt (Termin oder Hallen-Veto): keine Absage
+        // Kartenspiel (012 M2b-2): Gibt es schon Abbuchungszeilen, storniert der Job NIE (Teil-Erfolg, Nachzahlfenster und Erstattung auf die Karte = M3).
+        // Ist das Spiel abbuchungsbereit (beide Captains bereit, Anteil fixiert, alle mit Karte, Miete gedeckt), bucht der Karten-Job (card-charges) ab; auch dann keine Absage.
+        // Nicht bereit zur Frist: Absage wie bisher (es wurde nichts abgebucht, also gibt es nichts zu erstatten).
+        if (await hasChargeRows(tx, m.id)) return;
+        if ((await cardModeActive(tx, m)) && (await chargeEligibility(tx, m, now)).reason === "ready") return;
         // Gebucht ist erst, wenn `settleMatch` es bestätigt (kostenlos: nichts zu buchen). Meldet es false (Unterdeckung, Status), wird wie bei
         // "nicht buchbar" abgesagt und alle erstattet: nie ein Fehlbetrag zu Lasten der Plattform, nie Geld ohne Beleg auf revenue.
         const free = !m.priceCents || m.finalShareCents === 0;

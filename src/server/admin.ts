@@ -18,6 +18,7 @@ import {
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
 import { DomainError } from "./teams";
+import { hasChargeRows } from "./wallet";
 
 export const PAGE_SIZE = 25;
 const likeTerm = (q: string) => `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
@@ -231,6 +232,16 @@ export async function mergeTeams(actorId: string, sourceId: string, targetId: st
       .from(matches)
       .where(or(and(eq(matches.homeTeamId, sourceId), eq(matches.awayTeamId, targetId)), and(eq(matches.homeTeamId, targetId), eq(matches.awayTeamId, sourceId))));
     if (between > 0) throw new DomainError("Die Teams haben gegeneinander gespielt. Das Zusammenführen würde ein Spiel gegen sich selbst ergeben.");
+
+    // Offene Spiele der beiden Teams sperren (feste Reihenfolge) und prüfen: Läuft schon eine Kartenabbuchung, würde das Zusammenführen Teilnehmer löschen oder umhängen,
+    // die bereits belastet wurden (das Spiel ließe sich nie abrechnen). Dann ist das Zusammenführen abgelehnt.
+    const open = await tx
+      .select({ id: matches.id })
+      .from(matches)
+      .where(and(inArray(matches.status, ["lobby", "confirmed"]), or(inArray(matches.homeTeamId, [sourceId, targetId]), inArray(matches.awayTeamId, [sourceId, targetId]))))
+      .orderBy(matches.id)
+      .for("update");
+    for (const g of open) if (await hasChargeRows(tx, g.id)) throw new DomainError("Eines der Teams hat ein offenes Spiel, für das die Abbuchung begonnen hat. Zusammenführen ist erst danach möglich.");
 
     // Mitglieder: wer schon im Ziel ist, behält die dortige Rolle
     const existing = await tx.select({ userId: teamMembers.userId }).from(teamMembers).where(eq(teamMembers.teamId, targetId));

@@ -264,7 +264,7 @@ describe("Wiederholung, Lease und 20-Stunden-Grenze", () => {
     expect(await shares(g)).toHaveLength(4);
   });
 
-  it("nach 20 Stunden ohne Ergebnis wird nicht mehr gesendet: failed attempt_expired, Audit", async () => {
+  it("nach 20 Stunden ohne Ergebnis wird nicht mehr gesendet und NICHT failed: unknown_outcome (pending), Audit; M3 löst per Stripe-Suche", async () => {
     const g = await game({ n: 4 });
     provider.setChargeOutcome(g.all[0].id, "error");
     await runCharges(g.match.id);
@@ -273,8 +273,11 @@ describe("Wiederholung, Lease und 20-Stunden-Grenze", () => {
     provider.setChargeOutcome(g.all[0].id, "succeeded");
     await runCharges(g.match.id, new Date(row.attemptStartedAt!.getTime() + ATTEMPT_MAX_AGE_MS + 60_000));
     expect(piCalls()).toHaveLength(calls); // nichts gesendet
-    expect((await rowsOf(g)).find((x) => x.userId === g.all[0].id)).toMatchObject({ status: "failed", failureCode: "attempt_expired" });
-    expect(await auditCount("charge.failed", g.match.id)).toBeGreaterThanOrEqual(1);
+    expect((await rowsOf(g)).find((x) => x.userId === g.all[0].id)).toMatchObject({ status: "pending", failureCode: "unknown_outcome", paymentIntentId: null });
+    expect(await auditCount("charge.unknown_outcome", g.match.id)).toBe(1);
+    await runCharges(g.match.id, new Date(row.attemptStartedAt!.getTime() + ATTEMPT_MAX_AGE_MS + 120_000)); // weiterer Lauf: nichts gesendet, nichts neu auditiert
+    expect(piCalls()).toHaveLength(calls);
+    expect(await auditCount("charge.unknown_outcome", g.match.id)).toBe(1);
     expect((await matchOf(g)).settledAt).toBeNull();
   });
 
@@ -396,12 +399,13 @@ describe("Wiederholung prüft den Spielzustand erneut (nichts senden, wenn das S
   async function expectClosed(g: G, calls: number) {
     expect(piCalls()).toHaveLength(calls); // nichts gesendet
     const rows = await rowsOf(g);
-    expect(rows.every((x) => x.status === "failed" && x.failureCode === "match_closed" && x.paymentIntentId === null)).toBe(true);
+    // Die Zeilen wurden schon einmal gesendet: Ein PaymentIntent kann bei Stripe existieren, also NICHT failed, sondern unknown_outcome (pending), auditiert, nie erneut gesendet
+    expect(rows.every((x) => x.status === "pending" && x.failureCode === "unknown_outcome" && x.paymentIntentId === null)).toBe(true);
     expect(await shares(g)).toHaveLength(0);
-    expect(await auditCount("charge.failed", g.match.id)).toBeGreaterThanOrEqual(rows.length);
+    expect(await auditCount("charge.unknown_outcome", g.match.id)).toBe(rows.length);
   }
 
-  it("Spiel nach Phase A abgesagt: der Wiederholungslauf sendet nichts, Zeilen failed (match_closed)", async () => {
+  it("Spiel nach Phase A abgesagt: der Wiederholungslauf sendet nichts, gesendete Zeilen unknown_outcome", async () => {
     const g = await stuck();
     await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, g.match.id));
     await runCharges(g.match.id, later());

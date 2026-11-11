@@ -265,16 +265,15 @@ describe("EIN: Fixieren und Frist in M1 (nur Status, kein Geld)", () => {
     expect((await ledgerOf(g.match.id, g.ids)).filter((e) => e.matchId === g.match.id)).toHaveLength(0);
   });
 
-  it("Frist: der Job (unverändert) bucht im Kartenmodell nichts ab; ein Spiel, das nicht gebucht werden kann, wird abgesagt, nur Status, kein Geld, Hauptbuch ausgeglichen", async () => {
+  it("Frist: ein Kartenspiel, das nicht abbuchungsbereit ist (Captains nicht beide bereit), wird abgesagt, nur Status, kein Geld, Hauptbuch ausgeglichen", async () => {
     const g = await game(72);
     await cardsAll(g);
     await readyAll(g);
-    await bothCaptains(g);
     const start = (await reloadMatch(g.match.id)).startsAt;
     await closeLobbiesAtDeadline(new Date(fixDeadline(start).getTime() + 60_000));
     const m = await reloadMatch(g.match.id);
     expect(m.settledAt).toBeNull(); // nichts abgerechnet
-    expect(m.status).toBe("cancelled"); // M1: ohne Abbuchung gilt das Spiel zur Frist als nicht gebucht (M2 ersetzt das)
+    expect(m.status).toBe("cancelled"); // zur Frist nicht bereit: Absage (es wurde nichts abgebucht, nichts zu erstatten)
     expect((await ledgerOf(g.match.id, g.ids)).filter((e) => e.matchId === g.match.id)).toHaveLength(0);
     expect((await trialBalance()).balanced).toBe(true);
     for (const p of g.all) expect(await walletBalance(db, p.id)).toBe(3000);

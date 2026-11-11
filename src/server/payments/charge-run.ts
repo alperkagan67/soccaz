@@ -10,9 +10,15 @@ import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges, paymentProfiles } from "@/db/schema";
 import { audit } from "../audit";
 import type { Tx } from "../tx";
-import { cardModeActive } from "../wallet";
+import { hasLongLead, dueWithGrace, fixDeadline } from "@/lib/deadlines";
+import { cardModeActive, leadStart, payAndReadyPossible } from "../wallet";
 import { applyChargeInTx, bookChargeFee, type ChargeOutcome } from "./charge";
-import { getPaymentProvider } from "./provider";
+import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
+
+/** failure_code einer pending-Zeile, deren Ausgang bei Stripe unbekannt ist (siehe markUnknown). */
+export const UNKNOWN_OUTCOME = "unknown_outcome";
+/** failure_code einer offenen Zeile, die nach dem Anstoß noch kein Ergebnis hatte (Betriebsrisiko, wird nie erneut gesendet). */
+export const AFTER_START = "after_start";
 
 /** Stripe verlangt mindestens 0,50 EUR je Abbuchung. Kleinere Anteile werden angehoben; der Überschuss bleibt in revenue (Entscheid des Orchestrators). */
 export const MIN_CHARGE_CENTS = 50;
@@ -29,18 +35,30 @@ export function chargeAmount(priceCents: number | null, finalShareCents: number 
   return Math.max(finalShareCents, MIN_CHARGE_CENTS);
 }
 
-export type EligibilityReason = "not_open" | "not_card_mode" | "not_confirmed" | "not_fixed" | "free" | "no_players" | "cards_missing" | "uncovered" | "ready";
+/**
+ * Ist der Zeitpunkt der Abbuchung erreicht? Termin und Hallen-Veto müssen durch sein. Vorlauf >= 48 Stunden: ab der Frist (48 h vor Anstoß, ggf. mit Karenz, dieselbe
+ * Rechnung wie die Listensperre); kürzerer Vorlauf: sofort (beide Captains sind schon bereit, das wurde zuvor geprüft). Läuft unter der Spielsperre von Phase A.
+ */
+export async function chargeDue(tx: Tx, match: typeof matches.$inferSelect, now: Date): Promise<boolean> {
+  if (!payAndReadyPossible(match)) return false;
+  const payOpenAt = await leadStart(tx, match);
+  if (!hasLongLead(match.startsAt, payOpenAt)) return true;
+  return now.getTime() >= dueWithGrace(fixDeadline(match.startsAt), payOpenAt, match.startsAt, match.createdAt).getTime();
+}
+
+export type EligibilityReason = "not_open" | "not_due" | "not_card_mode" | "not_confirmed" | "not_fixed" | "free" | "no_players" | "cards_missing" | "uncovered" | "ready";
 
 /**
  * Darf dieses Spiel jetzt abgebucht werden? Läuft in der Transaktion des Aufrufers unter der Spielsperre.
  * Kartenspiel (Schalter EIN, Frist-Regel, kein Guthaben-Platz), beide Captains bereit, Anteil fixiert, alle Eingeteilten mit Karte, Summe der Abbuchungen >= Miete.
  */
-export async function chargeEligibility(tx: Tx, match: typeof matches.$inferSelect, now: Date): Promise<{ reason: EligibilityReason; seated: string[]; amountCents: number | null }> {
+export async function chargeEligibility(tx: Tx, match: typeof matches.$inferSelect, now: Date, requireDue = false): Promise<{ reason: EligibilityReason; seated: string[]; amountCents: number | null }> {
   const none = (reason: EligibilityReason) => ({ reason, seated: [] as string[], amountCents: null as number | null });
   if (!["lobby", "confirmed"].includes(match.status) || match.settledAt !== null || match.startsAt.getTime() <= now.getTime()) return none("not_open");
   if (!(await cardModeActive(tx, match))) return none("not_card_mode");
   if (!match.homeFinalAt || !match.awayFinalAt) return none("not_confirmed");
   if (match.finalShareCents === null) return none("not_fixed");
+  if (requireDue && !(await chargeDue(tx, match, now))) return none("not_due");
   const amount = chargeAmount(match.priceCents, match.finalShareCents);
   if (amount === null) return none("free");
   const seated = await tx.select({ userId: matchParticipants.userId, cardStatus: matchParticipants.cardStatus }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
@@ -56,14 +74,14 @@ export type RunResult = { reason: EligibilityReason | "rows_exist"; created: num
  * Bucht ein Kartenspiel ab (alle Phasen). Idempotent und nachholbar: ein zweiter oder paralleler Lauf legt nichts doppelt an und sendet nichts doppelt.
  * Existieren schon Abbuchungszeilen, wird nur noch Phase B bis D für offene Zeilen ausgeführt (die Zeilen und damit die Spielerliste bleiben, wie sie sind).
  */
-export async function runCharges(matchId: string, now: Date = new Date()): Promise<RunResult> {
+export async function runCharges(matchId: string, now: Date = new Date(), opts: { requireDue?: boolean } = {}): Promise<RunResult> {
   // Phase A
   const phaseA = await db.transaction(async (tx) => {
     const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
     if (!match) return { reason: "not_open" as const, created: 0 };
     const existing = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.matchId, matchId)).limit(1);
     if (existing.length > 0) return { reason: "rows_exist" as const, created: 0 };
-    const e = await chargeEligibility(tx, match, now);
+    const e = await chargeEligibility(tx, match, now, opts.requireDue === true);
     if (e.reason !== "ready" || e.amountCents === null) return { reason: e.reason, created: 0 };
     for (const userId of e.seated) {
       await tx.insert(paymentCharges).values({ matchId, userId, amountCents: e.amountCents, idempotencyKey: chargeKey(matchId, userId) }).onConflictDoNothing();
@@ -104,17 +122,20 @@ async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
     const rows = await tx.execute(sql`
       select id, match_id, user_id, amount_cents, idempotency_key, attempt_started_at, updated_at
       from payment_charges
-      where match_id = ${matchId} and status = 'pending' and payment_intent_id is null
+      where match_id = ${matchId} and status = 'pending' and payment_intent_id is null and (failure_code is null or failure_code not in (${UNKNOWN_OUTCOME}, ${AFTER_START}))
       order by created_at, id
       for update skip locked`);
     for (const row of rows.rows as { id: string; match_id: string; user_id: string; amount_cents: number; idempotency_key: string; attempt_started_at: Date | null; updated_at: Date }[]) {
       if (!open) {
-        await failRow(tx, row.id, row.match_id, row.user_id, "match_closed"); // kein Stripe-Aufruf
+        // Wurde schon einmal gesendet (attempt_started_at), kann bei Stripe ein PaymentIntent existieren: nicht auf failed setzen, sondern markieren (M3 sucht bei Stripe).
+        if (row.attempt_started_at) await markUnknown(tx, row.id, row.match_id, row.user_id, "match_closed");
+        else await failRow(tx, row.id, row.match_id, row.user_id, "match_closed"); // nie gesendet: kein Stripe-Aufruf
         continue;
       }
       const started = row.attempt_started_at ? new Date(row.attempt_started_at).getTime() : null;
       if (started !== null && now.getTime() - started > ATTEMPT_MAX_AGE_MS) {
-        await failRow(tx, row.id, row.match_id, row.user_id, "attempt_expired");
+        // Der Schlüssel gilt bei Stripe nicht mehr; ob dort ein PaymentIntent existiert, wissen wir nicht. Nie automatisch failed, nie erneut senden: M3 löst es per Stripe-Suche.
+        await markUnknown(tx, row.id, row.match_id, row.user_id, "attempt_expired");
         continue;
       }
       // Eine Zeile, die gerade ein anderer Lauf bearbeitet (Lease), wird übersprungen; nach Ablauf der Lease darf sie erneut gesendet werden (gleicher Schlüssel)
@@ -132,6 +153,20 @@ async function failRow(tx: Tx, rowId: string, matchId: string, userId: string, c
   await audit(null, "charge.failed", "match", matchId, { after: { userId, outcome: "failed", code } }, tx);
 }
 
+/**
+ * Ausgang unbekannt: Die Zeile wurde schon gesendet (oder könnte es sein), ein PaymentIntent kann bei Stripe existieren. Status bleibt pending, die Zeile wird
+ * markiert (failure_code) und auditiert; sie wird nie erneut gesendet und nie abgerechnet. Ein später eintreffender Webhook bindet und verbucht sie normal.
+ * Auflösung per Stripe-Suche folgt in M3.
+ */
+async function markUnknown(tx: Tx, rowId: string, matchId: string, userId: string, reason: string) {
+  const updated = await tx
+    .update(paymentCharges)
+    .set({ failureCode: UNKNOWN_OUTCOME, updatedAt: new Date() })
+    .where(and(eq(paymentCharges.id, rowId), eq(paymentCharges.status, "pending"), isNull(paymentCharges.paymentIntentId)))
+    .returning({ id: paymentCharges.id });
+  if (updated.length > 0) await audit(null, "charge.unknown_outcome", "match", matchId, { after: { userId, reason } }, tx);
+}
+
 /** Phase B (Netz) und C (Verbuchung) für eine beanspruchte Zeile. */
 async function sendCharge(c: Claimed): Promise<void> {
   const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.userId));
@@ -143,7 +178,13 @@ async function sendCharge(c: Claimed): Promise<void> {
   let res;
   try {
     res = await provider.createPaymentIntent({ customerId: profile.stripeCustomerId, paymentMethodId: profile.paymentMethodId, amountCents: c.amountCents, idempotencyKey: c.idempotencyKey, metadata: { matchId: c.matchId, userId: c.userId } });
-  } catch {
+  } catch (error) {
+    if (error instanceof PaymentIdempotencyError) {
+      // Parameter zwischen Wiederholungen geändert (Zahlungsmittel/Kunde): mit diesem Schlüssel geht nichts mehr. Nicht schlucken: failed + Audit.
+      // Ein früherer Versuch kann bei Stripe einen PaymentIntent erzeugt haben; kommt dessen Webhook, gewinnt succeeded (Rangregel) und wird gebucht.
+      await db.transaction((tx) => failRow(tx, c.id, c.matchId, c.userId, "idempotency_mismatch"));
+      return;
+    }
     return; // Ergebnis unbekannt: Zeile bleibt pending, der nächste Lauf sendet mit demselben Schlüssel erneut (bis zur 20-Stunden-Grenze)
   }
   const outcome: ChargeOutcome | null = res.status === "succeeded" ? "succeeded" : res.status === "requires_action" ? "requires_action" : res.status === "failed" ? "failed" : null;

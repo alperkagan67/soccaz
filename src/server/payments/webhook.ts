@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
 import { applyChargeInTx, bookChargeFee, type ChargeReport } from "./charge";
@@ -111,7 +111,7 @@ async function processEvent(event: ProviderEvent) {
             .where(eq(paymentProfiles.userId, intent.userId));
           await tx.update(paymentSetupIntents).set({ status: "succeeded" }).where(eq(paymentSetupIntents.id, intentId));
           if (intent.matchId) {
-            await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, intent.matchId), eq(matchParticipants.userId, intent.userId)));
+            await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, intent.matchId), eq(matchParticipants.userId, intent.userId), inArray(matchParticipants.cardStatus, ["none", "failed"]))); // nie aus charge_pending/charged zurücksetzen
           }
         }
       }
