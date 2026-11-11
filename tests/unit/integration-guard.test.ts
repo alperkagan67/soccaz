@@ -27,7 +27,7 @@ describe("Datenbank-Waechter der Integrationstests", () => {
     expect(dbHostAllowed(host("postgres://u:p@postgres:5432/x?host=localhost"), {})).toBe(false);
   });
   it("Setup und E2E-Seeding nutzen denselben Waechter, kein zweites Host-Array", () => {
-    for (const f of ["tests/integration/setup.ts", "tests/e2e/helpers.ts"]) {
+    for (const f of ["tests/integration/setup.ts", "tests/e2e/helpers.ts", "tests/e2e/global-teardown.ts"]) {
       const src = readFileSync(f, "utf8");
       expect(src, f).toContain("dbHostAllowed(");
       expect(src, f).not.toMatch(/["']127.0.0.1["']/);
