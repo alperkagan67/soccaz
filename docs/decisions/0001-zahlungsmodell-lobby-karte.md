@@ -10,14 +10,14 @@ Heute zahlen Spieler ihren Anteil beim Beitritt aus dem internen Guthaben (Parke
 - B: Zahlungsmittel hinterlegen (Stripe SetupIntent), einmal abbuchen (PaymentIntent, off-session) zur Frist; Nachzahlfenster 1 bis 2 h, dann Nachrücker oder Absage.
 - C: B plus Kartenreservierung (Hold) nur bei höchstens 7 Tagen Vorlauf (Standard-Haltezeit etwa 7 Tage, verlängerbar bis etwa 30 Tage je nach Kartennetz und Preismodell; Stripe-Doku "extended authorization").
 
-## Entscheidung (Vorschlag)
-Gewählt: B, ohne Hold. C bleibt ein späterer Schalter, wenn die Quote gescheiterter Abbuchungen über etwa 5 % liegt oder Hallen eine Zahlungsgarantie verlangen. Nachtrag des Nutzers (2026-11-11): Das interne Guthaben fällt ganz weg (Soccaz ist nicht live, nur Testdaten): Erstattung immer auf die Karte, Stripe-Gebühr trägt Soccaz (Provision inklusive Zahlungsabwicklung), keine Promo-Codes, Rabatte oder Treueprogramme. Das ersetzt die Council-Empfehlung "Guthaben bleibt", die auf einem Live-Bestand an Guthaben und auf E3 bis E6 beruhte; mit Testdaten und ohne Live-Betrieb entfällt der Grund. Details und Reihenfolge: Vertrag 012 v2.
+## Entscheidung
+Gewählt: B, ohne Hold. C bleibt ein späterer Schalter, wenn die Quote gescheiterter Abbuchungen über etwa 5 % liegt oder Hallen eine Zahlungsgarantie verlangen. Nachtrag des Nutzers (2026-11-11): Das interne Guthaben fällt ganz weg (Soccaz ist nicht live, nur Testdaten): Erstattung immer auf die Karte, Stripe-Gebühr trägt Soccaz (Provision inklusive Zahlungsabwicklung), keine Promo-Codes, Rabatte oder Treueprogramme. Das ersetzt die Council-Empfehlung "Guthaben bleibt", die auf einem Live-Bestand an Guthaben und auf E3 bis E6 beruhte; mit Testdaten und ohne Live-Betrieb entfällt der Grund. Details und Reihenfolge: Vertrag 012 v3.
 
 Begründung (Belege):
 - B bucht einmal zur Frist statt Geld zu bewegen und zu korrigieren (`wallet.ts:181-262`); Fristlogik, Anteilsrechnung, Hauptbuch und Absage/Erstattung bleiben (`src/lib/deadlines.ts:36-72`, `wallet.ts:124-139`, `ledger.ts:41,105`, `scheduled.ts:107`).
 - Das Parken von Fremdgeld entfällt weitgehend, das entlastet E3 bis E6; Soccaz bucht kurz vor dem Spiel ab.
 - Stripe-Ablauf (Quellen: docs.stripe.com/payments/setup-intents, support.stripe.com "Saving payment methods ... SCA"): Karte beim Speichern authentifizieren (SetupIntent, `usage: off_session`), später PaymentIntent mit `off_session: true`; die Abbuchung kann trotzdem `authentication_required` liefern, dann muss der Spieler zurückgeholt werden.
-- Stripe Connect (Quellen: docs.stripe.com/connect/charges-transfers, /connect/destination-charges): Karte wird bei der Plattform belastet, Auszahlung an die Halle per Transfer (getrennte Belastungen und Transfers oder Destination Charges); Provision durch geringeren Transfer. Vereinbar mit B. Gebühren je Abbuchung: Stripe-Gebühren werden in Vertrag 012 als Kostenfrage geführt, Tarif ist vom Nutzer mit Stripe zu klären (nicht im Repo belegt).
+- Stripe Connect (Quellen: docs.stripe.com/connect/charges-transfers, /connect/destination-charges): Karte wird bei der Plattform belastet, Auszahlung an die Halle per Transfer (getrennte Belastungen und Transfers oder Destination Charges); Provision durch geringeren Transfer. Vereinbar mit B. Gebühren je Abbuchung: Stripe-Gebühren werden in Vertrag 012 als Kostenfrage geführt, Tarif und Stand: Vertrag 012, Abschnitt Kosten, und GO-LIVE-AUDIT G3-012.
 
 ## Konsequenzen
 Gut: weniger Geldbewegungen, kein Nachforderungs-Ping-Pong, planbarer Zahlungsdienstleister, Hauptbuch bleibt kompatibel.
