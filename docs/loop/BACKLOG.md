@@ -81,5 +81,6 @@ Umsetzungsreihenfolge Geldmodell und Verträge: 006/008 M3a/M3b, 007 M2/M3, Code
 | 45 | Sichtbarkeit von „Abbuchung fehlgeschlagen“ (zuvor Produktfrage, für alle Spieler der Lobby sichtbar): ENTSCHIEDEN (Orchestrator): nur der Betroffene und der Captain (bzw. Veranstalter) sehen den Grund, alle anderen die neutrale rote Ampel „Zahlung ausstehend“; Umsetzung mit 012 M3, siehe AC-12 und AC-20 | entschieden (012 M3) |
 | 46 | Bei `failed` sieht der Spieler wieder „Karte hinterlegen“; die Oberfläche für das Nachzahlfenster kommt mit 012 M3 (Sichtbarkeit: AC-20) | offen (012 M3) |
 | 47 | 012 M2b-2: Absage- und Listensperre bei Abbuchungszeilen (Restfenster zwischen Beanspruchung und Stripe-Aufruf); Parameter-Mismatch `StripeIdempotencyError` behandeln; Frist im Auslöser prüfen; Nachzahl-Neuversuch nie mit neuem Schlüssel ohne vorherige Stripe-Suche (`attempt_expired`) | offen (mittel) |
+| 48 | `adminCancelMatch` (PR 83) auf die Rolle `owner` umstellen (Vertrag 009: Admin 1 = `owner`, Admin 2 = `admin`); heute prüft es `users.role === 'admin'`, weil `owner` im Schema noch nicht existiert. Admin 2 darf nur vorschlagen (012 AC-21) | offen (mit 009) |
 
 Status: offen / in Arbeit / fertig.
