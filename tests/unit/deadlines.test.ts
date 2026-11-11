@@ -56,11 +56,14 @@ describe("Karenz und Mindestvorlauf (feste Uhren)", () => {
   const start = new Date("2026-03-10T20:00:00Z");
   it("Karenz: die Frist liegt frühestens 12 Stunden nach dem Zeitpunkt, ab dem gezahlt werden kann, aber nie näher als 15 Minuten vor Anstoß", () => {
     // Zahlen ab 5 Stunden vor Anstoß: die Karenz reicht über den Anstoß hinaus, die Frist ist 15 Minuten vor Anstoß
-    expect(dueWithGrace(abortDeadline(start), new Date("2026-03-10T15:00:00Z"), start).toISOString()).toBe("2026-03-10T19:45:00.000Z");
+    const created = new Date("2026-03-01T00:00:00Z"); // lange vorher angelegt, Termin erst später festgelegt
+    expect(dueWithGrace(abortDeadline(start), new Date("2026-03-10T15:00:00Z"), start, created).toISOString()).toBe("2026-03-10T19:45:00.000Z");
+    // ohne nachträglichen Termin (Zahlen ab der Anlage): keine Karenz, der Abbruch bleibt exakt 1 Stunde vor Anstoß
+    expect(dueWithGrace(abortDeadline(start), new Date("2026-03-10T15:00:00Z"), start, new Date("2026-03-10T15:00:00Z")).toISOString()).toBe("2026-03-10T19:00:00.000Z");
     // 24 Stunden Vorlauf: die Karenz ist längst abgelaufen, der Abbruch bleibt 1 Stunde vor Anstoß
-    expect(dueWithGrace(abortDeadline(start), new Date("2026-03-09T20:00:00Z"), start).toISOString()).toBe("2026-03-10T19:00:00.000Z");
+    expect(dueWithGrace(abortDeadline(start), new Date("2026-03-09T20:00:00Z"), start, created).toISOString()).toBe("2026-03-10T19:00:00.000Z");
     // 50 Stunden Vorlauf: die 48-h-Frist läge 2 Stunden nach dem Start der Zahlung, die Karenz schiebt sie auf 12 Stunden danach
-    expect(dueWithGrace(fixDeadline(start), new Date("2026-03-08T18:00:00Z"), start).toISOString()).toBe("2026-03-09T06:00:00.000Z");
+    expect(dueWithGrace(fixDeadline(start), new Date("2026-03-08T18:00:00Z"), start, created).toISOString()).toBe("2026-03-09T06:00:00.000Z");
   });
   it("Mindestvorlauf: genau eine Stunde ist erlaubt, eine Millisekunde weniger nicht", () => {
     const now = new Date("2026-03-10T19:00:00Z");

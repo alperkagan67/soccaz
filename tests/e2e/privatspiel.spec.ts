@@ -428,7 +428,7 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
   }
 });
 
-test("Privatspiel ohne volle Miete: 24 Stunden vor Anstoß wird abgesagt, alle Zahlenden bekommen ihren Anteil zurück, der Veranstalter trägt nichts (AC-9/AC-15)", async ({ browser, baseURL }) => {
+test("Privatspiel ohne volle Miete: zur 48-h-Frist vor Anstoß wird abgesagt, alle Zahlenden bekommen ihren Anteil zurück, der Veranstalter trägt nichts (AC-9/AC-15)", async ({ browser, baseURL }) => {
   test.setTimeout(300_000);
   await setPlatformSetting("payments_enabled", true);
   try {
@@ -469,8 +469,12 @@ test("Privatspiel ohne volle Miete: 24 Stunden vor Anstoß wird abgesagt, alle Z
       expect(await walletBalanceOf(await userIdByEmail(`${p.key}-${run}@test.local`))).toBe(2500);
     }
 
-    // Prüfzeitpunkt erreicht (Anstoß in 23 Stunden, angelegt vor 2 Stunden): keine feste Wartezeit, die Zeit wird in der Datenbank gesetzt
-    await setMatchTimes(matchId, 23, 2);
+    // Vor der Frist (Anstoß in 60 Stunden, angelegt vor 100 Stunden) passiert nichts, die Lobby bleibt offen
+    await setMatchTimes(matchId, 60, 100);
+    await callJob(baseURL!, "lobby-deadlines");
+    expect((await query<{ status: string }>("select status from matches where id = $1", [matchId]))[0].status).not.toBe("cancelled");
+    // Frist erreicht (Anstoß in 47 Stunden): keine feste Wartezeit, die Zeit wird in der Datenbank gesetzt
+    await setMatchTimes(matchId, 47, 100);
     await callJob(baseURL!, "lobby-deadlines");
     await slow.poll(async () => (await query<{ status: string }>("select status from matches where id = $1", [matchId]))[0].status).toBe("cancelled");
 

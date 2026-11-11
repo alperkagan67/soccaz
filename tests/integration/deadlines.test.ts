@@ -1,23 +1,31 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, teamMembers } from "@/db/schema";
+import { auditLog, matchParticipants, matches, teamMembers, teams } from "@/db/schema";
+import { venues } from "@/db/schema-finance";
+import { matchOptions, matchVetoHalls } from "@/db/schema-matchmaking";
 import { ledgerEntries, receipts } from "@/db/schema-finance";
 import { abortDeadline, fixDeadline, hasLongLead } from "@/lib/deadlines";
 import { audit } from "@/server/audit";
+import { acceptChallenge, challengeTeam } from "@/server/challenges";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { finalConfirm, joinLobby, leaveLobby, payShare, removeParticipant, setReady } from "@/server/lobby";
 import { assertMinLead } from "@/server/min-lead";
 import { createPrivateGame, joinPrivateGame } from "@/server/privategame";
 import { cancelUnderfilledLobbies, closeLobbiesAtDeadline, settleDueMatches } from "@/server/scheduled";
+import { proposeOption, voteOption } from "@/server/scheduling";
 import { setSetting } from "@/server/settings";
-import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
+import { answerHallRequest, banHall } from "@/server/veto";
+import { setVenueManager } from "@/server/venues";
+import { leaveClosed } from "@/server/wallet";
+import { addPlayer, cleanup, makeMatch, makeTeam, makeUser, reloadMatch } from "./helpers";
 
 beforeAll(async () => {
   await setSetting(null, "payments_enabled", true);
 });
 afterAll(async () => {
   await setSetting(null, "payments_enabled", false);
+  await db.delete(venues).where(like(venues.name, "E2E Echtort%"));
   await cleanup();
 });
 
@@ -366,7 +374,7 @@ describe("Frist-Regel: Veto, Karenz, gebuchte Spiele, Ränder, Mindestvorlauf", 
     await db.update(matches).set({ createdAt: new Date(sstart.getTime() - 48 * H + 1) }).where(eq(matches.id, shortOne.match.id));
     expect(hasLongLead(estart, new Date(estart.getTime() - 48 * H))).toBe(true);
     expect(hasLongLead(sstart, new Date(sstart.getTime() - 48 * H + 1))).toBe(false);
-    await closeLobbiesAtDeadline(new Date(estart.getTime() - 36 * H + 1000)); // 48-h-Frist plus 12 Stunden Karenz ab Anlage
+    await closeLobbiesAtDeadline(new Date(fixDeadline(estart).getTime() + 1000)); // 48-h-Frist, ohne Karenz (Zahlen ging ab der Anlage)
     expect(await statusOf(exact.match.id)).toBe("cancelled"); // lang: die 48-h-Frist gilt
     expect(await statusOf(shortOne.match.id)).not.toBe("cancelled"); // kurz: erst 1 h vor Anstoß
   });
@@ -376,6 +384,79 @@ describe("Frist-Regel: Veto, Karenz, gebuchte Spiele, Ränder, Mindestvorlauf", 
     expect(() => assertMinLead(new Date("2026-05-01T11:00:00Z"), now)).not.toThrow();
     expect(() => assertMinLead(new Date("2026-05-01T10:59:59.999Z"), now)).toThrow(/Stunde/);
     expect(() => assertMinLead(new Date("invalid"), now)).toThrow(/Stunde/);
+  });
+});
+
+describe("Frist-Regel: Karenz nur bei nachträglichem Termin, echter Audit-Pfad, Rand beim Austritt", () => {
+  it("Privatspiel mit 5 Stunden Vorlauf: Abbruch exakt 1 Stunde vor Anstoß (nicht 15 Minuten), ohne Karenz (006 AC-19)", async () => {
+    const organizer = await makeUser("dlk");
+    const { match } = await createPrivateGame(organizer.id, { city: "Berlin", venueText: "Halle", startsAt: new Date(Date.now() + 5 * H), durationMin: 60, maxPlayers: 10, rentCents: 12_000 });
+    const abort = abortDeadline(match.startsAt);
+    await closeLobbiesAtDeadline(new Date(abort.getTime() - 1));
+    expect(await statusOf(match.id)).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(abort);
+    expect(await statusOf(match.id)).toBe("cancelled");
+  });
+
+  it("Teamspiel mit 5 Stunden Vorlauf ohne nachträglichen Termin: ebenfalls exakt 1 Stunde vor Anstoß (008 AC-15)", async () => {
+    const g = await teamGame(5, 0, 4);
+    const abort = abortDeadline(await startOf(g.match.id));
+    await closeLobbiesAtDeadline(new Date(abort.getTime() - 1));
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(abort);
+    expect(await statusOf(g.match.id)).toBe("cancelled");
+  });
+
+  it("echter Pfad: Herausforderung, Terminwahl (scheduling.locked), Hallenanfrage und Veto (veto.done): das vor Tagen angelegte Spiel wird nicht abgesagt, solange der Vorlauf ab der Terminfestlegung kurz ist", async () => {
+    const a = await makeUser("ra");
+    const b = await makeUser("rb");
+    const manager = await makeUser("rm");
+    const ta = await makeTeam(a.id, "Echt A");
+    const tb = await makeTeam(b.id, "Echt B");
+    await db.update(teams).set({ city: "Echtort" }).where(inArray(teams.id, [ta.id, tb.id]));
+    const rows = await db
+      .insert(venues)
+      .values([1, 2, 3].map((i) => ({ name: `E2E Echtort ${i} ${manager.id.slice(0, 6)}`, city: "Echtort", isPartner: i < 3 })))
+      .returning();
+    await setVenueManager(a.id, rows[0].id, manager.email);
+    await setVenueManager(a.id, rows[1].id, manager.email);
+    const id = await challengeTeam(a.id, ta.id, tb.id);
+    await acceptChallenge(b.id, id);
+    const start = new Date(Date.now() + 30 * H);
+    await proposeOption(a.id, id, { startsAt: start });
+    const [opt] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, id));
+    await voteOption(b.id, id, opt.id); // beide Teams stimmen gleich: lockIfAgreed legt den Termin fest und schreibt scheduling.locked
+    expect((await reloadMatch(id)).vetoStatus).toBe("halls");
+    await answerHallRequest(manager.id, id, rows[0].id, true);
+    await answerHallRequest(manager.id, id, rows[1].id, true);
+    for (let i = 0; i < 6 && (await reloadMatch(id)).vetoStatus === "running"; i++) {
+      const cur = await reloadMatch(id);
+      const pool = await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, id));
+      const free = pool.find((h) => !h.bannedByTeam)!;
+      await banHall(cur.vetoTurnTeamId === ta.id ? a.id : b.id, id, free.venueId); // veto.done wird vom Veto selbst geschrieben
+    }
+    expect((await reloadMatch(id)).vetoStatus).toBe("done");
+    const actions = (await db.select().from(auditLog).where(and(eq(auditLog.entity, "match"), eq(auditLog.entityId, id)))).map((r) => r.action);
+    expect(actions).toContain("scheduling.locked");
+    expect(actions).toContain("veto.done");
+
+    // das Spiel wurde vor zehn Tagen angelegt; ab der Anlage gerechnet läge die 48-h-Frist längst hinter uns
+    await db.update(matches).set({ createdAt: new Date(Date.now() - 240 * H) }).where(eq(matches.id, id));
+    await closeLobbiesAtDeadline(new Date());
+    expect(await statusOf(id)).not.toBe("cancelled");
+    // Vorlauf ab dem Veto-Ende ist kurz: Abbruch 1 Stunde vor Anstoß (Karenz ist bei 30 Stunden längst vorbei)
+    await closeLobbiesAtDeadline(new Date(abortDeadline(start).getTime() - 1));
+    expect(await statusOf(id)).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(abortDeadline(start));
+    expect(await statusOf(id)).toBe("cancelled");
+  });
+
+  it("Rand beim Austritt: genau 48 Stunden vor Anstoß ist die Liste zu, eine Millisekunde früher noch offen", async () => {
+    const g = await teamGame(72, 0, 4);
+    const m = await reloadMatch(g.match.id);
+    const at = new Date(m.startsAt.getTime() - 48 * H);
+    expect(await leaveClosed(db, m, at)).toBe(true);
+    expect(await leaveClosed(db, m, new Date(at.getTime() - 1))).toBe(false);
   });
 });
 

@@ -57,17 +57,19 @@ export function hasMinLead(startsAt: Date, now: Date): boolean {
 }
 
 /**
- * Frist mit Karenz: frühestens `PAY_GRACE_HOURS` nach dem Zeitpunkt, ab dem Zahlen und Bereit möglich wurden (Anlage, Terminfestlegung, Ende des
+ * Frist mit Karenz (nur bei nachträglich festgelegtem Termin): frühestens `PAY_GRACE_HOURS` nach dem Zeitpunkt, ab dem Zahlen und Bereit möglich wurden (Anlage, Terminfestlegung, Ende des
  * Hallen-Vetos), aber nie später als 15 Minuten vor Anstoß. Ohne die Karenz würde ein spät vereinbartes Spiel abgesagt, bevor jemand zahlen konnte.
  */
-export function dueWithGrace(baseDue: Date, payOpenAt: Date, startsAt: Date): Date {
+export function dueWithGrace(baseDue: Date, payOpenAt: Date, startsAt: Date, createdAt: Date): Date {
+  // Die Karenz gilt nur, wenn Zahlen erst nachträglich möglich wurde (Terminwahl, Veto). Ohne nachträglichen Termin bleibt die Frist exakt (Anstoß minus 1 Stunde bzw. 48 Stunden).
+  if (payOpenAt.getTime() <= createdAt.getTime()) return baseDue;
   const withGrace = Math.max(baseDue.getTime(), payOpenAt.getTime() + PAY_GRACE_HOURS * 3_600_000);
   return new Date(Math.min(withGrace, startsAt.getTime() - LAST_CHECK_BEFORE_START_MINUTES * 60_000));
 }
 
 /** Ist der Beitritt geschlossen? Mit langem Vorlauf ab der 48-h-Frist (mit Karenz); mit kurzem Vorlauf nie (offen bis zur Buchung oder zum Abbruch). */
-export function joinClosedByTime(startsAt: Date, payOpenAt: Date, now: Date): boolean {
-  return hasLongLead(startsAt, payOpenAt) && now.getTime() >= dueWithGrace(fixDeadline(startsAt), payOpenAt, startsAt).getTime();
+export function joinClosedByTime(startsAt: Date, payOpenAt: Date, now: Date, createdAt: Date = payOpenAt): boolean {
+  return hasLongLead(startsAt, payOpenAt) && now.getTime() >= dueWithGrace(fixDeadline(startsAt), payOpenAt, startsAt, createdAt).getTime();
 }
 
 /** Sind Austritt und Rauswurf gesperrt? Ab 48 Stunden vor Anstoß; bei Anlage unter 48 Stunden gilt das von Anfang an. */

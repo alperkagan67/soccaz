@@ -90,7 +90,7 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
   let cancelled = 0;
   for (const c of candidates) {
     const payOpenAt = await leadStart(db, c);
-    const due = dueWithGrace(hasLongLead(c.startsAt, payOpenAt) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt), payOpenAt, c.startsAt);
+    const due = dueWithGrace(hasLongLead(c.startsAt, payOpenAt) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt), payOpenAt, c.startsAt, c.createdAt);
     if (due.getTime() > now.getTime()) continue;
     try {
       await db.transaction(async (tx) => {

@@ -73,7 +73,7 @@ export async function joinClosed(tx: Pick<Tx, "select">, match: DeadlineFields, 
   if (await deadlineRulesActive(tx, match)) {
     if (match.settledAt !== null) return true;
     if (!payAndReadyPossible(match)) return false; // Termin oder Hallen-Veto laufen: zahlen geht noch nicht, also noch keine Frist
-    return joinClosedByTime(match.startsAt, await leadStart(tx, match), now);
+    return joinClosedByTime(match.startsAt, await leadStart(tx, match), now, match.createdAt);
   }
   if (match.kind !== "private" || !privateListLocked(match)) return false;
   if (match.finalShareCents === null) return false;
