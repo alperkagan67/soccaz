@@ -22,8 +22,8 @@ Aufwand in Task-Tagen (ein Writer), grob; zwei Writer parallel nur bei disjunkte
 
 | M | Inhalt | Seitengruppe / Cluster | Aufwand |
 |---|---|---|---|
-| M2 | Grundlage: `DESIGN.md` auf E, Tokens (Typo-Skala, Status, Fokus), Basiskomponenten (`Button`, `PageShell`, `PageHeader`/`PageTitle`/Skip-Link, `StateMessage`, `StatusBadge`, `ConfirmDialog`, `Form`, `DateTimeField`), `format.ts`, Begriffsverzeichnis, `UserMenu` neu, Lint- und UI-Regel-Tests, Kontrasttest erweitert | K01–K05, K09, K10, K13, K15, K17 | 6–8 |
-| M3 | Navigation und Einstieg: `AppNav`, Start, Spiel suchen, Meine Spiele (`/app`), Lobby (Dein Stand, Hauptaktion, Captain-Leiste, Fehlerzustand mit Grund und Nachzahl-Weg aus 012 M3b), Neuling/Einladung/Onboarding, Turnierliste | K06, K08, K11, K12, K14 | 8–10 |
+| M2 | Grundlage: `DESIGN.md` auf E, Tokens (Typo-Skala, Status, Fokus), Basiskomponenten (`Button`, `PageShell`, `PageHeader`/`PageTitle`/Skip-Link, `StateMessage`, `StatusBadge`, `ConfirmDialog`, `Form`, `DateTimeField`), `format.ts`, Begriffsverzeichnis (`docs/design/begriffe.md`: Findet statt / Preis steht fest / Ergebnis bestätigt), `UserMenu` neu, Lint- und UI-Regel-Tests, Kontrasttest erweitert | K01–K05, K09, K10, K13, K15, K17 | 6–8 |
+| M3 | Navigation und Einstieg: `AppNav`, Start, Spiel suchen, Meine Spiele (`/app`), Lobby (Dein Stand, Hauptaktion, Captain-Leiste, Fehlerzustand mit Grund und Nachzahl-Weg aus 012 M3b), Neuling/Einladung/Onboarding, Turnierliste, UI-Texte (`lobby/[id]/page.tsx:238`, `FinalConfirm.tsx:8-14`: „Preis steht fest, sobald beide Captains bestätigen“ statt „Letzte Bestätigung“; `mygame.ts:60`: „Findet statt (Preis folgt)“) | K06, K08, K11, K12, K14 | 8–10 |
 | **Gate** | **Pilot-Test** mit Freunden in einer Halle, Stripe-Testkarten; Feedback fließt in M4 bis M7 | | – |
 | M4 | Team, Profil, Spielersuche, Ranglisten, Benachrichtigungen (ungelesen sichtbar, „Alle gelesen“), Konto und Einstellungen, Spielsuche für Gäste (Zahlen/Initialen) | K05, K12, K15 | 5–7 |
 | M5 | Turnier-Detail (Phasen, „Anmelden“ nur wo sinnvoll), Privatspiel anlegen, Zahlen/Karte erneuern (012-Oberflächen), Spiel und Ergebnis | K06, K08, K15 | 5–6 |
