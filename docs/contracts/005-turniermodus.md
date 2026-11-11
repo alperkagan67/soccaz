@@ -1,6 +1,6 @@
 # 005 – Turniermodus
 Status: Freigegeben (2026-11-09)
-Version: 2 (AC-8 präzisiert, 2026-11-09)
+Version: 3 (v3 2026-11-12: Zahlung durch Vertrag 012: Karte statt Guthaben, Turnier-Anteil = Hallenmiete ÷ Spielerzahl, Geld direkt an die Halle, Veranstalter ohne Geld, Zusage der Halle auch im Turnier Buchungsbedingung (Umsetzung 012 M5); davor v2 (AC-8 präzisiert, 2026-11-09)
 
 ## Ziel
 Der Turniermodus existiert im Code weitgehend (Anlegen, Anmelden, Kader, Preis, Zahlung, K.-o.-Bracket, Aufrücken, Absage). Dieser Vertrag schließt die Lücken zwischen Brief und Ist-Zustand, damit ein Organisator (z. B. Moscheen verschiedener Städte im Ramadan) ein privates K.-o.-Turnier sicher durchführen kann: Captains drücken erst nach vollständiger Zahlung ihres Teams auf "Bereit", Spieler können füreinander zahlen, das Bracket entsteht genau einmal und zufällig gelost, und der Organisator kann Ergebnisse eintragen und Streit entscheiden.
@@ -15,11 +15,12 @@ Grundlage: `docs/briefs/turnier-privatspiel.md`, `docs/analysis/ist-analyse.md` 
 - Platform-Admin: Fallback bei Streit.
 
 ## Entscheidungen (mit dem Nutzer geklärt: "du bist der Boss", Orchestrator-Empfehlung übernommen)
-- Eintritt bleibt berechnet: Hallenkosten ÷ Spielerzahl, fixiert bei vollständigem Kader (kein frei gesetzter Eintritt).
-- Ablauf: Kader vollzählig → Preis fixiert → bezahlen → Captain "Bereit" (nur bei vollständiger Zahlung des Teams) → Bracket, wenn alle Teams bereit sind.
-- Geld: bleibt auf Konto `tournament`, Auszahlung an den Organisator nach Turnierende abzüglich Plattform-Provision (Einstellung, unverändert); bei Absage Vollerstattung.
-- Spieler zahlen füreinander nur innerhalb des eigenen Teams; Erstattung geht an den Zahler (`paidBy`).
-- Nach der Zahlung kein Selbst-Rückzug; Ausstieg über Organisator (Kader wieder öffnen oder Team ersetzen), volle Erstattung an den Zahler.
+- Eintritt bleibt berechnet: Anteil = aufgerundet Hallenmiete des Turniers ÷ tatsächliche Spielerzahl (`shareCents`), fixiert bei vollständigem Kader (kein frei gesetzter Eintritt; `entryFeeCents` als Einsatz entfällt mit 012 M5).
+- Ablauf: Kader vollzählig → Preis fixiert → Karte hinterlegen → Captain "Bereit" (nur wenn bei allen Teamspielern eine Karte hinterlegt ist; abgebucht wird erst zur Frist (Buchung), siehe Vertrag 012) → Bracket, wenn alle Teams bereit sind.
+- Geld: wird zur Frist (Buchung) von der Karte abgebucht (Vertrag 012); das Geld geht direkt an die Halle abzüglich Halle-Provision (Vertrag 009). Der Veranstalter organisiert nur und bekommt kein Geld, es gibt keine Preisgelder aus Einsätzen. Veranstalter-Auszahlung (`tournaments.ts:558-559`), Konto `tournament`, globale Turnier-Kommission und `splitEntryFees` entfallen mit 012 M5 (bis dahin gilt der Ist-Stand); bei Absage Vollerstattung per Stripe-Refund auf die Karte.
+- Zusage der Halle ist auch im Turnier Buchungsbedingung (Nutzerentscheid 2026-11-12, Vertrag 011/012), weil das Geld direkt an die Halle geht; `cancelTournament` und das sofortige Bracket (008 v5) bleiben. Umsetzung mit 012 M5.
+- Spieler zahlen füreinander nur innerhalb des eigenen Teams; "Anteil übernehmen" (Zahlung füreinander) belastet zur Frist (Buchung); Erstattung per Stripe-Refund auf die Karte des Zahlers (`paidBy`).
+- Nach der Zahlung kein Selbst-Rückzug; Ausstieg über Organisator (Kader wieder öffnen oder Team ersetzen), volle Erstattung auf die Karte des Zahlers (Stripe-Refund).
 - Bracket wird einmalig zufällig gelost (statt Anmeldereihenfolge).
 - Organisator darf im Turnier Ergebnisse eintragen und Streit entscheiden; Plattform-Admin bleibt Fallback; 48-h-Auto-Bestätigung bleibt unverändert.
 - Nach Anmeldeschluss mit zu wenigen Teams: Organisator wählt Weitermachen (mindestens 4 Teams, Freilose) oder Absage mit Vollerstattung; am Anmeldeschluss bekommt er eine Benachrichtigung.
@@ -38,20 +39,20 @@ Grundlage: `docs/briefs/turnier-privatspiel.md`, `docs/analysis/ist-analyse.md` 
 ## Akzeptanzkriterien
 | ID | Gegeben | Wenn | Dann | Check (Testdatei) |
 |---|---|---|---|---|
-| AC-1 | Turnier in Phase `payment`, Team hat unbezahlte Spieler | Captain ruft "Bereit" auf (Server-Aktion, nicht nur UI) | Fehler; nach Zahlung aller Teamspieler (auch durch andere) gelingt "Bereit" | tests/integration/tournament.test.ts |
-| AC-2 | Team ist "Bereit" | Kader ändert sich, eine Zahlung wird erstattet oder der Organisator öffnet Kader wieder | "Bereit" wird zurückgesetzt | tests/integration/tournament.test.ts |
-| AC-3 | Nicht alle Teams angemeldet, vollständig bezahlt und bereit | Seite oder Serverfunktion liefert das Turnier | Keine Spielplan-Zeilen und kein Bracket in der Antwort; nach Erfüllung aller Bedingungen entsteht genau ein Bracket, auch bei parallelen Aufrufen | tests/integration/tournament.test.ts |
-| AC-4 | Spieler A und B im selben Team, B hat nicht bezahlt | A zahlt für B | B ist bezahlt, A wird belastet, `paidBy` = A; zweite (parallele) Zahlung für B wird abgewiesen | tests/integration/tournament.test.ts |
-| AC-5 | A ist in Team X, B in Team Y | A zahlt für B | Abgelehnt (nur eigenes Team) | tests/integration/tournament.test.ts |
-| AC-6 | Zahlung von A für B, Kader wird wieder geöffnet oder Turnier abgesagt | Erstattung läuft | Betrag geht an A (Zahler), nicht an B | tests/integration/tournament.test.ts |
+| AC-1 | Turnier in Phase `payment`, Team hat Spieler ohne Karte | Captain ruft "Bereit" auf (Server-Aktion, nicht nur UI) | Fehler; sobald bei allen Teamspielern eine Karte hinterlegt ist (oder ein anderer den Anteil übernommen hat), gelingt "Bereit"; Gebühr für Spieler: keine | tests/integration/tournament.test.ts |
+| AC-2 | Team ist "Bereit" | Kader ändert sich, eine Karte oder Übernahme entfällt oder der Organisator öffnet Kader wieder | "Bereit" wird zurückgesetzt | tests/integration/tournament.test.ts |
+| AC-3 | Nicht alle Teams angemeldet, vollständig mit hinterlegter Karte und bereit | Seite oder Serverfunktion liefert das Turnier | Keine Spielplan-Zeilen und kein Bracket in der Antwort; nach Erfüllung aller Bedingungen entsteht genau ein Bracket, auch bei parallelen Aufrufen | tests/integration/tournament.test.ts |
+| AC-4 | Spieler A und B im selben Team, B hat keine Karte hinterlegt | A übernimmt den Anteil von B | B gilt als gedeckt, A wird zur Frist (Buchung) belastet (nicht sofort), `paidBy` = A; zweite (parallele) Zahlung für B wird abgewiesen | tests/integration/tournament.test.ts |
+| AC-5 | A ist in Team X, B in Team Y | A übernimmt den Anteil von B | Abgelehnt (nur eigenes Team) | tests/integration/tournament.test.ts |
+| AC-6 | Übernahme von A für B, Kader wird wieder geöffnet oder Turnier abgesagt | Erstattung läuft | Stripe-Refund auf die Karte von A (Zahler), nicht an B | tests/integration/tournament.test.ts |
 | AC-7 | Captain zahlt für einzelne oder alle (bestehendes Verhalten) | Wie bisher | Verhalten unverändert (Regression) | tests/integration/tournament.test.ts |
-| AC-8 | Phase `payment` oder später | Spieler versucht auszutreten oder Team abzumelden | Abgelehnt; nur der Organisator kann den Kader öffnen und danach ein Team ersetzen (Reihenfolge: Kader öffnen, dann ersetzen), mit voller Erstattung an den Zahler | tests/integration/tournament.test.ts |
+| AC-8 | Phase `payment` oder später | Spieler versucht auszutreten oder Team abzumelden | Abgelehnt; nur der Organisator kann den Kader öffnen und danach ein Team ersetzen (Reihenfolge: Kader öffnen, dann ersetzen), mit voller Erstattung auf die Karte des Zahlers | tests/integration/tournament.test.ts |
 | AC-9 | Alle Bedingungen erfüllt | Bracket wird erzeugt | Reihenfolge der Teams ist zufällig (nicht Anmeldereihenfolge, Test mit injizierter Zufallsquelle), Freilose korrekt, genau ein Bracket | tests/unit/tournament.test.ts, tests/integration/tournament.test.ts |
 | AC-10 | Turnierspiel, Organisator ist weder Team-Admin noch Plattform-Admin | Organisator trägt Ergebnis ein oder entscheidet Streit | Erlaubt; Sieger rückt automatisch auf. Ein fremder Nutzer wird abgewiesen | tests/integration/tournament.test.ts |
 | AC-11 | Anmeldeschluss erreicht, weniger Teams als `maxTeams` | Organisator wählt "Weitermachen" (≥ 4 Teams) oder "Absagen" | Weitermachen: Bracket mit Freilosen; Absage: Vollerstattung; unter 4 Teams ist nur Absage möglich; Organisator erhält am Anmeldeschluss eine Benachrichtigung | tests/integration/tournament.test.ts |
 | AC-12 | Eingeloggter Nutzer ohne Team öffnet das Turnier per Link | Seite rendert | Hinweis mit Link "Team gründen"; nach Gründung Rückkehr zum Turnier | tests/e2e/turnier-ablauf.spec.ts |
 | AC-13 | Neuer, nicht eingeloggter Nutzer öffnet `/turniere/{id}?t=…` | Er meldet sich an bzw. registriert sich | Er landet wieder im Turnier mit Einladung | tests/e2e/turnier-ablauf.spec.ts |
-| AC-14 | Gesamtablauf | Organisator legt an, 4 Teams treten bei, alle zahlen, Captains "Bereit", Ergebnisse, Finale | Genau ein Bracket erst am Ende, Sieger rücken auf (angepasster Test ersetzt "Bereit nur nach Zahlung" aus `phase4.spec.ts:123`) | tests/e2e/phase4.spec.ts |
+| AC-14 | Gesamtablauf | Organisator legt an, 4 Teams treten bei, alle hinterlegen eine Karte, Captains "Bereit", Abbuchung zur Frist, Ergebnisse, Finale | Genau ein Bracket erst am Ende, Sieger rücken auf (angepasster Test ersetzt "Bereit nur nach Zahlung" aus `phase4.spec.ts:123`) | tests/e2e/phase4.spec.ts |
 
 ## Meilensteine
 Reihenfolge strikt seriell: alle Meilensteine ändern `src/server/tournaments.ts`; M1 enthält eine Migration.
@@ -71,8 +72,8 @@ Reihenfolge strikt seriell: alle Meilensteine ändern `src/server/tournaments.ts
 
 ## Risiken und Randfälle
 - Migration läuft nie parallel zu anderen Tasks mit Schema-Annahmen; PR mit Migration ist ein Ausnahme-PR (Nutzer merged selbst, NEEDS-USER).
-- Doppelzahlung bei Zahlung von zwei Spielern für denselben Spieler: Buchungsschlüssel ist zahlerunabhängig, Zeilensperre bleibt; Rückgabewert von `debitWallet` (`created`) wird bisher nicht geprüft und muss ausgewertet werden.
-- Erstattung an den Zahler, wenn der Zahler später nicht mehr im Turnier ist: Erstattung geht trotzdem auf sein Guthaben.
+- Doppelzahlung bei Zahlung von zwei Spielern für denselben Spieler: Buchungsschlüssel ist zahlerunabhängig, Zeilensperre bleibt; Rückgabewert der Abbuchung (Idempotenz) muss ausgewertet werden (Muster in Vertrag 012).
+- Erstattung an den Zahler, wenn der Zahler später nicht mehr im Turnier ist: Erstattung geht trotzdem per Stripe-Refund auf seine Karte.
 - Captain-Wechsel gibt es nicht (kein `captainId`-Update); unverändert.
 - Ungerade Teamzahlen: Freilose, Aufrücken ohne Gegner prüfen.
 - Alte Turniere ohne `paid_ready_at`: Migration muss bestehende laufende Turniere unverändert lassen (Spalte NULL; Bracket nur für Turniere in Phase `payment` neu prüfen).
@@ -81,7 +82,7 @@ Reihenfolge strikt seriell: alle Meilensteine ändern `src/server/tournaments.ts
 - Schreibende Aktionen laufen als Server Actions; Rechteprüfung serverseitig, nicht nur im Frontend.
 
 ## Datenschutz / Sicherheit
-- Zahlungen: Guthaben-Buchungen, Idempotenz und Erstattungsziel (Zahler); Security-Review Pflicht.
+- Zahlungen: Abbuchung per Karte, Idempotenz und Erstattungsziel (Karte des Zahlers); Security-Review Pflicht.
 - Rechte: Organisator-Rechte für Ergebnisse nur im eigenen Turnier; Zahlung nur im eigenen Team.
 - Private Turniere: Kader, Zahlungsstand und Einladungslink bleiben für Nicht-Beteiligte verborgen (Regression); Bracket vor Erzeugung auch serverseitig nicht ausgeliefert.
 - Keine neuen personenbezogenen Daten.
@@ -92,4 +93,4 @@ Reihenfolge strikt seriell: alle Meilensteine ändern `src/server/tournaments.ts
 Notiert für spätere Verträge: Navigation und Oberfläche (006), Setzung nach Stärke, andere Turnierformate, frei gesetzter Eintritt, Captain-Wechsel.
 
 ## End-to-End-Nachweis
-`tests/e2e/phase4.spec.ts` (angepasst) und `tests/e2e/turnier-ablauf.spec.ts`: Organisator legt ein privates Turnier an, Teams treten per Einladungslink bei (auch ein neuer Nutzer), alle zahlen (auch Spieler füreinander), Captains drücken "Bereit", das Bracket erscheint erst dann, Ergebnisse tragen die Sieger bis ins Finale.
+`tests/e2e/phase4.spec.ts` (angepasst) und `tests/e2e/turnier-ablauf.spec.ts`: Organisator legt ein privates Turnier an, Teams treten per Einladungslink bei (auch ein neuer Nutzer), alle hinterlegen eine Karte (auch Spieler füreinander per "Anteil übernehmen"), Captains drücken "Bereit", das Bracket erscheint erst dann, Ergebnisse tragen die Sieger bis ins Finale.

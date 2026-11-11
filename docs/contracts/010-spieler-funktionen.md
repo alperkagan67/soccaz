@@ -1,6 +1,6 @@
 # 010 – Spieler-Funktionen: Hallenbewertung, Hallenkarte, Nochmal spielen
 Status: Freigegeben (2026-11-11)
-Version: 1
+Version: 2 (v2 2026-11-12: durch Vertrag 012: neue Lobby mit Karte statt Guthaben; davor v1)
 
 ## Ziel
 Spieler bewerten nach dem Spiel die Halle (nur wer dort gespielt hat), finden Partnerhallen auf einer Karte und können ein Spiel mit denselben Teams und derselben Halle wiederholen: Nach Spielende werden beide Captains gefragt "Nochmal spielen?"; sagen beide ja, öffnet sich eine neue Lobby mit denselben Teams und derselben Halle, nur der Termin wird gewählt.
@@ -16,7 +16,7 @@ Spieler (bewerten), Captain (Nochmal spielen), Gast (liest), Admin 2 (prüft gem
 ## Annahmen (Orchestrator-Vorschlag)
 - "Gespielt" = Teilnehmer eines abgeschlossenen, bestätigten Spiels dieser Halle (Team, Turnier, Privatspiel); Bewertungsfrist 7 Tage nach Spielende, eine Erinnerung (Push) am nächsten Tag, wenn noch nicht bewertet.
 - Privatspiele: bewertbar (Halle), aber ohne Rangliste/Namen für Gäste; Nochmal spielen fragt den Veranstalter (Captain beider Teams), eine Antwort genügt.
-- Neue Lobby nutzt die Regeln aus 006/008 (48-h-Frist, geparktes Geld); die Halle wird nicht automatisch gebucht, die Halle-Zusage läuft wie heute. Fragt nur, wenn die Halle noch aktiv und Partner ist.
+- Neue Lobby nutzt die Regeln aus 006/008 (48-h-Frist; Karte hinterlegen, Abbuchung zur Frist (Buchung), Vertrag 012; kein Guthaben); die Halle wird nicht automatisch gebucht, die Halle-Zusage läuft wie heute. Fragt nur, wenn die Halle noch aktiv und Partner ist.
 - Die Frage "Nochmal spielen?" wird als Benachrichtigung/Push und in "Meine Spiele" gestellt; Frist 2 Stunden nach Spielende, danach verfällt sie.
 - Karte nutzt vorhandene `lat/lng`; Hallen ohne Koordinaten erscheinen nur in der Liste. Umgebung "in der Nähe": Standort nur auf Nutzerwunsch, nie gespeichert.
 
