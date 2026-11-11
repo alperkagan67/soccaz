@@ -125,3 +125,23 @@ test("Dritte sehen nur die neutrale rote Ampel; Gäste sehen keinen Status und n
     live.replace(/^(event: update|data: 1|retry: \d+|:.*)$/gm, "").trim(),
   ).toBe("");
 });
+
+test("Offene Lobbys auf Start und Suche: Gäste sehen nur Initialen und keinen Status je Person (HTML und RSC), Angemeldete die Namen", async ({
+  browser,
+}) => {
+  const { a, matchId } = await setupLobby(browser, "kq");
+  const anonymous = await (await browser.newContext()).newPage();
+  for (const path of ["/", "/suche"]) {
+    const guest = await bodies(anonymous, path);
+    for (const body of [guest.html, guest.rsc]) {
+      expect(body, path).not.toContain("Spieler kqa");
+      expect(body, path).not.toContain("Spieler kqb");
+    }
+    expect(guest.html, path).not.toContain('data-light="');
+    expect(guest.html, path).not.toContain("/spieler/");
+  }
+  // Gegenprobe: angemeldet stehen die Namen auf der Suche (sonst wäre die Prüfung oben wertlos)
+  const own = await bodies(a, "/suche");
+  expect(own.html).toContain(matchId);
+  expect(own.html).toContain("Spieler kqa");
+});
