@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { invites, matchParticipants, matchRequests, matches, teamMembers, teams } from "@/db/schema";
 import { matchmakingQueue } from "@/db/schema-matchmaking";
 import { slugify } from "@/lib/slug";
+import { isColorKey } from "@/lib/team-color";
 import { CITIES } from "@/lib/validation";
 import { audit } from "./audit";
 import { userName } from "./names";
@@ -62,6 +63,21 @@ export async function updateTeam(userId: string, teamId: string, input: { name: 
     if (taken) throw new DomainError("Dieser Teamname ist bereits vergeben.");
     await tx.update(teams).set({ name, city: input.city, strength: input.strength, bio }).where(eq(teams.id, teamId));
     await audit(userId, "team.update", "team", teamId, { before: { name: team.name, city: team.city, strength: team.strength }, after: input }, tx);
+  });
+}
+
+/**
+ * Teamfarbe wählen (Vertrag 007, AC-11): nur Team-Admins, nur einer der zwölf Palettenschlüssel (kein Hex, kein Text, kein Orange).
+ * Das Spiel-Team eines Privatspiels (kind = private) ist hier nicht änderbar und erscheint als "nicht gefunden".
+ */
+export async function setTeamColor(userId: string, teamId: string, color: string) {
+  await db.transaction(async (tx) => {
+    const team = await lockTeam(tx, teamId);
+    if (team.kind !== "team") throw new DomainError("Team nicht gefunden.");
+    await requireAdmin(tx, teamId, userId);
+    if (!isColorKey(color)) throw new DomainError("Bitte wähle eine Farbe aus der Liste.");
+    await tx.update(teams).set({ color }).where(eq(teams.id, teamId));
+    await audit(userId, "team.color", "team", teamId, { before: { color: team.color }, after: { color } }, tx);
   });
 }
 

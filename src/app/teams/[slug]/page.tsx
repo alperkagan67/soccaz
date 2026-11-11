@@ -7,6 +7,7 @@ import { ChallengeNow } from "@/components/ChallengeNow";
 import { ImageUpload } from "@/components/ImageUpload";
 import { FormChips, Sparkline } from "@/components/Sparkline";
 import { StatTile } from "@/components/Stats";
+import { TeamColorDot } from "@/components/TeamColor";
 import { formatDate, formatDateTime } from "@/lib/time";
 import { getTeamProfile, getTeamRosterView } from "@/server/profiles";
 import { myAdminTeams } from "@/server/requests";
@@ -66,6 +67,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
       <header className="space-y-1">
         {team.logoUrl && <Image src={team.logoUrl} alt={`Logo von ${team.name}`} width={72} height={72} unoptimized className="mb-2 size-[72px] rounded-xl object-cover" />}
         <h1 className="text-3xl font-bold">
+          <TeamColorDot color={team.color} slug={team.slug} className="mr-2 !size-4" />
           {team.name}
           {team.isVerified && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 align-middle text-xs text-accent-fg">Verifiziert</span>}
         </h1>
@@ -205,7 +207,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         </ul>
       </section>
 
-      {admin && <TeamSettings teamId={team.id} name={team.name} city={team.city} strength={team.strength} bio={team.bio ?? null} />}
+      {admin && <TeamSettings teamId={team.id} slug={team.slug} color={team.color ?? null} name={team.name} city={team.city} strength={team.strength} bio={team.bio ?? null} />}
       {user && members.some((m) => m.userId === user.id) && <LeaveTeam teamId={team.id} />}
 
       <Comments targetType="team" targetId={team.id} path={`/teams/${team.slug}`} title="Kommentare" />

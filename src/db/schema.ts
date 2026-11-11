@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
+import { COLOR_KEYS } from "../lib/team-color";
 ﻿import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -45,7 +47,9 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const teams = pgTable("teams", {
+export const teams = pgTable(
+  "teams",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
@@ -58,7 +62,10 @@ export const teams = pgTable("teams", {
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  color: text("color"), // Teamfarbe: Schlüssel der 12er-Palette (src/lib/team-color.ts) oder null (dann Standardfarbe aus dem Slug)
+  },
+  () => [check("teams_color_check", sql.raw(`"color" is null or "color" in (${COLOR_KEYS.map((k) => `'${k}'`).join(", ")})`))],
+);
 
 export const teamMembers = pgTable(
   "team_members",

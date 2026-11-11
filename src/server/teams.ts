@@ -66,7 +66,7 @@ export async function getTeamMembers(teamId: string) {
 
 export async function listMyTeams(userId: string) {
   return db
-    .select({ id: teams.id, name: teams.name, slug: teams.slug, city: teams.city, role: teamMembers.role })
+    .select({ id: teams.id, name: teams.name, slug: teams.slug, city: teams.city, color: teams.color, role: teamMembers.role })
     .from(teamMembers)
     .innerJoin(teams, eq(teams.id, teamMembers.teamId))
     .where(and(eq(teamMembers.userId, userId), isNull(teams.archivedAt), eq(teams.kind, "team")))

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MyGames } from "@/components/MyGames";
+import { TeamColorDot } from "@/components/TeamColor";
 import { GameModes } from "@/components/GameModes";
 import Link from "next/link";
 import { formatDateTime } from "@/lib/time";
@@ -107,7 +108,7 @@ export default async function DashboardPage() {
               <li key={t.id}>
                 <Link href={`/teams/${t.slug}`} className="card flex items-center justify-between hover:border-accent">
                   <span>
-                    <span className="font-semibold">{t.name}</span>
+                    <span className="font-semibold"><TeamColorDot color={t.color} slug={t.slug} className="mr-2" />{t.name}</span>
                     <span className="block text-sm text-muted">{t.city}</span>
                   </span>
                   <span className="text-xs text-muted">{t.role === "admin" ? "Team-Admin" : "Spieler"}</span>

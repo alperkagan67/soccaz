@@ -1,16 +1,59 @@
 "use client";
 
+import { useState, useTransition } from "react";
 import { ActionButton } from "@/components/ActionButton";
 import { ActionForm } from "@/components/ActionForm";
+import { TEAM_COLORS, textOn } from "@/lib/color";
+import { effectiveColorKey } from "@/lib/team-color";
 import { CITIES } from "@/lib/validation";
 import { STRENGTH_LABELS } from "@/lib/labels";
-import { dissolveTeamAction, leaveTeamAction, removeMemberAction, revokeInvitesAction, setMemberRoleAction, updateTeamAction } from "@/server/team-admin-actions";
+import { dissolveTeamAction, leaveTeamAction, removeMemberAction, revokeInvitesAction, setMemberRoleAction, setTeamColorAction, updateTeamAction } from "@/server/team-admin-actions";
+
+/** Teamfarbe wählen: genau die 12 Palettenfarben (kein Orange, keine freie Eingabe). Nur für Team-Admins eingebunden; der Server prüft Rolle und Wert erneut. */
+export function TeamColorPicker({ teamId, slug, color }: { teamId: string; slug: string; color: string | null }) {
+  const [current, setCurrent] = useState(effectiveColorKey(color, slug));
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string>();
+  return (
+    <fieldset className="space-y-2" data-testid="team-color-picker" disabled={pending}>
+      <legend className="label">Teamfarbe</legend>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Teamfarbe">
+        {TEAM_COLORS.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            role="radio"
+            aria-checked={current === c.key}
+            aria-label={c.name}
+            title={c.name}
+            data-testid={`team-color-${c.key}`}
+            className={`flex size-11 items-center justify-center rounded-full border-2 text-sm font-bold ${current === c.key ? "border-ink" : "border-line"}`}
+            style={{ backgroundColor: c.hex, color: textOn(c.hex) }}
+            onClick={() => {
+              setError(undefined);
+              start(async () => {
+                const r = await setTeamColorAction(teamId, c.key);
+                if (r?.error) setError(r.error);
+                else setCurrent(c.key);
+              });
+            }}
+          >
+            {current === c.key ? "✓" : ""}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted">Gewählt: {TEAM_COLORS.find((c) => c.key === current)?.name}. {color ? "" : "Das ist die Standardfarbe, bis ihr eine wählt."}</p>
+      {error && <p className="error text-xs" role="alert">{error}</p>}
+    </fieldset>
+  );
+}
 
 /** Verwaltung für Team-Admins: bearbeiten, Einladungen widerrufen, auflösen. */
-export function TeamSettings({ teamId, name, city, strength, bio }: { teamId: string; name: string; city: string; strength: number; bio: string | null }) {
+export function TeamSettings({ teamId, slug, color, name, city, strength, bio }: { teamId: string; slug: string; color: string | null; name: string; city: string; strength: number; bio: string | null }) {
   return (
     <details className="card space-y-3" data-testid="team-settings">
       <summary className="cursor-pointer font-semibold">Team verwalten</summary>
+      <TeamColorPicker teamId={teamId} slug={slug} color={color} />
       <ActionForm action={updateTeamAction.bind(null, teamId)} submit="Änderungen speichern" className="mt-3 space-y-3" keepOnSuccess>
         <div>
           <label className="label" htmlFor="tm-name">Teamname</label>
