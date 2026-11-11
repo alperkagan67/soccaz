@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { formatDateTime, formatTime, toBerlinInputValue } from "@/lib/time";
-import { formatEuro } from "@/lib/money";
+import { formatEuro, shareCents } from "@/lib/money";
 import { hasFreeSlot, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { ShareLink } from "@/components/ShareLink";
 import { ActionButton } from "@/components/ActionButton";
@@ -10,8 +10,14 @@ import { regenerateGameInviteAction, revokeGameInviteAction } from "@/server/pri
 import { PrivateTools } from "./PrivateTools";
 import { getGameInviteToken } from "@/server/privategame";
 import { headers } from "next/headers";
+import { db } from "@/db";
 import { getCurrentUser } from "@/server/session";
-import { lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
+import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
+import { fakeCardAllowed } from "@/server/payments/mode";
+import { cardModeActive } from "@/server/wallet";
+import { cardView } from "@/lib/card-view";
+import { getCardStatuses, getStoredCardDisplay } from "@/server/payments/card-status";
+import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
 import { canViewLobby, getLobby } from "@/server/lobby";
 import { getScheduling } from "@/server/scheduling";
@@ -49,6 +55,14 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const v = view.viewer ?? { id: "", platformAdmin: false, membershipTeamId: null, adminOf: [] as string[], participant: null, canManage: false, canJoin: false, teamFull: false, canJoinAsSubstitute: false };
   if (match.kind === "tournament") redirect(`/spiele/${match.id}`); // Turnierspiele haben keine eigene Lobby: Ergebnis auf der Spielseite, Überblick im Turnier
   const confirmed = match.status === "confirmed";
+  // Kartenmodell (Vertrag 012): Schalter card_payments_enabled, Standard AUS = bisheriges Guthaben-Verhalten
+  const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Guthabenmodell
+  const cardStatuses = cardOn ? await getCardStatuses(match.id) : {};
+  const storedCard = cardOn && user ? await getStoredCardDisplay(user.id) : null;
+  const cardStatusOf = (userId: string) => cardStatuses[userId] ?? "none";
+  const hasCard = (userId: string) => cardView(cardStatusOf(userId)).hasCard;
+  const assignedCount = participants.filter((p) => p.teamId).length;
+  const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
   // Haben beide Captains bestätigt, ist die Spielübersicht die Hauptseite für alle Beteiligten
   if (finalDone && match.status !== "cancelled" && user && (v.participant || v.membershipTeamId || v.platformAdmin)) redirect(`/lobby/${match.id}/uebersicht`);
@@ -80,7 +94,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           : step === 3 || step === 4
             ? [{ id: match.homeId, name: match.homeName, ready: counts.readyHome }, { id: match.awayId, name: match.awayName, ready: counts.readyAway }].map((t) => ({ teamId: t.id, teamName: t.name, done: t.ready >= MIN_READY_PER_TEAM, text: `${t.ready} von ${MIN_READY_PER_TEAM} Spielern bereit` }))
             : [];
-  const decisionTitle = step === 1 ? "Die Captains stimmen ab. Hier siehst du live, wer schon gewählt hat." : step === 2 ? "Die Captains bannen abwechselnd Hallen." : "Jedes Team macht seine Spieler bereit und bezahlt.";
+  const decisionTitle = step === 1 ? "Die Captains stimmen ab. Hier siehst du live, wer schon gewählt hat." : step === 2 ? "Die Captains bannen abwechselnd Hallen." : (cardOn ? "Jedes Team macht seine Spieler bereit (Karte hinterlegt)." : "Jedes Team macht seine Spieler bereit und bezahlt.");
   const slots = scheduling ? windowSlots(scheduling.windows, match.durationMin, new Date()).map((d) => ({ value: toBerlinInputValue(d), label: `${formatTime(d)} Uhr` })) : [];
   const dayText = scheduling && scheduling.windows.length ? scheduling.windows.map((w) => new Date(w.from).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", weekday: "long", day: "2-digit", month: "2-digit" })).filter((d, i, a) => a.indexOf(d) === i).join(" oder ") : null;
   const myAdminTeam = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null;
@@ -108,7 +122,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     .map((t) => ({ teamId: t.id, name: t.name }));
 
   // Privatspiel: Wer schon etwas gezahlt hat, aber weniger als den (neu gerechneten) Anteil, muss die Differenz nachzahlen
-  const owes = Boolean(isPrivate && payments.enabled && payments.priceCents && payments.priceCents > 0 && payments.finalShareCents === null && v.participant?.teamId && v.participant.paid && (payments.myDueCents ?? 0) > 0);
+  const owes = Boolean(!cardOn && isPrivate && payments.enabled && payments.priceCents && payments.priceCents > 0 && payments.finalShareCents === null && v.participant?.teamId && v.participant.paid && (payments.myDueCents ?? 0) > 0);
 
   let inviteUrl: string | null = null;
   // Dieselbe Regel wie auf dem Server (canManageInvite): Team-Admin des Heim-Teams oder Plattform-Admin, nicht jeder Admin des Gast-Teams
@@ -235,13 +249,31 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
       )}
       {!open && !match.venueName && !(active && v.canManage) && (match.venueText ? <VenueBox name={match.venueText} address={null} city={null} when={formatDateTime(match.startsAt)} lat={null} lng={null} /> : <p className="card text-muted">Spielort noch nicht festgelegt. Die Team-Admins legen den Ort fest.</p>)}
 
-      {payments.priceCents === 0 && (
+      {payments.priceCents === 0 && cardOn && (
+        <section className="card space-y-1 text-sm" aria-label="Kosten" data-testid="free-game">
+          <h2 className="font-semibold">Kosten</h2>
+          <p>Dieses Spiel ist <strong>kostenlos</strong>. Es wird nichts bezahlt.</p>
+        </section>
+      )}
+      {cardOn && payments.priceCents !== null && payments.priceCents > 0 && (
+        <section className="card space-y-1 text-sm" aria-label="Kosten" data-testid="card-costs">
+          <h2 className="font-semibold">Kosten</h2>
+          <p>
+            Halle {match.durationMin} Minuten: <strong>{formatEuro(payments.priceCents)}</strong>, geteilt durch alle Spieler.
+          </p>
+          <p className="text-muted">
+            {cardShareCents !== null ? <>Dein Anteil: <strong className="text-ink">{formatEuro(cardShareCents)}</strong> (Miete geteilt durch die eingeteilten Spieler). </> : null}
+            Ändert sich die Spielerzahl, ändert sich der Anteil. Dein Anteil wird zur Frist von deiner Karte abgebucht; bis dahin wird nichts abgebucht.
+          </p>
+        </section>
+      )}
+      {!cardOn && payments.priceCents === 0 && (
         <section className="card space-y-1 text-sm" aria-label="Kosten" data-testid="free-game">
           <h2 className="font-semibold">Kosten</h2>
           <p>Dieses Spiel ist <strong>kostenlos</strong>. Es wird nichts bezahlt und nichts reserviert.</p>
         </section>
       )}
-      {payments.enabled && payments.priceCents !== null && payments.priceCents > 0 && (
+      {!cardOn && payments.enabled && payments.priceCents !== null && payments.priceCents > 0 && (
         <section className="card space-y-1 text-sm" aria-label="Kosten">
           <h2 className="font-semibold">Kosten</h2>
           <p>
@@ -287,12 +319,13 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
-          pay={payments.enabled && payments.reservationCents !== null ? { reserveCents: owes ? (payments.myDueCents ?? 0) : payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid) && !owes, backTo: `/lobby/${match.id}` } : null}
+          card={cardOn ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard } : null}
+          pay={!cardOn && payments.enabled && payments.reservationCents !== null ? { reserveCents: owes ? (payments.myDueCents ?? 0) : payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid) && !owes, backTo: `/lobby/${match.id}` } : null}
           teamPaid={{ paid: participants.filter((p) => p.teamId === v.participant?.teamId && p.paid).length, total: participants.filter((p) => p.teamId === v.participant?.teamId).length }}
         />
       )}
 
-      <LightLegend paymentsOn={payments.enabled} />
+      {cardOn ? <CardLightLegend /> : <LightLegend paymentsOn={payments.enabled} />}
       <div className="grid gap-3 sm:grid-cols-2">
         {teamsView.map((t) => (
           <section key={t.id} className="card space-y-2">
@@ -312,7 +345,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                     {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                   </span>
                   <span className="flex items-center gap-2">
-                    <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel />
+                    {cardOn ? <CardLight status={cardStatusOf(p.userId)} /> : <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel />}
                     {active && p.userId !== user?.id && canAdminTeam(t.id) && (
                       <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} canUnassign={isPrivate && !p.ready && !p.paid} />
                     )}
@@ -363,7 +396,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
       {active && !open && (
         <FinalConfirm
           matchId={match.id}
-          paymentsOn={payments.enabled}
+          paymentsOn={payments.enabled && !cardOn}
           minPlayers={MIN_READY_PER_TEAM}
           myTeamId={[match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null}
           teams={[
@@ -373,7 +406,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             const list = participants.filter((p) => p.teamId === t.id);
             const paid = list.filter((p) => p.paid).length;
             const ready = list.filter((p) => p.ready).length;
-            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (!payments.enabled || paid === list.length) };
+            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (cardOn ? list.every((p) => hasCard(p.userId)) : !payments.enabled || paid === list.length) };
           })}
         />
       )}

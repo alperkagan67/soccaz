@@ -16,6 +16,7 @@ import {
 } from "@/server/actions";
 import { countdownText } from "@/lib/lobby-rules";
 import { formatEuro } from "@/lib/money";
+import { CardForm } from "./CardForm";
 
 type Result = { error?: string; needsTopupCents?: number } | undefined;
 
@@ -57,9 +58,11 @@ type MyActionsProps = {
   pay?: { reserveCents: number; balanceCents: number; paid: boolean; backTo: string } | null;
   /** Wie viele Spieler des eigenen Teams haben schon bezahlt? Bereit geht erst, wenn alle bezahlt haben. */
   teamPaid?: { paid: number; total: number };
+  /** Nur im Kartenmodell (Schalter card_payments_enabled EIN): Karte statt Guthaben, Vertrag 012. */
+  card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; stored: { brand: string | null; last4: string } | null } | null;
 };
 
-export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid }: MyActionsProps) {
+export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid, card }: MyActionsProps) {
   const { error, needsTopupCents, pending, run } = useRun();
   const busy = pending ? "opacity-60" : "";
 
@@ -69,6 +72,15 @@ export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid }: MyAc
         <>
           {hasTeam ? (
             <>
+              {card && !card.ready && (
+                <>
+                  <p className="text-sm text-muted" data-testid="card-hint">
+                    Schritt 1: Karte hinterlegen.{card.shareCents !== null ? ` Dein Anteil von ${formatEuro(card.shareCents)} wird zur Frist abgebucht.` : " Dein Anteil wird zur Frist abgebucht."} Bis dahin wird nichts abgebucht.
+                  </p>
+                  <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={card.stored} />
+                </>
+              )}
+              {card?.ready && <p className="text-sm text-accent-fg" data-testid="card-ready-text">Deine Karte ist hinterlegt. Dein Anteil wird zur Frist abgebucht.</p>}
               {pay && !pay.paid && (
                 <>
                   <p className="text-sm text-muted" data-testid="pay-hint">
@@ -87,7 +99,7 @@ export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid }: MyAc
                   )}
                   <button
                     className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`}
-                    disabled={pending || (!ready && Boolean(pay && teamPaid && teamPaid.paid < teamPaid.total))}
+                    disabled={pending || (!ready && Boolean(card && !card.ready)) || (!ready && Boolean(pay && teamPaid && teamPaid.paid < teamPaid.total))}
                     onClick={() => run(() => setReadyAction(matchId, !ready))}
                   >
                     {ready ? "Nicht mehr bereit" : pay ? "Bereit machen" : "Ich bin bereit"}
