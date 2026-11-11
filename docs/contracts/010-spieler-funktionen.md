@@ -1,7 +1,6 @@
 # 010 – Spieler-Funktionen: Hallenbewertung, Hallenkarte, Nochmal spielen
 Status: Freigegeben (2026-11-11)
-Version: 1
-v-Entwurf (wartet auf 012): Zahlungsstelle auf Karte umgeschrieben; gilt erst mit G1 von Vertrag 012; Versionsnummer bleibt 1.
+Version: 2 (v2 2026-11-12: durch Vertrag 012: neue Lobby mit Karte statt Guthaben; davor v1)
 
 ## Ziel
 Spieler bewerten nach dem Spiel die Halle (nur wer dort gespielt hat), finden Partnerhallen auf einer Karte und können ein Spiel mit denselben Teams und derselben Halle wiederholen: Nach Spielende werden beide Captains gefragt "Nochmal spielen?"; sagen beide ja, öffnet sich eine neue Lobby mit denselben Teams und derselben Halle, nur der Termin wird gewählt.

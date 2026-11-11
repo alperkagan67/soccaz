@@ -1,5 +1,5 @@
 # 0001 – Zahlungsmodell der Lobby: Karte hinterlegen, einmal abbuchen (B) statt Vorab-Zahlung aus Guthaben (A)
-Status: vorgeschlagen (wartet auf G1 des Nutzers)
+Status: akzeptiert (G1 durch den Nutzer, 2026-11-12)
 Datum: 2026-11-11
 
 ## Kontext und Problem

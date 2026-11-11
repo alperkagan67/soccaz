@@ -1,7 +1,6 @@
 # 011 – Hallen-Dashboard
 Status: Freigegeben (2026-11-11)
-v-Entwurf (wartet auf 012): Geld-/Zahlungsstellen auf Karte umgeschrieben (kein Guthaben, kein Parken, Erstattung per Stripe-Refund); Zusage-, Frist- und Wechsel-Regeln unverändert; gilt erst mit G1 von Vertrag 012; Versionsnummer bleibt 2.
-Version: 2 (Stand 2026-11-11: M4 mit AC-9 bis AC-15, AC-15 Wechsel von Halle oder Termin, AC-16 Mindestvorlauf 2 h bei Hallen mit Zugang, Antwortfrist = Vorlauf minus 1 h)
+Version: 3 (v3 2026-11-12: durch Vertrag 012: Karte statt Guthaben, Erstattung per Stripe-Refund; Zusage der Halle gilt auch im Turnier (Nutzerentscheid 2026-11-12); davor v2 (Stand 2026-11-11: M4 mit AC-9 bis AC-15, AC-15 Wechsel von Halle oder Termin, AC-16 Mindestvorlauf 2 h bei Hallen mit Zugang, Antwortfrist = Vorlauf minus 1 h)
 
 ## Ziel
 Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur für ihre Halle(n): Sie bestätigen oder lehnen neue Buchungsanfragen ab (Ablehnung mit Pflicht-Begründung), sehen ihre Buchungen, Auszahlungen und die Provisionsrechnungen von Soccaz und antworten auf Bewertungen. Jede Entscheidung landet automatisch im Beweisprotokoll aus 009. Admin 1 ordnet Betreiber ihren Hallen zu.
