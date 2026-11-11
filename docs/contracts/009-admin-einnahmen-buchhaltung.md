@@ -1,5 +1,5 @@
 # 009 – Admin-Bereich, Einnahmemodell und Buchhaltung
-Status: Entwurf (2026-11-10)
+Status: Freigegeben (2026-11-11)
 Version: 1
 
 ## Ziel

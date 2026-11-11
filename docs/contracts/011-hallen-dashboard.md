@@ -1,5 +1,5 @@
 # 011 – Hallen-Dashboard
-Status: Entwurf (2026-11-10)
+Status: Freigegeben (2026-11-11)
 Version: 2 (Stand 2026-11-11: M4 mit AC-9 bis AC-15, AC-15 Wechsel von Halle oder Termin, AC-16 Mindestvorlauf 2 h bei Hallen mit Zugang, Antwortfrist = Vorlauf minus 1 h)
 
 ## Ziel
@@ -28,7 +28,7 @@ Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur
 - Die Antwortfrist ist 12 Stunden, höchstens aber bis 1 Stunde vor Anstoß. Bei Vorlauf unter 13 Stunden verkürzt sie sich entsprechend.
 - Vorlauf mindestens 48 Stunden: Keine Zusage bis zur 48-Stunden-Frist → Spiel fällt aus, Erstattung an alle (AC-10).
 - "Halle mit Zugang" = Halle, der in M1 (neue Zuordnungstabelle, Migration additiv) ein Betreiber-Zugang zugeordnet ist; bis M1 gelten alle Hallen als ohne Zugang (keine Zusage nötig, heutiges Verhalten).
-- Bei Hallen mit Zugang beträgt der Mindestvorlauf 2 Stunden (sonst wäre die Antwortfrist null); bei Hallen ohne Zugang bleibt es bei 1 Stunde.
+- Bei Hallen mit Zugang beträgt der Mindestvorlauf für das Privatspiel 2 Stunden (sonst wäre die Antwortfrist null); bei Hallen ohne Zugang bleibt es beim Privatspiel bei 1 Stunde. Teamspiel und Matchmaking haben unabhängig davon 24 Stunden Mindestvorlauf (Vertrag 008).
 - Wählen die Captains nach "abgelehnt" eine andere Halle oder einen anderen Termin, wird die Lobby umgestellt und der Anteil neu gerechnet (AC-15); das setzt voraus, dass noch nicht gebucht wurde (Buchung erfolgt erst mit Zusage).
 - Vorlauf unter 48 Stunden: Keine Zusage bis 1 Stunde vor Anstoß → Abbruch wie in 006/008 (Absage, Erstattung an alle); "abgelehnt" nach Ablauf der Antwortfrist gilt auch hier, die Captains können in der verbleibenden Zeit eine andere Halle oder einen anderen Termin wählen.
 
@@ -64,7 +64,7 @@ Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur
 | AC-13 | Vorlauf unter 48 h, alle bezahlt, beide Captains bereit, Halle mit Zugang hat nicht zugesagt | Sofortbuchung wäre fällig | Keine Buchung; mit Zusage sofort gebucht; ohne Zusage 1 h vor Anstoß Absage + Erstattung an alle | tests/integration/hallen-dashboard.test.ts |
 | AC-14 | Vorlauf unter 13 Stunden | Anfrage entsteht | Antwortfrist = Vorlauf minus 1 h (mindestens 1 h); endet spätestens 1 h vor Anstoß | tests/integration/hallen-dashboard.test.ts |
 | AC-15 | Anfrage gilt nach Ablauf als abgelehnt, Lobby bleibt offen | Captains wählen andere Halle oder anderen Termin | Lobby wird umgestellt, neue Anfrage; Anteil neu gerechnet (nach Wegfall der Fixierung): zu viel Gezahltes als Guthaben zurück, zu wenig wird nachgefordert, "Bereit" beider Teams zurückgesetzt, Hallen-Zusage der alten Halle verfällt | tests/integration/hallen-dashboard.test.ts |
-| AC-16 | Halle mit Zugang, Anlage mit weniger als 2 h Vorlauf | Spiel wird angelegt | Abgelehnt (Mindestvorlauf 2 h bei Hallen mit Zugang); Hallen ohne Zugang weiterhin ab 1 h | tests/integration/hallen-dashboard.test.ts |
+| AC-16 | Privatspiel an einer Halle mit Zugang, Anlage mit weniger als 2 h Vorlauf | Spiel wird angelegt | Abgelehnt (Mindestvorlauf 2 h bei Hallen mit Zugang); Privatspiele an Hallen ohne Zugang weiterhin ab 1 h; Teamspiel immer ab 24 h (Vertrag 008) | tests/integration/hallen-dashboard.test.ts |
 | AC-8 | Gesamtablauf | Zuordnen, Betreiber meldet sich an, bestätigt, antwortet | Beweisprotokoll vollständig, PDF-Export enthält die Entscheidung | tests/e2e/hallen-dashboard.spec.ts |
 
 ## Meilensteine

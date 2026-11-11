@@ -1,5 +1,5 @@
 # 010 – Spieler-Funktionen: Hallenbewertung, Hallenkarte, Nochmal spielen
-Status: Entwurf (2026-11-10)
+Status: Freigegeben (2026-11-11)
 Version: 1
 
 ## Ziel
