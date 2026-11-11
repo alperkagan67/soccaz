@@ -3,7 +3,7 @@ export function StatTile({ label, value, hint }: { label: string; value: string 
     <div className="card text-center">
       <div className="font-heading text-2xl font-bold">{value}</div>
       <div className="text-xs text-muted">{label}</div>
-      {hint && <div className="text-[11px] text-muted">{hint}</div>}
+      {hint && <div className="text-xs text-muted">{hint}</div>}
     </div>
   );
 }

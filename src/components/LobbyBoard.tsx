@@ -32,7 +32,7 @@ function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: 
         <Link href={`/teams/${team.slug}`} className="font-semibold hover:text-accent-fg">
           {team.name}
         </Link>
-        {team.verified && <span className="ml-2 rounded bg-accent-soft px-1 py-0.5 text-[10px] text-accent-fg">Verifiziert</span>}
+        {team.verified && <span className="ml-2 rounded bg-accent-soft px-1 py-0.5 text-xs text-accent-fg">Verifiziert</span>}
         <p className="text-xs text-muted">
           Elo {team.elo}
           {team.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {team.strength}/5 · {team.members} im Kader
@@ -47,7 +47,7 @@ function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: 
               <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">
                 {p.name}
                 {p.isSubstitute && <span className="ml-1 text-xs text-muted">Ersatz</span>}
-                {p.isPro && <span className="ml-1 text-[10px] text-accent-fg">Profi</span>}
+                {p.isPro && <span className="ml-1 text-xs text-accent-fg">Profi</span>}
               </Link>
               <PlayerLight light={p.light} />
             </li>
@@ -129,7 +129,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
         <div className="space-y-2" data-testid="board-team">
           <div>
             <Link href={`/teams/${s.team.slug}`} className="font-semibold hover:text-accent-fg">{s.team.name}</Link>
-            {s.team.verified && <span className="ml-2 rounded bg-accent-soft px-1 py-0.5 text-[10px] text-accent-fg">Verifiziert</span>}
+            {s.team.verified && <span className="ml-2 rounded bg-accent-soft px-1 py-0.5 text-xs text-accent-fg">Verifiziert</span>}
             <p className="text-xs text-muted">
               Elo {s.team.elo}
               {s.team.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {s.team.strength}/5 · {s.team.members} im Kader

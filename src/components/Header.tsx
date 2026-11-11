@@ -19,7 +19,7 @@ export async function Header() {
   return (
     <header className="sticky top-0 z-20 border-b border-accent/15 bg-bg/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2" aria-label="Socaz Startseite">
+        <Link href="/" className="flex min-h-11 items-center gap-2" aria-label="Socaz Startseite">
           <Image src="/brand/socca-logo.jpeg" alt="" width={36} height={36} className="rounded-md" priority />
           <span className="font-heading text-lg font-bold tracking-tight">SOCAZ</span>
         </Link>
@@ -37,7 +37,7 @@ export async function Header() {
             <>
               <Link
                 href="/app/benachrichtigungen"
-                className="relative px-2 text-muted hover:text-ink"
+                className="relative inline-flex min-h-11 min-w-11 items-center justify-center text-muted hover:text-ink"
                 aria-label={unread > 0 ? t("nav.notificationsUnread", { count: unread }) : t("nav.notifications")}
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -45,7 +45,7 @@ export async function Header() {
                   <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
                 </svg>
                 {unread > 0 && (
-                  <span data-testid="unread-badge" className="absolute -right-1 -top-1 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold leading-4 text-accent-ink">
+                  <span data-testid="unread-badge" className="absolute -right-1 -top-1 min-w-5 rounded-full bg-accent px-1 text-center text-xs font-bold leading-5 text-accent-ink">
                     {unread > 9 ? "9+" : unread}
                   </span>
                 )}
@@ -68,7 +68,7 @@ export async function Header() {
               />
             </>
           ) : (
-            <Link href="/anmelden" className="btn btn-primary !min-h-9 !px-3">
+            <Link href="/anmelden" className="btn btn-primary !px-3">
               {t("nav.signIn")}
             </Link>
           )}

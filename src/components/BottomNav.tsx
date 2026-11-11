@@ -53,7 +53,7 @@ export function BottomNav({ signedIn, labels }: { signedIn: boolean; labels: Nav
           <Link
             href="/suche"
             aria-current={searchActive ? "page" : undefined}
-            className="-mt-4 flex min-h-14 min-w-14 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 border-bg bg-accent px-2 text-center text-[11px] font-bold leading-tight text-accent-ink"
+            className="-mt-4 flex min-h-14 min-w-14 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 border-bg bg-accent px-2 text-center text-xs font-bold leading-tight text-accent-ink"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-4-4" />
