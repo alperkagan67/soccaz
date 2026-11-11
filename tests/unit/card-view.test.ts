@@ -8,7 +8,7 @@ const expected: Record<CardStatus, { tone: string; label: string; hasCard: boole
   card_ready: { tone: "green", label: "Karte hinterlegt", hasCard: true, filled: true },
   charge_pending: { tone: "neutral", label: "Abbuchung läuft", hasCard: true, filled: false },
   charged: { tone: "green", label: "Karte hinterlegt", hasCard: true, filled: true },
-  failed: { tone: "red", label: "Zahlung ausstehend", hasCard: false, filled: false },
+  failed: { tone: "red", label: "Abbuchung fehlgeschlagen", hasCard: false, filled: false },
 };
 
 describe("cardView: Anzeige je Kartenstatus (Vertrag 012, AC-12)", () => {
@@ -24,13 +24,14 @@ describe("cardView: Anzeige je Kartenstatus (Vertrag 012, AC-12)", () => {
   }
   it("grün und rot unterscheiden sich auch in Form und Wort, nicht nur in der Farbe", () => {
     const g = cardView("card_ready");
-    for (const s of ["none", "failed", "charge_pending"] as CardStatus[]) {
+    for (const s of ["none", "failed", "charge_pending", "open"] as const) {
       const o = cardView(s);
       expect(o.glyph).not.toBe(g.glyph);
       expect(o.label).not.toBe(g.label);
     }
   });
-  it("die Legende zeigt vier verschiedene Zustände", () => {
+  it("die Legende zeigt vier verschiedene Zustände und nie das Wort fehlgeschlagen", () => {
+    expect(CARD_LEGEND.map((s) => cardView(s).label).join(" ")).not.toMatch(/fehlgeschlagen/i);
     expect(new Set(CARD_LEGEND.map((s) => cardView(s).label)).size).toBe(4);
   });
 });

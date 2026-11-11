@@ -23,6 +23,7 @@ describe("cardDisplayFor: wer sieht welchen Kartenstatus (Vertrag 012, AC-12/AC-
     expect(failed).toEqual({ status: "open", reason: null });
     expect(none).toEqual(failed); // nicht unterscheidbar
     expect(cardView("open").label).toBe("Zahlung ausstehend");
+    expect(cardView("failed").label).toBe("Abbuchung fehlgeschlagen"); // nur Betroffener und Captain/Veranstalter
     expect(cardView("open").tone).toBe("red");
   });
   it("Mitspieler sehen sonst den normalen Status, nie einen Grund", () => {

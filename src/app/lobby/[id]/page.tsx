@@ -18,6 +18,7 @@ import { cardModeActive } from "@/server/wallet";
 import { cardView } from "@/lib/card-view";
 import { getCardDisplays, getStoredCardDisplay } from "@/server/payments/card-status";
 import type { Audience } from "@/lib/card-visibility";
+import { guestRosterView, initialsOf } from "@/lib/guest-roster";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
 import { canViewLobby, getLobby } from "@/server/lobby";
@@ -344,7 +345,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
               {participants.filter((p) => p.teamId === t.id).map((p) => (
                 <li key={p.userId} className="flex items-center justify-between gap-2">
                   <span>
-                    {p.name}
+                    {user ? p.name : initialsOf(p.name)}
                     {p.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
                     {p.isSubstitute && <span className="ml-2 text-xs text-muted">Ersatz</span>}
                     {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
@@ -364,7 +365,15 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                 </li>
               ))}
             </ul>
-            {!isPrivate && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
+            {!isPrivate && !user && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
+              // Gäste (nicht angemeldet): nur Anzahl und Initialen, keine Namen, Links, Positionen oder Elo (Vertrag 012 AC-12, 013 Sichtbarkeitsmatrix)
+              <div className="border-t border-line pt-2" data-testid={`roster-${t.slug}`}>
+                <p className="text-xs text-muted">
+                  Weitere Teammitglieder (noch nicht in der Lobby): {guestRosterView(roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId))).count} · {guestRosterView(roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId))).initials.join(" ")}
+                </p>
+              </div>
+            )}
+            {!isPrivate && user && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
               <div className="border-t border-line pt-2" data-testid={`roster-${t.slug}`}>
                 <p className="mb-1 text-xs text-muted">Weitere Teammitglieder (noch nicht in der Lobby)</p>
                 <ul className="space-y-1 text-sm text-muted">
@@ -388,7 +397,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <ul className="space-y-2 text-sm">
             {pendingStrangers.map((p) => (
               <li key={p.userId} className="flex items-center justify-between gap-2">
-                <span>{p.name}{p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}</span>
+                <span>{user ? p.name : initialsOf(p.name)}{p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}</span>
                 {active && v.canManage && p.userId !== user?.id && (
                   <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={assignTargets} />
                 )}
