@@ -1,13 +1,17 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, notifications, teamMembers } from "@/db/schema";
+import { auditLog, matchParticipants, matches, notifications, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
+import { ledgerEntries } from "@/db/schema-finance";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
+import { abortDeadline, fixDeadline } from "@/lib/deadlines";
+import { cancelUnderfilledLobbies } from "@/server/scheduled";
 import { creditWallet, debitWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { confirmResult, decideResult, disputeResult, submitResult } from "@/server/results";
 import {
   cancelTournament,
+  closeTournamentsAtDeadline,
   closeWithJoinedTeams,
   createTournament,
   decideShootout,
@@ -1045,5 +1049,168 @@ describe("Anmeldeschluss-Job: ein Fehler bricht die übrigen Turniere nicht ab (
     await notifyRegistrationDeadlines();
     expect(await countFor(t1.id)).toBe(1);
     expect(await countFor(t2.id)).toBe(1);
+  });
+});
+
+describe("Fristen (Vertrag 008 v4, M3b): 48-h-Frist, Sofortbuchung, 1-h-Abbruch", () => {
+  const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
+  const refundsOf = (tid: string) => db.select().from(ledgerEntries).where(and(eq(ledgerEntries.tournamentId, tid), eq(ledgerEntries.kind, "tournament_refund")));
+  /** Was dieses Turnier im Turnierkonto hält (Eintritte minus Erstattungen). */
+  const heldFor = async (tid: string) => (await db.select().from(ledgerEntries).where(eq(ledgerEntries.tournamentId, tid))).reduce((a, e) => a + (e.creditAccount === "tournament" ? e.amountCents : 0) - (e.debitAccount === "tournament" ? e.amountCents : 0), 0);
+  const cancelAudits = async (tid: string) => (await db.select().from(auditLog).where(and(eq(auditLog.entity, "tournament"), eq(auditLog.entityId, tid), eq(auditLog.action, "tournament.cancel")))).length;
+  /** Kurzer Vorlauf: Start in `startH` Stunden, Anmeldeschluss davor. */
+  const shortTournament = (o: { id: string }, startH = 20) => newTournament(o, { startsAt: hours(startH), registrationDeadline: hours(startH / 2) });
+  /** Vier Teams mit je vier Spielern, alle vollzählig (Preis fix); `pay` Spieler zahlen (alle mit Guthaben), `ready` Captains drücken Bereit. */
+  async function pricedTournament(t: { id: string }, pay: number) {
+    const squads: Squad[] = [];
+    for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
+    const players = squads.flatMap((x) => x.players);
+    for (const p of players) await fund(p.id, 3000);
+    for (const p of players.slice(0, pay)) await payEntry(p.id, t.id);
+    return { squads, players };
+  }
+
+  it("AC-12: mit mindestens 48 Stunden Vorlauf muss der Anmeldeschluss mindestens 48 Stunden vor dem Start liegen, sonst Fehler und nichts gespeichert; darunter gilt nur 'vor dem Start'", async () => {
+    const o = await organizer();
+    const start = days(5);
+    const before = (await db.select().from(tournaments).where(eq(tournaments.organizerId, o.id))).length;
+    await expect(createTournament(o.id, { ...base, startsAt: start, registrationDeadline: new Date(start.getTime() - 47 * 3_600_000) })).rejects.toThrow(/48 Stunden/);
+    await expect(createTournament(o.id, { ...base, startsAt: start, registrationDeadline: new Date(start.getTime() - 48 * 3_600_000 + 1) })).rejects.toThrow(/48 Stunden/); // eine Millisekunde zu spät
+    expect((await db.select().from(tournaments).where(eq(tournaments.organizerId, o.id))).length).toBe(before); // nichts gespeichert
+    await createTournament(o.id, { ...base, startsAt: start, registrationDeadline: new Date(start.getTime() - 48 * 3_600_000) }); // genau 48 Stunden geht
+    const shortStart = hours(30); // weniger als 48 Stunden Vorlauf: nur vor dem Start
+    await createTournament(o.id, { ...base, startsAt: shortStart, registrationDeadline: hours(29) });
+  });
+
+  it("AC-11: zur 48-h-Frist fällt ein Turnier aus, wenn nicht alle Teams vollzählig, bezahlt und bereit sind: alle erstattet, genau einmal (auch parallel), nicht vorher", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const { players } = await pricedTournament(t, 13); // 13 von 16 haben bezahlt
+    const start = (await statusOf(t.id)).startsAt!;
+    await closeTournamentsAtDeadline(new Date(fixDeadline(start).getTime() - 1));
+    expect((await statusOf(t.id)).status).toBe("payment"); // vor der Frist offen
+    const at = fixDeadline(start);
+    const runs = await Promise.all([closeTournamentsAtDeadline(at), closeTournamentsAtDeadline(at), closeTournamentsAtDeadline(at)]);
+    expect(runs.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(1);
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+    for (const pl of players) expect(await walletBalance(db, pl.id)).toBe(3000);
+    expect(await refundsOf(t.id)).toHaveLength(13);
+    expect(await cancelAudits(t.id)).toBe(1); // genau eine Absage
+    expect(await heldFor(t.id)).toBe(0); // nichts bleibt im Turnierkonto
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-11: ein Turnier, das zur Frist noch in der Anmeldung steht (Teams nicht vollzählig), fällt aus; ein Turnier mit Bracket (gebucht) nie", async () => {
+    const o = await organizer();
+    const open = await newTournament(o);
+    await squad(open.id, 4, true);
+    await squad(open.id, 3, false);
+    const { t: booked } = await runningTournament(o);
+    await closeTournamentsAtDeadline(new Date(fixDeadline((await statusOf(open.id)).startsAt!).getTime() + 1000));
+    expect((await statusOf(open.id)).status).toBe("cancelled");
+    expect((await statusOf(booked.id)).status).toBe("running");
+    expect(await refundsOf(booked.id)).toHaveLength(0);
+  });
+
+  it("Altturnier (Anmeldeschluss später als 48 Stunden vor dem Start, vor der Umstellung angelegt) bleibt bei den alten Regeln: der Job sagt es nicht ab", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    await db.update(tournaments).set({ registrationDeadline: new Date(t.startsAt!.getTime() - 24 * 3_600_000) }).where(eq(tournaments.id, t.id));
+    await closeTournamentsAtDeadline(new Date(fixDeadline(t.startsAt!).getTime() + 3_600_000));
+    expect((await statusOf(t.id)).status).toBe("registration");
+  });
+
+  it("Karenz: Steht der Preis erst kurz vor der Frist fest, gilt die Frist frühestens 12 Stunden danach", async () => {
+    const o = await organizer();
+    const start = hours(49); // 49 Stunden Vorlauf, Anmeldeschluss 48 Stunden vor dem Start
+    const t = await createTournament(o.id, { ...base, startsAt: start, registrationDeadline: hours(1) });
+    await pricedTournament(t, 5); // Preis steht jetzt fest (Audit tournament.price)
+    await closeTournamentsAtDeadline(new Date(fixDeadline(start).getTime() + 3_600_000)); // die 48-h-Frist ist schon eine Stunde her, die Karenz läuft noch
+    expect((await statusOf(t.id)).status).toBe("payment");
+    await closeTournamentsAtDeadline(new Date(Date.now() + 12 * 3_600_000 + 5000));
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+  });
+
+  it("AC-14: Turnier mit weniger als 48 Stunden Vorlauf: sobald alle Teams voll bezahlt und bereit sind, wird sofort gebucht (Bracket), danach sagt auch der 1-h-Job nicht mehr ab", async () => {
+    const o = await organizer();
+    const t = await shortTournament(o);
+    const { squads, players } = await pricedTournament(t, 16);
+    expect((await statusOf(t.id)).status).toBe("payment");
+    for (const x of squads.slice(0, 3)) await setPaidReady(x.captain.id, t.id);
+    expect((await statusOf(t.id)).bracketGeneratedAt).toBeNull(); // ein Captain fehlt noch: nicht gebucht
+    await setPaidReady(squads[3].captain.id, t.id);
+    const done = await statusOf(t.id);
+    expect(done.status).toBe("running");
+    expect(done.bracketGeneratedAt).not.toBeNull();
+    await closeTournamentsAtDeadline(new Date(abortDeadline(done.startsAt!).getTime() + 60_000));
+    expect((await statusOf(t.id)).status).toBe("running");
+    expect(await refundsOf(t.id)).toHaveLength(0);
+    expect(players).toHaveLength(16);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("AC-14: kein Austritt mit Erstattung nach der Zahlung (Kader gesperrt), die Erstattung gibt es nur über Absage oder wiedergeöffnete Kader durch den Veranstalter", async () => {
+    const o = await organizer();
+    const t = await shortTournament(o);
+    const { squads, players } = await pricedTournament(t, 16);
+    await expect(leavePlayer(squads[0].captain.id, t.id, players[1].id)).rejects.toThrow(/keine Änderung/);
+    expect(await walletBalance(db, players[1].id)).toBe(3000 - (await statusOf(t.id)).finalShareCents!);
+  });
+
+  it("AC-16: 1 Stunde vor dem Start fällt ein Turnier mit kurzem Vorlauf aus, wenn nicht alles bezahlt und bereit ist: alle erstattet, genau einmal, Hauptbuch ausgeglichen; eine Millisekunde früher nicht", async () => {
+    const o = await organizer();
+    const t = await shortTournament(o, 20);
+    const { players } = await pricedTournament(t, 12);
+    const abort = abortDeadline((await statusOf(t.id)).startsAt!);
+    await closeTournamentsAtDeadline(new Date(abort.getTime() - 1));
+    expect((await statusOf(t.id)).status).toBe("payment");
+    const runs = await Promise.all([closeTournamentsAtDeadline(abort), closeTournamentsAtDeadline(abort)]);
+    expect(runs.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(1);
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+    for (const pl of players) expect(await walletBalance(db, pl.id)).toBe(3000);
+    expect(await refundsOf(t.id)).toHaveLength(12);
+    expect(await cancelAudits(t.id)).toBe(1);
+    expect(await heldFor(t.id)).toBe(0);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Fairness: Wird der Preis nach dem Lesen der Kandidaten, aber vor der Sperre festgelegt, gilt die neue Karenz: nicht abgesagt (fällig wird unter der Sperre neu berechnet)", async () => {
+    const o = await organizer();
+    const start = hours(49);
+    const t = await createTournament(o.id, { ...base, startsAt: start, registrationDeadline: hours(1) });
+    for (let i = 0; i < 4; i++) await squad(t.id, 4, i < 3); // das vierte Team ist noch nicht vollzählig: der Preis steht noch nicht fest
+    const now = new Date(fixDeadline(start).getTime() + 3_600_000); // die 48-h-Frist ist eine Stunde her; ohne Preis wäre das Turnier jetzt fällig
+    let job: Promise<number> | null = null;
+    await db.transaction(async (tx) => {
+      await tx.select().from(tournaments).where(eq(tournaments.id, t.id)).for("update"); // hält die Turniersperre: der Job liest die Kandidaten und wartet dann
+      job = closeTournamentsAtDeadline(now);
+      await new Promise((r) => setTimeout(r, 400));
+      await tx.insert(auditLog).values({ action: "tournament.price", entity: "tournament", entityId: t.id }); // der Preis wird im Fenster festgelegt
+    });
+    await job;
+    expect((await statusOf(t.id)).status).not.toBe("cancelled");
+  });
+
+  it("Empfänger der Absage: Veranstalter, Zahler (paidBy) und Spieler, jeweils genau einmal", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const { players } = await pricedTournament(t, 4);
+    const payer = await makeUser("paidby"); // zahlt für einen Spieler, ist selbst nicht im Kader
+    await db.update(tournamentPlayers).set({ paidBy: payer.id }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, players[0].id)));
+    await closeTournamentsAtDeadline(fixDeadline((await statusOf(t.id)).startsAt!));
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+    const got = async (userId: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.title, "Turnier abgesagt"), eq(notifications.url, `/turniere/${t.id}`)))).length;
+    expect(await got(o.id)).toBe(1); // Veranstalter
+    expect(await got(payer.id)).toBe(1); // Zahler
+    for (const pl of players) expect(await got(pl.id), "Spieler genau einmal (nicht doppelt als Zahler)").toBe(1);
+  });
+
+  it("Cron-Einbindung: der Job lobby-deadlines (cancelUnderfilledLobbies) ruft die Turnier-Frist auf", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    await pricedTournament(t, 3);
+    const n = await cancelUnderfilledLobbies(fixDeadline((await statusOf(t.id)).startsAt!));
+    expect(n).toBeGreaterThanOrEqual(1);
+    expect((await statusOf(t.id)).status).toBe("cancelled");
   });
 });

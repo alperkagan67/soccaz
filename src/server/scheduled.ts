@@ -10,7 +10,7 @@ import { isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./
 import { paymentsEnabled } from "./settings";
 import { teamName } from "./names";
 import { cancelUncoveredPrivateGames } from "./privategame";
-import { notifyRegistrationDeadlines } from "./tournaments";
+import { closeTournamentsAtDeadline, notifyRegistrationDeadlines } from "./tournaments";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 
 /** Erinnert Teilnehmer 24 Stunden, 2 Stunden und 30 Minuten vor dem Anstoß. Pro Spiel und Art genau einmal. */
@@ -68,7 +68,8 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
   cancelled += await cancelUncoveredPrivateGames(now);
   // Neue Frist-Regel für Privat- und Teamspiele: 48-h-Schließung und 1-h-Abbruch
   cancelled += await closeLobbiesAtDeadline(now);
-  // Turniere: am Anmeldeschluss bekommt der Veranstalter einmalig eine Meldung (läuft im selben 5-Minuten-Takt)
+  // Turniere: 48-h-Frist bzw. 1-h-Abbruch (Absage und Erstattung), am Anmeldeschluss bekommt der Veranstalter einmalig eine Meldung (selber 5-Minuten-Takt)
+  cancelled += await closeTournamentsAtDeadline(now);
   await notifyRegistrationDeadlines(now);
   return cancelled;
 }
