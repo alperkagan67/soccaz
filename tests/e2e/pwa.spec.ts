@@ -16,7 +16,9 @@ test("PWA: Manifest, Icons und Service Worker werden ausgeliefert", async ({ req
   expect(manifest.name).toContain("Socaz");
   expect(manifest.display).toBe("standalone");
   expect(manifest.start_url).toBe("/app");
-  expect(manifest.theme_color).toBe("#030806");
+  // Richtung E: ein fester Wert (Manifest kennt kein hell/dunkel) = dunkler Grund #0f1914; die Systemleiste folgt per meta theme-color dem Schema.
+  expect(manifest.theme_color).toBe("#0f1914");
+  expect(manifest.background_color).toBe("#0f1914");
   const purposes = manifest.icons.map((i: { purpose: string }) => i.purpose);
   expect(purposes).toEqual(expect.arrayContaining(["any", "maskable"]));
   for (const icon of manifest.icons as { src: string; type: string }[]) {
@@ -61,21 +63,22 @@ test.describe("Handy", () => {
     await page.goto("/suche");
     const nav = page.getByRole("navigation", { name: "Hauptnavigation" });
     await expect(nav).toBeVisible();
-    for (const label of ["Start", "Suchen", "Live", "Meine"]) await expect(nav.getByRole("link", { name: label })).toBeVisible();
-    await expect(nav.getByRole("link", { name: "Suchen" })).toHaveAttribute("aria-current", "page");
-    await expect(nav.getByRole("link", { name: "Start" })).not.toHaveAttribute("aria-current", "page");
-    // abgemeldet führt "Meine" zur Anmeldung
-    await expect(nav.getByRole("link", { name: "Meine" })).toHaveAttribute("href", "/anmelden");
-    await nav.getByRole("link", { name: "Live" }).click();
-    await expect(page).toHaveURL(/\/spiele$/);
-    await expect(page.getByRole("navigation", { name: "Hauptnavigation" }).getByRole("link", { name: "Live" })).toHaveAttribute("aria-current", "page");
+    for (const label of ["Teamspiel", "Privatspiel", "Spiel suchen", "Turniere", "Profil"]) await expect(nav.getByRole("link", { name: label })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Spiel suchen" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Turniere" })).not.toHaveAttribute("aria-current", "page");
+    // abgemeldet führt "Profil" zur Anmeldung
+    await expect(nav.getByRole("link", { name: "Profil" })).toHaveAttribute("href", /^\/anmelden/);
+    await page.waitForLoadState("networkidle");
+    await nav.getByRole("link", { name: "Turniere" }).click();
+    await expect(page).toHaveURL(/\/turniere$/, { timeout: 30_000 });
+    await expect(page.getByRole("navigation", { name: "Hauptnavigation" }).getByRole("link", { name: "Turniere" })).toHaveAttribute("aria-current", "page");
   });
 
-  test("angemeldet führt Meine zum Bereich, nichts verdeckt Inhalte", async ({ page }) => {
+  test("angemeldet führt Profil zum Bereich, nichts verdeckt Inhalte", async ({ page }) => {
     await newUser(page, "pw1");
     const nav = page.getByRole("navigation", { name: "Hauptnavigation" });
-    await expect(nav.getByRole("link", { name: "Meine" })).toHaveAttribute("href", "/app");
-    await expect(nav.getByRole("link", { name: "Meine" })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Profil" })).toHaveAttribute("href", "/app");
+    await expect(nav.getByRole("link", { name: "Profil" })).toHaveAttribute("aria-current", "page");
     // Am Seitenende liegt der letzte Inhalt oberhalb der Leiste und wird nicht verdeckt
     await expect(page.getByRole("heading", { name: "Meine Teams" })).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
