@@ -13,6 +13,11 @@ const eslintConfig = defineConfig([
     plugins: { soccaz },
     rules: { "soccaz/min-font-size": "error" },
   },
+  // Altbestand: LiveBadge hat text-[11px]. Darstellung bleibt in M2-1 unverändert; Umstellung auf text-xs in M2b/M3.
+  {
+    files: ["src/app/turniere/[[]id]/LiveBadge.tsx"],
+    rules: { "soccaz/min-font-size": "warn" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

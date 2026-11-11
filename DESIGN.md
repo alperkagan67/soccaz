@@ -113,7 +113,7 @@ Umgesetzt in `src/app/globals.css` (Vertrag 007, M1). Geprüft von `tests/unit/a
 
 - Schriften: Outfit für Überschriften, Plus Jakarta Sans für Text. Hell und Dunkel gleich.
 - **Stufen** (Tokens `--fs-*`): xs 12 px, sm 14, base 16, lg 18, xl 22, 2xl 28, 3xl 36. Text im Fluss ist base; Zusatzangaben sm; **xs ist die kleinste erlaubte Stufe und nur für Zusatztext, nie für Bedienelemente oder Pflichtangaben.**
-- **Nichts unter 12 px.** Die ESLint-Regel `soccaz/min-font-size` verbietet `text-[Npx]` und `fontSize` unter 12 px in `src/` (ausgenommen der PDF-Beleg, der in Punkt rechnet). `globals.css` wird per Test geprüft.
+- **Nichts unter 12 px.** Die ESLint-Regel `soccaz/min-font-size` verbietet `text-[Npx]` und `fontSize` unter 12 px in `src/` (ausgenommen der PDF-Beleg, der in Punkt rechnet). Altbestand `LiveBadge.tsx` (`text-[11px]`) ist nur eine Warnung, bis M2b/M3 ihn auf `text-xs` umstellt. `globals.css` wird per Test geprüft.
 - Zeilenlänge im Fließtext höchstens etwa 70 Zeichen; Überschriften ohne Großbuchstaben-Blöcke.
 
 ## Status
@@ -133,7 +133,8 @@ Vier Zustandsfarben, je Dunkel und Hell, jeweils mit `-ink` (Schrift auf voller 
 
 ## Fokus und Tastatur
 
-- Der Fokusring ist `--focus` (Dunkel `#9ecbff`, Hell `#1a44bd`), 2 px, Abstand 2 px, über `:focus-visible` und `.field:focus`. Mindestens 3:1 gegen Grund, Fläche und Feldgrund (Test); er ist bewusst nicht Orange, damit er auf Orange-Knöpfen sichtbar bleibt.
+- Der Fokusring-Token `--focus` (Dunkel `#9ecbff`, Hell `#1a44bd`, Breite `--focus-w` 2 px) ist definiert und gemessen: mindestens 3:1 gegen Grund, Fläche und Feldgrund (Test), bewusst nicht Orange, damit er auf Orange-Knöpfen sichtbar bleibt.
+- **Noch nicht angewendet:** `:focus-visible` und `.field:focus` in `globals.css` nutzen vorerst weiter `--accent`, weil M2-1 keine Darstellung ändert. Die Umstellung auf `--focus` kommt in M2b/M3 (zusammen mit den Impeccable-Belegen, 013 AC-15).
 - Kein Element entfernt den Fokusring ohne gleichwertigen Ersatz.
 
 ## Abstände, Touch und Breiten
