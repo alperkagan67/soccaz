@@ -12,7 +12,6 @@ import { formatDate, formatDateTime } from "@/lib/time";
 import { getTeamProfile, getTeamRosterView } from "@/server/profiles";
 import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
-import { initialsOf } from "@/lib/guest-roster";
 import { leaguesOfTeam } from "@/server/leagues";
 import { sponsorsOfTeam } from "@/server/sponsors";
 import { isTeamAdmin } from "@/server/teams";
@@ -148,7 +147,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           <ol className="space-y-1 text-sm">
             {profile.topScorers.map((s, i) => (
               <li key={s.id} className="flex justify-between">
-                <span><span className="mr-2 text-muted">{i + 1}.</span>{user ? <Link href={`/spieler/${s.id}`} className="hover:text-accent-fg">{s.name}</Link> : initialsOf(s.name)}</span>
+                <span><span className="mr-2 text-muted">{i + 1}.</span><Link href={`/spieler/${s.id}`} className="hover:text-accent-fg">{s.name}</Link></span>
                 <span className="font-semibold">{s.goals} Tore</span>
               </li>
             ))}

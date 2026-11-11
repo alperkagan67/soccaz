@@ -23,3 +23,24 @@ export function cardDisplayFor(audience: Audience, status: CardStatus, failureCo
       return audience satisfies never;
   }
 }
+
+/**
+ * Wer ist der Betrachter zu einem Platz? Eine einzige reine Funktion (Seite und Tests nutzen sie gemeinsam).
+ * ZWEI Begriffe von "Gast", nicht verwechseln (Entscheid t9, Produktfrage 3):
+ *  - Für NAMEN, Elo und Position gilt: Gast = nicht angemeldet (!userId). Angemeldete sehen Namen auch ohne Teilnahme.
+ *  - Für den ZAHLSTATUS je Person gilt: Gast = keine Teilnahme (und kein Captain/Veranstalter/Admin). Nur Teilnehmer, Manager und der Betroffene sehen ihn.
+ * Manager = Plattform-Admin oder Admin (Captain/Veranstalter) des Teams, dem der Platz gehört.
+ */
+export type CardViewer = { userId: string | null; platformAdmin: boolean; adminOf: readonly string[]; isParticipant: boolean };
+
+export function audienceFor(viewer: CardViewer, person: { userId: string; teamId: string | null }): Audience {
+  if (!viewer.userId) return "guest";
+  if (person.userId === viewer.userId) return "self";
+  if (viewer.platformAdmin || (person.teamId !== null && viewer.adminOf.includes(person.teamId))) return "manager";
+  return viewer.isParticipant ? "member" : "guest";
+}
+
+/** Sieht der Betrachter überhaupt Ampeln/Legende (irgendeine Person)? Gleiche Regel wie audienceFor, ohne Bezug auf eine Person. */
+export function canSeeAnyStatus(viewer: CardViewer): boolean {
+  return Boolean(viewer.userId && (viewer.isParticipant || viewer.platformAdmin || viewer.adminOf.length > 0));
+}

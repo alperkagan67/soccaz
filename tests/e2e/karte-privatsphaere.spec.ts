@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { setupLobby } from "./flows";
-import { closeContexts, closeTestDb, newUser } from "./helpers";
-import { query, setPlatformSetting } from "./helpers-db";
+import { closeContexts, closeTestDb, devLogin, newUser, run } from "./helpers";
+import { query, seedAdmin, setPlatformSetting } from "./helpers-db";
 
 // Vertrag 012, AC-12/AC-20 (M3b): Dritte und Gäste dürfen den Fehlerzustand einer Abbuchung NICHT erfahren, und Gäste (nicht angemeldet) sehen nur
 // Zahlen und Initialen statt Namen (Vertrag 013, Sichtbarkeitsmatrix). Geprüft wird die Antwort des SERVERS (HTML, RSC-Payload, Live-Kanal),
@@ -144,4 +144,54 @@ test("Offene Lobbys auf Start und Suche: Gäste sehen nur Initialen und keinen S
   const own = await bodies(a, "/suche");
   expect(own.html).toContain(matchId);
   expect(own.html).toContain("Spieler kqa");
+});
+
+test("Captain/Admin desselben Teams und der Plattform-Admin sehen den echten Fehlerzustand; das Teamprofil zeigt Gästen keine Namen", async ({
+  browser,
+}) => {
+  const { a, matchId } = await setupLobby(browser, "kr");
+  await failChargeOf(matchId, "kra");
+  const url = `/lobby/${matchId}`;
+  const [{ home_team_id: homeTeamId }] = await query<{ home_team_id: string }>(
+    "select home_team_id from matches where id = $1",
+    [matchId],
+  );
+
+  // zweiter Admin desselben Teams (ohne Teilnahme am Spiel)
+  const coAdmin = await (await browser.newContext()).newPage();
+  await newUser(coAdmin, "krc");
+  await query(
+    "insert into team_members (team_id, user_id, role) select $1, id, 'admin' from users where email = $2",
+    [homeTeamId, `krc-${run}@test.local`],
+  );
+  expect((await bodies(coAdmin, url)).html).toContain(
+    'data-card-status="failed"',
+  );
+
+  // Plattform-Admin
+  await seedAdmin(`kradm`);
+  const admin = await (await browser.newContext()).newPage();
+  await devLogin(admin, `kradm-${run}@test.local`, "Admin kradm");
+  await expect
+    .poll(async () => (await admin.context().cookies()).length, {
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(0); // erst anfragen, wenn die Anmeldung steht
+  await admin.waitForLoadState("networkidle");
+  expect((await bodies(admin, url)).html).toContain(
+    'data-card-status="failed"',
+  );
+
+  // Teamprofil für Gäste: keine Spielernamen, keine Profil-Links
+  const anonymous = await (await browser.newContext()).newPage();
+  const lobbyHtml = (await bodies(anonymous, url)).html;
+  const slug = new RegExp("/teams/([a-z0-9-]+)").exec(lobbyHtml)?.[1];
+  expect(slug).toBeTruthy();
+  const team = await bodies(anonymous, `/teams/${slug}`);
+  for (const body of [team.html, team.rsc]) {
+    expect(body).not.toContain("Spieler kra");
+    expect(body).not.toContain("Spieler krc");
+    expect(body).not.toContain("/spieler/");
+  }
+  await a.close();
 });

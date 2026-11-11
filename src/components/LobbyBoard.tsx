@@ -237,7 +237,7 @@ export function LobbyBoard({ entries, mine, myWaitingTeamIds, loggedIn, shareBas
   }
   return (
     <div className="space-y-3" data-testid="lobby-board">
-      <LightLegend paymentsOn={paymentsOn} />
+      {loggedIn && <LightLegend paymentsOn={paymentsOn} />}
       <ul className="space-y-3">
         {entries.map((e) =>
           e.kind === "match" ? (

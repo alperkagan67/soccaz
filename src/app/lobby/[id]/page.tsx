@@ -16,8 +16,8 @@ import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "
 import { fakeCardAllowed } from "@/server/payments/mode";
 import { cardModeActive } from "@/server/wallet";
 import { cardView } from "@/lib/card-view";
-import { getCardDisplays, getStoredCardDisplay } from "@/server/payments/card-status";
-import type { Audience } from "@/lib/card-visibility";
+import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/server/payments/card-status";
+import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
 import { guestRosterView, initialsOf } from "@/lib/guest-roster";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
@@ -61,10 +61,12 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Guthabenmodell
   // Sichtbarkeit je Betrachter wird HIER auf dem Server entschieden (Vertrag 012, AC-12/AC-20): Gäste sehen keinen Status je Person, Mitspieler nur die neutrale
   // rote Ampel ohne Grund, nur der Betroffene und der Captain/Veranstalter den echten Status. Der Rohstatus erreicht die Seite nie.
-  const audienceOf = (p: { userId: string; teamId: string | null }): Audience =>
-    !user ? "guest" : p.userId === user.id ? "self" : v.platformAdmin || (p.teamId !== null && v.adminOf.includes(p.teamId)) ? "manager" : v.participant ? "member" : "guest";
-  const canSeeLights = Boolean(user && (v.participant || v.platformAdmin || v.adminOf.length > 0));
-  const cardDisplays = cardOn ? await getCardDisplays(match.id, audienceOf) : {};
+  // "Gast" für Namen = nicht angemeldet; "Gast" für den Zahlstatus je Person = keine Teilnahme (siehe audienceFor in card-visibility.ts)
+  const cardViewer = { userId: user?.id ?? null, platformAdmin: v.platformAdmin, adminOf: v.adminOf, isParticipant: Boolean(v.participant) };
+  const canSeeLights = canSeeAnyStatus(cardViewer);
+  const cardDisplays = cardOn ? await getCardDisplays(match.id, (p) => audienceFor(cardViewer, p)) : {};
+  // "Alle haben eine Karte" je Team wird aus dem ROHSTATUS auf dem Server abgeleitet und nur als Ja/Nein weitergegeben (Gäste sehen sonst fälschlich "nicht vollständig")
+  const teamCardsReady = cardOn ? await getTeamCardsReady(match.id) : {};
   const storedCard = cardOn && user ? await getStoredCardDisplay(user.id) : null;
   const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
@@ -420,7 +422,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             const list = participants.filter((p) => p.teamId === t.id);
             const paid = list.filter((p) => p.paid).length;
             const ready = list.filter((p) => p.ready).length;
-            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (cardOn ? list.every((p) => hasCard(p.userId)) : !payments.enabled || paid === list.length) };
+            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (cardOn ? teamCardsReady[t.id] === true : !payments.enabled || paid === list.length) };
           })}
         />
       )}

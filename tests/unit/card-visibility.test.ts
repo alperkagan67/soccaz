@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CardStatus } from "@/db/schema";
-import { cardDisplayFor, type Audience } from "@/lib/card-visibility";
+import { audienceFor, canSeeAnyStatus, cardDisplayFor, type Audience, type CardViewer } from "@/lib/card-visibility";
 import { cardView } from "@/lib/card-view";
 
 const ALL: CardStatus[] = ["none", "card_ready", "charge_pending", "charged", "failed"];
@@ -38,5 +38,46 @@ describe("cardDisplayFor: wer sieht welchen Kartenstatus (Vertrag 012, AC-12/AC-
         expect(text).not.toMatch(/failed|card_declined|fehlgeschlagen|abgelehnt/i);
       }
     }
+  });
+});
+
+describe("audienceFor: Rolle des Betrachters zu einem Platz (eine Funktion für Seite und Tests)", () => {
+  const person = { userId: "victim", teamId: "teamA" };
+  const base: CardViewer = { userId: "v", platformAdmin: false, adminOf: [], isParticipant: true };
+  it("nicht angemeldet = guest", () => {
+    expect(audienceFor({ ...base, userId: null, isParticipant: false }, person)).toBe("guest");
+    // auch bei widersprüchlichen Angaben (nie angemeldet, aber Rechte gesetzt) bleibt es guest
+    expect(audienceFor({ userId: null, platformAdmin: true, adminOf: ["teamA"], isParticipant: true }, person)).toBe("guest");
+  });
+  it("der Betroffene selbst = self, auch als Admin des eigenen Teams", () => {
+    expect(audienceFor({ ...base, userId: "victim", adminOf: ["teamA"] }, person)).toBe("self");
+  });
+  it("Captain/Veranstalter oder zweiter Admin desselben Teams = manager (auch ohne eigene Teilnahme)", () => {
+    expect(audienceFor({ ...base, adminOf: ["teamA"] }, person)).toBe("manager");
+    expect(audienceFor({ ...base, adminOf: ["teamA", "teamX"], isParticipant: false }, person)).toBe("manager");
+  });
+  it("Plattform-Admin (Admin 1 und Admin 2) = manager für jeden Platz", () => {
+    expect(audienceFor({ ...base, platformAdmin: true, isParticipant: false }, person)).toBe("manager");
+    expect(audienceFor({ ...base, platformAdmin: true }, { userId: "x", teamId: null })).toBe("manager");
+  });
+  it("Captain des GEGNERTEAMS ist nur member (neutral), nicht manager", () => {
+    expect(audienceFor({ ...base, adminOf: ["teamB"] }, person)).toBe("member");
+  });
+  it("Teilnehmer = member; angemeldet ohne Teilnahme und ohne Verwaltungsrecht = guest", () => {
+    expect(audienceFor(base, person)).toBe("member");
+    expect(audienceFor({ ...base, isParticipant: false }, person)).toBe("guest");
+  });
+  it("Admin eines fremden Teams ohne Teilnahme sieht Plätze des anderen Teams als guest", () => {
+    expect(audienceFor({ ...base, adminOf: ["teamZ"], isParticipant: false }, person)).toBe("guest");
+  });
+  it("ein Platz ohne Team (freier Ersatzspieler) wird nie über adminOf zum manager", () => {
+    expect(audienceFor({ ...base, adminOf: ["teamA"] }, { userId: "sub", teamId: null })).toBe("member");
+  });
+  it("canSeeAnyStatus: nur Angemeldete mit Teilnahme, Verwaltungsrecht oder Plattform-Admin", () => {
+    expect(canSeeAnyStatus(base)).toBe(true);
+    expect(canSeeAnyStatus({ ...base, isParticipant: false })).toBe(false);
+    expect(canSeeAnyStatus({ ...base, isParticipant: false, adminOf: ["t"] })).toBe(true);
+    expect(canSeeAnyStatus({ ...base, isParticipant: false, platformAdmin: true })).toBe(true);
+    expect(canSeeAnyStatus({ ...base, userId: null })).toBe(false);
   });
 });

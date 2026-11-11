@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, paymentCharges, paymentProfiles, type CardStatus } from "@/db/schema";
 import { cardDisplayFor, type Audience, type CardDisplay } from "@/lib/card-visibility";
+import { cardView } from "@/lib/card-view";
 
 // Der Typ gehört dem Schema (eine Quelle); hier nur zum Weiterreichen für bestehende Importe
 export type { CardStatus };
@@ -21,6 +22,20 @@ export async function getCardDisplays(matchId: string, audienceOf: (p: { userId:
   for (const r of rows) {
     const d = cardDisplayFor(audienceOf({ userId: r.userId, teamId: r.teamId }), r.cardStatus, r.failureCode);
     if (d) out[r.userId] = d;
+  }
+  return out;
+}
+
+/**
+ * Hat in jedem Team jeder eingeteilte Platz eine Karte (oder ist schon abgebucht)? Aus dem ROHSTATUS auf dem Server, nur Ja/Nein je Team: unabhängig
+ * davon, was der Betrachter je Person sehen darf. Ein leeres Team ist nicht vollständig.
+ */
+export async function getTeamCardsReady(matchId: string): Promise<Record<string, boolean>> {
+  const rows = await db.select({ teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus }).from(matchParticipants).where(eq(matchParticipants.matchId, matchId));
+  const out: Record<string, boolean> = {};
+  for (const r of rows) {
+    if (r.teamId === null) continue;
+    out[r.teamId] = (out[r.teamId] ?? true) && cardView(r.cardStatus).hasCard;
   }
   return out;
 }
