@@ -92,7 +92,7 @@ Keine neuen Daten. Neue Abhängigkeiten (falls Radix, ADR 0002): security-review
 - Reihenfolge innerhalb von M3 bis M6: festgelegt im Umbauplan (`docs/design/umbauplan-013.md`), Gate G1 beim Nutzer.
 - Soll der Pilot-Test eine feste Teilnehmerzahl und Dauer haben? Vorschlag: ein Spiel, 8 bis 10 Spieler, ein Abend.
 - Erledigt mit G1 (2026-11-11): Produktfragen sind entschieden (siehe Abschnitt „Freigabe G1“); neu sind AC-13 bis AC-15.
-- Hinweis für G1: Gegenüber dem ersten Entwurf ändert sich nur AC-11 (Browser-Tests unter 10 Minuten jetzt vor M2 statt vor M3); das ist die einzige AC-Änderung. Die Shards bleiben Voraussetzung: die Anhebung der Zeitgrenze (PR 95) allein ergibt noch 26 Minuten.
+- Hinweis für G1: Gegenüber Entwurf 1: AC-11 geändert (Browser-Tests unter 10 Minuten jetzt vor M2 statt vor M3), AC-13 bis AC-15 neu (G1). Die Shards bleiben Voraussetzung: die Anhebung der Zeitgrenze (PR 95) allein ergibt noch 26 Minuten.
 
 ## End-to-End-Nachweis
 `tests/e2e/` Gesamtstrecke je Rolle (Gast: Suche und Lobby ansehen; Spieler: beitreten, Karte hinterlegen; Captain: bereit, Termin; Admin: Spiel ansehen) auf 390 px und 1280 px, grün, mit Screenshots im PR; Pilot-Test nach M3 als Gate.
