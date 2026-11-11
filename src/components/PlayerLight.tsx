@@ -1,3 +1,6 @@
+import type { CardStatus } from "@/db/schema";
+import { CARD_LEGEND, cardView } from "@/lib/card-view";
+
 /**
  * Ampel pro Spieler in der Lobby:
  *  rot = in der Lobby (noch nicht bereit), orange = bereit und Anteil bezahlt (Spiel noch nicht bestätigt), grün = Spiel bestätigt.
@@ -40,22 +43,22 @@ export function LightLegend({ paymentsOn = true }: { paymentsOn?: boolean }) {
 }
 
 /**
- * Kartenmodell (Vertrag 012, AC-12): grün = Karte hinterlegt, rot = noch keine Karte. Immer Form UND Wort, nie nur Farbe
- * (Haken im gefüllten Kreis / Kreuz im Ring).
+ * Kartenmodell (Vertrag 012, AC-12): Form UND Wort, nie nur Farbe. Grün = Karte hinterlegt (Haken im gefüllten Kreis), rot = keine Karte (Kreuz im Ring)
+ * oder Abbuchung fehlgeschlagen (Ausrufezeichen im Ring), neutral = Abbuchung läuft (Pünktchen im Ring). Die Zuordnung steht in src/lib/card-view.ts.
  */
-export function CardLight({ ready, showLabel = true }: { ready: boolean; showLabel?: boolean }) {
-  const label = ready ? "Karte hinterlegt" : "Keine Karte";
-  const color = ready ? COLOR.green : COLOR.red;
+export function CardLight({ status, showLabel = true }: { status: CardStatus; showLabel?: boolean }) {
+  const v = cardView(status);
+  const color = v.tone === "green" ? COLOR.green : v.tone === "red" ? COLOR.red : "var(--color-muted, #9ca3af)";
   return (
-    <span className="inline-flex items-center gap-1.5" title={label} data-card-light={ready ? "green" : "red"}>
+    <span className="inline-flex items-center gap-1.5" title={v.label} data-card-light={v.tone === "neutral" ? "neutral" : v.tone} data-card-status={status}>
       <span
         className="inline-flex size-5 items-center justify-center rounded-full text-xs font-bold leading-none"
-        style={ready ? { background: color, color: "#04130a" } : { border: `2px solid ${color}`, color }}
+        style={v.filled ? { background: color, color: "#04130a" } : { border: `2px ${v.tone === "neutral" ? "dashed" : "solid"} ${color}`, color }}
         aria-hidden
       >
-        {ready ? "✓" : "✕"}
+        {v.glyph}
       </span>
-      {showLabel ? <span className="text-xs text-muted">{label}</span> : <span className="sr-only">{label}</span>}
+      {showLabel ? <span className="text-xs text-muted">{v.label}</span> : <span className="sr-only">{v.label}</span>}
     </span>
   );
 }
@@ -63,8 +66,9 @@ export function CardLight({ ready, showLabel = true }: { ready: boolean; showLab
 export function CardLightLegend() {
   return (
     <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legende der Ampel" data-testid="card-light-legend">
-      <CardLight ready />
-      <CardLight ready={false} />
+      {CARD_LEGEND.map((status) => (
+        <CardLight key={status} status={status} />
+      ))}
     </p>
   );
 }
