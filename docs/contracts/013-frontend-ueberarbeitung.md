@@ -1,5 +1,5 @@
 # 013 – Frontend-Überarbeitung (Richtung E „Trikot“, Seite für Seite)
-Status: Entwurf (2026-11-12); Phase 1 (Analyse, Council, dieser Entwurf) vom Nutzer freigegeben; G1 für den Vertrag steht aus
+Status: Entwurf (2026-11-11); Phase 1 (Analyse, Council, dieser Entwurf) vom Nutzer freigegeben; G1 für den Vertrag steht aus
 Version: 1
 
 ## Ziel
@@ -8,7 +8,7 @@ Das gesamte Frontend wird überarbeitet, weil der Nutzer Bedienung und Aufbau al
 ## Nutzer und Rollen
 Gast, Spieler, Captain, Veranstalter, Hallenbetreiber (011), Admin 1, Admin 2. Geräte: Handy 390 px und Desktop 1280 px.
 
-## Entscheidungen (vom Nutzer, 2026-11-12)
+## Entscheidungen (vom Nutzer, 2026-11-11)
 - Phase 1 freigegeben: Analyse (nur lesend), Council zu shadcn/ui (ADR 0002), dieser Vertragsentwurf.
 - Ablauf: Erst Analyse aller Seiten als Gast, Spieler, Captain und Admin auf Handy und Desktop, dann Umbauplan an den Nutzer; nach seinem Ja Seite für Seite, jeder PR mit Screenshots vorher/nachher.
 - Admin zuletzt (Stufe M7, Desktop zuerst). URLs bleiben unverändert (keine neue Seitenstruktur). Hell/Dunkel nach Systemeinstellung (schon 007).
