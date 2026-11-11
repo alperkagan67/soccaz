@@ -39,3 +39,36 @@ describe("seed-frontend Schutz", () => {
     }
   });
 });
+
+describe("seed-frontend Schutz: Umgehungen über URL-Bestandteile", () => {
+  const base = "postgres://u:geheim@localhost:5433/soccav2";
+  it("lehnt jede nicht leere Query ab (host, hostaddr, port, database, sslmode)", () => {
+    for (const q of [
+      "?host=prod.example.com&port=5432",
+      "?host=/var/run/postgresql",
+      "?hostaddr=10.0.0.5",
+      "?port=5432",
+      "?database=produktion",
+      "?dbname=produktion",
+      "?sslmode=require",
+      "?",
+    ]) {
+      expect(() => assertSeedAllowed({ databaseUrl: base + q }), q).toThrow(/Abbruch/);
+    }
+  });
+  it("lehnt andere Schemas ab (socket:, http:, file:)", () => {
+    for (const url of ["socket:/var/run/postgresql?db=soccav2", "http://localhost:5433/soccav2", "file:///soccav2", "postgres+unix://localhost:5433/soccav2"]) {
+      expect(() => assertSeedAllowed({ databaseUrl: url }), url).toThrow(/Abbruch/);
+    }
+  });
+  it("erlaubt postgres: und postgresql:, auch mit Benutzer und Passwort", () => {
+    expect(assertSeedAllowed({ databaseUrl: "postgresql://u:p@localhost:5433/soccav2" }).database).toBe("soccav2");
+    expect(assertSeedAllowed({ databaseUrl: "postgres://u@127.0.0.1:5433/soccaz_w1" }).database).toBe("soccaz_w1");
+  });
+  it("lehnt einen Host mit @ nach dem Parsen ab", () => {
+    expect(() => assertSeedAllowed({ databaseUrl: "postgres://localhost%40prod.example.com:5433/soccav2" })).toThrow(/Abbruch/);
+  });
+  it("lehnt ein Fragment ab", () => {
+    expect(() => assertSeedAllowed({ databaseUrl: base + "#x" })).toThrow(/Abbruch/);
+  });
+});

@@ -133,13 +133,13 @@ export async function runSeed(pool: Pool): Promise<SeedCounts> {
     }
 
     // 2. Abhängige Daten löschen (nur Seed-Teams, Seed-Nutzer, Seed-Hallen)
-    const seedTeams = await q("select id from teams where slug like 'seed-%'");
-    const teamIds = seedTeams.map((x) => x.id);
-    const seedUsers = (await q("select id from users where email like 'seed-%@test.local'")).map((x) => x.id);
+    // Nur feste Seed-Konten (exakte E-Mails) und deren Teams: ein echtes Team mit Slug seed-* eines anderen Nutzers bleibt unberührt.
+    const seedUsers = (await q("select id from users where email = any($1::text[])", [ACCOUNTS.map((a) => a.email)])).map((x) => x.id);
+    const teamIds = (await q("select id from teams where id = any($1::uuid[]) and created_by = any($2::uuid[])", [Object.values(tid), seedUsers])).map((x) => x.id);
     await q("delete from tournaments where organizer_id = any($1)", [seedUsers]);
     await q("delete from matches where home_team_id = any($1) or away_team_id = any($1)", [teamIds]);
     await q("delete from comments where target_type = 'venue' and target_id = any($1)", [Object.values(vid)]);
-    await q("delete from invites where token like 'seed-%'");
+    await q("delete from invites where token like 'seed-%' and created_by = any($1::uuid[])", [seedUsers]);
 
     // 3. Spiele
     const mkMatch = async (o: { home: string; away: string; startsInMs: number; status: string; kind?: string; venue?: string; visibility?: string; maxPlayers?: number; homeFinal?: boolean; awayFinal?: boolean }) => {

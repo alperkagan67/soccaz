@@ -16,9 +16,10 @@ npx tsx --env-file=.env.local scripts/seed-frontend.mts
 ## Grenzen (hart)
 
 - Bricht ab bei `NODE_ENV=production`.
+- Bricht ab bei jeder Query oder jedem Fragment in `DATABASE_URL` (pg würde `?host=`, `?port=`, `?database=` mit Vorrang übernehmen) und bei einem anderen Schema als `postgres:`/`postgresql:`.
 - Bricht ab, wenn `DATABASE_URL` nicht auf `localhost` oder `127.0.0.1`, Port `5433` und eine der Datenbanken `soccav2`, `soccaz_w1` bis `soccaz_w4` zeigt. Dann wird nichts angefasst; die Meldung nennt nie Zugangsdaten.
 - `DATABASE_URL` kommt nur aus der Prozessumgebung (`--env-file`); das Skript liest keine `.env*`-Datei selbst und gibt keine aus.
-- Gelöscht wird nur, was zu den Seed-Markern gehört: Teams `seed-*`, Nutzer `seed-*@test.local`, Hallen mit `osm_id` `seed-venue-*`, Einladungen `seed-*`, Turniere der Seed-Veranstalterin bzw. des Seed-Veranstalters. Fremde Daten bleiben unberührt.
+- Gelöscht wird nur, was zu den festen Seed-Konten gehört (exakte E-Mails `seed-*@test.local`): deren Teams `seed-*`, Einladungen `seed-*` dieser Nutzer, Hallen mit `osm_id` `seed-venue-*`, Einladungen `seed-*`, Turniere der Seed-Veranstalterin bzw. des Seed-Veranstalters. Fremde Daten bleiben unberührt.
 - Kein Stripe-Aufruf, kein Hauptbuch, keine Zahlungsbuchung: Kartenzustände sind reine DB-Zeilen (erfundene IDs `cus_seed_*`, `pm_seed_*`). `PAYMENTS_FAKE` ist nicht nötig.
 - Der Seed setzt den Schalter `card_payments_enabled` NICHT. Für Seiten mit Kartenmodell den Schalter selbst setzen (Einstellung `card_payments_enabled` = `true`, siehe `docs/BETRIEB.md`); ohne ihn gelten die Seed-Zeilen trotzdem als Anzeigedaten.
 - Die Integrationstests räumen alle Nutzer `@test.local` auf (`tests/cleanup.ts`). Nach `npm run test:integration` auf derselben DB den Seed neu aufrufen.

@@ -22,6 +22,16 @@ export function assertSeedAllowed(env: SeedEnv): { host: string; port: string; d
   } catch {
     throw new Error("Abbruch: DATABASE_URL ist keine gültige URL. Es wurde nichts verändert.");
   }
+  // pg übernimmt Query-Parameter (host, hostaddr, port, database) mit Vorrang vor dem URL-Teil: jede Query und jedes Fragment ist verboten.
+  if (env.databaseUrl.includes("?") || env.databaseUrl.includes("#") || url.search !== "" || url.hash !== "") {
+    throw new Error("Abbruch: DATABASE_URL darf keine Query-Parameter oder Fragmente enthalten (sie könnten Host, Port oder Datenbank ersetzen). Es wurde nichts verändert.");
+  }
+  if (!["postgres:", "postgresql:"].includes(url.protocol)) {
+    throw new Error("Abbruch: DATABASE_URL muss mit postgres:// oder postgresql:// beginnen. Es wurde nichts verändert.");
+  }
+  if (url.hostname.includes("@")) {
+    throw new Error("Abbruch: DATABASE_URL hat einen ungültigen Host. Es wurde nichts verändert.");
+  }
   const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
   const host = url.hostname;
   const port = url.port;
