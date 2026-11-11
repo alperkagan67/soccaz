@@ -1,5 +1,5 @@
 # 0002 – Komponenten-Grundlage des Frontends: nativ plus kleine eigene Bausteine statt shadcn/ui
-Status: vorgeschlagen (wartet auf Bestätigung des Nutzers mit Vertrag 013)
+Status: akzeptiert (Nutzer hat Council-Option B+ am 2026-11-12 bestätigt; die Bestätigung betrifft den ADR, KEINE Freigabe für Ausnahme-PRs)
 Datum: 2026-11-12
 
 ## Kontext und Problem
@@ -10,7 +10,7 @@ Für die Frontend-Überarbeitung (Vertrag 013) soll Bedienbarkeit, Barrierefreih
 - B: eigene Komponenten nach Tokens, nativ wo möglich (B+: native Elemente plus kleine eigene Bausteine).
 - C: nur Radix-Primitives einzeln, in dünnen eigenen Hüllen.
 
-## Entscheidung (Vorschlag)
+## Entscheidung
 Gewählt: B+ zum Start, C nur punktuell bei echtem Bedarf; kein shadcn/ui, keine `components.json`, kein Radix auf Vorrat. Native Elemente bleiben Standard: `<dialog>` (ScoreDialog), `<select class="field">` (rund 45 bis 60 Stellen), `<details>`, Formularfelder und Buttons nur über Tokens. Der einzige belegte Problemfall `src/components/UserMenu.tsx` (role="menu" ohne Pfeiltasten und Fokusrückgabe) wird auf das native Popover-Attribut bzw. ein `<details>`-Disclosure umgebaut, ebenso klärt `MatchClient.tsx:68` (Pseudo-Dialog) sich als `<dialog>` oder normales Panel. Toast, Tabs und Tooltip entfallen mangels belegten Bedarfs. Neu prüfen und gezielt ein Radix-Paket nachrüsten (Vorschlag mit Quelle, Version, Dateiliste, Risiko an den Nutzer, Regel Abschnitt 14), wenn mehr als etwa vier verschiedene Overlay-Komponenten gebraucht werden (Combobox mit Suche, Mehrfach-Select, Toast nach Redirect, Tabs) oder eine Barrierefreiheitsprüfung die handgebauten Teile beanstandet.
 
 Begründung: Das Projekt hat keine UI-Bibliothek (`package.json:17-32`), nutzt bereits natives `<dialog>` (`src/app/lobby/[id]/uebersicht/ScoreDialog.tsx:12,36`), natives `<select>` und `<details>`; die Tokens in `src/app/globals.css:63ff` heißen anders als bei shadcn; ein Austausch der Selects wäre ein Regressionsrisiko für Server Actions und die 576 Test-Fundstellen. shadcn per CLI brächte Fremdcode, fünf Hilfspakete und genau die Standardoptik, die der Nutzer nicht will.
