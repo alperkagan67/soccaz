@@ -61,7 +61,9 @@ async function organizer() {
 }
 
 // 2 Stunden à 80 Euro = 160 Euro Hallenkosten, 4 Teams
-const base = { name: "Hallen-Cup", city: "Essen", startsAt: days(5), registrationDeadline: days(3), maxTeams: 4, durationMin: 120, hourlyCents: 8000 };
+// Eine einzige Uhr für Start und Anmeldeschluss: Zwei Date.now()-Aufrufe können eine Millisekunde auseinanderliegen, dann wäre der Abstand knapp unter 48 Stunden (AC-12).
+const T0 = Date.now();
+const base = { name: "Hallen-Cup", city: "Essen", startsAt: new Date(T0 + 5 * 86_400_000), registrationDeadline: new Date(T0 + 3 * 86_400_000), maxTeams: 4, durationMin: 120, hourlyCents: 8000 };
 const newTournament = async (o: { id: string }, over: Partial<typeof base & { isPrivate: boolean }> = {}) => createTournament(o.id, { ...base, ...over });
 const orgView = (o: { id: string }, tid: string) => getTournament(tid, { id: o.id, role: "player" });
 const statusOf = async (tid: string) => (await db.select().from(tournaments).where(eq(tournaments.id, tid)))[0];
@@ -1123,7 +1125,7 @@ describe("Fristen (Vertrag 008 v4, M3b): 48-h-Frist, Sofortbuchung, 1-h-Abbruch"
   it("Karenz: Steht der Preis erst kurz vor der Frist fest, gilt die Frist frühestens 12 Stunden danach", async () => {
     const o = await organizer();
     const start = hours(49); // 49 Stunden Vorlauf, Anmeldeschluss 48 Stunden vor dem Start
-    const t = await createTournament(o.id, { ...base, startsAt: start, registrationDeadline: hours(1) });
+    const t = await createTournament(o.id, { ...base, startsAt: start, registrationDeadline: new Date(start.getTime() - 48 * 3_600_000) });
     await pricedTournament(t, 5); // Preis steht jetzt fest (Audit tournament.price)
     await closeTournamentsAtDeadline(new Date(fixDeadline(start).getTime() + 3_600_000)); // die 48-h-Frist ist schon eine Stunde her, die Karenz läuft noch
     expect((await statusOf(t.id)).status).toBe("payment");
@@ -1177,7 +1179,7 @@ describe("Fristen (Vertrag 008 v4, M3b): 48-h-Frist, Sofortbuchung, 1-h-Abbruch"
   it("Fairness: Wird der Preis nach dem Lesen der Kandidaten, aber vor der Sperre festgelegt, gilt die neue Karenz: nicht abgesagt (fällig wird unter der Sperre neu berechnet)", async () => {
     const o = await organizer();
     const start = hours(49);
-    const t = await createTournament(o.id, { ...base, startsAt: start, registrationDeadline: hours(1) });
+    const t = await createTournament(o.id, { ...base, startsAt: start, registrationDeadline: new Date(start.getTime() - 48 * 3_600_000) });
     for (let i = 0; i < 4; i++) await squad(t.id, 4, i < 3); // das vierte Team ist noch nicht vollzählig: der Preis steht noch nicht fest
     const now = new Date(fixDeadline(start).getTime() + 3_600_000); // die 48-h-Frist ist eine Stunde her; ohne Preis wäre das Turnier jetzt fällig
     let job: Promise<number> | null = null;
