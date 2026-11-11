@@ -2,6 +2,8 @@
 
 Reihenfolge von oben nach unten. Der nächste Eintrag ohne offene Produktfragen startet ohne Rückfrage (siehe CLAUDE.md, Autonomie und Backlog).
 
+Umsetzungsreihenfolge Geldmodell und Verträge: 006/008 M3a/M3b, 007 M2/M3, Escrow E10 (Nr. 16), dann 009 M1 bis M6, 011 M1 bis M4, 010, 011 M5. Migrationen laufen seriell.
+
 | # | Eintrag | Status |
 |---|---------|--------|
 | 1 | Härtung: `safeInternalPath` in `guthaben/page.tsx`, `payments.ts` (`safeReturnPath`), `content-actions.ts` (`safePath`) und `actions.ts` (`internalReturnPath`) (#39) | fertig |
@@ -43,11 +45,17 @@ Reihenfolge von oben nach unten. Der nächste Eintrag ohne offene Produktfragen 
 | 9 | Captain-Tausch nach der Frist (Captain tauscht einen Spieler gegen einen Ersatz, der registrierter Soccaz-Nutzer ist, ohne Zahlung über Soccaz; Folgeauftrag nach der Frist-Regel aus 006 v3 und 008 v3) | offen (Nutzer: Ja; Vertrag/ACs kurz folgen, Produktfragen an Orchestrator) |
 | 10 | Wertung bei Nichterscheinen (ersetzt `recordLateCancel` mit 24-h-Grenze, das mit der 24-h-Regel entfällt; Produktfrage: Wie und ab wann wird ein Nichterscheinen gewertet?) | offen (Produktfrage) |
 | 16 | Escrow-Konto (Prüfpunkt E10 in `docs/loop/GO-LIVE-AUDIT.md`): eigenes Konto für das geparkte Lobby-Geld, getrennt von den Einnahmen; additive Enum-Migration, bestehende Parkbuchungen per Gegen-/Umbuchung migrieren, Umbuchung escrow → revenue/Veranstalter erst bei der Buchung. Reihenfolge: nach der Umsetzung von 006/008 M3 und vor 009 M2 (Provision/Rechnungen). Migration seriell (nie parallel zu Tasks mit Schema-Annahmen), security-reviewer Pflicht | offen |
-| 11 | Vertrag 009 Admin-Bereich, Einnahmemodell, Buchhaltung (nach der Umsetzung von 007/008 und dem Captain-Tausch; Orchestrator schreibt den Vertrag, G1 beim Nutzer, Produktfragen erst gebündelt; Vertragsentwurf: docs/contracts/009-admin-einnahmen-buchhaltung.md) | wartet auf G1 |
-| 12 | Vertrag 011 Hallen-Dashboard, Meilensteine M1 bis M4 (nach 009; Reihenfolge 009, 011 M1 bis M4, 010, 011 M5; G1 beim Nutzer; Vertragsentwurf: docs/contracts/011-hallen-dashboard.md; enthält die Zusage der Halle als Buchungsbedingung für 006/008 v4) | wartet auf G1 |
-| 13 | Vertrag 010 Spieler-Funktionen: Hallen-Bewertungen (nur wer dort gespielt hat), Karte der Partnerhallen in der Nähe, Knopf "Nochmal spielen" (letztes Spiel mit denselben Teams und derselben Halle neu anlegen); nach 009 und 011 M1 bis M4; danach folgt 011 M5 (Antworten auf Bewertungen, braucht 010 M1); G1 beim Nutzer; Vertragsentwurf: docs/contracts/010-spieler-funktionen.md | wartet auf G1 |
+| 11 | Vertrag 009 Admin-Bereich, Einnahmemodell, Buchhaltung (nach der Umsetzung von 007/008 und dem Captain-Tausch; Orchestrator schreibt den Vertrag, G1 beim Nutzer, Produktfragen erst gebündelt; Vertragsentwurf: docs/contracts/009-admin-einnahmen-buchhaltung.md) | Vertrag freigegeben, Umsetzung geplant |
+| 12 | Vertrag 011 Hallen-Dashboard, Meilensteine M1 bis M4 (nach 009; Reihenfolge 009, 011 M1 bis M4, 010, 011 M5; G1 beim Nutzer; Vertragsentwurf: docs/contracts/011-hallen-dashboard.md; enthält die Zusage der Halle als Buchungsbedingung für 006/008 v4) | Vertrag freigegeben, Umsetzung geplant |
+| 13 | Vertrag 010 Spieler-Funktionen: Hallen-Bewertungen (nur wer dort gespielt hat), Karte der Partnerhallen in der Nähe, Knopf "Nochmal spielen" (letztes Spiel mit denselben Teams und derselben Halle neu anlegen); nach 009 und 011 M1 bis M4; danach folgt 011 M5 (Antworten auf Bewertungen, braucht 010 M1); G1 beim Nutzer; Vertragsentwurf: docs/contracts/010-spieler-funktionen.md | Vertrag freigegeben, Umsetzung geplant |
 | 14 | Später/Idee: Zugang für Hallenbetreiber (eigene Buchungen, Auszahlungen, Provisionsrechnungen); überholt durch Vertrag 011 (Eintrag 12) | überholt (siehe Vertrag 011) |
 | 15 | Später/Idee: sichtbare Servicegebühr nur für Extras, z. B. Firmenpaket (kein Treueprogramm, keine Rabatte, keine bezahlten Platzierungen) | offen (Idee) |
 | 17 | `mergeTeams` (`admin.ts:255`) löscht Teilnehmerzeilen mit `paidCents > 0` ohne Erstattung oder Neuberechnung (nur Admin, vorbestehend) | offen |
+| 18 | Gratis-Spiel ohne `settledAt` schickt bei jedem Job-Takt `pg_notify` bis zum Anstoß | offen (niedrig) |
+| 19 | Der Job berechnet "due" unter der Sperre nicht neu (nur theoretisch) | offen (niedrig) |
+| 20 | Fehlermeldung in `finalConfirm`, wenn `settleMatch` false liefert, ist irreführend, wenn nur der Status ungleich `confirmed` der Grund ist | offen (niedrig) |
+| 21 | Teamspiel-Fixierprüfung `fixShare` mit `short > 0` hat keinen eigenen Test | offen (niedrig) |
+| 22 | Texte im Altmodell anpassen (`LobbyClient.tsx:75` "reserviert … Rest zurück", Hilfe-Seite); Task nach dem Merge von PR 1 | offen (niedrig) |
+| 23 | Audit-Benennung: Eintrag `wallet.settle_uncovered` entsteht bei jedem Lauf; `recalcShares` schreibt den Audit-Namen `private_recalc` auch für Teamspiele | offen (niedrig) |
 
 Status: offen / in Arbeit / fertig.
