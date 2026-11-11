@@ -15,6 +15,8 @@ export interface PaymentProvider {
   /** Nur Anzeigedaten (Marke, letzte vier Ziffern). */
   retrievePaymentMethod(id: string): Promise<CardDisplay>;
   detachPaymentMethod(id: string): Promise<void>;
+  /** Ist das Zahlungsmittel bei Stripe noch nutzbar: existiert, gehört noch zu diesem Kunden (nicht gelöst) und ist nicht abgelaufen? */
+  isPaymentMethodUsable(id: string, customerId: string): Promise<boolean>;
   /** Prüft die Signatur des rohen Bodys und liefert das Ereignis. Wirft WebhookSignatureError bei falscher oder fehlender Signatur. */
   constructWebhookEvent(rawBody: string, signature: string | null): ProviderEvent;
 }

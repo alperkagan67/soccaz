@@ -11,6 +11,7 @@ export class FakeProvider implements PaymentProvider {
   readonly calls: { method: string; args: unknown }[] = [];
   private readonly cards = new Map<string, CardDisplay>();
   private readonly detached = new Set<string>();
+  private readonly unusable = new Set<string>();
   constructor(private readonly webhookSecret = FAKE_WEBHOOK_SECRET) {}
 
   async createCustomer(input: { userId: string; email: string; idempotencyKey: string }) {
@@ -37,6 +38,17 @@ export class FakeProvider implements PaymentProvider {
   async detachPaymentMethod(id: string) {
     this.calls.push({ method: "detachPaymentMethod", args: { id } });
     this.detached.add(id);
+  }
+
+  /** Test-Hilfe: macht dieses Zahlungsmittel unbrauchbar (abgelaufen, gelöst) oder wieder nutzbar. */
+  setUsable(id: string, usable: boolean) {
+    if (usable) this.unusable.delete(id);
+    else this.unusable.add(id);
+  }
+
+  async isPaymentMethodUsable(id: string, customerId: string) {
+    this.calls.push({ method: "isPaymentMethodUsable", args: { id, customerId } });
+    return !this.unusable.has(id) && !this.detached.has(id);
   }
 
   wasDetached(id: string) {

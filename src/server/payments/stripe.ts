@@ -38,6 +38,16 @@ export class StripeProvider implements PaymentProvider {
     return { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null };
   }
 
+  async isPaymentMethodUsable(id: string, customerId: string): Promise<boolean> {
+    const pm = await this.stripe().paymentMethods.retrieve(id);
+    if (pm.customer !== customerId) return false; // gelöst (customer null) oder fremd
+    if (pm.card) {
+      const now = new Date();
+      if (pm.card.exp_year < now.getUTCFullYear() || (pm.card.exp_year === now.getUTCFullYear() && pm.card.exp_month < now.getUTCMonth() + 1)) return false;
+    }
+    return true;
+  }
+
   async detachPaymentMethod(id: string) {
     await this.stripe().paymentMethods.detach(id);
   }
