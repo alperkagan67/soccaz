@@ -2,8 +2,9 @@ import { randomBytes } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matchParticipants, matchResults, matches, notifications, teamMembers, teams, users } from "@/db/schema";
+import { auditLog, matchParticipants, matchResults, matches, notifications, teamMembers, teams, users } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
+import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLead } from "@/lib/deadlines";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, planSchedule, koWinner, knockout, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
@@ -63,6 +64,11 @@ export async function createTournament(userId: string, input: TournamentInput) {
   if (Number.isNaN(input.startsAt.getTime()) || input.startsAt.getTime() <= now) throw new DomainError("Bitte wähle einen Termin in der Zukunft.");
   if (Number.isNaN(input.registrationDeadline.getTime()) || input.registrationDeadline.getTime() <= now) throw new DomainError("Der Anmeldeschluss muss in der Zukunft liegen.");
   if (input.registrationDeadline.getTime() >= input.startsAt.getTime()) throw new DomainError("Der Anmeldeschluss muss vor dem Turnierbeginn liegen.");
+  // Mit mindestens 48 Stunden Vorlauf schließt die Lobby 48 Stunden vor dem Start (Vertrag 008 AC-12): der Anmeldeschluss darf nicht später liegen.
+  // Bei weniger als 48 Stunden Vorlauf gilt nur "vor dem Start" (Sofortbuchung und 1-h-Abbruch).
+  if (hasLongLead(input.startsAt, new Date(now)) && input.registrationDeadline.getTime() > fixDeadline(input.startsAt).getTime()) {
+    throw new DomainError(`Der Anmeldeschluss muss mindestens ${FIX_DEADLINE_HOURS} Stunden vor dem Turnierbeginn liegen.`);
+  }
   if (!Number.isInteger(input.maxTeams) || input.maxTeams < MIN_TOURNAMENT_TEAMS || input.maxTeams > MAX_TOURNAMENT_TEAMS) throw new DomainError(`${MIN_TOURNAMENT_TEAMS} bis ${MAX_TOURNAMENT_TEAMS} Teams.`);
   if (!Number.isInteger(input.durationMin) || input.durationMin < 30 || input.durationMin > 720 || input.durationMin % 15 !== 0) throw new DomainError("Das Turnier dauert 30 Minuten bis 12 Stunden (in 15-Minuten-Schritten).");
   let hourly = input.hourlyCents ?? null;
@@ -567,21 +573,72 @@ export async function cancelTournament(userId: string, tournamentId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann absagen.");
-    if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
-    const played = await tx.select({ id: tournamentMatches.id }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.scoreA))).limit(1);
-    if (played.length > 0) throw new DomainError("Es gibt schon Ergebnisse. Bitte wende dich an die Plattform.");
-    const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
-    for (const p of players) {
-      await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
-    }
-    await notifyUsers(players.map((p) => p.userId), { type: "system", title: "Turnier abgesagt", body: `${t.name} findet nicht statt. Dein Eintritt wurde vollständig erstattet.`, url: `/turniere/${tournamentId}` }, tx);
-    const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
-    const gameIds = games.map((g) => g.matchId!).filter(Boolean);
-    if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
-    await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
-    await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));
-    await audit(userId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length } }, tx);
+    await cancelTournamentTx(tx, t, userId);
   });
+}
+
+/** Sagt ein Turnier unter der Turniersperre ab und erstattet alle Eintritte (feste Schlüssel, genau einmal). `actorId` null = Job. */
+async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, body?: string) {
+  const tournamentId = t.id;
+  if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
+  const played = await tx.select({ id: tournamentMatches.id }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.scoreA))).limit(1);
+  if (played.length > 0) throw new DomainError("Es gibt schon Ergebnisse. Bitte wende dich an die Plattform.");
+  const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
+  for (const p of players) {
+    await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
+  }
+  await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), t.organizerId])], { type: "system", title: "Turnier abgesagt", body: body ?? `${t.name} findet nicht statt. Dein Eintritt wurde vollständig erstattet.`, url: `/turniere/${tournamentId}` }, tx);
+  const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
+  const gameIds = games.map((g) => g.matchId!).filter(Boolean);
+  if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
+  await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
+  await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));
+  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length, byJob: actorId === null } }, tx);
+}
+
+/**
+ * Frist-Job für Turniere (Vertrag 008 v4, AC-11 und AC-16), im 5-Minuten-Takt, je Turnier in eigener Transaktion unter der Turniersperre:
+ * - Anlage mit mindestens 48 Stunden Vorlauf: 48 Stunden vor dem Start ist die Lobby zu. Steht bis dahin das Bracket nicht (alle Teams vollzählig,
+ *   alle Spieler bezahlt, alle Captains bereit), fällt das Turnier aus und alle bekommen ihren Eintritt zurück.
+ * - Anlage unter 48 Stunden Vorlauf: 1 Stunde vor dem Start gilt dasselbe.
+ * "Gebucht" ist ein Turnier, sobald das Bracket erzeugt ist (`maybeGenerateBracket`, sofort nach der letzten Zahlung und dem letzten "Bereit"); gebuchte Turniere
+ * fasst der Job nie an. Eine Karenz von 12 Stunden gilt ab dem Zeitpunkt, an dem der Preis feststand (erst dann kann bezahlt werden).
+ * Altturniere (angelegt mit Anmeldeschluss später als 48 Stunden vor dem Start) bleiben bei den alten Regeln. Nachholbar und idempotent.
+ */
+export async function closeTournamentsAtDeadline(now: Date = new Date()): Promise<number> {
+  const candidates = await db
+    .select()
+    .from(tournaments)
+    .where(and(inArray(tournaments.status, ["registration", "payment"]), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`));
+  let cancelled = 0;
+  for (const c of candidates) {
+    try {
+      const start = c.startsAt!;
+      const long = hasLongLead(start, c.createdAt);
+      if (long && (!c.registrationDeadline || c.registrationDeadline.getTime() > fixDeadline(start).getTime())) continue; // Altturnier: alte Regeln
+      const payOpenAt = await tournamentPayOpenAt(db, c);
+      const due = dueWithGrace(long ? fixDeadline(start) : abortDeadline(start), payOpenAt, start, c.createdAt);
+      if (due.getTime() > now.getTime()) continue;
+      await db.transaction(async (tx) => {
+        const t = await lockTournament(tx, c.id);
+        if ((t.status !== "registration" && t.status !== "payment") || t.bracketGeneratedAt || !t.startsAt || t.startsAt.getTime() <= now.getTime()) return;
+        await cancelTournamentTx(tx, t, null, `${t.name} findet nicht statt: Zur Frist (${long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, bezahlt und bereit. Dein Eintritt wurde vollständig erstattet.`);
+        cancelled += 1;
+      });
+    } catch (error) {
+      console.error("closeTournamentsAtDeadline: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return cancelled;
+}
+
+/** Ab wann kann bezahlt werden? Ab dem (letzten) Festlegen des Preises (Audit "tournament.price"), sonst ab der Anlage. */
+async function tournamentPayOpenAt(exec: Pick<typeof db, "select">, t: Pick<T, "id" | "createdAt">): Promise<Date> {
+  const [row] = await exec
+    .select({ at: sql<Date | null>`max(${auditLog.at})`.mapWith(auditLog.at) })
+    .from(auditLog)
+    .where(and(eq(auditLog.entity, "tournament"), eq(auditLog.entityId, t.id), eq(auditLog.action, "tournament.price")));
+  return row?.at && row.at.getTime() > t.createdAt.getTime() ? row.at : t.createdAt;
 }
 
 // ---------------------------------------------------------------------------------------------
