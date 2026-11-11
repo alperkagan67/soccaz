@@ -1,5 +1,41 @@
 # Frontend-Analyse M1, Gruppe X (öffentliche Seiten, Spieler- und Captain-Bereich)
 
+## Kurzfassung (für den Nutzer)
+
+**Status: Degradiert: ja, X gilt noch nicht als fertig.** Grund:
+- (a) `critique`, `audit`, `distill`, `clarify`, `adapt` haben keinen Launcher-Befehl; sie liefen manuell nach vollständig gelesenen Reference-Dateien (Methode in Ordnung, hier ehrlich vermerkt).
+- (b) `detect` per URL läuft auf `/` und `/suche` in einen Timeout (Dauerverbindung per SSE); Ersatz sind Quelltext-Lauf und Playwright-Messung.
+- (c) Nicht prüfbar mit dem Seed: Onboarding, "Link abgelaufen", gefüllte Listen und Fehlerzustände, Formular-Absenden, Konto-Menü des Captains am Handy. Der echte Google-Login ist nicht automatisierbar, der Dev-Login ersetzt ihn (bekannte Lücke). Die Zellen aus (c) folgen, sobald der neue Seed da ist.
+
+**Zähler:** angesehen 138 von 138 Screenshots (23 Seiten × Gast/Spieler/Captain × Handy 390 px/Desktop 1280 px), je Zelle die fünf Befehle einzeln.
+
+**Funde (Rohzählung, viele Wiederholungen je Rolle und Gerät):** 1 P0, 76 P1, 124 P2.
+
+**Die 10 schlimmsten Probleme:**
+1. X-01 (P0): Suchfeld auf `/spieler` und `/teams` am Handy auf etwa 48 px gequetscht, Platzhalter abgeschnitten.
+2. Guthaben, Aufladen, Rabattcode und Altmodell-Texte stehen noch überall (siehe MUSS WEG).
+3. X-06, SM-GL-1: untere Navigation falsch (falscher aktiver Reiter, Gäste sehen Reiter für Angemeldete).
+4. GD-ALL-1: Kopfleiste am Desktop mit nur drei Links, die Fußzeile ist die einzige Gesamtnavigation.
+5. SM-GL-6, SM-MA-1, SM-SN-1 (X-20): Spieler ohne Captain-Rolle sieht "Lobby aufmachen" als erste Handlung.
+6. SM-EL-1: Einladungsseite erkennt ein bestehendes Mitglied nicht, der Klick endet still.
+7. CD-ALL-3: `/app/suche/neu` hat keinen Einstieg ohne `?gegner=`; der Einladungslink liegt nur auf der Teamseite.
+8. CM-MM-1: Lobby-Formular auf `/matchmaking` ganz unten, Datumsfeld abgeschnitten.
+9. X-03, X-04: `/app` zeigt Kartenwand und Kachelraster vor "Meine Spiele".
+10. Rechtsseiten: Platzhalter und Variablennamen (`OPERATOR_*`) auf `/impressum`, `/kontakt`, `/datenschutz` sichtbar.
+
+**MUSS WEG: 128 Fundstellen** (je Seite, Rolle und Beleg im Abschnitt MUSS WEG). Die wichtigsten 8:
+1. Kopfleiste: Betragslink "Guthaben" (`Header.tsx:53-55`, Test-ID `header-wallet`).
+2. Konto-Menü: Eintrag "Guthaben" mit Betrag (`UserMenu.tsx:69-72`).
+3. `/app`: Guthaben-Karte ("Zahlungen noch nicht aktiv, Spiele sind kostenlos").
+4. `/app/guthaben` ganze Seite: Aufladen (20/50/100 Euro, Betragsfeld).
+5. Rabattcode-Feld in `TopUpForm.tsx` (Vorgabe: keine Promo-Codes).
+6. Startseite: "Kostenlos anmelden", "Du lädst dein Guthaben auf".
+7. Hilfe: Abschnitt "Geld und Guthaben".
+8. `/agb` (§1, §3, §4), `/datenschutz`, `/hausordnung`, `/kontakt`: Altmodell-Texte zu Guthaben und Zahlung.
+
+Der Rest des Dokuments: Zusammenfassung, Matrix, Methodik, erste Fundliste X-01 bis X-20, MUSS WEG, sechs Fundblätter (je Rolle und Gerät, je Seite mit Befehl und Ergebnis).
+
+
 Stand: Basis `main` (d129ad7), Dev-Server Port 3102 mit `PAYMENTS_FAKE=1`, Seed `seed-demo`. Nur gelesen und gemessen, kein Quelltext geändert. Grundlage: Vertragsentwurf 013 (Richtung E Trikot bleibt, URLs und Test-IDs bleiben).
 
 **Degradiert: ja (Stand der Fortsetzung, ehrlich).** Erledigt: alle 138 Screenshots einzeln angesehen; je Seite, Rolle und Gerät die fünf Durchgänge critique, audit, distill, clarify, adapt als eigene Läufe (je Rolle und Gerät ein eigener Sub-Agent in Serie, ein Dev-Server, ein Browser) mit Befehl und Ergebnis je Seite in den Fundblättern unten; `detect` je Seite. Weiterhin degradiert: (1) `critique`, `audit`, `distill`, `clarify`, `adapt` sind Playbooks ohne Launcher-Befehl; sie laufen als manuelle Prüfung nach den vollständig gelesenen Reference-Dateien, ohne Overlay und ohne eigenen `critique`-Sub-Agent mit Browser-Assessment. (2) `detect` per URL läuft auf `/` und `/suche` in einen 30-Sekunden-Timeout (Dauerverbindung); dort Ersatz durch Quelltext-Lauf und Playwright-Messung. `detect` per URL sieht keine Sitzung; für `/app*` lief es zusätzlich gegen den Quelltext. (3) Nicht prüfbar: Onboarding-Formular, Zustand "Link abgelaufen", gefüllte Listen und Fehlerzustände (Seed ohne Spiele und Lobbys), Absenden der Formulare, Konto-Menü des Captains am Handy (Beleg Spieler, gleiche Komponente), echter Google-Login.
