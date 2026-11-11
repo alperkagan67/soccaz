@@ -155,8 +155,11 @@ export const matchParticipants = pgTable(
     noShow: boolean("no_show").notNull().default(false),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    // Kartenstatus je Platz (Vertrag 012, ADR 0001). M1a: nur none und card_ready. Spaeter (M2/M3, eigene Migration): charge_pending, charged, failed
+    // samt charge_due_at, grace_until und covered_by_user_id ("Anteil uebernehmen"). Aendert weder paid_cents noch das Hauptbuch.
+    cardStatus: text("card_status").$type<"none" | "card_ready">().notNull().default("none"),
   },
-  (t) => [primaryKey({ columns: [t.matchId, t.userId] })],
+  (t) => [primaryKey({ columns: [t.matchId, t.userId] }), check("match_participants_card_status_check", sql`${t.cardStatus} in ('none', 'card_ready')`)],
 );
 
 export const matchEvents = pgTable("match_events", {
@@ -258,3 +261,40 @@ export const remindersSent = pgTable(
   },
   (t) => [primaryKey({ columns: [t.matchId, t.kind] })],
 );
+
+// Zahlung per Karte (Vertrag 012, M1a). Nur Stripe-IDs und Anzeigedaten; nie Kartennummer, Ablaufdatum oder CVC.
+/** Stripe-Kunde und hinterlegtes Zahlungsmittel je Nutzer. brand und last4 dienen nur der Anzeige ("Visa ... 4242"). Das Mandat ist der Text, dem zugestimmt wurde. */
+export const paymentProfiles = pgTable("payment_profiles", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  stripeCustomerId: text("stripe_customer_id").notNull().unique(),
+  paymentMethodId: text("payment_method_id"),
+  cardBrand: text("card_brand"),
+  cardLast4: text("card_last4"),
+  mandateText: text("mandate_text"),
+  mandateAcceptedAt: timestamp("mandate_accepted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Jeder angelegte SetupIntent: wem er gehoert, fuer welchen Platz (match_id, optional) und welcher Mandatstext zu welchem Zeitpunkt akzeptiert wurde. */
+export const paymentSetupIntents = pgTable(
+  "payment_setup_intents",
+  {
+    id: text("id").primaryKey(), // Stripe-ID seti_...
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    matchId: uuid("match_id").references(() => matches.id, { onDelete: "cascade" }),
+    status: text("status").$type<"created" | "succeeded" | "failed">().notNull().default("created"),
+    mandateText: text("mandate_text").notNull(),
+    mandateAcceptedAt: timestamp("mandate_accepted_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("payment_setup_intents_user_idx").on(t.userId, t.createdAt), check("payment_setup_intents_status_check", sql`${t.status} in ('created', 'succeeded', 'failed')`)],
+);
+
+/** Verarbeitete Stripe-Webhook-Ereignisse: event_id eindeutig, damit ein doppelt zugestelltes Ereignis nur einmal wirkt. */
+export const stripeEvents = pgTable("stripe_events", {
+  eventId: text("event_id").primaryKey(),
+  type: text("type").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  processedAt: timestamp("processed_at", { withTimezone: true }),
+});

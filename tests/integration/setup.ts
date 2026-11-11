@@ -3,6 +3,7 @@ import { vi } from "vitest";
 
 // Integrationstests laufen gegen eine echte Datenbank, nie gegen eine entfernte.
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
+process.env.PAYMENTS_FAKE = "1"; // der FakeProvider ist nur mit ausdrücklicher Freigabe erlaubt
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL fehlt für die Integrationstests.");
 const host = new URL(url).hostname;
