@@ -53,7 +53,7 @@ export function RequestPlayerButton({ postId, teams }: { postId: string; teams: 
   const [teamId, setTeamId] = useState(teams[0]?.id ?? "");
   const [message, setMessage] = useState<string>();
   const [sent, setSent] = useState(false);
-  if (sent) return <span className="text-xs text-green">Anfrage gesendet.</span>;
+  if (sent) return <span className="text-xs text-accent-fg">Anfrage gesendet.</span>;
   return (
     <span className="flex flex-wrap items-center gap-2">
       {teams.length > 1 && (

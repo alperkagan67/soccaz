@@ -58,7 +58,7 @@ export function ScoreDialog({ matchId, home, away, players, existing }: { matchI
                 </li>
               ))}
               {goals.map((g, i) => (
-                <li key={i} className="flex items-center justify-between gap-2 rounded-lg border border-green/50 px-3 py-2" data-testid="score-goal">
+                <li key={i} className="flex items-center justify-between gap-2 rounded-lg border border-accent/50 px-3 py-2" data-testid="score-goal">
                   <span>Tor {g.teamId === home.id ? home.name : away.name}</span>
                   <span className="flex items-center gap-2">
                     <input aria-label="Spielminute" type="number" inputMode="numeric" min={1} max={120} value={g.minute} onChange={(e) => setMinute(i, e.target.value)} placeholder="Min" className="field !min-h-9 !w-16 !px-2 !py-1 text-center text-sm" />

@@ -33,7 +33,7 @@ export async function HowItWorks() {
       <ol className="grid gap-3 sm:grid-cols-2">
         {STEPS.map((s, i) => (
           <li key={s} className="card flex gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-green font-heading text-lg font-extrabold text-black" aria-hidden>
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent font-heading text-lg font-extrabold text-accent-ink" aria-hidden>
               {i + 1}
             </span>
             <span>
@@ -46,7 +46,7 @@ export async function HowItWorks() {
       <div className="card space-y-1">
         <h3 className="font-semibold">{t("how.price.title")}</h3>
         <p className="text-sm text-muted">{t("how.price.text", { price60: price ? formatEuro(price.priceCents) : "–" })}</p>
-        <Link href="/hilfe" className="text-sm text-green underline">{t("how.more")}</Link>
+        <Link href="/hilfe" className="text-sm text-accent-fg underline">{t("how.more")}</Link>
       </div>
     </section>
   );

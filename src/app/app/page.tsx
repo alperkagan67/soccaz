@@ -33,7 +33,7 @@ export default async function DashboardPage() {
       <Challenges incoming={challenges.incoming} outgoing={challenges.outgoing} />
 
       {myTeams.length === 0 && games.length === 0 && (
-        <section className="card space-y-3 border-green/50" aria-label="So startest du" data-testid="first-steps">
+        <section className="card space-y-3 border-accent/50" aria-label="So startest du" data-testid="first-steps">
           <h2 className="font-semibold">So startest du</h2>
           <ol className="space-y-2 text-sm text-muted">
             <li><strong className="text-ink">1. Team gründen</strong> oder den Einladungslink deines Teams öffnen.</li>
@@ -49,7 +49,7 @@ export default async function DashboardPage() {
 
       <GameModes signedIn />
 
-      <Link href="/app/guthaben" className="card flex items-center justify-between hover:border-green" data-testid="wallet-card">
+      <Link href="/app/guthaben" className="card flex items-center justify-between hover:border-accent" data-testid="wallet-card">
         <span>
           <span className="block text-muted">Guthaben</span>
           <span className="block text-xs text-muted">{payOn ? "Aufladen, Verlauf und Belege" : "Zahlungen sind noch nicht aktiv, Spiele sind kostenlos"}</span>
@@ -58,11 +58,11 @@ export default async function DashboardPage() {
       </Link>
 
       <nav aria-label="Schnellzugriff" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
-        <Link href="/matchmaking" className="card text-center hover:border-green">Lobby aufmachen</Link>
-        <Link href={`/spieler/${user.id}`} className="card text-center hover:border-green">Mein Profil</Link>
-        <Link href="/rangliste" className="card text-center hover:border-green">Rangliste</Link>
-        <Link href="/app/einstellungen" className="card text-center hover:border-green">Einstellungen</Link>
-        <Link href="/hilfe" className="card text-center hover:border-green">Hilfe</Link>
+        <Link href="/matchmaking" className="card text-center hover:border-accent">Lobby aufmachen</Link>
+        <Link href={`/spieler/${user.id}`} className="card text-center hover:border-accent">Mein Profil</Link>
+        <Link href="/rangliste" className="card text-center hover:border-accent">Rangliste</Link>
+        <Link href="/app/einstellungen" className="card text-center hover:border-accent">Einstellungen</Link>
+        <Link href="/hilfe" className="card text-center hover:border-accent">Hilfe</Link>
       </nav>
 
       <section className="space-y-3">
@@ -76,12 +76,12 @@ export default async function DashboardPage() {
               const href = phase === "upcoming" && (g.status === "lobby" || g.status === "confirmed") ? `/lobby/${g.id}` : `/spiele/${g.id}`;
               return (
                 <li key={g.id}>
-                  <Link href={href} className="card flex items-center justify-between gap-3 hover:border-green">
+                  <Link href={href} className="card flex items-center justify-between gap-3 hover:border-accent">
                     <span className="min-w-0">
                       <span className="block truncate font-semibold">{g.homeName} <span className="text-muted">gegen</span> {g.awayName}</span>
                       <span className="block text-sm text-muted">{formatDateTime(g.startsAt)} Uhr · {g.durationMin} Min</span>
                     </span>
-                    <span className={`shrink-0 text-xs ${g.status === "confirmed" ? "text-green" : g.status === "cancelled" || g.status === "disputed" ? "text-coral" : "text-muted"}`}>
+                    <span className={`shrink-0 text-xs ${g.status === "confirmed" ? "text-accent-fg" : g.status === "cancelled" || g.status === "disputed" ? "text-ink" : "text-muted"}`}>
                       {g.status === "confirmed" && phase === "upcoming" ? "Bestätigt" : g.status === "lobby" && phase === "upcoming" ? "Wartet auf Spieler" : PHASE_LABEL[phase]}
                     </span>
                   </Link>
@@ -105,7 +105,7 @@ export default async function DashboardPage() {
           <ul className="space-y-2">
             {myTeams.map((t) => (
               <li key={t.id}>
-                <Link href={`/teams/${t.slug}`} className="card flex items-center justify-between hover:border-green">
+                <Link href={`/teams/${t.slug}`} className="card flex items-center justify-between hover:border-accent">
                   <span>
                     <span className="font-semibold">{t.name}</span>
                     <span className="block text-sm text-muted">{t.city}</span>

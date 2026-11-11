@@ -36,7 +36,7 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
           </select>
         </div>
         <label className="col-span-2 flex items-center gap-3 text-sm">
-          <input type="checkbox" name="banned" value="1" defaultChecked={banned} className="size-5 accent-green" /> Nur gesperrte
+          <input type="checkbox" name="banned" value="1" defaultChecked={banned} className="size-5 accent-accent" /> Nur gesperrte
         </label>
         <button className="btn btn-primary col-span-2">Filtern</button>
       </form>
@@ -50,8 +50,8 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
               <div>
                 <p className="font-semibold">
                   {u.name}
-                  {u.isVerifiedPro && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Profi</span>}
-                  {u.bannedAt && <span className="ml-2 rounded bg-red px-1.5 py-0.5 text-xs text-white">Gesperrt</span>}
+                  {u.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
+                  {u.bannedAt && <span className="ml-2 rounded bg-ink px-1.5 py-0.5 text-xs text-bg">Gesperrt</span>}
                 </p>
                 <p className="text-sm text-muted">{u.email} · {u.city ?? "–"} · seit {formatDateTime(u.createdAt)}</p>
               </div>

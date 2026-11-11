@@ -3,12 +3,12 @@ export function StatTile({ label, value, hint }: { label: string; value: string 
     <div className="card text-center">
       <div className="font-heading text-2xl font-bold">{value}</div>
       <div className="text-xs text-muted">{label}</div>
-      {hint && <div className="text-[11px] text-muted">{hint}</div>}
+      {hint && <div className="text-xs text-muted">{hint}</div>}
     </div>
   );
 }
 
-const OUTCOME_STYLE = { W: "bg-green-soft text-green", D: "bg-white/10 text-muted", L: "bg-pink/15 text-pink" } as const;
+const OUTCOME_STYLE = { W: "bg-accent-soft text-accent-fg", D: "bg-white/10 text-muted", L: "bg-accent-soft text-accent-fg" } as const;
 const OUTCOME_TEXT = { W: "Sieg", D: "Remis", L: "Niederlage" } as const;
 const OUTCOME_LETTER = { W: "S", D: "U", L: "N" } as const;
 

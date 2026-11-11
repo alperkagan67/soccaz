@@ -19,10 +19,10 @@ export default async function VenuePage({ params }: PageProps<"/hallen/[id]">) {
       <header className="space-y-1">
         <h1 className="text-3xl font-bold">
           {venue.name}
-          {venue.isPartner && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 align-middle text-xs text-green">Partner</span>}
+          {venue.isPartner && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 align-middle text-xs text-accent-fg">Partner</span>}
         </h1>
         <p className="text-muted">{[venue.address, venue.city].filter(Boolean).join(", ")}</p>
-        <p className="text-sm">{data.avg ? <><span className="text-yellow">★</span> {data.avg} aus {data.n} {data.n === 1 ? "Bewertung" : "Bewertungen"}</> : "Noch keine Bewertung"}</p>
+        <p className="text-sm">{data.avg ? <><span className="text-ink">★</span> {data.avg} aus {data.n} {data.n === 1 ? "Bewertung" : "Bewertungen"}</> : "Noch keine Bewertung"}</p>
       </header>
       <dl className="card grid grid-cols-3 gap-3 text-sm">
         <div><dt className="text-muted">Boden</dt><dd className="font-semibold">{venue.surface ?? "–"}</dd></div>

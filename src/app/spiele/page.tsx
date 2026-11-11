@@ -11,7 +11,7 @@ type Row = Awaited<ReturnType<typeof getScoreboard>>["live"][number];
 function MatchRow({ m, showScore }: { m: Row; showScore: boolean }) {
   return (
     <li>
-      <Link href={`/spiele/${m.id}`} className="card flex items-center justify-between gap-3 hover:border-green">
+      <Link href={`/spiele/${m.id}`} className="card flex items-center justify-between gap-3 hover:border-accent">
         <span className="min-w-0">
           <span className="block truncate font-semibold">{m.homeName}</span>
           <span className="block truncate font-semibold">{m.awayName}</span>

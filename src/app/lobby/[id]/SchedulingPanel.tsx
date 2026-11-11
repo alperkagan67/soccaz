@@ -41,7 +41,7 @@ export function SchedulingPanel({
       ) : (
         <ul className="space-y-2">
           {options.map((o) => (
-            <li key={o.id} className={`rounded-lg border p-3 text-sm ${myVote === o.id ? "border-green" : "border-line"}`} data-testid="option">
+            <li key={o.id} className={`rounded-lg border p-3 text-sm ${myVote === o.id ? "border-accent" : "border-line"}`} data-testid="option">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span>
                   <span className="font-semibold">{o.label}</span>
@@ -50,7 +50,7 @@ export function SchedulingPanel({
                 {myTeamId && (
                   <span className="flex items-center gap-2">
                     {myVote === o.id ? (
-                      <span className="text-xs font-semibold text-green">Deine Wahl</span>
+                      <span className="text-xs font-semibold text-accent-fg">Deine Wahl</span>
                     ) : (
                       <ActionButton action={voteOptionAction.bind(null, matchId, o.id)} label="Dafür stimmen" className="btn btn-primary !min-h-9 !px-3 text-xs" />
                     )}
@@ -60,7 +60,7 @@ export function SchedulingPanel({
               </div>
               <p className="mt-2 flex flex-wrap gap-2 text-xs">
                 {teams.map((t) => (
-                  <span key={t.id} className={o.votedTeamIds.includes(t.id) ? "text-green" : "text-muted"}>
+                  <span key={t.id} className={o.votedTeamIds.includes(t.id) ? "text-accent-fg" : "text-muted"}>
                     {o.votedTeamIds.includes(t.id) ? "✓" : "○"} {nameOf(t.id)}
                   </span>
                 ))}

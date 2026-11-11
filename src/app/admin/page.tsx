@@ -24,14 +24,14 @@ export default async function AdminHome() {
       <h1 className="text-2xl font-bold">Admin</h1>
 
       <section className="space-y-2" aria-label="Aufgaben">
-        <h2 className="text-lg font-semibold">Aufgaben {openTasks > 0 && <span className="ml-1 rounded-full bg-pink px-2 py-0.5 text-xs text-white">{openTasks}</span>}</h2>
+        <h2 className="text-lg font-semibold">Aufgaben {openTasks > 0 && <span className="ml-1 rounded-full bg-accent px-2 py-0.5 text-xs text-accent-ink">{openTasks}</span>}</h2>
         {openTasks === 0 ? (
           <p className="card text-muted">Nichts zu tun.</p>
         ) : (
           <ul className="space-y-2">
             {disputed.map((d) => (
               <li key={d.matchId}>
-                <Link href={`/spiele/${d.matchId}`} className="card block border-coral hover:border-green">
+                <Link href={`/spiele/${d.matchId}`} className="card block border-ink hover:border-accent">
                   <span className="font-semibold">Streitfall: {d.homeName} gegen {d.awayName}</span>
                   <span className="block text-sm text-muted">
                     {formatDateTime(d.startsAt)} Uhr · gemeldet {d.homeScore ?? "–"}:{d.awayScore ?? "–"}
@@ -42,7 +42,7 @@ export default async function AdminHome() {
             ))}
             {stale.map((s) => (
               <li key={s.matchId}>
-                <Link href={`/spiele/${s.matchId}`} className="card block hover:border-green">
+                <Link href={`/spiele/${s.matchId}`} className="card block hover:border-accent">
                   <span className="font-semibold">Ohne Ergebnis: {s.homeName} gegen {s.awayName}</span>
                   <span className="block text-sm text-muted">Anstoß {formatDateTime(s.startsAt)} Uhr, seit über 6 Stunden kein Ergebnis gemeldet.</span>
                 </Link>

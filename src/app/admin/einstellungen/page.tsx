@@ -17,7 +17,7 @@ export default async function SettingsAdminPage() {
       <h1 className="text-2xl font-bold">Einstellungen</h1>
       <ActionForm action={savePlatformSettingsAction} submit="Speichern" keepOnSuccess>
         <label className="flex items-start gap-3">
-          <input type="checkbox" name="paymentsEnabled" defaultChecked={enabled} className="mt-1 size-5 accent-green" />
+          <input type="checkbox" name="paymentsEnabled" defaultChecked={enabled} className="mt-1 size-5 accent-accent" />
           <span>
             <span className="block font-semibold">Zahlungen einschalten</span>
             <span className="block text-sm text-muted">

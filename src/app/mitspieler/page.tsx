@@ -27,7 +27,7 @@ export default async function FreePlayersPage({ searchParams }: PageProps<"/mits
         <PostForm defaultCity={user.city} min={min} />
       ) : (
         <p className="card text-sm text-muted">
-          <Link href="/anmelden?next=/mitspieler" className="text-green underline">Melde dich an</Link>, um dich einzutragen.
+          <Link href="/anmelden?next=/mitspieler" className="text-accent-fg underline">Melde dich an</Link>, um dich einzutragen.
         </p>
       )}
 
@@ -49,7 +49,7 @@ export default async function FreePlayersPage({ searchParams }: PageProps<"/mits
             <li key={p.id} className="card space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <span>
-                  <Link href={`/spieler/${p.userId}`} className="font-semibold hover:text-green">{p.name}</Link>
+                  <Link href={`/spieler/${p.userId}`} className="font-semibold hover:text-accent-fg">{p.name}</Link>
                   <span className="block text-sm text-muted">{[p.position, p.city].filter(Boolean).join(" · ")}</span>
                 </span>
                 <span className="text-right text-sm">{formatDate(new Date(`${p.day}T12:00:00Z`))}</span>

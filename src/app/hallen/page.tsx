@@ -27,14 +27,14 @@ export default async function VenuesPage({ searchParams }: PageProps<"/hallen">)
         <ul className="space-y-2">
           {venues.map((v) => (
             <li key={v.id}>
-              <Link href={`/hallen/${v.id}`} className="card flex items-center justify-between gap-3 hover:border-green/50">
+              <Link href={`/hallen/${v.id}`} className="card flex items-center justify-between gap-3 hover:border-accent/50">
                 <span>
                   <span className="font-semibold">{v.name}</span>
-                  {v.is_partner && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Partner</span>}
+                  {v.is_partner && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Partner</span>}
                   <span className="block text-sm text-muted">{[v.city, v.surface].filter(Boolean).join(" · ")}</span>
                 </span>
                 <span className="text-right text-sm">
-                  {v.avg ? <><span className="text-yellow">★</span> {v.avg}</> : <span className="text-muted">–</span>}
+                  {v.avg ? <><span className="text-ink">★</span> {v.avg}</> : <span className="text-muted">–</span>}
                   <span className="block text-xs text-muted">{v.n} {v.n === 1 ? "Bewertung" : "Bewertungen"}</span>
                 </span>
               </Link>
@@ -43,7 +43,7 @@ export default async function VenuesPage({ searchParams }: PageProps<"/hallen">)
         </ul>
       )}
       <p className="text-xs text-muted">
-        Die Liste startet mit Hallendaten von OpenStreetMap (© OpenStreetMap-Mitwirkende, ODbL). Ob eine Halle frei und buchbar ist und was sie kostet, ist nicht geprüft. Fehlt eine Halle? <a href="/kontakt" className="text-green underline">Schreib uns</a>.
+        Die Liste startet mit Hallendaten von OpenStreetMap (© OpenStreetMap-Mitwirkende, ODbL). Ob eine Halle frei und buchbar ist und was sie kostet, ist nicht geprüft. Fehlt eine Halle? <a href="/kontakt" className="text-accent-fg underline">Schreib uns</a>.
       </p>
     </div>
   );

@@ -33,14 +33,14 @@ export function VetoPanel({
       <div>
         <h2 className="font-semibold">{done ? "Hallen-Veto abgeschlossen" : "Hallen-Veto"}</h2>
         {done ? (
-          <p className="text-sm text-green" data-testid="veto-result">Gewählt: {picked?.name}{picked?.city ? ` (${picked.city})` : ""}</p>
+          <p className="text-sm text-accent-fg" data-testid="veto-result">Gewählt: {picked?.name}{picked?.city ? ` (${picked.city})` : ""}</p>
         ) : (
           <p className="text-sm text-muted">
             Alle Hallen hier sind zum Termin frei oder ungeprüft. Abwechselnd bannt jedes Team Hallen, die es nicht spielen will. Die letzte Halle wird gespielt. Noch {left} Hallen im Rennen.
           </p>
         )}
         {!done && (
-          <p className={`mt-1 text-sm font-semibold ${myTurn ? "text-green" : "text-yellow"}`} data-testid="veto-turn">
+          <p className={`mt-1 text-sm font-semibold ${myTurn ? "text-accent-fg" : "text-ink"}`} data-testid="veto-turn">
             {myTurn ? "Du bist dran: banne eine Halle." : `${nameOf(turnTeamId)} ist dran.`}
             <span className="ml-2 text-xs font-normal text-muted">bis {deadlineText}, danach bannt das System zufällig</span>
           </p>
@@ -50,7 +50,7 @@ export function VetoPanel({
         {halls.map((h) => {
           const banned = Boolean(h.bannedByTeam);
           return (
-            <li key={h.venueId} className={`rounded-lg border p-3 text-sm ${h.picked ? "border-green bg-green-soft" : banned ? "border-line opacity-60" : "border-line"}`} data-testid="hall" data-state={h.picked ? "picked" : banned ? "banned" : "open"}>
+            <li key={h.venueId} className={`rounded-lg border p-3 text-sm ${h.picked ? "border-accent bg-accent-soft" : banned ? "border-line opacity-60" : "border-line"}`} data-testid="hall" data-state={h.picked ? "picked" : banned ? "banned" : "open"}>
               <div className="flex items-start justify-between gap-2">
                 <span>
                   <span className={`block font-semibold ${banned ? "line-through" : ""}`}>{h.name}</span>
@@ -60,13 +60,13 @@ export function VetoPanel({
                     {!h.verified ? " · Angaben ungeprüft" : ""}
                   </span>
                   {h.website && (
-                    <a href={h.website} target="_blank" rel="noopener noreferrer nofollow" className="text-xs text-green underline">
+                    <a href={h.website} target="_blank" rel="noopener noreferrer nofollow" className="text-xs text-accent-fg underline">
                       Webseite
                     </a>
                   )}
                 </span>
                 {h.picked ? (
-                  <span className="text-xs font-semibold text-green">Gewählt</span>
+                  <span className="text-xs font-semibold text-accent-fg">Gewählt</span>
                 ) : banned ? (
                   <span className="text-right text-xs text-muted">
                     Bann {h.banOrder}

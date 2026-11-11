@@ -21,7 +21,7 @@ export function LiveIndicator({ eventsUrl }: { eventsUrl: string }) {
   }, [eventsUrl, router]);
 
   return (
-    <span className={`text-xs ${online ? "text-green" : "text-muted"}`} title={online ? "Live verbunden" : "Verbinde…"}>
+    <span className={`text-xs ${online ? "text-accent-fg" : "text-muted"}`} title={online ? "Live verbunden" : "Verbinde…"}>
       {online ? "● Live" : "○ Verbinde…"}
     </span>
   );

@@ -6,7 +6,7 @@ import { getCurrentUser } from "@/server/session";
 import { CommentActions, CommentForm } from "./CommentForm";
 
 export const Stars = ({ n }: { n: number }) => (
-  <span aria-label={`${n} von 5 Sternen`} className="text-yellow">
+  <span aria-label={`${n} von 5 Sternen`} className="text-ink">
     {"★".repeat(n)}
     <span className="text-muted">{"☆".repeat(5 - n)}</span>
   </span>
@@ -28,7 +28,7 @@ export async function Comments({ targetType, targetId, path, title, canWrite = t
             <li key={c.id} className="card space-y-1">
               <div className="flex items-center justify-between gap-2 text-sm">
                 <span>
-                  <Link href={`/spieler/${c.authorId}`} className="font-semibold hover:text-green">{c.authorName}</Link>
+                  <Link href={`/spieler/${c.authorId}`} className="font-semibold hover:text-accent-fg">{c.authorName}</Link>
                   {c.rating ? <span className="ml-2"><Stars n={c.rating} /></span> : null}
                 </span>
                 <span className="text-xs text-muted">{formatDate(c.createdAt)}</span>
@@ -44,7 +44,7 @@ export async function Comments({ targetType, targetId, path, title, canWrite = t
           <CommentForm targetType={targetType} targetId={targetId} path={path} withRating={venue} label={venue ? "Deine Bewertung" : "Dein Kommentar"} />
         ) : (
           <p className="text-sm text-muted">
-            <Link href={`/anmelden?next=${encodeURIComponent(path)}`} className="text-green underline">Anmelden</Link>, um {venue ? "zu bewerten" : "zu kommentieren"}.
+            <Link href={`/anmelden?next=${encodeURIComponent(path)}`} className="text-accent-fg underline">Anmelden</Link>, um {venue ? "zu bewerten" : "zu kommentieren"}.
           </p>
         ))}
     </section>

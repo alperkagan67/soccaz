@@ -31,7 +31,7 @@ export default async function ProEventPage({ params }: PageProps<"/profitag/[id]
       <header className="space-y-1">
         <h1 className="text-3xl font-bold">{event.title}</h1>
         <p className="text-muted">
-          <Link href={`/teams/${event.proSlug}`} className="font-semibold text-ink hover:text-green">{event.proTeam}</Link> · {event.city} · {formatDateTime(event.startsAt)} Uhr
+          <Link href={`/teams/${event.proSlug}`} className="font-semibold text-ink hover:text-accent-fg">{event.proTeam}</Link> · {event.city} · {formatDateTime(event.startsAt)} Uhr
         </p>
         {event.description && <p className="text-sm">{event.description}</p>}
       </header>
@@ -42,8 +42,8 @@ export default async function ProEventPage({ params }: PageProps<"/profitag/[id]
         <div><dt className="text-muted">Bewerben bis</dt><dd className="font-semibold">{formatDateTime(event.applyUntil)}</dd></div>
       </dl>
 
-      {event.status === "cancelled" && <p className="card text-coral">Der Profi-Tag wurde abgesagt.</p>}
-      {event.status === "drawn" && <p className="card text-green">Ausgelost. Die Gewinner-Teams stehen unten.</p>}
+      {event.status === "cancelled" && <p className="card text-ink">Der Profi-Tag wurde abgesagt.</p>}
+      {event.status === "drawn" && <p className="card text-accent-fg">Ausgelost. Die Gewinner-Teams stehen unten.</p>}
 
       {open && !user && (
         <Link href={`/anmelden?next=${encodeURIComponent(`/profitag/${event.id}`)}`} className="btn btn-primary w-full">Anmelden und bewerben</Link>
@@ -59,10 +59,10 @@ export default async function ProEventPage({ params }: PageProps<"/profitag/[id]
           <ul className="space-y-2">
             {applicants.map((a) => (
               <li key={a.teamId} className="card flex items-center justify-between gap-2">
-                <Link href={`/teams/${a.slug}`} className="font-semibold hover:text-green">{a.name}</Link>
+                <Link href={`/teams/${a.slug}`} className="font-semibold hover:text-accent-fg">{a.name}</Link>
                 <span className="flex items-center gap-3 text-sm">
-                  {event.status === "drawn" && (a.selected ? <span className="text-green">Gewonnen</span> : <span className="text-muted">Nicht gelost</span>)}
-                  {a.selected && a.matchId && <Link href={`/spiele/${a.matchId}`} className="text-green underline">Spiel</Link>}
+                  {event.status === "drawn" && (a.selected ? <span className="text-accent-fg">Gewonnen</span> : <span className="text-muted">Nicht gelost</span>)}
+                  {a.selected && a.matchId && <Link href={`/spiele/${a.matchId}`} className="text-accent-fg underline">Spiel</Link>}
                   {open && mine.some((t) => t.id === a.teamId) && <ActionButton action={withdrawProApplicationAction.bind(null, event.id, a.teamId)} label="Zurückziehen" />}
                 </span>
               </li>

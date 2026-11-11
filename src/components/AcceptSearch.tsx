@@ -46,7 +46,7 @@ export function AcceptSearch({ entryId, teams, opponent, label }: { entryId: str
       </div>
       <p className="text-xs text-muted">
         {team.name}: Elo {team.elo}, {diff === 0 ? "gleich stark" : diff > 0 ? `${diff} Punkte stärker` : `${-diff} Punkte schwächer`}.
-        {!fits && <span className="text-coral"> Dieses Team sucht eine andere Spielstärke als die von {team.name}.</span>}
+        {!fits && <span className="text-ink"> Dieses Team sucht eine andere Spielstärke als die von {team.name}.</span>}
       </p>
       {error && (
         <p className="error text-sm" role="alert">

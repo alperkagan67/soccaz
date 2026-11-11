@@ -33,11 +33,11 @@ export default async function NotificationsPage() {
                 <span className="block text-sm text-muted">{n.body}</span>
               </>
             );
-            const tone = n.readAt ? "" : "border-green";
+            const tone = n.readAt ? "" : "border-accent";
             return (
               <li key={n.id}>
                 {n.url ? (
-                  <Link href={n.url} className={`card block hover:border-green ${tone}`}>{body}</Link>
+                  <Link href={n.url} className={`card block hover:border-accent ${tone}`}>{body}</Link>
                 ) : (
                   <div className={`card ${tone}`}>{body}</div>
                 )}

@@ -13,21 +13,21 @@ export function PrefsForm({ push, email, disabledTypes }: { push: boolean; email
     <form onSubmit={onSubmit} className="card space-y-4">
       <fieldset className="space-y-2">
         <legend className="font-semibold">Kanäle</legend>
-        <label className="flex items-center gap-3"><input type="checkbox" name="push" defaultChecked={push} className="size-5 accent-green" /> Push-Nachrichten auf meinen Geräten</label>
-        <label className="flex items-center gap-3"><input type="checkbox" name="email" defaultChecked={email} className="size-5 accent-green" /> E-Mail bei wichtigen Ereignissen</label>
+        <label className="flex items-center gap-3"><input type="checkbox" name="push" defaultChecked={push} className="size-5 accent-accent" /> Push-Nachrichten auf meinen Geräten</label>
+        <label className="flex items-center gap-3"><input type="checkbox" name="email" defaultChecked={email} className="size-5 accent-accent" /> E-Mail bei wichtigen Ereignissen</label>
       </fieldset>
       <fieldset className="space-y-2">
         <legend className="font-semibold">Das möchte ich erfahren</legend>
         {optional.map((t) => (
           <label key={t} className="flex items-center gap-3 text-sm">
-            <input type="checkbox" name={`type:${t}`} defaultChecked={!disabledTypes.includes(t)} className="size-5 accent-green" />
+            <input type="checkbox" name={`type:${t}`} defaultChecked={!disabledTypes.includes(t)} className="size-5 accent-accent" />
             {NOTIFICATION_TYPES[t].label}
           </label>
         ))}
         <p className="text-xs text-muted">Wichtige Hinweise zu Absagen, Ergebnissen und Zahlungen bekommst du immer.</p>
       </fieldset>
       <SubmitButton pending={pending}>Speichern</SubmitButton>
-      {!pending && state && !state.error && <p className="text-sm text-green" role="status">Gespeichert.</p>}
+      {!pending && state && !state.error && <p className="text-sm text-accent-fg" role="status">Gespeichert.</p>}
     </form>
   );
 }

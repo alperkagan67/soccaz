@@ -53,7 +53,7 @@ export function InstallHint() {
   };
 
   return (
-    <aside className="card flex items-start gap-3 border-green" aria-label="App installieren">
+    <aside className="card flex items-start gap-3 border-accent" aria-label="App installieren">
       <div className="flex-1 space-y-1 text-sm">
         <p className="font-semibold">Socaz als App nutzen</p>
         {env === "ios" ? (

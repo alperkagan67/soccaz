@@ -32,7 +32,7 @@ export default async function LeaguePage({ params }: PageProps<"/ligen/[id]">) {
           {league.city ?? "Ganz NRW"} · {league.startsOn} bis {league.endsOn} · {league.status === "finished" ? "beendet" : "läuft"}
         </p>
         {champion && (
-          <p className="text-green" data-testid="champion">
+          <p className="text-accent-fg" data-testid="champion">
             Meister: <Link href={`/teams/${champion.slug}`} className="font-semibold underline">{champion.name}</Link>
           </p>
         )}
@@ -58,7 +58,7 @@ export default async function LeaguePage({ params }: PageProps<"/ligen/[id]">) {
                 <tr key={t.team_id} className="border-t border-line">
                   <td className="p-2">{i + 1}</td>
                   <td>
-                    <Link href={`/teams/${t.slug}`} className="font-semibold hover:text-green">{t.name}</Link>
+                    <Link href={`/teams/${t.slug}`} className="font-semibold hover:text-accent-fg">{t.name}</Link>
                   </td>
                   <td>{t.played}</td>
                   <td>{t.wins}-{t.draws}-{t.losses}</td>

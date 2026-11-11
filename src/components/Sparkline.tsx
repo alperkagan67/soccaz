@@ -15,8 +15,8 @@ export function Sparkline({ values, label }: { values: number[]; label: string }
   return (
     <figure className="space-y-1" data-testid="sparkline">
       <svg viewBox={`0 0 ${w} ${h}`} className="h-14 w-full max-w-xs" role="img" aria-label={`${label}: von ${values[0]} auf ${last}`}>
-        <polyline points={points} fill="none" stroke={up ? "var(--green)" : "var(--coral)"} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        <circle cx={x(values.length - 1)} cy={y(last)} r="3" fill={up ? "var(--green)" : "var(--coral)"} />
+        <polyline points={points} fill="none" stroke={up ? "var(--accent-fg)" : "var(--muted)"} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx={x(values.length - 1)} cy={y(last)} r="3" fill={up ? "var(--accent-fg)" : "var(--muted)"} />
       </svg>
       <figcaption className="text-xs text-muted">
         {label}: {values[0]} → {last} (Tief {min}, Hoch {max})
@@ -25,7 +25,7 @@ export function Sparkline({ values, label }: { values: number[]; label: string }
   );
 }
 
-const STYLE = { W: "bg-green-soft text-green", D: "bg-white/10 text-muted", L: "bg-pink/15 text-pink" } as const;
+const STYLE = { W: "bg-accent-soft text-accent-fg", D: "bg-white/10 text-muted", L: "bg-accent-soft text-accent-fg" } as const;
 const LETTER = { W: "S", D: "U", L: "N" } as const;
 const TEXT = { W: "Sieg", D: "Remis", L: "Niederlage" } as const;
 

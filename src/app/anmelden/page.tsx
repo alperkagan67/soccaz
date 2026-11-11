@@ -21,7 +21,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
     <section className="mx-auto mt-8 max-w-sm space-y-4">
       <h1 className="text-2xl font-bold">{t("signin.title")}</h1>
       {banned && (
-        <p className="card border-coral text-sm text-coral" role="alert">
+        <p className="card border-ink text-sm text-ink" role="alert">
           {t("signin.banned")}
         </p>
       )}
@@ -56,7 +56,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
             });
           }}
         >
-          <p className="text-sm font-semibold text-yellow">Dev-Login (nur lokal)</p>
+          <p className="text-sm font-semibold text-ink">Dev-Login (nur lokal)</p>
           <div>
             <label className="label" htmlFor="email">E-Mail</label>
             <input id="email" name="email" type="email" required defaultValue="dev@soccav2.local" className="field" />

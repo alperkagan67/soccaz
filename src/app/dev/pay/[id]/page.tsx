@@ -17,7 +17,7 @@ export default async function DevPayPage({ params }: PageProps<"/dev/pay/[id]">)
 
   return (
     <section className="mx-auto mt-8 max-w-sm space-y-4">
-      <p className="rounded bg-yellow/20 px-3 py-2 text-sm text-yellow">Test-Zahlung: Hier fließt kein Geld. Das ist der Platz für Stripe.</p>
+      <p className="rounded bg-accent-soft px-3 py-2 text-sm text-ink">Test-Zahlung: Hier fließt kein Geld. Das ist der Platz für Stripe.</p>
       <h1 className="text-2xl font-bold">{formatEuro(payment.amountCents)} bezahlen</h1>
       {payment.status !== "pending" ? (
         <p className="card text-muted">Diese Zahlung ist bereits abgeschlossen ({payment.status}).</p>

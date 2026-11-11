@@ -19,7 +19,7 @@ export default async function ImpressumPage() {
             <p>E-Mail: {op.email}</p>
           </>
         ) : (
-          <p className="!text-coral">Die Betreiberangaben fehlen noch. Sie werden über OPERATOR_NAME, OPERATOR_ADDRESS und OPERATOR_EMAIL eingetragen.</p>
+          <p className="!text-ink">Die Betreiberangaben fehlen noch. Sie werden über OPERATOR_NAME, OPERATOR_ADDRESS und OPERATOR_EMAIL eingetragen.</p>
         )}
       </section>
       <section className="space-y-1">

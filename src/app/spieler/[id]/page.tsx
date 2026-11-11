@@ -24,7 +24,7 @@ function Chip({ children }: { children: React.ReactNode }) {
 function UpcomingRow({ m }: { m: ScheduleRow }) {
   return (
     <li>
-      <Link href={m.status === "lobby" || m.status === "confirmed" ? `/lobby/${m.matchId}` : `/spiele/${m.matchId}`} className="card flex items-center justify-between gap-3 hover:border-green/50" data-testid="upcoming-match">
+      <Link href={m.status === "lobby" || m.status === "confirmed" ? `/lobby/${m.matchId}` : `/spiele/${m.matchId}`} className="card flex items-center justify-between gap-3 hover:border-accent/50" data-testid="upcoming-match">
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold">
             {m.teamName} gegen {m.opponentName}
@@ -35,7 +35,7 @@ function UpcomingRow({ m }: { m: ScheduleRow }) {
             {m.isPrivate ? " · privat" : ""}
           </span>
         </span>
-        <span className={`shrink-0 text-xs ${m.status === "confirmed" ? "text-green" : "text-yellow"}`}>{m.status === "confirmed" ? "Bestätigt" : "Wartet auf Spieler"}</span>
+        <span className={`shrink-0 text-xs ${m.status === "confirmed" ? "text-accent-fg" : "text-ink"}`}>{m.status === "confirmed" ? "Bestätigt" : "Wartet auf Spieler"}</span>
       </Link>
     </li>
   );
@@ -44,7 +44,7 @@ function UpcomingRow({ m }: { m: ScheduleRow }) {
 function PastRow({ m }: { m: ScheduleRow }) {
   return (
     <li>
-      <Link href={`/spiele/${m.matchId}`} className="card flex items-center justify-between gap-3 hover:border-green/50" data-testid="past-match">
+      <Link href={`/spiele/${m.matchId}`} className="card flex items-center justify-between gap-3 hover:border-accent/50" data-testid="past-match">
         <span className="min-w-0">
           <span className="block truncate text-sm font-semibold">
             {m.teamName} {m.goalsFor}:{m.goalsAgainst} {m.opponentName}
@@ -101,7 +101,7 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/s
           <div className="min-w-0">
             <h1 className="text-3xl font-bold leading-tight">
               {user.name}
-              {user.isVerifiedPro && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 align-middle text-xs text-green">Profi</span>}
+              {user.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 align-middle text-xs text-accent-fg">Profi</span>}
             </h1>
             {gamer.nickname && (
               <p className="text-lg font-semibold" style={{ color: accent }} data-testid="nickname">
@@ -131,7 +131,7 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/s
           </p>
         )}
         <FormChips form={p.form} />
-        {p.isSelf && !user.profilePublic && <p className="text-sm text-pink">Dein Profil ist privat – nur du siehst diese Seite.</p>}
+        {p.isSelf && !user.profilePublic && <p className="text-sm text-accent-fg">Dein Profil ist privat – nur du siehst diese Seite.</p>}
         {p.isSelf && (
           <Link href="/app/einstellungen" className="btn btn-ghost !min-h-9 !px-3 text-sm">
             Profil bearbeiten
@@ -216,7 +216,7 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/s
             {p.badges.map((b) => {
               const def = BADGES[b.code as BadgeCode];
               return (
-                <li key={b.code} title={def?.description} className="rounded-full border border-green/30 bg-green-soft px-3 py-1 text-sm text-green">
+                <li key={b.code} title={def?.description} className="rounded-full border border-accent/30 bg-accent-soft px-3 py-1 text-sm text-accent-fg">
                   {def?.name ?? b.code}
                 </li>
               );
@@ -233,7 +233,7 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/s
           <ul className="space-y-2">
             {p.teams.map((t) => (
               <li key={t.id}>
-                <Link href={`/teams/${t.slug}`} className="card flex items-center justify-between hover:border-green/50">
+                <Link href={`/teams/${t.slug}`} className="card flex items-center justify-between hover:border-accent/50">
                   <span className="font-semibold">{t.name}</span>
                   {t.role === "admin" && <span className="text-xs text-muted">Team-Admin</span>}
                 </Link>

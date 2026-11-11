@@ -26,14 +26,14 @@ export default async function ModerationPage() {
               <li key={c.id} className="card space-y-2" data-testid="moderation-item">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span>
-                    <Link href={`/spieler/${c.author_id}`} className="font-semibold hover:text-green">{c.author_name}</Link>
+                    <Link href={`/spieler/${c.author_id}`} className="font-semibold hover:text-accent-fg">{c.author_name}</Link>
                     <span className="ml-2 text-xs text-muted">{c.warnings} Verwarnung{c.warnings === 1 ? "" : "en"}</span>
                   </span>
                   <span className="text-xs text-muted">{formatDateTime(new Date(c.created_at))} Uhr · {c.status === "hidden" ? "ausgeblendet" : "sichtbar"} · {c.reports} Meldung{c.reports === 1 ? "" : "en"}</span>
                 </div>
                 <p className="whitespace-pre-line break-words text-sm">{c.body}</p>
-                {c.reasons.length > 0 && <p className="text-xs text-coral">Gründe: {c.reasons.join(" · ")}</p>}
-                {href && <Link href={href} className="text-xs text-green underline">Zur Seite</Link>}
+                {c.reasons.length > 0 && <p className="text-xs text-ink">Gründe: {c.reasons.join(" · ")}</p>}
+                {href && <Link href={href} className="text-xs text-accent-fg underline">Zur Seite</Link>}
                 <ModerationButtons commentId={c.id} />
               </li>
             );

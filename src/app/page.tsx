@@ -21,7 +21,7 @@ async function Sponsors() {
       <ul className="flex flex-wrap gap-2">
         {list.map((s) => (
           <li key={s.id}>
-            <a href={`/api/sponsor/${s.id}`} rel="sponsored noopener" target="_blank" className="card block !py-2 text-sm hover:border-green/50">
+            <a href={`/api/sponsor/${s.id}`} rel="sponsored noopener" target="_blank" className="card block !py-2 text-sm hover:border-accent/50">
               <span className="font-semibold">{s.name}</span>
               {s.tagline && <span className="block text-xs text-muted">{s.tagline}</span>}
             </a>
@@ -54,7 +54,7 @@ export default async function Home() {
           <Image src="/brand/socca-logo.jpeg" alt="" width={56} height={56} className="rounded-lg" />
           <h1 className="text-3xl font-extrabold leading-tight sm:text-5xl">
             {t("home.title1")}<br />
-            <span className="text-green">{t("home.title2")}</span>
+            <span className="text-accent-fg">{t("home.title2")}</span>
           </h1>
           <p className="max-w-md text-muted">{t("home.lead")}</p>
           <div className="flex flex-wrap gap-2">

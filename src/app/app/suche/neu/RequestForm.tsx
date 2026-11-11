@@ -18,7 +18,7 @@ export function RequestForm({ teams, min, target }: { teams: TeamOption[]; min: 
       {target && (
         <>
           <input type="hidden" name="targetTeamId" value={target.id} />
-          <p className="rounded-lg bg-green-soft p-3 text-sm text-green" data-testid="challenge-banner">
+          <p className="rounded-lg bg-accent-soft p-3 text-sm text-accent-fg" data-testid="challenge-banner">
             Du forderst <strong>{target.name}</strong> heraus. Nur dieses Team kann die Herausforderung annehmen.
           </p>
         </>

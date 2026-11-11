@@ -74,7 +74,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
           {t.isPrivate ? " · privat" : ""}
         </p>
         {data.winner && (
-          <p className="text-green" data-testid="winner">
+          <p className="text-accent-fg" data-testid="winner">
             Turniersieger: <span className="font-semibold">{data.winner}</span>
           </p>
         )}
@@ -201,8 +201,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
               return (
                 <section key={team.teamId} className="card space-y-2" data-testid="tournament-team" data-ready={team.ready} data-paid-ready={team.paidReady}>
                   <div className="flex items-baseline justify-between gap-2">
-                    <h3 className="font-semibold"><Link href={`/teams/${team.slug}`} className="hover:text-green">{team.name}</Link></h3>
-                    <span className={`text-xs font-semibold ${team.ready ? "text-green" : "text-muted"}`}>{inPayment && team.paidReady ? "✓ Bereit" : team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
+                    <h3 className="font-semibold"><Link href={`/teams/${team.slug}`} className="hover:text-accent-fg">{team.name}</Link></h3>
+                    <span className={`text-xs font-semibold ${team.ready ? "text-accent-fg" : "text-muted"}`}>{inPayment && team.paidReady ? "✓ Bereit" : team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
                   </div>
                   <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{priceFixed && !free ? ` · ${paid} bezahlt` : ""}</p>
                   {mine && inPayment && !free && team.dueCents > 0 && (
@@ -221,7 +221,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                     {team.players.map((p) => (
                       <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="tournament-player" data-paid={p.paid}>
                         <span>
-                          <Link href={`/spieler/${p.userId}`} className="hover:text-green">{p.name}</Link>
+                          <Link href={`/spieler/${p.userId}`} className="hover:text-accent-fg">{p.name}</Link>
                           {p.isCaptain && <span className="ml-2 text-xs text-muted">Captain</span>}
                           {p.paidByOther && <span className="ml-2 text-xs text-muted">vom Captain bezahlt</span>}
                           {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
@@ -270,7 +270,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             <ActionButton action={payEntryAction.bind(null, t.id)} label={`${formatEuro(v.myDueCents)} Anteil bezahlen`} className="btn btn-primary w-full" />
           </section>
         )}
-        {v && v.myTeamId && inPayment && !free && v.iPaid && <p className="text-sm text-green" data-testid="paid-note">Dein Anteil ist bezahlt.</p>}
+        {v && v.myTeamId && inPayment && !free && v.iPaid && <p className="text-sm text-accent-fg" data-testid="paid-note">Dein Anteil ist bezahlt.</p>}
       </section>
 
       {!data.bracketVisible && (inRegistration || inPayment) && (

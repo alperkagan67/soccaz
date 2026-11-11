@@ -61,12 +61,12 @@ export default async function WalletPage({ searchParams }: PageProps<"/app/gutha
           <li>Nach der Frist rechnen wir ab. Was zu viel reserviert war, kommt zurück.</li>
           <li>Meldest du dich bis 24 Stunden vorher ab, bekommst du alles sofort zurück.</li>
         </ol>
-        {!payOn && <p className="text-yellow">Gerade sind Zahlungen noch nicht eingeschaltet. Spiele kosten daher nichts, dein Guthaben bleibt aber erhalten.</p>}
-        <Link href="/hilfe#geld" className="text-green underline">Mehr zu Kosten und Erstattung</Link>
+        {!payOn && <p className="text-ink">Gerade sind Zahlungen noch nicht eingeschaltet. Spiele kosten daher nichts, dein Guthaben bleibt aber erhalten.</p>}
+        <Link href="/hilfe#geld" className="text-accent-fg underline">Mehr zu Kosten und Erstattung</Link>
       </section>
 
       {payment && (
-        <p className={`card text-sm ${payment.status === "succeeded" ? "border-green text-green" : payment.status === "pending" ? "text-muted" : "text-coral"}`} role="status" data-testid="payment-status">
+        <p className={`card text-sm ${payment.status === "succeeded" ? "border-accent text-accent-fg" : payment.status === "pending" ? "text-muted" : "text-ink"}`} role="status" data-testid="payment-status">
           {payment.status === "succeeded" && `Zahlung eingegangen: ${formatEuro(payment.amountCents)} wurden gutgeschrieben.`}
           {payment.status === "pending" && (status === "ok" ? "Die Zahlung wird noch vom Anbieter bestätigt. Das dauert meist nur Sekunden." : "Die Zahlung ist noch nicht abgeschlossen.")}
           {(payment.status === "canceled" || payment.status === "failed") && "Die Zahlung wurde nicht abgeschlossen. Es wurde nichts abgebucht."}
@@ -105,7 +105,7 @@ export default async function WalletPage({ searchParams }: PageProps<"/app/gutha
                     )}
                   </span>
                 </span>
-                <span className={`shrink-0 font-semibold tabular-nums ${s.signedCents >= 0 ? "text-green" : ""}`}>
+                <span className={`shrink-0 font-semibold tabular-nums ${s.signedCents >= 0 ? "text-accent-fg" : ""}`}>
                   {s.signedCents >= 0 ? "+" : "−"}{formatEuro(Math.abs(s.signedCents))}
                 </span>
               </li>

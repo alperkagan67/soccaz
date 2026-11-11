@@ -31,8 +31,8 @@ export default async function AdminTeams({ searchParams }: PageProps<"/admin/tea
           {rows.map((t) => (
             <li key={t.id} className="card space-y-2" data-testid={`team-${t.slug}`}>
               <p className="font-semibold">
-                <Link href={`/teams/${t.slug}`} className="hover:text-green">{t.name}</Link>
-                {t.isVerified && <span className="ml-2 rounded bg-green-soft px-1.5 py-0.5 text-xs text-green">Verifiziert</span>}
+                <Link href={`/teams/${t.slug}`} className="hover:text-accent-fg">{t.name}</Link>
+                {t.isVerified && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Verifiziert</span>}
               </p>
               <p className="text-sm text-muted">{t.city} · {t.members} {t.members === 1 ? "Mitglied" : "Mitglieder"}</p>
               <TeamActions teamId={t.id} name={t.name} verified={t.isVerified} others={rows.filter((o) => o.id !== t.id).map((o) => ({ id: o.id, name: o.name }))} />

@@ -1,25 +1,63 @@
 @import "tailwindcss";
 
-/* Farben aus dem Sample (socaz): dunkles Schwarzgrün, Grün, Neon-Akzente */
+/* Richtung E „Trikot“ (Vertrag 007, DESIGN.md): neutrale Töne, Orange als einzige Akzentfarbe.
+   Hell und Dunkel folgen der Systemeinstellung. Messung: tests/unit/contrast.test.ts */
 :root {
-  --bg: #030806;
-  --panel: #07110c;
-  --panel-2: #0b1a13;
-  --line: #12221b;
-  --ink: #ffffff;
-  --muted: #8ea299;
-  --green: #22c55e;
-  --green-dark: #15803d;
-  --green-soft: rgba(34, 197, 94, 0.12);
-  --lime: hsl(78, 96%, 56%);
-  --cyan: hsl(190, 93%, 52%);
-  --sky: hsl(211, 95%, 58%);
-  --violet: hsl(262, 86%, 64%);
-  --pink: hsl(327, 92%, 61%);
-  --coral: hsl(12, 95%, 62%);
-  --yellow: hsl(44, 98%, 58%);
-  --red: hsl(0, 75%, 55%);
+  --bg: #0f1914;
+  --panel: #1b2a23;
+  --panel-2: #24362d;
+  --line: #3a5043;
+  --ink: #eef4f0;
+  --muted: #a3b5ab;
+  --rim: #cfe0d6;
+  --accent: #ff6a1f;
+  --accent-ink: #1d0a00;
+  --accent-fg: #ff6a1f; /* Orange als Schrift/Strich auf Grund und Fläche */
+  --accent-soft: rgba(255, 106, 31, 0.14);
+  --card-yellow: #f2c200; /* Gelbe und Rote Karte im Spiel: Sportdaten, keine Oberflächenfarbe */
+  --card-red: #c8102e;
+  /* Wählbare Profilfarben der Spieler (Identität, keine Zustände) */
+  --pc-green: hsl(146, 63%, 48%);
+  --pc-cyan: hsl(190, 93%, 52%);
+  --pc-sky: hsl(211, 95%, 58%);
+  --pc-violet: hsl(262, 86%, 64%);
+  --pc-pink: hsl(327, 92%, 61%);
+  --pc-coral: hsl(12, 95%, 62%);
+  --pc-yellow: hsl(44, 98%, 58%);
   --radius: 12px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #dde5e0;
+    --panel: #f1f5f2;
+    --panel-2: #e3eae5;
+    --line: #b3c2b9;
+    --ink: #12201a;
+    --muted: #4a5a51;
+    --rim: #12201a;
+    --accent: #c2410c;
+    --accent-ink: #ffffff;
+    --accent-fg: #b23a0a;
+    --accent-soft: rgba(194, 65, 12, 0.12);
+  }
+}
+
+/* Feste dunkle Fläche, zum Beispiel für das Stream-Overlay (unabhängig von der Systemeinstellung) */
+.force-dark {
+  --bg: #0f1914;
+  --panel: #1b2a23;
+  --panel-2: #24362d;
+  --line: #3a5043;
+  --ink: #eef4f0;
+  --muted: #a3b5ab;
+  --rim: #cfe0d6;
+  --accent: #ff6a1f;
+  --accent-ink: #1d0a00;
+  --accent-fg: #ff6a1f;
+  --accent-soft: rgba(255, 106, 31, 0.14);
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -29,40 +67,28 @@
   --color-line: var(--line);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
-  --color-green: var(--green);
-  --color-green-dark: var(--green-dark);
-  --color-green-soft: var(--green-soft);
-  --color-lime: var(--lime);
-  --color-cyan: var(--cyan);
-  --color-sky: var(--sky);
-  --color-violet: var(--violet);
-  --color-pink: var(--pink);
-  --color-coral: var(--coral);
-  --color-yellow: var(--yellow);
-  --color-red: var(--red);
+  --color-rim: var(--rim);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-card-yellow: var(--card-yellow);
+  --color-card-red: var(--card-red);
   --font-heading: var(--font-outfit), var(--font-jakarta), sans-serif;
   --font-sans: var(--font-jakarta), system-ui, sans-serif;
   --radius-card: var(--radius);
 }
 
-html {
-  color-scheme: dark;
-}
-
 body {
-  background:
-    radial-gradient(circle at 15% 15%, hsla(146, 75%, 50%, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 85% 85%, hsla(190, 93%, 52%, 0.06) 0%, transparent 50%),
-    var(--bg);
-  background-attachment: fixed;
+  background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: var(--pink);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 h1, h2, h3 {
@@ -92,11 +118,11 @@ h1, h2, h3 {
   transition: transform 0.05s, background 0.15s, border-color 0.15s;
 }
 .btn:active { transform: translateY(1px); }
-.btn-primary { background: var(--green); color: #03120a; }
-.btn-primary:hover { background: #34d472; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-primary:hover { filter: brightness(1.08); }
 .btn-ghost { background: transparent; border-color: var(--line); color: var(--ink); }
-.btn-ghost:hover { border-color: var(--green); }
-.btn-danger { background: transparent; border-color: var(--red); color: var(--red); }
+.btn-ghost:hover { border-color: var(--accent); }
+.btn-danger { background: transparent; border: 2px solid var(--ink); color: var(--ink); }
 
 .field {
   width: 100%;
@@ -107,12 +133,13 @@ h1, h2, h3 {
   border-radius: 10px;
   color: var(--ink);
 }
-.field:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.field:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.3rem; }
-.error { color: var(--coral); font-size: 0.9rem; }
+/* Fehler: keine eigene Farbe, sondern kräftiger Strich und Gewicht in Tinte (Vertrag 007) */
+.error { color: var(--ink); font-size: 0.9rem; font-weight: 600; border: 2px solid var(--ink); border-radius: 8px; padding: 0.4rem 0.6rem; }
 
-:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

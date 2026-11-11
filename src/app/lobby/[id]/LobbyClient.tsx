@@ -79,7 +79,7 @@ export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid }: MyAc
                   </button>
                 </>
               )}
-              {pay?.paid && <p className="text-sm text-green">Dein Anteil ist bezahlt.</p>}
+              {pay?.paid && <p className="text-sm text-accent-fg">Dein Anteil ist bezahlt.</p>}
               {(!pay || pay.paid) && (
                 <>
                   {pay && teamPaid && teamPaid.paid < teamPaid.total && !ready && (
@@ -163,7 +163,7 @@ export function VenueForm({ matchId, venue }: { matchId: string; venue: string }
         <input id="venue" value={value} onChange={(e) => { setValue(e.target.value); setDirty(true); }} maxLength={120} className="field" placeholder="z. B. Soccerhalle Buer, Hauptstr. 1" />
         <button className="btn btn-ghost" disabled={pending}>{pending ? "…" : "Speichern"}</button>
       </div>
-      {saved && !error && <p className="text-xs text-green">Gespeichert.</p>}
+      {saved && !error && <p className="text-xs text-accent-fg">Gespeichert.</p>}
       <ErrorText message={error} />
     </form>
   );

@@ -30,7 +30,7 @@ export function MatchPhotos({ matchId, photos, canUpload, canModerate }: { match
                 <Image src={`/api/media/${p.id}`} alt="Foto vom Spiel" width={400} height={300} unoptimized className="aspect-[4/3] w-full rounded-lg object-cover" />
               </a>
               {(p.mine || canModerate) && (
-                <button className="absolute right-1 top-1 rounded bg-bg/80 px-2 py-0.5 text-xs text-coral" onClick={() => remove(p.id)} aria-label="Foto löschen">
+                <button className="absolute right-1 top-1 rounded bg-bg/80 px-2 py-0.5 text-xs text-ink" onClick={() => remove(p.id)} aria-label="Foto löschen">
                   Löschen
                 </button>
               )}

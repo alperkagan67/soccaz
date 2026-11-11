@@ -21,7 +21,7 @@ export default async function ProDayPage() {
         <ul className="space-y-2">
           {events.map((e) => (
             <li key={e.id}>
-              <Link href={`/profitag/${e.id}`} className="card flex items-center justify-between gap-3 hover:border-green/50">
+              <Link href={`/profitag/${e.id}`} className="card flex items-center justify-between gap-3 hover:border-accent/50">
                 <span>
                   <span className="font-semibold">{e.title}</span>
                   <span className="block text-sm text-muted">

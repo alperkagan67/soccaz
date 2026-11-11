@@ -20,7 +20,7 @@ export default async function FinancePage({ searchParams }: PageProps<"/admin/fi
     ["Hallenkosten", o.venueCostCents],
     ["Zahlungsgebühren", o.feesCents],
     ["Rabatt-Boni", o.promoCents],
-    ["Marge", o.marginCents, o.marginCents < 0 ? "text-coral" : "text-green"],
+    ["Marge", o.marginCents, o.marginCents < 0 ? "text-ink" : "text-accent-fg"],
     ["Aufladungen", o.topupsCents],
     ["Erstattungen", o.refundsCents],
     ["Offene Guthaben (Schuld an Spieler)", o.liabilityCents],
@@ -45,13 +45,13 @@ export default async function FinancePage({ searchParams }: PageProps<"/admin/fi
       </form>
 
       <section className="space-y-2" aria-label="Alarme">
-        <h2 className="text-lg font-semibold">Alarme {alerts.length > 0 && <span className="ml-1 rounded-full bg-pink px-2 py-0.5 text-xs text-white">{alerts.length}</span>}</h2>
+        <h2 className="text-lg font-semibold">Alarme {alerts.length > 0 && <span className="ml-1 rounded-full bg-accent px-2 py-0.5 text-xs text-accent-ink">{alerts.length}</span>}</h2>
         {alerts.length === 0 ? (
           <p className="card text-muted">Keine Auffälligkeiten.</p>
         ) : (
           <ul className="space-y-2">
             {alerts.map((a) => (
-              <li key={a.code} className={`card ${a.severity === "high" ? "border-coral" : "border-yellow"}`}>
+              <li key={a.code} className={`card ${a.severity === "high" ? "border-ink" : "border-ink"}`}>
                 <p className="font-semibold">{a.title}</p>
                 <p className="text-sm text-muted">{a.detail}</p>
                 {a.href && <Link href={a.href} className="text-sm underline">Ansehen</Link>}
@@ -84,14 +84,14 @@ export default async function FinancePage({ searchParams }: PageProps<"/admin/fi
           <ul className="space-y-2">
             {matchRows.map((m) => (
               <li key={m.id}>
-                <Link href={`/admin/finanzen/spiel/${m.id}`} className="card flex items-center justify-between gap-3 hover:border-green">
+                <Link href={`/admin/finanzen/spiel/${m.id}`} className="card flex items-center justify-between gap-3 hover:border-accent">
                   <span className="min-w-0">
                     <span className="block truncate font-semibold">{m.homeName} gegen {m.awayName}</span>
                     <span className="block text-xs text-muted">{formatDateTime(m.startsAt)} Uhr · {m.payers} Zahler{m.finalShareCents ? ` · Anteil ${formatEuro(m.finalShareCents)}` : " · nicht abgerechnet"}</span>
                   </span>
                   <span className="shrink-0 text-right text-sm">
                     <span className="block">{formatEuro(m.revenueCents)} − {formatEuro(m.costCents)}</span>
-                    <span className={`block font-semibold ${m.marginCents < 0 ? "text-coral" : "text-green"}`}>{formatEuro(m.marginCents)}</span>
+                    <span className={`block font-semibold ${m.marginCents < 0 ? "text-ink" : "text-accent-fg"}`}>{formatEuro(m.marginCents)}</span>
                   </span>
                 </Link>
               </li>

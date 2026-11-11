@@ -9,12 +9,12 @@ export function Challenges({ incoming, outgoing }: { incoming: ChallengeRow[]; o
     <section className="space-y-3" aria-label="Herausforderungen" data-testid="challenges">
       {incoming.length > 0 && (
         <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-green">Herausforderungen an euch ({incoming.length})</h2>
+          <h2 className="text-lg font-semibold text-accent-fg">Herausforderungen an euch ({incoming.length})</h2>
           <ul className="space-y-2">
             {incoming.map((c) => (
-              <li key={c.id} className="card flex flex-wrap items-center justify-between gap-2 border-green/50" data-testid="challenge-incoming">
+              <li key={c.id} className="card flex flex-wrap items-center justify-between gap-2 border-accent/50" data-testid="challenge-incoming">
                 <span>
-                  <Link href={`/teams/${c.fromSlug}`} className="font-semibold hover:text-green">{c.fromTeam}</Link> fordert <span className="font-semibold">{c.toTeam}</span> heraus
+                  <Link href={`/teams/${c.fromSlug}`} className="font-semibold hover:text-accent-fg">{c.fromTeam}</Link> fordert <span className="font-semibold">{c.toTeam}</span> heraus
                   <span className="block text-sm text-muted">
                     {c.href ? `Antwort bis ${formatDateTime(c.startsAt)} Uhr` : `${formatDateTime(c.startsAt)} Uhr · ${c.durationMin} Min · ${c.city}`}
                   </span>
@@ -33,7 +33,7 @@ export function Challenges({ incoming, outgoing }: { incoming: ChallengeRow[]; o
             {outgoing.map((c) => (
               <li key={c.id} className="card flex flex-wrap items-center justify-between gap-2" data-testid="challenge-outgoing">
                 <span>
-                  <span className="font-semibold">{c.fromTeam}</span> fordert <Link href={`/teams/${c.toSlug}`} className="font-semibold hover:text-green">{c.toTeam}</Link> heraus
+                  <span className="font-semibold">{c.fromTeam}</span> fordert <Link href={`/teams/${c.toSlug}`} className="font-semibold hover:text-accent-fg">{c.toTeam}</Link> heraus
                   <span className="block text-sm text-muted">
                     {c.href ? `Antwort bis ${formatDateTime(c.startsAt)} Uhr` : `${formatDateTime(c.startsAt)} Uhr · ${c.durationMin} Min`} · wartet auf Antwort
                   </span>
