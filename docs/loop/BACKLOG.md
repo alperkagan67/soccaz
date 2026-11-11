@@ -68,5 +68,12 @@ Umsetzungsreihenfolge Geldmodell und Verträge: 006/008 M3a/M3b, 007 M2/M3, Code
 | 30 | E2E-Specs mit Anmeldeschluss genau 48 h vor dem Start (`futureLocal` 6 und 4 Tage, 12:00) scheitern in Zeitumstellungswochen (47 h) an der Validierung; Zeitzone oder Dauer robust machen | offen (niedrig) |
 | 31 | `src/server` (OG-Bilder, Karten, `cards.tsx` mit `#030806`) ist vom AC-14-Test (007) ausgenommen; an Teamfarben und Tokens anpassen (007 M4) | offen (niedrig) |
 | 32 | `tests/integration/tournament.test.ts`: Der Fenstertest wartet fest 400 ms auf den Job (CI-Flake-Risiko); Haken statt Sleep verwenden | offen (niedrig) |
+| 35 | Aus 012 M1 (Review): Der DB-Pool hat weder `max` noch `connectionTimeoutMillis` (`src/db/index.ts:14`); Stripe-Aufrufe aus der Transaktion lösen oder ein globales Limit gleichzeitiger Kartenanlagen setzen (sonst blockieren langsame Stripe-Antworten Verbindungen) | offen (mittel) |
+| 36 | Aus 012 M1 (Review): Die Modusentscheidung (Karte oder Guthaben) einmal pro Aufruf lesen und durchreichen (`payShare` → `reserveShare`), statt mehrfach zu lesen | offen (niedrig) |
+| 37 | `docs/BETRIEB.md`: Zurückschalten des Schalters `card_payments_enabled` von EIN auf AUS beschreiben (offene Karten-Spiele, Abbuchungen im Gange, Webhooks) | offen (niedrig) |
+| 38 | Test: Platz zwischen Vorprüfung und Transaktion gelöscht (`stored-card.ts`); Stripe-Abruf vor dem Rate-Limit prüfen (Reihenfolge) | offen (niedrig) |
+| 39 | Test der Stripe-Request-Optionen (Timeout 8 s, Wiederholung 1) mit Stripe-Client-Mock | offen (niedrig) |
+| 40 | Stripe Elements `appearance` mit Theme `night` ist fest dunkel: hell/dunkel unterstützen (007 M3); `CardLight` und `PlayerLight` nutzen feste Hex-Werte statt Tokens (007 M3/M4; zu Eintrag 25) | offen (niedrig) |
+| 41 | Test der Produktionszweige von `fakeCardReadyAction` (Fake-Karte darf in Produktion nie gehen) | offen (niedrig) |
 
 Status: offen / in Arbeit / fertig.
