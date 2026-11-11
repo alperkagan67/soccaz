@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { db } from "@/db";
 import { formatEuro, reservationFor, shareFor } from "@/lib/money";
 import { priceFor } from "@/server/pricing";
@@ -17,6 +18,7 @@ function Q({ q, children }: { q: string; children: React.ReactNode }) {
 }
 
 export default async function HelpPage() {
+  await connection();
   const [p60, p90, minPaid] = await Promise.all([priceFor(db, null, 60), priceFor(db, null, 90), minPaidPlayers()]);
   const e = (c: number | undefined) => (c === undefined ? "–" : formatEuro(c));
 
