@@ -27,7 +27,11 @@ jobs:
   e2e:
     name: Browser-Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
+    # Offizielles Playwright-Image, Version EXAKT wie @playwright/test in package-lock.json
+    # (der Schritt "Playwright-Version pruefen" bricht bei Abweichung ab). Digest = Multi-Arch-Index (MCR, abgefragt 2026-11-11 15:14 UTC).
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:2f05f8a734509a7b3f26a912639488ee08f58a7b292d14d62271bcff9038768f
     services:
       postgres:
         image: postgres:17
@@ -42,18 +46,27 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/socaz
+      # Im Container-Job ist der Dienst unter seinem Namen erreichbar, nicht ueber 127.0.0.1 (der Waechter der Integrationstests erlaubt "postgres" nur mit GITHUB_ACTIONS=true)
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/socaz
       AUTH_SECRET: ci-only-secret-not-used-anywhere-else
       E2E_BASE_URL: http://127.0.0.1:3100
       STRIPE_WEBHOOK_SECRET: whsec_e2e_lokaler_testschluessel
     steps:
       - uses: actions/checkout@v4
+      - name: Playwright-Version pruefen
+        run: |
+          node -e '
+            const fs = require("fs");
+            const lock = require("./package-lock.json").packages["node_modules/@playwright/test"].version;
+            const m = fs.readFileSync(".github/workflows/ci.yml", "utf8").match(/playwright:v([0-9.]+)-/);
+            if (!m || m[1] !== lock) { console.error("Image-Tag " + (m && m[1]) + " != Lockfile " + lock); process.exit(1); }
+            console.log("Playwright " + lock + " == Image-Tag");
+          '
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
       - run: node scripts/migrate.mjs
       - run: npm run test:integration
       - name: Entwicklungsserver starten

@@ -2,13 +2,14 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
 import { applyChargeInTx, bookChargeFee, type ChargeReport } from "./charge";
+import { applyRefundInTx, finalizeCancel, type RefundReport } from "./refund";
 import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ProviderEvent } from "./provider";
 
 /** Größter angenommener Body (Stripe-Ereignisse sind klein). */
 export const MAX_WEBHOOK_BYTES = 256 * 1024;
 
 /** Nur diese Ereignistypen gehören zu diesem Endpunkt; alles andere wird angenommen, aber weder gespeichert noch verarbeitet (keine fremden Event-IDs in stripe_events). */
-export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.") || type.startsWith("payment_intent.") || type === "charge.updated";
+export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.") || type.startsWith("payment_intent.") || type === "charge.updated" || type.startsWith("refund.") || type === "charge.refund.updated" || type === "charge.refunded";
 
 /** Macht aus einem payment_intent.*-Ereignis eine ungeprüfte Meldung für applyChargeInTx; null, wenn der Typ keine Verbuchung auslöst. */
 function toChargeReport(event: ProviderEvent): ChargeReport | null {
@@ -25,6 +26,25 @@ function toChargeReport(event: ProviderEvent): ChargeReport | null {
     customerId: str(event.object.customer),
     metadata: { matchId: str(meta.matchId), userId: str(meta.userId) },
     failureCode: str(err.code),
+  };
+}
+
+/** Macht aus einem refund.*-Ereignis (Objekt = Refund) eine ungeprüfte Meldung für applyRefundInTx; null für alles andere (z. B. charge.refunded: nur vermerkt). */
+function toRefundReport(event: ProviderEvent): RefundReport | null {
+  if (!(event.type.startsWith("refund.") || event.type === "charge.refund.updated")) return null;
+  const id = str(event.object.id);
+  if (!id) return null;
+  const status = str(event.object.status);
+  const outcome = status === "succeeded" ? "succeeded" : status === "failed" || status === "canceled" ? "failed" : "pending";
+  const meta = (event.object.metadata && typeof event.object.metadata === "object" ? event.object.metadata : {}) as Record<string, unknown>;
+  return {
+    outcome,
+    refundId: id,
+    amountCents: typeof event.object.amount === "number" && Number.isInteger(event.object.amount) ? event.object.amount : null,
+    currency: str(event.object.currency),
+    paymentIntentId: str(event.object.payment_intent),
+    metadata: { matchId: str(meta.matchId), userId: str(meta.userId), chargeId: str(meta.chargeId) },
+    failureCode: str(event.object.failure_reason),
   };
 }
 
@@ -81,6 +101,7 @@ async function processEvent(event: ProviderEvent) {
   // Kartendaten von Stripe holen, bevor die Transaktion beginnt (kein Netzaufruf unter Sperre). Nur für bekannte SetupIntents.
   let card: CardDisplay | null = null;
   let oldMethod: string | null = null;
+  let cancelCheck: string | null = null; // Erstattung verbucht: danach prüfen, ob die angeforderte Absage jetzt abgeschlossen werden kann
   let feeFor: string | null = null; // erfolgreiche Abbuchung: die Gebühr wird NACH der Transaktion gebucht (Netzaufruf)
   if (event.type === "setup_intent.succeeded") {
     const pmId = str(event.object.payment_method);
@@ -121,6 +142,12 @@ async function processEvent(event: ProviderEvent) {
         const res = await applyChargeInTx(tx, report);
         if (res.status === "applied" && report.outcome === "succeeded") feeFor = report.paymentIntentId;
       }
+    } else if (event.type.startsWith("refund.") || event.type === "charge.refund.updated") {
+      const report = toRefundReport(event);
+      if (report) {
+        const res = await applyRefundInTx(tx, report);
+        if (res.status === "applied" && res.matchId) cancelCheck = res.matchId;
+      }
     } else if (event.type === "charge.updated") {
       feeFor = str(event.object.payment_intent); // die balance_transaction ist jetzt womöglich da; unbekannte PaymentIntents ignoriert bookChargeFee
     } else if (event.type === "setup_intent.setup_failed") {
@@ -131,6 +158,13 @@ async function processEvent(event: ProviderEvent) {
     await tx.update(stripeEvents).set({ processedAt: new Date() }).where(eq(stripeEvents.eventId, event.id));
   });
 
+  if (cancelCheck) {
+    try {
+      await finalizeCancel(cancelCheck); // reine Datenbankprüfung, kein Netz; der Job holt es sonst nach
+    } catch {
+      /* nichts loggen */
+    }
+  }
   if (feeFor) {
     try {
       await bookChargeFee(feeFor); // eigener Folgeschritt, idempotent; "nicht verfügbar" holt der Nachholer später nach
