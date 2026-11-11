@@ -47,7 +47,7 @@ Abhängigkeiten: Browser-Tests beschleunigen (Backlog 49, Playwright-Image + Sha
 4. **Unter 16:** Empfehlung: vor dem Löschen eine Rückfrage, die Endseite sagt, was passiert; die Wiederanmeldungsregel ist eine **Rechtsfrage (Anwalt)** und geht ins GO-LIVE-AUDIT.
 5. **Darf der Hallenbetreiber die eigene Halle bewerten?** Empfehlung: Nein.
 6. **Overlay für nicht öffentliche Spiele?** Empfehlung: leere transparente Antwort statt Fehlerseite, kurze Anleitung für Streamer beim Veranstalter.
-7. **Wann gilt ein Spiel als bestätigt?** Wird im Code geprüft (Captain-Bestätigung gilt laut Fund); der Text wird angepasst. Keine Frage an den Nutzer.
+7. **Wann gilt ein Spiel als bestätigt?** (Code geprüft, entschieden als Begriffsfrage): Drei getrennte Dinge: Stufe 1 „Spiel findet statt“ = je Team mindestens 4 bereit (`lobby.ts:229-253`, `lobby-rules.ts:4,10-12`); Stufe 2 „Preis steht fest“ = beide Captains bestätigen (`lobby.ts:312-336`, `charge-run.ts:59`); „Ergebnis bestätigt“ = Gegner oder 48 h (`results.ts:332-444`). UI-Begriffe im Begriffsverzeichnis (M2): Findet statt / Preis steht fest / Ergebnis bestätigt; `mygame.ts:60` und der Text in `FinalConfirm.tsx` entsprechend. Keine Frage an den Nutzer.
 
 ## 6. Entscheidung, die ich brauche
 G1 für Vertrag 013 mit diesem Plan, danach starte ich M2 (nach der schnelleren CI).
