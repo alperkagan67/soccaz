@@ -1,6 +1,6 @@
 # 0002 – Komponenten-Grundlage des Frontends: nativ plus kleine eigene Bausteine statt shadcn/ui
-Status: akzeptiert (Nutzer hat Council-Option B+ am 2026-11-12 bestätigt; die Bestätigung betrifft den ADR, KEINE Freigabe für Ausnahme-PRs)
-Datum: 2026-11-12
+Status: akzeptiert (Nutzer hat Council-Option B+ am 2026-11-11 bestätigt; die Bestätigung betrifft den ADR, KEINE Freigabe für Ausnahme-PRs)
+Datum: 2026-11-11
 
 ## Kontext und Problem
 Für die Frontend-Überarbeitung (Vertrag 013) soll Bedienbarkeit, Barrierefreiheit und Tastatur gesichert sein, während das Aussehen komplett aus `DESIGN.md` (Richtung E „Trikot“) und Impeccable kommt, ohne Standardoptik. Frage: shadcn/ui als technisches Grundgerüst, eigene Komponenten oder nur Radix-Primitives?
