@@ -11,6 +11,12 @@ export const MANDATE_TEXT =
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Zeitüberschreitung beim Warten auf eine Zeilensperre (lock_timeout, SQLSTATE 55P03), auch wenn der Treiber den Fehler einpackt. */
+export function isLockTimeout(error: unknown): boolean {
+  for (let e = error as { code?: unknown; cause?: unknown } | undefined, i = 0; e && i < 4; e = e.cause as typeof e, i++) if (e.code === "55P03") return true;
+  return false;
+}
+
 export const BUSY_MESSAGE = "Bitte einen Moment warten, deine Karte wird gerade eingerichtet.";
 
 /** Höchstens so viele Karten-Einrichtungen je Nutzer und Stunde (Schutz vor Missbrauch der Stripe-Schnittstelle). */
