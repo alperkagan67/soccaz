@@ -253,6 +253,13 @@
       "when": 1794365366795,
       "tag": "0035_dizzy_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794368142023,
+      "tag": "0036_lonely_frank_castle",
+      "breakpoints": true
     }
   ]
 }
