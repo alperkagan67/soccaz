@@ -72,3 +72,39 @@ describe("seed-frontend Schutz: Umgehungen über URL-Bestandteile", () => {
     expect(() => assertSeedAllowed({ databaseUrl: base + "#x" })).toThrow(/Abbruch/);
   });
 });
+
+describe("seed-frontend Schutz: Fälle je Prüfung (Backlog 54)", () => {
+  const rejected = (databaseUrl: string, nodeEnv?: string) => expect(() => assertSeedAllowed({ nodeEnv, databaseUrl }), databaseUrl).toThrow(/Abbruch/);
+
+  it("lehnt einen falschen Port bei erlaubtem Host ab (localhost:5432, 127.0.0.1:5432, ohne Port)", () => {
+    rejected("postgres://u:p@localhost:5432/soccav2");
+    rejected("postgres://u:p@127.0.0.1:5432/soccaz_w1");
+    rejected("postgres://u:p@localhost:5434/soccav2");
+    rejected("postgres://u:p@localhost/soccav2");
+  });
+
+  it("lehnt einen falschen Datenbanknamen auf localhost:5433 ab (postgres, soccaz_w5, production)", () => {
+    for (const db of ["postgres", "soccaz_w5", "soccaz_w0", "production", "SOCCAV2", "soccav2x", ""]) {
+      rejected(`postgres://u:p@localhost:5433/${db}`);
+    }
+  });
+
+  it("lehnt Fragment (#) und Query (?host=) auch bei sonst erlaubter URL ab", () => {
+    rejected("postgres://u:p@localhost:5433/soccav2#frag");
+    rejected("postgres://u:p@localhost:5433/soccav2?host=prod.example.com");
+    rejected("postgres://u:p@127.0.0.1:5433/soccaz_w2?host=prod.example.com&port=5432");
+  });
+
+  it("erlaubt (Gegenprobe) soccav2 und soccaz_w1 bis w4 auf localhost und 127.0.0.1 mit Port 5433", () => {
+    for (const host of ["localhost", "127.0.0.1"]) {
+      for (const db of ["soccav2", "soccaz_w1", "soccaz_w2", "soccaz_w3", "soccaz_w4"]) {
+        expect(assertSeedAllowed({ nodeEnv: "development", databaseUrl: `postgres://u:p@${host}:5433/${db}` })).toEqual({ host, port: "5433", database: db });
+      }
+    }
+  });
+
+  it("lehnt NODE_ENV=production ab, auch bei sonst erlaubter URL", () => {
+    rejected("postgres://u:p@localhost:5433/soccav2", "production");
+    rejected("postgres://u:p@127.0.0.1:5433/soccaz_w1", "production");
+  });
+});
