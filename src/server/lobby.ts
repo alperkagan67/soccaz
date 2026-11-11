@@ -289,13 +289,18 @@ export async function teamComplete(tx: Tx, matchId: string, teamId: string): Pro
     .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.teamId, teamId)));
   const [m] = await tx.select({ id: matches.id, priceCents: matches.priceCents, kind: matches.kind, legacyShareModel: matches.legacyShareModel }).from(matches).where(eq(matches.id, matchId));
   const free = m?.priceCents === 0; // kostenlos (0 €): keine Zahlungspflicht
-  if (m && (await cardModeActive(tx, m))) return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (free || r.card === "card_ready"));
+  if (m && (await cardModeActive(tx, m))) return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (free || CARD_PRESENT.includes(r.card)));
   const pay = (await paymentsEnabled(tx)) && !free;
   return rows.length >= MIN_READY_PER_TEAM && rows.every((r) => r.ready !== null && (!pay || r.paid > 0));
 }
 
+/** Karte ist da: hinterlegt oder schon in der Abbuchung (charge_pending) bzw. abgebucht (charged). Nach dem Anlegen der Abbuchungszeilen steht kein Platz mehr auf card_ready. */
+const CARD_PRESENT: (string | null)[] = ["card_ready", "charge_pending", "charged"];
+
 /** Wird jemand wieder unbereit oder verlässt die Lobby, gilt die Bestätigung seines Captains nicht mehr. */
 async function revalidateFinal(tx: Tx, matchId: string) {
+  // Abbuchungszeilen vorhanden: die Bestätigungen bleiben (sie sind die Grundlage der laufenden Abbuchung; der Job holt offene Zeilen nach)
+  if (await hasChargeRows(tx, matchId)) return;
   const [m] = await tx.select().from(matches).where(eq(matches.id, matchId));
   if (!m) return;
   // Privatspiel nach dem Fixieren: Preis, Spielerzahl und "Bereit" der Captains bleiben, auch wenn ein Aussteiger geht oder ein Ersatz noch nicht bereit ist
@@ -428,6 +433,7 @@ export function payShare(userId: string, matchId: string) {
 
 export function setReady(userId: string, matchId: string, ready: boolean) {
   return mutateLobby(userId, matchId, async (tx, match) => {
+    await assertNoCharges(tx, matchId); // Abbuchung läuft: Bereit ist nicht mehr änderbar
     const me = await findParticipant(tx, matchId, userId);
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
@@ -581,7 +587,7 @@ export function cancelMatch(actorId: string, matchId: string, reason: string) {
 export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | null, reason: string) {
   // Gibt es Abbuchungszeilen, wurde (oder wird gleich) von Karten abgebucht. Eine Absage würde still stornieren, ohne das Geld per Stripe zu erstatten
   // (die Erstattung auf die Karte kommt mit M3). Deshalb für ALLE Pfade (Captain, Admin, System/Job: actorId null) abgelehnt; kein Wallet-Eintrag, Status bleibt.
-  if (await hasChargeRows(tx, match.id)) throw new DomainError("Für dieses Spiel wurde schon abgebucht oder die Abbuchung läuft. Bitte wende dich an einen Admin.");
+  if (await hasChargeRows(tx, match.id)) throw new DomainError("Für dieses Spiel hat die Abbuchung begonnen: Absage und Erstattung folgen erst mit der Karten-Erstattung. Bitte kontaktiere den Support.");
   await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, match.id));
   await refundOnCancel(tx, match, actorId);
   await withdrawBookingJob(tx, match.id);

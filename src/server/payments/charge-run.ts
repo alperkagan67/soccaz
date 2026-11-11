@@ -17,6 +17,8 @@ import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 
 /** failure_code einer pending-Zeile, deren Ausgang bei Stripe unbekannt ist (siehe markUnknown). */
 export const UNKNOWN_OUTCOME = "unknown_outcome";
+/** failure_code einer offenen Zeile, die nach dem Anstoß noch kein Ergebnis hatte (Betriebsrisiko, wird nie erneut gesendet). */
+export const AFTER_START = "after_start";
 
 /** Stripe verlangt mindestens 0,50 EUR je Abbuchung. Kleinere Anteile werden angehoben; der Überschuss bleibt in revenue (Entscheid des Orchestrators). */
 export const MIN_CHARGE_CENTS = 50;
@@ -120,7 +122,7 @@ async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
     const rows = await tx.execute(sql`
       select id, match_id, user_id, amount_cents, idempotency_key, attempt_started_at, updated_at
       from payment_charges
-      where match_id = ${matchId} and status = 'pending' and payment_intent_id is null and failure_code is distinct from ${UNKNOWN_OUTCOME}
+      where match_id = ${matchId} and status = 'pending' and payment_intent_id is null and (failure_code is null or failure_code not in (${UNKNOWN_OUTCOME}, ${AFTER_START}))
       order by created_at, id
       for update skip locked`);
     for (const row of rows.rows as { id: string; match_id: string; user_id: string; amount_cents: number; idempotency_key: string; attempt_started_at: Date | null; updated_at: Date }[]) {

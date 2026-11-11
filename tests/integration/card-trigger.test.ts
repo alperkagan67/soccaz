@@ -5,16 +5,23 @@ import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles, 
 import { ledgerEntries } from "@/db/schema-finance";
 import { fixDeadline } from "@/lib/deadlines";
 import { audit } from "@/server/audit";
-import { assignSubstitute, cancelMatch, cancelMatchTx, finalConfirm, getLobby, joinAsSubstitute, joinLobby, leaveLobby, randomSplit, removeParticipant, setReady, unassignParticipant } from "@/server/lobby";
-import { ATTEMPT_MAX_AGE_MS, runCharges } from "@/server/payments/charge-run";
+import { deleteAccount } from "@/server/account";
+import { mergeTeams } from "@/server/admin";
+import { createCardSetup } from "@/server/payments/card-setup";
+import { applyStoredCard } from "@/server/payments/stored-card";
+import { handleStripeWebhook } from "@/server/payments/webhook";
+import { StripeProvider } from "@/server/payments/stripe";
+import { assignSubstitute, cancelMatch, cancelMatchTx, finalConfirm, getLobby, joinAsSubstitute, joinLobby, leaveLobby, randomSplit, removeParticipant, setReady, setVenue, unassignParticipant } from "@/server/lobby";
+import { ATTEMPT_MAX_AGE_MS, CLAIM_LEASE_MS, runCharges } from "@/server/payments/charge-run";
 import { runCardCharges, runChargesIfDue, triggerChargesInBackground } from "@/server/payments/charge-trigger";
 import { FakeProvider } from "@/server/payments/fake";
-import { setPaymentProviderForTests } from "@/server/payments/provider";
+import { PaymentIdempotencyError, setPaymentProviderForTests } from "@/server/payments/provider";
 import { JOBS, SCHEDULE } from "@/server/jobs";
+import { expireScheduling } from "@/server/scheduling";
 import { cancelUnderfilledLobbies, closeLobbiesAtDeadline } from "@/server/scheduled";
 import { setSetting } from "@/server/settings";
 import { CHARGES_LOCKED, joinClosed, leaveClosed } from "@/server/wallet";
-import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeTeam, makeUser, reloadMatch } from "./helpers";
 
 let provider: FakeProvider;
 beforeAll(async () => {
@@ -61,6 +68,7 @@ const statusOf = async (g: G) => (await reloadMatch(g.match.id)).status;
 const startOf = async (g: G) => (await reloadMatch(g.match.id)).startsAt;
 const dueNow = async (g: G) => new Date((await startOf(g)).getTime() - 48 * 3_600_000 + 60_000); // kurz nach der 48-h-Frist
 const auditCount = async (action: string, entityId: string) => (await db.select().from(auditLog).where(and(eq(auditLog.action, action), eq(auditLog.entityId, entityId)))).length;
+const seatsOf = (g: G) => db.select().from(matchParticipants).where(eq(matchParticipants.matchId, g.match.id));
 const entriesOf = (g: G) => db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, g.match.id));
 
 describe("Auslöser: Frist und Job", () => {
@@ -273,10 +281,10 @@ describe("Absage-/Listensperre bei vorhandenen Abbuchungszeilen", () => {
 
   it("manuelle Absage (Captain) und Absage durch System/Admin (actorId null) sind abgelehnt: Status bleibt, kein Wallet-Eintrag", async () => {
     const g = await withRows();
-    await expect(cancelMatch(g.adminA.id, g.match.id, "Wir sagen ab")).rejects.toThrow(/Admin/);
+    await expect(cancelMatch(g.adminA.id, g.match.id, "Wir sagen ab")).rejects.toThrow(/Abbuchung begonnen/);
     expect(await statusOf(g)).toBe("confirmed");
-    await expect(db.transaction(async (tx) => cancelMatchTx(tx, await reloadMatch(g.match.id), null, "System"))).rejects.toThrow(/Admin/);
-    await expect(db.transaction(async (tx) => cancelMatchTx(tx, await reloadMatch(g.match.id), g.adminB.id, "Admin"))).rejects.toThrow(/Admin/);
+    await expect(db.transaction(async (tx) => cancelMatchTx(tx, await reloadMatch(g.match.id), null, "System"))).rejects.toThrow(/Abbuchung begonnen/);
+    await expect(db.transaction(async (tx) => cancelMatchTx(tx, await reloadMatch(g.match.id), g.adminB.id, "Admin"))).rejects.toThrow(/Abbuchung begonnen/);
     expect(await statusOf(g)).toBe("confirmed");
     await noLedger(g);
     expect(await auditCount("match.cancel", g.match.id)).toBe(0);
@@ -320,7 +328,7 @@ describe("Absage-/Listensperre bei vorhandenen Abbuchungszeilen", () => {
       return original(input);
     };
     await runCharges(g.match.id);
-    expect(cancelResult).toMatch(/Admin/);
+    expect(cancelResult).toMatch(/Abbuchung begonnen/);
     expect(await statusOf(g)).toBe("confirmed");
     expect((await reloadMatch(g.match.id)).settledAt).not.toBeNull();
   });
@@ -368,5 +376,134 @@ describe("Anzeige-Betrag in der Lobby", () => {
     expect(await pay(tiny)).toMatchObject({ chargeCents: 50, minChargeApplied: true });
     expect(await pay(normal)).toMatchObject({ chargeCents: 1000, minChargeApplied: false });
     expect(await pay(free)).toMatchObject({ chargeCents: null, minChargeApplied: false });
+  });
+});
+
+describe("T104b: Bestätigungen bleiben, Nachholen, Zusammenführen, Konto, Kartenwechsel", () => {
+  async function withRows(o: Setup = {}) {
+    const g = await game({ hoursAhead: 24, n: 8, ...o });
+    await db.update(matchParticipants).set({ readyAt: new Date() }).where(eq(matchParticipants.matchId, g.match.id));
+    for (const p of g.all) provider.setChargeOutcome(p.id, "error");
+    await runCharges(g.match.id);
+    expect((await rowsOf(g)).length).toBe(g.n);
+    for (const p of g.all) provider.setChargeOutcome(p.id, "succeeded");
+    return g;
+  }
+  const finals = async (g: G) => {
+    const m = await reloadMatch(g.match.id);
+    return Boolean(m.homeFinalAt && m.awayFinalAt);
+  };
+
+  it("setReady ist mit Zeilen gesperrt; setVenue löscht die Captain-Bestätigungen nie (auch wenn ein Platz nicht mehr Karte da zeigt)", async () => {
+    const g = await withRows();
+    await expect(setReady(g.all[3].id, g.match.id, false)).rejects.toThrow(CHARGES_LOCKED);
+    await db.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.all[3].id)));
+    await setVenue(g.adminA.id, g.match.id, "Neue Halle");
+    expect(await finals(g)).toBe(true);
+  });
+
+  it("Job holt offene Zeilen nach, auch wenn eine Captain-Bestätigung fehlt (Kandidat über offene Zeilen)", async () => {
+    const g = await withRows();
+    await db.update(matches).set({ homeFinalAt: null }).where(eq(matches.id, g.match.id));
+    await runCardCharges(new Date(Date.now() + CLAIM_LEASE_MS + 5_000));
+    expect((await rowsOf(g)).every((r) => r.status === "succeeded")).toBe(true);
+    expect((await reloadMatch(g.match.id)).settledAt).not.toBeNull();
+  });
+
+  it("Captain-Neubestätigung mit Zeilen ist möglich (charge_pending zählt als Karte da)", async () => {
+    const g = await withRows();
+    expect((await seatsOf(g)).every((s) => s.cardStatus === "charge_pending")).toBe(true);
+    await expect(finalConfirm(g.adminA.id, g.match.id)).resolves.toBeUndefined();
+    expect(await finals(g)).toBe(true);
+  });
+
+  it("mergeTeams ist abgelehnt, wenn eines der Teams ein offenes Spiel mit Zeilen hat; ohne Zeilen geht es", async () => {
+    const g = await withRows();
+    const extra = await makeUser("mt");
+    const t3 = await makeTeam(extra.id, "Drittteam");
+    await expect(mergeTeams(extra.id, t3.id, g.home.id)).rejects.toThrow(/Abbuchung begonnen/);
+    await expect(mergeTeams(extra.id, g.away.id, t3.id)).rejects.toThrow(/Abbuchung begonnen/);
+    expect((await seatsOf(g)).length).toBe(g.n); // nichts umgehängt
+    const free = await game({ hoursAhead: 24, n: 8 });
+    const t4 = await makeTeam(extra.id, "Viertteam");
+    await expect(mergeTeams(extra.id, t4.id, free.home.id)).resolves.toBeUndefined();
+  });
+
+  it("Konto löschen: gesperrt bei offenem Spiel mit Abbuchung (auch lange nach Anstoß); Bereit in abgesagten Spielen mit Zeilen bleibt", async () => {
+    const g = await withRows();
+    const user = g.all[4];
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 8 * 3_600_000) }).where(eq(matches.id, g.match.id)); // weit nach Anstoß: die 6-h-Regel greift nicht mehr
+    await expect(deleteAccount(user.id)).rejects.toThrow(/laufendes Spiel mit Abbuchung/);
+    await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, g.match.id));
+    await deleteAccount(user.id);
+    expect((await seatsOf(g)).find((s) => s.userId === user.id)!.readyAt).not.toBeNull();
+  });
+
+  it("nach dem Anstoß werden offene Zeilen einmal markiert (after_start + Audit), nie neu gesendet; unknown_outcome bleibt", async () => {
+    const g = await game({ hoursAhead: 24, n: 4 });
+    provider.setChargeOutcome(g.all[0].id, "error");
+    provider.setChargeOutcome(g.all[1].id, "requires_action");
+    provider.setChargeOutcome(g.all[2].id, "error");
+    await runCharges(g.match.id);
+    await db.update(paymentCharges).set({ failureCode: "unknown_outcome" }).where(and(eq(paymentCharges.matchId, g.match.id), eq(paymentCharges.userId, g.all[2].id)));
+    const calls = callsFor(g).length;
+    const late = new Date((await startOf(g)).getTime() + 60_000);
+    await runCardCharges(late);
+    await runCardCharges(new Date(late.getTime() + 600_000));
+    const rows = await rowsOf(g);
+    const by = (i: number) => rows.find((r) => r.userId === g.all[i].id)!;
+    expect(by(0)).toMatchObject({ status: "pending", failureCode: "after_start" });
+    expect(by(1)).toMatchObject({ status: "requires_action", failureCode: "after_start" });
+    expect(by(2)).toMatchObject({ status: "pending", failureCode: "unknown_outcome" });
+    expect(by(3)).toMatchObject({ status: "succeeded" });
+    expect(await auditCount("charge.after_start", g.match.id)).toBe(1);
+    expect(callsFor(g)).toHaveLength(calls);
+  });
+
+  it("Idempotenz: Parameteränderung => Konflikt; Schlüssel in Benutzung (409) => normaler Fehler, Zeile bleibt pending", async () => {
+    const make = (err: object) => {
+      const p = new StripeProvider({ secretKey: "sk_test_unit" });
+      (p as unknown as { client: unknown }).client = { paymentIntents: { create: async () => Promise.reject(Object.assign(new Error("stripe"), err)) } };
+      return p.createPaymentIntent({ customerId: "cus_x", paymentMethodId: "pm_x", amountCents: 500, idempotencyKey: "k", metadata: { matchId: "m", userId: "u" } });
+    };
+    await expect(make({ type: "StripeIdempotencyError", code: "idempotency_error", statusCode: 400 })).rejects.toBeInstanceOf(PaymentIdempotencyError);
+    const inUse = await make({ type: "StripeIdempotencyError", code: "idempotency_key_in_use", statusCode: 409 }).catch((e: unknown) => e);
+    expect(inUse).not.toBeInstanceOf(PaymentIdempotencyError);
+    expect(inUse).toBeInstanceOf(Error);
+    const g = await game({ hoursAhead: 24, n: 4 });
+    provider.setChargeOutcome(g.all[0].id, "error"); // wie der 409-Fall im Lauf: Fehler => pending, kein failed
+    await runCharges(g.match.id);
+    expect((await rowsOf(g)).find((r) => r.userId === g.all[0].id)).toMatchObject({ status: "pending", failureCode: null });
+  });
+
+  it("expireScheduling stoppt nicht an einem Spiel mit Zeilen (Absagesperre): Fehler je Spiel isoliert, Status bleibt", async () => {
+    const g = await withRows();
+    await db.update(matches).set({ status: "lobby", schedulingOpen: true, schedulingDeadline: new Date(Date.now() - 60_000) }).where(eq(matches.id, g.match.id));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(expireScheduling(new Date())).resolves.toBeGreaterThanOrEqual(0);
+      expect(logged).toHaveBeenCalledWith("expireScheduling: Fehler bei Spiel", g.match.id, expect.any(String));
+    } finally {
+      logged.mockRestore();
+    }
+    expect(await statusOf(g)).toBe("lobby");
+  });
+
+  it("Kartenwechsel setzt charge_pending/charged nie auf card_ready zurück (gespeicherte Karte und Webhook)", async () => {
+    const g = await game({ hoursAhead: 24, n: 4 });
+    const me = g.all[0];
+    await db.update(matchParticipants).set({ cardStatus: "none" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, me.id)));
+    const setup = await createCardSetup(me.id, { matchId: g.match.id, mandateAccepted: true });
+    for (const s of ["charge_pending", "charged"] as const) {
+      await db.update(matchParticipants).set({ cardStatus: s }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, me.id)));
+      await applyStoredCard(me.id, g.match.id, true);
+      const seat = (await seatsOf(g)).find((x) => x.userId === me.id)!;
+      expect(seat.cardStatus).toBe(s);
+    }
+    const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, me.id));
+    provider.registerCard({ id: "pm_ct_new", brand: "visa", last4: "4242" });
+    const ev = provider.signEvent({ id: `evt_ct_${Date.now().toString(36)}`, type: "setup_intent.succeeded", object: { id: setup.setupIntentId, customer: profile.stripeCustomerId, payment_method: "pm_ct_new" } });
+    expect((await handleStripeWebhook(ev.rawBody, ev.signature)).status).toBe(200);
+    expect((await seatsOf(g)).find((x) => x.userId === me.id)!.cardStatus).toBe("charged"); // unverändert
   });
 });

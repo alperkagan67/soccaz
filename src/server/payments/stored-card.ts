@@ -1,4 +1,7 @@
-import { and, count, eq, gt, sql } from "drizzle-orm";
+import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
+
+/** Status, die ein Kartenwechsel nie überschreiben darf (bereit, in Abbuchung, abgebucht). */
+const CARD_LOCKED: string[] = ["card_ready", "charge_pending", "charged"];
 import { db } from "@/db";
 import { matchParticipants, matches, paymentProfiles, paymentSetupIntents, users } from "@/db/schema";
 import { DomainError } from "../teams";
@@ -42,7 +45,7 @@ export async function applyStoredCard(userId: string, matchId: string, mandateAc
     .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
   if (!seat) throw new DomainError("Du bist in diesem Spiel nicht angemeldet.");
   if (!["lobby", "confirmed"].includes(seat.status) || seat.startsAt.getTime() <= Date.now()) throw new DomainError("Dieses Spiel ist nicht mehr offen.");
-  if (seat.cardStatus === "card_ready") return { alreadyReady: true };
+  if (CARD_LOCKED.includes(seat.cardStatus)) return { alreadyReady: true }; // schon bereit oder in der Abbuchung: Status nie zurücksetzen
   const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
   if (!profile?.paymentMethodId) throw new StoredCardInvalidError("Du hast noch keine Karte hinterlegt. Bitte hinterlege eine Karte.");
 
@@ -81,7 +84,7 @@ async function storeMandate(userId: string, matchId: string, checkedMethod: stri
       .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)))
       .for("update");
     if (!mine) throw new DomainError("Du bist in diesem Spiel nicht angemeldet.");
-    if (mine.cardStatus === "card_ready") return { alreadyReady: true };
+    if (CARD_LOCKED.includes(mine.cardStatus)) return { alreadyReady: true };
 
     // Die Karte darf sich seit der Prüfung nicht geändert haben
     const [current] = await tx.select({ paymentMethodId: paymentProfiles.paymentMethodId }).from(paymentProfiles).where(eq(paymentProfiles.userId, userId)).for("share");
@@ -98,7 +101,7 @@ async function storeMandate(userId: string, matchId: string, checkedMethod: stri
       .values({ id: storedMandateId(matchId, userId), userId, matchId, status: "succeeded", mandateText: MANDATE_TEXT, mandateAcceptedAt: new Date() })
       // Austritt löscht den Platz, die Mandatszeile bleibt: beim Wiederbeitritt gilt der Nachweis des NEUEN Platzes (aktueller Text, aktueller Zeitpunkt)
       .onConflictDoUpdate({ target: paymentSetupIntents.id, set: { status: "succeeded", mandateText: MANDATE_TEXT, mandateAcceptedAt: new Date() } });
-    await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
+    await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId), inArray(matchParticipants.cardStatus, ["none", "failed"])));
     return { alreadyReady: false };
   });
 }

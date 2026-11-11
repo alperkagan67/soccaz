@@ -53,7 +53,9 @@ export class StripeProvider implements PaymentProvider {
         const authNeeded = e.code === "authentication_required" || e.payment_intent.status === "requires_action";
         return { id: e.payment_intent.id, status: authNeeded ? "requires_action" : "failed", failureCode: typeof e.code === "string" ? e.code.slice(0, 64) : "card_declined" };
       }
-      if (e?.type === "StripeIdempotencyError") throw new PaymentIdempotencyError();
+      // Nur eine echte Parameteränderung ist ein Konflikt. "Schlüssel gerade in Benutzung" (paralleler Lauf, HTTP 409) ist KEIN Konflikt: normaler Fehler, die Zeile bleibt pending und wird wiederholt.
+      const ie = error as { type?: string; code?: string; statusCode?: number };
+      if (ie?.type === "StripeIdempotencyError" && ie.code !== "idempotency_key_in_use" && ie.statusCode !== 409) throw new PaymentIdempotencyError();
       throw error;
     }
   }

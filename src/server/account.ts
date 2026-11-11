@@ -9,6 +9,7 @@ import { ACCENTS, FEET } from "@/lib/profile-options";
 import { audit } from "./audit";
 import { walletBalance } from "./ledger";
 import { DomainError } from "./teams";
+import { hasChargeRows } from "./wallet";
 
 const POSITIONS = ["Torwart", "Abwehr", "Mittelfeld", "Angriff", "Flexibel"];
 
@@ -86,6 +87,10 @@ export async function deleteAccount(userId: string) {
       .where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"]), gt(matches.startsAt, new Date(Date.now() - 6 * 3_600_000))));
     if (open.length > 0) throw new DomainError("Du bist noch für ein offenes Spiel eingetragen. Bitte melde dich zuerst ab.");
 
+    // Läuft für ein offenes Spiel (egal wie lange der Anstoß her ist) eine Kartenabbuchung, bleibt das Konto bis dahin bestehen: Löschen würde Bereit-Status und Spielablauf ändern.
+    const charged = await tx.select({ id: matches.id }).from(matchParticipants).innerJoin(matches, eq(matches.id, matchParticipants.matchId)).where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"])));
+    for (const g of charged) if (await hasChargeRows(tx, g.id)) throw new DomainError("Du hast ein laufendes Spiel mit Abbuchung. Das Konto kann nach dem Spiel gelöscht werden.");
+
     const mine = await tx.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.userId, userId));
     for (const m of mine.filter((x) => x.role === "admin")) {
       const others = await tx.select({ userId: teamMembers.userId, role: teamMembers.role }).from(teamMembers).where(and(eq(teamMembers.teamId, m.teamId), sql`${teamMembers.userId} <> ${userId}`));
@@ -103,7 +108,8 @@ export async function deleteAccount(userId: string) {
     await tx.delete(userBadges).where(eq(userBadges.userId, userId));
     await tx.delete(playerStats).where(eq(playerStats.userId, userId));
     await tx.delete(userReliability).where(eq(userReliability.userId, userId));
-    await tx.update(matchParticipants).set({ readyAt: null }).where(eq(matchParticipants.userId, userId));
+    // Plätze in Spielen mit Abbuchungszeilen (z. B. abgesagt, abgerechnet) bleiben unberührt: Bereit gehört zum Nachweis der Abbuchung
+    await tx.update(matchParticipants).set({ readyAt: null }).where(and(eq(matchParticipants.userId, userId), sql`not exists (select 1 from payment_charges c where c.match_id = ${matchParticipants.matchId})`));
 
     await tx
       .update(users)

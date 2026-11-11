@@ -61,7 +61,7 @@ export async function hasChargeRows(tx: Pick<Tx, "select">, matchId: string): Pr
   return Boolean(row);
 }
 
-export const CHARGES_LOCKED = "Die Karten werden für dieses Spiel schon belastet: Die Teilnehmerliste ist gesperrt. Bitte wende dich an einen Admin.";
+export const CHARGES_LOCKED = "Die Abbuchung für dieses Spiel hat begonnen: Die Teilnehmerliste ist gesperrt. Bitte kontaktiere den Support.";
 
 type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel" | "schedulingOpen" | "vetoStatus">;
 
