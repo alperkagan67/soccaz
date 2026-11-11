@@ -88,7 +88,7 @@ Security-Review Pflicht (Rechte, Mandantentrennung). Betreiber sehen keine perso
 
 ## Offene Fragen
 - (sonst keine; alle vom Nutzer entschieden, siehe "Weitere Entscheidungen")
-- Turniere und Hallen-Zusage entscheiden (Produktfrage an Nutzer, bei 011 M2)
+- ERLEDIGT (Nutzerentscheid 2026-11-12, G1 012): Turniere brauchen die Zusage der Halle als Buchungsbedingung (Bracket erst nach Zusage), weil das Geld direkt an die Halle geht; Umsetzung mit M4, siehe Vertrag 008 Abschnitt Turnier
 
 ## End-to-End-Nachweis
 `tests/e2e/hallen-dashboard.spec.ts`: Admin 1 ordnet zu, Betreiber meldet sich an, bestätigt eine Anfrage und lehnt eine mit Begründung ab, sieht Rechnung, antwortet auf eine Bewertung; Beweisprotokoll-PDF zeigt beide Entscheidungen.
