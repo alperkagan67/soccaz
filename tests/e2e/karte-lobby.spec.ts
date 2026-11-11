@@ -102,5 +102,20 @@ test("Gespeicherte Karte ungültig (needsNewCard): die Lobby bietet das Formular
   await a.getByTestId("card-use-stored").click();
   await expect(a.getByTestId("card-error")).toContainText("Karte");
   await expect(a.getByTestId("card-form")).toBeVisible();
-  await expect(a.getByTestId("card-fake")).toBeVisible();
+  // Zustimmung gilt je Schritt: im neuen Formular ist der Haken NICHT mehr gesetzt, der Knopf gesperrt, bis neu angehakt wird
+  await expect(a.getByLabel(/Ich erlaube Soccaz/)).not.toBeChecked();
+  await expect(a.getByTestId("card-fake")).toBeDisabled();
+  await a.getByLabel(/Ich erlaube Soccaz/).check();
+  await expect(a.getByTestId("card-fake")).toBeEnabled();
+});
+
+test("Gespeicherte Karte: 'Andere Karte hinterlegen' setzt die Zustimmung zurück", async ({ browser }) => {
+  const { a, matchId } = await setupLobby(browser, "ku");
+  await seedStoredCard(`kua-${run}@test.local`, `alt${run}`);
+  await a.goto(`/lobby/${matchId}`);
+  await a.getByLabel(/Ich erlaube Soccaz/).check();
+  await a.getByRole("button", { name: "Andere Karte hinterlegen" }).click();
+  await expect(a.getByTestId("card-form")).toBeVisible();
+  await expect(a.getByLabel(/Ich erlaube Soccaz/)).not.toBeChecked();
+  await expect(a.getByTestId("card-fake")).toBeDisabled();
 });

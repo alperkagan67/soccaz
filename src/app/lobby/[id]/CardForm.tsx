@@ -91,6 +91,11 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
   }
 
   const [useNew, setUseNew] = useState(false);
+  /** Wechsel zum Formular für eine neue Karte: die Zustimmung gilt je Mandat-Schritt und wird zurückgesetzt, der Spieler muss sie dort neu geben. */
+  function switchToNewCard() {
+    setAccepted(false);
+    setUseNew(true);
+  }
   const showStored = Boolean(stored) && !useNew;
 
   async function useStored() {
@@ -103,7 +108,7 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
         refreshSoon();
       } else {
         setError(r.error);
-        if (r.needsNewCard) setUseNew(true); // gespeicherte Karte unbrauchbar: neues Formular anbieten
+        if (r.needsNewCard) switchToNewCard(); // gespeicherte Karte unbrauchbar: neues Formular anbieten
       }
     } catch {
       setError("Das hat gerade nicht geklappt. Bitte versuche es noch einmal.");
@@ -124,7 +129,7 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
           <span data-testid="card-mandate">{mandateText}</span>
         </label>
         <button className="btn btn-primary w-full" disabled={busy || !accepted} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : "Karte für diese Lobby nutzen"}</button>
-        <button type="button" className="btn btn-ghost w-full" onClick={() => setUseNew(true)}>Andere Karte hinterlegen</button>
+        <button type="button" className="btn btn-ghost w-full" onClick={switchToNewCard}>Andere Karte hinterlegen</button>
         {error && <p className="error" role="alert" data-testid="card-error">{error}</p>}
       </div>
     );
