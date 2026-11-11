@@ -1,0 +1,11 @@
+# Nur bekannte Test-Platzhalter, nie echte Werte. Alles andere bleibt ein Fund.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Platzhalter fuer CI und lokale Tests (keine echten Geheimnisse)"
+regexTarget = "match"
+regexes = [
+  '''ci-only-secret[a-z-]*''',
+  '''whsec_e2e_[a-z_]+''',
+]
