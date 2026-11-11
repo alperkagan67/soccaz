@@ -46,7 +46,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      # Im Container-Job ist der Dienst unter seinem Namen erreichbar, nicht ueber 127.0.0.1
+      # Im Container-Job ist der Dienst unter seinem Namen erreichbar, nicht ueber 127.0.0.1 (der Waechter der Integrationstests erlaubt "postgres" nur mit GITHUB_ACTIONS=true)
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/socaz
       AUTH_SECRET: ci-only-secret-not-used-anywhere-else
       E2E_BASE_URL: http://127.0.0.1:3100
