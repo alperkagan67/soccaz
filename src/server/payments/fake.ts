@@ -105,6 +105,20 @@ export class FakeProvider implements PaymentProvider {
     this.found.set(`${matchId}:${userId}`, list);
   }
 
+  /** Test-Hilfe: Ergebnis von cancelPaymentIntent je PaymentIntent (Standard: canceled); "error" wirft einen Netzfehler. */
+  private readonly cancelOutcome = new Map<string, "canceled" | "succeeded" | "other" | "error">();
+  setCancelOutcome(paymentIntentId: string, outcome: "canceled" | "succeeded" | "other" | "error") {
+    this.cancelOutcome.set(paymentIntentId, outcome);
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }> {
+    this.probe("cancelPaymentIntent");
+    this.calls.push({ method: "cancelPaymentIntent", args: { paymentIntentId } });
+    const outcome = this.cancelOutcome.get(paymentIntentId) ?? "canceled";
+    if (outcome === "error") throw new Error("Netzfehler (Test)");
+    return { status: outcome };
+  }
+
   async findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]> {
     this.probe("findPaymentIntents");
     this.calls.push({ method: "findPaymentIntents", args: input });

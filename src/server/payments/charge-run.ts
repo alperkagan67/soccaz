@@ -153,7 +153,8 @@ async function failRow(tx: Tx, rowId: string, matchId: string, userId: string, c
   // Ein Problem des Spielers (keine Karte, Schluessel geaendert) beginnt wie ein abgelehnter Versuch das Nachzahlfenster und benachrichtigt; "match_closed" ist kein Problem des Spielers
   const userProblem = code !== "match_closed";
   const [game] = userProblem ? await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, matchId)) : [];
-  const grace = game ? graceUntil(new Date(), game.startsAt) : null;
+  const [current] = userProblem ? await tx.select({ attempt: paymentCharges.currentAttempt, grace: paymentCharges.graceUntil }).from(paymentCharges).where(eq(paymentCharges.id, rowId)) : [];
+  const grace = current && current.attempt > 1 ? current.grace : game ? graceUntil(new Date(), game.startsAt) : null; // nur der erste Versuch setzt das Fenster
   const [row] = await tx.update(paymentCharges).set({ status: "failed", failureCode: code, ...(userProblem ? { graceUntil: grace } : {}), updatedAt: new Date() }).where(and(eq(paymentCharges.id, rowId), eq(paymentCharges.status, "pending"))).returning();
   await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
   await audit(null, "charge.failed", "match", matchId, { after: { userId, outcome: "failed", code } }, tx);

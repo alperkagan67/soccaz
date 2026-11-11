@@ -79,6 +79,21 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
+  async cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }> {
+    if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return { status: "other" };
+    try {
+      await this.stripe().paymentIntents.cancel(paymentIntentId, {}, SETUP_REQUEST);
+      return { status: "canceled" };
+    } catch (error) {
+      // Schon in einem Endzustand (abgebrochen/erfolgreich): den echten Zustand lesen statt zu raten
+      if ((error as { code?: string } | null)?.code === "payment_intent_unexpected_state") {
+        const pi = await this.stripe().paymentIntents.retrieve(paymentIntentId, {}, SETUP_REQUEST);
+        return { status: pi.status === "succeeded" ? "succeeded" : pi.status === "canceled" ? "canceled" : "other" };
+      }
+      throw error;
+    }
+  }
+
   async findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]> {
     // Die Werte stammen aus unseren UUIDs (vom Aufrufer geprüft); trotzdem nur Zeichen einer UUID zulassen, bevor sie in die Suchanfrage kommen
     const uuid = /^[0-9a-f-]{36}$/i;
