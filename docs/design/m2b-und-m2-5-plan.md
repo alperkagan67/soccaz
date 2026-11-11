@@ -5,7 +5,7 @@ Teil A plant M2-5 (`src/lib/format.ts`, i18n-Helfer, Begriffe im Code). Teil B p
 
 Quellen: `docs/design/umbauplan-013.md` (Branch `docs/013-freigabe`, Abschnitt 2 Gestaltung, Abschnitt 3 M2/M2b/M3), Vertrag 013 AC-6, AC-13, AC-14, AC-15, `docs/design/m2-komponenten-plan.md` (Branch `docs/m2-komponenten-plan`, M2-2/M2-3), `docs/design/begriffe.md` (Branch `docs/begriffe-entwurf`), `docs/design/analyse-seed.md`, Verdichtung Cluster K17 (Zahlen und Formate), K05, K06, K07, K08, K10.
 
-Annahme zur Nummerierung: M2-1 = Tokens/Design-Fundament (worker-3, `feat/m2-1-tokens`), M2-2 = Button/Seitenkopf/StateMessage/StatusBadge, M2-3 = Form/ConfirmDialog/DateTimeField (beide: `m2-komponenten-plan.md`), M2-5 = `format.ts`. Was M2-4 enthält, steht in keinem mir vorliegenden Dokument; ich nehme „UserMenu-Neubau und Navigationsrahmen“ an (Umbauplan M2-Zeile) und bitte um Bestätigung.
+Annahme zur Nummerierung: M2-1 = Tokens/Design-Fundament (worker-3, `feat/m2-1-tokens`), M2-2 = Button/Seitenkopf/StateMessage/StatusBadge, M2-3 = Form/ConfirmDialog/DateTimeField (beide: `m2-komponenten-plan.md`), M2-5 = `format.ts`. M2-4 ist geteilt (entschieden, t9, 2026-11-11): **M2-4a = `UserMenu`** (Neubau, native Popover/`<details>`, Tastatur-Test), **M2-4b = `AppNav`**; der Bau von `AppNav` (fünf Ziele, Mittelknopf) ist M3, in M2 gibt es nur die Vorbereitung.
 
 ---
 
@@ -55,6 +55,7 @@ Die Umstellung der 15 Fremdstellen und der 15 Plural-Stellen gehört nicht zu M2
 5. Begriffe-Test: Basis-Datei erzeugt aus dem Ist-Stand; Test ist grün; ein neu eingeführtes verbotenes Wort (Probe in Scratch-Kopie) macht ihn rot (Mutation 1 von Hand: Basis-Zahl senken → rot).
 6. Rechtstexte stehen in der Ausnahmeliste, **ohne** dass ihre Dateien angefasst werden (Entscheid 2).
 7. Keine Änderung an `money.ts`/`time.ts`, alle bisherigen Unit- und Integrationstests grün (AC-5).
+8. **Englisch mit Rückfall:** Die englische Tabelle in `src/lib/i18n.ts` darf Schlüssel auslassen (Typ `Partial` statt `Record<MessageKey, string>`; heute zwingt `Record` zu vollständigem Englisch, `i18n.ts:80`). `translate` fällt bei fehlendem englischem Text auf Deutsch zurück, ohne Fehler und ohne Warnung im Browser (der Rückfall steht heute schon in `translate`, Zeile `MESSAGES[locale]?.[key] ?? de[key]`). Test `tests/unit/i18n.test.ts`: (a) fehlender EN-Schlüssel liefert den deutschen Text, (b) vorhandener EN-Schlüssel liefert Englisch, (c) die Pflichtbegriffe aus `begriffe.ts` haben einen englischen Text (Liste der Pflichtbegriffe im Test, Fehlen ist rot), (d) Platzhalter `{count}` bleibt im Rückfall erhalten.
 
 ## A5. Beleg-Befehle
 `npm run typecheck`; `npm run lint`; `npm test -- tests/unit/format.test.ts tests/unit/begriffe.test.ts`; `npm test` (alle Unit-Tests); Gegenprobe der Ratsche in Scratch-Kopie (Wort einfügen → rot); `git diff --stat` zeigt nur die Dateien aus A3. Ein Playwright-Lauf ist nicht nötig (keine Seite berührt).
@@ -64,7 +65,7 @@ Die Umstellung der 15 Fremdstellen und der 15 Plural-Stellen gehört nicht zu M2
 - **`eslint.config.mjs`/`eslint-rules/`:** gehört M2-1 (worker-3) bis zum Merge; die neue Regel erst danach.
 - **`begriffe.md`:** muss gemergt und von t9 entschieden sein (alle 10 Entscheide liegen vor, Dokument noch im Review); die Konstanten folgen dem Verzeichnis wörtlich.
 - **Seiten:** keine; die Umstellung der Fremdstellen erfolgt mit den Seiten (M3 bis M7). Für M2b (Teil B) nutzen Start und Lobby `format.ts` schon.
-- **Ungeklärt:** Englisch. `begriffe.ts` ist deutsch; die englischen Texte der 63 Schlüssel bleiben, neue Begriffe haben vorerst keine englische Fassung (Frage an den Orchestrator).
+- **Englisch (entschieden (t9, 2026-11-11)):** Englische Schlüssel werden mitgepflegt; übersetzt werden nur die Pflichtbegriffe aus `begriffe.md`. Fehlende englische Texte fallen ohne Fehler auf Deutsch zurück (siehe AC 8 und Test in A4).
 
 ## A7. Aufwand
 Etwa 1 Task-Tag (`format.ts`, Tests) plus 0,5 bis 1 Task-Tag (`begriffe.ts`, Ratsche, Lint-Regel) = 1,5 bis 2 Task-Tage, ein Writer.
@@ -79,7 +80,7 @@ Nach M2 sind Start und Lobby **komplett im neuen Look** (Richtung E „Trikot“
 ## B2. Die Seiten heute (Datei:Zeile) und ihr neuer Aufbau
 
 ### B2.1 Start
-Zwei Seiten tragen den „Start“: `/` (`src/app/page.tsx`, 82 Zeilen, Gast und Angemeldete) und `/app` (`src/app/app/page.tsx`, 123 Zeilen, „Meine Spiele“ für Angemeldete; Umbauplan: „Start (Meine Spiele)“). Vorschlag: beide gelten als „Start“ und bekommen je 4 Varianten (Entscheid nötig, siehe B9.1).
+Start (entschieden (t9, 2026-11-11)): Zwei Seiten tragen den „Start“: `/` (`src/app/page.tsx`, 82 Zeilen, Gast und Angemeldete) und `/app` (`src/app/app/page.tsx`, 123 Zeilen, „Meine Spiele“ für Angemeldete; Umbauplan: „Start (Meine Spiele)“). Beide gelten als „Start“ und bekommen je 4 Varianten (12 Pflichtbilder mit der Lobby). Die Guthaben-Karte auf `/app` entfällt (Bedingung 2 der Freigabe, AC-14).
 
 | Seite | Heute | Neu |
 |---|---|---|
@@ -117,7 +118,7 @@ Zwei Seiten tragen den „Start“: `/` (`src/app/page.tsx`, 82 Zeilen, Gast und
 - Der Rest des Altmodells (`/app/guthaben`, Rabattcodes, Admin-Seiten) ist 012 M6a, nicht M2b. Für die Abnahme gilt: **auf Start und Lobby ist nirgends Guthaben sichtbar**.
 
 ### B2.5 Navigation
-Der Look von Start und Lobby wirkt nur mit passender Navigation. Laut Umbauplan gehört `AppNav` zu M3. Für M2b braucht es mindestens: `Header` und `BottomNav` im neuen Look, Guthaben raus, aktiver Eintrag mit `aria-current` und Wort. Entscheid nötig: entweder `AppNav` für M2b vorziehen (Navigation-Datei seriell, siehe `m2-komponenten-plan.md` Schritt C) oder Header/BottomNav nur restylen (B9.2).
+Der Look von Start und Lobby wirkt nur mit passender Navigation. Laut Umbauplan gehört `AppNav` zu M3. Für M2b braucht es mindestens: `Header` und `BottomNav` im neuen Look, Guthaben raus, aktiver Eintrag mit `aria-current` und Wort. Entschieden (t9, 2026-11-11): In M2b wird die Navigation **nur restylt** (Header/BottomNav im neuen Look, Guthaben raus, aktiver Eintrag mit Wort); die neue Struktur (`AppNav`, fünf Ziele, Mittelknopf) folgt in M3. Das steht im NEEDS-USER-Paket (B5). `src/components/Header.tsx`, `BottomNav.tsx`, `UserMenu.tsx` (M2-4a) und `layout.tsx` sind gemeinsame Dateien (seriell, siehe `m2-komponenten-plan.md` Schritt C).
 
 ## B3. Seed und Screenshot-Matrix
 - **Seed:** `scripts/seed-frontend.mts` (Branch `main`, `docs/design/analyse-seed.md`): nur lokale Worker-DB (`soccaz_w1` bis `w4`, Port 5433), Testdaten `@test.local`. Aufruf `npx tsx --env-file=.env.local scripts/seed-frontend.mts` (Nutzer bzw. Worker, nicht ich: `.env*` wird nicht gelesen). Vor dem Lauf `card_payments_enabled` auf `true` setzen (der Seed setzt den Schalter nicht, `analyse-seed.md`), damit die Lobby im Kartenmodell erscheint.
@@ -133,7 +134,7 @@ Der Look von Start und Lobby wirkt nur mit passender Navigation. Laut Umbauplan 
 
 ## B4. Impeccable: alle sechs Befehle einzeln je Seite und Rolle (AC-6, AC-15)
 - Befehle: `critique`, `audit`, `distill`, `clarify`, `adapt`, `polish`; **jeder als eigener Durchgang, nicht gebündelt**, im PR einzeln genannt (je Befehl ein Abschnitt, Funde P0/P1 behoben oder begründet vertagt).
-- **Seite × Rolle:** Start `/` (Gast, Spieler), Start `/app` (Spieler, Captain), Lobby (Gast, Spieler, Captain) = **7 Kombinationen × 6 Befehle = 42 Durchgänge**. Wenn t1d oder der Nutzer weniger will (z. B. Gast-Lobby nur `audit`/`clarify`), muss das vorher festgelegt werden (B9.3); AC-15 verlangt „jede Seite und jede Rolle“.
+- **Seite × Rolle:** Start `/` (Gast, Spieler), Start `/app` (Spieler, Captain), Lobby (Gast, Spieler, Captain) = **7 Kombinationen × 6 Befehle = 42 Durchgänge**. Entschieden (t9, 2026-11-11): Es werden alle 42 Durchgänge eingeplant (AC-15). Die Sub-Agents laufen **seriell** (nie parallel). Wird ein Lauf „Degradiert“ oder „Blockiert“, steht das **offen** im PR („Degradiert: ja, Grund“) und geht sofort als `NEEDS-USER`.
 - **Degradiert oder Blockiert** (Klassifizierer, Impeccable, Playwright): sofort `NEEDS-USER`, spätestens nach 15 Minuten; kein Umgehen.
 - Belege im PR: Befehl, Seite, Rolle, Funde (ID), Ergebnis (behoben/vertagt mit Grund), „Degradiert: ja/nein, Grund“ (AC-1).
 
@@ -143,14 +144,15 @@ Der Nutzer bekommt **einen** Draft-PR (Ausnahme: keine Änderung an `.github/` o
 2. **Was er entscheiden soll** (Ja/Nein je Punkt): (a) Look Richtung E „Trikot“ trifft (Farben, Typografie, Dichte); (b) eine Hauptaktion pro Seite und die feste Aktionsleiste am Handy; (c) „Dein Stand“-Block; (d) Wortwahl der Zustände (Findet statt, Preis steht fest, Abbuchung fehlgeschlagen, Karte ändern); (e) Navigation (Handy unten, Desktop oben) und fehlendes Guthaben.
 3. **Was nicht gefragt wird:** Funktionen und Rechte (unverändert), Rechtstexte (Anwalt), Seiten außerhalb von Start und Lobby.
 4. **Ergebnis:** „Ja“ → M3 startet in der Breite; „Ja mit Änderungen“ → Änderungsliste, nur diese Seiten, neue Abnahme der geänderten Bilder; „Nein“ → Gründe, zurück an Gestaltung (Impeccable `critique` neu).
-5. **Zusammenfassung der Impeccable-Läufe** (Anzahl Funde, offene P1 mit Begründung) und die Test-Belege (typecheck, lint, Unit, Playwright inkl. AC-5: keine URL und keine Test-ID geändert).
+5. **Vermerk zur Navigation:** „Navigation nur restylt, neue Struktur folgt in M3.“
+6. **Zusammenfassung der Impeccable-Läufe** (Anzahl Funde, offene P1 mit Begründung) und die Test-Belege (typecheck, lint, Unit, Playwright inkl. AC-5: keine URL und keine Test-ID geändert).
 
 ## B6. Abhängigkeiten und Reihenfolge
 ```
 M2-1 Tokens (worker-3)  ->  M2-2a Button  ->  M2-2b/M2-2c  \
                                      M2-3a Form/DateTimeField, M2-3b ConfirmDialog  ->  M2-5 format.ts
 012 M3b (Fehlerzustand, Datenschutz-Fix, feat/charge-m3b, worker-1)  ----------------> M2b Lobby
-Navigation (AppNav oder Restyle von Header/BottomNav)  ---------------------------> M2b Start + Lobby
+Navigation (nur Restyle von Header/BottomNav und UserMenu M2-4a; AppNav M2-4b erst in M3)  --> M2b Start + Lobby
 ```
 - **M2-1 bis M2-5** (s. o.) müssen gemergt sein; M2b nutzt `PageShell`, `PageHeader`, `StatusBadge`, `StateMessage`, `Button`, `ConfirmDialog`, `format.ts`.
 - **012 M3b** (Fehlerzustand mit Grund und Nachzahl-Weg, Datenschutz-Fix „Dritte sehen neutral“, Benachrichtigung bei Fehlschlag) muss **vor der Lobby** in M2b stehen (Umbauplan Abhängigkeiten); der Branch `feat/charge-m3b` läuft bei worker-1. Ohne ihn zeigt die Lobby den Fehlerzustand nicht.
@@ -165,22 +167,21 @@ Navigation (AppNav oder Restyle von Header/BottomNav)  -------------------------
 |---|---|
 | Start `/` und `/app` (Aufbau, Altmodell raus, Tests anpassen) | 1,5 bis 2 |
 | Lobby (Aufbau „Dein Stand“, Hauptaktion je Rolle, StatusBadge, StateMessage, ConfirmDialog, Guthaben-Zweig raus) | 2,5 bis 3,5 |
-| Navigation (Restyle von Header/BottomNav, Guthaben raus; mit `AppNav`: mehr) | 1 bis 2 |
+| Navigation (nur Restyle von Header/BottomNav, Guthaben raus; `AppNav`-Bau in M3) | 1 |
 | Screenshots, Vorher/Nachher, Impeccable (42 Durchgänge), Fixes der Funde | 1,5 bis 2 |
 | Abnahmeschleife mit dem Nutzer (eine Änderungsrunde) | 0,5 bis 1 |
-| **Summe M2b** | **7 bis 10,5** (davon etwa 5,5 bis 7,5 ohnehin in M3 geplant; zusätzlich entsteht vor allem die Abnahmeschleife, etwa 1,5 bis 3 Tage) |
+| **Summe M2b** | **7 bis 9,5** (davon etwa 5,5 bis 7,5 ohnehin in M3 geplant; zusätzlich entsteht vor allem die Abnahmeschleife, etwa 1,5 bis 3 Tage) |
 
 Teil A (M2-5): 1,5 bis 2 Tage (A7). Die Umbauplan-Summe M2 (6 bis 8) und M3 (8 bis 10) ändert sich dadurch nicht in der Summe, wohl aber in der Reihenfolge.
 
 ## B8. Beleg-Befehle (Abnahme M2b)
 `npm run typecheck`; `npm run lint`; `npm test`; `npx playwright test` (alle bisherigen E2E, AC-5: keine URL und keine Test-ID geändert; angepasst werden nur Tests, die Guthaben-Elemente prüfen, mit Begründung im PR); `npx playwright test tests/e2e/ui-regeln.spec.ts tests/e2e/a11y.spec.ts` (M2-2d) auf Start und Lobby; Screenshot-Skript B3; Suche in `src/app/page.tsx`, `src/app/app/page.tsx`, `src/app/lobby/[id]/page.tsx`, `Header.tsx`, `UserMenu.tsx`: kein „Guthaben“; Begriffe-Test (A2) grün; Impeccable-Protokoll (B4).
 
-## B9. Offene Punkte und Risiken
-1. **Was heißt „Start“?** `/` (Gast) und `/app` (Meine Spiele) sind zwei Seiten; Vorschlag: beide gehören zu M2b (12 Pflichtbilder). Alternative: nur `/app` für Angemeldete plus `/` für Gäste mit weniger Varianten.
-2. **Navigation für M2b:** `AppNav` vorziehen oder Header/BottomNav nur restylen? Der Umbauplan setzt `AppNav` in M3.
-3. **Umfang der Impeccable-Läufe:** 42 Durchgänge (7 Kombinationen × 6) nach AC-15; Kürzung nur mit Entscheid.
-4. **012 M3b noch nicht gemergt** (Branch `feat/charge-m3b`): blockiert den Fehlerzustand; Reihenfolge einhalten.
-5. **Zeitzone/Seed-Zeiten:** Spiele liegen relativ zum Seed-Lauf (1 bis 6 Tage); Seed kurz vor den Screenshots neu aufrufen, sonst „abgelaufen“.
-6. **Öffentliches Repository:** keine Screenshots, Pfade oder Mails ins Repo (CLAUDE.md); Anhänge nur am PR.
-7. **Look-Entscheid ist subjektiv:** das Paket muss Vorher/Nachher und eine kurze Begründung der Hauptaktions-Regel enthalten, sonst bleibt „gefällt mir nicht“ ohne Richtung.
-8. **M2-4** ist in meinen Quellen nicht beschrieben (Annahme oben); falls M2-4 etwas anderes ist (z. B. `UserMenu`), bitte die Abhängigkeitszeile B6 anpassen.
+## B9. Entscheide (t9, 2026-11-11) und Risiken
+Entschieden (t9, 2026-11-11): (1) Start = `/` und `/app`, 12 Pflichtbilder, Guthaben-Karte auf `/app` entfällt; (2) Navigation in M2b nur restylen, `AppNav` in M3; (3) 42 Durchgänge, Sub-Agents seriell, Degradiert offen ausweisen; (4) M2-4a `UserMenu`, M2-4b `AppNav` (Bau in M3); (5) Englisch mit Rückfall auf Deutsch (Teil A, AC 8). Offen ist davon nichts mehr; die folgenden Punkte sind Risiken.
+
+1. **012 M3b noch nicht gemergt** (Branch `feat/charge-m3b`): blockiert den Fehlerzustand; Reihenfolge einhalten.
+2. **Zeitzone/Seed-Zeiten:** Spiele liegen relativ zum Seed-Lauf (1 bis 6 Tage); Seed kurz vor den Screenshots neu aufrufen, sonst „abgelaufen“.
+3. **Öffentliches Repository:** keine Screenshots, Pfade oder Mails ins Repo (CLAUDE.md); Anhänge nur am PR.
+4. **Look-Entscheid ist subjektiv:** das Paket muss Vorher/Nachher und eine kurze Begründung der Hauptaktions-Regel enthalten, sonst bleibt „gefällt mir nicht“ ohne Richtung.
+5. **Seriell statt parallel:** 42 Impeccable-Durchgänge nacheinander verlängern die Laufzeit der Abnahme; die Schätzung in B7 (1,5 bis 2 Tage) ist grob.
