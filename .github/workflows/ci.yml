@@ -58,7 +58,7 @@ jobs:
           node -e '
             const fs = require("fs");
             const lock = require("./package-lock.json").packages["node_modules/@playwright/test"].version;
-            const m = fs.readFileSync(".github/workflows/ci.yml", "utf8").match(/mcr.microsoft.com/playwright:v([0-9.]+)-/);
+            const m = fs.readFileSync(".github/workflows/ci.yml", "utf8").match(/playwright:v([0-9.]+)-/);
             if (!m || m[1] !== lock) { console.error("Image-Tag " + (m && m[1]) + " != Lockfile " + lock); process.exit(1); }
             console.log("Playwright " + lock + " == Image-Tag");
           '
