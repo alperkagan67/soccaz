@@ -275,12 +275,20 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   const jobs = await query<{ status: string }>("select status from booking_jobs where match_id = $1", [matchId]);
   expect(jobs).toEqual([{ status: "open" }]);
 
-  // Abrechnung nach Ablauf der Frist: 80 EUR durch 10 Zahler; der Anteil stand schon fest, es gibt nichts zurückzuzahlen
-  await setMatchTimes(matchId, 10, 13);
-  const settled = (await callJob(baseURL!, "settle-matches")) as number;
-  expect(settled).toBeGreaterThanOrEqual(1);
+  // Neue Frist-Regel (008): Beide Captains bestätigen zum Schluss, damit steht der Preis fest und das Geld bleibt geparkt (kein Fehlbetrag).
   await a.reload();
-  await expect(a.getByRole("region", { name: "Kosten" })).toContainText(euro(`Abgerechnet: ${eur(share)}`));
+  await a.getByRole("button", { name: "Ja, mein Team ist komplett: Spiel bestätigen" }).click();
+  await b.reload();
+  await b.getByRole("button", { name: "Ja, mein Team ist komplett: Spiel bestätigen" }).click();
+  await expect.poll(async () => (await query<{ f: number | null; s: Date | null }>("select final_share_cents as f, settled_at as s from matches where id = $1", [matchId]))[0]).toMatchObject({ f: share, s: null });
+  // Gebucht (abgerechnet) wird bei Anlage mit mindestens 48 Stunden Vorlauf zur Frist (Anstoß minus 48 Stunden): 80 EUR durch 10 Zahler, nichts zurückzuzahlen.
+  // Die Zeit wird in der Datenbank gesetzt: Anstoß in 47 Stunden, angelegt vor 100 Stunden.
+  await setMatchTimes(matchId, 47, 100);
+  await callJob(baseURL!, "lobby-deadlines");
+  await expect.poll(async () => (await query<{ s: Date | null }>("select settled_at as s from matches where id = $1", [matchId]))[0].s).not.toBeNull();
+  expect((await query<{ s: string }>("select status as s from matches where id = $1", [matchId]))[0].s).toBe("confirmed"); // gebucht, nicht abgesagt
+  // Nach dem Bestätigen beider Captains zeigt die Lobby die Kosten nicht mehr (die Übersicht steht offen): der abgerechnete Anteil steht in der Datenbank
+  expect((await query<{ f: number | null }>("select final_share_cents as f from matches where id = $1", [matchId]))[0].f).toBe(share);
   expect(await walletBalanceOf(adminA)).toBe(2000 - share);
   for (const id of seeded) expect(await walletBalanceOf(id)).toBe(2000 - share);
 

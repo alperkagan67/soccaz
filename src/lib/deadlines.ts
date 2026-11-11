@@ -24,3 +24,55 @@ export const REMINDER_TEXT: Record<ReminderKind, string> = {
   "2h": "Anstoß in zwei Stunden",
   "30m": "Gleich geht es los",
 };
+
+// ---------------------------------------------------------------------------------------------
+// Frist-Regel für Privat- und Teamspiele (Verträge 006/008 v3): eine Frist 48 Stunden vor Anstoß, bei kurzem Vorlauf nur der 1-h-Abbruch
+// ---------------------------------------------------------------------------------------------
+
+export const FIX_DEADLINE_HOURS = 48; // einzige Frist: Lobby schließt, dann wird gebucht oder abgesagt
+export const ABORT_BEFORE_START_HOURS = 1; // einziger Abbruchzeitpunkt bei Anlage unter 48 Stunden Vorlauf
+
+/** Hatte das Spiel bei der Anlage mindestens 48 Stunden Vorlauf? Dann gilt die 48-h-Frist, sonst Sofortbuchung und 1-h-Abbruch. */
+export function hasLongLead(startsAt: Date, createdAt: Date): boolean {
+  return startsAt.getTime() - createdAt.getTime() >= FIX_DEADLINE_HOURS * 3_600_000;
+}
+
+/** Zeitpunkt der 48-h-Frist: Anstoß minus 48 Stunden. */
+export function fixDeadline(startsAt: Date): Date {
+  return new Date(startsAt.getTime() - FIX_DEADLINE_HOURS * 3_600_000);
+}
+
+/** Zeitpunkt des 1-h-Abbruchs: Anstoß minus 1 Stunde. */
+export function abortDeadline(startsAt: Date): Date {
+  return new Date(startsAt.getTime() - ABORT_BEFORE_START_HOURS * 3_600_000);
+}
+
+export const PAY_GRACE_HOURS = 12; // Karenz: nach dem Zeitpunkt, ab dem Zahlen und Bereit möglich sind, bleiben mindestens so viele Stunden (wie die alte Lobby-Frist)
+export const LAST_CHECK_BEFORE_START_MINUTES = 15; // die Karenz schiebt eine Frist nie näher als 15 Minuten an den Anstoß
+export const MIN_LEAD_HOURS = 1; // Mindestvorlauf für jedes Spiel: der Termin muss mindestens eine Stunde in der Zukunft liegen
+
+/** Hat der Termin mindestens eine Stunde Vorlauf? */
+export function hasMinLead(startsAt: Date, now: Date): boolean {
+  return startsAt.getTime() - now.getTime() >= MIN_LEAD_HOURS * 3_600_000;
+}
+
+/**
+ * Frist mit Karenz (nur bei nachträglich festgelegtem Termin): frühestens `PAY_GRACE_HOURS` nach dem Zeitpunkt, ab dem Zahlen und Bereit möglich wurden (Anlage, Terminfestlegung, Ende des
+ * Hallen-Vetos), aber nie später als 15 Minuten vor Anstoß. Ohne die Karenz würde ein spät vereinbartes Spiel abgesagt, bevor jemand zahlen konnte.
+ */
+export function dueWithGrace(baseDue: Date, payOpenAt: Date, startsAt: Date, createdAt: Date): Date {
+  // Die Karenz gilt nur, wenn Zahlen erst nachträglich möglich wurde (Terminwahl, Veto). Ohne nachträglichen Termin bleibt die Frist exakt (Anstoß minus 1 Stunde bzw. 48 Stunden).
+  if (payOpenAt.getTime() <= createdAt.getTime()) return baseDue;
+  const withGrace = Math.max(baseDue.getTime(), payOpenAt.getTime() + PAY_GRACE_HOURS * 3_600_000);
+  return new Date(Math.min(withGrace, startsAt.getTime() - LAST_CHECK_BEFORE_START_MINUTES * 60_000));
+}
+
+/** Ist der Beitritt geschlossen? Mit langem Vorlauf ab der 48-h-Frist (mit Karenz); mit kurzem Vorlauf nie (offen bis zur Buchung oder zum Abbruch). */
+export function joinClosedByTime(startsAt: Date, payOpenAt: Date, now: Date, createdAt: Date = payOpenAt): boolean {
+  return hasLongLead(startsAt, payOpenAt) && now.getTime() >= dueWithGrace(fixDeadline(startsAt), payOpenAt, startsAt, createdAt).getTime();
+}
+
+/** Sind Austritt und Rauswurf gesperrt? Ab 48 Stunden vor Anstoß; bei Anlage unter 48 Stunden gilt das von Anfang an. */
+export function leaveClosedByTime(startsAt: Date, now: Date): boolean {
+  return startsAt.getTime() - now.getTime() <= FIX_DEADLINE_HOURS * 3_600_000;
+}

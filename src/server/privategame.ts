@@ -7,10 +7,11 @@ import { gameInvites } from "@/db/schema-matchmaking";
 import { DEFAULT_PRIVATE_PLAYERS, MAX_PRIVATE_PLAYERS, MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
 import { parseEuro } from "@/lib/money";
 import { audit } from "./audit";
+import { assertMinLead } from "./min-lead";
 import { cancelMatchTx } from "./lobby";
 import { notifyUsers } from "./notifications";
 import { paymentsEnabled } from "./settings";
-import { privateJoinBlocked } from "./wallet";
+import { joinClosed } from "./wallet";
 import { DomainError } from "./teams";
 
 export type PrivateGameInput = {
@@ -23,7 +24,6 @@ export type PrivateGameInput = {
   rentCents?: number | null;
 };
 
-const MIN_LEAD_MS = 60 * 60_000;
 const MAX_RENT_CENTS = 100_000;
 const RENT_ERROR = "Bitte gib die Hallenmiete an (0 bis 1.000 Euro) oder wähle ausdrücklich kostenlos.";
 
@@ -51,7 +51,7 @@ export async function createPrivateGame(userId: string, input: PrivateGameInput)
     throw new DomainError(`Die Spielerzahl muss gerade sein, zwischen ${MIN_PRIVATE_PLAYERS} und ${MAX_PRIVATE_PLAYERS}.`);
   }
   if (![60, 90].includes(input.durationMin)) throw new DomainError("Ein Spiel dauert 60 oder 90 Minuten.");
-  if (Number.isNaN(input.startsAt.getTime()) || input.startsAt.getTime() < Date.now() + MIN_LEAD_MS) throw new DomainError("Der Termin muss mindestens eine Stunde in der Zukunft liegen.");
+  assertMinLead(input.startsAt); // zentraler Mindestvorlauf (1 Stunde)
   const venue = input.venueText.trim().slice(0, 120);
   if (!venue) throw new DomainError("Bitte gib die Halle oder den Ort an.");
   const rent = input.rentCents;
@@ -186,7 +186,7 @@ export async function joinPrivateGame(userId: string, token: string): Promise<{ 
     if (match.status !== "lobby" && match.status !== "confirmed") throw new DomainError("Dieses Spiel ist schon vorbei.");
     const [existing] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, userId)));
     if (existing) return { matchId: match.id, already: true };
-    if (await privateJoinBlocked(tx, match)) throw new DomainError("Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt: Es kann nur noch ein Ersatz für einen ausgestiegenen Spieler beitreten.");
+    if (await joinClosed(tx, match, new Date())) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst.");
     const [{ n }] = await tx.select({ n: count() }).from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
     if (n >= (match.maxPlayers ?? DEFAULT_PRIVATE_PLAYERS)) throw new DomainError("Das Spiel ist schon voll.");
     await tx.insert(matchParticipants).values({ matchId: match.id, userId, teamId: null });
@@ -232,6 +232,7 @@ export function safeErrorLog(error: unknown): string {
 }
 
 /**
+ * Nur Altspiele (`legacyShareModel`, vor der Umstellung angelegt, bis zu ihrem Anstoß); neue Privatspiele nutzen die 48-h-Frist und den 1-h-Abbruch (scheduled.ts).
  * Prüft Privatspiele mit Miete: Ist die Summe der tatsächlich bezahlten Anteile kleiner als die Miete, wird das Spiel abgesagt und alle
  * bekommen ihren Anteil zurück (auch offene Ansprüche von Aussteigern; die Absage nutzt dafür die vorhandene Erstattung mit festen Schlüsseln).
  * Gedeckte Spiele bleiben unverändert, kostenlose und Spiele ohne aktive Zahlungen werden nie abgesagt. Läuft im 5-Minuten-Job, je Spiel in
@@ -243,7 +244,7 @@ export async function cancelUncoveredPrivateGames(now: Date = new Date()): Promi
   const candidates = await db
     .select({ id: matches.id, startsAt: matches.startsAt, createdAt: matches.createdAt })
     .from(matches)
-    .where(and(eq(matches.kind, "private"), inArray(matches.status, ["lobby", "confirmed"]), gt(matches.priceCents, 0), sql`${matches.startsAt} > ${now}`));
+    .where(and(eq(matches.kind, "private"), eq(matches.legacyShareModel, true), inArray(matches.status, ["lobby", "confirmed"]), gt(matches.priceCents, 0), sql`${matches.startsAt} > ${now}`));
   let cancelled = 0;
   for (const c of candidates) {
     if (rentCheckAt(c.startsAt, c.createdAt).getTime() > now.getTime()) continue;

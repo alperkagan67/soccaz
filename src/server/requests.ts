@@ -1,3 +1,4 @@
+import { assertMinLead } from "./min-lead";
 import { connection } from "next/server";
 import { and, asc, between, count, eq, gt, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -76,6 +77,7 @@ export async function createRequest(userId: string, input: RequestInput) {
   if (input.startsAt.getTime() < Date.now() + MIN_LEAD_HOURS * 3_600_000) {
     throw new DomainError(`Das Spiel muss mindestens ${MIN_LEAD_HOURS} Stunden in der Zukunft liegen.`);
   }
+  assertMinLead(input.startsAt); // zentrale Untergrenze (1 Stunde)
   return db.transaction(async (tx) => {
     if (!(await isAdmin(tx, userId, input.teamId))) throw new DomainError("Nur Team-Admins können Spielsuchen erstellen.");
 
@@ -226,6 +228,7 @@ export async function acceptRequest(userId: string, requestId: string, teamId: s
     if (request.startsAt.getTime() < Date.now() + MIN_LEAD_HOURS * 3_600_000) {
       throw new DomainError("Diese Spielsuche liegt zu nah am Anstoß und kann nicht mehr angenommen werden.");
     }
+    assertMinLead(request.startsAt); // zentrale Untergrenze (1 Stunde)
     if (request.teamId === teamId) throw new DomainError("Du kannst deine eigene Spielsuche nicht annehmen.");
     if (request.targetTeamId && request.targetTeamId !== teamId) throw new DomainError("Diese Herausforderung gilt einem anderen Team.");
     if (!(await isAdmin(tx, userId, teamId))) throw new DomainError("Nur Team-Admins können Spielsuchen annehmen.");

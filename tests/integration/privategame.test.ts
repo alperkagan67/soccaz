@@ -40,9 +40,13 @@ let key = 0;
 const fund = (userId: string, cents: number) => db.transaction((tx) => creditWallet(tx, userId, { from: "bank", amountCents: cents, kind: "adjustment", idempotencyKey: `pg-${userId}-${++key}` }));
 
 /** Ein Privatspiel mit `n` weiteren Spielern, die über den Link beigetreten sind. */
-async function game(n = 9, over: Partial<Parameters<typeof createPrivateGame>[1]> = {}) {
+async function game(n = 9, over: Partial<Parameters<typeof createPrivateGame>[1]> = {}, legacy = false) {
   const organizer = await makeUser("pvorg");
-  const { match, token } = await createPrivateGame(organizer.id, { ...base, ...over });
+  const created = await createPrivateGame(organizer.id, { ...base, ...over });
+  const { token } = created;
+  let match = created.match;
+  // legacy: Altspiel (vor der Umstellung angelegt) mit dem alten Pfad: 24-h-Mietprüfung, Ersatz gegen Erstattung
+  if (legacy) [match] = await db.update(matches).set({ legacyShareModel: true }).where(eq(matches.id, match.id)).returning();
   const players = [organizer];
   for (let i = 0; i < n; i++) {
     const p = await makeUser("pvp");
@@ -268,8 +272,8 @@ describe("Kostenlos und Bereit-Prüfung (T52)", () => {
 });
 
 describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
-  const prepare = async (extra: number, over: Partial<Parameters<typeof createPrivateGame>[1]> = {}) => {
-    const g = await game(extra, { rentCents: 12_000, ...over });
+  const prepare = async (extra: number, over: Partial<Parameters<typeof createPrivateGame>[1]> = {}, legacy = false) => {
+    const g = await game(extra, { rentCents: 12_000, ...over }, legacy);
     await randomSplit(g.organizer.id, g.match.id);
     for (const p of g.players) await fund(p.id, 3000);
     return g;
@@ -324,7 +328,7 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
   it("der Preis bleibt fest: Austritt und erneutes Bestätigen ändern den Anteil nicht (Guard: nur einmal fixieren)", async () => {
     await setSetting(null, "payments_enabled", true);
     try {
-      const { organizer, match, players } = await prepare(9);
+      const { organizer, match, players } = await prepare(9, {}, true);
       for (const p of players) await payShare(p.id, match.id);
       for (const p of players) await setReady(p.id, match.id, true);
       await finalConfirm(organizer.id, match.id);
@@ -450,7 +454,7 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
   it("Ersatzspieler, der nach dem Fixieren zahlt, bucht den festen Anteil (nicht den aktuellen Wert)", async () => {
     await setSetting(null, "payments_enabled", true);
     try {
-      const { organizer, match, token, players } = await prepare(9);
+      const { organizer, match, token, players } = await prepare(9, {}, true);
       for (const p of players) await payShare(p.id, match.id);
       for (const p of players) await setReady(p.id, match.id, true);
       await finalConfirm(organizer.id, match.id);
@@ -679,7 +683,7 @@ describe("Austritt nach dem Fixieren und Sperre in den letzten 48 Stunden (T54, 
 
   /** Zehn Spieler, alle bezahlt und bereit, der Veranstalter hat bestätigt: Anteil 1200 steht fest. */
   const fixed = async (extra = 9, maxPlayers = 10) => {
-    const g = await game(extra, { rentCents: 12_000, maxPlayers });
+    const g = await game(extra, { rentCents: 12_000, maxPlayers }, true);
     await randomSplit(g.organizer.id, g.match.id);
     for (const p of g.players) await fund(p.id, 3000);
     for (const p of g.players) await payShare(p.id, g.match.id);
@@ -860,7 +864,7 @@ describe("Mietprüfung vor Anstoß (T55, AC-9)", () => {
   const statusOf = async (matchId: string) => (await reloadMatch(matchId)).status;
   /** Zehn Spieler, eingeteilt und mit Guthaben; `payers` davon zahlen ihren Anteil (1200). */
   const rentGame = async (payers: number, over: Partial<Parameters<typeof createPrivateGame>[1]> = {}) => {
-    const g = await game(9, { rentCents: 12_000, startsAt: hours(72), ...over });
+    const g = await game(9, { rentCents: 12_000, startsAt: hours(72), ...over }, true);
     await randomSplit(g.organizer.id, g.match.id);
     for (const p of g.players) await fund(p.id, 3000);
     for (const p of g.players.slice(0, payers)) await payShare(p.id, g.match.id);
@@ -1035,7 +1039,7 @@ describe("Erstattung nach erneutem Austritt (T54-Nachtrag: Schlüssel mit create
 
   it("Privatspiel: Aussteiger, Ersatz zahlt, Aussteiger tritt neu bei, zahlt, tritt erneut aus, zweiter Ersatz zahlt -> zweite Erstattung kommt an", () =>
     withPayments(async () => {
-      const g = await game(9, { rentCents: 12_000, maxPlayers: 12 }); // zwölf Plätze: der Aussteiger kann neu beitreten
+      const g = await game(9, { rentCents: 12_000, maxPlayers: 12 }, true); // Altspiel, zwölf Plätze: der Aussteiger kann neu beitreten
       await randomSplit(g.organizer.id, g.match.id);
       for (const p of g.players) await fund(p.id, 3000);
       for (const p of g.players) await payShare(p.id, g.match.id);
