@@ -3,7 +3,7 @@ Status: Entwurf (2026-11-12); Phase 1 (Analyse, Council, dieser Entwurf) vom Nut
 Version: 1
 
 ## Ziel
-Das gesamte Frontend wird überarbeitet, weil der Nutzer Bedienung und Aufbau als „katastrophal“ und „noch fast wie die Vorlage“ beurteilt. Ergebnis: klare Wege, verständliche Texte, gute Bedienung auf dem Handy, ein eigener Look nach `DESIGN.md` (Richtung E „Trikot“) und kein KI-Einheitsaussehen. Vertrag 007 (Navigation, Begriffe, Teamfarbe, Lobby-Feld) bleibt gültig; 013 fasst dessen offene Oberflächenstufen (Meine Spiele, Lobby-Feld) ein und erweitert sie auf alle Seiten (62 Seiten, davon 16 im Admin-Bereich, 35 Komponenten).
+Das gesamte Frontend wird überarbeitet, weil der Nutzer Bedienung und Aufbau als „katastrophal“ und „noch fast wie die Vorlage“ beurteilt. Ergebnis: klare Wege, verständliche Texte, gute Bedienung auf dem Handy, ein eigener Look nach `DESIGN.md` (Richtung E „Trikot“) und kein KI-Einheitsaussehen. Vertrag 007 (Navigation, Begriffe, Teamfarbe, Lobby-Feld) bleibt gültig; 013 fasst dessen offene Oberflächenstufen (Meine Spiele, Lobby-Feld) ein und erweitert sie auf alle Seiten (62 Seiten, davon 16 im Admin-Bereich, 34 Komponenten).
 
 ## Nutzer und Rollen
 Gast, Spieler, Captain, Veranstalter, Hallenbetreiber (011), Admin 1, Admin 2. Geräte: Handy 390 px und Desktop 1280 px.
@@ -34,7 +34,7 @@ Gast, Spieler, Captain, Veranstalter, Hallenbetreiber (011), Admin 1, Admin 2. G
 ## Akzeptanzkriterien (gelten je Meilenstein; PR ohne Beleg wird nicht gemergt)
 | ID | Gegeben | Wenn | Dann | Check |
 |---|---|---|---|---|
-| AC-1 | Jeder UI-PR | PR-Text | Abschnitte „Vertragskriterien (AC → Beleg)“, „Impeccable-Befehle + Fundliste“, „Screenshots vorher/nachher (Handy 390 px und Desktop)“, „Skills/Subagents benutzt“, „Degradiert: ja/nein, Grund“ ausgefüllt | PR-Vorlage + CI-Check der Überschriften |
+| AC-1 | Jeder UI-PR | PR-Text | Abschnitte „Vertragskriterien (AC → Beleg)“, „Impeccable-Befehle + Fundliste“, „Screenshots vorher/nachher (Handy 390 px und Desktop)“, „Skills/Subagents benutzt“, „Degradiert: ja/nein, Grund“ und als 6. Pflichtabschnitt „Vorgaben: erfüllt/nicht (Liste)“ ausgefüllt | PR-Vorlage + CI-Check der Überschriften |
 | AC-2 | Meilenstein M1 | Analyse fertig | Fundliste P0/P1/P2 je Seitengruppe, Matrix Rolle × Gerät vollständig, Umbauplan mit Reihenfolge und Aufwand liegt dem Nutzer vor; Gate: Nutzer-Ja | docs/design/analyse-frontend-*.md |
 | AC-3 | Alle umgebauten Seiten | Kontraste und Touch-Ziele geprüft | Text ≥ 4,5:1, Zeichen ≥ 3:1, Touch ≥ 44 px, kein horizontales Scrollen auf 390 px | tests/e2e/ui-regeln.spec.ts, Impeccable audit |
 | AC-4 | Alle umgebauten Seiten | Tastaturbedienung | Alle Funktionen per Tastatur erreichbar, Fokus sichtbar, sinnvolle Reihenfolge | tests/e2e/a11y.spec.ts |
@@ -57,7 +57,7 @@ Gast, Spieler, Captain, Veranstalter, Hallenbetreiber (011), Admin 1, Admin 2. G
 - M8: Abnahme: Impeccable polish und audit über alles, Screenshots Gesamtstrecke.
 
 ## Betroffene Bereiche
-`src/app/**` (62 Seiten), `src/components/**` (35 Komponenten), `src/app/globals.css`, `DESIGN.md`, `docs/design/`, `.github/` (PR-Vorlage, CI), Texte/i18n. Keine Datenbank.
+`src/app/**` (62 Seiten), `src/components/**` (34 Komponenten), `src/app/globals.css`, `DESIGN.md`, `docs/design/`, `.github/` (PR-Vorlage, CI), Texte/i18n. Keine Datenbank.
 
 ## Risiken und Randfälle
 - Dauer (geschätzt 25 bis 40 Task-Tage) und Engpass CI (Browser-Tests ca. 25 Minuten): Browser-Tests vor dem Umbau beschleunigen.
