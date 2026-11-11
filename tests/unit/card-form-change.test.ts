@@ -16,5 +16,5 @@ describe("CardForm: Beschriftung 'Karte ändern' im Fehlerzustand (Wortwahl begr
     expect(changed).not.toContain("hinterlegen");
     expect(first).toContain("Testkarte hinterlegen");
     expect(first).not.toContain("ändern");
-  });
+  }, 60_000); // der erste Import der Komponente dauert auf einem ausgelasteten Rechner länger als 5 s
 });
