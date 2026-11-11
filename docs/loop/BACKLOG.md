@@ -55,7 +55,7 @@ Umsetzungsreihenfolge Geldmodell und Verträge: 006/008 M3a/M3b, 007 M2/M3, Code
 | 15 | Später/Idee: sichtbare Servicegebühr nur für Extras, z. B. Firmenpaket (kein Treueprogramm, keine Rabatte, keine bezahlten Platzierungen) | offen (Idee) |
 | 17 | `mergeTeams` (`admin.ts:255`) löscht Teilnehmerzeilen mit `paidCents > 0` ohne Erstattung oder Neuberechnung (nur Admin, vorbestehend) | offen |
 | 18 | Gratis-Spiel ohne `settledAt` schickt bei jedem Job-Takt `pg_notify` bis zum Anstoß | offen (niedrig) |
-| 19 | Der Job berechnet "due" unter der Sperre nicht neu (nur theoretisch) | offen (niedrig) |
+| 19 | Der Job berechnet "due" unter der Sperre nicht neu (nur theoretisch) | erledigt (PR 65: dueOf unter Sperre) |
 | 20 | Fehlermeldung in `finalConfirm`, wenn `settleMatch` false liefert, ist irreführend, wenn nur der Status ungleich `confirmed` der Grund ist | offen (niedrig) |
 | 21 | Teamspiel-Fixierprüfung `fixShare` mit `short > 0` hat keinen eigenen Test | offen (niedrig) |
 | 22 | Texte im Altmodell anpassen (`LobbyClient.tsx:75` "reserviert … Rest zurück", Hilfe-Seite); PR 61 und PR 63 sind gemergt, der Task ist freigegeben | offen (niedrig) |
