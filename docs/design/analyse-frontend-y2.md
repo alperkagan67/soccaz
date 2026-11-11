@@ -4,13 +4,13 @@
 
 **Status: Degradiert: ja, Y2 gilt noch nicht als fertig.** Grund:
 - (a) `critique`, `audit`, `distill`, `clarify`, `adapt` haben keinen Launcher-Befehl; sie liefen je Seite einzeln und manuell nach den Reference-Dateien. Beim Hallenbetreiber hatte der erste Lauf die Reference-Dateien nur angelesen; das wurde bemängelt, die Dateien wurden danach vollständig gelesen und der Durchgang wiederholt (siehe Fundblatt Y2-H). Beim Overlay wurde die erste Aufnahme der Hintergrund-Variante (`_obs`) wiederholt, weil das Overlay seinen eigenen Hintergrund erzwingt; die acht `_obs`-Bilder wurden neu angesehen, die acht normalen Overlay-Bilder stammen aus der ersten Ansicht (Aufnahme wiederholt, Inhalt unverändert).
-- (b) `detect` lief über den Launcher auf Quelltext (0 Treffer) und auf fünf URLs je Handy und Desktop ohne Timeout (wenige Hinweise, Abschnitt Detect). Kontraste nur nach Augenmaß.
+- (b) Tatsächlicher Ablauf: Der Analyse-Leiter (nicht die Zell-Agenten) hat alle Bilder mit Playwright aufgenommen (ein Dev-Server, ein Browser, in Serie) und `detect` einmalig über den Launcher gestartet: auf Quelltext (0 Treffer) und auf fünf URLs je Handy und Desktop, ohne Anmeldung (nur Gast-Sicht), ohne Timeout. Es gab KEINEN `detect`-Lauf je Seite, Rolle und Gerät. Die fünf Zell-Agenten haben weder Browser noch Server noch `detect` genutzt, nur Bilder, Messwerte und Quelltext gelesen und keine weiteren Unter-Agents gestartet; `critique` lief deshalb ohne zwei isolierte Assessments (A und B). Kontraste nur nach Augenmaß.
 - (c) Nicht prüfbar: der echte Zahlungsbildschirm `/dev/pay/[id]` (liefert in dieser Umgebung 404, nur aus dem Quelltext bekannt), Liga-Beitritt und Profitag-Bewerbungsformular (nur für Team-Admins, nur aus Quelltext), Leerzustände von Ligen und Profitag, Dunkelmodus.
 - (d) Seed-Lücke: Der Seed enthält keine Ligen, Profitag-Ereignisse und Zahlungen. Für die Aufnahme wurden in der lokalen Worker-DB einzelne Testdatensätze ergänzt (zwei Ligen, ein Profitag-Ereignis mit drei Bewerbungen, eine ausstehende Test-Zahlung); sie gehören nicht zum Seed und gehen beim nächsten Aufräumen verloren.
 
-**Zähler:** angesehen 96 von 96 Screenshots (Gast, Spieler, Captain, Hallenbetreiber je 20 = 10 Seiten × Handy und Desktop; Overlay 16 = 4 Spiele × 2 Größen × normal und mit simuliertem Spielhintergrund), jede Zelle durch einen eigenen Sub-Agenten in Serie (ein Browser, ein Dev-Server).
+**Zähler:** angesehen 96 von 96 Screenshots (Gast, Spieler, Captain, Hallenbetreiber je 20 = 10 Seiten × Handy und Desktop; Overlay 16 = 4 Spiele × 2 Größen × normal und mit simuliertem Spielhintergrund), jede Zelle durch einen eigenen Sub-Agenten, die fünf Zell-Agenten nacheinander in Serie (Aufnahme durch den Analyse-Leiter mit einem Browser und einem Dev-Server).
 
-**Funde (Rohzählung):** 0 P0, 33 P1, 75 P2, 1 P3 (nur Vermerk), Summe 109. **MUSS WEG:** 27 Fundstellen-Zeilen (je Zelle, Ligen, Profitag und Stadt-Challenge als Produktfrage vorgemerkt, Entscheid beim Nutzer).
+**Funde (Rohzählung):** 0 P0, 33 P1, 75 P2, 1 P3 (nur Vermerk), Summe 109. **MUSS WEG:** 28 Zeilen, davon 25 echte Fundstellen (je Zelle; im Overlay sind die 3 Zeilen ein Negativbefund und zwei Hinweise auf Nachbarstellen, 0 echte); Ligen, Profitag und Stadt-Challenge als Produktfrage vorgemerkt, Entscheid beim Nutzer.
 
 **Die 10 schlimmsten Probleme:**
 1. **Hallen-Dashboard `/halle`** (Y2-H-01 bis -04, -23): nur eine Anfragenliste; gegenüber Vertrag 011 fehlen Buchungen, Auszahlungen, Rechnungen, Sperrzeiten, Antworten auf Bewertungen. Ablehnen ohne Begründung (011 AC-3 verlangt sie; aus Quelltext). Der Betreiber findet die Seite nicht (kein Eintrag in Navigation oder Menü), Hauptknöpfe nur 36 px hoch.
@@ -47,9 +47,11 @@ Stand: Basis `main` (034247c), Dev-Server Port 3103 mit `PAYMENTS_FAKE=1`, Seed 
 | Y2-G | Gast | Handy 390 x 844 und Desktop 1280 x 800 | 20 | 24 | 0 | 6 | 18 | 0 | 6 |
 | Y2-S | Spieler | Handy und Desktop | 20 | 22 | 0 | 7 | 15 | 0 | 6 |
 | Y2-C | Captain (Team-Admin) | Handy und Desktop | 20 | 26 | 0 | 8 | 18 | 0 | 7 |
-| Y2-H | Hallenbetreiber | Handy und Desktop | 20 | 24 | 0 | 9 | 15 | 0 | 5 |
-| Y2-O | Streamer (Overlay, ohne Login) | 1280 x 800 und OBS 1920 x 1080 | 16 | 13 | 0 | 3 | 9 | 1 | 3 |
-| **Summe** | | | **96** | **109** | **0** | **33** | **75** | **1** | **27** |
+| Y2-H | Hallenbetreiber | Handy und Desktop | 20 | 24 | 0 | 9 | 15 | 0 | 6 |
+| Y2-O | Streamer (Overlay, ohne Login) | 1280 x 800 und OBS 1920 x 1080 | 16 | 13 | 0 | 3 | 9 | 1 | 3 (0 echte) |
+| **Summe** | | | **96** | **109** | **0** | **33** | **75** | **1** | **28** (25 echte) |
+
+MUSS-WEG-Zeilen: 28 Zeilen, davon 25 echte Fundstellen; die 3 Overlay-Zeilen sind ein Negativbefund („keine Fundstelle“) und zwei Hinweise auf Nachbarstellen (Kopf mit Guthaben, Stream-Formular), also 0 echte Overlay-Stellen.
 
 Priorität: P0 Bedienung kaputt, P1 verwirrend, P2 Optik. Kennungen: G = Gast, S = Spieler, C = Captain, H = Hallenbetreiber, O = Streamer (Overlay). Viele Funde wiederholen sich je Rolle und Gerät und verweisen aufeinander.
 
@@ -65,14 +67,14 @@ Nicht Teil von Y2: Gruppe X, Y1 und alle `/admin`-Seiten. Nicht prüfbar: siehe 
 
 1. Seed `seed-frontend` plus lokal ergänzte Testdaten für Ligen, Profitag und Dev-Pay. Dev-Server nur auf Port 3103 (`PAYMENTS_FAKE=1`), Dev-Login nur in Nicht-Produktion.
 2. Playwright (Chromium), je Rolle und Gerät Ganzseiten-Screenshot mit 1,8 s Wartezeit plus Messwerte (Überlauf, `h1`, Zielgrößen unter 44 px, Konsolenfehler, Höhe). Overlay als Viewport-Bild, zusätzlich mit simuliertem Spielhintergrund (Verlauf). Screenshots nur lokal außerhalb des Repos.
-3. Impeccable nur über den Launcher (`detect`, `context`). Nie `hooks`, `install`, `update`.
-4. Fünf Sub-Agent-Durchläufe in Serie (je Zelle einer). Je Zelle: alle Bilder einzeln, fünf Durchgänge je Seite einzeln, Quelltext für Erklärungen und Zustände, die das Bild nicht zeigt (als „aus Quelltext“ markiert). Y2 wird nur geprüft und auf MUSS WEG vorgemerkt, nicht umgebaut.
+3. Impeccable nur über den Launcher: `detect` (vom Analyse-Leiter, siehe Abschnitt Detect); `context` wurde nicht ausgeführt. Nie `hooks`, `install`, `update`.
+4. Fünf Sub-Agent-Durchläufe in Serie (je Zelle einer; die Zell-Agenten starteten keine weiteren Agents und nutzten weder Browser noch `detect`). Je Zelle: alle Bilder einzeln, fünf Durchgänge je Seite einzeln, Quelltext für Erklärungen und Zustände, die das Bild nicht zeigt (als „aus Quelltext“ markiert). Y2 wird nur geprüft und auf MUSS WEG vorgemerkt, nicht umgebaut.
 
 ## Detect (Launcher, nur lesend)
 
 - Quelltext `src/app/rangliste`, `ligen`, `halle`, `hallen`, `profitag`, `overlay`, `dev`: 0 Treffer.
 - URL: `/rangliste` Handy `straggler` und `overused-font`, Desktop `overused-font`; `/ligen`, `/ligen/[id]`, `/profitag`: `overused-font`; `/hallen` (Handy und Desktop): `low-contrast` und `overused-font`.
-- Kein Timeout. `/halle`, `/overlay` und `/dev/pay` nicht per URL gescannt (Anmeldung nötig bzw. Overlay ohne App-Rahmen); dort Quelltext und Bildprüfung.
+- Ausgeführt vom Analyse-Leiter (nicht von den Zell-Agenten); nur Quelltext und URLs ohne Anmeldung (Gast-Sicht), kein Lauf je Rolle und Gerät. Kein Timeout. `/halle`, `/overlay` und `/dev/pay` nicht per URL gescannt (Anmeldung nötig bzw. Overlay ohne App-Rahmen); dort Quelltext und Bildprüfung.
 
 ## Funde je Zelle
 
@@ -181,7 +183,7 @@ Zählung: P0 0, P1 7 (01 bis 07), P2 15 (08 bis 22).
 | Y2-H-06 | P1 | /halle | Texte: "geeinigt", "Veto", "frei/belegt" ohne Erklärung; Vertrag 011 spricht von Zusage/Ablehnung. Die Antwortfrist (Quelltext Z. 29) ist text-xs, obwohl Zeitdruck die wichtigste Information ist (clarify: Fakt zuerst, Konsequenz nennen); die Folge "gilt als belegt" bleibt unscharf gegenüber 011 ("abgelehnt", Captains werden benachrichtigt). Erklärtext (3 Zeilen) wiederholt, was die Überschrift schon sagt. | halle_mobil_halle.png, halle_desktop_halle.png | clarify |
 | Y2-H-07 | P1 | /hallen/[id] | Aus Betreibersicht: Bewertungen nur lesbar, mit "Melden"; keine Antwortmöglichkeit (011 AC-6 fehlt). Stattdessen sieht der Betreiber das Formular "Deine Bewertung" (Sterne, Text, Senden) auch für die eigene Halle ohne Rollenhinweis (Comments.tsx Z. 44). | halle_desktop_halle_detail.png, halle_mobil_halle_detail.png | critique |
 | Y2-H-08 | P2 | /hallen/[id] | Keine Verbindung zum Betreiber-Bereich (kein Link "Zu den Anfragen"). Badge "Partner" klein (ca. 11 px), orangefarben auf Rosa, Kontrast knapp. | halle_desktop_halle_detail.png | clarify |
-| Y2-H-09 | P1 | Kopfzeile (Desktop, alle Seiten) | "0,00 EUR" (Guthaben-Link) im Kopf; Handy zeigt es nicht (hidden sm:inline). Header.tsx Z. 52-54. Für Betreiber sinnlos, im Zielbild (Karte statt Guthaben, Vertrag 012) MUSS WEG. | halle_desktop_halle.png, halle_desktop_hallen.png | distill |
+| Y2-H-09 | P1 | Kopfzeile (Desktop, alle Seiten) | "0,00 EUR" (Guthaben-Link) im Kopf; Handy zeigt es nicht (hidden sm:inline). Header.tsx Z. 53-55. Für Betreiber sinnlos, im Zielbild (Karte statt Guthaben, Vertrag 012) MUSS WEG. | halle_desktop_halle.png, halle_desktop_hallen.png | distill |
 | Y2-H-10 | P2 | /hallen/[id] Handy | Bewertungskarten: Name bricht in zwei Zeilen ("Elias" / "Testmann"), Datum "Mittwoch, 11. November 2026" ebenfalls; ungleiche Kopfzeile. Desktop einzeilig. (Navigationsüberdeckung ist Aufnahmeeffekt.) | halle_mobil_halle_detail.png | adapt |
 | Y2-H-11 | P2 | /hallen/[id] | Bewertungsformular mit nativer Auswahl "Sterne" und leerem Textfeld ohne Hilfe; "Melden" kleiner Textlink (unter 44 px, WCAG 2.5.8 mit 24 px Abstand wohl erfüllt). Standardoptik. | halle_desktop_halle_detail.png | audit |
 | Y2-H-12 | P2 | /hallen | Liste klar; Sternewert und "4 Bewertungen" rechts ca. 11 px; Filter braucht Knopf "Anzeigen"; OSM-Hinweis lang und klein. | halle_mobil_hallen.png, halle_desktop_hallen.png | audit |
@@ -266,7 +268,7 @@ Nur vormerken, kein Umbau. Produktfragen sind als "vormerken, Entscheid beim Nut
 
 | Seite | Wortlaut/Stelle | Beleg | Quelltext | Begründung |
 |---|---|---|---|---|
-| Kopf (alle, Desktop) | "0,00 EUR" Guthaben-Link | halle_desktop_halle.png | src/components/Header.tsx Z. 52-54 | Altmodell Guthaben; Vertrag 012: Karte statt Guthaben |
+| Kopf (alle, Desktop) | "0,00 EUR" Guthaben-Link | halle_desktop_halle.png | src/components/Header.tsx Z. 53-55 | Altmodell Guthaben; Vertrag 012: Karte statt Guthaben |
 | Benutzermenü | Eintrag Guthaben mit Betrag | (Menü nicht im Bild; aus Quelltext) | src/components/UserMenu.tsx Z. 69-71 | Altmodell Guthaben |
 | /dev/pay/[id] | gesamte Seite (hier nur "Seite nicht gefunden") | halle_mobil_dev_pay.png | src/app/dev/pay/[id]/page.tsx Z. 13-16 | Dev-Pay, nur lokal |
 | /ligen, /ligen/[id] | Ligen, Meister, Tabellen | halle_mobil_ligen.png, halle_mobil_liga_beendet.png | src/app/ligen/page.tsx Z. 31; src/app/ligen/[id]/page.tsx Z. 36 | Im Zielbild vermutlich entfallen; vormerken, Entscheid beim Nutzer |
@@ -291,7 +293,7 @@ Ergebnis: **0 echte MUSS-WEG-Stellen im Overlay** (2 Hinweiszeilen zu Nachbarste
 - /halle für Gast zeigt die Anmeldeseite; wie die Seite für Betreiber, Spieler, Captain aussieht, ist nicht Teil dieser Zelle.
 - /dev/pay: Der eigentliche Zahlungsbildschirm ist für Gast nicht sichtbar (404); Inhalt nur aus Quelltext.
 - Fokus, Tastatur, Hover, Bildschirmleser, Dunkelmodus: keine Bilder; nicht geprüft. Kontrastwerte nur nach Augenmaß (gedämpfte Schrift auf Hellgrün sieht in 12-px-Fußzeile grenzwertig aus, aber nicht gemessen).
-- Detector (`impeccable detect`) nicht ausgeführt; Sub-Agent-Trennung entfallen.
+- Kein eigener `detect`-Lauf der Zelle (der Analyse-Leiter hat `detect` auf Quelltext und fünf URLs ausgeführt, siehe Detect); keine isolierten Assessments A und B.
 - Das Overlay (`gast_d1280_*`, `gast_obs1920_*`) gehört nicht zu dieser Zelle.
 
 ### Lücken Y2-S
@@ -320,7 +322,7 @@ Ergebnis: **0 echte MUSS-WEG-Stellen im Overlay** (2 Hinweiszeilen zu Nachbarste
 - Mehrere Hallen je Betreiber, Zustand "keine Halle zugeordnet", Ladezustand: nicht sichtbar.
 - UserMenu offen, Benachrichtigungen, dunkle Variante, Tastatur, Fokus: nicht aufgenommen; Kontrast nur nach Augenmaß, nicht gemessen.
 - Betreiber-Antworten, Kalender, Buchungen, Rechnungen: nicht vorhanden, nur als Lücke.
-- Kein Detector-Lauf, keine Messung echter Zielgrößen jenseits der Messwertdatei.
+- Kein eigener Detector-Lauf der Zelle (siehe Detect), keine Messung echter Zielgrößen jenseits der Messwertdatei.
 - Leere-Zustände von Ligen/Profitag: nicht geprüft.
 
 ### Lücken Y2-O
@@ -344,7 +346,7 @@ Je Zelle: Kopf (Zähler, Bildliste, Degradiert-Vermerk), Durchgänge je Seite mi
 - Zelle: Y2-G, Rolle Gast (nicht angemeldet), Geräte Handy und Desktop.
 - Zähler: angesehen 20 von 20.
 - Dateien: gast_mobil_rangliste.png, gast_mobil_ligen.png, gast_mobil_liga_aktiv.png, gast_mobil_liga_beendet.png, gast_mobil_halle.png, gast_mobil_hallen.png, gast_mobil_halle_detail.png, gast_mobil_profitag.png, gast_mobil_profitag_event.png, gast_mobil_dev_pay.png, gast_desktop_rangliste.png, gast_desktop_ligen.png, gast_desktop_liga_aktiv.png, gast_desktop_liga_beendet.png, gast_desktop_halle.png, gast_desktop_hallen.png, gast_desktop_halle_detail.png, gast_desktop_profitag.png, gast_desktop_profitag_event.png, gast_desktop_dev_pay.png. Keines fehlte, keines leer oder kaputt.
-- Degradiert: ja (manuell nach Reference). Die fünf Befehle critique, audit, distill, clarify, adapt wurden einzeln nach den Reference-Dateien durchlaufen, aber ohne Sub-Agents (Assessment A und B nicht isoliert), ohne `impeccable detect` und ohne Browser (Auftrag: kein Server, kein Browser). Audit stützt sich auf Bilder, Messwerte und Quelltext, Kontrastwerte sind geschätzt (Augenmaß), nicht gemessen. Gelesen: critique, audit, distill, clarify, adapt, PRODUCT.md, DESIGN.md, Vertrag 013.
+- Degradiert: ja (manuell nach Reference). Die fünf Befehle critique, audit, distill, clarify, adapt wurden einzeln nach den Reference-Dateien durchlaufen, aber ohne weitere Unter-Agents (Assessment A und B nicht isoliert; die Zelle war selbst ein Sub-Agent), ohne eigenen `detect`-Lauf und ohne eigenen Browser (Aufnahme und `detect` siehe Methodik und Detect, durch den Analyse-Leiter) (Auftrag: kein Server, kein Browser). Audit stützt sich auf Bilder, Messwerte und Quelltext, Kontrastwerte sind geschätzt (Augenmaß), nicht gemessen. Gelesen: critique, audit, distill, clarify, adapt, PRODUCT.md, DESIGN.md, Vertrag 013.
 - Hinweis: Testdaten (Name "Testmann", Seed-Teams, gleiche Bewertungsdaten) sind Seed, kein Fund. Ein Nutzer-Befund "Standardoptik" gilt dem Look: Hell-Theme mit Orange passt zu Richtung E, die Seiten wirken aber wie ein generisches Karten-Listen-Muster (eine Kartenform für alles).
 
 #### Durchgänge
@@ -380,7 +382,7 @@ angesehen 20 von 20
 - Zelle: Y2-S, Rolle Spieler, Geräte Handy und Desktop.
 - Zähler: angesehen 20 von 20.
 - Dateien: spieler_mobil_rangliste.png, spieler_mobil_ligen.png, spieler_mobil_liga_aktiv.png, spieler_mobil_liga_beendet.png, spieler_mobil_halle.png, spieler_mobil_hallen.png, spieler_mobil_halle_detail.png, spieler_mobil_profitag.png, spieler_mobil_profitag_event.png, spieler_mobil_dev_pay.png, spieler_desktop_rangliste.png, spieler_desktop_ligen.png, spieler_desktop_liga_aktiv.png, spieler_desktop_liga_beendet.png, spieler_desktop_halle.png, spieler_desktop_hallen.png, spieler_desktop_halle_detail.png, spieler_desktop_profitag.png, spieler_desktop_profitag_event.png, spieler_desktop_dev_pay.png. Keines fehlte, keines leer oder kaputt.
-- Degradiert: ja (manuell nach Reference). Die fünf Befehle wurden je Seite einzeln nach den Reference-Dateien durchlaufen, aber ohne Sub-Agents (Assessment A und B nicht isoliert), ohne `impeccable detect` und ohne Browser (Auftrag: nur lesen, kein Server). Audit stützt sich auf Bilder, Messwerte und Quelltext; Kontrast nur nach Augenmaß. Gelesen: critique, audit, distill, clarify, adapt, PRODUCT.md, DESIGN.md, Vertrag 013.
+- Degradiert: ja (manuell nach Reference). Die fünf Befehle wurden je Seite einzeln nach den Reference-Dateien durchlaufen, aber ohne weitere Unter-Agents (Assessment A und B nicht isoliert; die Zelle war selbst ein Sub-Agent), ohne eigenen `detect`-Lauf und ohne eigenen Browser (Aufnahme und `detect` siehe Methodik und Detect, durch den Analyse-Leiter) (Auftrag: nur lesen, kein Server). Audit stützt sich auf Bilder, Messwerte und Quelltext; Kontrast nur nach Augenmaß. Gelesen: critique, audit, distill, clarify, adapt, PRODUCT.md, DESIGN.md, Vertrag 013.
 - Doppelungen mit dem Gast (Fußzeile, Navigation, ISO-Datum, Rangliste-Länge, Einheitsoptik, Hallenliste) sind mit Verweis auf `fund_gast.md` (Y2-G-NN) gehalten; eigene Funde stehen nur dort, wo mein Bild etwas Eigenes zeigt. Testdaten (Name "Testmann", Seed-Teams) sind kein Fund.
 - Was sich gegenüber dem Gast ändert: Kopfleiste mit Glocke, "0,00 €" (nur Desktop) und Nutzermenü "Anton"; `/halle` zeigt statt Anmeldung eine Betreiberseite (leer); `/dev/pay/[id]` zeigt 404 statt Anmeldung; Profitag-Event zeigt "Nur Team-Admins können sich bewerben"; Halle-Detail zeigt Bewertungsformular und eigene Bewertung mit "Löschen"; Liga zeigt keinen Beitrittskasten.
 
@@ -417,7 +419,7 @@ Alle Durchgänge: Degradiert: ja (manuell nach Reference). Ein Eintrag gilt für
 - Dateien Handy: captain_mobil_rangliste.png, captain_mobil_ligen.png, captain_mobil_liga_aktiv.png, captain_mobil_liga_beendet.png, captain_mobil_halle.png, captain_mobil_hallen.png, captain_mobil_halle_detail.png, captain_mobil_profitag.png, captain_mobil_profitag_event.png, captain_mobil_dev_pay.png.
 - Dateien Desktop: captain_desktop_rangliste.png, captain_desktop_ligen.png, captain_desktop_liga_aktiv.png, captain_desktop_liga_beendet.png, captain_desktop_halle.png, captain_desktop_hallen.png, captain_desktop_halle_detail.png, captain_desktop_profitag.png, captain_desktop_profitag_event.png, captain_desktop_dev_pay.png.
 - Gelesen: critique.md, audit.md, distill.md, clarify.md, adapt.md, PRODUCT.md, DESIGN.md, Vertrag 013; Messwerte beider Geräte; Quelltext der Seiten (Zeilen siehe Funde).
-- **Degradiert: ja (manuell nach Reference).** Grund: kein Browser und kein Detector-Lauf erlaubt, keine zwei isolierten Sub-Agents für critique (Assessment A und B); Bewertung nur aus Bildern, Messwerten und Quelltext. Kein `impeccable detect` ausgeführt.
+- **Degradiert: ja (manuell nach Reference).** Grund: kein eigener Browser und kein eigener Detector-Lauf der Zelle (siehe Detect, durch den Analyse-Leiter), keine zwei isolierten Assessments für critique (A und B); Bewertung nur aus Bildern, Messwerten und Quelltext. Kein `detect` in der Zelle ausgeführt (Analyse-Leiter: siehe Detect).
 - Gesamteindruck: Alle Seiten sind einheitliche flache Karten auf grauem Grund mit einem orangen Knopf. Das ist ruhig, aber ohne Teamfarbe, ohne Trikot-Charakter (Richtung E) und ohne erkennbare Captain-Funktion. Was sich gegenüber Gast und Spieler ändert, ist fast unsichtbar: Der Team-Admin bekommt nur bei Liga (Abmelden) und Profi-Tag (Bewerbungsformular, hier nicht sichtbar) ein Extra, und beides ist nirgends verlinkt.
 
 #### Durchgänge
@@ -451,7 +453,7 @@ Degradiert: ja (manuell nach Reference), für alle Zeilen.
 - Zelle: Y2-H, Rolle Hallenbetreiber (Betreiber von "Seed-Halle Nord"), Geräte Handy und Desktop.
 - Zähler: angesehen 20 von 20.
 - Dateien (alle einzeln mit Read angesehen, keine leer/kaputt): halle_mobil_rangliste, halle_mobil_ligen, halle_mobil_liga_aktiv, halle_mobil_liga_beendet, halle_mobil_halle, halle_mobil_hallen, halle_mobil_halle_detail, halle_mobil_profitag, halle_mobil_profitag_event, halle_mobil_dev_pay, dieselben zehn mit Präfix halle_desktop_ (je .png).
-- Degradiert: ja (manuell nach Reference). Grund: kein Browser, kein Detector, keine Sub-Agents, Durchgänge im selben Kontext; die Befehle wurden je Seite einzeln und von Hand nach den Reference-Dateien durchlaufen.
+- Degradiert: ja (manuell nach Reference). Grund: kein eigener Browser, kein eigener Detector-Lauf der Zelle, keine weiteren Unter-Agents (die Zelle war selbst ein Sub-Agent), die fünf Durchgänge je Seite nacheinander im Kontext dieser Zelle; die Befehle wurden je Seite einzeln und von Hand nach den Reference-Dateien durchlaufen.
 - Nachgeholt (Korrektur zur ersten Fassung): Die erste Fassung entstand, nachdem ich die Reference-Dateien nur in den ersten ca. 6000 Zeichen gelesen hatte. Jetzt vollständig gelesen: critique.md (820 Zeilen), audit.md, distill.md, clarify.md, adapt.md, PRODUCT.md, DESIGN.md; die Durchgänge wurden danach neu bewertet. Änderungen: Schweregrade nach der Definition (P0 = verhindert Aufgabe, P1 = WCAG-AA-Verstoß/erhebliche Verwirrung) neu vergeben (die zwei P0 sind P1 geworden, weil der Kern-Weg Anfrage bestätigen mit den Bildern/Quelltext nicht kaputt, sondern unvollständig ist); neue Funde -23 und -24; Heuristik-Werte, Personen-Warnungen und Positives ergänzt (Abschnitt 3); Vertrag-011-Lücken in eigener Tabelle (Abschnitt 3b).
 - Wichtig: Im Bild zeigt /halle den LEEREN Zustand. Der Anfragen-Zustand (Karten mit "Halle ist frei"/"Halle ist belegt") ist nur "aus Quelltext" prüfbar (src/app/halle/page.tsx).
 
@@ -500,7 +502,7 @@ Degradiert: ja (manuell nach Reference), für alle Zeilen.
 - Zähler: **angesehen 16 von 16** (jedes Bild einzeln mit Read geöffnet; nach der Neuaufnahme alle 8 `_obs`-Bilder erneut einzeln angesehen, die 8 normalen Bilder sind laut Prüfsumme unverändert und wurden im ersten Durchgang einzeln angesehen).
 - Dateien: gast_d1280_overlay_gespielt.png, gast_d1280_overlay_gespielt_obs.png, gast_d1280_overlay_bestaetigt.png, gast_d1280_overlay_bestaetigt_obs.png, gast_d1280_overlay_lobby.png, gast_d1280_overlay_lobby_obs.png, gast_d1280_overlay_privat.png, gast_d1280_overlay_privat_obs.png, gast_obs1920_overlay_gespielt.png, gast_obs1920_overlay_gespielt_obs.png, gast_obs1920_overlay_bestaetigt.png, gast_obs1920_overlay_bestaetigt_obs.png, gast_obs1920_overlay_lobby.png, gast_obs1920_overlay_lobby_obs.png, gast_obs1920_overlay_privat.png, gast_obs1920_overlay_privat_obs.png.
 - Gelesen bis Dateiende: critique.md (819 Zeilen), audit.md, distill.md, clarify.md, adapt.md, PRODUCT.md, DESIGN.md, Vertrag 013; dazu Quelltext `src/app/overlay/[id]/page.tsx`, `LiveIndicator.tsx`, `globals.css` (`.force-dark`), `layout.tsx`, `not-found.tsx`, `StreamForm.tsx`.
-- **Degradiert: ja (manuell nach Reference)**. Grund: kein Sub-Agent für zwei isolierte Assessments, kein Detector-Lauf, kein Browser (Auftrag verbietet Server/Browser). Alle fünf Befehle manuell nach Reference-Datei, nur anhand Bilder, Messwerte und Quelltext.
+- **Degradiert: ja (manuell nach Reference)**. Grund: keine zwei isolierten Assessments (die Zelle startete keine weiteren Agents), kein eigener Detector-Lauf, kein eigener Browser (Auftrag verbietet Server/Browser; Aufnahme und `detect` durch den Analyse-Leiter). Alle fünf Befehle manuell nach Reference-Datei, nur anhand Bilder, Messwerte und Quelltext.
 - Nachgeholt: Die `_obs`-Bilder wurden neu aufgenommen und zeigen jetzt den simulierten Spielhintergrund (grüner Verlauf, links oben dunkel, rechts unten hell); die Lesbarkeit über dem Hintergrund ist am Bild belegt (Fund -10).
 
 #### Durchgänge
