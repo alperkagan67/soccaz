@@ -87,7 +87,8 @@ Hallenbetreiber melden sich per Google an und bekommen einen eigenen Bereich nur
 Security-Review Pflicht (Rechte, Mandantentrennung). Betreiber sehen keine personenbezogenen Spielerdaten.
 
 ## Offene Fragen
-- (keine; alle vom Nutzer entschieden, siehe "Weitere Entscheidungen")
+- (sonst keine; alle vom Nutzer entschieden, siehe "Weitere Entscheidungen")
+- Turniere und Hallen-Zusage entscheiden (Produktfrage an Nutzer, bei 011 M2)
 
 ## End-to-End-Nachweis
 `tests/e2e/hallen-dashboard.spec.ts`: Admin 1 ordnet zu, Betreiber meldet sich an, bestätigt eine Anfrage und lehnt eine mit Begründung ab, sieht Rechnung, antwortet auf eine Bewertung; Beweisprotokoll-PDF zeigt beide Entscheidungen.

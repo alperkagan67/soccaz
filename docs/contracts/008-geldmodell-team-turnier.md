@@ -40,7 +40,7 @@ Teamspiel und Turnier rechnen wie das Privatspiel (Vertrag 006): Jeder zahlt Mie
 ## Turnier (v5, Entscheide des Orchestrators zu M3b)
 - Die "Buchung" des Turniers ist die Bracket-Erzeugung. Sie entsteht wie bisher sofort nach der letzten Zahlung und dem letzten "Bereit", auch bei langem Vorlauf und nicht erst zur 48-h-Frist. Das Geld liegt im eigenen Konto "tournament" und wird erst beim Abschluss des Turniers ausgezahlt. Danach ist der Kader gesperrt: `leavePlayer` und `withdraw` gehen nur in der Anmeldung (Status registration/payment ohne Bracket). Beim Escrow (E10, Backlog 16) ist das Konto "tournament" mitzudenken.
 - Ausnahme zu "danach keine Absage": `cancelTournament` (Notausstieg des Veranstalters) bleibt, mit Vollerstattung bis zum ersten Ergebnis.
-- Karenz 12 h ab der Preisfestlegung (Audit `tournament.price`): Ein erst kurz vor der Frist vollständiges Turnier wird nicht abgesagt, bevor jemand zahlen konnte. Ein Hallen-Veto gibt es im Turnier nicht; die Zusage-Bedingung der Halle (v4) gilt im Turnier nicht.
+- Karenz 12 h ab der Preisfestlegung (Audit `tournament.price`): Ein erst kurz vor der Frist vollständiges Turnier wird nicht abgesagt, bevor jemand zahlen konnte. Ein Hallen-Veto gibt es im Turnier nicht; die Zusage-Bedingung der Halle (v4) gilt im Turnier nicht. Turnier ohne Hallen-Zusage in dieser Stufe (Orchestrator bestaetigt), Entscheid mit 011 M2.
 - Altturniere (Anmeldeschluss später als 48 h vor dem Start) übernimmt der Job nicht: keine Markierung, keine Migration. Turniere mit einem Vorlauf unter 48 h erfasst der 1-h-Abbruch auch rückwirkend.
 - Umsetzung im Code: `closeTournamentsAtDeadline` (Status registration oder payment, ohne Bracket).
 
