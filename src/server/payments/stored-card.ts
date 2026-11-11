@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, paymentProfiles, paymentSetupIntents, users } from "@/db/schema";
 import { DomainError } from "../teams";
 import { cardModeActive } from "../wallet";
-import { BUSY_MESSAGE, MANDATE_TEXT, SETUP_LIMIT_PER_HOUR } from "./card-setup";
+import { BUSY_MESSAGE, isLockTimeout, MANDATE_TEXT, SETUP_LIMIT_PER_HOUR } from "./card-setup";
 import { getPaymentProvider } from "./provider";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,7 +28,8 @@ export const storedMandateId = (matchId: string, userId: string) => `stored:${ma
  *   ohne Migration. Dann card_status = card_ready. Kein neues SetupIntent, keine Buchung, kein Ledger.
  * - Rate-Limit wie createCardSetup und nie blockierend (pg_try_advisory_xact_lock mit demselben Schlüssel). Idempotent: ein zweiter Aufruf ändert nichts.
  */
-export async function applyStoredCard(userId: string, matchId: string): Promise<{ alreadyReady: boolean }> {
+export async function applyStoredCard(userId: string, matchId: string, mandateAccepted: boolean): Promise<{ alreadyReady: boolean }> {
+  if (mandateAccepted !== true) throw new DomainError("Bitte stimme der Kartenzahlung zu."); // ausdrückliche Zustimmung, strikt true
   if (typeof matchId !== "string" || !UUID.test(matchId)) throw new DomainError("Du bist in diesem Spiel nicht angemeldet.");
   const [user] = await db.select({ id: users.id, bannedAt: users.bannedAt }).from(users).where(eq(users.id, userId));
   if (!user || user.bannedAt) throw new DomainError("Nutzer nicht gefunden.");
@@ -56,6 +57,15 @@ export async function applyStoredCard(userId: string, matchId: string): Promise<
   }
   if (!usable) throw new StoredCardInvalidError();
 
+  try {
+    return await storeMandate(userId, matchId, checkedMethod);
+  } catch (error) {
+    if (isLockTimeout(error)) throw new DomainError(BUSY_MESSAGE); // Spiel oder Platz war länger gesperrt: freundliche Meldung statt 500
+    throw error;
+  }
+}
+
+async function storeMandate(userId: string, matchId: string, checkedMethod: string): Promise<{ alreadyReady: boolean }> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`set local lock_timeout = '2s'`);
     const [lock] = (await tx.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${"card-setup:" + userId}, 0)) as ok`)).rows as { ok: boolean }[];
@@ -86,7 +96,8 @@ export async function applyStoredCard(userId: string, matchId: string): Promise<
     await tx
       .insert(paymentSetupIntents)
       .values({ id: storedMandateId(matchId, userId), userId, matchId, status: "succeeded", mandateText: MANDATE_TEXT, mandateAcceptedAt: new Date() })
-      .onConflictDoNothing();
+      // Austritt löscht den Platz, die Mandatszeile bleibt: beim Wiederbeitritt gilt der Nachweis des NEUEN Platzes (aktueller Text, aktueller Zeitpunkt)
+      .onConflictDoUpdate({ target: paymentSetupIntents.id, set: { status: "succeeded", mandateText: MANDATE_TEXT, mandateAcceptedAt: new Date() } });
     await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
     return { alreadyReady: false };
   });

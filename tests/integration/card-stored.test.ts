@@ -7,7 +7,7 @@ import { MANDATE_TEXT, SETUP_LIMIT_PER_HOUR } from "@/server/payments/card-setup
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { StoredCardInvalidError, storedMandateId, applyStoredCard } from "@/server/payments/stored-card";
-import { setReady } from "@/server/lobby";
+import { joinLobby, leaveLobby, setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
 import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -51,7 +51,7 @@ describe("gespeicherte Karte für den eigenen Platz", () => {
     const { u, pm } = await userWithCard();
     const m = await lobbyFor(u.id);
     const t0 = Date.now();
-    const r = await applyStoredCard(u.id, m.match.id);
+    const r = await applyStoredCard(u.id, m.match.id, true);
     expect(r.alreadyReady).toBe(false);
     expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("card_ready");
     const [row] = await rowsOf(u.id);
@@ -69,15 +69,15 @@ describe("gespeicherte Karte für den eigenen Platz", () => {
   it("zweiter Aufruf ist idempotent: keine zweite Zeile, Zeitpunkt bleibt, kein weiterer Stripe-Aufruf", async () => {
     const { u } = await userWithCard();
     const m = await lobbyFor(u.id);
-    await applyStoredCard(u.id, m.match.id);
+    await applyStoredCard(u.id, m.match.id, true);
     const first = (await rowsOf(u.id))[0];
-    const again = await applyStoredCard(u.id, m.match.id);
+    const again = await applyStoredCard(u.id, m.match.id, true);
     expect(again.alreadyReady).toBe(true);
     const rows = await rowsOf(u.id);
     expect(rows).toHaveLength(1);
     expect(rows[0].mandateAcceptedAt.getTime()).toBe(first.mandateAcceptedAt.getTime());
     expect(provider.calls.filter((c) => c.method === "isPaymentMethodUsable")).toHaveLength(1);
-    await Promise.allSettled([applyStoredCard(u.id, m.match.id), applyStoredCard(u.id, m.match.id), applyStoredCard(u.id, m.match.id)]);
+    await Promise.allSettled([applyStoredCard(u.id, m.match.id, true), applyStoredCard(u.id, m.match.id, true), applyStoredCard(u.id, m.match.id, true)]);
     expect(await rowsOf(u.id)).toHaveLength(1);
   });
 
@@ -85,8 +85,8 @@ describe("gespeicherte Karte für den eigenen Platz", () => {
     const { u } = await userWithCard();
     const a = await lobbyFor(u.id);
     const b = await lobbyFor(u.id);
-    await applyStoredCard(u.id, a.match.id);
-    await applyStoredCard(u.id, b.match.id);
+    await applyStoredCard(u.id, a.match.id, true);
+    await applyStoredCard(u.id, b.match.id, true);
     const rows = await rowsOf(u.id);
     expect(rows.map((r) => r.matchId).sort()).toEqual([a.match.id, b.match.id].sort());
   });
@@ -97,8 +97,8 @@ describe("Karte nicht nutzbar", () => {
     const { u, pm } = await userWithCard();
     const m = await lobbyFor(u.id);
     provider.setUsable(pm, false);
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toBeInstanceOf(StoredCardInvalidError);
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toThrow(/neu hinterlegen/);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toBeInstanceOf(StoredCardInvalidError);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toThrow(/neu hinterlegen/);
     expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("none");
     expect(await rowsOf(u.id)).toHaveLength(0);
   });
@@ -109,17 +109,17 @@ describe("Karte nicht nutzbar", () => {
     provider.isPaymentMethodUsable = async () => {
       throw new Error("Netz weg");
     };
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toBeInstanceOf(StoredCardInvalidError);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toBeInstanceOf(StoredCardInvalidError);
     expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("none");
   });
 
   it("ohne gespeicherte Karte: Fehler, kein Anbieteraufruf", async () => {
     const u = await makeUser("gkohne");
     const m = await lobbyFor(u.id);
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toBeInstanceOf(StoredCardInvalidError);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toBeInstanceOf(StoredCardInvalidError);
     expect(provider.calls).toHaveLength(0);
     await db.insert(paymentProfiles).values({ userId: u.id, stripeCustomerId: `cus_st_ohne_${seq++}` }); // Kunde, aber keine Karte
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toBeInstanceOf(StoredCardInvalidError);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toBeInstanceOf(StoredCardInvalidError);
     expect(provider.calls).toHaveLength(0);
   });
 
@@ -130,7 +130,7 @@ describe("Karte nicht nutzbar", () => {
       await db.update(paymentProfiles).set({ paymentMethodId: "pm_st_anders" }).where(eq(paymentProfiles.userId, u.id));
       return true;
     };
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toThrow(/geändert/);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toThrow(/geändert/);
     expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("none");
     expect(await rowsOf(u.id)).toHaveLength(0);
   });
@@ -141,7 +141,7 @@ describe("Rechte: nur der eigene Platz", () => {
     const owner = await userWithCard("gkowner");
     const stranger = await userWithCard("gkfremd");
     const m = await lobbyFor(owner.u.id);
-    await expect(applyStoredCard(stranger.u.id, m.match.id)).rejects.toThrow(/nicht angemeldet/);
+    await expect(applyStoredCard(stranger.u.id, m.match.id, true)).rejects.toThrow(/nicht angemeldet/);
     expect(await rowsOf(stranger.u.id)).toHaveLength(0);
     expect((await seatOf(m.match.id, owner.u.id)).cardStatus).toBe("none");
     expect(provider.calls).toHaveLength(0);
@@ -151,16 +151,16 @@ describe("Rechte: nur der eigene Platz", () => {
     const me = await userWithCard("gkich");
     const m = await lobbyFor(me.u.id);
     const other = await addPlayer(m.match.id, m.home.id, "gkandere");
-    await applyStoredCard(me.u.id, m.match.id);
+    await applyStoredCard(me.u.id, m.match.id, true);
     expect((await seatOf(m.match.id, other.id)).cardStatus).toBe("none");
   });
 
   it("ungültige Spiel-IDs werden sauber abgelehnt (kein Datenbankfehler)", async () => {
     const { u } = await userWithCard();
     for (const bad of ["abc", "", "1; drop table matches", "00000000-0000-0000-0000-00000000000g"]) {
-      await expect(applyStoredCard(u.id, bad), bad).rejects.toThrow(/nicht angemeldet/);
+      await expect(applyStoredCard(u.id, bad, true), bad).rejects.toThrow(/nicht angemeldet/);
     }
-    await expect(applyStoredCard(u.id, undefined as unknown as string)).rejects.toThrow(/nicht angemeldet/);
+    await expect(applyStoredCard(u.id, undefined as unknown as string, true)).rejects.toThrow(/nicht angemeldet/);
   });
 });
 
@@ -169,7 +169,7 @@ describe("nur im Kartenmodell", () => {
     const { u } = await userWithCard();
     const m = await lobbyFor(u.id);
     await setSetting(null, "card_payments_enabled", false);
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toThrow(/nicht per Karte/);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toThrow(/nicht per Karte/);
     expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("none");
     expect(await rowsOf(u.id)).toHaveLength(0);
   });
@@ -178,11 +178,11 @@ describe("nur im Kartenmodell", () => {
     const { u } = await userWithCard();
     const legacy = await makeMatch({ legacy: true });
     await db.insert(matchParticipants).values({ matchId: legacy.match.id, userId: u.id, teamId: legacy.home.id });
-    await expect(applyStoredCard(u.id, legacy.match.id)).rejects.toThrow(/nicht per Karte/);
+    await expect(applyStoredCard(u.id, legacy.match.id, true)).rejects.toThrow(/nicht per Karte/);
 
     const paid = await lobbyFor(u.id);
     await db.update(matchParticipants).set({ paidCents: 800 }).where(and(eq(matchParticipants.matchId, paid.match.id), eq(matchParticipants.userId, paid.adminA.id)));
-    await expect(applyStoredCard(u.id, paid.match.id)).rejects.toThrow(/nicht per Karte/);
+    await expect(applyStoredCard(u.id, paid.match.id, true)).rejects.toThrow(/nicht per Karte/);
     expect((await seatOf(paid.match.id, u.id)).cardStatus).toBe("none");
     expect(await rowsOf(u.id)).toHaveLength(0);
   });
@@ -191,10 +191,10 @@ describe("nur im Kartenmodell", () => {
     const { u } = await userWithCard();
     const m = await lobbyFor(u.id);
     await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, m.match.id));
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toThrow(/nicht mehr offen/);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toThrow(/nicht mehr offen/);
     const past = await lobbyFor(u.id);
     await db.update(matches).set({ startsAt: new Date(Date.now() - 60_000) }).where(eq(matches.id, past.match.id));
-    await expect(applyStoredCard(u.id, past.match.id)).rejects.toThrow(/nicht mehr offen/);
+    await expect(applyStoredCard(u.id, past.match.id, true)).rejects.toThrow(/nicht mehr offen/);
   });
 });
 
@@ -203,7 +203,7 @@ describe("Begrenzung und Sperre", () => {
     const { u } = await userWithCard();
     const m = await lobbyFor(u.id);
     await db.insert(paymentSetupIntents).values(Array.from({ length: SETUP_LIMIT_PER_HOUR }, (_, i) => ({ id: `seti_st_lim_${u.id}_${i}`, userId: u.id, mandateText: MANDATE_TEXT, mandateAcceptedAt: new Date() })));
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toThrow(/Zu viele/);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toThrow(/Zu viele/);
     expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("none");
   });
 
@@ -221,11 +221,11 @@ describe("Begrenzung und Sperre", () => {
     });
     await heldP;
     const t0 = Date.now();
-    await expect(applyStoredCard(u.id, m.match.id)).rejects.toThrow(/einen Moment warten/);
+    await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toThrow(/einen Moment warten/);
     expect(Date.now() - t0).toBeLessThan(1500);
     release();
     await holder;
-    expect((await applyStoredCard(u.id, m.match.id)).alreadyReady).toBe(false); // danach frei
+    expect((await applyStoredCard(u.id, m.match.id, true)).alreadyReady).toBe(false); // danach frei
   });
 });
 
@@ -235,8 +235,8 @@ describe("Hauptbuch", () => {
     const games = [await lobbyFor(u.id), await lobbyFor(u.id)];
     const before = (await db.select().from(ledgerEntries).where(inArray(ledgerEntries.matchId, games.map((g) => g.match.id)))).length;
     for (const g of games) {
-      await applyStoredCard(u.id, g.match.id);
-      await applyStoredCard(u.id, g.match.id);
+      await applyStoredCard(u.id, g.match.id, true);
+      await applyStoredCard(u.id, g.match.id, true);
     }
     expect((await db.select().from(ledgerEntries).where(inArray(ledgerEntries.matchId, games.map((g) => g.match.id)))).length).toBe(before);
     for (const g of games) expect((await seatOf(g.match.id, u.id)).paidCents).toBe(0);
@@ -257,5 +257,83 @@ describe("StripeProvider.isPaymentMethodUsable (Stripe-Client ersetzt, kein Netz
     expect(await (await withPm({ customer: "cus_b", card: { exp_year: year + 1, exp_month: 1 } })).isPaymentMethodUsable("pm_x", "cus_a")).toBe(false);
     expect(await (await withPm({ customer: "cus_a", card: { exp_year: year - 1, exp_month: 12 } })).isPaymentMethodUsable("pm_x", "cus_a")).toBe(false); // abgelaufen
     expect(await (await withPm({ customer: "cus_a", card: { exp_year: year, exp_month: 12 } })).isPaymentMethodUsable("pm_x", "cus_a")).toBe(true); // läuft Ende des Jahres ab: noch gültig
+  });
+});
+
+describe("Zustimmung zum Mandat (serverseitig, strikt true)", () => {
+  it("ohne mandateAccepted === true wird abgelehnt: kein card_ready, kein Stripe-Aufruf, keine Zeile", async () => {
+    const { u } = await userWithCard();
+    const m = await lobbyFor(u.id);
+    for (const bad of [false, undefined, null, "true", 1, "ja"]) {
+      await expect(applyStoredCard(u.id, m.match.id, bad as unknown as boolean), String(bad)).rejects.toThrow(/stimme/);
+    }
+    expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("none");
+    expect(await rowsOf(u.id)).toHaveLength(0);
+    expect(provider.calls).toHaveLength(0);
+  });
+});
+
+describe("Mandat gehört zum aktuellen Platz und zum aktuellen Text", () => {
+  it("Austritt löscht den Platz; beim Wiederbeitritt gilt ein NEUES Mandat mit neuem Zeitpunkt (eine Zeile, aktualisiert)", async () => {
+    const { u } = await userWithCard();
+    const m = await lobbyFor(u.id);
+    await applyStoredCard(u.id, m.match.id, true);
+    const first = (await rowsOf(u.id))[0];
+    await leaveLobby(u.id, m.match.id);
+    expect(await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, m.match.id), eq(matchParticipants.userId, u.id)))).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 20));
+    await joinLobby(u.id, m.match.id);
+    expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("none"); // neuer Platz, noch kein Mandat
+    await applyStoredCard(u.id, m.match.id, true);
+    const rows = await rowsOf(u.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(first.id);
+    expect(rows[0].mandateAcceptedAt.getTime()).toBeGreaterThan(first.mandateAcceptedAt.getTime());
+    expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("card_ready");
+  });
+
+  it("geänderter Mandatstext: der Nachweis des neuen Platzes trägt den aktuellen Text (alter Text wird ersetzt)", async () => {
+    const { u } = await userWithCard();
+    const m = await lobbyFor(u.id);
+    await applyStoredCard(u.id, m.match.id, true);
+    await db.update(paymentSetupIntents).set({ mandateText: "Alter Text einer früheren Fassung", status: "failed" }).where(eq(paymentSetupIntents.id, storedMandateId(m.match.id, u.id)));
+    await db.update(matchParticipants).set({ cardStatus: "none" }).where(and(eq(matchParticipants.matchId, m.match.id), eq(matchParticipants.userId, u.id)));
+    await applyStoredCard(u.id, m.match.id, true);
+    expect((await rowsOf(u.id))[0]).toMatchObject({ mandateText: MANDATE_TEXT, status: "succeeded" });
+  });
+
+  it("ein zweiter Aufruf bei schon bereitem Platz verändert Text und Zeitpunkt nicht", async () => {
+    const { u } = await userWithCard();
+    const m = await lobbyFor(u.id);
+    await applyStoredCard(u.id, m.match.id, true);
+    const first = (await rowsOf(u.id))[0];
+    await new Promise((r) => setTimeout(r, 20));
+    await applyStoredCard(u.id, m.match.id, true);
+    expect((await rowsOf(u.id))[0].mandateAcceptedAt.getTime()).toBe(first.mandateAcceptedAt.getTime());
+  });
+});
+
+describe("lock_timeout wird zur freundlichen Meldung", () => {
+  it("ist das Spiel länger gesperrt (Zeilensperre), antwortet die Aktion nach dem lock_timeout mit 'Bitte einen Moment warten' statt eines 500ers; Platz bleibt none", async () => {
+    const { u } = await userWithCard();
+    const m = await lobbyFor(u.id);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const heldP = new Promise<void>((r) => (held = r));
+    const holder = db.transaction(async (tx) => {
+      await tx.select().from(matches).where(eq(matches.id, m.match.id)).for("update");
+      held();
+      await gate;
+    });
+    await heldP;
+    try {
+      await expect(applyStoredCard(u.id, m.match.id, true)).rejects.toThrow(/einen Moment warten/);
+    } finally {
+      release();
+      await holder;
+    }
+    expect((await seatOf(m.match.id, u.id)).cardStatus).toBe("none");
+    expect((await applyStoredCard(u.id, m.match.id, true)).alreadyReady).toBe(false); // danach frei
   });
 });
