@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { db } from "@/db";
-import { matchParticipants, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
+import { matchParticipants, paymentProfiles, paymentSetupIntents, stripeEvents, users } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { signStripePayload } from "@/lib/stripe-signature";
 import { createCardSetup, MANDATE_TEXT, SETUP_LIMIT_PER_HOUR } from "@/server/payments/card-setup";
@@ -298,15 +298,57 @@ describe("Rechte: nur für sich selbst, nie für Dritte", () => {
   });
 });
 
-describe("Parallele Aufrufe", () => {
-  it("15 gleichzeitige Einrichtungen: höchstens " + SETUP_LIMIT_PER_HOUR + " gelingen, nur ein Stripe-Kunde", async () => {
+describe("Parallele Aufrufe: nie warten, nie Verbindungen binden", () => {
+  it("15 gleichzeitige Einrichtungen: höchstens " + SETUP_LIMIT_PER_HOUR + " gelingen, der Rest kehrt sofort mit 'Bitte warten' oder dem Limit zurück; nach Wiederholung genau " + SETUP_LIMIT_PER_HOUR + ", ein Stripe-Kunde, ein Profil", async () => {
     const u = await makeUser("karteparallel");
     const results = await Promise.allSettled(Array.from({ length: 15 }, () => createCardSetup(u.id, { mandateAccepted: true })));
-    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(SETUP_LIMIT_PER_HOUR);
-    expect(results.filter((r) => r.status === "rejected")).toHaveLength(15 - SETUP_LIMIT_PER_HOUR);
+    const ok = results.filter((r) => r.status === "fulfilled").length;
+    expect(ok).toBeGreaterThanOrEqual(1);
+    expect(ok).toBeLessThanOrEqual(SETUP_LIMIT_PER_HOUR);
+    for (const r of results) if (r.status === "rejected") expect(String(r.reason.message)).toMatch(/einen Moment warten|Zu viele/);
+
+    // wer 'Bitte warten' bekam, wiederholt nacheinander, bis das Limit erreicht ist
+    for (let i = 0; i < 15; i++) await createCardSetup(u.id, { mandateAccepted: true }).catch(() => {});
     expect(await db.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.userId, u.id))).toHaveLength(SETUP_LIMIT_PER_HOUR);
+    await expect(createCardSetup(u.id, { mandateAccepted: true })).rejects.toThrow(/Zu viele/);
     expect(provider.calls.filter((c) => c.method === "createCustomer")).toHaveLength(1);
     expect(await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, u.id))).toHaveLength(1);
+  });
+
+  it("langsamer Anbieter: ein zweiter Aufruf desselben Nutzers kehrt sofort zurück, ohne zu warten und ohne Verbindung zu binden; danach ist alles frei", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    class SlowProvider extends FakeProvider {
+      override async createCustomer(input: { userId: string; email: string; idempotencyKey: string }) {
+        const r = await super.createCustomer(input);
+        await gate; // der Anbieter hängt
+        return r;
+      }
+    }
+    const slow = new SlowProvider();
+    setPaymentProviderForTests(slow);
+    const u = await makeUser("kartelangsam");
+
+    const first = createCardSetup(u.id, { mandateAccepted: true });
+    for (let i = 0; i < 100 && !slow.calls.some((c) => c.method === "createCustomer"); i++) await new Promise((r) => setTimeout(r, 20));
+    expect(slow.calls.some((c) => c.method === "createCustomer")).toBe(true); // der erste Aufruf hält die Sperre und hängt im Anbieter
+
+    const t0 = Date.now();
+    const burst = await Promise.allSettled(Array.from({ length: 12 }, () => createCardSetup(u.id, { mandateAccepted: true })));
+    expect(Date.now() - t0).toBeLessThan(1500); // sofort, nicht erst nach dem Anbieter oder dem lock_timeout
+    for (const r of burst) {
+      expect(r.status).toBe("rejected");
+      if (r.status === "rejected") expect(String(r.reason.message)).toMatch(/einen Moment warten/);
+    }
+    // die Datenbank ist trotz hängendem Anbieter frei (alle Verbindungen des Pools sind benutzbar)
+    const t1 = Date.now();
+    await Promise.all(Array.from({ length: 10 }, () => db.select({ id: users.id }).from(users).limit(1)));
+    expect(Date.now() - t1).toBeLessThan(1500);
+
+    release();
+    expect((await first).clientSecret).toBeTruthy();
+    expect((await createCardSetup(u.id, { mandateAccepted: true })).clientSecret).toBeTruthy(); // Sperre ist wieder frei
+    expect(slow.calls.filter((c) => c.method === "createCustomer")).toHaveLength(1);
   });
 });
 

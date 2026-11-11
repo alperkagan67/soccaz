@@ -1,6 +1,9 @@
 import Stripe from "stripe";
 import { PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type PaymentProvider, type ProviderEvent } from "./provider";
 
+/** Kürzere Grenzen für das Einrichten der Karte (läuft unter einer Datenbanktransaktion): höchstens etwa 16 Sekunden je Aufruf statt 45. */
+const SETUP_REQUEST = { timeout: 8_000, maxNetworkRetries: 1 } as const;
+
 type Config = { secretKey?: string; webhookSecret?: string };
 
 /** Echter Stripe-Client. Schlüssel werden erst beim ersten Aufruf gelesen (kein Absturz beim Build); fehlen sie, kommt PaymentsUnavailableError. */
@@ -17,14 +20,14 @@ export class StripeProvider implements PaymentProvider {
   }
 
   async createCustomer(input: { userId: string; email: string; idempotencyKey: string }) {
-    const c = await this.stripe().customers.create({ email: input.email, metadata: { userId: input.userId } }, { idempotencyKey: input.idempotencyKey });
+    const c = await this.stripe().customers.create({ email: input.email, metadata: { userId: input.userId } }, { idempotencyKey: input.idempotencyKey, ...SETUP_REQUEST });
     return { id: c.id };
   }
 
   async createSetupIntent(input: { customerId: string; userId: string; idempotencyKey: string }) {
     const si = await this.stripe().setupIntents.create(
       { customer: input.customerId, usage: "off_session", automatic_payment_methods: { enabled: true, allow_redirects: "never" }, metadata: { userId: input.userId } },
-      { idempotencyKey: input.idempotencyKey },
+      { idempotencyKey: input.idempotencyKey, ...SETUP_REQUEST },
     );
     if (!si.client_secret) throw new PaymentsUnavailableError();
     return { id: si.id, clientSecret: si.client_secret };

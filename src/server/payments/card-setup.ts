@@ -11,6 +11,8 @@ export const MANDATE_TEXT =
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export const BUSY_MESSAGE = "Bitte einen Moment warten, deine Karte wird gerade eingerichtet.";
+
 /** Höchstens so viele Karten-Einrichtungen je Nutzer und Stunde (Schutz vor Missbrauch der Stripe-Schnittstelle). */
 export const SETUP_LIMIT_PER_HOUR = 10;
 
@@ -40,7 +42,10 @@ export async function createCardSetup(userId: string, input: { matchId?: string;
   // Je Nutzer serialisiert (Advisory-Lock bis zum Ende der Transaktion): Begrenzung prüfen und Zeile einfügen sind ein Schritt, und der Stripe-Kunde wird
   // unter derselben Sperre höchstens einmal angelegt (der Idempotenzschlüssel bei Stripe verfällt nach 24 Stunden und wäre allein kein Schutz).
   const intent = await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"card-setup:" + userId}, 0))`);
+    // Nie warten: eine blockierende Sperre würde unter langsamem Stripe je wartendem Aufruf eine Datenbankverbindung binden und den Pool der App erschöpfen.
+    await tx.execute(sql`set local lock_timeout = '2s'`); // Sicherheitsnetz
+    const [lock] = (await tx.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${"card-setup:" + userId}, 0)) as ok`)).rows as { ok: boolean }[];
+    if (!lock.ok) throw new DomainError(BUSY_MESSAGE);
     const [recent] = await tx
       .select({ n: count() })
       .from(paymentSetupIntents)
