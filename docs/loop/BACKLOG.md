@@ -78,8 +78,9 @@ Umsetzungsreihenfolge Geldmodell und Verträge: 006/008 M3a/M3b, 007 M2/M3, Code
 | 42 | Aus dem Review von 012 M2b (zu M2b/M3): Eine Wiederholung mit neuem PaymentIntent für dieselbe Zeile wird als `other_payment_intent` ignoriert, sobald die Zeile an PI1 gebunden ist. Entweder denselben Schlüssel nutzen oder die Bindung bewusst lösen; Abgleich und Erstattung bei einem zweiten erfolgreichen PI | offen (mittel) |
 | 43 | Mindestbetrag-Oberfläche (012 AC-19): Die Lobby zeigt `cardShareCents` statt des angehobenen Betrags von 0,50 EUR; der Mandatstext nennt den Mindestbetrag noch nicht (Soll-Wortlaut „Mindestbetrag 0,50 EUR“) | offen (mittel) |
 | 44 | `FOR SHARE` in `claimNext` (`charge-run.ts`) hat keinen Zwei-Verbindungs-Test | offen (niedrig) |
-| 45 | Produktfrage: „Abbuchung fehlgeschlagen“ ist für alle Spieler der Lobby sichtbar (012 AC-12); nur dem Betroffenen und dem Captain zeigen? | offen (Produktfrage) |
-| 46 | Bei `failed` sieht der Spieler wieder „Karte hinterlegen“; die Oberfläche für das Nachzahlfenster kommt mit 012 M3 | offen (012 M3) |
+| 45 | Sichtbarkeit von „Abbuchung fehlgeschlagen“ (zuvor Produktfrage, für alle Spieler der Lobby sichtbar): ENTSCHIEDEN (Orchestrator): nur der Betroffene und der Captain (bzw. Veranstalter) sehen den Grund, alle anderen die neutrale rote Ampel „Zahlung ausstehend“; Umsetzung mit 012 M3, siehe AC-12 und AC-20 | entschieden (012 M3) |
+| 46 | Bei `failed` sieht der Spieler wieder „Karte hinterlegen“; die Oberfläche für das Nachzahlfenster kommt mit 012 M3 (Sichtbarkeit: AC-20) | offen (012 M3) |
 | 47 | 012 M2b-2: Absage- und Listensperre bei Abbuchungszeilen (Restfenster zwischen Beanspruchung und Stripe-Aufruf); Parameter-Mismatch `StripeIdempotencyError` behandeln; Frist im Auslöser prüfen; Nachzahl-Neuversuch nie mit neuem Schlüssel ohne vorherige Stripe-Suche (`attempt_expired`) | offen (mittel) |
+| 48 | `adminCancelMatch` (PR 83) auf die Rolle `owner` umstellen (Vertrag 009: Admin 1 = `owner`, Admin 2 = `admin`); heute prüft es `users.role === 'admin'`, weil `owner` im Schema noch nicht existiert. Admin 2 darf nur vorschlagen (012 AC-21) | offen (mit 009) |
 
 Status: offen / in Arbeit / fertig.
