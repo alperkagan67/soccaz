@@ -105,6 +105,7 @@ test("Dritte sehen nur die neutrale rote Ampel; Gäste sehen keinen Status und n
     expect(guest.html).not.toContain("data-card-status");
     expect(guest.html).not.toContain("data-card-light");
     expect(guest.html).not.toContain("card-light-legend");
+    expect(guest.rsc).not.toMatch(/"complete":true/); // Vollständigkeit der Teams liegt nur für das eigene Team im Payload
     for (const leak of LEAKS) {
       expect(guest.html, `HTML ${leak}`).not.toMatch(leak);
       expect(guest.rsc, `RSC ${leak}`).not.toMatch(leak);

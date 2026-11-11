@@ -71,6 +71,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
+  const myFinalTeamId = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null; // Team, für das der Betrachter bestätigen darf
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
   // Haben beide Captains bestätigt, ist die Spielübersicht die Hauptseite für alle Beteiligten
   if (finalDone && match.status !== "cancelled" && user && (v.participant || v.membershipTeamId || v.platformAdmin)) redirect(`/lobby/${match.id}/uebersicht`);
@@ -414,7 +415,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           matchId={match.id}
           paymentsOn={payments.enabled && !cardOn}
           minPlayers={MIN_READY_PER_TEAM}
-          myTeamId={[match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null}
+          myTeamId={myFinalTeamId}
           teams={[
             { id: match.homeId, name: match.homeName, final: match.homeFinalAt },
             { id: match.awayId, name: match.awayName, final: match.awayFinalAt },
@@ -422,7 +423,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             const list = participants.filter((p) => p.teamId === t.id);
             const paid = list.filter((p) => p.paid).length;
             const ready = list.filter((p) => p.ready).length;
-            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (cardOn ? teamCardsReady[t.id] === true : !payments.enabled || paid === list.length) };
+            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: t.id === myFinalTeamId && list.length >= MIN_READY_PER_TEAM && // nur für das eigene Team true: das andere Team liegt nie im Payload (auch nicht für Gäste)
+               ready === list.length && (cardOn ? teamCardsReady[t.id] === true : !payments.enabled || paid === list.length) };
           })}
         />
       )}
