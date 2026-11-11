@@ -6,6 +6,7 @@ import { teamStats } from "@/db/schema-community";
 import { ledgerEntries } from "@/db/schema-finance";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, fixDeadline } from "@/lib/deadlines";
+import { cancelUnderfilledLobbies } from "@/server/scheduled";
 import { creditWallet, debitWallet, trialBalance, walletBalance } from "@/server/ledger";
 import { confirmResult, decideResult, disputeResult, submitResult } from "@/server/results";
 import {
@@ -1171,5 +1172,45 @@ describe("Fristen (Vertrag 008 v4, M3b): 48-h-Frist, Sofortbuchung, 1-h-Abbruch"
     expect(await cancelAudits(t.id)).toBe(1);
     expect(await heldFor(t.id)).toBe(0);
     expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Fairness: Wird der Preis nach dem Lesen der Kandidaten, aber vor der Sperre festgelegt, gilt die neue Karenz: nicht abgesagt (fällig wird unter der Sperre neu berechnet)", async () => {
+    const o = await organizer();
+    const start = hours(49);
+    const t = await createTournament(o.id, { ...base, startsAt: start, registrationDeadline: hours(1) });
+    for (let i = 0; i < 4; i++) await squad(t.id, 4, i < 3); // das vierte Team ist noch nicht vollzählig: der Preis steht noch nicht fest
+    const now = new Date(fixDeadline(start).getTime() + 3_600_000); // die 48-h-Frist ist eine Stunde her; ohne Preis wäre das Turnier jetzt fällig
+    let job: Promise<number> | null = null;
+    await db.transaction(async (tx) => {
+      await tx.select().from(tournaments).where(eq(tournaments.id, t.id)).for("update"); // hält die Turniersperre: der Job liest die Kandidaten und wartet dann
+      job = closeTournamentsAtDeadline(now);
+      await new Promise((r) => setTimeout(r, 400));
+      await tx.insert(auditLog).values({ action: "tournament.price", entity: "tournament", entityId: t.id }); // der Preis wird im Fenster festgelegt
+    });
+    await job;
+    expect((await statusOf(t.id)).status).not.toBe("cancelled");
+  });
+
+  it("Empfänger der Absage: Veranstalter, Zahler (paidBy) und Spieler, jeweils genau einmal", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    const { players } = await pricedTournament(t, 4);
+    const payer = await makeUser("paidby"); // zahlt für einen Spieler, ist selbst nicht im Kader
+    await db.update(tournamentPlayers).set({ paidBy: payer.id }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, players[0].id)));
+    await closeTournamentsAtDeadline(fixDeadline((await statusOf(t.id)).startsAt!));
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+    const got = async (userId: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.title, "Turnier abgesagt"), eq(notifications.url, `/turniere/${t.id}`)))).length;
+    expect(await got(o.id)).toBe(1); // Veranstalter
+    expect(await got(payer.id)).toBe(1); // Zahler
+    for (const pl of players) expect(await got(pl.id), "Spieler genau einmal (nicht doppelt als Zahler)").toBe(1);
+  });
+
+  it("Cron-Einbindung: der Job lobby-deadlines (cancelUnderfilledLobbies) ruft die Turnier-Frist auf", async () => {
+    const o = await organizer();
+    const t = await newTournament(o);
+    await pricedTournament(t, 3);
+    const n = await cancelUnderfilledLobbies(fixDeadline((await statusOf(t.id)).startsAt!));
+    expect(n).toBeGreaterThanOrEqual(1);
+    expect((await statusOf(t.id)).status).toBe("cancelled");
   });
 });

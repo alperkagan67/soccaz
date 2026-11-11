@@ -613,16 +613,16 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
   let cancelled = 0;
   for (const c of candidates) {
     try {
-      const start = c.startsAt!;
-      const long = hasLongLead(start, c.createdAt);
-      if (long && (!c.registrationDeadline || c.registrationDeadline.getTime() > fixDeadline(start).getTime())) continue; // Altturnier: alte Regeln
-      const payOpenAt = await tournamentPayOpenAt(db, c);
-      const due = dueWithGrace(long ? fixDeadline(start) : abortDeadline(start), payOpenAt, start, c.createdAt);
-      if (due.getTime() > now.getTime()) continue;
+      // Vorprüfung ohne Sperre (billig); die Fälligkeit wird unter der Sperre neu berechnet, denn Preisfestlegung oder wieder geöffnete Kader
+      // im Fenster dazwischen verschieben die Karenz
+      const pre = await dueOf(db, c);
+      if (!pre || pre.due.getTime() > now.getTime()) continue;
       await db.transaction(async (tx) => {
         const t = await lockTournament(tx, c.id);
         if ((t.status !== "registration" && t.status !== "payment") || t.bracketGeneratedAt || !t.startsAt || t.startsAt.getTime() <= now.getTime()) return;
-        await cancelTournamentTx(tx, t, null, `${t.name} findet nicht statt: Zur Frist (${long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, bezahlt und bereit. Dein Eintritt wurde vollständig erstattet.`);
+        const locked = await dueOf(tx, t);
+        if (!locked || locked.due.getTime() > now.getTime()) return;
+        await cancelTournamentTx(tx, t, null, `${t.name} findet nicht statt: Zur Frist (${locked.long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, bezahlt und bereit. Dein Eintritt wurde vollständig erstattet.`);
         cancelled += 1;
       });
     } catch (error) {
@@ -630,6 +630,15 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
     }
   }
   return cancelled;
+}
+
+/** Fälligkeit der Frist eines Turniers (null = Altturnier oder ohne Start: der Job fasst es nicht an). */
+async function dueOf(exec: Pick<typeof db, "select">, t: Pick<T, "id" | "startsAt" | "createdAt" | "registrationDeadline">): Promise<{ due: Date; long: boolean } | null> {
+  if (!t.startsAt) return null;
+  const long = hasLongLead(t.startsAt, t.createdAt);
+  if (long && (!t.registrationDeadline || t.registrationDeadline.getTime() > fixDeadline(t.startsAt).getTime())) return null; // Altturnier: alte Regeln
+  const payOpenAt = await tournamentPayOpenAt(exec, t);
+  return { due: dueWithGrace(long ? fixDeadline(t.startsAt) : abortDeadline(t.startsAt), payOpenAt, t.startsAt, t.createdAt), long };
 }
 
 /** Ab wann kann bezahlt werden? Ab dem (letzten) Festlegen des Preises (Audit "tournament.price"), sonst ab der Anlage. */
