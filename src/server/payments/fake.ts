@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { signStripePayload, verifyStripeSignature } from "@/lib/stripe-signature";
-import { WebhookSignatureError, type CardDisplay, type PaymentProvider, type ProviderEvent } from "./provider";
+import { WebhookSignatureError, type CardDisplay, type ChargeResult, type PaymentProvider, type ProviderEvent } from "./provider";
+
+/** Steuerbarer Ausgang einer Abbuchung im FakeProvider. "error" wirft (Ergebnis unbekannt). */
+export type FakeChargeOutcome = "succeeded" | "declined" | "requires_action" | "processing" | "error";
 
 export const FAKE_WEBHOOK_SECRET = "whsec_fake_for_tests";
 const short = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 16);
@@ -12,6 +15,8 @@ export class FakeProvider implements PaymentProvider {
   private readonly cards = new Map<string, CardDisplay>();
   private readonly detached = new Set<string>();
   private readonly unusable = new Set<string>();
+  private readonly outcomes = new Map<string, FakeChargeOutcome>();
+  private readonly fees = new Map<string, number | null>();
   constructor(private readonly webhookSecret = FAKE_WEBHOOK_SECRET) {}
 
   async createCustomer(input: { userId: string; email: string; idempotencyKey: string }) {
@@ -44,6 +49,41 @@ export class FakeProvider implements PaymentProvider {
   setUsable(id: string, usable: boolean) {
     if (usable) this.unusable.delete(id);
     else this.unusable.add(id);
+  }
+
+  /** Test-Hilfe: Ausgang der nächsten Abbuchungen je Nutzer (Standard succeeded). */
+  setChargeOutcome(userId: string, outcome: FakeChargeOutcome) {
+    this.outcomes.set(userId, outcome);
+  }
+
+  /** Test-Hilfe: echte Gebühr je PaymentIntent (oder für alle, Standard null = noch nicht verfügbar). */
+  setFee(paymentIntentId: string | "*", fee: number | null) {
+    this.fees.set(paymentIntentId, fee);
+  }
+
+  /** Test-Hilfe: Wird gesetzt, protokolliert der Fake jeden Netzaufruf, der innerhalb einer Datenbanktransaktion passiert. */
+  inTransaction: (() => boolean) | null = null;
+  readonly violations: string[] = [];
+  private probe(method: string) {
+    if (this.inTransaction?.()) this.violations.push(method);
+  }
+
+  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult> {
+    this.probe("createPaymentIntent");
+    this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
+    const outcome = this.outcomes.get(input.metadata.userId) ?? "succeeded";
+    if (outcome === "error") throw new Error("Netz weg");
+    const id = `pi_fake_${short(input.idempotencyKey)}`; // gleicher Schlüssel, gleicher PaymentIntent (wie bei Stripe)
+    if (outcome === "succeeded") return { id, status: "succeeded", failureCode: null };
+    if (outcome === "processing") return { id, status: "processing", failureCode: null };
+    if (outcome === "requires_action") return { id, status: "requires_action", failureCode: "authentication_required" };
+    return { id, status: "failed", failureCode: "card_declined" };
+  }
+
+  async retrieveChargeFee(paymentIntentId: string): Promise<number | null> {
+    this.probe("retrieveChargeFee");
+    this.calls.push({ method: "retrieveChargeFee", args: { paymentIntentId } });
+    return this.fees.has(paymentIntentId) ? (this.fees.get(paymentIntentId) ?? null) : (this.fees.get("*") ?? null);
   }
 
   async isPaymentMethodUsable(id: string, customerId: string) {

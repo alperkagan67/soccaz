@@ -11,8 +11,11 @@ import { COLOR_KEYS } from "../lib/team-color";
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+
+export type CardStatus = "none" | "card_ready" | "charge_pending" | "charged" | "failed";
 
 export const userRole = pgEnum("user_role", ["player", "admin", "moderator", "finance", "booking"]);
 export const teamRole = pgEnum("team_role", ["admin", "player"]);
@@ -155,11 +158,11 @@ export const matchParticipants = pgTable(
     noShow: boolean("no_show").notNull().default(false),
     paidAt: timestamp("paid_at", { withTimezone: true }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
-    // Kartenstatus je Platz (Vertrag 012, ADR 0001). M1a: nur none und card_ready. Spaeter (M2/M3, eigene Migration): charge_pending, charged, failed
-    // samt charge_due_at, grace_until und covered_by_user_id ("Anteil uebernehmen"). Aendert weder paid_cents noch das Hauptbuch.
-    cardStatus: text("card_status").$type<"none" | "card_ready">().notNull().default("none"),
+    // Kartenstatus je Platz (Vertrag 012, ADR 0001): none, card_ready (Karte hinterlegt), charge_pending (Abbuchung angelegt), charged, failed.
+    // Spaeter (M3): charge_due_at, grace_until und covered_by_user_id ("Anteil uebernehmen"). Aendert weder paid_cents (nur Guthaben) noch das Hauptbuch.
+    cardStatus: text("card_status").$type<CardStatus>().notNull().default("none"),
   },
-  (t) => [primaryKey({ columns: [t.matchId, t.userId] }), check("match_participants_card_status_check", sql`${t.cardStatus} in ('none', 'card_ready')`)],
+  (t) => [primaryKey({ columns: [t.matchId, t.userId] }), check("match_participants_card_status_check", sql`${t.cardStatus} in ('none', 'card_ready', 'charge_pending', 'charged', 'failed')`)],
 );
 
 export const matchEvents = pgTable("match_events", {
@@ -298,3 +301,33 @@ export const stripeEvents = pgTable("stripe_events", {
   receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   processedAt: timestamp("processed_at", { withTimezone: true }),
 });
+
+/**
+ * Abbuchung je Spieler und Spiel (Vertrag 012, M2). Genau eine Zeile je Platz; payment_intent_id und idempotency_key sind eindeutig.
+ * Das Geld steht im Hauptbuch (clearing -> revenue, Schluessel charge:<paymentIntentId>), NICHT in match_participants.paid_cents (das bleibt Guthaben).
+ * status: pending (angelegt, noch nicht bei Stripe), requires_action (Authentifizierung noetig), succeeded, failed. fee_cents erst gesetzt, wenn die echte
+ * Stripe-Gebuehr gebucht ist (Schluessel fee:<paymentIntentId>).
+ */
+export const paymentCharges = pgTable(
+  "payment_charges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    status: text("status").$type<"pending" | "requires_action" | "succeeded" | "failed">().notNull().default("pending"),
+    paymentIntentId: text("payment_intent_id").unique(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    failureCode: text("failure_code"),
+    feeCents: integer("fee_cents"),
+    attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("payment_charges_match_user_idx").on(t.matchId, t.userId),
+    check("payment_charges_amount_positive", sql`${t.amountCents} > 0`),
+    check("payment_charges_fee_nonneg", sql`${t.feeCents} is null or ${t.feeCents} >= 0`),
+    check("payment_charges_status_check", sql`${t.status} in ('pending', 'requires_action', 'succeeded', 'failed')`),
+  ],
+);
