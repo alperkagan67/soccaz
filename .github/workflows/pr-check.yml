@@ -1,0 +1,33 @@
+name: PR-Text
+
+# Prueft nur, dass der PR-Text die vier Pflichtueberschriften der Vorlage enthaelt.
+# Keine Fremd-Action; der PR-Text wird ueber env gelesen (nie direkt ins Skript eingesetzt).
+# Kein Pflicht-Check im Ruleset.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  ueberschriften:
+    name: PR-Text prüfen
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Bot-PRs (Dependabot) folgen der Vorlage nicht
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - name: Pflichtueberschriften pruefen
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          fehlt=0
+          for h in "Anlass" "Änderung" "Risiko" "Beleg"; do
+            if ! printf '%s\n' "$PR_BODY" | grep -qE "^## ${h}[[:space:]]*$"; then
+              echo "::error::Im PR-Text fehlt die Überschrift '## ${h}' (siehe .github/pull_request_template.md)."
+              fehlt=1
+            fi
+          done
+          exit $fehlt
