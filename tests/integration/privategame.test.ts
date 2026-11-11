@@ -20,8 +20,8 @@ import { ALL_MATCHES, mayAnnounceToAll, subscribeToLobby } from "@/server/realti
 import { GET as eventsGET } from "@/app/api/spiele/[id]/events/route";
 import { teamCard } from "@/server/cards";
 import { setSetting } from "@/server/settings";
-import { pendingRefunds } from "@/db/schema-finance";
-import { fixPrivateShare, privateListLocked, settleMatch } from "@/server/wallet";
+import { ledgerEntries, pendingRefunds } from "@/db/schema-finance";
+import { fixShare, privateListLocked, settleMatch } from "@/server/wallet";
 import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
 
 // Die Events-Route fragt die Sitzung ab (Cookies gibt es im Test nicht): getCurrentUser liefert hier die Person, die der Test gerade spielt.
@@ -306,12 +306,19 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
       const parts = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
       expect(parts.every((p) => p.paidCents === 1200)).toBe(true);
       expect((await trialBalance()).balanced).toBe(true);
+      // M1 AC-4: Das Geld bleibt geparkt (Konto "revenue" hält genau die Summe der Anteile), nichts geht an den Veranstalter, die Halle oder eine Bank
+      const entries = await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, match.id));
+      expect(entries.every((e) => e.kind === "match_share" || e.kind === "refund")).toBe(true);
+      const parked = entries.reduce((sum, e) => sum + (e.debitAccount === "wallet" ? e.amountCents : 0) - (e.creditAccount === "wallet" ? e.amountCents : 0), 0);
+      expect(parked).toBe(all.length * 1200);
+      expect(entries.some((e) => e.creditAccount !== "wallet" && e.creditAccount !== "revenue")).toBe(false);
+      expect(entries.some((e) => e.debitAccount !== "wallet" && e.debitAccount !== "revenue")).toBe(false);
     } finally {
       await setSetting(null, "payments_enabled", false);
     }
   });
 
-  // Hinweis zum Guard: Wirksam ist die Vorabprüfung in fixPrivateShare (`final_share_cents !== null` -> return). Das zusätzliche
+  // Hinweis zum Guard: Wirksam ist die Vorabprüfung in fixShare (`final_share_cents !== null` -> return). Das zusätzliche
   // `AND final_share_cents IS NULL` im UPDATE ist nur eine zweite Absicherung unter dem Spiel-Lock; entfernt man NUR diese Bedingung, ist der
   // Mutant äquivalent (kein Test kann rot werden). Dieser Test erschlägt die Mutation "Vorabprüfung entfernen".
   it("der Preis bleibt fest: Austritt und erneutes Bestätigen ändern den Anteil nicht (Guard: nur einmal fixieren)", async () => {
@@ -421,7 +428,7 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
     }
   });
 
-  it("fixPrivateShare gilt nur für Privatspiele: bei einem Teamspiel wird nichts fixiert und nichts erstattet", async () => {
+  it("fixShare gilt nur für Privatspiele: bei einem Teamspiel wird nichts fixiert und nichts erstattet", async () => {
     await setSetting(null, "payments_enabled", true);
     try {
       const { organizer, match, token, players } = await prepare(7);
@@ -430,11 +437,11 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
       for (const p of extra) await joinPrivateGame(p.id, token);
       await randomSplit(organizer.id, match.id); // jetzt 10 eingeteilt: die Neuberechnung (T53, AC-5) hat die 300 je Zahler schon erstattet
       expect(await balances(players)).toEqual(players.map(() => 3000 - 1200));
-      await db.update(matches).set({ kind: "team" }).where(eq(matches.id, match.id));
+      await db.update(matches).set({ kind: "team", legacyShareModel: true }).where(eq(matches.id, match.id)); // Altspiel: wird nicht fixiert
       const before = await balances(players);
-      await db.transaction(async (tx) => fixPrivateShare(tx, await reloadMatch(match.id)));
+      await db.transaction(async (tx) => fixShare(tx, await reloadMatch(match.id)));
       expect((await reloadMatch(match.id)).finalShareCents).toBeNull();
-      expect(await balances(players)).toEqual(before); // fixPrivateShare selbst erstattet bei einem Teamspiel nichts
+      expect(await balances(players)).toEqual(before); // fixShare selbst erstattet bei einem Teamspiel nichts
     } finally {
       await setSetting(null, "payments_enabled", false);
     }
@@ -1061,7 +1068,7 @@ describe("Erstattung nach erneutem Austritt (T54-Nachtrag: Schlüssel mit create
 
   it("Teamspiel (weniger als 24 Stunden vor Anstoß): gleiche Abfolge, die zweite Erstattung kommt an", () =>
     withPayments(async () => {
-      const m = await makeMatch({ hoursAhead: 10 });
+      const m = await makeMatch({ legacy: true, hoursAhead: 10 });
       const leaver = await addPlayer(m.match.id, m.home.id);
       await fund(leaver.id, 2000);
       await payShare(leaver.id, m.match.id);

@@ -40,7 +40,7 @@ export async function makeTeam(adminId: string, name: string) {
 }
 
 /** Zwei Teams und ein Spiel in der Lobby (in `hoursAhead` Stunden), optional mit festem Preis. */
-export async function makeMatch(opts: { hoursAhead?: number; durationMin?: number; priceCents?: number | null; costCents?: number | null } = {}) {
+export async function makeMatch(opts: { legacy?: boolean; hoursAhead?: number; durationMin?: number; priceCents?: number | null; costCents?: number | null } = {}) {
   const adminA = await makeUser("ha");
   const adminB = await makeUser("ga");
   const home = await makeTeam(adminA.id, "Heim");
@@ -54,6 +54,7 @@ export async function makeMatch(opts: { hoursAhead?: number; durationMin?: numbe
       durationMin: opts.durationMin ?? 60,
       priceCents: opts.priceCents === undefined ? 8000 : opts.priceCents,
       costCents: opts.costCents === undefined ? 8000 : opts.costCents,
+      legacyShareModel: opts.legacy ?? false, // Standard: neues Modell (Preis ÷ Spielerzahl); legacy: true = Altspiel mit Reservierung
     })
     .returning();
   await db.insert(matchParticipants).values([

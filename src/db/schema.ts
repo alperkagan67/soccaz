@@ -122,6 +122,7 @@ export const matches = pgTable("matches", {
   challengeStatus: text("challenge_status").$type<"none" | "pending" | "accepted">().notNull().default("none"), // Direkt-Herausforderung: Lobby steht, das Zielteam muss noch annehmen
   maxPlayers: integer("max_players"), // nur Privatspiele: Spieler insgesamt (Standard 10, je Team die Hälfte)
   kind: text("kind").$type<"team" | "private" | "tournament">().notNull().default("team"), // Teamspiel, Privatspiel oder Turnierspiel (nur Teamspiele zählen für Elo und Rangliste)
+  legacyShareModel: boolean("legacy_share_model").notNull().default(false), // true: vor der Umstellung angelegtes Spiel, altes Modell (Reservierung, Mindestzahl 8, Deckel 12, 24-h-Pfad) bis zum Anstoß
   homeFinalAt: timestamp("home_final_at", { withTimezone: true }), // letzte Bestätigung des Captains: alle im Team bereit und bezahlt
   awayFinalAt: timestamp("away_final_at", { withTimezone: true }),
   timeWindows: jsonb("time_windows").$type<{ from: string; to: string }[]>(), // vereinbartes Zeitfenster: nur die Uhrzeit wird noch gewählt (leer = Tag frei, z. B. bei Herausforderungen)
