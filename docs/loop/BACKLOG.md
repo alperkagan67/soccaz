@@ -75,5 +75,11 @@ Umsetzungsreihenfolge Geldmodell und Verträge: 006/008 M3a/M3b, 007 M2/M3, Code
 | 39 | Test der Stripe-Request-Optionen (Timeout 8 s, Wiederholung 1) mit Stripe-Client-Mock | offen (niedrig) |
 | 40 | Stripe Elements `appearance` mit Theme `night` ist fest dunkel: hell/dunkel unterstützen (007 M3); `CardLight` und `PlayerLight` nutzen feste Hex-Werte statt Tokens (007 M3/M4; zu Eintrag 25) | offen (niedrig) |
 | 41 | Test der Produktionszweige von `fakeCardReadyAction` (Fake-Karte darf in Produktion nie gehen) | offen (niedrig) |
+| 42 | Aus dem Review von 012 M2b (zu M2b/M3): Eine Wiederholung mit neuem PaymentIntent für dieselbe Zeile wird als `other_payment_intent` ignoriert, sobald die Zeile an PI1 gebunden ist. Entweder denselben Schlüssel nutzen oder die Bindung bewusst lösen; Abgleich und Erstattung bei einem zweiten erfolgreichen PI | offen (mittel) |
+| 43 | Mindestbetrag-Oberfläche (012 AC-19): Die Lobby zeigt `cardShareCents` statt des angehobenen Betrags von 0,50 EUR; der Mandatstext nennt den Mindestbetrag noch nicht (Soll-Wortlaut „Mindestbetrag 0,50 EUR“) | offen (mittel) |
+| 44 | `FOR SHARE` in `claimNext` (`charge-run.ts`) hat keinen Zwei-Verbindungs-Test | offen (niedrig) |
+| 45 | Produktfrage: „Abbuchung fehlgeschlagen“ ist für alle Spieler der Lobby sichtbar (012 AC-12); nur dem Betroffenen und dem Captain zeigen? | offen (Produktfrage) |
+| 46 | Bei `failed` sieht der Spieler wieder „Karte hinterlegen“; die Oberfläche für das Nachzahlfenster kommt mit 012 M3 | offen (012 M3) |
+| 47 | 012 M2b-2: Absage- und Listensperre bei Abbuchungszeilen (Restfenster zwischen Beanspruchung und Stripe-Aufruf); Parameter-Mismatch `StripeIdempotencyError` behandeln; Frist im Auslöser prüfen; Nachzahl-Neuversuch nie mit neuem Schlüssel ohne vorherige Stripe-Suche (`attempt_expired`) | offen (mittel) |
 
 Status: offen / in Arbeit / fertig.

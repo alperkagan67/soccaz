@@ -21,6 +21,8 @@ PRs mit DB-Migration, Zahlungen oder Auth, die der Task Manager selbst gemergt h
 | #75 | 2026-11-11 | `01245a3` | 012 M2a Abbuchungs-Grundlage: `payment_charges`, `applyChargeInTx` als einziger Verbuchungsweg (clearing → revenue `match_share`; Gebühr nachgebucht aus `balance_transaction`, nie geschätzt), Webhook `payment_intent.*` und `charge.updated`; MIGRATION 0037 (`payment_charges`, `card_status` um `charge_pending`/`charged`/`failed`); Deploy: Migration VOR dem neuen Code; im Stripe-Dashboard zusätzlich anmelden: `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.requires_action`, `charge.updated` | mittel/hoch; Geldbewegungen und Idempotenz, Hauptbuch |
 | #76 | 2026-11-11 | `a55a43f` | 012 M1b-Oberfläche: Stripe Elements, Ampel mit Wort und Form, gespeicherte Karte mit sichtbarem Mandatstext und Haken, Fake-Testkarte nur mit `PAYMENTS_FAKE=1`; Pakete `@stripe/stripe-js` 10.2.0 und `@stripe/react-stripe-js` 7.0.1 (MIT); keine Migration | mittel; Karteneingabe über Stripe-Frames (CSP aus #72 nötig), Fake nur außerhalb der Produktion |
 
+Nummernlücken: #74 wurde durch #76 ersetzt, #66 durch #68 (keine eigenen Einträge).
+
 ## Prüfpunkte vor Go-Live
 
 | Nr. | Was | Risiko |
