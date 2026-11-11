@@ -15,6 +15,7 @@ import { getCurrentUser } from "@/server/session";
 import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
 import { fakeCardAllowed } from "@/server/payments/mode";
 import { cardModeActive } from "@/server/wallet";
+import { cardView } from "@/lib/card-view";
 import { getCardStatuses, getStoredCardDisplay } from "@/server/payments/card-status";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
@@ -58,7 +59,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Guthabenmodell
   const cardStatuses = cardOn ? await getCardStatuses(match.id) : {};
   const storedCard = cardOn && user ? await getStoredCardDisplay(user.id) : null;
-  const cardReady = (userId: string) => cardStatuses[userId] === "card_ready";
+  const cardStatusOf = (userId: string) => cardStatuses[userId] ?? "none";
+  const hasCard = (userId: string) => cardView(cardStatusOf(userId)).hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
@@ -317,7 +319,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
-          card={cardOn ? { ready: cardReady(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard } : null}
+          card={cardOn ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard } : null}
           pay={!cardOn && payments.enabled && payments.reservationCents !== null ? { reserveCents: owes ? (payments.myDueCents ?? 0) : payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid) && !owes, backTo: `/lobby/${match.id}` } : null}
           teamPaid={{ paid: participants.filter((p) => p.teamId === v.participant?.teamId && p.paid).length, total: participants.filter((p) => p.teamId === v.participant?.teamId).length }}
         />
@@ -343,7 +345,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                     {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                   </span>
                   <span className="flex items-center gap-2">
-                    {cardOn ? <CardLight ready={cardReady(p.userId)} /> : <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel />}
+                    {cardOn ? <CardLight status={cardStatusOf(p.userId)} /> : <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel />}
                     {active && p.userId !== user?.id && canAdminTeam(t.id) && (
                       <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} canUnassign={isPrivate && !p.ready && !p.paid} />
                     )}
@@ -404,7 +406,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             const list = participants.filter((p) => p.teamId === t.id);
             const paid = list.filter((p) => p.paid).length;
             const ready = list.filter((p) => p.ready).length;
-            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (cardOn ? list.every((p) => cardReady(p.userId)) : !payments.enabled || paid === list.length) };
+            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (cardOn ? list.every((p) => hasCard(p.userId)) : !payments.enabled || paid === list.length) };
           })}
         />
       )}

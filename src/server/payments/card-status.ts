@@ -1,8 +1,9 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, paymentProfiles } from "@/db/schema";
+import { matchParticipants, paymentProfiles, type CardStatus } from "@/db/schema";
 
-export type CardStatus = "none" | "card_ready";
+// Der Typ gehört dem Schema (eine Quelle); hier nur zum Weiterreichen für bestehende Importe
+export type { CardStatus };
 
 /** Kartenstatus aller Plätze eines Spiels (nur Anzeige: kein Kartenwert, nur ob eine Karte hinterlegt ist). */
 export async function getCardStatuses(matchId: string): Promise<Record<string, CardStatus>> {
