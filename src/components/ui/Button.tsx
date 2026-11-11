@@ -11,7 +11,7 @@ export type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "classNa
   size?: ButtonSize;
   /** Läuft die Aktion: Wort statt Beschriftung, `aria-busy`, nicht erneut auslösbar. */
   pending?: boolean;
-  /** Text bei `pending`; Standard „Bitte warten…“ aus i18n. */
+  /** Text bei `pending`; Standard „Bitte warten…“ aus i18n. TODO M2-5/i18n: der Standard nutzt fest DEFAULT_LOCALE (de); englische Nutzer sehen sonst „Bitte warten…“, bis die Sprache durchgereicht wird. */
   pendingLabel?: string;
   children: ReactNode;
 };
