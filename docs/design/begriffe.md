@@ -42,7 +42,7 @@ Zweck: Jedes sichtbare Wort hat eine Bedeutung, und jede Bedeutung hat ein Wort 
 
 ### 2.3 Altmodell (kein gültiger Begriff)
 
-Diese Wörter gehören dem Guthaben-Modell. Sie werden nicht als gültig geführt (Vertrag 012, Entfernen in M6a: Oberfläche und Texte, M6b: Code, Schema, Tests; Vertrag 013 AC-14: spätestens mit M3 kein Guthaben für Spieler sichtbar).
+Diese Wörter gehören dem Guthaben-Modell. Sie werden nicht als gültig geführt (Vertrag 012, Entfernen in M6a: Oberfläche und Texte, M6b: Code, Schema, Tests; Vertrag 013 AC-14: vor dem Start von M3 kein Guthaben für Spieler sichtbar).
 
 | Begriff | Bedeutung im Altmodell | Verbotene Synonyme (im neuen Text) | Fundstellen (Auswahl) | Status |
 |---|---|---|---|---|
