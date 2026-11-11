@@ -40,7 +40,7 @@ export class StripeProvider implements PaymentProvider {
   }
 
   constructWebhookEvent(rawBody: string, signature: string | null): ProviderEvent {
-    const secret = this.config.webhookSecret ?? process.env.STRIPE_WEBHOOK_SECRET;
+    const secret = this.config.webhookSecret ?? process.env.STRIPE_CARD_WEBHOOK_SECRET; // eigenes Secret dieses Endpunkts; STRIPE_WEBHOOK_SECRET gehört der alten Route /api/webhooks/stripe
     if (!secret) throw new PaymentsUnavailableError();
     if (!signature) throw new WebhookSignatureError();
     try {

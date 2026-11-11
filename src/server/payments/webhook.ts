@@ -6,6 +6,30 @@ import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, ty
 /** Größter angenommener Body (Stripe-Ereignisse sind klein). */
 export const MAX_WEBHOOK_BYTES = 256 * 1024;
 
+/** Nur diese Ereignistypen gehören zu diesem Endpunkt; alles andere wird angenommen, aber weder gespeichert noch verarbeitet (keine fremden Event-IDs in stripe_events). */
+export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.");
+
+/** Liest den Body gestreamt mit Byte-Zähler und bricht bei mehr als max Bytes ab (null), auch bei chunked ohne Content-Length. */
+export async function readBodyLimited(request: Request, max: number): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length") ?? 0);
+  if (declared > max) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 export type WebhookResult = { status: 200 | 400 | 413 | 503 | 500; body: string };
 
 const str = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length < 256 ? v : null);
@@ -34,6 +58,7 @@ export async function handleStripeWebhook(rawBody: string, signature: string | n
 }
 
 async function processEvent(event: ProviderEvent) {
+  if (!isCardEvent(event.type)) return;
   // Kartendaten von Stripe holen, bevor die Transaktion beginnt (kein Netzaufruf unter Sperre). Nur für bekannte SetupIntents.
   let card: CardDisplay | null = null;
   let oldMethod: string | null = null;
@@ -58,7 +83,7 @@ async function processEvent(event: ProviderEvent) {
         const [intent] = await tx.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.id, intentId)).for("update");
         const [profile] = intent ? await tx.select().from(paymentProfiles).where(eq(paymentProfiles.userId, intent.userId)).for("update") : [];
         // Nur wenn der SetupIntent uns gehört und zum Kunden dieses Nutzers passt
-        if (intent && profile && profile.stripeCustomerId === customer && intent.status === "created") {
+        if (intent && profile && profile.stripeCustomerId === customer && (intent.status === "created" || intent.status === "failed")) {
           if (profile.paymentMethodId && profile.paymentMethodId !== card.id) oldMethod = profile.paymentMethodId;
           await tx
             .update(paymentProfiles)
@@ -74,7 +99,7 @@ async function processEvent(event: ProviderEvent) {
       const intentId = str(event.object.id);
       if (intentId) await tx.update(paymentSetupIntents).set({ status: "failed" }).where(and(eq(paymentSetupIntents.id, intentId), eq(paymentSetupIntents.status, "created")));
     }
-    // alle anderen Ereignisse: angenommen und ignoriert (M2/M3 ergänzen payment_intent.* und charge.dispute.*)
+    // übrige Kartenereignisse (payment_method.*, ...): vermerkt und ignoriert; payment_intent.* und charge.dispute.* ergänzen M2/M3
     await tx.update(stripeEvents).set({ processedAt: new Date() }).where(eq(stripeEvents.eventId, event.id));
   });
 

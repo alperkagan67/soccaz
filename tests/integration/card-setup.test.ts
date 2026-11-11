@@ -7,7 +7,7 @@ import { ledgerEntries } from "@/db/schema-finance";
 import { signStripePayload } from "@/lib/stripe-signature";
 import { createCardSetup, MANDATE_TEXT, SETUP_LIMIT_PER_HOUR } from "@/server/payments/card-setup";
 import { FakeProvider } from "@/server/payments/fake";
-import { setPaymentProviderForTests, WebhookSignatureError } from "@/server/payments/provider";
+import { getPaymentProvider, PaymentsUnavailableError, setPaymentProviderForTests, WebhookSignatureError } from "@/server/payments/provider";
 import { StripeProvider } from "@/server/payments/stripe";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
@@ -113,6 +113,26 @@ describe("AC-1: Karte hinterlegen (SetupIntent)", () => {
   });
 });
 
+describe("Wiederholung nach Fehlschlag", () => {
+  it("setup_failed, danach bestätigt der Nutzer erneut: succeeded wird verarbeitet (Karte gespeichert, card_ready); ein weiteres succeeded ändert nichts mehr", async () => {
+    const { match, me } = await lobby();
+    const setup = await createCardSetup(me.id, { matchId: match.id, mandateAccepted: true });
+    const cust = (await profileOf(me.id)).stripeCustomerId;
+    await deliver(provider.signEvent({ id: evtId(), type: "setup_intent.setup_failed", object: { id: setup.setupIntentId } }));
+    expect((await db.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.id, setup.setupIntentId)))[0].status).toBe("failed");
+
+    provider.registerCard({ id: "pm_cs_retry", brand: "visa", last4: "1111" });
+    expect((await deliver(succeededEvent({ intentId: setup.setupIntentId, customer: cust, pm: "pm_cs_retry" }))).status).toBe(200);
+    expect(await seatStatus(match.id, me.id)).toBe("card_ready");
+    expect(await profileOf(me.id)).toMatchObject({ paymentMethodId: "pm_cs_retry", cardLast4: "1111" });
+    expect((await db.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.id, setup.setupIntentId)))[0].status).toBe("succeeded");
+
+    // ein anderes, späteres succeeded mit anderer Karte überschreibt nicht (Status ist succeeded)
+    await deliver(succeededEvent({ intentId: setup.setupIntentId, customer: cust, pm: "pm_cs_other" }));
+    expect((await profileOf(me.id)).paymentMethodId).toBe("pm_cs_retry");
+  });
+});
+
 describe("Webhook: Signatur", () => {
   it("falsche Signatur, fehlender Header, verändertes Body und zu alter Zeitstempel werden abgelehnt (400), nichts verarbeitet oder gespeichert", async () => {
     const { match, me } = await lobby();
@@ -157,15 +177,28 @@ describe("Webhook: Signatur", () => {
     expect(() => stripe.constructWebhookEvent(payload, null)).toThrow(WebhookSignatureError);
 
     setPaymentProviderForTests(new StripeProvider({}));
-    const saved = [process.env.STRIPE_SECRET_KEY, process.env.STRIPE_WEBHOOK_SECRET];
+    const saved = [process.env.STRIPE_SECRET_KEY, process.env.STRIPE_CARD_WEBHOOK_SECRET, process.env.STRIPE_WEBHOOK_SECRET];
     delete process.env.STRIPE_SECRET_KEY;
-    delete process.env.STRIPE_WEBHOOK_SECRET;
+    delete process.env.STRIPE_CARD_WEBHOOK_SECRET;
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_alte_route"; // das Geheimnis der alten Route gilt für diese Route nicht
     try {
       expect((await handleStripeWebhook(payload, header)).status).toBe(503);
+      process.env.STRIPE_SECRET_KEY = "sk_test_dummy_nicht_echt";
+      const oldHeader = Stripe.webhooks.generateTestHeaderString({ payload, secret: "whsec_alte_route" });
+      setPaymentProviderForTests(new StripeProvider({}));
+      expect((await handleStripeWebhook(payload, oldHeader)).status).toBe(503); // ohne STRIPE_CARD_WEBHOOK_SECRET nie mit dem alten Geheimnis prüfen
+      process.env.STRIPE_CARD_WEBHOOK_SECRET = "whsec_neue_route";
+      expect((await handleStripeWebhook(payload, oldHeader)).status).toBe(400);
+      expect((await handleStripeWebhook(payload, Stripe.webhooks.generateTestHeaderString({ payload, secret: "whsec_neue_route" }))).status).toBe(200);
+      delete process.env.STRIPE_SECRET_KEY;
+      delete process.env.STRIPE_CARD_WEBHOOK_SECRET;
+      setPaymentProviderForTests(new StripeProvider({}));
       await expect(createCardSetup((await makeUser("kartenokey")).id, { mandateAccepted: true })).rejects.toThrow(/nicht verfügbar/);
     } finally {
-      if (saved[0] !== undefined) process.env.STRIPE_SECRET_KEY = saved[0];
-      if (saved[1] !== undefined) process.env.STRIPE_WEBHOOK_SECRET = saved[1];
+      for (const [i, k] of ["STRIPE_SECRET_KEY", "STRIPE_CARD_WEBHOOK_SECRET", "STRIPE_WEBHOOK_SECRET"].entries()) {
+        if (saved[i] !== undefined) process.env[k] = saved[i];
+        else delete process.env[k];
+      }
     }
   });
 });
@@ -191,14 +224,22 @@ describe("Webhook: Idempotenz (AC-10-Grundlage)", () => {
     expect(await seatStatus(match.id, me.id)).toBe("none");
   });
 
-  it("unbekannte Ereignistypen werden angenommen, einmal vermerkt und sonst ignoriert", async () => {
+  it("andere Kartenereignisse (payment_method.*) werden angenommen, einmal vermerkt und sonst ignoriert", async () => {
     const id = evtId();
-    const e = provider.signEvent({ id, type: "customer.created", object: { id: "cus_irgendwer", email: "geheim@example.com" } });
+    const e = provider.signEvent({ id, type: "payment_method.attached", object: { id: "pm_irgendwer", email: "geheim@example.com" } });
     expect((await deliver(e)).status).toBe(200);
     const [row] = await db.select().from(stripeEvents).where(eq(stripeEvents.eventId, id));
-    expect(row).toMatchObject({ type: "customer.created" });
+    expect(row).toMatchObject({ type: "payment_method.attached" });
     expect(row.processedAt).not.toBeNull();
     expect(JSON.stringify(row)).not.toContain("geheim");
+  });
+
+  it("fremde Ereignistypen (z. B. von der alten Route) werden mit 200 angenommen, aber weder gespeichert noch verarbeitet", async () => {
+    for (const type of ["checkout.session.completed", "charge.dispute.created", "customer.created", "payment_intent.succeeded"]) {
+      const id = evtId();
+      expect((await deliver(provider.signEvent({ id, type, object: { id: "x" } }))).status).toBe(200);
+      expect(await db.select().from(stripeEvents).where(eq(stripeEvents.eventId, id)), type).toHaveLength(0);
+    }
   });
 });
 
@@ -235,6 +276,14 @@ describe("Rechte: nur für sich selbst, nie für Dritte", () => {
     expect((await db.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.id, setupA.setupIntentId)))[0].status).toBe("created");
   });
 
+  it("eine Spiel-ID, die keine UUID ist, ergibt einen normalen Fehler statt eines Datenbankfehlers", async () => {
+    const u = await makeUser("kartebad");
+    for (const bad of ["abc", "", "1; drop table users", "00000000-0000-0000-0000-00000000000g"]) {
+      await expect(createCardSetup(u.id, { matchId: bad, mandateAccepted: true }), bad).rejects.toThrow(/nicht angemeldet/);
+    }
+    expect(provider.calls).toHaveLength(0);
+  });
+
   it("gesperrte Nutzer und beendete Spiele bekommen keinen SetupIntent", async () => {
     const { match, me } = await lobby();
     await db.execute(sql`update matches set status = 'cancelled' where id = ${match.id}`);
@@ -246,6 +295,66 @@ describe("Rechte: nur für sich selbst, nie für Dritte", () => {
     for (let i = 0; i < SETUP_LIMIT_PER_HOUR; i++) await createCardSetup(u.id, { mandateAccepted: true });
     await expect(createCardSetup(u.id, { mandateAccepted: true })).rejects.toThrow(/Zu viele/);
     expect(await db.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.userId, u.id))).toHaveLength(SETUP_LIMIT_PER_HOUR);
+  });
+});
+
+describe("Parallele Aufrufe", () => {
+  it("15 gleichzeitige Einrichtungen: höchstens " + SETUP_LIMIT_PER_HOUR + " gelingen, nur ein Stripe-Kunde", async () => {
+    const u = await makeUser("karteparallel");
+    const results = await Promise.allSettled(Array.from({ length: 15 }, () => createCardSetup(u.id, { mandateAccepted: true })));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(SETUP_LIMIT_PER_HOUR);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(15 - SETUP_LIMIT_PER_HOUR);
+    expect(await db.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.userId, u.id))).toHaveLength(SETUP_LIMIT_PER_HOUR);
+    expect(provider.calls.filter((c) => c.method === "createCustomer")).toHaveLength(1);
+    expect(await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, u.id))).toHaveLength(1);
+  });
+});
+
+describe("Anbieterwahl: Fake nur ausdrücklich, nie in Produktion", () => {
+  const keys = ["STRIPE_SECRET_KEY", "PAYMENTS_FAKE", "NODE_ENV"] as const;
+  async function withEnv(env: Partial<Record<(typeof keys)[number], string | undefined>>, fn: () => Promise<void>) {
+    const saved = keys.map((k) => process.env[k]);
+    setPaymentProviderForTests(null);
+    try {
+      for (const k of keys) {
+        if (k in env && env[k] !== undefined) (process.env as Record<string, string>)[k] = env[k]!;
+        else if (k in env) delete process.env[k];
+      }
+      await fn();
+    } finally {
+      keys.forEach((k, i) => {
+        if (saved[i] === undefined) delete process.env[k];
+        else (process.env as Record<string, string>)[k] = saved[i]!;
+      });
+    }
+  }
+
+  it("ohne PAYMENTS_FAKE und ohne Schlüssel ist der Anbieter nicht verfügbar, auch außerhalb der Produktion (Staging-Dev-Server)", async () => {
+    await withEnv({ STRIPE_SECRET_KEY: undefined, PAYMENTS_FAKE: undefined, NODE_ENV: "development" }, async () => {
+      await expect(getPaymentProvider()).rejects.toBeInstanceOf(PaymentsUnavailableError);
+      expect((await handleStripeWebhook("{}", "t=1,v1=00")).status).toBe(503);
+    });
+  });
+
+  it("mit PAYMENTS_FAKE=1 (Tests, CI) gibt es den Fake", async () => {
+    await withEnv({ STRIPE_SECRET_KEY: undefined, PAYMENTS_FAKE: "1", NODE_ENV: "test" }, async () => {
+      expect((await getPaymentProvider()).name).toBe("fake");
+    });
+  });
+
+  it("NODE_ENV=production zusammen mit PAYMENTS_FAKE=1: harter Fehler mit klarer Meldung, kein stilles Weiterlaufen", async () => {
+    await withEnv({ STRIPE_SECRET_KEY: undefined, PAYMENTS_FAKE: "1", NODE_ENV: "production" }, async () => {
+      await expect(getPaymentProvider()).rejects.toThrow(/PAYMENTS_FAKE=1 ist in Produktion verboten/);
+      await expect(getPaymentProvider()).rejects.not.toBeInstanceOf(PaymentsUnavailableError); // kein sanfter Fachfehler
+      expect((await handleStripeWebhook("{}", "t=1,v1=00")).status).toBe(500);
+      await expect(createCardSetup((await makeUser("kartenprod")).id, { mandateAccepted: true })).rejects.toThrow(/verboten/);
+    });
+    // auch mit gesetztem Schlüssel und festem Anbieter für Tests
+    setPaymentProviderForTests(provider);
+    await withEnv({ STRIPE_SECRET_KEY: "sk_test_x", PAYMENTS_FAKE: "1", NODE_ENV: "production" }, async () => {
+      setPaymentProviderForTests(provider);
+      await expect(getPaymentProvider()).rejects.toThrow(/verboten/);
+    });
   });
 });
 
@@ -278,5 +387,22 @@ describe("Webhook-Route /api/stripe/webhook", () => {
     expect((await POST(req(e.rawBody, "t=1,v1=00"))).status).toBe(400);
     expect((await POST(req("{}", e.signature))).status).toBe(400);
     expect((await POST(req("x", e.signature, { "content-length": String(300 * 1024) }))).status).toBe(413);
+  });
+
+  it("gestreamter Body ohne Content-Length (chunked) wird nach 256 KB abgebrochen (413) und nicht ganz gelesen", async () => {
+    const { POST } = await import("@/app/api/stripe/webhook/route");
+    let sent = 0;
+    const chunk = new Uint8Array(64 * 1024).fill(120);
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent >= 64) return controller.close(); // 4 MB wären es insgesamt
+        sent += 1;
+        controller.enqueue(chunk);
+      },
+    });
+    const req = new Request("http://localhost/api/stripe/webhook", { method: "POST", body: stream, duplex: "half", headers: { "stripe-signature": "t=1,v1=00" } } as RequestInit);
+    expect(req.headers.get("content-length")).toBeNull();
+    expect((await POST(req)).status).toBe(413);
+    expect(sent).toBeLessThan(16); // abgebrochen, lange bevor alles gelesen war
   });
 });

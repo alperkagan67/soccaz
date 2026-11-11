@@ -34,6 +34,16 @@ export class PaymentsUnavailableError extends DomainError {
   }
 }
 
+/**
+ * Harter Fehler (kein DomainError, kein stilles Weiterlaufen): PAYMENTS_FAKE=1 darf in Produktion nie gesetzt sein, sonst gälte das bekannte Fake-Geheimnis.
+ * Greift bei jedem Zugriff auf den Anbieter und damit vor jeder Kartenzahlung und jedem Webhook; ein eigener Startpfad (instrumentation.ts) ist dafür nicht nötig.
+ */
+export function assertNoFakeInProduction() {
+  if (process.env.NODE_ENV === "production" && process.env.PAYMENTS_FAKE === "1") {
+    throw new Error("PAYMENTS_FAKE=1 ist in Produktion verboten. Die Variable nur in Tests und CI setzen, nie in Staging oder Produktion.");
+  }
+}
+
 let override: PaymentProvider | null = null;
 let cached: PaymentProvider | null = null;
 
@@ -43,16 +53,17 @@ export function setPaymentProviderForTests(provider: PaymentProvider | null) {
 }
 
 /**
- * Der aktive Anbieter. Mit STRIPE_SECRET_KEY: Stripe. Ohne Schlüssel außerhalb der Produktion: der FakeProvider (kein Netz).
- * In Produktion ohne Schlüssel: PaymentsUnavailableError. Die Umgebungsvariablen werden erst hier gelesen, nie beim Import.
+ * Der aktive Anbieter. Mit STRIPE_SECRET_KEY: Stripe. Ohne Schlüssel nur mit ausdrücklichem PAYMENTS_FAKE=1 (Tests, CI, lokale Entwicklung): der
+ * FakeProvider mit dem bekannten Fake-Geheimnis. Sonst überall (auch auf Staging) PaymentsUnavailableError. Die Umgebungsvariablen werden erst hier gelesen, nie beim Import.
  */
 export async function getPaymentProvider(): Promise<PaymentProvider> {
+  assertNoFakeInProduction();
   if (override) return override;
   if (cached) return cached;
   if (process.env.STRIPE_SECRET_KEY) {
     const { StripeProvider } = await import("./stripe");
     cached = new StripeProvider();
-  } else if (process.env.NODE_ENV !== "production") {
+  } else if (process.env.PAYMENTS_FAKE === "1") {
     const { FakeProvider } = await import("./fake");
     cached = new FakeProvider();
   } else {

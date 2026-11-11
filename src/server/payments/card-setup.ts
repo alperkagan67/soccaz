@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, eq, gt } from "drizzle-orm";
+import { and, count, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentProfiles, paymentSetupIntents, users } from "@/db/schema";
 import { DomainError } from "../teams";
@@ -8,6 +8,8 @@ import { getPaymentProvider } from "./provider";
 /** Der Text, dem der Spieler beim Hinterlegen der Karte zustimmt (Mandat). Wird mit dem Zeitpunkt je SetupIntent gespeichert. */
 export const MANDATE_TEXT =
   "Ich erlaube Soccaz, meine hinterlegte Karte für meinen Anteil an den Spielen, für die ich mich anmelde, zu belasten. Abgebucht wird erst, wenn der Anteil feststeht (48 Stunden vor Anstoß, bei kürzerem Vorlauf sofort). Bis dahin wird nichts abgebucht.";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Höchstens so viele Karten-Einrichtungen je Nutzer und Stunde (Schutz vor Missbrauch der Stripe-Schnittstelle). */
 export const SETUP_LIMIT_PER_HOUR = 10;
@@ -23,6 +25,7 @@ export async function createCardSetup(userId: string, input: { matchId?: string;
   const [user] = await db.select({ id: users.id, email: users.email, bannedAt: users.bannedAt }).from(users).where(eq(users.id, userId));
   if (!user || user.bannedAt) throw new DomainError("Nutzer nicht gefunden.");
 
+  if (input.matchId !== undefined && !UUID.test(input.matchId)) throw new DomainError("Du bist in diesem Spiel nicht angemeldet.");
   if (input.matchId !== undefined) {
     const [seat] = await db
       .select({ status: matches.status })
@@ -33,22 +36,26 @@ export async function createCardSetup(userId: string, input: { matchId?: string;
     if (!["lobby", "confirmed"].includes(seat.status)) throw new DomainError("Dieses Spiel ist nicht mehr offen.");
   }
 
-  const [recent] = await db
-    .select({ n: count() })
-    .from(paymentSetupIntents)
-    .where(and(eq(paymentSetupIntents.userId, userId), gt(paymentSetupIntents.createdAt, new Date(Date.now() - 3_600_000))));
-  if (recent.n >= SETUP_LIMIT_PER_HOUR) throw new DomainError("Zu viele Versuche. Bitte warte etwas und versuche es später noch einmal.");
-
   const provider = await getPaymentProvider();
-  let [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
-  if (!profile) {
-    const customer = await provider.createCustomer({ userId, email: user.email, idempotencyKey: `customer:${userId}` });
-    await db.insert(paymentProfiles).values({ userId, stripeCustomerId: customer.id }).onConflictDoNothing();
-    [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
-  }
+  // Je Nutzer serialisiert (Advisory-Lock bis zum Ende der Transaktion): Begrenzung prüfen und Zeile einfügen sind ein Schritt, und der Stripe-Kunde wird
+  // unter derselben Sperre höchstens einmal angelegt (der Idempotenzschlüssel bei Stripe verfällt nach 24 Stunden und wäre allein kein Schutz).
+  const intent = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"card-setup:" + userId}, 0))`);
+    const [recent] = await tx
+      .select({ n: count() })
+      .from(paymentSetupIntents)
+      .where(and(eq(paymentSetupIntents.userId, userId), gt(paymentSetupIntents.createdAt, new Date(Date.now() - 3_600_000))));
+    if (recent.n >= SETUP_LIMIT_PER_HOUR) throw new DomainError("Zu viele Versuche. Bitte warte etwas und versuche es später noch einmal.");
 
-  const intent = await provider.createSetupIntent({ customerId: profile.stripeCustomerId, userId, idempotencyKey: `setup:${userId}:${randomUUID()}` });
-  await db.insert(paymentSetupIntents).values({ id: intent.id, userId, matchId: input.matchId ?? null, mandateText: MANDATE_TEXT, mandateAcceptedAt: new Date() });
+    let [profile] = await tx.select().from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
+    if (!profile) {
+      const customer = await provider.createCustomer({ userId, email: user.email, idempotencyKey: `customer:${userId}` });
+      [profile] = await tx.insert(paymentProfiles).values({ userId, stripeCustomerId: customer.id }).returning();
+    }
+    const created = await provider.createSetupIntent({ customerId: profile.stripeCustomerId, userId, idempotencyKey: `setup:${userId}:${randomUUID()}` });
+    await tx.insert(paymentSetupIntents).values({ id: created.id, userId, matchId: input.matchId ?? null, mandateText: MANDATE_TEXT, mandateAcceptedAt: new Date() });
+    return created;
+  });
   return { setupIntentId: intent.id, clientSecret: intent.clientSecret };
 }
 

@@ -98,6 +98,12 @@ curl -X POST -H "x-job-secret: $JOB_SECRET" https://deine-domain/api/jobs/send-r
 5. Testen mit Stripe-Testschlüsseln (`sk_test_...`, Testkarte 4242 4242 4242 4242), bevor die Live-Schlüssel eingetragen werden.
 6. Preise stehen unter **Hallen** (Standardpreise: 60 Minuten 80 Euro, 90 Minuten 110 Euro). Hallenkosten und Marge sind dort pro Regel einstellbar.
 
+### Kartenzahlung (Vertrag 012, Stripe)
+
+- Eigener Webhook-Endpunkt `https://deine-domain/api/stripe/webhook` im Stripe-Dashboard, **getrennt** vom alten `/api/webhooks/stripe`. Stripe vergibt je Endpunkt ein eigenes Signaturgeheimnis (`whsec_...`): das der alten Route steht in `STRIPE_WEBHOOK_SECRET`, das der neuen in `STRIPE_CARD_WEBHOOK_SECRET`. Nie dasselbe Geheimnis für beide eintragen. Ereignisse der neuen Route: `setup_intent.succeeded`, `setup_intent.setup_failed` (später `payment_intent.*`, `charge.dispute.*`).
+- Weitere Variablen: `STRIPE_SECRET_KEY` (gemeinsam) und `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+- `PAYMENTS_FAKE` darf in Staging und Produktion nie gesetzt sein (nur Tests/CI). In Produktion mit `PAYMENTS_FAKE=1` bricht die Kartenzahlung mit einem harten Fehler ab. Ohne Stripe-Schlüssel und ohne `PAYMENTS_FAKE` ist die Kartenzahlung ausgeschaltet (Webhook antwortet 503).
+
 Hinweise: Das Buchungsjournal ist unveränderlich (Datenbank-Trigger). Korrekturen sind Gegenbuchungen. Die Zahlungsgebühr wird beim Verbuchen **geschätzt** (Einstellung oben); die echten Gebühren stehen im Stripe-Dashboard und sollten monatlich abgeglichen werden.
 
 ## Hallen-Buchung
