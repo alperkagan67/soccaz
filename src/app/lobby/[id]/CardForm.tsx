@@ -97,7 +97,7 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
     setBusy(true);
     setError(undefined);
     try {
-      const r = await activateStoredCard(matchId);
+      const r = await activateStoredCard({ matchId, mandateAccepted: accepted });
       if (r.ok) {
         setDone(true);
         refreshSoon();
@@ -119,8 +119,11 @@ export function CardForm({ matchId, mandateText, fake, stored }: { matchId: stri
     return (
       <div className="space-y-3" data-testid="card-stored">
         <p className="text-sm">Gespeicherte Karte: <strong>{stored.brand ? `${stored.brand} ` : ""}•••• {stored.last4}</strong></p>
-        <p className="text-sm text-muted" data-testid="card-mandate">{mandateText}</p>
-        <button className="btn btn-primary w-full" disabled={busy} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : "Karte für diese Lobby nutzen"}</button>
+        <label className="flex items-start gap-2 text-sm" htmlFor="card-mandate-stored">
+          <input id="card-mandate-stored" type="checkbox" className="mt-1" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+          <span data-testid="card-mandate">{mandateText}</span>
+        </label>
+        <button className="btn btn-primary w-full" disabled={busy || !accepted} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : "Karte für diese Lobby nutzen"}</button>
         <button type="button" className="btn btn-ghost w-full" onClick={() => setUseNew(true)}>Andere Karte hinterlegen</button>
         {error && <p className="error" role="alert">{error}</p>}
       </div>
