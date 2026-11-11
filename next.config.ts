@@ -1,30 +1,16 @@
 import type { NextConfig } from "next";
+import { buildCsp } from "./src/lib/csp";
 
 const isProd = process.env.NODE_ENV === "production";
 
-// Inhaltsrichtlinie nur in Produktion (die Entwicklung braucht eval für schnelles Neuladen).
-// Einbettungen von Twitch, Kick und YouTube sind für die Stream-Funktion schon freigegeben.
-const csp = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "media-src 'self'",
-  "font-src 'self' data:",
-  "connect-src 'self'",
-  "frame-src https://player.twitch.tv https://www.youtube-nocookie.com https://player.kick.com",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  "form-action 'self' https://accounts.google.com",
-  "object-src 'none'",
-].join("; ");
+const csp = buildCsp(isProd);
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-  ...(isProd ? [{ key: "Content-Security-Policy", value: csp }] : []),
+  ...(csp ? [{ key: "Content-Security-Policy", value: csp }] : []),
 ];
 
 const nextConfig: NextConfig = {
