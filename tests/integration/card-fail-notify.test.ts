@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, notifications, paymentCharges, paymentProfiles, stripeEvents } from "@/db/schema";
+import { matchParticipants, notifications, paymentCharges, paymentProfiles, stripeEvents, users } from "@/db/schema";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { handleStripeWebhook } from "@/server/payments/webhook";
@@ -122,6 +122,38 @@ describe("AC-1: Benachrichtigung bei fehlgeschlagener Abbuchung", () => {
     await send(g, "payment_intent.payment_failed", "card_declined");
     const notes = await notesOf([g.adminA.id, other.adminB.id, other.adminA.id]);
     expect(notes.map((n) => n.userId)).toEqual([g.adminA.id]); // nur der Captain des Teams aus diesem Spiel
+  });
+
+  it("requires_action -> failed: insgesamt genau eine Nachricht je Empfänger (Status und Code werden trotzdem aktualisiert)", async () => {
+    const g = await game();
+    await send(g, "payment_intent.requires_action", null);
+    await send(g, "payment_intent.payment_failed", "card_declined");
+    expect(await notesOf(everyone(g))).toHaveLength(2);
+    const [row] = await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id));
+    expect(row).toMatchObject({ status: "failed", failureCode: "card_declined" });
+  });
+
+  it("Codewechsel (card_declined -> insufficient_funds) innerhalb von failed: keine zweite Nachricht, aber der neue Code wird gespeichert", async () => {
+    const g = await game();
+    await send(g, "payment_intent.payment_failed", "card_declined");
+    await send(g, "payment_intent.payment_failed", "insufficient_funds");
+    expect(await notesOf(everyone(g))).toHaveLength(2);
+    const [row] = await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id));
+    expect(row.failureCode).toBe("insufficient_funds");
+  });
+
+  it("gesperrte Nutzer (Betroffener oder Captain) bekommen keine Nachricht", async () => {
+    const g = await game();
+    await db.update(users).set({ bannedAt: new Date() }).where(eq(users.id, g.adminA.id));
+    await send(g, "payment_intent.payment_failed", "card_declined");
+    const notes = await notesOf(everyone(g));
+    expect(notes.map((n) => n.userId)).toEqual([g.victim.id]); // der gesperrte Captain nicht
+    await db.delete(notifications).where(inArray(notifications.userId, everyone(g)));
+
+    const h = await game();
+    await db.update(users).set({ bannedAt: new Date() }).where(eq(users.id, h.victim.id));
+    await send(h, "payment_intent.payment_failed", "card_declined");
+    expect((await notesOf(everyone(h))).map((n) => n.userId)).toEqual([h.adminA.id]); // der gesperrte Betroffene nicht
   });
 
   it("ein Erfolg erzeugt keine Fehlernachricht", async () => {
