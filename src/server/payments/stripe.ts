@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ChargeResult, type PaymentProvider, type ProviderEvent } from "./provider";
+import { PaymentIdempotencyError, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ChargeResult, type PaymentProvider, type ProviderEvent } from "./provider";
 
 /** Kürzere Grenzen für das Einrichten der Karte (läuft unter einer Datenbanktransaktion): höchstens etwa 16 Sekunden je Aufruf statt 45. */
 const SETUP_REQUEST = { timeout: 8_000, maxNetworkRetries: 1 } as const;
@@ -53,6 +53,7 @@ export class StripeProvider implements PaymentProvider {
         const authNeeded = e.code === "authentication_required" || e.payment_intent.status === "requires_action";
         return { id: e.payment_intent.id, status: authNeeded ? "requires_action" : "failed", failureCode: typeof e.code === "string" ? e.code.slice(0, 64) : "card_declined" };
       }
+      if (e?.type === "StripeIdempotencyError") throw new PaymentIdempotencyError();
       throw error;
     }
   }

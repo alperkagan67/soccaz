@@ -15,7 +15,9 @@ import { createBookingJob, withdrawBookingJob } from "./booking";
 import { hasLongLead } from "@/lib/deadlines";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
-import { cardModeActive, fixShare, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { triggerChargesInBackground } from "./payments/charge-trigger";
+import { chargeAmount } from "./payments/charge-run";
+import { CHARGES_LOCKED, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
@@ -137,6 +139,13 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
     reservationCents: currentShare,
     lowestShareCents: priceCents ? (privateShare ?? (newModel ? shareCents(priceCents, teamCapacity(match) * 2) : shareFor(priceCents, 12))) : null,
     finalShareCents: match.finalShareCents,
+    // Kartenmodell: Betrag, der tatsächlich abgebucht wird (Anteil, mindestens 0,50 EUR; kostenlos: null) und ob er wegen des Mindestbetrags angehoben wurde. Nur Zahlen, keine Personendaten.
+    chargeCents: chargeAmount(priceCents, match.finalShareCents ?? currentShare),
+    minChargeApplied: (() => {
+      const base = match.finalShareCents ?? currentShare;
+      const c = chargeAmount(priceCents, base);
+      return c !== null && base !== null && c > base;
+    })(),
     // Privatspiel und neues Teamspiel: so viel muss die angemeldete Person noch zahlen (Anteil gestiegen oder noch nichts gezahlt)
     myDueCents: newModel && currentShare !== null && viewer ? Math.max(currentShare - (participants.find((p) => p.userId === viewer.id)?.paidCents ?? currentShare), 0) : null,
     settled: Boolean(match.settledAt),
@@ -296,8 +305,9 @@ async function revalidateFinal(tx: Tx, matchId: string) {
 }
 
 /** Der Captain bestätigt zum Schluss: Alle in meinem Team sind bereit und haben bezahlt. Bestätigen beide Captains, steht das Spiel endgültig. */
-export function finalConfirm(userId: string, matchId: string) {
-  return mutateLobby(userId, matchId, async (tx, match) => {
+export async function finalConfirm(userId: string, matchId: string) {
+  let bothConfirmed = false;
+  await mutateLobby(userId, matchId, async (tx, match) => {
     if (match.schedulingOpen || match.vetoStatus === "halls" || match.vetoStatus === "running") throw new DomainError("Erst müssen Uhrzeit und Halle feststehen.");
     const [admin] = await tx
       .select({ teamId: teamMembers.teamId })
@@ -319,6 +329,7 @@ export function finalConfirm(userId: string, matchId: string) {
     await audit(userId, "lobby.final", "match", matchId, { after: { teamId: admin.teamId } }, tx);
     const [fresh] = await tx.select().from(matches).where(eq(matches.id, matchId));
     const bothDone = Boolean(fresh.homeFinalAt && fresh.awayFinalAt);
+    bothConfirmed = bothDone;
     // Privatspiel und neues Teamspiel: mit dem zweiten Bereit steht die Spielerzahl fest, der Anteil wird fixiert (genau einmal; zu wenig bezahlt -> Fehler, nichts wird bestätigt)
     if (bothDone) {
       await fixShare(tx, fresh);
@@ -343,6 +354,13 @@ export function finalConfirm(userId: string, matchId: string) {
       userId,
     );
   });
+  // Nach dem Commit, ohne zu warten: Kartenspiel mit kurzem Vorlauf wird sofort abgebucht (der Auslöser prüft Modus, Frist und Voraussetzungen selbst).
+  // Fehler oder Hänger dort berühren die Bestätigung nie; der 5-Minuten-Job (card-charges) holt nach.
+  if (bothConfirmed) void triggerChargesInBackground(matchId);
+}
+
+async function assertNoCharges(tx: Tx, matchId: string) {
+  if (await hasChargeRows(tx, matchId)) throw new DomainError(CHARGES_LOCKED);
 }
 
 async function findParticipant(tx: Tx, matchId: string, userId: string) {
@@ -357,6 +375,7 @@ const LIST_LOCKED = "Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt:
 
 export function joinLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match, now) => {
+    await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst.");
     const mine = await tx
       .select({ teamId: teamMembers.teamId })
@@ -379,6 +398,7 @@ export function joinLobby(userId: string, matchId: string) {
 
 export function leaveLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match, now) => {
+    await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (!(await findParticipant(tx, matchId, userId))) throw new DomainError("Du bist nicht in dieser Lobby.");
     if (await leaveClosed(tx, match, now)) throw new DomainError(LIST_LOCKED);
     await onParticipantLeaves(tx, match, userId, { removedByAdmin: false, actorId: userId });
@@ -436,6 +456,7 @@ export function setVenue(userId: string, matchId: string, venue: string) {
 
 export function joinAsSubstitute(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match) => {
+    await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (match.visibility !== "public") throw new DomainError("Diese Lobby ist privat.");
     const mine = await tx
       .select({ teamId: teamMembers.teamId })
@@ -464,6 +485,7 @@ export function joinAsSubstitute(userId: string, matchId: string) {
 
 export function assignSubstitute(actorId: string, matchId: string, targetUserId: string, teamId: string) {
   return mutateLobby(actorId, matchId, async (tx, match) => {
+    await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (teamId !== match.homeTeamId && teamId !== match.awayTeamId) throw new DomainError("Ungültiges Team.");
     if (!(await isPlatformAdmin(tx, actorId)) && !(await isAdminOf(tx, actorId, teamId))) {
       throw new DomainError("Nur Admins dieses Teams können Ersatzspieler zuweisen.");
@@ -485,6 +507,7 @@ export function assignSubstitute(actorId: string, matchId: string, targetUserId:
  */
 export function randomSplit(actorId: string, matchId: string, reshuffle = false, random: () => number = secureRandom) {
   return mutateLobby(actorId, matchId, async (tx, match) => {
+    await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (match.kind !== "private") throw new DomainError("Zufällig einteilen gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
     if (reshuffle) {
@@ -514,6 +537,7 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false,
 /** Privatspiel: Ein eingeteilter Spieler (noch nicht bereit, nicht bezahlt) geht zurück in den Pool der Nichteingeteilten. */
 export function unassignParticipant(actorId: string, matchId: string, targetUserId: string) {
   return mutateLobby(actorId, matchId, async (tx, match) => {
+    await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (match.kind !== "private") throw new DomainError("Das gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
     const p = await findParticipant(tx, matchId, targetUserId);
@@ -526,6 +550,7 @@ export function unassignParticipant(actorId: string, matchId: string, targetUser
 
 export function removeParticipant(actorId: string, matchId: string, targetUserId: string) {
   return mutateLobby(actorId, matchId, async (tx, match, now) => {
+    await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (actorId === targetUserId) throw new DomainError("Zum Verlassen nutze „Abmelden“.");
     const target = await findParticipant(tx, matchId, targetUserId);
     if (!target) throw new DomainError("Spieler nicht gefunden.");
@@ -554,6 +579,9 @@ export function cancelMatch(actorId: string, matchId: string, reason: string) {
 
 /** Sagt ein Spiel ab, protokolliert es und informiert alle Beteiligten. Wird auch von der automatischen Absage genutzt. */
 export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | null, reason: string) {
+  // Gibt es Abbuchungszeilen, wurde (oder wird gleich) von Karten abgebucht. Eine Absage würde still stornieren, ohne das Geld per Stripe zu erstatten
+  // (die Erstattung auf die Karte kommt mit M3). Deshalb für ALLE Pfade (Captain, Admin, System/Job: actorId null) abgelehnt; kein Wallet-Eintrag, Status bleibt.
+  if (await hasChargeRows(tx, match.id)) throw new DomainError("Für dieses Spiel wurde schon abgebucht oder die Abbuchung läuft. Bitte wende dich an einen Admin.");
   await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, match.id));
   await refundOnCancel(tx, match, actorId);
   await withdrawBookingJob(tx, match.id);

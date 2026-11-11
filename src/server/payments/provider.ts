@@ -32,6 +32,14 @@ export interface PaymentProvider {
   constructWebhookEvent(rawBody: string, signature: string | null): ProviderEvent;
 }
 
+/** Stripe meldet: derselbe Idempotenz-Schlüssel wurde mit anderen Parametern benutzt (z. B. Zahlungsmittel oder Kunde geändert). Kein unbekannter Ausgang: die Zeile ist nicht mehr sendbar. */
+export class PaymentIdempotencyError extends Error {
+  constructor() {
+    super("Idempotenz-Konflikt");
+    this.name = "PaymentIdempotencyError";
+  }
+}
+
 export class WebhookSignatureError extends Error {
   constructor() {
     super("Ungültige Signatur");

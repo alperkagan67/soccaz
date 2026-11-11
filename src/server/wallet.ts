@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { auditLog, matchParticipants, matches } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentCharges } from "@/db/schema";
 import { pendingRefunds } from "@/db/schema-finance";
 import { joinClosedByTime, leaveClosedByTime } from "@/lib/deadlines";
 import { MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
@@ -50,6 +50,19 @@ export async function cardModeActive(tx: Pick<Tx, "select">, match: Pick<MatchRo
   return !paid;
 }
 
+/**
+ * Existieren für dieses Spiel Abbuchungszeilen (012 M2)? Dann ist die Abbuchung angelaufen oder abgeschlossen: Die Spielerliste und die Absage sind gesperrt,
+ * weil Austritt, Einteilung oder Absage sonst Geld bewegen müssten, das schon (oder gleich) auf der Karte liegt (Erstattung = Stripe-Refund, kommt mit M3).
+ * Gelesen unter der Spielsperre des Aufrufers (alle Listenänderungen und Absagen nehmen FOR UPDATE auf dem Spiel; die Zeilen legt runCharges ebenfalls unter
+ * dieser Sperre an und committet sie, bevor Stripe etwas sieht). Das schließt das Fenster zwischen Beanspruchen und Stripe-Aufruf.
+ */
+export async function hasChargeRows(tx: Pick<Tx, "select">, matchId: string): Promise<boolean> {
+  const [row] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.matchId, matchId)).limit(1);
+  return Boolean(row);
+}
+
+export const CHARGES_LOCKED = "Die Karten werden für dieses Spiel schon belastet: Die Teilnehmerliste ist gesperrt. Bitte wende dich an einen Admin.";
+
 type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel" | "schedulingOpen" | "vetoStatus">;
 
 /** Können die Spieler jetzt überhaupt zahlen und "Bereit" drücken? Nicht, solange Termin oder Hallen-Veto laufen (lobby.ts sperrt beides). Dann gibt es keine Frist. */
@@ -86,6 +99,7 @@ async function deadlineRulesActive(tx: Pick<Tx, "select">, match: DeadlineFields
  * dem Fixieren nur noch Ersatz für einen Ausgestiegenen, davor offen).
  */
 export async function joinClosed(tx: Pick<Tx, "select">, match: DeadlineFields, now: Date): Promise<boolean> {
+  if (await hasChargeRows(tx, match.id)) return true;
   if (await deadlineRulesActive(tx, match)) {
     if (match.settledAt !== null) return true;
     if (!payAndReadyPossible(match)) return false; // Termin oder Hallen-Veto laufen: zahlen geht noch nicht, also noch keine Frist
@@ -100,6 +114,7 @@ export async function joinClosed(tx: Pick<Tx, "select">, match: DeadlineFields, 
 
 /** Sind Austritt und Rauswurf gesperrt? Neue Regel: ab 48 Stunden vor Anstoß (bei Anlage unter 48 Stunden von Anfang an) und nach der Abrechnung. */
 export async function leaveClosed(tx: Pick<Tx, "select">, match: DeadlineFields, now: Date): Promise<boolean> {
+  if (await hasChargeRows(tx, match.id)) return true;
   if (await deadlineRulesActive(tx, match)) return match.settledAt !== null || (payAndReadyPossible(match) && leaveClosedByTime(match.startsAt, now));
   return privateListLocked(match);
 }
