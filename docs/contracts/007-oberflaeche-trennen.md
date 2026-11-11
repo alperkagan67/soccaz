@@ -1,6 +1,6 @@
 # 007 – Oberfläche trennen: Teamspiel, Privatspiel, Turniere
 Status: Freigegeben (2026-11-10)
-Version: 2 (v2.1 2026-11-12: Vermerk zu Vertrag 012 in Begründung E und AC-5; Richtung E „Trikot“ statt C „Hallenboden“; Zusätze 2026-11-10: Teamfarben im Privatspiel, Teilen-Karte, bestätigte Annahmen)
+Version: 2 (v2.1 2026-11-11: Vermerk zu Vertrag 012 in Begründung E und AC-5; Richtung E „Trikot“ statt C „Hallenboden“; Zusätze 2026-11-10: Teamfarben im Privatspiel, Teilen-Karte, bestätigte Annahmen)
 
 ## Ziel
 Die drei Spielarten sind in Navigation, "Meine Spiele" und Begriffen klar getrennt: Teamspiel (Gegner suchen, offene Lobbys), Privatspiel (Freundesgruppe, Einladungslink), Turniere. Das Erscheinungsbild folgt der gewählten Richtung E "Trikot" (docs/design/richtung-e-trikot.html, DESIGN.md Abschnitt "Verbindliche Richtung: E", PRODUCT.md): ruhige dunkelgrüne beziehungsweise helle Fläche, Anzeigetafel-Spielnummer, **Orange als einzige Akzentfarbe**, Lobby als Spielfeld, dessen Hälften in den **Trikotfarben der beiden Teams** auf neutraler Grundfläche stehen, "Spiel suchen" als Mittelknopf der unteren Leiste. Gäste sehen auf Spielseiten nur Initialen (Vertrag-Entscheidung Q1, Umsetzung in Backlog-Eintrag 3).
