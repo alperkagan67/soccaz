@@ -169,13 +169,18 @@ export async function expireScheduling(now: Date = new Date()): Promise<number> 
   const due = await db.select({ id: matches.id }).from(matches).where(and(eq(matches.schedulingOpen, true), eq(matches.status, "lobby"), lt(matches.schedulingDeadline, now)));
   let n = 0;
   for (const { id } of due) {
-    await db.transaction(async (tx) => {
-      const [m] = await tx.select().from(matches).where(eq(matches.id, id)).for("update");
-      if (!m || !m.schedulingOpen || m.status !== "lobby") return;
-      await tx.update(matches).set({ schedulingOpen: false }).where(eq(matches.id, id));
-      await cancelMatchTx(tx, m, null, m.challengeStatus === "pending" ? "Die Herausforderung wurde nicht rechtzeitig angenommen." : "Die Teams haben sich nicht rechtzeitig auf Termin und Ort geeinigt.");
-      n += 1;
-    });
+    try {
+      await db.transaction(async (tx) => {
+        const [m] = await tx.select().from(matches).where(eq(matches.id, id)).for("update");
+        if (!m || !m.schedulingOpen || m.status !== "lobby") return;
+        await tx.update(matches).set({ schedulingOpen: false }).where(eq(matches.id, id));
+        await cancelMatchTx(tx, m, null, m.challengeStatus === "pending" ? "Die Herausforderung wurde nicht rechtzeitig angenommen." : "Die Teams haben sich nicht rechtzeitig auf Termin und Ort geeinigt.");
+        n += 1;
+      });
+    } catch (error) {
+      // z. B. Absagesperre (Abbuchungszeilen): ein Spiel darf die anderen nicht stoppen; die Transaktion ist zurückgerollt
+      console.error("expireScheduling: Fehler bei Spiel", id, error instanceof Error ? error.name : "Fehler");
+    }
   }
   return n;
 }

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { signStripePayload, verifyStripeSignature } from "@/lib/stripe-signature";
-import { WebhookSignatureError, type CardDisplay, type ChargeResult, type PaymentProvider, type ProviderEvent } from "./provider";
+import { PaymentIdempotencyError, WebhookSignatureError, type CardDisplay, type ChargeResult, type PaymentProvider, type ProviderEvent } from "./provider";
 
 /** Steuerbarer Ausgang einer Abbuchung im FakeProvider. "error" wirft (Ergebnis unbekannt). */
-export type FakeChargeOutcome = "succeeded" | "declined" | "requires_action" | "processing" | "error";
+export type FakeChargeOutcome = "succeeded" | "declined" | "requires_action" | "processing" | "error" | "idempotency_mismatch";
 
 export const FAKE_WEBHOOK_SECRET = "whsec_fake_for_tests";
 const short = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 16);
@@ -73,6 +73,7 @@ export class FakeProvider implements PaymentProvider {
     this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
     const outcome = this.outcomes.get(input.metadata.userId) ?? "succeeded";
     if (outcome === "error") throw new Error("Netz weg");
+    if (outcome === "idempotency_mismatch") throw new PaymentIdempotencyError();
     const id = `pi_fake_${short(input.idempotencyKey)}`; // gleicher Schlüssel, gleicher PaymentIntent (wie bei Stripe)
     if (outcome === "succeeded") return { id, status: "succeeded", failureCode: null };
     if (outcome === "processing") return { id, status: "processing", failureCode: null };

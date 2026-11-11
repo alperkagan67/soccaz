@@ -9,6 +9,7 @@ import { ACCENTS, FEET } from "@/lib/profile-options";
 import { audit } from "./audit";
 import { walletBalance } from "./ledger";
 import { DomainError } from "./teams";
+import { hasChargeRows } from "./wallet";
 
 const POSITIONS = ["Torwart", "Abwehr", "Mittelfeld", "Angriff", "Flexibel"];
 
@@ -73,6 +74,19 @@ export async function exportMyData(userId: string) {
  */
 export async function deleteAccount(userId: string) {
   await db.transaction(async (tx) => {
+    // ZUERST die offenen Spiele des Nutzers sperren (nach id sortiert, wie mergeTeams), DANN die Nutzerzeile. Reihenfolge Spiel -> Nutzer wie in der Abbuchung (Phase A sperrt das Spiel
+    // und nimmt beim Anlegen der Zeilen einen Schlüssel-Share auf die Nutzerzeile): so verklemmt sich nichts, und Phase A kann nicht zwischen die Prüfung und das Anonymisieren geraten.
+    const lockedGames = await tx
+      .select({ id: matches.id })
+      .from(matchParticipants)
+      .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
+      .where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"])))
+      .orderBy(matches.id)
+      // NO KEY UPDATE statt UPDATE: hält Phase A, claimNext und mutateLobby (FOR UPDATE/FOR SHARE) fern, verträgt sich aber mit Fremdschlüssel-Einfügern (Key-Share auf das Spiel,
+      // z. B. manualRefund: Nutzer zuerst, dann Ledger-Eintrag mit match_id). So gibt es keinen Zyklus Nutzer -> Spiel gegen Spiel -> Nutzer.
+      // Bekannter, sehr enger Rest-Zyklus: mergeTeams sperrt Team -> Spiele, dieser Pfad Spiel -> Team (archiviert unten das Team des einzigen Admins). Folge wäre der Abbruch einer
+      // der beiden Transaktionen (Deadlock-Erkennung), nichts wird beschädigt; siehe docs/BETRIEB.md.
+      .for("no key update", { of: matches });
     const [user] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
     if (!user || user.bannedAt) throw new DomainError("Dieses Konto gibt es nicht mehr.");
     if (user.role !== "player") throw new DomainError("Dein Konto hat eine Admin-Rolle. Bitte lass sie zuerst entfernen.");
@@ -85,6 +99,10 @@ export async function deleteAccount(userId: string) {
       .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
       .where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"]), gt(matches.startsAt, new Date(Date.now() - 6 * 3_600_000))));
     if (open.length > 0) throw new DomainError("Du bist noch für ein offenes Spiel eingetragen. Bitte melde dich zuerst ab.");
+
+    // Läuft für ein offenes Spiel (egal wie lange der Anstoß her ist) eine Kartenabbuchung, bleibt das Konto bis dahin bestehen: Löschen würde Bereit-Status und Spielablauf ändern.
+    // Gelesen unter der Spielsperre von oben. Die Löschung läuft bis zur Klärung über den Support (Zeilen bleiben bis M3 offen, das Spiel wird nie automatisch abgesagt).
+    for (const g of lockedGames) if (await hasChargeRows(tx, g.id)) throw new DomainError("Du hast ein laufendes Spiel mit Abbuchung. Bitte wende dich an den Support; die Löschung wird nach Klärung der Abbuchung durchgeführt.");
 
     const mine = await tx.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.userId, userId));
     for (const m of mine.filter((x) => x.role === "admin")) {
@@ -103,7 +121,8 @@ export async function deleteAccount(userId: string) {
     await tx.delete(userBadges).where(eq(userBadges.userId, userId));
     await tx.delete(playerStats).where(eq(playerStats.userId, userId));
     await tx.delete(userReliability).where(eq(userReliability.userId, userId));
-    await tx.update(matchParticipants).set({ readyAt: null }).where(eq(matchParticipants.userId, userId));
+    // Plätze in Spielen mit Abbuchungszeilen (z. B. abgesagt, abgerechnet) bleiben unberührt: Bereit gehört zum Nachweis der Abbuchung
+    await tx.update(matchParticipants).set({ readyAt: null }).where(and(eq(matchParticipants.userId, userId), sql`not exists (select 1 from payment_charges c where c.match_id = ${matchParticipants.matchId})`));
 
     await tx
       .update(users)
