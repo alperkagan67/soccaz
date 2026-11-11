@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { PaymentIdempotencyError, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ChargeResult, type PaymentProvider, type ProviderEvent } from "./provider";
+import { PaymentIdempotencyError, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ChargeResult, type FoundIntent, type RefundResult, type PaymentProvider, type ProviderEvent } from "./provider";
 
 /** Kürzere Grenzen für das Einrichten der Karte (läuft unter einer Datenbanktransaktion): höchstens etwa 16 Sekunden je Aufruf statt 45. */
 const SETUP_REQUEST = { timeout: 8_000, maxNetworkRetries: 1 } as const;
@@ -58,6 +58,40 @@ export class StripeProvider implements PaymentProvider {
       if (ie?.type === "StripeIdempotencyError" && ie.code !== "idempotency_key_in_use" && ie.statusCode !== 409) throw new PaymentIdempotencyError();
       throw error;
     }
+  }
+
+  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult> {
+    try {
+      const r = await this.stripe().refunds.create(
+        { payment_intent: input.paymentIntentId, amount: input.amountCents, metadata: input.metadata },
+        { idempotencyKey: input.idempotencyKey, ...SETUP_REQUEST },
+      );
+      const status = r.status === "succeeded" ? "succeeded" : r.status === "failed" || r.status === "canceled" ? "failed" : "pending";
+      return { id: r.id, status, failureCode: status === "failed" ? (r.failure_reason ?? "refund_failed").slice(0, 64) : null };
+    } catch (error) {
+      const e = error as { type?: string; code?: string; statusCode?: number };
+      if (e?.type === "StripeIdempotencyError" && e.code !== "idempotency_key_in_use" && e.statusCode !== 409) throw new PaymentIdempotencyError();
+      // Von Stripe abgelehnt (kein Netzfehler): als Ergebnis melden, damit die Zeile failed wird und der Admin-Alarm greift
+      if (e?.type === "StripeInvalidRequestError" && (e.code === "charge_disputed" || e.code === "charge_already_refunded" || e.code === "charge_expired_for_refund" || e.code === "insufficient_funds")) {
+        return { id: "", status: "failed", failureCode: e.code };
+      }
+      throw error;
+    }
+  }
+
+  async findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]> {
+    // Die Werte stammen aus unseren UUIDs (vom Aufrufer geprüft); trotzdem nur Zeichen einer UUID zulassen, bevor sie in die Suchanfrage kommen
+    const uuid = /^[0-9a-f-]{36}$/i;
+    if (!uuid.test(input.matchId) || !uuid.test(input.userId)) return [];
+    const res = await this.stripe().paymentIntents.search({ query: `metadata['matchId']:'${input.matchId}' AND metadata['userId']:'${input.userId}'`, limit: 10 }, SETUP_REQUEST);
+    return res.data.map((pi) => ({
+      id: pi.id,
+      status: pi.status === "succeeded" ? "succeeded" : pi.status === "requires_action" ? "requires_action" : pi.status === "processing" ? "processing" : pi.status === "requires_payment_method" || pi.status === "canceled" ? "failed" : "other",
+      amountCents: Number.isInteger(pi.amount) ? pi.amount : null,
+      currency: pi.currency ?? null,
+      customerId: typeof pi.customer === "string" ? pi.customer : (pi.customer?.id ?? null),
+      failureCode: pi.last_payment_error?.code ?? null,
+    }));
   }
 
   async retrieveChargeFee(paymentIntentId: string): Promise<number | null> {

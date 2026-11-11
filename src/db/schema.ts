@@ -126,6 +126,8 @@ export const matches = pgTable("matches", {
   costCents: integer("cost_cents"),
   finalShareCents: integer("final_share_cents"),
   settledAt: timestamp("settled_at", { withTimezone: true }),
+  cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }), // 012 M3a: Absage angefordert; das Spiel bleibt lobby/confirmed, bis alle Erstattungen auf die Karte terminal sind
+  cancelReason: text("cancel_reason"),
   finalizedAt: timestamp("finalized_at", { withTimezone: true }),
   mvpUserId: uuid("mvp_user_id"),
   mvpClosedAt: timestamp("mvp_closed_at", { withTimezone: true }),
@@ -329,5 +331,34 @@ export const paymentCharges = pgTable(
     check("payment_charges_amount_positive", sql`${t.amountCents} > 0`),
     check("payment_charges_fee_nonneg", sql`${t.feeCents} is null or ${t.feeCents} >= 0`),
     check("payment_charges_status_check", sql`${t.status} in ('pending', 'requires_action', 'succeeded', 'failed')`),
+  ],
+);
+
+/**
+ * Erstattung einer Abbuchung auf die Karte (Vertrag 012, M3a). Genau eine (volle) Erstattung je Abbuchungszeile (UNIQUE charge_id): erstattet wird der gezahlte Betrag.
+ * Hauptbuch erst bei Erfolg (revenue -> clearing, Schluessel refund:<refund_id>); die Stripe-Gebuehr wird nicht zurueckgebucht (Soccaz traegt sie).
+ * status: pending (angelegt oder bei Stripe unterwegs), succeeded, failed (manuell zu klaeren, Admin-Alarm). idempotency_key = refund:<charge_id>.
+ */
+export const paymentRefunds = pgTable(
+  "payment_refunds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    chargeId: uuid("charge_id").notNull().references(() => paymentCharges.id, { onDelete: "cascade" }),
+    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    status: text("status").$type<"pending" | "succeeded" | "failed">().notNull().default("pending"),
+    refundId: text("refund_id").unique(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    reason: text("reason"),
+    failureCode: text("failure_code"),
+    attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("payment_refunds_charge_idx").on(t.chargeId),
+    check("payment_refunds_amount_positive", sql`${t.amountCents} > 0`),
+    check("payment_refunds_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed')`),
   ],
 );
