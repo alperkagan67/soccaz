@@ -1,6 +1,6 @@
 # 009 – Admin-Bereich, Einnahmemodell und Buchhaltung
 Status: Freigegeben (2026-11-11)
-Version: 2 (v2 2026-11-12: durch Vertrag 012: Provision inklusive Zahlungsabwicklung, 10 % Startwert ohne Untergrenze, Stripe-Gebühren und Warnung im Admin, Erstattung auf die Karte; davor v1)
+Version: 2 (v2 2026-11-11: durch Vertrag 012: Provision inklusive Zahlungsabwicklung, 10 % Startwert ohne Untergrenze, Stripe-Gebühren und Warnung im Admin, Erstattung auf die Karte; davor v1)
 
 ## Ziel
 Soccaz ist Vermittler. Spieler zahlen per Karte (Stripe, Vertrag 012) den Hallenpreis geteilt durch die Spielerzahl (aufgerundet), ohne Gebühr für Spieler. Soccaz verdient über eine Provision der Halle (Prozent pro Buchung und/oder 10er-Bonus), die nur Admin 1 pro Halle einstellt. Die Provision ist "Provision inklusive Zahlungsabwicklung": Soccaz trägt die Stripe-Gebühren aus der Provision. Der Admin-Bereich zeigt je Halle und je Spiel Provision, Stripe-Gebühren und Rest und warnt bei einer Halle im Minus. Der Admin-Bereich bekommt zwei Rollen (Admin 1 Betreiber, Admin 2 Mitarbeiter), ein unveränderbares Beweisprotokoll für Hallenanfragen, ein Eingriffsprotokoll und eine Buchhaltung (doppelte Buchung, lückenlose Rechnungsnummern, Kalendermodus, DATEV-Export, KI-geprüfte Belege, Sicherung), die nur Admin 1 sieht.
