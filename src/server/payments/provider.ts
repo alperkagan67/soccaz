@@ -6,6 +6,9 @@ import { DomainError } from "../teams";
 export type ProviderEvent = { id: string; type: string; object: Record<string, unknown> };
 export type CardDisplay = { id: string; brand: string | null; last4: string | null };
 
+export type ChargeStatus = "succeeded" | "requires_action" | "processing" | "failed";
+export type ChargeResult = { id: string; status: ChargeStatus; failureCode: string | null };
+
 export interface PaymentProvider {
   readonly name: "stripe" | "fake";
   /** Legt den Kunden an. Gleicher idempotencyKey liefert denselben Kunden. */
@@ -15,6 +18,14 @@ export interface PaymentProvider {
   /** Nur Anzeigedaten (Marke, letzte vier Ziffern). */
   retrievePaymentMethod(id: string): Promise<CardDisplay>;
   detachPaymentMethod(id: string): Promise<void>;
+  /**
+   * Bucht einen Betrag mit dem gespeicherten Zahlungsmittel ab (off_session, sofort bestätigt, EUR). Der idempotencyKey (je Spieler und Spiel) verhindert
+   * eine zweite Belastung bei Wiederholung. Abgelehnte oder authentifizierungspflichtige Karten liefern ein Ergebnis mit id und Status, keinen Fehler;
+   * ein Fehler (Netz, Stripe) bedeutet "Ergebnis unbekannt".
+   */
+  createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult>;
+  /** Echte Stripe-Gebühr der Zahlung in Cent (aus der balance_transaction), oder null, wenn noch nicht verfügbar. Nie geschätzt. */
+  retrieveChargeFee(paymentIntentId: string): Promise<number | null>;
   /** Ist das Zahlungsmittel bei Stripe noch nutzbar: existiert, gehört noch zu diesem Kunden (nicht gelöst) und ist nicht abgelaufen? */
   isPaymentMethodUsable(id: string, customerId: string): Promise<boolean>;
   /** Prüft die Signatur des rohen Bodys und liefert das Ereignis. Wirft WebhookSignatureError bei falscher oder fehlender Signatur. */

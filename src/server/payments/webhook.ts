@@ -1,13 +1,32 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
+import { applyChargeInTx, bookChargeFee, type ChargeReport } from "./charge";
 import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ProviderEvent } from "./provider";
 
 /** Größter angenommener Body (Stripe-Ereignisse sind klein). */
 export const MAX_WEBHOOK_BYTES = 256 * 1024;
 
 /** Nur diese Ereignistypen gehören zu diesem Endpunkt; alles andere wird angenommen, aber weder gespeichert noch verarbeitet (keine fremden Event-IDs in stripe_events). */
-export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.");
+export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.") || type.startsWith("payment_intent.") || type === "charge.updated";
+
+/** Macht aus einem payment_intent.*-Ereignis eine ungeprüfte Meldung für applyChargeInTx; null, wenn der Typ keine Verbuchung auslöst. */
+function toChargeReport(event: ProviderEvent): ChargeReport | null {
+  const outcome = event.type === "payment_intent.succeeded" ? "succeeded" : event.type === "payment_intent.payment_failed" ? "failed" : event.type === "payment_intent.requires_action" ? "requires_action" : null;
+  const id = str(event.object.id);
+  if (!outcome || !id) return null;
+  const meta = (event.object.metadata && typeof event.object.metadata === "object" ? event.object.metadata : {}) as Record<string, unknown>;
+  const err = (event.object.last_payment_error && typeof event.object.last_payment_error === "object" ? event.object.last_payment_error : {}) as Record<string, unknown>;
+  return {
+    outcome,
+    paymentIntentId: id,
+    amountCents: typeof event.object.amount === "number" && Number.isInteger(event.object.amount) ? event.object.amount : null,
+    currency: str(event.object.currency),
+    customerId: str(event.object.customer),
+    metadata: { matchId: str(meta.matchId), userId: str(meta.userId) },
+    failureCode: str(err.code),
+  };
+}
 
 /** Liest den Body gestreamt mit Byte-Zähler und bricht bei mehr als max Bytes ab (null), auch bei chunked ohne Content-Length. */
 export async function readBodyLimited(request: Request, max: number): Promise<string | null> {
@@ -62,6 +81,7 @@ async function processEvent(event: ProviderEvent) {
   // Kartendaten von Stripe holen, bevor die Transaktion beginnt (kein Netzaufruf unter Sperre). Nur für bekannte SetupIntents.
   let card: CardDisplay | null = null;
   let oldMethod: string | null = null;
+  let feeFor: string | null = null; // erfolgreiche Abbuchung: die Gebühr wird NACH der Transaktion gebucht (Netzaufruf)
   if (event.type === "setup_intent.succeeded") {
     const pmId = str(event.object.payment_method);
     const intentId = str(event.object.id);
@@ -95,6 +115,14 @@ async function processEvent(event: ProviderEvent) {
           }
         }
       }
+    } else if (event.type.startsWith("payment_intent.")) {
+      const report = toChargeReport(event);
+      if (report) {
+        const res = await applyChargeInTx(tx, report);
+        if (res.status === "applied" && report.outcome === "succeeded") feeFor = report.paymentIntentId;
+      }
+    } else if (event.type === "charge.updated") {
+      feeFor = str(event.object.payment_intent); // die balance_transaction ist jetzt womöglich da; unbekannte PaymentIntents ignoriert bookChargeFee
     } else if (event.type === "setup_intent.setup_failed") {
       const intentId = str(event.object.id);
       if (intentId) await tx.update(paymentSetupIntents).set({ status: "failed" }).where(and(eq(paymentSetupIntents.id, intentId), eq(paymentSetupIntents.status, "created")));
@@ -103,6 +131,13 @@ async function processEvent(event: ProviderEvent) {
     await tx.update(stripeEvents).set({ processedAt: new Date() }).where(eq(stripeEvents.eventId, event.id));
   });
 
+  if (feeFor) {
+    try {
+      await bookChargeFee(feeFor); // eigener Folgeschritt, idempotent; "nicht verfügbar" holt der Nachholer später nach
+    } catch {
+      /* nichts loggen */
+    }
+  }
   if (oldMethod) {
     try {
       await (await getPaymentProvider()).detachPaymentMethod(oldMethod); // altes Zahlungsmittel bei Stripe lösen; Fehler bleiben folgenlos

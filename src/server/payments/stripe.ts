@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type PaymentProvider, type ProviderEvent } from "./provider";
+import { PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ChargeResult, type PaymentProvider, type ProviderEvent } from "./provider";
 
 /** Kürzere Grenzen für das Einrichten der Karte (läuft unter einer Datenbanktransaktion): höchstens etwa 16 Sekunden je Aufruf statt 45. */
 const SETUP_REQUEST = { timeout: 8_000, maxNetworkRetries: 1 } as const;
@@ -36,6 +36,33 @@ export class StripeProvider implements PaymentProvider {
   async retrievePaymentMethod(id: string): Promise<CardDisplay> {
     const pm = await this.stripe().paymentMethods.retrieve(id);
     return { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null };
+  }
+
+  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult> {
+    try {
+      const pi = await this.stripe().paymentIntents.create(
+        { amount: input.amountCents, currency: "eur", customer: input.customerId, payment_method: input.paymentMethodId, off_session: true, confirm: true, metadata: input.metadata },
+        { idempotencyKey: input.idempotencyKey, ...SETUP_REQUEST },
+      );
+      const status = pi.status === "succeeded" ? "succeeded" : pi.status === "requires_action" ? "requires_action" : pi.status === "processing" ? "processing" : "failed";
+      return { id: pi.id, status, failureCode: status === "failed" ? (pi.last_payment_error?.code ?? "requires_payment_method") : null };
+    } catch (error) {
+      // Abgelehnte Karte oder Authentifizierung nötig: Stripe wirft, legt aber einen PaymentIntent an. Das ist ein Ergebnis, kein unbekannter Ausgang.
+      const e = error as { type?: string; code?: string; payment_intent?: { id?: string; status?: string } };
+      if (e?.type === "StripeCardError" && typeof e.payment_intent?.id === "string") {
+        const authNeeded = e.code === "authentication_required" || e.payment_intent.status === "requires_action";
+        return { id: e.payment_intent.id, status: authNeeded ? "requires_action" : "failed", failureCode: typeof e.code === "string" ? e.code.slice(0, 64) : "card_declined" };
+      }
+      throw error;
+    }
+  }
+
+  async retrieveChargeFee(paymentIntentId: string): Promise<number | null> {
+    const pi = await this.stripe().paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge.balance_transaction"] });
+    const charge = typeof pi.latest_charge === "object" && pi.latest_charge ? pi.latest_charge : null;
+    const bt = charge && typeof charge.balance_transaction === "object" && charge.balance_transaction ? charge.balance_transaction : null;
+    if (!bt || bt.currency !== "eur" || !Number.isInteger(bt.fee) || bt.fee < 0) return null;
+    return bt.fee;
   }
 
   async isPaymentMethodUsable(id: string, customerId: string): Promise<boolean> {
