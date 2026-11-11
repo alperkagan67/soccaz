@@ -1,5 +1,5 @@
 # 0002 – Komponenten-Grundlage des Frontends: nativ plus kleine eigene Bausteine statt shadcn/ui
-Status: vorgeschlagen (wartet auf Bestätigung des Nutzers mit Vertrag 013)
+Status: akzeptiert (Nutzer hat Council-Option B+ am 2026-11-12 bestätigt; die Bestätigung betrifft den ADR, KEINE Freigabe für Ausnahme-PRs)
 Datum: 2026-11-12
 
 ## Kontext und Problem
