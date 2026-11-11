@@ -1,23 +1,21 @@
 ---
 name: Soccaz
-description: Dunkles Schwarzgrün mit grünem Signalton und Neon-Akzenten für Hallenfußball auf dem Handy.
+description: Richtung E „Trikot“: neutrale Grüngrau-Töne, Orange nur für Marke und Hauptaktion, Teamfarbe als Identität, Status mit Symbol und Wort. Hell und Dunkel folgen dem System.
 colors:
-  bg: "#030806"
-  panel: "#07110c"
-  panel-2: "#0b1a13"
-  line: "#12221b"
-  ink: "#ffffff"
-  muted: "#8ea299"
-  green: "#22c55e"
-  green-dark: "#15803d"
-  lime: "hsl(78, 96%, 56%)"
-  cyan: "hsl(190, 93%, 52%)"
-  sky: "hsl(211, 95%, 58%)"
-  violet: "hsl(262, 86%, 64%)"
-  pink: "hsl(327, 92%, 61%)"
-  coral: "hsl(12, 95%, 62%)"
-  yellow: "hsl(44, 98%, 58%)"
-  red: "hsl(0, 75%, 55%)"
+  bg: "#0f1914"
+  panel: "#1b2a23"
+  panel-2: "#24362d"
+  line: "#3a5043"
+  ink: "#eef4f0"
+  muted: "#a3b5ab"
+  rim: "#cfe0d6"
+  accent: "#ff6a1f"
+  accent-ink: "#1d0a00"
+  ok: "#4ade80"
+  warn: "#facc15"
+  danger: "#ff8a8a"
+  info: "#6cb2ff"
+  focus: "#9ecbff"
 typography:
   display:
     fontFamily: "Outfit, Plus Jakarta Sans, sans-serif"
@@ -26,26 +24,21 @@ typography:
   body:
     fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
     fontWeight: 400
+    fontSize: "1rem"
   label:
     fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
-    fontSize: "0.85rem"
+    fontSize: "0.875rem"
     fontWeight: 400
 rounded:
   field: "10px"
   card: "12px"
-  panel: "16px"
 spacing:
   card: "1rem"
   touch: "44px"
 components:
   button-primary:
-    backgroundColor: "{colors.green}"
-    textColor: "#03120a"
-    rounded: "{rounded.field}"
-    height: "44px"
-  button-ghost:
-    backgroundColor: "transparent"
-    textColor: "{colors.ink}"
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.accent-ink}"
     rounded: "{rounded.field}"
     height: "44px"
   card:
@@ -62,21 +55,21 @@ components:
 
 # Design System: Soccaz
 
-> Stand der Dinge (Scan-Modus), gelesen aus `src/app/globals.css`, `src/app/layout.tsx`, `BottomNav`, `Header`, `MyGames`, `LobbyBoard`, `PlayerLight`. Die beschreibenden Teile (North Star, Charakter) sind vom Autor abgeleitet und nicht mit dem Projektinhaber abgestimmt. Quelle der Werte ist `globals.css`; der Frontmatter bildet sie ab, ohne sie zu ändern.
+> Verbindlich seit Vertrag 007 (Richtung E „Trikot“), erweitert in Vertrag 013 M2-1 (Typo-Skala, Status, Fokus, Abstände). Quelle der Werte ist `src/app/globals.css`; Kontrast und Übereinstimmung prüfen `tests/unit/contrast.test.ts` und `tests/unit/accent.test.ts`. Der Frontmatter zeigt die dunklen Werte.
 
 ## Verbindliche Richtung: E „Trikot“ (Nutzerentscheid 2026-11-10, Vertrag 007)
 
-Ab Vertrag 007 gilt Richtung E. Alles darunter („Overview“ bis „Do's and Don'ts“) beschreibt den **Ist-Stand vor der Umsetzung** und wird in den Meilensteinen von Vertrag 007 abgelöst; wo beides sich widerspricht, gilt dieser Abschnitt. Der Frontmatter oben bildet bis zur Umsetzung (M1) weiter den Ist-Stand ab. Referenz: `docs/design/richtung-e-trikot.html` (Skizze, dunkel und hell), Kontrastwerte: Tabelle in `docs/design/README.md`, Abschnitt „Teamfarben und Lesbarkeit“.
+Seit Vertrag 007 gilt Richtung E, Vertrag 013 baut sie flächendeckend um. Es gibt keinen Ist-Stand-Teil mehr; was hier steht, gilt. Referenz: `docs/design/richtung-e-trikot.html` (Skizze, dunkel und hell), Kontrastwerte: Tabelle in `docs/design/README.md`, Abschnitt „Teamfarben und Lesbarkeit“.
 
 ### Grundsätze
 
 - **Hell und dunkel folgen der Systemeinstellung** (`prefers-color-scheme`). Es gibt keinen eigenen Umschalter und keinen festen Standard.
-- **Orange ist die einzige Akzentfarbe.** Sie steht für die eine nächste Handlung und den aktuellen Stand: Hauptknopf, Mittelknopf „Spiel suchen“, aktiver Navigationsstrich, **aktuelle Station** im Weg bis zum Anstoß (Stationsmarker). Alles andere ist neutral (Fläche, Tinte, gedämpft, Linie) oder Teamfarbe.
+- **Orange ist die einzige Akzentfarbe, und nur für Marke und Hauptaktion.** Sie steht für die eine nächste Handlung und den aktuellen Stand: Hauptknopf, Mittelknopf „Spiel suchen“, aktiver Navigationsstrich, **aktuelle Station** im Weg bis zum Anstoß (Stationsmarker). Alles andere ist neutral (Fläche, Tinte, gedämpft, Linie) oder Teamfarbe.
 - **Teamfarbe ist Identität, nie Funktion.** Sie färbt die Feldhälfte, den Teamnamen-Chip und kleine Farbmarken. Sie trägt weder Handlung noch Status.
 - **Zustand ist immer Form plus Wort.** Ampel: Ring = in der Lobby, Halbfläche = bereit und bezahlt, Haken = bestätigt, gestrichelt = Platz frei. Die Legende nennt das Wort.
 - **Spielnummer** bleibt als Anzeigetafel-Chip (invertiert: Tinte als Grund, Fläche als Schrift) das wiederkehrende Zeichen.
 
-### Neutrale Töne und Orange (aus der Skizze, bei Umsetzung als Tokens zu übernehmen)
+### Neutrale Töne und Orange (Tokens in `src/app/globals.css`, Referenzwerte in `src/lib/color.ts`)
 
 | Rolle | Dunkel | Hell |
 |---|---|---|
@@ -105,6 +98,8 @@ Zwei Hälften nebeneinander auf neutraler Grundfläche (`fl2`): links Heim, rech
 
 ### Ausnahmen von AC-14 (Orange einzige Akzentfarbe)
 
+Status-Töne (`--ok`, `--warn`, `--danger`, `--info`, Abschnitt „Status“) sind Zustandsfarben, keine Akzentfarben; sie kommen zu den Ausnahmen unten dazu.
+
 Umgesetzt in `src/app/globals.css` (Vertrag 007, M1). Geprüft von `tests/unit/accent.test.ts`; diese Ausnahmen sind bewusst und kein Verstoß:
 
 - **`--accent-fg`**: Orange als Schrift und Strich. Dunkel `#ff6a1f` (wie `--accent`), hell `#b23a0a`, weil `#c2410c` als kleine Schrift auf dem hellen Grund `#dde5e0` nur 4,03:1 erreicht; `#b23a0a` liegt auf Grund und Fläche bei mindestens 4,5:1. Es ist derselbe Orangeton in dunklerer Stufe, keine zweite Akzentfarbe.
@@ -114,114 +109,53 @@ Umgesetzt in `src/app/globals.css` (Vertrag 007, M1). Geprüft von `tests/unit/a
 - **`src/server`** (OG-Bilder und Karten, zum Beispiel `cards.tsx` mit `#030806`) ist vom AC-14-Test ausgenommen und steht im Backlog.
 - Noch offen (M4): die Ampel in `PlayerLight` nutzt feste Hex-Werte außerhalb der Tokens, bis sie auf Form plus Wort umgestellt ist.
 
-### Nicht festgelegt (offen, siehe Vertrag 007)
+## Typografie
 
-- **Fehler und Gefahr** (heute Koralle und Rot) haben in E keine eigene Akzentfarbe. Vorschlag: Symbol, Wort und kräftiger Rahmen in Tinte, ohne neue Farbe.
-- Schriften bleiben Outfit und Plus Jakarta Sans; die Skizzen nutzen nur Systemschriften als Platzhalter.
+- Schriften: Outfit für Überschriften, Plus Jakarta Sans für Text. Hell und Dunkel gleich.
+- **Stufen** (Tokens `--fs-*`): xs 12 px, sm 14, base 16, lg 18, xl 22, 2xl 28, 3xl 36. Text im Fluss ist base; Zusatzangaben sm; **xs ist die kleinste erlaubte Stufe und nur für Zusatztext, nie für Bedienelemente oder Pflichtangaben.**
+- **Nichts unter 12 px.** Die ESLint-Regel `soccaz/min-font-size` verbietet `text-[Npx]` und `fontSize` unter 12 px in `src/` (ausgenommen der PDF-Beleg, der in Punkt rechnet). `globals.css` wird per Test geprüft.
+- Zeilenlänge im Fließtext höchstens etwa 70 Zeichen; Überschriften ohne Großbuchstaben-Blöcke.
 
-## Overview (Ist-Stand vor Vertrag 007)
+## Status
 
-**Creative North Star: "Die Hallenanzeige"**
+Vier Zustandsfarben, je Dunkel und Hell, jeweils mit `-ink` (Schrift auf voller Fläche) und `-soft` (Tönung, Deckkraft 0,10):
 
-Soccaz sieht heute aus wie eine Anzeigetafel bei Nacht: fast schwarzer Grund mit grünem Stich, weiße Schrift, ein einziger kräftiger Signalton (Grün) für Handlung und Zustand. Die Spielnummer `#42` auf grünem Chip ist das wiederkehrende Zeichen. Karten sind flache, dunkle Tafeln mit feiner Linie.
+| Token | Bedeutung | Dunkel | Hell |
+|---|---|---|---|
+| `--ok` | geschafft, bezahlt, bestätigt | `#4ade80` | `#0f5f2c` |
+| `--warn` | braucht bald Aufmerksamkeit, offen | `#facc15` | `#704800` |
+| `--danger` | fehlgeschlagen, destruktiv | `#ff8a8a` | `#a51d12` |
+| `--info` | Hinweis ohne Handlung | `#6cb2ff` | `#1a44bd` |
 
-Die Dichte ist mittel: eine Spalte (`max-w-3xl`), Karten mit 1 rem Innenabstand, Text in `text-sm` und `text-xs`. Dazu kommen viele Akzentfarben (Lime, Cyan, Sky, Violet, Pink, Coral, Yellow), die im Token-Satz liegen, aber nur zum Teil benutzt werden (Pink für Auswahl und Badge, Gelb für Status und Warnung, Coral für Fehler).
+- **Status ist immer Symbol plus Wort plus Farbe, nie nur Farbe** (013 AC-3; 012 AC-12). Die Komponente dafür ist `StatusBadge` (M2-2).
+- Gemessen: Schrift in jedem Status-Ton auf Grund, Fläche, Feldgrund **und** auf der Tönung mindestens 4,5:1; `-ink` auf dem Ton mindestens 4,5:1 (Test).
+- Orange ist **kein** Status. Warnung ist gelb, nicht orange.
 
-**Key Characteristics:**
-- Dunkel als einziges Thema (`color-scheme: dark`), Hintergrund mit zwei weichen Farbverläufen (grün oben links, cyan unten rechts).
-- Grün ist Handlung, Bestätigung und aktiver Navigationspunkt; Gelb ist „wartet“; Pink ist Aufmerksamkeit.
-- Spielnummer als Chip, Ampel als leuchtender Punkt.
-- Handy zuerst: Bottom-Navigation mit fünf Punkten, Kopfleiste erst ab `sm`.
+## Fokus und Tastatur
 
-## Colors
+- Der Fokusring ist `--focus` (Dunkel `#9ecbff`, Hell `#1a44bd`), 2 px, Abstand 2 px, über `:focus-visible` und `.field:focus`. Mindestens 3:1 gegen Grund, Fläche und Feldgrund (Test); er ist bewusst nicht Orange, damit er auf Orange-Knöpfen sichtbar bleibt.
+- Kein Element entfernt den Fokusring ohne gleichwertigen Ersatz.
 
-Fast-schwarzes Grün als Grund, ein Grün als Signal, viele Neon-Töne als Reserve.
+## Abstände, Touch und Breiten
 
-### Primary
-- **Signalgrün** (#22c55e, `--green`): Primärbutton, aktiver Nav-Punkt, „bestätigt“, Fokusring, Rahmen von „Meine Spiele“.
-- **Dunkelgrün** (#15803d, `--green-dark`): reserviert, derzeit kaum genutzt.
+- 4er-Raster: `--space-1..8` = 4, 8, 12, 16, 24, 32, 48, 64 px.
+- **Touch-Ziele mindestens 44 px** (`--tap`), auch für Symbol- und Zeilenknöpfe.
+- Seitenbreiten (`PageShell`, M2-2): schmal 720 px, Standard 1040 px, voll 1280 px.
 
-### Secondary
-- **Warngelb** (hsl(44 98% 58%), `--yellow`): Status „wartet“, offene Lobby, Phase eines Spiels.
-- **Aufmerksamkeitspink** (hsl(327 92% 61%), `--pink`): Textauswahl (`::selection`), Zähler-Badge ungelesener Nachrichten.
-- **Fehlerkoralle** (hsl(12 95% 62%), `--coral`): Fehlermeldungen. **Rot** (hsl(0 75% 55%), `--red`): gefährliche Aktion.
+## Orange-Regel
 
-### Tertiary
-- Lime, Cyan, Sky, Violet liegen als Tokens bereit. Cyan färbt den Hintergrundschimmer.
+Orange (`--accent`) steht für die **eine nächste Handlung** (Hauptknopf, Mittelknopf, aktiver Navigationsstrich) und die aktuelle Station im Weg zum Anstoß. Orange als Schrift (`--accent-fg`) ist nur für Marke und Hauptaktion zulässig, nicht für Status, Warnungen oder Fehler. Bestehende Stellen, die Orange als Status nutzen (Verdichtung K09), wechseln in M3 bis M7 mit der jeweiligen Seitengruppe auf die Status-Tokens.
 
-### Neutral
-- **Nachtgrün** (#030806, `--bg`), **Tafel** (#07110c, `--panel`), **Feld** (#0b1a13, `--panel-2`), **Linie** (#12221b, `--line`), **Gedämpft** (#8ea299, `--muted`), **Weiß** (#ffffff, `--ink`).
-- Ampel in `PlayerLight` hat feste Werte außerhalb der Tokens: Rot #ef4444, Orange #f59e0b, Grün #22c55e.
+## Bausteine
 
-### Named Rules
-**The Eine-Handlung Rule.** Grün gehört der einen nächsten Handlung je Karte. Ist alles grün, ist nichts mehr wichtig.
-**The Text-neben-Farbe Rule.** Zustand (bezahlt, offen, Frist) steht immer auch als Wort da, nie nur als Punkt.
-
-## Typography
-
-**Display Font:** Outfit (Fallback Plus Jakarta Sans, sans-serif), nur für `h1`–`h3`, Spielnummer und Wortmarke
-**Body Font:** Plus Jakarta Sans (Fallback system-ui)
-
-**Character:** Rund, freundlich, geometrisch; die Überschriften sind fett mit leicht engem Satz (-0.01em).
-
-### Hierarchy
-- **Display** (700–800, `text-lg`, eng): Kartentitel, „Mein aktuelles Spiel“, Spielnummer.
-- **Body** (400–600, `text-sm`/Basis): Fließtext, Teamnamen (semibold).
-- **Label** (400, 0.85 rem, gedämpft): Feldbeschriftung `.label`, Hilfetexte (`text-xs`).
-
-### Named Rules
-**The Kleine-Zeile Rule.** Metadaten (Elo, Stärke, Kader) stehen in `text-xs` und gedämpft; sie tragen nie die Handlung.
-
-## Layout
-
-Eine Spalte, zentriert, `max-w-3xl`, Seitenrand 1 rem (ab `sm` 1,5 rem), vertikaler Abstand `space-y-4` im Haupt-Layout und `space-y-3` in Listen. Karten mit zwei Teams brechen ab `sm` in zwei Spalten (`sm:grid-cols-2`). Kopfleiste 56 px hoch und sticky; ab `sm` mit Textlinks, am Handy ersetzt die fixierte Bottom-Navigation (mind. 56 px, `safe-area-inset-bottom`) die Links.
-
-## Elevation & Depth
-
-Flach mit Tönung: Tiefe entsteht durch drei Grünstufen (bg, panel, panel-2) und eine 1 px Linie, nicht durch Schatten. Einzige Lichter: Glühen der Ampelpunkte (`box-shadow 0 0 6px`) und `backdrop-blur` auf Kopf- und Bottom-Leiste.
-
-### Named Rules
-**The Flat-By-Default Rule.** Karten haben keinen Schatten; Hervorhebung geschieht über Rahmenfarbe oder Tönung (`border-2 border-green bg-green-soft` für „Meine Spiele“).
-
-## Shapes
-
-Weiche, moderate Rundung: Felder und Buttons 10 px, Karten 12 px, hervorgehobene Tafeln `rounded-2xl` (16 px), Chips `rounded-md`, Zähler und Ampel voll rund. Linie 1 px, Hervorhebung 2 px.
-
-## Components
-
-### Buttons
-- **Shape:** 10 px, min. 44 px hoch, Schrift 600.
-- **Primary:** Signalgrün mit fast schwarzer Schrift (#03120a), Hover heller. Kompakt: `!min-h-9 !px-3 text-sm`.
-- **Ghost:** transparent mit Linie, Hover Rahmen grün. **Danger:** Rot umrandet.
-
-### Cards / Containers
-- `.card`: Tafelgrün, 1 px Linie, 12 px, 1 rem Innenabstand. Gestrichelter Rahmen (`border-dashed`) für Nebenbox („Gesucht wird ein Gegner“).
-
-### Inputs / Fields
-- Feldgrün, Linie, 10 px, 44 px hoch; Fokus: 2 px grüner Umriss mit 1 px Abstand. Fehlertext in Koralle.
-
-### Navigation
-- **Bottom-Navigation (Handy):** fünf gleich breite Punkte (Start, Suche, Live, Rangliste, Mein Bereich), 22 px Strichsymbole, Beschriftung `text-xs`, aktiv grün, sonst gedämpft; halbtransparenter Grund mit Unschärfe.
-- **Kopfleiste:** Logo + „SOCAZ“, Textlinks ab `sm`, Glocke mit rosa Zähler, Guthaben, Nutzermenü.
-
-### Spielnummer-Chip (Signatur)
-- Grüner Chip, `rounded-md`, Outfit 800, schwarze Schrift: `#42`.
-
-### Ampel (Signatur)
-- 12 px runder Punkt mit Schein: rot (in der Lobby), orange (bereit/bezahlt), grün (bestätigt). Legende über der Liste.
-
-### Meine Spiele
-- Hervorgehobene Tafel oben auf der Startseite: 2 px grüner Rahmen, grüne Tönung, je Spiel eine Zeile mit Chip, Paarung, Uhrzeit, gelber Phase und Button „Zur Lobby“.
+Native Elemente und eigene Komponenten, kein shadcn/Radix (ADR 0002). Die Basiskomponenten (`Button`, `PageShell`, `PageTitle`, `StateMessage`, `StatusBadge`, `ConfirmDialog`, `Form`, `DateTimeField`) entstehen in M2-2 und M2-3 aus diesen Tokens; bis dahin gelten die Klassen `.card`, `.btn`, `.field` aus `globals.css`.
 
 ## Do's and Don'ts
 
-### Do:
-- **Do** Spielnummer und Zustand als Text zeigen und die Ampel nie allein stehen lassen.
+- **Do** Zustand als Symbol und Wort zeigen; die Ampel nie allein stehen lassen.
+- **Do** Farben nur aus den Tokens nehmen, keine freien Hex-Werte in Komponenten.
 - **Do** 44 px Touch-Ziele und `safe-area-inset-bottom` bei fixierten Leisten einhalten.
-- **Do** neue Farben aus den Tokens in `globals.css` nehmen, nicht als freie Hex-Werte (die Ampel ist die bekannte Ausnahme).
-
-### Don't:
-- **Don't** mehr als eine grüne Hauptaktion pro Karte setzen.
-- **Don't** die Hintergrundverläufe (grün/cyan) für Inhalte nutzen; sie sind Atmosphäre.
-- **Don't** Privatspiel- oder Kaderdaten gestalterisch sichtbar machen, die das Datenschutzmodell verbirgt (Platzhalter, Unschärfe-Andeutungen).
-- **Don't** auf Helligkeit ausweichen, ohne Kontrast (4,5:1) zu prüfen.
+- **Don't** Orange für Status, Warnung oder Fehler einsetzen.
+- **Don't** Schrift unter 12 px oder Text nur durch Farbe unterscheiden.
+- **Don't** Privatspiel- oder Kaderdaten gestalterisch andeuten, die das Datenschutzmodell verbirgt.
+- **Don't** Kontrast ohne Messung ändern (Ziel 4,5:1 Text, 3:1 Linien und Symbole).
