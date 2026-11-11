@@ -206,3 +206,30 @@ test("Captain/Admin desselben Teams und der Plattform-Admin sehen den echten Feh
   }
   await a.close();
 });
+
+test("Konto: Zahlungskarte ändern ausserhalb der Lobby; nur bei eingeschaltetem Kartenmodell, ohne Guthaben-Text (AC-5)", async ({
+  browser,
+}) => {
+  const page = await (await browser.newContext()).newPage();
+  await newUser(page, "kk");
+  await page.goto("/app/einstellungen");
+  const section = page.getByTestId("account-card");
+  await expect(section).toBeVisible();
+  await expect(
+    section.getByRole("heading", { name: "Zahlungskarte" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("account-card-current")).toContainText(
+    "Keine Karte gespeichert.",
+  );
+  await expect(section).toContainText("Karte ändern");
+  await expect(section).not.toContainText(/Guthaben/);
+
+  // Kartenmodell aus: der Bereich ist weg
+  await setPlatformSetting("card_payments_enabled", false);
+  try {
+    await page.goto("/app/einstellungen");
+    await expect(page.getByTestId("account-card")).toHaveCount(0);
+  } finally {
+    await setPlatformSetting("card_payments_enabled", true);
+  }
+});

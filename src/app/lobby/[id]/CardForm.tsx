@@ -58,7 +58,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
  * Karte hinterlegen (Vertrag 012, AC-1). Zuerst der Mandatstext mit Zustimmung, dann das Stripe-Formular (Stripe Elements: die Karte geht nie über
  * unseren Server). Mit `fake` (nur Tests, PAYMENTS_FAKE=1) gibt es stattdessen den Knopf "Testkarte hinterlegen".
  */
-export function CardForm({ matchId, mandateText, fake, stored, change = false }: { matchId: string; mandateText: string; fake: boolean; stored?: { brand: string | null; last4: string } | null; change?: boolean }) {
+export function CardForm({ matchId, mandateText, fake, stored, change = false }: { matchId?: string; mandateText: string; fake: boolean; stored?: { brand: string | null; last4: string } | null; change?: boolean }) {
   const refreshSoon = useRefreshSoon();
   const [accepted, setAccepted] = useState(false);
   const [clientSecret, setClientSecret] = useState<string>();
@@ -71,7 +71,9 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false }:
     setBusy(true);
     setError(undefined);
     try {
-      if (fake) {
+      if (fake && matchId === undefined) {
+        setError("Im Testmodus gibt es die Testkarte nur in der Lobby."); // im Konto ohne Spiel gibt es keinen Platz, den die Testkarte bereit machen könnte
+      } else if (fake && matchId !== undefined) {
         const r = await fakeCardReadyAction(matchId);
         if (r.error) setError(r.error);
         else {
@@ -102,6 +104,7 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false }:
     setBusy(true);
     setError(undefined);
     try {
+      if (matchId === undefined) return; // die gespeicherte Karte gilt je Platz in einer Lobby
       const r = await activateStoredCard({ matchId, mandateAccepted: accepted });
       if (r.ok) {
         setDone(true);
