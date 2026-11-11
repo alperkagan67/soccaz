@@ -73,6 +73,12 @@ const de = {
   "signin.google": "Mit Google anmelden",
   "signin.banned": "Dein Konto ist gesperrt. Wenn du das für einen Fehler hältst, schreib uns über die Kontaktseite (unten in der Fußzeile).",
   "signin.unavailable": "Die Anmeldung ist gerade nicht verfügbar. Bitte versuche es später noch einmal.",
+  "ui.pending": "Bitte warten…",
+  "ui.skipToContent": "Zum Inhalt springen",
+  "ui.required": "Pflichtfeld",
+  "ui.cancel": "Abbrechen",
+  "ui.close": "Schließen",
+  "ui.dateTimeHint": "Uhrzeit in deutscher Zeit",
 } as const;
 
 export type MessageKey = keyof typeof de;
@@ -141,6 +147,12 @@ const en: Record<MessageKey, string> = {
   "signin.google": "Sign in with Google",
   "signin.banned": "Your account is suspended. If you think this is a mistake, contact us.",
   "signin.unavailable": "Sign-in is currently unavailable. Please try again later.",
+  "ui.pending": "Please wait…",
+  "ui.skipToContent": "Skip to content",
+  "ui.required": "Required",
+  "ui.cancel": "Cancel",
+  "ui.close": "Close",
+  "ui.dateTimeHint": "Time in German time",
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { de, en };

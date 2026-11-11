@@ -216,6 +216,8 @@ h1, h2, h3 {
 .error { color: var(--ink); font-size: 0.9rem; font-weight: 600; border: 2px solid var(--ink); border-radius: 8px; padding: 0.4rem 0.6rem; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Neue Komponenten (src/components/ui): Fokusring in --focus; höhere Spezifität als die allgemeine Regel darüber */
+.ui-focus:focus-visible { outline: var(--focus-w) solid var(--focus); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
