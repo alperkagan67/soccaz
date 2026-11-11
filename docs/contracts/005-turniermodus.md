@@ -1,6 +1,6 @@
 # 005 – Turniermodus
 Status: Freigegeben (2026-11-09)
-Version: 3 (v3 2026-11-12: Zahlung durch Vertrag 012: Karte statt Guthaben, Turnier-Anteil = Hallenmiete ÷ Spielerzahl, Geld direkt an die Halle, Veranstalter ohne Geld, Zusage der Halle auch im Turnier Buchungsbedingung (Umsetzung 012 M5); davor v2 (AC-8 präzisiert, 2026-11-09)
+Version: 3 (v3 2026-11-11: Zahlung durch Vertrag 012: Karte statt Guthaben, Turnier-Anteil = Hallenmiete ÷ Spielerzahl, Geld direkt an die Halle, Veranstalter ohne Geld, Zusage der Halle auch im Turnier Buchungsbedingung (Umsetzung 012 M5); davor v2 (AC-8 präzisiert, 2026-11-09)
 
 ## Ziel
 Der Turniermodus existiert im Code weitgehend (Anlegen, Anmelden, Kader, Preis, Zahlung, K.-o.-Bracket, Aufrücken, Absage). Dieser Vertrag schließt die Lücken zwischen Brief und Ist-Zustand, damit ein Organisator (z. B. Moscheen verschiedener Städte im Ramadan) ein privates K.-o.-Turnier sicher durchführen kann: Captains drücken erst nach vollständiger Zahlung ihres Teams auf "Bereit", Spieler können füreinander zahlen, das Bracket entsteht genau einmal und zufällig gelost, und der Organisator kann Ergebnisse eintragen und Streit entscheiden.
@@ -18,7 +18,7 @@ Grundlage: `docs/briefs/turnier-privatspiel.md`, `docs/analysis/ist-analyse.md` 
 - Eintritt bleibt berechnet: Anteil = aufgerundet Hallenmiete des Turniers ÷ tatsächliche Spielerzahl (`shareCents`), fixiert bei vollständigem Kader (kein frei gesetzter Eintritt; `entryFeeCents` als Einsatz entfällt mit 012 M5).
 - Ablauf: Kader vollzählig → Preis fixiert → Karte hinterlegen → Captain "Bereit" (nur wenn bei allen Teamspielern eine Karte hinterlegt ist; abgebucht wird erst zur Frist (Buchung), siehe Vertrag 012) → Bracket, wenn alle Teams bereit sind.
 - Geld: wird zur Frist (Buchung) von der Karte abgebucht (Vertrag 012); das Geld geht direkt an die Halle abzüglich Halle-Provision (Vertrag 009). Der Veranstalter organisiert nur und bekommt kein Geld, es gibt keine Preisgelder aus Einsätzen. Veranstalter-Auszahlung (`tournaments.ts:558-559`), Konto `tournament`, globale Turnier-Kommission und `splitEntryFees` entfallen mit 012 M5 (bis dahin gilt der Ist-Stand); bei Absage Vollerstattung per Stripe-Refund auf die Karte.
-- Zusage der Halle ist auch im Turnier Buchungsbedingung (Nutzerentscheid 2026-11-12, Vertrag 011/012), weil das Geld direkt an die Halle geht; `cancelTournament` und das sofortige Bracket (008 v5) bleiben. Umsetzung mit 012 M5.
+- Zusage der Halle ist auch im Turnier Buchungsbedingung (Nutzerentscheid 2026-11-11, Vertrag 011/012), weil das Geld direkt an die Halle geht; `cancelTournament` und das sofortige Bracket (008 v5) bleiben. Umsetzung mit 012 M5.
 - Spieler zahlen füreinander nur innerhalb des eigenen Teams; "Anteil übernehmen" (Zahlung füreinander) belastet zur Frist (Buchung); Erstattung per Stripe-Refund auf die Karte des Zahlers (`paidBy`).
 - Nach der Zahlung kein Selbst-Rückzug; Ausstieg über Organisator (Kader wieder öffnen oder Team ersetzen), volle Erstattung auf die Karte des Zahlers (Stripe-Refund).
 - Bracket wird einmalig zufällig gelost (statt Anmeldereihenfolge).
