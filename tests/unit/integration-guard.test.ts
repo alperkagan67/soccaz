@@ -42,6 +42,36 @@ describe("Datenbank-Waechter der Integrationstests", () => {
     expect(dbUrlAllowed("", env)).toBe(false);
     expect(dbUrlAllowed("kein url", env)).toBe(false);
   });
+  it("dbUrlAllowed: Leerraum, Steuerzeichen und Backslash werden abgelehnt", () => {
+    const ok = "postgres://u:p@localhost:5433/x";
+    const TAB = String.fromCharCode(9), NL = String.fromCharCode(10), BS = String.fromCharCode(92);
+    for (const bad of [" " + ok, ok + " ", TAB + ok, ok + NL, NL + ok, "postgres://u:p@local host:5433/x", "postgres://u:p@localhost" + BS + "@evil.com:5433/x", "postgres:" + BS + BS + "u:p@localhost/x"]) {
+      expect(dbUrlAllowed(bad, {}), JSON.stringify(bad)).toBe(false);
+    }
+  });
+  it("dbUrlAllowed: Mehrfachhost, Prozent-Kodierung, Socket, leerer Host und Userinfo-Tricks", () => {
+    const env = { GITHUB_ACTIONS: "true" };
+    for (const bad of [
+      "postgres://u:p@localhost,evil.com:5433/x",
+      "postgres://u:p@localhost%2Cevil.com:5433/x",
+      "postgres://u:p@%2Fvar%2Frun%2Fpostgresql/x",
+      "postgres://u:p@localhost%2Fx/db",
+      "postgres:///x",
+      "postgres://u:p@/x",
+      "postgres://localhost:p@evil.com/x",
+      "postgres://u:p@evil.com:5433@/x",
+      "postgres://u:p@LOCALHOST.evil.com/x",
+      "/var/run/postgresql localhost",
+    ]) {
+      expect(dbUrlAllowed(bad, env), bad).toBe(false);
+    }
+  });
+  it("dbUrlAllowed: Userinfo mit @ endet beim echten Host (gleich wie pg), Grossbuchstaben werden streng abgelehnt", () => {
+    // u@evil.com@localhost: der Host ist localhost (letztes @), pg liest dasselbe
+    expect(dbUrlAllowed("postgres://u@evil.com:p@localhost:5433/x", {})).toBe(true);
+    expect(dbUrlAllowed("postgres://u:p@LOCALHOST:5433/x", {})).toBe(false); // postgres: ist kein special scheme, kein Kleinschreiben
+    expect(dbUrlAllowed("postgres://u:p@Postgres:5432/x", { GITHUB_ACTIONS: "true" })).toBe(false);
+  });
   it("Setup, E2E-Seeding und Teardown nutzen dbUrlAllowed; kein eigener Host-Vergleich ausserhalb von db-guard", () => {
     for (const f of ["tests/integration/setup.ts", "tests/e2e/helpers.ts", "tests/e2e/global-teardown.ts"]) {
       const src = readFileSync(f, "utf8");
