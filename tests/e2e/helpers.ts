@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { dbUrlAllowed } from "../integration/db-guard";
 
 export const run = Date.now().toString(36);
 
@@ -55,7 +56,7 @@ export function testDb(): Pool {
   if (!pool) {
     if (existsSync(".env.local")) process.loadEnvFile(".env.local");
     const url = process.env.DATABASE_URL!;
-    if (!["127.0.0.1", "localhost"].includes(new URL(url).hostname)) throw new Error("Test-Seeding nur gegen lokale Datenbank");
+    if (!dbUrlAllowed(url)) throw new Error("Test-Seeding nur gegen lokale Datenbank");
     pool = new Pool({ connectionString: url, max: 2 });
   }
   return pool;
