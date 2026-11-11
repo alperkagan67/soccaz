@@ -7,18 +7,21 @@ import { createCardSetup } from "@/server/payments/card-setup";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { handleStripeWebhook } from "@/server/payments/webhook";
+import { setSetting } from "@/server/settings";
 import { addPlayer, cleanup, makeMatch } from "./helpers";
 
 // Vertrag 012, M3b AC-5: "Karte ändern" auch ausserhalb der Lobby (Konto). Ohne matchId; die alte Karte wird gelöst; Plätze mit fehlgeschlagener
 // Abbuchung in offenen Spielen sind danach wieder bereit (card_ready). Abgebucht wird dabei nichts (das Wiederabbuchen im Fenster ist M3c).
 
 let provider: FakeProvider;
-beforeEach(() => {
+beforeEach(async () => {
+  await setSetting(null, "card_payments_enabled", true);
   provider = new FakeProvider();
   setPaymentProviderForTests(provider);
 });
 afterEach(() => setPaymentProviderForTests(null));
 afterAll(async () => {
+  await setSetting(null, "card_payments_enabled", false);
   await db.delete(stripeEvents).where(like(stripeEvents.eventId, "evt_ac_%"));
   await cleanup();
 });
