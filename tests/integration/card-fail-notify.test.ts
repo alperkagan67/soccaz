@@ -66,13 +66,13 @@ describe("AC-1: Benachrichtigung bei fehlgeschlagener Abbuchung", () => {
     const mine = byUser(g.victim.id)[0];
     expect(mine.type).toBe("payment");
     expect(mine.title).toMatch(/Abbuchung fehlgeschlagen/);
-    expect(mine.body).toMatch(/nicht genug Guthaben/); // Klartext des Grundes
+    expect(mine.body).toMatch(/nicht gedeckt/); // Klartext des Grundes
     expect(mine.body).toMatch(/Karte ändern/);
     expect(mine.url).toBe(`/lobby/${g.match.id}`);
 
     const captain = byUser(g.adminA.id)[0];
     expect(captain.title).toMatch(/Abbuchung fehlgeschlagen/);
-    expect(captain.body).toMatch(/nicht genug Guthaben/);
+    expect(captain.body).toMatch(/nicht gedeckt/);
     expect(captain.body).toContain(g.victim.name); // der Captain erfährt, wen es betrifft
     expect(captain.url).toBe(`/lobby/${g.match.id}`);
   });
@@ -99,12 +99,12 @@ describe("AC-1: Benachrichtigung bei fehlgeschlagener Abbuchung", () => {
     expect(notes[0].userId).toBe(g.adminA.id);
   });
 
-  it("requires_action (Bank-Bestätigung nötig): Betroffener und Captain werden ebenfalls informiert, mit dem passenden Text", async () => {
+  it("requires_action (Freigabe der Bank nötig): Betroffener und Captain werden ebenfalls informiert, mit dem passenden Text", async () => {
     const g = await game();
     await send(g, "payment_intent.requires_action", null);
     const notes = await notesOf(everyone(g));
     expect(notes).toHaveLength(2);
-    expect(notes.every((n) => /Bestätigung/.test(n.body))).toBe(true);
+    expect(notes.every((n) => /Freigabe/.test(n.body))).toBe(true);
   });
 
   it("unbekannter Fehlercode: allgemeiner Text, kein Rohcode", async () => {

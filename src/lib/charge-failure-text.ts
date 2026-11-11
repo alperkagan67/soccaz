@@ -5,12 +5,12 @@
 const TEXTS: Record<string, string> = {
   card_declined: "Die Bank hat die Karte abgelehnt.",
   generic_decline: "Die Bank hat die Karte abgelehnt.",
-  insufficient_funds: "Auf der Karte ist nicht genug Guthaben.",
+  insufficient_funds: "Die Karte ist nicht gedeckt.",
   expired_card: "Die Karte ist abgelaufen.",
   incorrect_cvc: "Die Prüfnummer der Karte war falsch.",
   lost_card: "Die Karte wurde gesperrt.",
   stolen_card: "Die Karte wurde gesperrt.",
-  authentication_required: "Die Bank braucht eine Bestätigung der Zahlung.",
+  authentication_required: "Die Bank braucht deine Freigabe der Zahlung.",
   processing_error: "Bei der Zahlung ist ein Fehler aufgetreten.",
 };
 
@@ -20,7 +20,7 @@ export function chargeFailureText(code: string | null | undefined): string {
   return (code && TEXTS[code]) || GENERIC;
 }
 
-/** Braucht die Zahlung nur eine Bestätigung der Bank (3-D-Secure) statt einer anderen Karte? */
+/** Braucht die Zahlung nur eine Freigabe der Bank (3-D-Secure) statt einer anderen Karte? */
 export function needsBankConfirmation(code: string | null | undefined): boolean {
   return code === "authentication_required";
 }

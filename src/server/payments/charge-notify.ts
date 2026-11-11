@@ -35,7 +35,7 @@ export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId
     victimActive ? [victimActive] : [],
     {
       type: "payment",
-      title: bank ? "Bestätigung deiner Zahlung nötig" : "Abbuchung fehlgeschlagen",
+      title: bank ? "Freigabe deiner Zahlung nötig" : "Abbuchung fehlgeschlagen",
       body: `${label}: Die Abbuchung von ${amount} ist nicht durchgegangen. ${reason} Öffne die Lobby und ändere deine Karte (Karte ändern), damit du dabei bleibst.`,
       url,
     },
@@ -45,7 +45,7 @@ export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId
     captains.filter((id) => id !== row.userId),
     {
       type: "payment",
-      title: bank ? "Zahlung braucht Bestätigung" : "Abbuchung fehlgeschlagen",
+      title: bank ? "Zahlung braucht Freigabe" : "Abbuchung fehlgeschlagen",
       body: `${label}: Bei ${victim?.nickname ?? victim?.name ?? "einem Spieler"} ist die Abbuchung von ${amount} nicht durchgegangen. ${reason} Der Spieler kann in der Lobby seine Karte ändern.`,
       url,
     },
