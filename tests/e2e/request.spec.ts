@@ -155,3 +155,34 @@ test("ohne Team-Admin-Rechte nicht annehmbar", async ({ browser }) => {
   await expect(x.getByText(/Du brauchst ein eigenes Team/)).toBeVisible();
   await expect(x.getByRole("button", { name: "Spiel annehmen" })).toHaveCount(0);
 });
+
+test("Gast sieht keine Namen in der Spielsuche (Payload-Ebene)", async ({ browser, request }) => {
+  const a = await (await browser.newContext()).newPage();
+  const b = await (await browser.newContext()).newPage();
+  await newUser(a, "ga");
+  await newUser(b, "gb");
+  const team = `Gast ${run}`;
+  await createTeam(a, team);
+  await createRequest(a, team, futureLocal(11));
+  await expect(a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
+  const url = a.url();
+
+  // Gast: HTML und RSC-Payload (ohne Cookies) enthalten weder Namen noch Spieler-Links
+  for (const headers of [{} as Record<string, string>, { RSC: "1" }]) {
+    const res = await request.get(url, { headers });
+    expect(res.ok()).toBe(true);
+    const body = await res.text();
+    expect(body).toContain(team);
+    expect(body).not.toContain("Spieler ga");
+    expect(body).not.toContain("/spieler/");
+  }
+  const guest = await (await browser.newContext()).newPage();
+  await guest.goto(url);
+  const box = guest.getByTestId("request-roster-guest");
+  await expect(box).toContainText("1 Spieler im Kader");
+  await expect(box.getByRole("listitem")).toHaveText(["SG"]);
+
+  // Angemeldet unverändert: Name und Link zum Spieler
+  await b.goto(url);
+  await expect(b.getByTestId("request-roster").getByRole("link", { name: "Spieler ga" })).toBeVisible();
+});

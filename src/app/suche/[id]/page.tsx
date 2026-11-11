@@ -9,6 +9,7 @@ import { db } from "@/db";
 import { matches, teams } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { teamRoster, teamStrength } from "@/server/roster";
+import { guestRosterView } from "@/lib/guest-roster";
 import { AcceptForm } from "./AcceptForm";
 import { CancelButton } from "./CancelButton";
 
@@ -73,14 +74,18 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
           <h2 className="font-semibold">Kader von {request.teamName}</h2>
           <span className="text-xs text-muted">Elo {strength.elo}{strength.matches === 0 ? " (geschätzt)" : ""}</span>
         </div>
-        <ul className="space-y-1 text-sm">
-          {roster.map((m) => (
-            <li key={m.userId} className="flex items-center justify-between gap-2">
-              <Link href={`/spieler/${m.userId}`} className="hover:text-accent-fg">{m.name}</Link>
-              <span className="text-xs text-muted">{[m.position, m.elo ? `Elo ${m.elo}` : null, m.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
-            </li>
-          ))}
-        </ul>
+        {user ? (
+          <ul className="space-y-1 text-sm">
+            {roster.map((m) => (
+              <li key={m.userId} className="flex items-center justify-between gap-2">
+                <Link href={`/spieler/${m.userId}`} className="hover:text-accent-fg">{m.name}</Link>
+                <span className="text-xs text-muted">{[m.position, m.elo ? `Elo ${m.elo}` : null, m.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <GuestRoster view={guestRosterView(roster)} />
+        )}
       </section>
 
       {!request.isOpen ? (
@@ -101,6 +106,20 @@ export default async function RequestPage({ params }: PageProps<"/suche/[id]">) 
           <Link href="/app/teams/neu" className="btn btn-ghost w-full">Team gründen</Link>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Gäste sehen nur Anzahl und Initialen; Namen, Positionen und Elo gibt es erst nach der Anmeldung. */
+function GuestRoster({ view }: { view: { count: number; initials: string[] } }) {
+  return (
+    <div className="space-y-2 text-sm" data-testid="request-roster-guest">
+      <p className="text-muted">{view.count} Spieler im Kader. Namen siehst du nach der Anmeldung.</p>
+      <ul className="flex flex-wrap gap-2" aria-label="Initialen der Spieler">
+        {view.initials.map((i, n) => (
+          <li key={n} className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-accent-ink">{i}</li>
+        ))}
+      </ul>
     </div>
   );
 }
