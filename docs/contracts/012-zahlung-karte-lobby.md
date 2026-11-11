@@ -29,8 +29,8 @@ Spieler (hinterlegt Karte, wird abgebucht), Captain ("Bereit"), Veranstalter, Ad
 - Hauptbuch (`ledger_entries`) bleibt als Buchhaltung: Karte (Stripe) → Lobby-Geld → Halle/Provision; Erstattung als Gegenbuchung. E-Geld (E4/E5) entfällt, weil kein Spielerguthaben mehr existiert; offen für den Anwalt: Geld liegt zwischen Abbuchung und Auszahlung bei Stripe (Stripe Connect, E3 bis E6).
 - Escrow-Konto (E10) entfällt für Lobbys.
 
-## Kosten (Stripe Deutschland, Stand der Recherche 2026-11-11, vor Umsetzung gegen stripe.com/de/pricing prüfen)
-- Karten aus dem EWR: 1,5 % + 0,25 € je Abbuchung (Quellen nennen teils 1,4 %); Premium-Karten 2,8 % + 0,25 €; internationale Karten 3,15 % + 0,25 €; SEPA-Lastschrift 0,35 €; Dispute 20 € Gebühr; Währungsumrechnung 1 %.
+## Kosten (Stripe Deutschland, Stand stripe.com/de am 2026-11-11, vor Umsetzung nochmal prüfen)
+- Karten aus dem EWR: 1,5 % + 0,25 € je Abbuchung; Premium-Karten 2,8 % + 0,25 €; UK-Karten 2,5 % + 0,25 €; andere internationale Karten 3,15 % + 0,25 €; SEPA-Lastschrift 0,35 €; Dispute 20 € Gebühr; Währungsumrechnung +2 %.
 - Stripe Connect (wenn die Plattform die Preise bestimmt): 2 € je monatlich aktivem verbundenem Konto (Halle mit Auszahlung) plus 0,25 % + 0,10 € je Auszahlung.
 - Rechenbeispiel: Halle 100 €, 10 Spieler → 10 € je Spieler.
   - Standardkarte: je Spieler 0,15 + 0,25 = 0,40 €, zusammen 4,00 € (4,0 %); Auszahlung 0,25 + 0,10 = 0,35 €; zusammen 4,35 € (4,35 %) zuzüglich Anteil der 2 € Konto-Monatsgebühr.
