@@ -86,10 +86,16 @@ test("Dritte sehen nur die neutrale rote Ampel; Gäste sehen keinen Status und n
   // Betroffener (a): echter Zustand
   const own = await bodies(a, url);
   expect(own.html).toContain('data-card-status="failed"');
+  expect(own.html).toContain('data-testid="charge-failed"'); // Fehlerblock mit Grund (AC-4)
+  expect(own.html).toContain("Die Bank hat die Karte abgelehnt.");
+  expect(own.html).not.toContain("card_declined"); // der Rohcode geht nie an den Browser
+  expect(own.rsc).not.toContain("card_declined");
 
   // Mitspieler (b, Captain des anderen Teams): nur neutral, nichts vom Fehler, Namen sichtbar (angemeldet)
   const member = await bodies(b, url);
   expect(member.html).toContain('data-card-status="open"');
+  expect(member.html).not.toContain("charge-failed");
+  expect(member.html).not.toContain("Die Bank hat die Karte abgelehnt.");
   expect(member.html).toContain("Spieler kpa");
   for (const leak of LEAKS) {
     expect(member.html, `HTML ${leak}`).not.toMatch(leak);
@@ -165,9 +171,13 @@ test("Captain/Admin desselben Teams und der Plattform-Admin sehen den echten Feh
     "insert into team_members (team_id, user_id, role) select $1, id, 'admin' from users where email = $2",
     [homeTeamId, `krc-${run}@test.local`],
   );
-  expect((await bodies(coAdmin, url)).html).toContain(
-    'data-card-status="failed"',
-  );
+  const coAdminHtml = (await bodies(coAdmin, url)).html;
+  expect(coAdminHtml).toContain('data-card-status="failed"');
+  // Captain-Block (AC-4): wen es betrifft und warum, ohne Rohcode, ohne Karte-ändern-Formular (das hat nur der Betroffene)
+  expect(coAdminHtml).toContain('data-testid="charge-failed-captain"');
+  expect(coAdminHtml).toContain("Die Bank hat die Karte abgelehnt.");
+  expect(coAdminHtml).not.toContain("card_declined");
+  expect(coAdminHtml).not.toContain('data-testid="charge-failed"');
 
   // Plattform-Admin
   await seedAdmin(`kradm`);

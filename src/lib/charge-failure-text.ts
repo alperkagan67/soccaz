@@ -3,18 +3,18 @@
  * (siehe card-visibility.ts); Dritte bekommen nie einen Grund. Unbekannte Codes ergeben den allgemeinen Text, nie den Rohcode.
  */
 const TEXTS: Record<string, string> = {
-  card_declined: "Deine Bank hat die Karte abgelehnt.",
-  generic_decline: "Deine Bank hat die Karte abgelehnt.",
+  card_declined: "Die Bank hat die Karte abgelehnt.",
+  generic_decline: "Die Bank hat die Karte abgelehnt.",
   insufficient_funds: "Auf der Karte ist nicht genug Guthaben.",
   expired_card: "Die Karte ist abgelaufen.",
   incorrect_cvc: "Die Prüfnummer der Karte war falsch.",
   lost_card: "Die Karte wurde gesperrt.",
   stolen_card: "Die Karte wurde gesperrt.",
-  authentication_required: "Deine Bank braucht eine Bestätigung der Zahlung.",
+  authentication_required: "Die Bank braucht eine Bestätigung der Zahlung.",
   processing_error: "Bei der Zahlung ist ein Fehler aufgetreten.",
 };
 
-const GENERIC = "Die Abbuchung von deiner Karte hat nicht geklappt.";
+const GENERIC = "Die Abbuchung von der Karte hat nicht geklappt.";
 
 export function chargeFailureText(code: string | null | undefined): string {
   return (code && TEXTS[code]) || GENERIC;

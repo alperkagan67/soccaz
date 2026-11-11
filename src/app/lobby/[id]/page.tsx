@@ -18,6 +18,7 @@ import { cardModeActive } from "@/server/wallet";
 import { cardView } from "@/lib/card-view";
 import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/server/payments/card-status";
 import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
+import { chargeFailureText } from "@/lib/charge-failure-text";
 import { guestRosterView, initialsOf } from "@/lib/guest-roster";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
@@ -68,6 +69,11 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   // "Alle haben eine Karte" je Team wird aus dem ROHSTATUS auf dem Server abgeleitet und nur als Ja/Nein weitergegeben (Gäste sehen sonst fälschlich "nicht vollständig")
   const teamCardsReady = cardOn ? await getTeamCardsReady(match.id) : {};
   const storedCard = cardOn && user ? await getStoredCardDisplay(user.id) : null;
+  // Eigener Fehlerzustand (nur der Betroffene bekommt ihn, siehe cardDisplayFor): Grund im Klartext; der Rohcode geht nicht an den Browser
+  const myDisplay = user ? cardDisplays[user.id] : undefined;
+  const myFailure = myDisplay?.status === "failed" ? { text: chargeFailureText(myDisplay.reason) } : null;
+  // Captain/Veranstalter/Admin: wen es betrifft und warum (nur Einträge mit Grund; der Betroffene selbst sieht oben seinen eigenen Block)
+  const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === "failed" && id !== user?.id).map(([id, d]) => ({ userId: id, name: participants.find((p) => p.userId === id)?.name ?? "Spieler", text: chargeFailureText(d.reason) }));
   const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
@@ -328,10 +334,23 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
-          card={cardOn ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard } : null}
+          card={cardOn ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard, failure: myFailure } : null}
           pay={!cardOn && payments.enabled && payments.reservationCents !== null ? { reserveCents: owes ? (payments.myDueCents ?? 0) : payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid) && !owes, backTo: `/lobby/${match.id}` } : null}
           teamPaid={{ paid: participants.filter((p) => p.teamId === v.participant?.teamId && p.paid).length, total: participants.filter((p) => p.teamId === v.participant?.teamId).length }}
         />
+      )}
+
+      {failedForManager.length > 0 && (
+        <section className="card space-y-2" role="alert" aria-label="Abbuchung fehlgeschlagen" data-testid="charge-failed-captain">
+          <h2 className="font-semibold">Abbuchung fehlgeschlagen</h2>
+          <ul className="space-y-1 text-sm">
+            {failedForManager.map((f) => (
+              <li key={f.userId} data-testid="charge-failed-player">
+                <strong>{f.name}</strong>: {f.text} Der Spieler kann in der Lobby seine Karte ändern.
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {canSeeLights && (cardOn ? <CardLightLegend /> : <LightLegend paymentsOn={payments.enabled} />)}
