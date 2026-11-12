@@ -9,7 +9,7 @@ import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { StripeProvider } from "@/server/payments/stripe";
 import { handleStripeWebhook } from "@/server/payments/webhook";
-import { addPlayer, cleanup, makeMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, SHARE_ACCOUNT } from "./helpers";
 
 let provider: FakeProvider;
 beforeAll(async () => {
@@ -64,7 +64,7 @@ describe("payment_intent.succeeded: Verbuchung", () => {
     expect((await send("payment_intent.succeeded", piObject(c))).status).toBe(200);
     const entries = await ledgerOf(c);
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ debitAccount: "clearing", creditAccount: "revenue", amountCents: 800, kind: "match_share", idempotencyKey: `charge:${c.piId}`, debitUserId: null, creditUserId: null });
+    expect(entries[0]).toMatchObject({ debitAccount: "clearing", creditAccount: SHARE_ACCOUNT, amountCents: 800, kind: "match_share", idempotencyKey: `charge:${c.piId}`, debitUserId: null, creditUserId: null });
     expect(await rowOf(c)).toMatchObject({ status: "succeeded", failureCode: null });
     const seat = await seatOf(c);
     expect(seat.cardStatus).toBe("charged");

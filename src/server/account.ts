@@ -141,7 +141,7 @@ export async function deleteAccount(userId: string) {
       .from(matchParticipants)
       .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
       .where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"])));
-    const allMatchIds = [...new Set([...openIds.map((r) => r.id), ...myChargeIds.map((c) => c.matchId), ...myRefundMatchIds.map((r) => r.matchId)])].sort();
+    const allMatchIds = [...new Set([...openIds.map((r) => r.id), ...myChargeIds.map((c) => c.matchId), ...myRefundMatchIds.map((r) => r.matchId)].filter((id): id is string => id !== null))].sort(); // Turnier-Zeilen (match_id leer) gehoeren nicht zu den Spielsperren (M5-5 behandelt sie)
     // ZUERST alle betroffenen Spiele sperren (nach id sortiert, wie mergeTeams), DANN die Abbuchungs- und Erstattungszeilen, DANN die Nutzerzeile. Reihenfolge Spiel -> Nutzer wie in der Abbuchung (Phase A sperrt das Spiel
     // und nimmt beim Anlegen der Zeilen einen Schlüssel-Share auf die Nutzerzeile): so verklemmt sich nichts, und Phase A kann nicht zwischen die Prüfung und das Anonymisieren geraten.
     const lockedAll =

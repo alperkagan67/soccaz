@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/ActionForm";
 import { CITIES } from "@/lib/validation";
 import { formatEuro } from "@/lib/money";
-import { addPriceRuleAction, createVenueAction, revokeVenueAccessAction, setVenueManagerAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
+import { addPriceRuleAction, createVenueAction, revokeVenueAccessAction, setVenueCommissionAction, setVenueManagerAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
 import { formatDateTime } from "@/lib/time";
 import { listVenueAccess } from "@/server/venue-access";
 import { canUser } from "@/lib/roles";
@@ -57,6 +57,7 @@ async function Rules({ venueId }: { venueId: string | null }) {
 export default async function VenuesPage() {
   const user = await requirePermission("booking", "/admin/hallen");
   const canPrices = canUser(user, "finance");
+  const canCommission = canUser(user, "owner"); // Provision je Halle: nur Admin 1 (Vertrag 009 M2); Admin 2 sieht sie nicht
   const canAssign = canUser(user, "owner"); // Betreiber zuordnen nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht nur, ob einer zugewiesen ist
   const venues = await listVenues();
   const access = new Map((await listVenueAccess({ isOwner: canAssign })).map((a) => [a.venueId, a])); // E-Mail nur für Admin 1 (Entscheid P7), Admin 2 sieht Status und Datum
@@ -126,6 +127,29 @@ export default async function VenuesPage() {
                 <p className="text-xs text-muted">{[v.address, v.surface, v.contact, v.hasShowers && "Duschen", v.hasParking && "Parkplätze"].filter(Boolean).join(" · ")}</p>
                 <Rules venueId={v.id} />
                 <PriceForm venueId={v.id} canEdit={canPrices} />
+                {canCommission && (
+                  <ActionForm action={setVenueCommissionAction.bind(null, v.id)} submit="Provision übernehmen" className="space-y-2" keepOnSuccess>
+                    <p className="text-sm font-semibold">Provision dieser Halle</p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div>
+                        <label className="label" htmlFor={`prov-${v.id}`}>Satz in Prozent der Hallenmiete</label>
+                        <input id={`prov-${v.id}`} name="percent" inputMode="decimal" className="field" defaultValue={String(v.commissionPercent)} data-testid="commission-percent" />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm sm:mt-6">
+                        <input type="checkbox" name="bonus" defaultChecked={v.commissionBonusEnabled} /> 10er-Bonus
+                      </label>
+                      <div>
+                        <label className="label" htmlFor={`provr-${v.id}`}>Grund der Änderung</label>
+                        <input id={`provr-${v.id}`} name="reason" className="field" placeholder="Pflichtfeld" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="label" htmlFor={`provm-${v.id}`}>Rechnungsadresse (E-Mail der Halle)</label>
+                      <input id={`provm-${v.id}`} name="invoiceEmail" type="email" className="field" defaultValue={v.invoiceEmail ?? ""} placeholder="rechnung@beispiel.de (leer = keine)" />
+                    </div>
+                    <p className="text-xs text-muted">Wirkt nur auf künftige Buchungen. 0 bis 100, höchstens zwei Nachkommastellen.</p>
+                  </ActionForm>
+                )}
                 {(() => {
                   const acc = access.get(v.id);
                   const state = acc ? (acc.status === "active" ? `Zugang aktiv seit ${formatDateTime(acc.assignedAt ?? acc.invitedAt)} Uhr` : `Einladung offen seit ${formatDateTime(acc.invitedAt)} Uhr (gilt 14 Tage)${acc.invitedEmail ? `: ${acc.invitedEmail}` : ""}`) : "Kein Zugang für Betreiber";

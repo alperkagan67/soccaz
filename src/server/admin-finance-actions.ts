@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { parseEuro } from "@/lib/money";
 import type { ActionState } from "@/lib/validation";
 import { recordExpense, updateBookingJob, type BookingPatch, type BookingStatus } from "./booking";
+import { setVenueCommission } from "./commission";
+import { parseVatMode } from "@/lib/invoice";
 import { manualRefund } from "./finance";
 import { createPromo, setPromoActive } from "./promo";
 import { requirePermission } from "./session";
@@ -143,6 +145,25 @@ export async function setVenueManagerAction(venueId: string, _prev: ActionState,
 export async function revokeVenueAccessAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
   return guarded("owner", "/admin/hallen", async (actor) => {
     await revokeVenueAccess(actor, venueId, String(fd.get("reason") ?? ""));
+  });
+}
+
+/** Provision und 10er-Bonus einer Halle: nur Admin 1, Pflicht-Begründung (Vertrag 009 M2, AC-5). */
+export async function setVenueCommissionAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guarded("owner", "/admin/hallen", async (actor) => {
+    await setVenueCommission(actor, venueId, { percent: fd.get("percent"), bonusEnabled: fd.get("bonus") === "on", reason: String(fd.get("reason") ?? ""), invoiceEmail: String(fd.get("invoiceEmail") ?? "") });
+  });
+}
+
+/** Rechnungseinstellungen (Vertrag 009 M2): Umsatzsteuer-Schalter OHNE Standardwert und Hinweistext; nur Admin 1. Wortlaut und Satz legt der Steuerberater fest. */
+export async function saveInvoiceSettingsAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const mode = parseVatMode(text(fd, "vatMode"));
+  if (!mode) return { error: "Bitte den Umsatzsteuer-Schalter wählen (19 % oder Kleinunternehmer)." };
+  const note = text(fd, "vatNote").slice(0, 600);
+  if (mode === "kleinunternehmer" && note.length < 5) return { error: "Für Kleinunternehmer ist ein Hinweistext auf der Rechnung nötig (Wortlaut vom Steuerberater)." };
+  return guarded("owner", "/admin/einstellungen", async (actor) => {
+    await setSetting(actor, "vat_mode", mode);
+    await setSetting(actor, "vat_note", note);
   });
 }
 

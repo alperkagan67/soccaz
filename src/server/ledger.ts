@@ -8,8 +8,8 @@ import type { Tx } from "./tx";
 
 type Exec = Pick<typeof db, "insert" | "select">;
 
-export type Account = "wallet" | "clearing" | "bank" | "revenue" | "venue_cost" | "fees" | "promo" | "chargeback" | "tournament";
-export type LedgerKind = "topup" | "fee" | "promo_credit" | "match_share" | "refund" | "venue_cost" | "adjustment" | "chargeback" | "tournament_entry" | "tournament_refund" | "tournament_payout" | "tournament_commission";
+export type Account = "wallet" | "clearing" | "bank" | "revenue" | "venue_cost" | "fees" | "promo" | "chargeback" | "tournament" | "venue_payable" | "commission";
+export type LedgerKind = "topup" | "fee" | "promo_credit" | "match_share" | "refund" | "venue_cost" | "adjustment" | "chargeback" | "tournament_entry" | "tournament_refund" | "tournament_payout" | "tournament_commission" | "commission" | "commission_bonus";
 
 export type Posting = {
   debit: { account: Account; userId?: string };

@@ -43,6 +43,31 @@ async function structure(pool) {
   check(chk.rowCount === 1, "CHECK users_owner_is_admin");
 }
 
+async function commissionStructure(pool, withOldMatch) {
+  const col = await pool.query("select column_default from information_schema.columns where table_name = 'matches' and column_name = 'ledger_model'");
+  if (col.rowCount === 0) return; // Migration von 009 M2 nicht vorhanden
+  check(/commission/.test(col.rows[0].column_default), "matches.ledger_model: Standard für neue Spiele ist 'commission'");
+  check((await pool.query("select 1 from information_schema.columns where table_name = 'venues' and column_name in ('commission_percent', 'commission_bonus_enabled')")).rowCount === 2, "venues: Provisionsspalten");
+  check((await pool.query("select 1 from pg_constraint where conname = 'venues_commission_percent_range'")).rowCount === 1, "CHECK Satz 0 bis 100");
+  check((await pool.query("select 1 from pg_trigger where tgname = 'match_commissions_append_only'")).rowCount === 1, "match_commissions ist nur anhängend (Trigger)");
+  check((await pool.query("select 1 from pg_trigger where tgname = 'matches_ledger_model_immutable'")).rowCount === 1, "matches.ledger_model ist unveränderlich (Trigger)");
+  const enums = (await pool.query("select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname in ('ledger_account', 'ledger_kind')")).rows.map((r) => r.enumlabel);
+  check(["venue_payable", "commission", "commission_bonus"].every((x) => enums.includes(x)), "Hauptbuch kennt venue_payable, commission, commission_bonus");
+  let code = "";
+  try {
+    await pool.query("insert into venues (name, city, commission_percent) values ('X', 'Y', 100.01)");
+  } catch (error) {
+    code = error.code;
+  }
+  check(code === "23514", "Satz über 100 wird von der Datenbank abgelehnt");
+  const v = await pool.query("insert into venues (name, city) values ('Standard', 'Essen') returning commission_percent");
+  check(Number(v.rows[0].commission_percent) === 0, "Halle ohne Angabe (Altbestand, OSM-Import): Satz 0 (die Vorgabe 10 setzt createVenue)");
+  if (withOldMatch) {
+    const m = await pool.query("select ledger_model from matches where home_team_id in (select id from teams where slug = 'mig-a')");
+    check(m.rows[0]?.ledger_model === "legacy", "bestehendes Spiel bleibt im alten Buchungsmodell (legacy)");
+  }
+}
+
 async function secondOwnerRejected(pool) {
   await pool.query("insert into users (email, name, role, is_owner) values ('a@migcheck.test', 'A', 'admin', true)");
   let code = "";
@@ -71,24 +96,40 @@ try {
   await structure(fresh);
   check((await fresh.query("select count(*)::int as n from audit_log")).rows[0].n === 0, "frische Datenbank: kein Protokolleintrag durch Migrationen");
   await secondOwnerRejected(fresh);
+  await commissionStructure(fresh, false);
   await fresh.end();
 
-  // 2. BESTEHEND: ohne die letzte Migration anlegen, Daten einfügen, dann die letzte nachziehen
-  console.log("== BESTEHEND (Stand ohne die letzte Migration, mit Daten, dann die letzte)");
+  // 2. BESTEHEND: ohne die letzten ZWEI Migrationen (009 M2: Buchungsmodell, 011 M1: venue_access) anlegen, Daten einfügen, dann beide nachziehen
+  console.log("== BESTEHEND (Stand ohne die letzten zwei Migrationen, mit Daten, dann diese)");
   const tmp = mkdtempSync(path.join(tmpdir(), "migcheck-"));
   cpSync("./drizzle", tmp, { recursive: true });
   const journalPath = path.join(tmp, "meta", "_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf8"));
   const full = journal.entries.length;
-  journal.entries = journal.entries.slice(0, full - 1);
+  journal.entries = journal.entries.slice(0, full - 2);
   writeFileSync(journalPath, JSON.stringify(journal));
   const existing = new pg.Pool({ connectionString: urlFor(names[1]), max: 2 });
   await migrate(drizzle(existing), { migrationsFolder: tmp });
   for (const [mail, role] of [['alt@migcheck.test', 'admin'], ['mod@migcheck.test', 'moderator'], ['fin@migcheck.test', 'finance'], ['buch@migcheck.test', 'booking'], ['spieler@migcheck.test', 'player']]) {
     await existing.query("insert into users (email, name, role) values ($1, $1, $2)", [mail, role]);
   }
+  // ein Altspiel VOR der letzten Migration (Vertrag 009 M2: bekommt das Buchungsmodell 'legacy')
+  const mu = (await existing.query("select id from users where email = 'alt@migcheck.test'")).rows[0].id;
+  const mt = [];
+  for (const n of ["a", "b"]) mt.push((await existing.query("insert into teams (name, slug, city, created_by) values ($1, $2, 'Essen', $3) returning id", [`Mig ${n}`, `mig-${n}`, mu])).rows[0].id);
+  await existing.query("insert into matches (home_team_id, away_team_id, starts_at, duration_min) values ($1, $2, now() + interval '3 days', 60)", mt);
+  // Hallen mit bisherigem Betreiber VOR der Migration 011 M1 (Datenübernahme in venue_access): ok, Admin-Konto, anonymisiertes Konto, verwaister Verweis, ohne Betreiber
+  const okId = (await existing.query("select id from users where email = 'spieler@migcheck.test'")).rows[0].id;
+  const anonId = (await existing.query("insert into users (email, name, role) values ('geloescht-1@geloescht.invalid', 'Gelöscht', 'player') returning id")).rows[0].id;
+  for (const [name, mgr] of [['H-ok', okId], ['H-admin', mu], ['H-anon', anonId], ['H-orphan', '00000000-0000-4000-8000-000000000001'], ['H-frei', null]]) {
+    await existing.query("insert into venues (name, city, manager_user_id) values ($1, 'Essen', $2)", [name, mgr]);
+  }
   await migrate(drizzle(existing), { migrationsFolder: "./drizzle" });
   await structure(existing);
+  const acc = (await existing.query("select v.name, a.status, a.user_id from venue_access a join venues v on v.id = a.venue_id order by v.name")).rows;
+  check(acc.length === 1 && acc[0].name === 'H-ok' && acc[0].status === 'active' && acc[0].user_id === okId, "Datenübernahme venue_access: nur die Halle mit gültigem Betreiber wird aktiv (Admin, anonymisiert, verwaist, ohne Betreiber werden übersprungen)");
+  check((await existing.query("select count(*)::int as n from venues where manager_user_id is not null")).rows[0].n === 4, "venues.manager_user_id bleibt unverändert (Rückfall bis 011 M4)");
+  check((await existing.query("select 1 from pg_indexes where indexname = 'venue_access_one_open_per_venue'")).rowCount === 1, "venue_access: höchstens ein offener Zugang je Halle (partieller Unique)");
   const old = await existing.query("select role, is_owner from users where email = 'alt@migcheck.test'");
   check(old.rows[0]?.role === "admin" && old.rows[0]?.is_owner === false, "bestehende Zeile bleibt unverändert, is_owner = false");
   if (/teilrollen/.test(journal.entries.length ? JSON.parse(readFileSync("./drizzle/meta/_journal.json", "utf8")).entries.at(-1).tag : "")) {
@@ -100,6 +141,7 @@ try {
     check(log.some((l) => l.email === 'mod@migcheck.test' && l.before.role === 'moderator'), "Protokoll nennt die frühere Rolle (before.role)");
   }
   await secondOwnerRejected(existing);
+  await commissionStructure(existing, true);
   await existing.end();
 } finally {
   for (const name of names) await admin.query(`drop database if exists "${name}" with (force)`).catch(() => {});

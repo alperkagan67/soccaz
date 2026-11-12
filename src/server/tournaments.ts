@@ -108,7 +108,7 @@ export async function createTournament(userId: string, input: TournamentInput) {
 
 type T = typeof tournaments.$inferSelect;
 
-async function lockTournament(tx: Tx, id: string): Promise<T> {
+export async function lockTournament(tx: Tx, id: string): Promise<T> {
   const [t] = await tx.select().from(tournaments).where(eq(tournaments.id, id)).for("update");
   if (!t) throw new DomainError("Turnier nicht gefunden.");
   return t;

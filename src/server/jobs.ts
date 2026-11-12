@@ -1,4 +1,5 @@
 import { deliverPending } from "./notifications";
+import { deliverInvoices, runInvoiceMonth } from "./invoices";
 import { autoConfirmOverdueResults } from "./results";
 import { runBookingAgent } from "./booking";
 import { closeMvpVoting } from "./stats";
@@ -28,6 +29,8 @@ export const JOBS: Record<string, () => Promise<unknown>> = {
   "finance-alerts": () => notifyFinanceAlerts(),
   "close-mvp": () => closeMvpVoting(),
   "close-city-challenge": () => closeCityChallenge(),
+  "invoice-month": () => runInvoiceMonth(),
+  "deliver-invoices": () => deliverInvoices(),
   "run-matchmaker": () => runMatchmaker(),
   "expire-scheduling": () => expireScheduling(),
   "advance-vetos": () => advanceVetos(),
@@ -55,6 +58,8 @@ export const SCHEDULE: Record<string, string> = {
   "advance-vetos": "* * * * *",
   "expire-venue-invites": "23 3 * * *", // Adresse abgelaufener Hallen-Einladungen 30 Tage nach Ablauf leeren (R1)
   "close-city-challenge": "30 5 1 * *", // am 1. jedes Monats den Vormonat festschreiben
+  "invoice-month": "0 3 1 * *", // am 1. jedes Monats die Rechnungen über die Provision des Vormonats (Vertrag 009 M2)
+  "deliver-invoices": "*/10 * * * *",
 };
 
 export async function runJob(name: string): Promise<unknown> {

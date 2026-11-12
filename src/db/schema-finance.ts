@@ -7,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -21,8 +22,8 @@ import { matches, users } from "./schema";
 // Phase 2: Geld und Halle
 // ---------------------------------------------------------------------------------------------
 
-export const ledgerAccount = pgEnum("ledger_account", ["wallet", "clearing", "bank", "revenue", "venue_cost", "fees", "promo", "chargeback", "tournament"]);
-export const ledgerKind = pgEnum("ledger_kind", ["topup", "fee", "promo_credit", "match_share", "refund", "venue_cost", "adjustment", "chargeback", "tournament_entry", "tournament_refund", "tournament_payout", "tournament_commission"]);
+export const ledgerAccount = pgEnum("ledger_account", ["wallet", "clearing", "bank", "revenue", "venue_cost", "fees", "promo", "chargeback", "tournament", "venue_payable", "commission"]);
+export const ledgerKind = pgEnum("ledger_kind", ["topup", "fee", "promo_credit", "match_share", "refund", "venue_cost", "adjustment", "chargeback", "tournament_entry", "tournament_refund", "tournament_payout", "tournament_commission", "commission", "commission_bonus"]);
 export const paymentProvider = pgEnum("payment_provider", ["dev", "stripe"]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "canceled"]);
 export const bookingStatus = pgEnum("booking_status", ["open", "in_progress", "booked", "unavailable", "confirmed", "withdrawn", "done"]);
@@ -35,7 +36,9 @@ export const settings = pgTable("settings", {
   updatedBy: uuid("updated_by").references(() => users.id),
 });
 
-export const venues = pgTable("venues", {
+export const venues = pgTable(
+  "venues",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   city: text("city").notNull(),
@@ -53,7 +56,41 @@ export const venues = pgTable("venues", {
   verified: boolean("verified").notNull().default(true), // false = Angaben aus OpenStreetMap, Buchbarkeit und Preis ungeprüft
   active: boolean("active").notNull().default(true),
   managerUserId: uuid("manager_user_id"), // Hallenbetreiber: bestätigt Spielanfragen für diese Halle
+  // Vertrag 009 M2: Provision je Halle (nur Admin 1). Prozent der Hallenmiete (0 bis 100, höchstens 2 Nachkommastellen); der 10er-Bonus ist kumulierbar (Entscheid t9).
+  commissionPercent: numeric("commission_percent", { precision: 5, scale: 2 }).notNull().default("0"),
+  commissionBonusEnabled: boolean("commission_bonus_enabled").notNull().default(false),
+  invoiceEmail: text("invoice_email"), // Adresse für die Monatsrechnung (Vertrag 009 M2); ohne Adresse bleibt die Rechnung im Admin abrufbar
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("venues_commission_percent_range", sql`${t.commissionPercent} >= 0 and ${t.commissionPercent} <= 100`)],
+);
+
+/**
+ * Provision je Spiel (Vertrag 009 M2): Schnappschuss von Satz und Bemessungsgrundlage zum Buchungszeitpunkt, genau eine Zeile je Spiel. NUR ANHÄNGEN (Trigger wie das Hauptbuch):
+ * Die Stornierung steht im Hauptbuch (Gegenbuchung), nicht hier. Die Hallenmiete (cost_cents des Spiels) ist die Bemessungsgrundlage (Entscheid t9, P6).
+ */
+export const matchCommissions = pgTable(
+  "match_commissions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    matchId: uuid("match_id").notNull().unique().references(() => matches.id, { onDelete: "cascade" }),
+    venueId: uuid("venue_id").notNull().references(() => venues.id, { onDelete: "restrict" }),
+    ratePercent: numeric("rate_percent", { precision: 5, scale: 2 }).notNull(),
+    baseCents: integer("base_cents").notNull(),
+    commissionCents: integer("commission_cents").notNull(),
+    ledgerEntryId: uuid("ledger_entry_id"), // die Provisionsbuchung (kann fehlen, wenn die Provision 0 ist)
+    bookedAt: timestamp("booked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("match_commissions_venue_idx").on(t.venueId, t.bookedAt),
+    check("match_commissions_amounts_check", sql`${t.baseCents} >= 0 and ${t.commissionCents} >= 0 and ${t.commissionCents} <= ${t.baseCents}`),
+  ],
+);
+
+/** Zähler der Rechnungsnummern je Jahr (Zeilensperre, lückenlos auch bei Abbruch; Vertrag 009 M2). */
+export const invoiceNumberCounters = pgTable("invoice_number_counters", {
+  year: integer("year").primaryKey(),
+  last: integer("last").notNull().default(0),
 });
 
 /**
@@ -80,6 +117,61 @@ export const venueAccess = pgTable(
     index("venue_access_email_idx").on(sql`lower(${t.invitedEmail})`).where(sql`${t.status} = 'invited'`),
     check("venue_access_invited_chk", sql`${t.status} <> 'invited' or (${t.userId} is null and ${t.invitedEmail} is not null)`),
     check("venue_access_active_chk", sql`${t.status} <> 'active' or ${t.userId} is not null`),
+  ],
+);
+
+/** Monatssammelrechnung über die Provision an eine Halle. NUR ANHÄNGEN (Trigger): Korrektur = Gutschrift als eigene Rechnung. Eine Rechnung je Halle und Monat. */
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull().unique(),
+    venueId: uuid("venue_id").notNull().references(() => venues.id, { onDelete: "restrict" }),
+    period: text("period").notNull(), // YYYY-MM
+    vatMode: text("vat_mode").$type<"19" | "kleinunternehmer">().notNull(),
+    vatPercent: integer("vat_percent").notNull(),
+    netCents: integer("net_cents").notNull(),
+    vatCents: integer("vat_cents").notNull(),
+    grossCents: integer("gross_cents").notNull(),
+    note: text("note"), // Hinweistext (z. B. Kleinunternehmer), Wortlaut aus der Einstellung
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("invoices_venue_period_idx").on(t.venueId, t.period),
+    check("invoices_amounts_check", sql`${t.netCents} > 0 and ${t.vatCents} >= 0 and ${t.grossCents} = ${t.netCents} + ${t.vatCents}`),
+  ],
+);
+
+/** Zeile je Provisionsbuchung (Provision eines Spiels oder Bonus). Jede Hauptbuch-Buchung wird höchstens einmal abgerechnet (eindeutig). NUR ANHÄNGEN. */
+export const invoiceLines = pgTable(
+  "invoice_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "restrict" }),
+    kind: text("kind").$type<"commission" | "bonus">().notNull(),
+    ledgerEntryId: uuid("ledger_entry_id").notNull().unique(),
+    matchId: uuid("match_id"),
+    gameStartsAt: timestamp("game_starts_at", { withTimezone: true }),
+    gameNumber: integer("game_number"),
+    amountCents: integer("amount_cents").notNull(),
+  },
+  (t) => [index("invoice_lines_invoice_idx").on(t.invoiceId), check("invoice_lines_amount_positive", sql`${t.amountCents} > 0`)],
+);
+
+/** Versand der Rechnung (Outbox mit Wiederholung). Hier sind Änderungen erlaubt; die Rechnung selbst bleibt unverändert. */
+export const invoiceDeliveries = pgTable(
+  "invoice_deliveries",
+  {
+    invoiceId: uuid("invoice_id").primaryKey().references(() => invoices.id, { onDelete: "restrict" }),
+    status: text("status").$type<"pending" | "sent" | "skipped" | "failed">().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextTryAt: timestamp("next_try_at", { withTimezone: true }).notNull().defaultNow(),
+    lastError: text("last_error"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("invoice_deliveries_due_idx").on(t.status, t.nextTryAt),
+    check("invoice_deliveries_status_check", sql`${t.status} in ('pending', 'sent', 'skipped', 'failed')`),
   ],
 );
 

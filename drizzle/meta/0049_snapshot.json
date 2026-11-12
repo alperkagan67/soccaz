@@ -1,6 +1,6 @@
 {
-  "id": "1926d75b-d569-441b-aff7-9af08ed248be",
-  "prevId": "9a7dd66a-119b-4bb5-936f-75024d19319f",
+  "id": "9abb9c91-d838-49c0-b965-c84129dfd53c",
+  "prevId": "bb02ee4e-321f-4c63-9807-570b5ddd7d4a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -927,6 +927,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "ledger_model": {
+          "name": "ledger_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'commission'"
+        },
         "cancel_requested_at": {
           "name": "cancel_requested_at",
           "type": "timestamp with time zone",
@@ -1422,7 +1429,7 @@
           "name": "match_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "tournament_id": {
           "name": "tournament_id",
@@ -1673,6 +1680,14 @@
         "payment_charges_attempt_positive": {
           "name": "payment_charges_attempt_positive",
           "value": "\"payment_charges\".\"current_attempt\" >= 1"
+        },
+        "payment_charges_scope_xor": {
+          "name": "payment_charges_scope_xor",
+          "value": "(\"payment_charges\".\"match_id\" is null) <> (\"payment_charges\".\"tournament_id\" is null)"
+        },
+        "payment_charges_tournament_no_slot": {
+          "name": "payment_charges_tournament_no_slot",
+          "value": "\"payment_charges\".\"tournament_id\" is null or (\"payment_charges\".\"slot_of\" is null and \"payment_charges\".\"slot_team_id\" is null)"
         },
         "payment_charges_amount_positive": {
           "name": "payment_charges_amount_positive",
@@ -1952,6 +1967,21 @@
           "columns": [
             {
               "expression": "payer_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payment_disputes_tournament_idx": {
+          "name": "payment_disputes_tournament_idx",
+          "columns": [
+            {
+              "expression": "tournament_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2303,7 +2333,7 @@
           "name": "match_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "tournament_id": {
           "name": "tournament_id",
@@ -2402,6 +2432,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "payment_refunds_tournament_idx": {
+          "name": "payment_refunds_tournament_idx",
+          "columns": [
+            {
+              "expression": "tournament_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2467,6 +2512,10 @@
         "payment_refunds_amount_positive": {
           "name": "payment_refunds_amount_positive",
           "value": "\"payment_refunds\".\"amount_cents\" > 0"
+        },
+        "payment_refunds_scope_xor": {
+          "name": "payment_refunds_scope_xor",
+          "value": "(\"payment_refunds\".\"match_id\" is null) <> (\"payment_refunds\".\"tournament_id\" is null)"
         },
         "payment_refunds_status_check": {
           "name": "payment_refunds_status_check",
@@ -2542,6 +2591,21 @@
             },
             {
               "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payment_setup_intents_tournament_idx": {
+          "name": "payment_setup_intents_tournament_idx",
+          "columns": [
+            {
+              "expression": "tournament_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3401,6 +3465,361 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.invoice_deliveries": {
+      "name": "invoice_deliveries",
+      "schema": "",
+      "columns": {
+        "invoice_id": {
+          "name": "invoice_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_try_at": {
+          "name": "next_try_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "invoice_deliveries_due_idx": {
+          "name": "invoice_deliveries_due_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "next_try_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "invoice_deliveries_invoice_id_invoices_id_fk": {
+          "name": "invoice_deliveries_invoice_id_invoices_id_fk",
+          "tableFrom": "invoice_deliveries",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "invoice_deliveries_status_check": {
+          "name": "invoice_deliveries_status_check",
+          "value": "\"invoice_deliveries\".\"status\" in ('pending', 'sent', 'skipped', 'failed')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.invoice_lines": {
+      "name": "invoice_lines",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "invoice_id": {
+          "name": "invoice_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ledger_entry_id": {
+          "name": "ledger_entry_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "match_id": {
+          "name": "match_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "game_starts_at": {
+          "name": "game_starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "game_number": {
+          "name": "game_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "invoice_lines_invoice_idx": {
+          "name": "invoice_lines_invoice_idx",
+          "columns": [
+            {
+              "expression": "invoice_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "invoice_lines_invoice_id_invoices_id_fk": {
+          "name": "invoice_lines_invoice_id_invoices_id_fk",
+          "tableFrom": "invoice_lines",
+          "tableTo": "invoices",
+          "columnsFrom": [
+            "invoice_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invoice_lines_ledger_entry_id_unique": {
+          "name": "invoice_lines_ledger_entry_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "ledger_entry_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "invoice_lines_amount_positive": {
+          "name": "invoice_lines_amount_positive",
+          "value": "\"invoice_lines\".\"amount_cents\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.invoice_number_counters": {
+      "name": "invoice_number_counters",
+      "schema": "",
+      "columns": {
+        "year": {
+          "name": "year",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "last": {
+          "name": "last",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.invoices": {
+      "name": "invoices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "number": {
+          "name": "number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "period": {
+          "name": "period",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vat_mode": {
+          "name": "vat_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vat_percent": {
+          "name": "vat_percent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "net_cents": {
+          "name": "net_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vat_cents": {
+          "name": "vat_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "gross_cents": {
+          "name": "gross_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "invoices_venue_period_idx": {
+          "name": "invoices_venue_period_idx",
+          "columns": [
+            {
+              "expression": "venue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "period",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "invoices_venue_id_venues_id_fk": {
+          "name": "invoices_venue_id_venues_id_fk",
+          "tableFrom": "invoices",
+          "tableTo": "venues",
+          "columnsFrom": [
+            "venue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invoices_number_unique": {
+          "name": "invoices_number_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "number"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "invoices_amounts_check": {
+          "name": "invoices_amounts_check",
+          "value": "\"invoices\".\"net_cents\" > 0 and \"invoices\".\"vat_cents\" >= 0 and \"invoices\".\"gross_cents\" = \"invoices\".\"net_cents\" + \"invoices\".\"vat_cents\""
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.ledger_entries": {
       "name": "ledger_entries",
       "schema": "",
@@ -3657,6 +4076,131 @@
         "ledger_amount_positive": {
           "name": "ledger_amount_positive",
           "value": "\"ledger_entries\".\"amount_cents\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.match_commissions": {
+      "name": "match_commissions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "match_id": {
+          "name": "match_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rate_percent": {
+          "name": "rate_percent",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "base_cents": {
+          "name": "base_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "commission_cents": {
+          "name": "commission_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ledger_entry_id": {
+          "name": "ledger_entry_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "booked_at": {
+          "name": "booked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "match_commissions_venue_idx": {
+          "name": "match_commissions_venue_idx",
+          "columns": [
+            {
+              "expression": "venue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "booked_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "match_commissions_match_id_matches_id_fk": {
+          "name": "match_commissions_match_id_matches_id_fk",
+          "tableFrom": "match_commissions",
+          "tableTo": "matches",
+          "columnsFrom": [
+            "match_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "match_commissions_venue_id_venues_id_fk": {
+          "name": "match_commissions_venue_id_venues_id_fk",
+          "tableFrom": "match_commissions",
+          "tableTo": "venues",
+          "columnsFrom": [
+            "venue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "match_commissions_match_id_unique": {
+          "name": "match_commissions_match_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "match_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "match_commissions_amounts_check": {
+          "name": "match_commissions_amounts_check",
+          "value": "\"match_commissions\".\"base_cents\" >= 0 and \"match_commissions\".\"commission_cents\" >= 0 and \"match_commissions\".\"commission_cents\" <= \"match_commissions\".\"base_cents\""
         }
       },
       "isRLSEnabled": false
@@ -4640,6 +5184,26 @@
           "primaryKey": false,
           "notNull": false
         },
+        "commission_percent": {
+          "name": "commission_percent",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "commission_bonus_enabled": {
+          "name": "commission_bonus_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "invoice_email": {
+          "name": "invoice_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -4661,7 +5225,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "venues_commission_percent_range": {
+          "name": "venues_commission_percent_range",
+          "value": "\"venues\".\"commission_percent\" >= 0 and \"venues\".\"commission_percent\" <= 100"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.late_cancels": {
@@ -8058,7 +8627,9 @@
         "fees",
         "promo",
         "chargeback",
-        "tournament"
+        "tournament",
+        "venue_payable",
+        "commission"
       ]
     },
     "public.ledger_kind": {
@@ -8076,7 +8647,9 @@
         "tournament_entry",
         "tournament_refund",
         "tournament_payout",
-        "tournament_commission"
+        "tournament_commission",
+        "commission",
+        "commission_bonus"
       ]
     },
     "public.payment_provider": {
