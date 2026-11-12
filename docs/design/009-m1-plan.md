@@ -126,7 +126,7 @@ Die übrigen Treffer der Suche betreffen die Team-Rolle (`teamMembers.role`/`tea
 ## 7. Dateiliste (Entwurf)
 | Bereich | Dateien |
 |---|---|
-| Schema/Migration | `src/db/schema.ts` (Enum `owner`, `audit_log.reason`, Tabelle `admin_cancel_proposals`), `drizzle/<nächste freie Nummer>_*.sql` (je Etappe), `drizzle/meta/*` |
+| Schema/Migration | `src/db/schema.ts` (Spalte `is_owner` mit Teilindex und CHECK, `audit_log.reason`, Tabelle `admin_cancel_proposals`), `drizzle/<nächste freie Nummer>_*.sql` (je Etappe), `drizzle/meta/*` |
 | Rollen | `src/lib/roles.ts` (`Role`, `GRANTS`, `ROLE_LABEL`, `isPlatformAdmin`), `src/server/session.ts` (`requireAdmin`, `requireOwner`), die Stellen aus Abschnitt 4, `src/server/admin.ts`, `src/app/admin/layout.tsx`, `src/app/admin/nutzer/*`, `src/auth.ts` (Dev-Login) |
 | Bootstrap | `scripts/set-owner.mjs` (neu), `docs/BETRIEB.md` (Ablauf, Rollback) |
 | Absage | `src/server/payments/refund.ts`, neu `src/server/admin-cancel.ts` (`proposeCancel`, `decideCancel`, `withdrawProposal`), `src/server/admin-actions.ts`, `src/server/lobby.ts` (`canManageMatch`) |
