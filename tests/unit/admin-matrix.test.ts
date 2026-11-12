@@ -79,6 +79,10 @@ describe("Server-Aktionen mit Wächter", () => {
     const finance = src("admin-finance-actions.ts").match(/guarded\("finance"/g) ?? [];
     expect(finance.length).toBeGreaterThanOrEqual(5);
   });
+  it("Hallenbetreiber zuordnen: nur Admin 1 (Vertrag 011 AC-7), Admin 2 sieht nur die Anzeige", () => {
+    expect(src("admin-finance-actions.ts")).toMatch(/export async function setVenueManagerAction[\s\S]{0,400}guarded\("owner", "\/admin\/hallen"/);
+    expect(readFileSync(path.join(adminDir, "hallen/page.tsx"), "utf8")).toContain('canAssign = canUser(user, "owner")');
+  });
   it("Rolle vergeben: nur Admin 1 (Wächter owner)", () => {
     expect(src("admin-actions.ts")).toContain('"owner"); // nur Admin 1 vergibt Rollen');
   });

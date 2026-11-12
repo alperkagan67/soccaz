@@ -56,6 +56,7 @@ export default async function VenuesPage() {
   const user = await requirePermission("booking", "/admin/hallen");
   const canPrices = canUser(user, "finance");
   const canCommission = canUser(user, "owner"); // Provision je Halle: nur Admin 1 (Vertrag 009 M2); Admin 2 sieht sie nicht
+  const canAssign = canUser(user, "owner"); // Betreiber zuordnen nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht nur, ob einer zugewiesen ist
   const venues = await listVenues();
 
   return (
@@ -146,12 +147,16 @@ export default async function VenuesPage() {
                     <p className="text-xs text-muted">Wirkt nur auf künftige Buchungen. 0 bis 100, höchstens zwei Nachkommastellen.</p>
                   </ActionForm>
                 )}
-                <ActionForm action={setVenueManagerAction.bind(null, v.id)} submit={v.managerUserId ? "Betreiber ändern" : "Betreiber zuweisen"} className="flex items-end gap-2" keepOnSuccess>
-                  <div className="flex-1">
-                    <label className="label" htmlFor={`mgr-${v.id}`}>Betreiber (E-Mail des Kontos){v.managerUserId ? ", zugewiesen" : ""}</label>
-                    <input id={`mgr-${v.id}`} name="email" type="email" className="field" placeholder="halle@beispiel.de (leer = entfernen)" />
-                  </div>
-                </ActionForm>
+                {canAssign ? (
+                  <ActionForm action={setVenueManagerAction.bind(null, v.id)} submit={v.managerUserId ? "Betreiber ändern" : "Betreiber zuweisen"} className="flex items-end gap-2" keepOnSuccess>
+                    <div className="flex-1">
+                      <label className="label" htmlFor={`mgr-${v.id}`}>Betreiber (E-Mail des Kontos){v.managerUserId ? ", zugewiesen" : ""}</label>
+                      <input id={`mgr-${v.id}`} name="email" type="email" className="field" placeholder="halle@beispiel.de (leer = entfernen)" />
+                    </div>
+                  </ActionForm>
+                ) : (
+                  <p className="text-xs text-muted" data-testid="manager-readonly">{v.managerUserId ? "Betreiber zugewiesen (Änderung nur Admin 1)." : "Kein Betreiber zugewiesen (Zuordnung nur Admin 1)."}</p>
+                )}
                 {!v.verified && <ActionForm action={verifyVenueAction.bind(null, v.id, true)} submit="Als geprüft markieren" className="space-y-2" keepOnSuccess />}
                 <ActionForm action={toggleVenueAction.bind(null, v.id, !v.active)} submit={v.active ? "Deaktivieren" : "Aktivieren"} className="space-y-2" keepOnSuccess danger={v.active} />
               </li>
