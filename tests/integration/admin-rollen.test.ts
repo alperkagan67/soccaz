@@ -43,7 +43,9 @@ describe("setRole: nur Admin 1", () => {
     const owner = await makeUser("rl6", "owner");
     const admin2 = await makeUser("rl7", "admin");
     await expect(setRole(admin2.id, owner.id, "player")).rejects.toThrow(/Nur Admin 1/);
-    await expect(setRole(owner.id, owner.id, "player")).rejects.toThrow(/eigene Rolle/);
+    // Admin 1 setzt Admin 1 (sich selbst) auf player: abgelehnt mit dem Hinweis auf den Betreiber-Schritt (nicht erst vom CHECK der Datenbank, R-T199)
+    await expect(setRole(owner.id, owner.id, "player")).rejects.toThrow(/Admin 1.*Betreiber-Schritt/);
+    await expect(setRole(owner.id, owner.id, "admin")).rejects.toThrow(/Betreiber-Schritt/);
     expect(await roleOf(owner.id)).toMatchObject({ role: "admin", isOwner: true });
   });
 });
