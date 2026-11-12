@@ -73,24 +73,24 @@ export type ChainCheck = { ok: boolean; count: number; headHash: string; firstBa
  * Fehlalarm "zaehler" auslösen (wichtig für den Tagesjob).
  */
 export async function verifyEvidenceChain(exec: Exec = db): Promise<ChainCheck> {
-  const rows = rowsOf<{ seq: number; bad: string | null; hash: string; counter_seq: number; counter_hash: string }>(
+  // EINE Anweisung: die Zählerzeile bildet die Grundmenge, die Zeilen hängen per LEFT JOIN daran (auch die allererste/leere Kette hat so einen Zählerstand im selben Schnappschuss)
+  const all = rowsOf<{ seq: number | null; bad: string | null; hash: string | null; counter_seq: number; counter_hash: string }>(
     await exec.execute(sql`
-      select e.seq, e.hash,
-        (select last_seq from booking_evidence_counter where id = 1)::int as counter_seq,
-        (select last_hash from booking_evidence_counter where id = 1) as counter_hash,
+      select e.seq, e.hash, c.last_seq::int as counter_seq, c.last_hash as counter_hash,
         case
+          when e.seq is null then null
           when e.seq <> row_number() over (order by e.seq) then 'seq-luecke'
           when e.prev_hash <> coalesce(lag(e.hash) over (order by e.seq), '') then 'prev_hash'
           when e.hash <> evidence_hash(e.seq, e.match_id, e.venue_id, e.round, e.job_id, e.kind, e.reason, e.at, e.actor_commitment, e.prev_hash) then 'hash'
           else null
         end as bad
-      from booking_evidence e
+      from booking_evidence_counter c
+      left join booking_evidence e on true
+      where c.id = 1
       order by e.seq`),
   );
-  // Leere Kette: nur der Zählerstand (zweite Anweisung ist hier unkritisch, es gibt keine Zeilen, die dazwischen committen könnten, ohne den Zähler zu ändern)
-  const counter = rows.length
-    ? { last_seq: rows[0].counter_seq, last_hash: rows[0].counter_hash }
-    : rowsOf<{ last_seq: number; last_hash: string }>(await exec.execute(sql`select last_seq, last_hash from booking_evidence_counter where id = 1`))[0];
+  const counter = all[0] ? { last_seq: all[0].counter_seq, last_hash: all[0].counter_hash } : undefined;
+  const rows = all.filter((r): r is typeof r & { seq: number; hash: string } => r.seq !== null && r.hash !== null);
   const first = rows.find((r) => r.bad !== null);
   const last = rows[rows.length - 1];
   const headHash = last?.hash ?? "";

@@ -260,7 +260,17 @@ describe("Review-Fixes M3a (Security/Code-Review)", () => {
     const { matchId, venueId } = await setup();
     await rec(matchId, venueId, "request_sent");
     await expect(db.update(bookingEvidenceCounter).set({ lastSeq: 99 })).rejects.toThrow();
-    await expect(db.execute(sql`do $$ begin update booking_evidence_counter set last_seq = 99; end $$`)).rejects.toThrow();
+    // ECHT verschachtelt (Trigger-Tiefe 2): ein fremder Trigger auf einer TEMP-Tabelle aendert den Zaehler. Die alte Regel pg_trigger_depth() > 1 haette das erlaubt, die Sitzungsvariable nicht.
+    // DDL und Anweisung laufen in einer Transaktion, die durch den erwarteten Fehler zurueckgerollt wird (nichts bleibt zurueck).
+    await expect(
+      db.transaction(async (tx) => {
+        await tx.execute(sql`create temp table evil_nested (x int)`);
+        await tx.execute(sql`create function pg_temp.evil_nested_fn() returns trigger as $$ begin update booking_evidence_counter set last_seq = 99 where id = 1; return new; end; $$ language plpgsql`);
+        await tx.execute(sql`create trigger evil_nested_trg after insert on evil_nested for each row execute function pg_temp.evil_nested_fn()`);
+        await tx.execute(sql`insert into evil_nested values (1)`);
+      }),
+    ).rejects.toThrow();
+    expect((await db.select().from(bookingEvidenceCounter))[0].lastSeq).toBe(1);
     // die Sitzungsvariable bleibt nach einem Eintrag auf 'off'
     const r = await db.execute(sql`select current_setting('socaz.evidence_insert', true) as v`);
     expect(["off", "", null]).toContain((r.rows[0] as { v: string | null }).v);

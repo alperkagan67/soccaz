@@ -2,37 +2,72 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Die Wartungsausnahme der Datenbank-Trigger (socaz.ledger_maintenance) ist ein freier Sitzungswert (bekannte Grenze, docs/BETRIEB.md, GO-LIVE-AUDIT "DB-Rollenmodell").
-// Damit der App-Code sie nie setzt, prüft dieser Test den Quelltext: im App-Code (src/) und in den Skripten (scripts/) darf der Wert nirgends GESETZT werden
-// (set_config(...) oder SET [LOCAL]). Erlaubt: tests/, drizzle/ (Migrationen) und ausdrücklich benannte Wartungsskripte (Allowlist unten, derzeit leer).
+// Die Wartungsausnahme der Datenbank-Trigger (socaz.ledger_maintenance) und der Zählerschutz des Beweisprotokolls (socaz.evidence_insert) sind freie Sitzungswerte
+// (bekannte Grenze, docs/BETRIEB.md, GO-LIVE-AUDIT G25-009 "DB-Rollenmodell"). Damit der App-Code sie nie setzt, prüft dieser Test den Quelltext:
+// In src/, scripts/ und den Konfigurationsdateien im Wurzelverzeichnis darf der Präfix "socaz." außerhalb von Kommentaren NICHT vorkommen (Strings, Konstanten, SET [LOCAL] "…",
+// set_config(...) werden ohne Raten erfasst). Erlaubt: tests/, drizzle/ (Migrationen) und ausdrücklich benannte Wartungsskripte (Allowlist, derzeit leer).
 const ROOT = process.cwd();
-const ALLOW_SCRIPTS: string[] = []; // z. B. "scripts/wartung-xyz.mjs": bewusst benannte Wartungsskripte
-const SETS = /(set_config\s*\(\s*['"`]socaz\.ledger_maintenance|\bset\s+(local\s+|session\s+)?socaz\.ledger_maintenance)/i;
+const ALLOW: string[] = []; // z. B. "scripts/wartung-xyz.mjs": bewusst benannte Wartungsskripte
+const PREFIX = /\bsocaz\.[a-z_]+/i;
+const EXT = /\.(ts|tsx|mts|cts|js|mjs|cjs|json|yml|yaml|sh|cmd|ps1|sql)$/;
+const ROOT_CONFIG = /^(drizzle\.config|next\.config|vitest[\w.-]*|playwright\.config|eslint\.config|postcss\.config|package)\.(ts|mts|js|mjs|cjs|json)$/;
+
+/** Entfernt Kommentare (// nach Leerraum oder Zeilenanfang, Blockkommentare, -- in SQL/Shell/YAML #-Zeilen); der Rest ist Code oder Text. */
+export function stripComments(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|\s)\/\/.*$/gm, "$1")
+    .replace(/^\s*(--|#).*$/gm, "");
+}
+// Bekannte harmlose Treffer (keine Datenbank-Einstellung): Domain der Absender-/Push-Adresse und der localStorage-Schlüssel des Installationshinweises.
+const HARMLESS = [/@socaz\.de\b/gi, /["']socaz\.installHint\.dismissed["']/g];
+export const mentionsSocazSetting = (text: string) => PREFIX.test(HARMLESS.reduce((s, re) => s.replace(re, ""), stripComments(text)));
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     if (name === "node_modules" || name === ".next") continue;
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx|js|mjs|cjs|sql)$/.test(name)) out.push(p);
+    else if (EXT.test(name)) out.push(p);
   }
   return out;
 }
 
-describe("Wartungsausnahme der Trigger (socaz.ledger_maintenance)", () => {
-  it("wird im App-Code (src/) und in den Skripten (scripts/) nirgends gesetzt; Ausnahmen nur über die benannte Allowlist", () => {
-    const offenders = [...walk(join(ROOT, "src")), ...walk(join(ROOT, "scripts"))]
+describe("Wartungsausnahme und Zählerschutz der Trigger (Präfix socaz.)", () => {
+  it("der Präfix socaz. kommt in src/, scripts/ und den Konfigurationsdateien im Wurzelverzeichnis außerhalb von Kommentaren nirgends vor (Allowlist leer)", () => {
+    const rootFiles = readdirSync(ROOT).filter((n) => ROOT_CONFIG.test(n)).map((n) => join(ROOT, n));
+    const offenders = [...walk(join(ROOT, "src")), ...walk(join(ROOT, "scripts")), ...rootFiles]
       .map((p) => relative(ROOT, p).replace(/\\/g, "/"))
-      .filter((rel) => !ALLOW_SCRIPTS.includes(rel))
-      .filter((rel) => SETS.test(readFileSync(join(ROOT, rel), "utf8")));
-    expect(offenders, `Wartungswert gesetzt in: ${offenders.join(", ")}`).toEqual([]);
+      .filter((rel) => !ALLOW.includes(rel))
+      .filter((rel) => mentionsSocazSetting(readFileSync(join(ROOT, rel), "utf8")));
+    expect(offenders, `Präfix socaz. im Code: ${offenders.join(", ")}`).toEqual([]);
   });
 
-  it("der Suchausdruck erkennt die Schreibweisen (Selbsttest)", () => {
-    expect(SETS.test("await tx.execute(sql`select set_config('socaz.ledger_maintenance', 'on', true)`)")).toBe(true);
-    expect(SETS.test("set local socaz.ledger_maintenance = 'on'")).toBe(true);
-    expect(SETS.test("SET socaz.ledger_maintenance TO 'on'")).toBe(true);
-    expect(SETS.test("// Ausnahme: socaz.ledger_maintenance (nur Kommentar)")).toBe(false);
-    expect(SETS.test("current_setting('socaz.ledger_maintenance', true) = 'on'")).toBe(false);
+  it("Selbsttest: erkannt werden alle Schreibweisen, auch die Konstante, SET LOCAL mit Anführungszeichen und die Zählervariable", () => {
+    for (const code of [
+      "await tx.execute(sql`select set_config('socaz.ledger_maintenance', 'on', true)`)",
+      "set local socaz.ledger_maintenance = 'on'",
+      'SET LOCAL "socaz.ledger_maintenance" = \'on\'',
+      "SET socaz.ledger_maintenance TO 'on'",
+      "const KEY = 'socaz.ledger_maintenance'; await db.execute(sql.raw(`set local ${KEY} = 'on'`));",
+      "select set_config('socaz.evidence_insert','on',true)",
+      "SET LOCAL socaz.evidence_insert = 'on'",
+      "const SETTING = \"socaz.evidence_insert\";",
+      "set_config('SOCAZ.Ledger_Maintenance','on',true)",
+      "const k = 'socaz.installHint.other';",
+    ]) expect(mentionsSocazSetting(code), code).toBe(true);
+  });
+
+  it("Selbsttest: reine Kommentare (// , /* */, -- , #) und die zwei bekannten harmlosen Treffer lösen nichts aus", () => {
+    for (const code of [
+      "// Ausnahme: socaz.ledger_maintenance (nur Kommentar)",
+      "const x = 1; // socaz.evidence_insert",
+      "/* socaz.ledger_maintenance */ const y = 2;",
+      "/**\n * socaz.evidence_insert\n */\nexport const z = 3;",
+      "-- set local socaz.ledger_maintenance = 'on'",
+      "# SET socaz.ledger_maintenance",
+      'from: "Socaz <noreply@socaz.de>"',
+      'const KEY = "socaz.installHint.dismissed";',
+    ]) expect(mentionsSocazSetting(code), code).toBe(false);
   });
 });
