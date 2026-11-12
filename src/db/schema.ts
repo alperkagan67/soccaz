@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { COLOR_KEYS } from "../lib/team-color";
 ﻿import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -163,8 +164,19 @@ export const matchParticipants = pgTable(
     // Kartenstatus je Platz (Vertrag 012, ADR 0001): none, card_ready (Karte hinterlegt), charge_pending (Abbuchung angelegt), charged, failed.
     // Spaeter (M3): charge_due_at, grace_until und covered_by_user_id ("Anteil uebernehmen"). Aendert weder paid_cents (nur Guthaben) noch das Hauptbuch.
     cardStatus: text("card_status").$type<CardStatus>().notNull().default("none"),
+    // "Anteil uebernehmen" (M3c-3, Variante B): Der Spieler covered_by_user_id uebernimmt den Endanteil DIESES Platzes (er braucht eine eigene Karte). Der Platz bleibt seiner;
+    // zur Frist wird der Anteil ueber den Kunden des Uebernehmers abgebucht (payment_charges.payer_user_id). Ein Platz je Uebernehmer, keine Kette. Mandatszusatz: Text-Schluessel + Zeitpunkt.
+    coveredByUserId: uuid("covered_by_user_id").references(() => users.id), // NO ACTION (nicht SET NULL): ein stilles Nullsetzen liesse cover_accepted_at ohne Uebernehmer zurueck und verletzte cover_consent; Uebernahmen enden ueber clearCoversInvolving
+    coverMandateText: text("cover_mandate_text"),
+    coverAcceptedAt: timestamp("cover_accepted_at", { withTimezone: true }),
   },
-  (t) => [primaryKey({ columns: [t.matchId, t.userId] }), check("match_participants_card_status_check", sql`${t.cardStatus} in ('none', 'card_ready', 'charge_pending', 'charged', 'failed')`)],
+  (t) => [
+    primaryKey({ columns: [t.matchId, t.userId] }),
+    check("match_participants_card_status_check", sql`${t.cardStatus} in ('none', 'card_ready', 'charge_pending', 'charged', 'failed')`),
+    check("match_participants_cover_not_self", sql`${t.coveredByUserId} is null or ${t.coveredByUserId} <> ${t.userId}`),
+    check("match_participants_cover_consent", sql`(${t.coveredByUserId} is null) = (${t.coverAcceptedAt} is null)`),
+    uniqueIndex("match_participants_cover_payer_idx").on(t.matchId, t.coveredByUserId).where(sql`${t.coveredByUserId} is not null`),
+  ],
 );
 
 export const matchEvents = pgTable("match_events", {
@@ -328,11 +340,23 @@ export const paymentCharges = pgTable(
     graceUntil: timestamp("grace_until", { withTimezone: true }),
     // Nummer des LAUFENDEN Versuchs (1 = erster Versuch). Diese Zeile ist der Zustand des laufenden Versuchs; abgeschlossene Versuche stehen in payment_charge_attempts.
     currentAttempt: integer("current_attempt").notNull().default(1),
+    // M3c-2 (Nachruecker): 'replaced' = der Spieler ist aus dem Spiel genommen (Platz vergeben; nichts erstattet, weil nichts gezahlt, oder ein spaeter Erfolg wird erstattet).
+    // Solche Zeilen zaehlen weder fuer die Abrechnung noch fuer die Erstattung der Absage.
+    resolution: text("resolution").$type<"replaced">(),
+    // Nachruecker-Zeile: zeigt auf die Ursprungszeile des ersetzten Spielers (der "Platz"). Je Platz hoechstens EINE aktive und hoechstens 3 gescheiterte Nachruecker-Zeilen.
+    slotOf: uuid("slot_of").references((): AnyPgColumn => paymentCharges.id), // NO ACTION: Zahlungsnachweise bleiben erhalten; ein Loeschen des Spiels (cascade ueber match_id) entfernt Nachruecker- und Ursprungszeilen in EINER Anweisung
+    // Auf der Ursprungszeile: das Team des entfernten Spielers (dorthin kommt der Nachruecker), weil seine Teilnahmezeile geloescht wird
+    slotTeamId: uuid("slot_team_id").references(() => teams.id),
+    // M3c-3 (Variante B): Zahler, wenn ein anderer Spieler den Anteil uebernommen hat; NULL = der Spieler zahlt selbst. Die Zeile bleibt die des Platzes (user_id), der PaymentIntent liegt
+    // beim Kunden des Zahlers, die Erstattung geht automatisch auf dessen PaymentIntent. NO ACTION: Zahlungsnachweise bleiben erhalten.
+    payerUserId: uuid("payer_user_id").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("payment_charges_match_user_idx").on(t.matchId, t.userId),
+    check("payment_charges_payer_not_self", sql`${t.payerUserId} is null or ${t.payerUserId} <> ${t.userId}`),
+    check("payment_charges_resolution_check", sql`${t.resolution} is null or ${t.resolution} = 'replaced'`),
     check("payment_charges_attempt_positive", sql`${t.currentAttempt} >= 1`),
     check("payment_charges_amount_positive", sql`${t.amountCents} > 0`),
     check("payment_charges_fee_nonneg", sql`${t.feeCents} is null or ${t.feeCents} >= 0`),
@@ -382,12 +406,15 @@ export const paymentRefunds = pgTable(
     idempotencyKey: text("idempotency_key").notNull().unique(),
     reason: text("reason"),
     failureCode: text("failure_code"),
+    // Erstattung eines ANDEREN PaymentIntents als dem der Zeile (spaeter Erfolg eines alten Versuchs, M3c-2b); null = der PaymentIntent der Zeile
+    paymentIntentId: text("payment_intent_id"),
     attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("payment_refunds_charge_idx").on(t.chargeId),
+    // eine Erstattung je Abbuchung UND PaymentIntent: der PaymentIntent der Zeile (payment_intent_id NULL) oder ein weiterer erfolgreicher (spaeter Erfolg / Doppelabbuchung, M3c-2b)
+    uniqueIndex("payment_refunds_charge_idx").on(t.chargeId, sql`coalesce(${t.paymentIntentId}, '')`),
     check("payment_refunds_amount_positive", sql`${t.amountCents} > 0`),
     check("payment_refunds_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed')`),
   ],

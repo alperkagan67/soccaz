@@ -1,8 +1,9 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { clearCoversInvolving } from "./payments/cover-clear";
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
+import { matchParticipants, matches, paymentCharges, teamMembers, teams, users } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { MIN_READY_PER_TEAM, hasFreeSlot, teamCapacity, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import type { Role } from "@/lib/roles";
@@ -380,6 +381,9 @@ const LIST_LOCKED = "Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt:
 
 export function joinLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match, now) => {
+    // Wurde der Platz wegen einer nicht zustande gekommenen Zahlung vergeben (M3c-2), gibt es keinen Wiederbeitritt: neutrale Meldung, kein Grund
+    const [replaced] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId), eq(paymentCharges.resolution, "replaced")));
+    if (replaced) throw new DomainError("Dein Platz wurde vergeben.");
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst.");
     const mine = await tx
@@ -518,6 +522,8 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false,
     if (match.kind !== "private") throw new DomainError("Zufällig einteilen gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
     if (reshuffle) {
+      // neue Einteilung: alle Uebernahmen dieses Spiels enden (neue Zustimmung noetig)
+      await tx.update(matchParticipants).set({ coveredByUserId: null, coverMandateText: null, coverAcceptedAt: null }).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.coveredByUserId)));
       await tx
         .update(matchParticipants)
         .set({ teamId: null })
@@ -551,6 +557,7 @@ export function unassignParticipant(actorId: string, matchId: string, targetUser
     const p = await findParticipant(tx, matchId, targetUserId);
     if (!p || !p.teamId) throw new DomainError("Dieser Spieler ist keinem Team zugeteilt.");
     if (p.readyAt || p.paidCents > 0) throw new DomainError("Der Spieler ist schon bereit oder hat bezahlt. Entferne ihn, wenn er gehen soll.");
+    await clearCoversInvolving(tx, matchId, targetUserId);
     await tx.update(matchParticipants).set({ teamId: null }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, targetUserId)));
     await audit(actorId, "lobby.unassign", "match", matchId, { after: { userId: targetUserId } }, tx);
   });

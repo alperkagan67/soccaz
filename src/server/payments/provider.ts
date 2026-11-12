@@ -50,6 +50,11 @@ export interface PaymentProvider {
    * die Suche ist verzoegert konsistent und bleibt unbekannten Ausgaengen (unknown_outcome) vorbehalten.
    */
   retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null>;
+  /**
+   * Liest einen BEKANNTEN PaymentIntent samt clientSecret (nur fuer die 3-D-Secure-Freigabe des Betroffenen, M3c-1c). Das Secret geht nie in Logs, Audit, URLs oder Seiten-Props,
+   * nur als Ergebnis der Server-Aktion an den Betroffenen. null = bei Stripe nicht vorhanden.
+   */
+  retrievePaymentIntentSecret(paymentIntentId: string): Promise<{ intent: FoundIntent; clientSecret: string } | null>;
   /** Echte Stripe-Gebühr der Zahlung in Cent (aus der balance_transaction), oder null, wenn noch nicht verfügbar. Nie geschätzt. */
   retrieveChargeFee(paymentIntentId: string): Promise<number | null>;
   /** Ist das Zahlungsmittel bei Stripe noch nutzbar: existiert, gehört noch zu diesem Kunden (nicht gelöst) und ist nicht abgelaufen? */

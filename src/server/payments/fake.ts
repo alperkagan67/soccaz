@@ -70,7 +70,7 @@ export class FakeProvider implements PaymentProvider {
 
   async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult> {
     this.probe("createPaymentIntent");
-    this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
+    this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata, customerId: input.customerId } });
     const outcome = this.outcomes.get(input.metadata.userId) ?? "succeeded";
     if (outcome === "error") throw new Error("Netz weg");
     if (outcome === "idempotency_mismatch") throw new PaymentIdempotencyError();
@@ -123,6 +123,14 @@ export class FakeProvider implements PaymentProvider {
   private readonly intents = new Map<string, FoundIntent>();
   setIntentStatus(id: string, status: FoundIntent["status"], extra: Partial<FoundIntent> = {}) {
     this.intents.set(id, { id, status, amountCents: 800, currency: "eur", customerId: null, failureCode: null, ...extra });
+  }
+
+  /** Test-Hilfe: das Fake-Secret eines PaymentIntents ist 'pi_..._secret_fake'; Zustand wie bei retrievePaymentIntent. */
+  async retrievePaymentIntentSecret(paymentIntentId: string): Promise<{ intent: FoundIntent; clientSecret: string } | null> {
+    this.probe("retrievePaymentIntentSecret");
+    this.calls.push({ method: "retrievePaymentIntentSecret", args: { paymentIntentId } });
+    const intent = this.intents.get(paymentIntentId);
+    return intent ? { intent, clientSecret: `${paymentIntentId}_secret_fake` } : null;
   }
 
   async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {

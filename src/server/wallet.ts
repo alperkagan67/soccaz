@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { clearCoversInvolving } from "./payments/cover-clear";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { auditLog, matchParticipants, matches, paymentCharges } from "@/db/schema";
 import { pendingRefunds } from "@/db/schema-finance";
@@ -297,6 +298,7 @@ async function refundPaid(tx: Tx, match: MatchRow, userId: string, paidCents: nu
 
 /** Wird aufgerufen, wenn jemand die Lobby verlässt oder entfernt wird. Vor dem Anstoß minus 24 Stunden gibt es alles zurück, danach nur gegen Ersatz. */
 export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: string, opts: { removedByAdmin: boolean; actorId: string }) {
+  await clearCoversInvolving(tx, match.id, userId); // Uebernahmen (012 M3c-3) enden mit dem Platz; Wiedereintritt braucht neue Zustimmung
   if (!(await paymentsEnabled(tx))) return;
   const [p] = await tx
     .select({ paidCents: matchParticipants.paidCents })

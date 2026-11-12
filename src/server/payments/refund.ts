@@ -56,10 +56,17 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
     const byId = r.refundId ? tx.select().from(paymentRefunds).where(eq(paymentRefunds.refundId, r.refundId)) : null;
     const chargeId = r.metadata.chargeId;
     const byMeta = chargeId && UUID.test(chargeId) ? tx.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, chargeId)) : null;
-    for (const q of [byId, byMeta]) {
-      if (!q) continue;
-      const [row] = lock ? await q.for("update") : await q;
+    if (byId) {
+      const [row] = lock ? await byId.for("update") : await byId;
       if (row) return row;
+    }
+    if (byMeta) {
+      // Eine Abbuchung kann mehrere Erstattungen haben (je PaymentIntent): die passende nach dem PaymentIntent waehlen (Standardzeile hat payment_intent_id NULL)
+      const rows = lock ? await byMeta.for("update") : await byMeta;
+      if (r.paymentIntentId !== null) {
+        const exact = rows.find((x) => x.paymentIntentId === r.paymentIntentId) ?? rows.find((x) => x.paymentIntentId === null);
+        if (exact) return exact;
+      } else if (rows[0]) return rows.find((x) => x.paymentIntentId === null) ?? rows[0];
     }
     return undefined;
   };
@@ -75,7 +82,7 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   if (r.amountCents !== row.amountCents || r.currency?.toLowerCase() !== "eur") return ignore("amount_mismatch");
   const [charge] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, row.chargeId));
   if (!charge || charge.status !== "succeeded") return ignore("charge_not_succeeded");
-  if (r.paymentIntentId !== null && r.paymentIntentId !== charge.paymentIntentId) return ignore("payment_intent_mismatch");
+  if (r.paymentIntentId !== null && r.paymentIntentId !== (row.paymentIntentId ?? charge.paymentIntentId)) return ignore("payment_intent_mismatch");
 
   if (row.status === "succeeded") return { status: "already", matchId: row.matchId };
   if (r.outcome === "succeeded") {
@@ -146,7 +153,27 @@ export async function runRefunds(now: Date = new Date()): Promise<number> {
       console.error("runRefunds: Fehler bei Spiel", r.id, error instanceof Error ? error.name : "Fehler");
     }
   }
+  // Einzelne Erstattungen OHNE Absage (spaeter Erfolg eines ersetzten Platzes, Doppelabbuchung; M3c-2b): nur senden (Phase 3), das Spiel bleibt unberuehrt
+  const standalone = await db.execute(sql`
+    select distinct r.match_id as id from payment_refunds r join matches m on m.id = r.match_id
+    where m.cancel_requested_at is null and r.status = 'pending' and r.refund_id is null and r.failure_code is distinct from ${UNKNOWN_OUTCOME}`);
+  for (const r of standalone.rows as { id: string }[]) {
+    try {
+      await sendPendingRefunds(r.id, now);
+    } catch (error) {
+      console.error("runRefunds: Fehler bei Erstattungen", r.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
   return done;
+}
+
+/** Sendet die offenen Erstattungen eines Spiels (Phase 3), ohne eine Absage anzufassen. */
+export async function sendPendingRefunds(matchId: string, now: Date = new Date()): Promise<void> {
+  for (let guard = 0; guard < 200; guard++) {
+    const claimed = await claimRefund(matchId, now);
+    if (!claimed) break;
+    await sendRefund(claimed);
+  }
 }
 
 /** Ein Durchlauf der Phasen 1 bis 4 für ein Spiel mit angeforderter Absage. true = das Spiel ist jetzt abgesagt. Idempotent und nachholbar. */
@@ -187,7 +214,7 @@ async function claimRefund(matchId: string, now: Date): Promise<ClaimedRefund | 
   return db.transaction(async (tx) => {
     await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchId)).for("share"); // Spiel vor Zeile
     const rows = await tx.execute(sql`
-      select r.id, r.charge_id, r.match_id, r.user_id, r.amount_cents, r.idempotency_key, r.attempt_started_at, r.updated_at, c.payment_intent_id
+      select r.id, r.charge_id, r.match_id, r.user_id, r.amount_cents, r.idempotency_key, r.attempt_started_at, r.updated_at, coalesce(r.payment_intent_id, c.payment_intent_id) as payment_intent_id
       from payment_refunds r join payment_charges c on c.id = r.charge_id
       where r.match_id = ${matchId} and r.status = 'pending' and r.refund_id is null and r.failure_code is distinct from ${UNKNOWN_OUTCOME}
       order by r.created_at, r.id
@@ -235,7 +262,8 @@ async function resolveUnknown(matchId: string, now: Date): Promise<void> {
   if (unknown.length === 0) return;
   const provider = await getPaymentProvider();
   for (const c of unknown) {
-    const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.userId));
+    // Variante B: der Kunde des ZAHLERS (payer_user_id), nicht der des Platzes
+    const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.payerUserId ?? c.userId));
     let found;
     try {
       found = await provider.findPaymentIntents({ matchId: c.matchId, userId: c.userId });
@@ -278,6 +306,7 @@ export async function finalizeCancel(matchId: string): Promise<boolean> {
     const refunds = await tx.select().from(paymentRefunds).where(eq(paymentRefunds.matchId, matchId));
     const refunded = new Set(refunds.filter((r) => r.status === "succeeded").map((r) => r.chargeId));
     if (charges.some((c) => c.status === "succeeded" && !refunded.has(c.id))) return false;
+    if (refunds.some((r) => r.status !== "succeeded")) return false; // auch weitere Erstattungen (Doppelabbuchung / spaeter Erfolg) muessen durch sein
     await cancelMatchTx(tx, m, null, m.cancelReason ?? "Das Spiel wurde abgesagt.", { afterRefund: true });
     await audit(null, "match.cancel_completed", "match", matchId, { after: { refunds: refunds.length } }, tx);
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);
