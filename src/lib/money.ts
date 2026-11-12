@@ -47,9 +47,16 @@ export function isValidTopup(cents: number): boolean {
 // Privatspiel: Miete geteilt durch alle Spieler (ohne Deckel bei 12, ohne Mindestwert)
 // ---------------------------------------------------------------------------------------------
 
+/** Obergrenzen der Anteilsrechnung (Backlog 3): weit über jeder echten Miete (Privatspiel höchstens 1.000 EUR, Hallen im niedrigen vierstelligen Bereich), aber weit unter 2^53, damit nichts ungenau wird. */
+export const MAX_SHARE_RENT_CENTS = 100_000_000; // 1 Million EUR
+export const MAX_SHARE_PLAYERS = 1000;
+
 function assertRentAndPlayers(rentCents: number, n: number) {
-  if (!Number.isInteger(rentCents) || rentCents < 0) throw new Error("Miete muss eine ganze Zahl in Cent von mindestens 0 sein");
-  if (!Number.isInteger(n) || n < 1) throw new Error("Spielerzahl muss eine ganze Zahl von mindestens 1 sein");
+  // Number.isSafeInteger: NaN, Infinity, Kommazahlen und Werte ab 2^53 (dort rechnet % und / ungenau) sind keine gültige Miete
+  if (!Number.isSafeInteger(rentCents) || rentCents < 0) throw new Error("Miete muss eine ganze Zahl in Cent von mindestens 0 sein");
+  if (rentCents > MAX_SHARE_RENT_CENTS) throw new Error("Miete liegt über der Obergrenze der Anteilsrechnung");
+  if (!Number.isSafeInteger(n) || n < 1) throw new Error("Spielerzahl muss eine ganze Zahl von mindestens 1 sein");
+  if (n > MAX_SHARE_PLAYERS) throw new Error("Spielerzahl liegt über der Obergrenze der Anteilsrechnung");
 }
 
 /** Anteil pro Spieler im Privatspiel: Miete in Cent geteilt durch die Spielerzahl, aufgerundet (rein ganzzahlig gerechnet). */
