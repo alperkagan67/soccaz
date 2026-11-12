@@ -14,6 +14,7 @@ export { INVITE_VALID_DAYS, normalizeEmail } from "./venue-access-rules";
 
 // Schreiben der Betreiber-Zugänge (Vertrag 011 M1, Entscheide t9 P1 bis P11). Alles in Transaktionen; venues.manager_user_id wird in jedem Pfad mitgeschrieben (Rückfall bis 011 M4).
 // Das Eingriffsprotokoll enthält nur IDs und den Grund, nie die E-Mail-Adresse.
+// SPERRREIHENFOLGE (einheitlich, gegen Verklemmungen): erst venues (nach id sortiert), dann venue_access, dann matches (nach id sortiert). answerHallRequest sperrt nur das Spiel und liest den Zugang ohne Sperre.
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -29,17 +30,23 @@ function cleanReason(reason: string): string {
   return r;
 }
 
-/** Offene Anfragen einer Halle ohne Zugang werden „unmanaged“ (keine stille Ablehnung, Entscheid P5); danach läuft die Auswertung weiter. */
+/** Sperrt Hallen nach id sortiert (immer als Erstes, vor venue_access und matches). */
+async function lockVenues(tx: Tx, venueIds: string[]): Promise<void> {
+  const ids = [...new Set(venueIds)].sort();
+  if (ids.length) await tx.select({ id: venues.id }).from(venues).where(inArray(venues.id, ids)).orderBy(asc(venues.id)).for("update");
+}
+
+/**
+ * Offene Anfragen einer Halle ohne Zugang werden „unmanaged“ (keine stille Ablehnung, Entscheid P5); danach läuft die Auswertung weiter.
+ * Reihenfolge wie answerHallRequest: ZUERST die Spiele sperren (nach id sortiert), erst dann die Anfragezeilen ändern (sonst Verklemmung mit einer gleichzeitigen Antwort).
+ */
 async function releasePendingRequests(tx: Tx, venueId: string, now: Date = new Date()): Promise<void> {
-  const rows = await tx
-    .update(matchHallRequests)
-    .set({ status: "unmanaged" })
-    .where(and(eq(matchHallRequests.venueId, venueId), eq(matchHallRequests.status, "pending")))
-    .returning({ matchId: matchHallRequests.matchId });
-  for (const matchId of new Set(rows.map((r) => r.matchId))) {
-    const [m] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
-    if (m) await settleHallCheck(tx, m, now);
-  }
+  const pending = await tx.select({ matchId: matchHallRequests.matchId }).from(matchHallRequests).where(and(eq(matchHallRequests.venueId, venueId), eq(matchHallRequests.status, "pending")));
+  const ids = [...new Set(pending.map((r) => r.matchId))].sort();
+  if (ids.length === 0) return;
+  const locked = await tx.select().from(matches).where(inArray(matches.id, ids)).orderBy(asc(matches.id)).for("update");
+  await tx.update(matchHallRequests).set({ status: "unmanaged" }).where(and(eq(matchHallRequests.venueId, venueId), eq(matchHallRequests.status, "pending")));
+  for (const m of locked) await settleHallCheck(tx, m, now);
 }
 
 /** Setzt den offenen (eingeladenen oder aktiven) Zugang einer Halle auf „entzogen“. Gibt die Zeile zurück oder null. */
@@ -90,15 +97,23 @@ export async function revokeVenueAccess(actorId: string, venueId: string, reason
   });
 }
 
-/** Konto-Löschung: alle Zugänge und Einladungen dieses Kontos werden entzogen, die E-Mail geleert; offene Anfragen der Hallen werden „unmanaged“. */
+/**
+ * Konto-Löschung: alle Zugänge dieses Kontos UND noch offene Einladungen an die Adresse dieses Kontos werden entzogen, die E-Mail geleert (Datenschutz: die Adresse darf nach der
+ * Anonymisierung nirgends stehen bleiben); offene Anfragen der Hallen werden „unmanaged“. Aufruf VOR der Anonymisierung der Kontoadresse.
+ */
 export async function revokeAccessOfUser(tx: Tx, userId: string, now: Date = new Date()): Promise<void> {
+  const [me] = await tx.select({ email: users.email }).from(users).where(eq(users.id, userId));
+  const mail = me ? normalizeEmail(me.email) : "";
+  const mine = sql`(${venueAccess.userId} = ${userId} or (${venueAccess.status} = 'invited' and lower(${venueAccess.invitedEmail}) = ${mail}))`;
+  const candidates = await tx.select({ venueId: venueAccess.venueId }).from(venueAccess).where(and(mine, sql`${venueAccess.status} <> 'revoked'`));
+  await lockVenues(tx, candidates.map((c) => c.venueId));
   const rows = await tx
     .update(venueAccess)
     .set({ status: "revoked", revokedAt: now, invitedEmail: null })
-    .where(and(eq(venueAccess.userId, userId), sql`${venueAccess.status} <> 'revoked'`))
+    .where(and(mine, sql`${venueAccess.status} <> 'revoked'`))
     .returning({ venueId: venueAccess.venueId, id: venueAccess.id });
-  for (const r of rows) {
-    await tx.update(venues).set({ managerUserId: null }).where(eq(venues.id, r.venueId));
+  for (const r of rows.sort((x, y) => x.venueId.localeCompare(y.venueId))) {
+    await tx.update(venues).set({ managerUserId: null }).where(and(eq(venues.id, r.venueId), eq(venues.managerUserId, userId)));
     await releasePendingRequests(tx, r.venueId, now);
     await audit(userId, "venue.access.revoke", "venue", r.venueId, { before: { accessId: r.id }, after: { reason: "Konto gelöscht" } }, tx);
   }
@@ -114,6 +129,10 @@ export async function redeemVenueInvites(input: { userId: string; email: string;
   const mail = normalizeEmail(input.email);
   if (!mail || isAnonymizedEmail(mail)) return 0;
   return db.transaction(async (tx) => {
+    // erst die Hallen der offenen Einladungen sperren (sortiert), dann das UPDATE: gleiche Reihenfolge wie Einladen/Entziehen
+    const open = await tx.select({ venueId: venueAccess.venueId }).from(venueAccess).where(and(eq(venueAccess.status, "invited"), sql`lower(${venueAccess.invitedEmail}) = ${mail}`));
+    if (open.length === 0) return 0;
+    await lockVenues(tx, open.map((o) => o.venueId));
     const res = await tx.execute<{ id: string; venue_id: string }>(sql`
       update venue_access set user_id = ${input.userId}, status = 'active', assigned_at = now()
       where status = 'invited' and user_id is null and lower(invited_email) = ${mail}

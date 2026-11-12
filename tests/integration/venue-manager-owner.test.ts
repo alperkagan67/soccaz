@@ -28,6 +28,7 @@ async function venue() {
 const form = (email: string) => {
   const fd = new FormData();
   fd.set("email", email);
+  fd.set("reason", "Test der Zuordnung"); // Grund ist Pflicht (Eingriffsprotokoll)
   return fd;
 };
 const managerOf = async (id: string) => (await db.select({ m: venues.managerUserId }).from(venues).where(eq(venues.id, id)))[0].m;

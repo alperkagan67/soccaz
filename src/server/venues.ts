@@ -36,7 +36,7 @@ export async function listVenues(includeInactive = true) {
  * Ordnet einer Halle einen Betreiber-Zugang zu (E-Mail) oder entzieht ihn (leer). Vertrag 011 M1: Die Adresse wird nur freigegeben (keine Mail-Zustellung); der Zugang wird beim ersten
  * verifizierten Google-Login aktiv (Einlösepfad für alle). Entzug und neue Einladung wirken sofort und sind protokolliert (nur IDs und Grund). Nur Admin 1 (der Aufrufer prüft `owner`).
  */
-export async function setVenueManager(actorId: string, venueId: string, email: string, reason = "Zuordnung im Admin") {
+export async function setVenueManager(actorId: string, venueId: string, email: string, reason: string) {
   if (!email.trim()) {
     await revokeVenueAccess(actorId, venueId, reason);
     return;

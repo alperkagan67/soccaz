@@ -48,6 +48,16 @@ test("Hallenbetreiber: Anfrage sehen, Halle als frei bestätigen, danach läuft 
   await boss.goto("/halle");
   const inquiry = boss.getByTestId("inquiry").filter({ hasText: `E2E Betreiberhalle ${run}` });
   await expect(inquiry).toContainText(`${teamA} gegen ${teamB}`);
+  // Vertrag 011 AC-5 / Entscheid P8: Teams, Zeit und Spielerzahl, aber keine Spielernamen und kein Link in die Lobby (weder im HTML noch im RSC-Payload)
+  await expect(inquiry).toContainText(/\d+ Spieler/);
+  await expect(inquiry.getByRole("link", { name: "Lobby ansehen" })).toHaveCount(0);
+  const html = await (await boss.request.get("/halle")).text();
+  const rsc = await (await boss.request.get("/halle", { headers: { RSC: "1" } })).text();
+  for (const body of [await boss.locator("body").innerText(), html, rsc]) {
+    expect(body).not.toContain("Spieler hla");
+    expect(body).not.toContain("Spieler hlb");
+    expect(body).not.toContain(`/lobby/${m.id}`);
+  }
   await boss.waitForLoadState("networkidle");
   await inquiry.getByRole("button", { name: "Halle ist frei" }).click();
   await expect(boss.getByTestId("inquiry")).toHaveCount(0);

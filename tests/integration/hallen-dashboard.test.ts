@@ -9,7 +9,7 @@ import { matchHallRequests, matchOptions } from "@/db/schema-matchmaking";
 import { deleteAccount } from "@/server/account";
 import { acceptChallenge, challengeTeam } from "@/server/challenges";
 import { proposeOption, voteOption } from "@/server/scheduling";
-import { inviteVenueManager, listVenueAccess, redeemVenueInvites, revokeVenueAccess } from "@/server/venue-access";
+import { inviteVenueManager, listVenueAccess, redeemVenueInvites, revokeAccessOfUser, revokeVenueAccess } from "@/server/venue-access";
 import { hasVenueAccess, isVenueManager, venueIdsOf } from "@/server/venue-access-rules";
 import { answerHallRequest, pendingHallInquiries } from "@/server/veto";
 import { cleanup, makeTeam, makeUser } from "./helpers";
@@ -353,5 +353,110 @@ describe("Datenübernahme in der Migration (M1-A, M1-J)", () => {
     await db.execute(sql.raw(takeover));
     expect(await openRows(v.id)).toHaveLength(0);
     expect(await hasVenueAccess(v.id, m.id)).toBe(false);
+  });
+});
+
+describe("Nachbesserungen aus Security- und Code-Review", () => {
+  it("Konto-Löschung trifft auch noch offene Einladungen an die Adresse des Kontos (Datenschutz): revoked, E-Mail geleert", async () => {
+    const owner = await getOwner();
+    const v = await venue();
+    const w = await venue();
+    const m = await makeUser("n1");
+    await inviteVenueManager(owner.id, v.id, m.email, reason); // noch nicht eingelöst: user_id bleibt leer
+    const other = await makeUser("n2");
+    await inviteVenueManager(owner.id, w.id, other.email, reason); // fremde Einladung bleibt unberührt
+    await deleteAccount(m.id);
+    expect(await openRows(v.id)).toHaveLength(0);
+    expect((await accessRows(v.id))[0]).toMatchObject({ status: "revoked", invitedEmail: null });
+    expect(await openRows(w.id)).toMatchObject([{ status: "invited", invitedEmail: other.email.toLowerCase() }]);
+    const all = await db.select().from(venueAccess).where(eq(venueAccess.venueId, v.id));
+    expect(JSON.stringify(all)).not.toContain(m.email); // die Adresse steht nirgends mehr
+  });
+
+  it("Grund ist Pflicht: ohne Grund keine Einladung und kein Entzug, nichts wird geschrieben", async () => {
+    const owner = await getOwner();
+    const v = await venue();
+    await expect(inviteVenueManager(owner.id, v.id, "pflicht@test.local", "")).rejects.toThrow(/Grund/);
+    expect(await accessRows(v.id)).toHaveLength(0);
+    await inviteVenueManager(owner.id, v.id, "pflicht@test.local", reason);
+    await expect(revokeVenueAccess(owner.id, v.id, " ")).rejects.toThrow(/Grund/);
+    expect(await openRows(v.id)).toHaveLength(1);
+  });
+
+  it("Verklemmung: Entzug gegen gleichzeitige Antwort der Halle (echte Parallelität, viele Wiederholungen)", async () => {
+    const owner = await getOwner();
+    const { teams } = await import("@/db/schema");
+    const failures: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      const a = await makeUser(`pa${i}`);
+      const b = await makeUser(`pb${i}`);
+      const ta = await makeTeam(a.id, `Par A${i}`);
+      const tb = await makeTeam(b.id, `Par B${i}`);
+      const city = `Parort${i}`;
+      await db.update(teams).set({ city }).where(inArray(teams.id, [ta.id, tb.id]));
+      const [v] = await db.insert(venues).values({ name: `E2E Dash par${i}`, city, source: "manual" }).returning();
+      const m = await activeManager(owner, v, `pm${i}`);
+      const id = await challengeTeam(a.id, ta.id, tb.id);
+      await acceptChallenge(b.id, id);
+      await proposeOption(a.id, id, { startsAt: new Date(Date.now() + 5 * 86_400_000) });
+      const [opt] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, id));
+      await voteOption(b.id, id, opt.id);
+      const results = await Promise.allSettled([revokeVenueAccess(owner.id, v.id, reason), answerHallRequest(m.id, id, v.id, true), revokeVenueAccess(owner.id, v.id, reason)]);
+      for (const r of results) if (r.status === "rejected" && /deadlock|40P01/i.test(String((r.reason as Error)?.message ?? r.reason))) failures.push(`Lauf ${i}: ${(r.reason as Error).message}`);
+      expect(await hasVenueAccess(v.id, m.id)).toBe(false); // der Entzug gilt in jedem Fall
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("Verklemmung: Einlösen gegen gleichzeitiges Einladen und Entziehen derselben Hallen; Konto-Löschung gegen Einladen", async () => {
+    const owner = await getOwner();
+    const failures: string[] = [];
+    const note = (rs: PromiseSettledResult<unknown>[], tag: string) => {
+      for (const r of rs) if (r.status === "rejected" && /deadlock|40P01/i.test(String((r.reason as Error)?.message ?? r.reason))) failures.push(`${tag}: ${(r.reason as Error).message}`);
+    };
+    for (let i = 0; i < 10; i++) {
+      const v1 = await venue("rd");
+      const v2 = await venue("rd");
+      const m = await makeUser(`rd${i}`);
+      await inviteVenueManager(owner.id, v1.id, m.email, reason);
+      await inviteVenueManager(owner.id, v2.id, m.email, reason);
+      note(await Promise.allSettled([login(m), inviteVenueManager(owner.id, v2.id, `neu${i}a@test.local`, reason), inviteVenueManager(owner.id, v1.id, `neu${i}b@test.local`, reason), revokeVenueAccess(owner.id, v1.id, reason)]), "Einlösen");
+      const x = await makeUser(`dl${i}`);
+      const v3 = await venue("dl");
+      await inviteVenueManager(owner.id, v3.id, x.email, reason);
+      await login(x);
+      note(await Promise.allSettled([db.transaction((tx) => revokeAccessOfUser(tx, x.id)), inviteVenueManager(owner.id, v3.id, `neu${i}c@test.local`, reason)]), "Löschung");
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it("Verklemmung (deterministisch verschränkt): Spiel gesperrt, dann Entzug, dann Antwort-Update: keine Verklemmung, Entzug wartet auf das Spiel", async () => {
+    const owner = await getOwner();
+    const { teams } = await import("@/db/schema");
+    const a = await makeUser("dta");
+    const b = await makeUser("dtb");
+    const ta = await makeTeam(a.id, "Det A");
+    const tb = await makeTeam(b.id, "Det B");
+    await db.update(teams).set({ city: "Detort" }).where(inArray(teams.id, [ta.id, tb.id]));
+    const [v] = await db.insert(venues).values({ name: "E2E Dash det", city: "Detort", source: "manual" }).returning();
+    await activeManager(owner, v, "dtm");
+    const id = await challengeTeam(a.id, ta.id, tb.id);
+    await acceptChallenge(b.id, id);
+    await proposeOption(a.id, id, { startsAt: new Date(Date.now() + 5 * 86_400_000) });
+    const [opt] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, id));
+    await voteOption(b.id, id, opt.id);
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    // T1 verhält sich wie answerHallRequest: Spiel sperren, warten, dann die Anfragezeile ändern
+    const t1 = db.transaction(async (tx) => {
+      await tx.select().from(matches).where(eq(matches.id, id)).for("update");
+      await sleep(600);
+      await tx.update(matchHallRequests).set({ status: "confirmed" }).where(and(eq(matchHallRequests.matchId, id), eq(matchHallRequests.venueId, v.id)));
+    });
+    await sleep(150);
+    const t2 = revokeVenueAccess(owner.id, v.id, reason); // läuft in die Spielsperre von T1
+    const [r1, r2] = await Promise.allSettled([t1, t2]);
+    expect(r1.status === "rejected" ? String((r1.reason as Error).message) : "ok").toBe("ok");
+    expect(r2.status === "rejected" ? String((r2.reason as Error).message) : "ok").toBe("ok");
+    expect(await hasVenueAccess(v.id, (await accessRows(v.id))[0].userId!)).toBe(false);
   });
 });

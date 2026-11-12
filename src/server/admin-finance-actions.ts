@@ -10,6 +10,7 @@ import { requirePermission } from "./session";
 import { setSetting } from "./settings";
 import { DomainError } from "./teams";
 import { addPriceRule, createVenue, listVenues, setVenueManager, setVenueVerified, updateVenue } from "./venues";
+import { revokeVenueAccess } from "./venue-access";
 
 type Permission = Parameters<typeof requirePermission>[0];
 
@@ -134,7 +135,14 @@ export async function toggleVenueAction(venueId: string, active: boolean, _prev:
 export async function setVenueManagerAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
   // Hallenbetreiber zuordnen/entziehen: nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht die Zuordnung nur
   return guarded("owner", "/admin/hallen", async (actor) => {
-    await setVenueManager(actor, venueId, String(fd.get("email") ?? ""));
+    await setVenueManager(actor, venueId, String(fd.get("email") ?? ""), String(fd.get("reason") ?? "")); // Grund ist Pflicht (Eingriffsprotokoll)
+  });
+}
+
+/** Zugang einer Halle entziehen bzw. eine offene Einladung zurückziehen: nur Admin 1, Grund Pflicht, wirkt sofort. */
+export async function revokeVenueAccessAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guarded("owner", "/admin/hallen", async (actor) => {
+    await revokeVenueAccess(actor, venueId, String(fd.get("reason") ?? ""));
   });
 }
 
