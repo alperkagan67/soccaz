@@ -43,6 +43,17 @@ async function structure(pool) {
   check(chk.rowCount === 1, "CHECK users_owner_is_admin");
 }
 
+/** Beweisprotokoll (009 M3a): Tabellen, Zaehlerzeile, Trigger, Hash-Funktion, CHECK der Arten (das Verhalten der Kette prueft tests/integration/beweisprotokoll.test.ts). */
+async function evidenceStructure(pool) {
+  if ((await pool.query("select 1 from information_schema.tables where table_name = 'booking_evidence'")).rowCount === 0) return; // Migration von 009 M3a nicht vorhanden
+  check((await pool.query("select 1 from booking_evidence_counter where id = 1 and last_seq = 0")).rowCount === 1, "Beweisprotokoll: Zaehlerzeile (id 1) vorhanden");
+  for (const tg of ["booking_evidence_before_insert", "booking_evidence_append_only", "booking_evidence_counter_guard"]) {
+    check((await pool.query("select 1 from pg_trigger where tgname = $1", [tg])).rowCount === 1, "Beweisprotokoll: Trigger " + tg);
+  }
+  check((await pool.query("select 1 from pg_proc where proname = 'evidence_hash'")).rowCount === 1, "Beweisprotokoll: Funktion evidence_hash");
+  check((await pool.query("select 1 from pg_constraint where conname = 'booking_evidence_kind_check'")).rowCount === 1, "Beweisprotokoll: CHECK der Arten");
+}
+
 async function commissionStructure(pool, withOldMatch) {
   const col = await pool.query("select column_default from information_schema.columns where table_name = 'matches' and column_name = 'ledger_model'");
   if (col.rowCount === 0) return; // Migration von 009 M2 nicht vorhanden
@@ -97,6 +108,7 @@ try {
   check((await fresh.query("select count(*)::int as n from audit_log")).rows[0].n === 0, "frische Datenbank: kein Protokolleintrag durch Migrationen");
   await secondOwnerRejected(fresh);
   await commissionStructure(fresh, false);
+  await evidenceStructure(fresh);
   await fresh.end();
 
   // 2. BESTEHEND: ohne die letzte Migration anlegen, Daten einfügen, dann die letzte nachziehen
@@ -106,7 +118,9 @@ try {
   const journalPath = path.join(tmp, "meta", "_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf8"));
   const full = journal.entries.length;
-  journal.entries = journal.entries.slice(0, full - 1);
+  // Schnitt: vor der Migration von 009 M2 (ledger_model), damit der Test "bestehendes Spiel bleibt legacy" sie wirklich auf ein Altspiel anwendet; spaetere Migrationen (z. B. 009 M3a) laufen danach mit
+  const m2 = journal.entries.findIndex((e) => /ledger_model/.test(readFileSync(path.join(tmp, e.tag + ".sql"), "utf8")));
+  journal.entries = journal.entries.slice(0, m2 >= 0 ? m2 : full - 1);
   writeFileSync(journalPath, JSON.stringify(journal));
   const existing = new pg.Pool({ connectionString: urlFor(names[1]), max: 2 });
   await migrate(drizzle(existing), { migrationsFolder: tmp });
@@ -132,6 +146,7 @@ try {
   }
   await secondOwnerRejected(existing);
   await commissionStructure(existing, true);
+  await evidenceStructure(existing);
   await existing.end();
 } finally {
   for (const name of names) await admin.query(`drop database if exists "${name}" with (force)`).catch(() => {});

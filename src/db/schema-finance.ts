@@ -285,3 +285,64 @@ export const pendingRefunds = pgTable(
   },
   (t) => [primaryKey({ columns: [t.matchId, t.userId] })],
 );
+
+// ---------------------------------------------------------------------------------------------
+// Beweisprotokoll (Vertrag 009 M3, Plan docs/design/009-m3-plan.md)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Beweisprotokoll der Hallenanfragen und Buchungsaufträge. NUR ANHÄNGEN (Trigger forbid_append_only_mutation, Wartungsausnahme socaz.ledger_maintenance).
+ * seq, prev_hash, hash und at setzt der INSERT-Trigger aus dem Zählerstand (booking_evidence_counter): die Anwendung kann keinen dieser Werte vorgeben.
+ * Im Hash steht kein Personenbezug (nur actor_commitment); Name und E-Mail des Betreibers liegen getrennt in evidence_actor.
+ */
+export const bookingEvidence = pgTable(
+  "booking_evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seq: integer("seq").notNull().default(0),
+    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "restrict" }),
+    venueId: uuid("venue_id").references(() => venues.id, { onDelete: "restrict" }),
+    round: integer("round").notNull().default(0),
+    jobId: uuid("job_id"),
+    kind: text("kind").notNull(),
+    reason: text("reason"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    actorCommitment: text("actor_commitment").notNull().default(""),
+    prevHash: text("prev_hash").notNull().default(""),
+    hash: text("hash").notNull().default(""),
+    matchPrevHash: text("match_prev_hash"), // Variante Z (Kette je Spiel): nur als Spalte angelegt, nicht ausgewertet (Entscheid t9)
+  },
+  (t) => [
+    uniqueIndex("booking_evidence_seq_idx").on(t.seq),
+    uniqueIndex("booking_evidence_request_idx").on(t.matchId, t.venueId, t.round, t.kind).where(sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired')`),
+    index("booking_evidence_match_idx").on(t.matchId, t.seq),
+    check(
+      "booking_evidence_kind_check",
+      sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done')`,
+    ),
+    check("booking_evidence_reason_len", sql`${t.reason} is null or char_length(${t.reason}) <= 300`),
+  ],
+);
+
+/** Eine Zeile (id = 1): letzter Stand der Kette. Der INSERT-Trigger sperrt sie, zählt hoch und schreibt den neuen Kopf-Hash. */
+export const bookingEvidenceCounter = pgTable(
+  "booking_evidence_counter",
+  {
+    id: integer("id").primaryKey().default(1),
+    lastSeq: integer("last_seq").notNull().default(0),
+    lastHash: text("last_hash").notNull().default(""),
+  },
+  (t) => [check("booking_evidence_counter_single", sql`${t.id} = 1`)],
+);
+
+/**
+ * Personenfelder zum Protokolleintrag (Betreiber, der geantwortet hat; Plan 011 P2), AUSSERHALB des Hashes. Das Salz je Zeile liegt hier: Löschen/Anonymisieren der Zeile löst den
+ * Bezug endgültig, die Kette bleibt gültig (im Hash steht nur actor_commitment = sha256(salt || user_id)). Entwurf, Frage R3 (Anwalt).
+ */
+export const evidenceActor = pgTable("evidence_actor", {
+  evidenceId: uuid("evidence_id").primaryKey().references(() => bookingEvidence.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  name: text("name"),
+  email: text("email"),
+  salt: text("salt").notNull(),
+});
