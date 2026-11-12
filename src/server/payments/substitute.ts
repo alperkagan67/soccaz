@@ -19,6 +19,7 @@ import { cardModeActive } from "../wallet";
 import { reconcileKnownIntents } from "./charge-retry";
 import { chargeKey, runCharges } from "./charge-run";
 import { requestMatchCancel } from "./refund";
+import { matchIdOf } from "./charge-context";
 
 export const MAX_SUBSTITUTE_FAILURES = 3;
 export const CANCEL_REASON = "Zur Frist ist die Zahlung nicht für alle Plätze zustande gekommen, und es fand sich kein Nachrücker. Alle bekommen ihren Anteil zurück.";
@@ -171,7 +172,7 @@ export async function runSubstitutes(opts: { matchId?: string; now?: Date } = {}
           sql`(${paymentCharges.resolution} = 'replaced' or (${paymentCharges.resolution} is null and ${paymentCharges.status} in ('failed', 'requires_action') and ${paymentCharges.graceUntil} is not null and least(${paymentCharges.graceUntil}, ${matches.startsAt} - interval '1 hour') <= ${now}))`,
         ),
       );
-    matchIds = rows.map((r) => r.id);
+    matchIds = rows.map((r) => matchIdOf({ matchId: r.id }));
   }
   for (const matchId of matchIds) {
     try {
