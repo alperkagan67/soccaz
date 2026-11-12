@@ -4,7 +4,7 @@ Diese Datei sammelt Kandidaten für neue oder geänderte Regeln. **Sie ändert k
 
 Stand: 2026-11-12. Quelle der Kandidaten 1 bis 7: Nutzer und t9 (Auftrag des Task Managers); Wortlaute sind Vorschläge des Autors, nicht abgestimmt. Kandidaten 8 bis 12 stammen aus den Erfahrungen der Worker und sind nur Kandidaten.
 
-Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rollen. Wo ein Wortlaut aus einer bestehenden Datei stammt, steht die Fundstelle dabei; wo nur ein Stichwort vorlag (Kandidaten 4, 5, 7), ist der Wortlaut ein **Entwurf, der vor der Übernahme von t1d/t9 bestätigt werden muss**.
+Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rollen. Wo ein Wortlaut aus einer bestehenden Datei stammt, steht die Fundstelle dabei. Die Wortlaute der Kandidaten 4, 5 und 7 sind **Vorschlag t9** und stehen wörtlich so da; über ihre Übernahme entscheidet der Nutzer im Regel-PR. Alles andere ist Entwurf des Autors.
 
 ## Übersicht
 
@@ -14,7 +14,7 @@ Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rolle
 | 2 | Herzschlag-Regel: freie Worker bekommen sofort Arbeit | AGENTS-SETUP (2.1, 2.2) / LOOP-SPEC | Orchestrator, Task Manager |
 | 3 | Merge-Ablauf: update-branch, main-CI, Ein-Lauf-Regel | CLAUDE.md (Merge-Regel) | Task Manager |
 | 4 | Planer-Rolle | AGENTS-SETUP (2.x neu) | Planer, Orchestrator |
-| 5 | NEEDS-USER-Format, 15-Minuten-Grenze, Zeile „Degradiert“ | AGENTS-SETUP 3b / LOOP-SPEC 8 | alle |
+| 5 | NEEDS-USER-Format, 15-Minuten-Frist, Zeile „Degradiert“ | AGENTS-SETUP 3b / LOOP-SPEC 8 | alle |
 | 6 | Herzschlag nach Neustart erneuern | AGENTS-SETUP (5) | Orchestrator |
 | 7 | DONE-Zeile mit „Vorgaben: erfüllt/nicht“ | AGENTS-SETUP 3b / LOOP-SPEC 8 | Worker, Task Manager |
 | 8 | Worker pushen nie | CLAUDE.md / AGENTS-SETUP 2.3 | Worker |
@@ -60,24 +60,21 @@ Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rolle
 
 ## 4. Planer-Rolle
 
-**Wortlaut-Vorschlag (Entwurf, vor Übernahme zu bestätigen):** „Planer (ein Worker pro Auftrag, nur lesend und Doku): zerlegt einen freigegebenen Vertrag in Meilensteine und Tasks mit Dateiliste, Reihenfolge und Abhängigkeiten, nennt Risiken und offene Produktfragen und schreibt das Ergebnis als Plan in `docs/design/`. Er schreibt keinen Produktcode. Der Plan geht als Doku-PR; Umsetzung erst nach `REVIEW-OK` auf den Plan und G1.“
+**Wortlaut (Vorschlag t9, wörtlich):** „Planer (Label role=planer): Planungs-Schnittstelle des Nutzers. Plant und brainstormt mit dem Nutzer, behaelt den Ueberblick und schickt dem Orchestrator fertige Briefings per hc send, nachdem der Nutzer sie bestaetigt hat. Schreibt keinen Code, aendert nichts im Repo und spricht nicht mit Task Manager oder Workern. Briefings des Planers sind Auftraege wie vom Nutzer. Freigaben (G1, Ausnahme-PRs, Regel-PRs, NEEDS-USER) gelten nur, wenn der Nutzer sie selbst im Fenster des Orchestrators oder des betroffenen Agents gibt, nie ueber den Planer.“
 
 **Zieldatei:** `AGENTS-SETUP.md`, neuer Abschnitt unter 2 (Rollen-Prompts).
 
-**Begründung:** Pläne (z. B. `docs/design/m3-plan.md`, `m2b-und-m2-5-plan.md`) werden schon so erstellt und reviewt, die Rolle steht aber in keinem Rollen-Prompt.
+**Begründung:** Der Nutzer plant und brainstormt bisher direkt im Fenster des Orchestrators. Eine eigene Planer-Rolle trennt die Planung von der Steuerung und hält Freigaben beim Nutzer: Der Planer hat keine Schreib- und keine Freigabe-Befugnis, seine Briefings sind nur Aufträge.
 
-**Rollen:** Planer (neu), Orchestrator (vergibt die Rolle), Reviewer (prüft Pläne).
+**Rollen:** Planer (neu, Label `role=planer`), Orchestrator (empfängt die Briefings), Nutzer (bestätigt Briefings und gibt Freigaben selbst).
 
 ## 5. NEEDS-USER: Format, 15-Minuten-Grenze, Zeile „Degradiert“
 
-**Wortlaut-Vorschlag (Entwurf, vor Übernahme zu bestätigen):**
-- Format: `NEEDS-USER | <PR/Task> | <was genau der Nutzer tun muss, ein Satz> | <wartet seit hh:mm>`.
-- 15-Minuten-Grenze: „Wartet ein Task oder PR länger als 15 Minuten auf den Nutzer, arbeitet der Orchestrator am nächsten Backlog-Eintrag ohne Nutzerbezug weiter und meldet den Wartenden einmal pro Herzschlag erneut, ohne zu drängen.“
-- Zeile „Degradiert“: „Ist ein Check, Hook oder Dienst ausgefallen und es wird ohne ihn weitergearbeitet, steht im nächsten Bericht eine Zeile `Degradiert: <was fehlt> | <Folge> | <seit wann>`.“
+**Wortlaut (Vorschlag t9, wörtlich):** „NEEDS-USER | <Fenster> | <Blockade oder Vorgabe> | seit <hh:mm> | Auswirkung | Vorschlag. Jede Blockade (Werkzeug, Klassifizierer, Berechtigung, Skill-Pruefung) und jede nicht befolgte Vorgabe wird spaetestens nach 15 Minuten gemeldet (Worker an Task Manager sofort, Task Manager an Orchestrator sofort, Orchestrator an Nutzer im naechsten Herzschlag, bei Geld oder Sicherheit sofort). Nichts still ueberspringen; ein degradierter oder eingeschraenkter Lauf traegt im PR die Zeile ‚Degradiert: ja/nein, Grund‘.“
 
 **Zieldatei:** `AGENTS-SETUP.md` Abschnitt 3b (Kommunikationsformat) und `docs/loop/LOOP-SPEC.md` Abschnitt 8 (dort steht `NEEDS-USER` bisher als einzeilige Meldung).
 
-**Begründung:** Die heutige Meldung nennt weder das Ziel noch die Wartezeit; ohne Grenze blockiert ein Nutzerpunkt entweder alles oder geht unter. „Degradiert“ macht ausgefallene Schutzschichten sichtbar, statt sie still zu übergehen.
+**Begründung:** Die heutige Meldung nennt weder das Fenster noch die Wartezeit, die Auswirkung oder einen Vorschlag; ohne Frist wird eine Blockade (z. B. ein vom Klassifizierer verweigerter Befehl) still umgangen oder geht unter. Die Zeile „Degradiert“ macht eingeschränkte Läufe im PR sichtbar.
 
 **Rollen:** Alle (senden), Orchestrator (bündelt für den Nutzer).
 
@@ -93,11 +90,11 @@ Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rolle
 
 ## 7. DONE-Zeile mit „Vorgaben“
 
-**Wortlaut-Vorschlag (Entwurf, vor Übernahme zu bestätigen):** Das DONE-Format wird um ein Feld erweitert: `DONE <id> | Belege: Befehl + Ergebnis | Dateien | Commit <hash> | Vorgaben: erfüllt` oder `Vorgaben: nicht (<welche, warum>)`. „Vorgaben“ sind die ausdrücklichen Auflagen des Tasks (z. B. „nur diese Dateien“, „nicht pushen“, genannte Mutationen oder Tests).
+**Wortlaut (Vorschlag t9, wörtlich):** „Jede DONE-Meldung enthaelt die Zeile Vorgaben: erfuellt/nicht (Liste) und die Zeile Degradiert: ja/nein, Grund; ein PR ohne Belege (Befehl + Ergebnis, bei UI zusaetzlich Impeccable-Befehle und Screenshots vorher/nachher) wird nicht gemergt.“
 
 **Zieldatei:** `AGENTS-SETUP.md` Abschnitt 3b und `docs/loop/LOOP-SPEC.md` Abschnitt 8.
 
-**Begründung:** Abweichungen von Auflagen sollen nicht im Fließtext untergehen; der Task Manager sieht in einer Zeile, ob er nachfragen muss.
+**Begründung:** Abweichungen von Auflagen und eingeschränkte Läufe sollen nicht im Fließtext untergehen; der Task Manager sieht in zwei Zeilen, ob er nachfragen muss, und mergt nichts ohne Belege.
 
 **Rollen:** Worker (schreiben), Task Manager und Reviewer (lesen).
 
