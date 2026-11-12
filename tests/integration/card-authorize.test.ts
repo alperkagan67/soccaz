@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
@@ -142,6 +142,15 @@ describe("Herausgabe des clientSecret", () => {
       await expect(getAuthorizationSecret(g.u.id, g.match.id), JSON.stringify(bad)).rejects.toThrow(NEUTRAL);
     }
     expect(createCalls()).toHaveLength(0);
+  });
+
+  it("Rate-Limit ist atomar (Backlog 88): 30 parallele Anfragen ergeben genau 10 Versuche und 10 Herausgaben", async () => {
+    const g = await game({ graceMs: 3 * 3_600_000 });
+    const results = await Promise.allSettled(Array.from({ length: 30 }, () => getAuthorizationSecret(g.u.id, g.match.id)));
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(AUTHORIZE_LIMIT_PER_HOUR);
+    expect(results.filter((r) => r.status === "rejected" && /Zu viele Versuche/.test(String((r as PromiseRejectedResult).reason?.message)))).toHaveLength(30 - AUTHORIZE_LIMIT_PER_HOUR);
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(auditLog).where(and(eq(auditLog.actorId, g.u.id), eq(auditLog.action, "charge.authorization_attempt")));
+    expect(row.n).toBe(AUTHORIZE_LIMIT_PER_HOUR);
   });
 
   it("Rate-Limit: hoechstens 10 Herausgaben je Nutzer und Stunde", async () => {
