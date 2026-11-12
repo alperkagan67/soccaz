@@ -99,14 +99,15 @@ try {
   await commissionStructure(fresh, false);
   await fresh.end();
 
-  // 2. BESTEHEND: ohne die letzte Migration anlegen, Daten einfügen, dann die letzte nachziehen
-  console.log("== BESTEHEND (Stand ohne die letzte Migration, mit Daten, dann die letzte)");
+  // VORLÄUFIG ("letzte zwei" ist fest verdrahtet): die robuste Marke (erste Migration mit ledger_model, alle späteren danach) kommt mit 009 M3a.
+  // 2. BESTEHEND: ohne die letzten ZWEI Migrationen (009 M2: Buchungsmodell, 011 M1: venue_access) anlegen, Daten einfügen, dann beide nachziehen
+  console.log("== BESTEHEND (Stand ohne die letzten zwei Migrationen, mit Daten, dann diese)");
   const tmp = mkdtempSync(path.join(tmpdir(), "migcheck-"));
   cpSync("./drizzle", tmp, { recursive: true });
   const journalPath = path.join(tmp, "meta", "_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf8"));
   const full = journal.entries.length;
-  journal.entries = journal.entries.slice(0, full - 1);
+  journal.entries = journal.entries.slice(0, full - 2);
   writeFileSync(journalPath, JSON.stringify(journal));
   const existing = new pg.Pool({ connectionString: urlFor(names[1]), max: 2 });
   await migrate(drizzle(existing), { migrationsFolder: tmp });
@@ -118,8 +119,18 @@ try {
   const mt = [];
   for (const n of ["a", "b"]) mt.push((await existing.query("insert into teams (name, slug, city, created_by) values ($1, $2, 'Essen', $3) returning id", [`Mig ${n}`, `mig-${n}`, mu])).rows[0].id);
   await existing.query("insert into matches (home_team_id, away_team_id, starts_at, duration_min) values ($1, $2, now() + interval '3 days', 60)", mt);
+  // Hallen mit bisherigem Betreiber VOR der Migration 011 M1 (Datenübernahme in venue_access): ok, Admin-Konto, anonymisiertes Konto, verwaister Verweis, ohne Betreiber
+  const okId = (await existing.query("select id from users where email = 'spieler@migcheck.test'")).rows[0].id;
+  const anonId = (await existing.query("insert into users (email, name, role) values ('geloescht-1@geloescht.invalid', 'Gelöscht', 'player') returning id")).rows[0].id;
+  for (const [name, mgr] of [['H-ok', okId], ['H-admin', mu], ['H-anon', anonId], ['H-orphan', '00000000-0000-4000-8000-000000000001'], ['H-frei', null]]) {
+    await existing.query("insert into venues (name, city, manager_user_id) values ($1, 'Essen', $2)", [name, mgr]);
+  }
   await migrate(drizzle(existing), { migrationsFolder: "./drizzle" });
   await structure(existing);
+  const acc = (await existing.query("select v.name, a.status, a.user_id from venue_access a join venues v on v.id = a.venue_id order by v.name")).rows;
+  check(acc.length === 1 && acc[0].name === 'H-ok' && acc[0].status === 'active' && acc[0].user_id === okId, "Datenübernahme venue_access: nur die Halle mit gültigem Betreiber wird aktiv (Admin, anonymisiert, verwaist, ohne Betreiber werden übersprungen)");
+  check((await existing.query("select count(*)::int as n from venues where manager_user_id is not null")).rows[0].n === 4, "venues.manager_user_id bleibt unverändert (Rückfall bis 011 M4)");
+  check((await existing.query("select 1 from pg_indexes where indexname = 'venue_access_one_open_per_venue'")).rowCount === 1, "venue_access: höchstens ein offener Zugang je Halle (partieller Unique)");
   const old = await existing.query("select role, is_owner from users where email = 'alt@migcheck.test'");
   check(old.rows[0]?.role === "admin" && old.rows[0]?.is_owner === false, "bestehende Zeile bleibt unverändert, is_owner = false");
   if (/teilrollen/.test(journal.entries.length ? JSON.parse(readFileSync("./drizzle/meta/_journal.json", "utf8")).entries.at(-1).tag : "")) {

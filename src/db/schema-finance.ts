@@ -93,6 +93,33 @@ export const invoiceNumberCounters = pgTable("invoice_number_counters", {
   last: integer("last").notNull().default(0),
 });
 
+/**
+ * Betreiber-Zugang je Halle (Vertrag 011 M1, Entscheid t9: je Halle eine Zeile, ein Zugang geteilt mit den Mitarbeitern). invited = Admin 1 hat eine Google-E-Mail freigegeben (user_id leer),
+ * active = beim ersten verifizierten Google-Login eingelöst (danach hängt der Zugang an user_id, nie wieder an der E-Mail), revoked = entzogen (Historie bleibt, E-Mail geleert).
+ * Genau ein offener oder aktiver Zugang je Halle (partieller Unique). venues.manager_user_id bleibt bis 011 M4 als Rückfall und wird in jedem Pfad mitgeschrieben.
+ */
+export const venueAccess = pgTable(
+  "venue_access",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    venueId: uuid("venue_id").notNull().references(() => venues.id, { onDelete: "restrict" }),
+    userId: uuid("user_id").references(() => users.id),
+    invitedEmail: text("invited_email"),
+    status: text("status").$type<"invited" | "active" | "revoked">().notNull(),
+    invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
+    assignedBy: uuid("assigned_by").references(() => users.id),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("venue_access_one_open_per_venue").on(t.venueId).where(sql`${t.status} <> 'revoked'`),
+    index("venue_access_user_idx").on(t.userId),
+    index("venue_access_email_idx").on(sql`lower(${t.invitedEmail})`).where(sql`${t.status} = 'invited'`),
+    check("venue_access_invited_chk", sql`${t.status} <> 'invited' or (${t.userId} is null and ${t.invitedEmail} is not null)`),
+    check("venue_access_active_chk", sql`${t.status} <> 'active' or ${t.userId} is not null`),
+  ],
+);
+
 /** Monatssammelrechnung über die Provision an eine Halle. NUR ANHÄNGEN (Trigger): Korrektur = Gutschrift als eigene Rechnung. Eine Rechnung je Halle und Monat. */
 export const invoices = pgTable(
   "invoices",

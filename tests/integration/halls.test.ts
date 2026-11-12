@@ -7,10 +7,10 @@ import { matchHallRequests, matchOptions, matchVetoHalls } from "@/db/schema-mat
 import { acceptChallenge, challengeTeam } from "@/server/challenges";
 import { proposeOption, voteOption } from "@/server/scheduling";
 import { advanceVetos, answerHallRequest, pendingHallInquiries } from "@/server/veto";
-import { setVenueManager } from "@/server/venues";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, grantVenueAccess, makeTeam, makeUser } from "./helpers";
 
 afterAll(async () => {
+  await db.execute(sql`delete from venue_access where venue_id in (select id from venues where name like 'E2E Hallenort%')`); // 011 M1: Zugang vor der Halle (Fremdschlüssel restrict)
   await db.delete(venues).where(sql`${venues.name} like 'E2E Hallenort%'`);
   await cleanup();
 });
@@ -27,8 +27,8 @@ async function agreedDuel() {
     .insert(venues)
     .values([1, 2, 3].map((i) => ({ name: `E2E Hallenort ${i} ${manager.id.slice(0, 6)}`, city: "Hallenort", isPartner: i < 3 })))
     .returning();
-  await setVenueManager(a.id, rows[0].id, manager.email);
-  await setVenueManager(a.id, rows[1].id, manager.email);
+  await grantVenueAccess(rows[0].id, manager.id);
+  await grantVenueAccess(rows[1].id, manager.id);
   const id = await challengeTeam(a.id, ta.id, tb.id);
   await acceptChallenge(b.id, id);
   await proposeOption(a.id, id, { startsAt: new Date(Date.now() + 5 * 86_400_000) });
