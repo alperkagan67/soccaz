@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, notifications, paymentCharges, paymentDisputes, paymentErasureTasks, paymentProfiles, paymentRefunds, paymentSetupIntents, users } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
@@ -168,5 +168,142 @@ describe("Bekannte Luecke (Plan v4, FRAGE-RECHT): Streit NACH der Kontoloeschung
     expect(d.payer).toMatchObject({ deleted: true });
     expect(d.evidence.mandateAcceptedAt).toBeNull();
     expect((await db.select().from(notifications).where(eq(notifications.userId, admin.id))).filter((n) => n.title === "Zahlungsstreit eingegangen")).toHaveLength(1);
+  });
+});
+
+describe("Review M4b-1 (security): Sperren, laufende Zahlungen, Karteneinrichtung", () => {
+  it("Fund 1: Webhook setup_intent.succeeded und deleteAccount gleichzeitig verklemmen sich nicht (gleiche Sperrreihenfolge setup_intents -> Profil)", async () => {
+    for (let i = 0; i < 12; i++) {
+      const p = await payer("acdl");
+      const seti = nid("seti_acdl");
+      await db.insert(paymentSetupIntents).values({ id: seti, userId: p.u.id, status: "created", mandateText: "Mandat-Wortlaut", mandateAcceptedAt: new Date() });
+      const e = provider.signEvent({ id: nid("evt_acdl"), type: "setup_intent.succeeded", object: { id: seti, customer: p.customerId, payment_method: nid("pm_acdl") } });
+      const [hook, del] = await Promise.allSettled([handleStripeWebhook(e.rawBody, e.signature), deleteAccount(p.u.id)]);
+      expect(hook.status, "Webhook " + i).toBe("fulfilled");
+      if (hook.status === "fulfilled") expect(hook.value.status, "Webhook " + i).toBe(200);
+      expect(del.status, "deleteAccount " + i + ": " + (del.status === "rejected" ? String(del.reason) : "")).toBe("fulfilled");
+      expect(await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, p.u.id)), "Profil " + i).toHaveLength(0);
+    }
+  });
+
+  it("Fund 1 (deterministisch): waehrend eine andere Transaktion die setup_intents-Zeile haelt (wie der Webhook), ist das Profil noch frei: erst setup_intents, dann Profil", async () => {
+    const p = await payer("acfp");
+    const seti = nid("seti_acfp");
+    await db.insert(paymentSetupIntents).values({ id: seti, userId: p.u.id, status: "created", mandateText: "Mandat-Wortlaut", mandateAcceptedAt: new Date() });
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const heldP = new Promise<void>((r) => (held = r));
+    const holder = db.transaction(async (tx) => {
+      await tx.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.id, seti)).for("update");
+      held();
+      await hold;
+    });
+    await heldP;
+    let finished = false;
+    const del = deleteAccount(p.u.id).then(() => (finished = true));
+    await new Promise((r) => setTimeout(r, 800));
+    expect(finished).toBe(false); // wartet auf die setup_intents-Zeile
+    await expect(db.transaction((tx) => tx.select().from(paymentProfiles).where(eq(paymentProfiles.userId, p.u.id)).for("update", { noWait: true }))).resolves.toBeDefined(); // Profil noch frei
+    release();
+    await holder;
+    await del;
+    expect(finished).toBe(true);
+  });
+
+  it("Fund 2: laufende Zahlungen blocken die Loeschung (pending Erstattung, pending Abbuchung als Zahler im geschlossenen Spiel); failed/requires_action/cancelled_dispute in geschlossenen Spielen nicht", async () => {
+    // (a) pending Erstattung
+    const a = await payer("acr1");
+    await db.update(paymentRefunds).set({ status: "pending", attemptStartedAt: new Date() }).where(eq(paymentRefunds.chargeId, a.charge.id));
+    await expect(deleteAccount(a.u.id)).rejects.toThrow(/laufende Zahlung/);
+    expect(await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, a.u.id))).toHaveLength(1);
+    expect(await taskOf(a.u.id)).toBeUndefined();
+    // (b) pending Abbuchung als ZAHLER fuer den Platz eines Dritten
+    const b = await payer("acr2");
+    const seat = await makeUser("acr2seat");
+    await db.insert(paymentCharges).values({ matchId: b.match.id, userId: seat.id, payerUserId: b.u.id, amountCents: 800, status: "pending", attemptStartedAt: new Date(), idempotencyKey: "charge:" + b.match.id + ":" + seat.id });
+    await expect(deleteAccount(b.u.id)).rejects.toThrow(/laufende Zahlung/);
+    expect(await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, b.u.id))).toHaveLength(1);
+    // (c) harmlos: failed, requires_action und NIE gesendete pending-Zeile im GESCHLOSSENEN Spiel; Erstattung cancelled_dispute
+    const c = await payer("acr3");
+    const seat2 = await makeUser("acr3seat");
+    await db.insert(paymentCharges).values({ matchId: c.match.id, userId: seat2.id, payerUserId: c.u.id, amountCents: 800, status: "failed", failureCode: "card_declined", idempotencyKey: "charge:" + c.match.id + ":" + seat2.id });
+    const seat3 = await makeUser("acr3seat3");
+    await db.insert(paymentCharges).values({ matchId: c.match.id, userId: seat3.id, payerUserId: c.u.id, amountCents: 800, status: "requires_action", failureCode: "authentication_required", idempotencyKey: "charge:" + c.match.id + ":" + seat3.id });
+    const seat4 = await makeUser("acr3seat4");
+    await db.insert(paymentCharges).values({ matchId: c.match.id, userId: seat4.id, payerUserId: c.u.id, amountCents: 800, status: "pending", idempotencyKey: "charge:" + c.match.id + ":" + seat4.id }); // nie gesendet
+    await db.update(paymentRefunds).set({ status: "cancelled_dispute" }).where(eq(paymentRefunds.chargeId, c.charge.id));
+    await deleteAccount(c.u.id);
+    expect((await taskOf(c.u.id))?.status).toBe("pending");
+  });
+
+  it("Fund 2 (Sperrreihenfolge Plan 5.2): zuerst die Abbuchungszeile, DANN die Erstattungszeile; waehrend eine andere Transaktion die Abbuchungszeile haelt, ist die Erstattungszeile noch frei", async () => {
+    const p = await payer("acpos");
+    const [refund] = await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, p.charge.id));
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const heldP = new Promise<void>((r) => (held = r));
+    const holder = db.transaction(async (tx) => {
+      await tx.select().from(paymentCharges).where(eq(paymentCharges.id, p.charge.id)).for("update");
+      held();
+      await hold;
+    });
+    await heldP;
+    let finished = false;
+    const del = deleteAccount(p.u.id).then(() => (finished = true));
+    await new Promise((r) => setTimeout(r, 800)); // deleteAccount hat die Spiele gesperrt und wartet auf die Abbuchungszeile
+    expect(finished).toBe(false);
+    // die Erstattungszeile ist (noch) nicht gesperrt: sie kommt erst NACH der Abbuchungszeile
+    await expect(db.transaction((tx) => tx.select().from(paymentRefunds).where(eq(paymentRefunds.id, refund.id)).for("update", { noWait: true }))).resolves.toBeDefined();
+    release();
+    await holder;
+    await del;
+    expect(finished).toBe(true);
+  });
+
+  it("Fund 2: Loeschung, Erstattungsversand und Streit-Ereignis gleichzeitig verklemmen sich nicht", async () => {
+    const p = await payer("acpar");
+    const e = provider.signEvent({
+      id: nid("evt_acpar"),
+      type: "charge.dispute.created",
+      object: { id: nid("dp_test_acpar"), amount: 800, currency: "eur", payment_intent: p.charge.paymentIntentId, status: "needs_response", balance_transactions: [{ id: nid("txn_test_acpar"), amount: -800, fee: 0, currency: "eur", reporting_category: "dispute" }] },
+      created: 1_800_000_000,
+    });
+    const { sendPendingRefunds } = await import("@/server/payments/refund");
+    const res = await Promise.allSettled([deleteAccount(p.u.id), handleStripeWebhook(e.rawBody, e.signature), sendPendingRefunds(p.match.id)]);
+    for (const r of res) if (r.status === "rejected") expect(String(r.reason)).not.toMatch(/deadlock|Verklemmung/i);
+    expect(res[1].status).toBe("fulfilled");
+  });
+
+  it("Fund 3: Karteneinrichtung und Loeschung serialisieren (Advisory-Lock); nach der Loeschung legt createCardSetup keinen neuen Stripe-Kunden an", async () => {
+    const { createCardSetup } = await import("@/server/payments/card-setup");
+    const { setSetting } = await import("@/server/settings");
+    await setSetting(null, "card_payments_enabled", true);
+    try {
+      const p = await payer("acsu");
+      // Eine laufende Karteneinrichtung (haelt den Advisory-Lock) verschiebt die Loeschung
+      let release!: () => void;
+      const hold = new Promise<void>((r) => (release = r));
+      let held!: () => void;
+      const heldP = new Promise<void>((r) => (held = r));
+      const holder = db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"card-setup:" + p.u.id}, 0))`);
+        held();
+        await hold;
+      });
+      await heldP;
+      await expect(deleteAccount(p.u.id)).rejects.toThrow(/wird gerade eingerichtet/);
+      expect(await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, p.u.id))).toHaveLength(1);
+      release();
+      await holder;
+      await deleteAccount(p.u.id);
+      const customersBefore = provider.calls.filter((c) => c.method === "createCustomer").length;
+      await expect(createCardSetup(p.u.id, { mandateAccepted: true })).rejects.toThrow(/Nutzer nicht gefunden/);
+      expect(provider.calls.filter((c) => c.method === "createCustomer").length).toBe(customersBefore);
+      expect(await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, p.u.id))).toHaveLength(0);
+    } finally {
+      await setSetting(null, "card_payments_enabled", false);
+    }
   });
 });

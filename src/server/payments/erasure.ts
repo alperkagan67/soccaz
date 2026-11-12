@@ -27,12 +27,12 @@ const cleanCode = (e: unknown) => {
 type Claimed = { id: string; customerId: string | null; attempts: number };
 
 /** Beansprucht den naechsten faelligen Auftrag (pending und faellig, oder claimed mit abgelaufener Lease). Verbraucht den Versuch schon hier: ein Absturz zaehlt mit. */
-async function claimNext(now: Date): Promise<Claimed | null> {
+async function claimNext(now: Date, onlyId?: string): Promise<Claimed | null> {
   return db.transaction(async (tx) => {
     const rows = await tx.execute(sql`
       select id, stripe_customer_id, attempts
       from payment_erasure_tasks
-      where (status = 'pending' and next_try_at <= ${now}) or (status = 'claimed' and claimed_until < ${now})
+      where ((status = 'pending' and next_try_at <= ${now}) or (status = 'claimed' and claimed_until < ${now})) and (${onlyId ?? null}::uuid is null or id = ${onlyId ?? null}::uuid)
       order by next_try_at, id
       limit 1
       for update skip locked`);
@@ -47,10 +47,10 @@ async function claimNext(now: Date): Promise<Claimed | null> {
 export type ErasureResult = { done: number; retried: number; failed: number };
 
 /** Arbeitet faellige Loeschauftraege ab (hoechstens `limit` je Lauf). Idempotent und parallel sicher. Fehler bei einem Auftrag stoppen die anderen nicht. */
-export async function runErasureTasks(now: Date = new Date(), limit = 20): Promise<ErasureResult> {
+export async function runErasureTasks(now: Date = new Date(), limit = 20, opts: { onlyTaskId?: string } = {}): Promise<ErasureResult> {
   const out: ErasureResult = { done: 0, retried: 0, failed: 0 };
   for (let i = 0; i < limit; i++) {
-    const task = await claimNext(now);
+    const task = await claimNext(now, opts.onlyTaskId);
     if (!task) break;
     // Kein Kunde (mehr) bekannt: nichts zu loeschen
     if (!task.customerId) {
@@ -61,9 +61,6 @@ export async function runErasureTasks(now: Date = new Date(), limit = 20): Promi
     try {
       const provider = await getPaymentProvider();
       await provider.deleteCustomer(task.customerId); // Netz, nie in einer Transaktion
-      await db.update(paymentErasureTasks).set({ status: "done", stripeCustomerId: null, doneAt: new Date(), claimedUntil: null, lastErrorCode: null }).where(eq(paymentErasureTasks.id, task.id));
-      await audit(null, "erasure.done", "payment_erasure_task", task.id, {});
-      out.done += 1;
     } catch (error) {
       if (error instanceof PaymentsUnavailableError) {
         // Stripe nicht konfiguriert: wartet, ohne einen Versuch zu verbrauchen
@@ -83,7 +80,14 @@ export async function runErasureTasks(now: Date = new Date(), limit = 20): Promi
         await db.update(paymentErasureTasks).set({ status: "pending", claimedUntil: null, lastErrorCode: code, nextTryAt: new Date(now.getTime() + erasureBackoffMs(task.attempts)) }).where(eq(paymentErasureTasks.id, task.id));
         out.retried += 1;
       }
+      continue;
     }
+    // Stripe hat den Kunden geloescht: done und Audit in EINER Transaktion, ausserhalb des try um den Stripe-Aufruf (ein Fehler beim Audit darf den Auftrag nicht zurueck auf pending setzen, Review M4b-1 Fund 4)
+    await db.transaction(async (tx) => {
+      await tx.update(paymentErasureTasks).set({ status: "done", stripeCustomerId: null, doneAt: new Date(), claimedUntil: null, lastErrorCode: null }).where(eq(paymentErasureTasks.id, task.id));
+      await audit(null, "erasure.done", "payment_erasure_task", task.id, {}, tx);
+    });
+    out.done += 1;
   }
   return out;
 }
