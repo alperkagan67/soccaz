@@ -3,7 +3,7 @@ import { safeInternalPath } from "@/lib/safe-path";
 import Link from "next/link";
 import { formatEuro } from "@/lib/money";
 import { formatDateTime } from "@/lib/time";
-import { currentMonth, getAlerts, listMatchFinance, monthPeriod, overview } from "@/server/finance";
+import { currentMonth, getAlerts, listMatchFinance, monthPeriod, overview, venueCommissionOverview } from "@/server/finance";
 import { requirePermission } from "@/server/session";
 
 export const metadata: Metadata = { title: "Admin: Finanzen" };
@@ -15,7 +15,7 @@ export default async function FinancePage({ searchParams }: PageProps<"/admin/fi
   const month = raw && monthPeriod(raw) ? raw : currentMonth();
   const period = monthPeriod(month)!;
 
-  const [o, alerts, matchRows] = await Promise.all([overview(period), getAlerts(), listMatchFinance(period)]);
+  const [o, alerts, matchRows, venueRows] = await Promise.all([overview(period), getAlerts(), listMatchFinance(period), venueCommissionOverview(period)]);
   const cards: [string, number, string?][] = [
     ["Einnahmen (netto nach Erstattungen)", o.revenueCents],
     ["Hallenkosten", o.venueCostCents],
@@ -75,6 +75,28 @@ export default async function FinancePage({ searchParams }: PageProps<"/admin/fi
             <dd className="font-heading text-xl font-bold tabular-nums">{o.playedMatches}</dd>
           </div>
         </dl>
+      </section>
+
+      <section className="space-y-2" aria-label="Provision je Halle">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-semibold">Provision je Halle</h2>
+          <Link href="/admin/finanzen/rechnungen" className="text-sm underline underline-offset-4">Rechnungen</Link>
+        </div>
+        {venueRows.length === 0 ? (
+          <p className="card text-muted" data-testid="no-venue-commission">Noch keine Spiele im Provisionsmodell.</p>
+        ) : (
+          <ul className="space-y-2">
+            {venueRows.map((h) => (
+              <li key={h.venueId} className="card flex flex-wrap items-center justify-between gap-2" data-testid="venue-commission">
+                <span className="font-semibold">{h.name}</span>
+                <span className="text-sm tabular-nums">
+                  Provision {formatEuro(h.commissionCents)} · Zahlungsgebühren {formatEuro(h.feesCents)} · Rest {formatEuro(h.restCents)}
+                  {h.minus && <strong className="ml-2 text-danger" data-testid="venue-minus">Halle im Minus: Die Provision deckt die Gebühren nicht.</strong>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="space-y-2" aria-label="Spiele">

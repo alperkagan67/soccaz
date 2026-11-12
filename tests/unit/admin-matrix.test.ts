@@ -31,6 +31,7 @@ const PAGES: Record<string, Permission> = {
   "einstellungen/page.tsx": "owner",
   "finanzen/page.tsx": "finance",
   "finanzen/ausgaben/page.tsx": "finance",
+  "finanzen/rechnungen/page.tsx": "finance", // 009 M2: Monatsrechnungen, nur Admin 1
   "finanzen/spiel/[id]/page.tsx": "finance",
   "hallen/page.tsx": "booking",
   "ligen/page.tsx": "admin",
