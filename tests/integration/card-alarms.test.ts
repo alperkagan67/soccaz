@@ -62,3 +62,12 @@ describe("Admin-Alarm fuer technische Abbuchungszustaende", () => {
     expect(ids).toContain(base.r.id); // die echte Altzeile bleibt im Alarm
   });
 });
+
+describe("Review PR #107: die Kartenalarme erscheinen in der Finanzseite (getAlerts)", () => {
+  it("eine Altzeile ohne Fenster ergibt den Alarm card:legacy-failed in getAlerts", async () => {
+    const { getAlerts } = await import("@/server/finance");
+    await row({ failureCode: "card_declined", graceUntil: null });
+    const codes = (await getAlerts()).map((a) => a.code);
+    expect(codes).toContain("card:legacy-failed");
+  });
+});

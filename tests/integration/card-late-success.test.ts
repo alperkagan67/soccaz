@@ -1,17 +1,18 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, like } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, matches, paymentCharges, paymentRefunds, stripeEvents } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles, paymentRefunds, stripeEvents } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { getRefundAlerts } from "@/server/finance";
 import { trialBalance } from "@/server/ledger";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { adminCancelMatch, runRefunds } from "@/server/payments/refund";
+import { handleStripeWebhook } from "@/server/payments/webhook";
 import { runSubstitutes } from "@/server/payments/substitute";
 import { setSetting } from "@/server/settings";
-import { cleanup, makeUser } from "./helpers";
-import { childrenOf, lateSuccess, nid, slotGame } from "./slot-helpers";
+import { addPlayer, cleanup, makeUser } from "./helpers";
+import { childrenOf, lateSuccess, nid, slotGame, withCard } from "./slot-helpers";
 
 // Vertrag 012, M3c-2b (Entscheid t9): Erfolg eines alten PaymentIntents NACH dem Ersatz des Platzes (oder ein zweiter erfolgreicher PaymentIntent zur selben Zeile) =>
 // buchen (clearing -> revenue) UND sofort voll erstatten (revenue -> clearing) + Admin-Alarm. Hauptbuch ausgeglichen, nie ein stilles Behalten.
@@ -204,5 +205,39 @@ describe("spaeter Erfolg eines ERSETZTEN Nachrueckers (security-reviewer, Fund 1
     await db.insert(paymentCharges).values({ matchId: g.match.id, userId: u.id, amountCents: 800, status: "succeeded", resolution: "replaced", slotOf: g.rootRow.id, idempotencyKey: `charge:${g.match.id}:${u.id}`, paymentIntentId: nid("pi_k") });
     const { settleIfComplete } = await import("@/server/payments/charge");
     expect(await db.transaction((tx) => settleIfComplete(tx, g.match.id))).toBe(false);
+  });
+});
+
+describe("Review PR #109: ein spaeter Erfolg eines gescheiterten Nachrueckers verbraucht seinen Versuch weiter", () => {
+  it("3 Fehlschlaege, dann spaeter Erfolg eines davon: der Platz bleibt erschoepft, ein vierter Kandidat wird NICHT abgebucht", async () => {
+    const g = await slotGame(provider, { waitlist: 3 });
+    for (const w of g.waiters) provider.setChargeOutcome(w.id, "declined");
+    await runSubstitutes({ matchId: g.match.id });
+    const kids = await childrenOf(g);
+    expect(kids).toHaveLength(3);
+    expect(kids.every((k) => k.status === "failed" && k.resolution === "replaced")).toBe(true);
+    const createdBefore = provider.calls.filter((c) => c.method === "createPaymentIntent").length;
+
+    // Test-Aufbau: die automatische Absage zuruecknehmen, damit der naechste Lauf den Platz erneut bewertet; ein vierter Kandidat steht bereit
+    await db.update(matches).set({ cancelRequestedAt: null, cancelReason: null, status: "confirmed" }).where(eq(matches.id, g.match.id));
+    const w3 = await addPlayer(g.match.id, g.home.id, "shw3");
+    await withCard(w3.id);
+    await db.update(matchParticipants).set({ teamId: null, cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, w3.id)));
+
+    // der alte PaymentIntent des ersten gescheiterten Nachrueckers gelingt doch noch (echter Webhook-Weg)
+    const k = kids[0];
+    expect(k.paymentIntentId).not.toBeNull();
+    const [prof] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, k.userId));
+    const e = provider.signEvent({ id: nid("evt_sh"), type: "payment_intent.succeeded", object: { id: k.paymentIntentId, amount: 800, currency: "eur", customer: prof.stripeCustomerId, metadata: { matchId: g.match.id, userId: k.userId } } });
+    expect((await handleStripeWebhook(e.rawBody, e.signature)).status).toBe(200);
+    const after = await rowOf(k.id);
+    expect(after).toMatchObject({ status: "succeeded", resolution: "replaced", failureCode: null }); // Zustand, der die Zaehlung nach Status senkte
+
+    const res = await runSubstitutes({ matchId: g.match.id });
+    expect(res.exhausted).toContain(g.rootRow.id);
+    expect(provider.calls.filter((c) => c.method === "createPaymentIntent")).toHaveLength(createdBefore); // kein vierter Kandidat abgebucht
+    const seat = (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, w3.id))))[0];
+    expect(seat.teamId).toBeNull();
+    expect(await childrenOf(g)).toHaveLength(3);
   });
 });

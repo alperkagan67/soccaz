@@ -24,6 +24,13 @@ describe("Button (M2-2a)", () => {
     }
   });
 
+  it("Überblendung nur auf Farbe, Hintergrund und Rahmen, nie auf den Fokusring", () => {
+    const m = html(el(Button, null, "A"));
+    expect(m).toContain("transition-[color,background-color,border-color]");
+    expect(m).not.toContain("transition-colors");
+    expect(m).not.toContain("transition-all");
+  });
+
   it("Standard ist secondary; Orange (bg-accent) nur bei primary", () => {
     expect(html(el(Button, null, "A"))).not.toContain("bg-accent");
     expect(html(el(Button, { variant: "secondary" }, "A"))).not.toContain("accent");
