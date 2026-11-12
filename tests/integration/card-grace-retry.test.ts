@@ -242,6 +242,39 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
     expect((await rowOf(g)).currentAttempt).toBe(2);
   });
 
+  it("Flake CI 43188949490: haelt eine ANDERE Transaktion die Zeile gerade nach der Drehung (SKIP LOCKED ueberspringt sie), wird der neue Versuch trotzdem im selben Aufruf gesendet", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    // Simulation: unmittelbar nach dem Commit der Drehung (rotateAttempt liefert true) sperrt eine fremde Transaktion die Zeile fuer 300 ms
+    const original = db.transaction.bind(db);
+    let holder: Promise<unknown> | null = null;
+    (db as unknown as { transaction: unknown }).transaction = (async (fn: never, cfg: never) => {
+      const res = await (original as (f: never, c: never) => Promise<unknown>)(fn, cfg);
+      if (res === true && holder === null) {
+        let locked!: () => void;
+        const ready = new Promise<void>((r) => (locked = r));
+        holder = original(async (tx) => {
+          await tx.select().from(paymentCharges).where(eq(paymentCharges.id, g.row.id)).for("update");
+          locked();
+          await new Promise((r) => setTimeout(r, 300));
+        });
+        await ready;
+      }
+      return res;
+    }) as never;
+    try {
+      expect(await retryChargesInWindow({ userId: g.u.id })).toBe(1);
+    } finally {
+      (db as unknown as { transaction: unknown }).transaction = original;
+      await holder;
+    }
+    expect(holder).not.toBeNull(); // die Simulation hat gegriffen
+    expect(createCalls()).toHaveLength(1);
+    expect(await rowOf(g)).toMatchObject({ status: "succeeded", currentAttempt: 2 });
+    expect(await attemptsOf(g)).toHaveLength(1);
+    expect(await ledgerOf(g)).toHaveLength(1);
+  });
+
   it("scheitert auch der neue Versuch, bleibt das Fenster das alte; ein weiterer Versuch nach der naechsten Karte bekommt Schluessel :3", async () => {
     const g = await failedGame();
     await changeCard(g);
