@@ -49,7 +49,7 @@ export async function getRefundAlerts(now: Date = new Date()) {
   const legacyFailed = await db
     .select({ id: paymentCharges.id, matchId: paymentCharges.matchId, code: paymentCharges.failureCode })
     .from(paymentCharges)
-    .where(and(inArray(paymentCharges.status, ["failed", "requires_action"]), isNull(paymentCharges.graceUntil), isNull(paymentCharges.slotOf), isNull(paymentCharges.resolution), sql`(${paymentCharges.failureCode} is null or ${paymentCharges.failureCode} not in ('idempotency_mismatch', 'match_closed', 'tournament_closed', 'match_cancelled', 'after_start', 'unknown_outcome'))`));
+    .where(and(inArray(paymentCharges.status, ["failed", "requires_action"]), isNull(paymentCharges.graceUntil), isNull(paymentCharges.slotOf), isNull(paymentCharges.resolution), sql`(${paymentCharges.failureCode} is null or ${paymentCharges.failureCode} not in ('idempotency_mismatch', 'match_closed', 'tournament_closed', 'tournament_cancelled', 'match_cancelled', 'after_start', 'unknown_outcome'))`));
   const duplicateSuccesses = await db
     .select({ matchId: auditLog.entityId, at: auditLog.at })
     .from(auditLog)
@@ -62,7 +62,7 @@ export async function getRefundAlerts(now: Date = new Date()) {
     .where(and(isNotNull(paymentRefunds.tournamentId), eq(paymentRefunds.status, "pending"), isNull(paymentRefunds.refundId)));
   const tournamentChargeStuck = (
     await db.execute<{ id: string }>(sql`select distinct c.tournament_id as id from payment_charges c join tournaments t on t.id = c.tournament_id
-      where c.tournament_id is not null and c.status in ('failed', 'requires_action') and t.status = 'payment' and c.failure_code is distinct from 'tournament_closed' and (c.grace_until is null or c.grace_until <= ${now})`)
+      where c.tournament_id is not null and c.status in ('failed', 'requires_action') and t.status = 'payment' and c.failure_code not in ('tournament_closed', 'tournament_cancelled') and (c.grace_until is null or c.grace_until <= ${now})`)
   ).rows;
   // Zweite stille Haengerlage (Delta-Review): Zahlungsphase, ALLE Teams bereit, die Frist ist erreicht, aber es gibt keine Abbuchungszeilen (z. B. Karte nach "Bereit" entfernt, Zusage/Halle fehlt).
   // Nur im Kartenmodell (Schalter EIN, kein Guthaben im Turnier, nicht kostenlos): sonst waeren Guthabenturniere falsch positiv.

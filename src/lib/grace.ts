@@ -29,7 +29,7 @@ export function inGraceWindow(graceUntilAt: Date | null, startsAt: Date, now: Da
 }
 
 /** Kartenfehler, die ein Fenster, eine Benachrichtigung und das Wiederabbuchen bekommen. Alles andere sind technische Zustände (Admin/Klärung). */
-export const NON_CARD_CODES: readonly string[] = ["unknown_outcome", "after_start", "idempotency_mismatch", "match_closed", "tournament_closed", "attempt_expired"];
+export const NON_CARD_CODES: readonly string[] = ["unknown_outcome", "after_start", "idempotency_mismatch", "match_closed", "tournament_closed", "tournament_cancelled", "attempt_expired"];
 export const isCardProblemCode = (code: string | null | undefined): boolean => !NON_CARD_CODES.includes(code ?? "");
 
 /** "bis 21:30 Uhr" (Berliner Zeit), bei einem anderen Kalendertag mit Datum. */

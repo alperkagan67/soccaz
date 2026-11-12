@@ -42,6 +42,14 @@ export async function seatsOf(tx: Pick<Tx, "select">, tournamentId: string, lock
   return rows.map((r) => ({ userId: r.userId, teamId: r.teamId, coveredByUserId: r.coveredByUserId, cardStatus: r.pm ? "card_ready" : "none", hasCard: Boolean(r.pm) }));
 }
 
+/** Hat in JEDEM Team jeder Spieler eine Karte oder einen gueltigen Uebernehmer (validCoversOf)? Fuer die Frist: ohne vollstaendige Karten kann nicht abgebucht werden. */
+export async function tournamentAllCardsReady(tx: Pick<Tx, "select">, tournamentId: string): Promise<boolean> {
+  const seats = await seatsOf(tx, tournamentId);
+  if (seats.length === 0) return false;
+  const valid = validCoversOf(seats, true);
+  return seats.every((s) => s.hasCard || valid.has(s.userId));
+}
+
 /** Hat jeder Spieler des Teams eine Karte oder einen gueltigen Uebernehmer? Ein leeres Team ist nicht bereit. */
 export async function tournamentTeamCardsReady(tx: Pick<Tx, "select">, tournamentId: string, teamId: string): Promise<boolean> {
   const seats = await seatsOf(tx, tournamentId);
