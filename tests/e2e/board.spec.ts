@@ -46,8 +46,8 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   expect(await anon.content()).not.toContain("data-light=");
   // angemeldeter Teilnehmer: Ampel je Person weiter sichtbar (Heim: orange + rot, Gast: rot), mit Legende
   const member = await (await browser.newContext()).newPage();
-  await newUser(member, "bmem");
-  const memberId = (await testDb().query("select id from users where email = $1", [`bmem-${run}@test.local`])).rows[0].id as string;
+  await newUser(member, "boardmem");
+  const memberId = (await testDb().query("select id from users where email = $1", [`boardmem-${run}@test.local`])).rows[0].id as string;
   await testDb().query("insert into team_members (team_id, user_id, role) values ($1, $2, 'player')", [home.id, memberId]);
   await testDb().query("insert into match_participants (match_id, user_id, team_id) values ($1, $2, $3)", [matchId, memberId, home.id]);
   await member.goto("/suche");
