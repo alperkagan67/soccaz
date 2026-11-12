@@ -119,3 +119,10 @@ test("Gespeicherte Karte: 'Andere Karte hinterlegen' setzt die Zustimmung zurüc
   await expect(a.getByLabel(/Ich erlaube Soccaz/)).not.toBeChecked();
   await expect(a.getByTestId("card-fake")).toBeDisabled();
 });
+
+test("Spieler im Spiel sieht seinen Anteil und den Kartentext (Gegenprobe zu lobby-gast-kosten.spec.ts, dort ohne Fake-Pfad der Gast)", async ({ browser }) => {
+  const { a, matchId } = await setupLobby(browser, "kg");
+  await a.goto(`/lobby/${matchId}`);
+  await expect(a.getByTestId("card-costs")).toContainText("Dein Anteil");
+  await expect(a.getByTestId("card-costs")).toContainText("von deiner Karte abgebucht");
+});
