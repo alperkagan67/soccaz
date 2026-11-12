@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { TEAM_COLORS, TEXT_DARK, TEXT_LIGHT, THEMES, contrast, textOn } from "@/lib/color";
+import { STATUS, STATUS_SOFT_ALPHA, TEAM_COLORS, TEXT_DARK, TEXT_LIGHT, THEMES, contrast, textOn } from "@/lib/color";
 
 // Erwartete Werte: Tabelle in docs/design/README.md (Abschnitt „Teamfarben und Lesbarkeit“).
 const EXPECTED: Record<string, { text: string; onColor: number; onDark: number; onLight: number }> = {
@@ -78,5 +80,69 @@ describe("Kontrast (AC-7)", () => {
     expect(contrast(THEMES.light.oi, THEMES.light.o)).toBeCloseTo(5.18, 1);
     expect(contrast(THEMES.dark.o, THEMES.dark.fl)).toBeCloseTo(5.23, 1);
     expect(contrast(THEMES.light.o, THEMES.light.fl)).toBeCloseTo(4.71, 1);
+  });
+});
+
+// M2-1: Status-Töne und Fokus. Werte aus globals.css gegen die Referenz in color.ts, dazu Kontrastgrenzen.
+const css = readFileSync(path.resolve(import.meta.dirname, "../../src/app/globals.css"), "utf8");
+function cssBlock(start: string): Record<string, string> {
+  const i = css.indexOf(start);
+  if (i < 0) throw new Error(`Block fehlt: ${start}`);
+  const open = css.indexOf("{", i);
+  const body = css.slice(open + 1, css.indexOf("}", open));
+  return Object.fromEntries([...body.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+}
+function blend(fg: string, ground: string, a: number): string {
+  const p = (h: string) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+  const [f, g] = [p(fg), p(ground)];
+  return "#" + f.map((v, k) => Math.round(v * a + g[k] * (1 - a)).toString(16).padStart(2, "0")).join("");
+}
+
+describe("Status-Töne und Fokus (M2-1)", () => {
+  const blocks = { dark: cssBlock(":root {"), light: cssBlock("@media (prefers-color-scheme: light)"), forceDark: cssBlock(".force-dark") };
+  const names = ["ok", "warn", "danger", "info"] as const;
+
+  it("globals.css hat die Status-Tokens in Dunkel, Hell und .force-dark wie die Referenz", () => {
+    for (const [blk, theme] of [["dark", "dark"], ["light", "light"], ["forceDark", "dark"]] as const) {
+      for (const n of names) {
+        expect(blocks[blk][n], `${blk} --${n}`).toBe(STATUS[theme].fg[n]);
+        expect(blocks[blk][`${n}-ink`], `${blk} --${n}-ink`).toBe(STATUS[theme].ink);
+        expect(blocks[blk][`${n}-soft`], `${blk} --${n}-soft`).toMatch(/^rgba\(\d+, \d+, \d+, 0\.1\)$/);
+      }
+      expect(blocks[blk].focus, `${blk} --focus`).toBe(STATUS[theme].focus);
+    }
+  });
+
+  for (const theme of ["dark", "light"] as const) {
+    const t = THEMES[theme];
+    const s = STATUS[theme];
+    describe(theme, () => {
+      for (const n of names) {
+        it(`${n}: Schrift auf Grund, Fläche, Feldgrund und Tönung mindestens 4,5:1; Schrift auf voller Fläche mindestens 4,5:1`, () => {
+          const fg = s.fg[n];
+          for (const ground of [t.bg, t.fl, t.fl2]) {
+            expect(contrast(fg, ground), `${n} auf ${ground}`).toBeGreaterThanOrEqual(4.5);
+            expect(contrast(fg, blend(fg, ground, STATUS_SOFT_ALPHA)), `${n} auf Tönung über ${ground}`).toBeGreaterThanOrEqual(4.5);
+          }
+          expect(contrast(s.ink, fg), `${n}-ink auf ${n}`).toBeGreaterThanOrEqual(4.5);
+        });
+      }
+      it("Fokusring gegen Grund, Fläche und Feldgrund mindestens 3:1, und er ist nicht Orange", () => {
+        for (const ground of [t.bg, t.fl, t.fl2]) expect(contrast(s.focus, ground), `focus auf ${ground}`).toBeGreaterThanOrEqual(3);
+        expect(s.focus.toLowerCase()).not.toBe(t.o);
+      });
+      it("die vier Status-Töne sind verschieden und keiner ist Orange", () => {
+        expect(new Set(Object.values(s.fg)).size).toBe(4);
+        expect(Object.values(s.fg)).not.toContain(t.o);
+      });
+    });
+  }
+
+  it("Schriftstufen: kleinste Stufe 12 px, aufsteigend", () => {
+    const root = cssBlock(":root {");
+    const px = ["xs", "sm", "base", "lg", "xl", "2xl", "3xl"].map((k) => parseFloat(root[`fs-${k}`]) * 16);
+    expect(px[0]).toBe(12);
+    expect([...px].sort((a, b) => a - b)).toEqual(px);
+    expect(root.tap).toBe("44px");
   });
 });
