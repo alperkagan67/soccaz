@@ -125,7 +125,7 @@ export default async function VenuesPage() {
                 <Rules venueId={v.id} />
                 <PriceForm venueId={v.id} canEdit={canPrices} />
                 {canCommission && (
-                  <ActionForm action={setVenueCommissionAction.bind(null, v.id)} submit="Provision speichern" className="space-y-2" keepOnSuccess>
+                  <ActionForm action={setVenueCommissionAction.bind(null, v.id)} submit="Provision übernehmen" className="space-y-2" keepOnSuccess>
                     <p className="text-sm font-semibold">Provision dieser Halle</p>
                     <div className="grid gap-2 sm:grid-cols-3">
                       <div>

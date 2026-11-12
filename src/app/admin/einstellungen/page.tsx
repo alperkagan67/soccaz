@@ -37,7 +37,7 @@ export default async function SettingsAdminPage() {
           <p className="mt-1 text-xs text-muted">Steht in der Spielübersicht beider Teams, falls am Spieltag etwas schiefgeht.</p>
         </div>
       </ActionForm>
-      <ActionForm action={saveInvoiceSettingsAction} submit="Rechnungseinstellungen speichern" keepOnSuccess>
+      <ActionForm action={saveInvoiceSettingsAction} submit="Rechnungseinstellungen übernehmen" keepOnSuccess>
         <h2 className="font-semibold">Rechnungen an die Hallen</h2>
         <div>
           <label className="label" htmlFor="vatMode">Umsatzsteuer</label>
