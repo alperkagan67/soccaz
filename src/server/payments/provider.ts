@@ -25,6 +25,8 @@ export interface PaymentProvider {
   /** Nur Anzeigedaten (Marke, letzte vier Ziffern). */
   retrievePaymentMethod(id: string): Promise<CardDisplay>;
   detachPaymentMethod(id: string): Promise<void>;
+  /** Loescht den Kunden samt Zahlungsmitteln bei Stripe (DSGVO, M4b). Idempotent: gibt es den Kunden nicht (mehr), ist das Erfolg. Netzfehler werfen. Stripe behaelt Transaktionsdaten nach eigenen Pflichten. */
+  deleteCustomer(customerId: string): Promise<void>;
   /**
    * Bucht einen Betrag mit dem gespeicherten Zahlungsmittel ab (off_session, sofort bestätigt, EUR). Der idempotencyKey (je Spieler und Spiel) verhindert
    * eine zweite Belastung bei Wiederholung. Abgelehnte oder authentifizierungspflichtige Karten liefern ein Ergebnis mit id und Status, keinen Fehler;

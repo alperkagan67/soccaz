@@ -302,6 +302,13 @@
       "when": 1794465406991,
       "tag": "0042_funny_kang",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794472523187,
+      "tag": "0043_charming_sprite",
+      "breakpoints": true
     }
   ]
 }
