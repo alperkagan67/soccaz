@@ -73,7 +73,8 @@ export async function getRefundAlerts(now: Date = new Date()) {
             and coalesce(t.total_cents, 1) > 0 and coalesce(t.final_share_cents, 1) > 0
             and not exists (select 1 from payment_charges c where c.tournament_id = t.id)
             and not exists (select 1 from tournament_players p where p.tournament_id = t.id and p.paid_cents > 0)
-            and (select count(*) from tournament_teams x where x.tournament_id = t.id and x.paid_ready_at is not null) = t.max_teams`)
+            and (select count(*) from tournament_teams x where x.tournament_id = t.id and x.paid_ready_at is not null) = t.max_teams
+            and (select max(x.paid_ready_at) from tournament_teams x where x.tournament_id = t.id) <= ${new Date(now.getTime() - 10 * 60_000)}`)
       ).rows
     : [];
   return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards };

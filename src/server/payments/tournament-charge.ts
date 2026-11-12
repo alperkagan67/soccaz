@@ -23,6 +23,7 @@ import { lockTournament, maybeGenerateBracket, tournamentPayOpenAt } from "../to
 import { seatsOf, tournamentCardMode } from "../tournament-card";
 import { hallZusageOk } from "../tournament-venue";
 import { validCoversOf } from "./cover";
+import { cardPaymentsEnabled } from "../settings";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 import { type ApplyResult, type ChargeOutcome, type ChargeReport, bookChargeFee, ensureRefundRow } from "./charge";
 import { ATTEMPT_MAX_AGE_MS, CLAIM_LEASE_MS, MIN_CHARGE_CENTS, UNKNOWN_OUTCOME, AFTER_START } from "./charge-run";
@@ -135,7 +136,7 @@ export function triggerTournamentChargesInBackground(tournamentId: string): Prom
   );
 }
 
-type Claimed = { id: string; tournamentId: string; userId: string; payerUserId: string | null; amountCents: number; idempotencyKey: string };
+type Claimed = { id: string; tournamentId: string; userId: string; payerUserId: string | null; amountCents: number; idempotencyKey: string; prevStarted: Date | null };
 
 /** Beansprucht die naechste sendefaehige Zeile (pending, ohne PaymentIntent, nicht gerade in Arbeit). Turniersperre FOR SHARE VOR den Zeilen (Reihenfolge Turnier -> Zeile). */
 async function claimNext(tournamentId: string, now: Date): Promise<Claimed | null> {
@@ -165,7 +166,7 @@ async function claimNext(tournamentId: string, now: Date): Promise<Claimed | nul
       }
       if (started !== null && now.getTime() - new Date(row.updated_at).getTime() < CLAIM_LEASE_MS) continue; // gerade in Arbeit (Lease)
       await tx.update(paymentCharges).set({ attemptStartedAt: started === null ? now : new Date(started), updatedAt: now }).where(eq(paymentCharges.id, row.id));
-      return { id: row.id, tournamentId: row.tournament_id, userId: row.user_id, payerUserId: row.payer_user_id, amountCents: row.amount_cents, idempotencyKey: row.idempotency_key };
+      return { id: row.id, tournamentId: row.tournament_id, userId: row.user_id, payerUserId: row.payer_user_id, amountCents: row.amount_cents, idempotencyKey: row.idempotency_key, prevStarted: started === null ? null : new Date(started) };
     }
     return null;
   });
@@ -213,6 +214,13 @@ async function sendCharge(c: Claimed): Promise<void> {
     return;
   }
   const provider = await getPaymentProvider();
+  // Notabschaltung (Schalter AUS): ein Select unmittelbar VOR dem Netzaufruf, ausserhalb der Transaktion. Eine schon beanspruchte Zeile geht nach dem Abschalten nicht mehr raus: sie bleibt
+  // pending, die Beanspruchung wird zurueckgenommen (frueherer Versuchsstand), der naechste Lauf nach dem Wieder-Einschalten holt sie nach. Restfenster: der Schalter wird zwischen diesem
+  // Select und dem Aufruf umgelegt (Millisekunden, siehe BETRIEB).
+  if (!(await cardPaymentsEnabled())) {
+    await db.update(paymentCharges).set({ attemptStartedAt: c.prevStarted, updatedAt: new Date() }).where(and(eq(paymentCharges.id, c.id), eq(paymentCharges.status, "pending"), isNull(paymentCharges.paymentIntentId)));
+    return;
+  }
   let res;
   try {
     res = await provider.createPaymentIntent({ customerId: profile.stripeCustomerId, paymentMethodId: profile.paymentMethodId, amountCents: c.amountCents, idempotencyKey: c.idempotencyKey, metadata: { tournamentId: c.tournamentId, userId: c.userId } });

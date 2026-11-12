@@ -15,7 +15,22 @@ import { createTournament, joinAsPlayer, registerTeam, setOrganizer, setPaidRead
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 // Fuer den Test "Phase A schluckt keine Fehler": lockTournament schlaegt auf Wunsch mit einem unerwarteten Fehler fehl.
-const forced = vi.hoisted(() => ({ fail: false }));
+const forced = vi.hoisted(() => ({ fail: false, offOnProvider: false }));
+// Notabschaltung zwischen Beanspruchen und Netzaufruf: der Schalter wird beim ersten Holen des Anbieters ausgeschaltet (sendCharge holt ihn nach dem Beanspruchen).
+vi.mock("@/server/payments/provider", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/server/payments/provider")>();
+  return {
+    ...orig,
+    getPaymentProvider: async () => {
+      if (forced.offOnProvider) {
+        forced.offOnProvider = false;
+        const { setSetting: set } = await import("@/server/settings");
+        await set(null, "card_payments_enabled", false);
+      }
+      return orig.getPaymentProvider();
+    },
+  };
+});
 vi.mock("@/server/tournaments", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/server/tournaments")>();
   return { ...orig, lockTournament: (...args: Parameters<typeof orig.lockTournament>) => (forced.fail ? Promise.reject(new Error("unerwartet")) : orig.lockTournament(...args)) };
@@ -293,6 +308,34 @@ describe("M5-4: Beanspruchung und Fehlerbehandlung", () => {
     }
     expect((await rowsOf(t.id)).length).toBe(0);
     expect(piCallsOf(t.id)).toHaveLength(0);
+  });
+
+  it("Notabschaltung zwischen Beanspruchen und Netzaufruf: die beanspruchte Zeile geht NICHT raus (pending, Beanspruchung zurueckgenommen); nach dem Wieder-Einschalten wird abgebucht", async () => {
+    const { t } = await ready();
+    forced.offOnProvider = true;
+    try {
+      const r = await runTournamentCharges(t.id, DUE, { requireDue: true });
+      expect(r.created).toBe(16);
+      expect(r.settled).toBe(false);
+    } finally {
+      forced.offOnProvider = false;
+      await setSetting(null, "card_payments_enabled", true);
+    }
+    expect(piCallsOf(t.id)).toHaveLength(0); // kein einziger Aufruf nach dem Abschalten
+    const rows = await rowsOf(t.id);
+    expect(rows.every((x) => x.status === "pending" && x.paymentIntentId === null && x.attemptStartedAt === null && x.failureCode === null)).toBe(true);
+    expect(await runTournamentCharges(t.id, DUE)).toMatchObject({ attempted: 16, settled: true });
+    expect(piCallsOf(t.id)).toHaveLength(16);
+  });
+
+  it("Alarm \"Turnier wartet auf Karten\": erst 10 Minuten nach dem letzten Bereit (Kurzvorlauf)", async () => {
+    const { getRefundAlerts } = await import("@/server/finance");
+    const { t, squads } = await ready();
+    await db.update(paymentProfiles).set({ paymentMethodId: null }).where(eq(paymentProfiles.userId, squads[0].players[1].id));
+    await db.update(tournaments).set({ startsAt: new Date(Date.now() + 10 * 3_600_000) }).where(eq(tournaments.id, t.id)); // Start in 10 h: Start minus 48 h liegt laengst zurueck
+    const ids = async (at: Date) => (await getRefundAlerts(at)).tournamentWaitsForCards.map((x) => x.id);
+    expect(await ids(new Date())).not.toContain(t.id); // gerade erst bereit: noch kein Alarm
+    expect(await ids(new Date(Date.now() + 15 * 60_000))).toContain(t.id);
   });
 });
 
