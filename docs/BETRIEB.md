@@ -113,6 +113,16 @@ curl -X POST -H "x-job-secret: $JOB_SECRET" https://deine-domain/api/jobs/send-r
 
 Hinweise: Das Buchungsjournal ist unveränderlich (Datenbank-Trigger). Korrekturen sind Gegenbuchungen. Die Zahlungsgebühr wird beim Verbuchen **geschätzt** (Einstellung oben); die echten Gebühren stehen im Stripe-Dashboard und sollten monatlich abgeglichen werden.
 
+### Lokale Entwicklung mit Stripe-Testmodus (Kurzfassung)
+
+Die Einzelheiten stehen oben; hier die Reihenfolge für Worker-Worktrees. Nur Namen, nie Werte.
+
+1. **Schlüssel (Testmodus, nie Live):** `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` und `STRIPE_CARD_WEBHOOK_SECRET` stehen in der `.env.local` des Nutzers. Testschlüssel beginnen mit `sk_test_` bzw. `pk_test_`; ein Live-Schlüssel gehört in keine `.env.local`.
+2. **Worktrees:** `scripts/worktree.mjs create` kopiert die `.env.local` aus SoccaV2 nur beim Anlegen und ändert dabei nur `DATABASE_URL` und `PORT`. Änderungen an der Haupt-`.env.local` (z. B. neue Stripe-Schlüssel) kommen in bestehende Worktrees nicht an: dort selbst nachtragen oder den Worktree neu anlegen. Agenten lesen und geben `.env*` nie aus.
+3. **Webhook lokal:** `stripe listen --forward-to localhost:<Port>/api/stripe/webhook` mit dem Port des Servers (Worker 3101 bis 3104, Haupt-Instanz 3100). Das Signaturgeheimnis (`whsec_...`) aus der Ausgabe von `stripe listen` ist das Test-Webhook-Secret und kommt als `STRIPE_CARD_WEBHOOK_SECRET` in die `.env.local` des jeweiligen Worktrees, nicht in andere.
+4. **`PAYMENTS_FAKE=1`** nur für Tests und CI (Fake-Anbieter ohne Stripe). In Produktion und Staging verboten: `src/server/payments/provider.ts` wirft bei `NODE_ENV=production` einen harten Fehler. Ist `STRIPE_SECRET_KEY` gesetzt, wählt der Code Stripe statt des Fake-Anbieters; die Integrationstests brauchen den Fake-Anbieter und werden deshalb mit leerem Schlüssel gestartet (`STRIPE_SECRET_KEY= npm run test:integration`; die `.env.local` überschreibt eine schon gesetzte, auch leere Variable nicht).
+5. **`card_payments_enabled` umlegen:** nur ohne offene bezahlte Spiele (GO-LIVE G8-012; die Konto-Löschung bei laufender Abbuchung läuft nur über den Support), und in Produktion erst, wenn M3c-1 (Fenster und Wiederabbuchen), M3c-1c (3-D-Secure-Freigabe) UND M3c-2 (Nachrücker, automatische Absage) gemergt und deployt sind (GO-LIVE G8-012, G9-012).
+
 ## Hallen-Buchung
 
 Sobald ein bezahltes Spiel bestätigt ist, entsteht im Admin-Bereich unter **Buchungen** ein Auftrag. Es gibt noch keinen automatischen Buchungs-Agenten: Die Halle wird per Telefon, Mail oder Webseite gebucht und im Auftrag eingetragen. Für einen späteren Agenten gibt es die Schnittstelle `src/server/booking-agent.ts`.
