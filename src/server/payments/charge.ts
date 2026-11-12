@@ -15,6 +15,7 @@ import type { Tx } from "../tx";
 import { getPaymentProvider } from "./provider";
 import { notifyChargeProblem } from "./charge-notify";
 import { graceUntil, inGraceWindow } from "@/lib/grace";
+import { failSubstitute } from "./substitute-fail";
 
 export const refundKey = (chargeId: string) => `refund:${chargeId}`;
 
@@ -147,6 +148,14 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   if (row.status === r.outcome && row.failureCode === cleanCode(r.failureCode)) return { status: "already" };
   const firstProblem = row.status !== "failed" && row.status !== "requires_action";
   const now = new Date();
+  if (row.slotOf !== null) {
+    // Nachruecker: sofort draussen, kein Fenster, keine Nachricht an Captain oder Dritte (AC-8/AC-20); der Platz geht an den Naechsten
+    const code = cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined");
+    await tx.update(paymentCharges).set({ status: r.outcome, failureCode: code, updatedAt: now }).where(eq(paymentCharges.id, row.id));
+    await audit(null, "charge.failed", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome, code } }, tx);
+    if (row.resolution === null) await failSubstitute(tx, row, code);
+    return { status: "applied" };
+  }
   // Nachzahlfenster (AC-6): beginnt mit dem ERSTEN Fehler und wird danach nicht mehr verschoben; unter 1 h bis zum Anstoss gibt es keins (null)
   const [game] = await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, row.matchId));
   // Nur der erste Versuch setzt das Fenster; ein fehlgeschlagener Wiederholungsversuch (current_attempt > 1) laesst es unveraendert
@@ -213,7 +222,8 @@ export async function bookOpenFees(limit = 50): Promise<number> {
 export async function settleIfComplete(tx: Tx, matchId: string): Promise<boolean> {
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
   if (!match || match.settledAt !== null || !["lobby", "confirmed"].includes(match.status) || match.cancelRequestedAt !== null) return false; // Absage angefordert: nie abrechnen
-  const rows = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
+  // Ersetzte Zeilen (resolution=replaced: Platz vergeben, gescheiterter Nachruecker) zaehlen nicht mit
+  const rows = (await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId))).filter((r) => r.resolution === null);
   if (rows.length === 0 || rows.some((r) => r.status !== "succeeded")) return false;
   const seated = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId)));
   const paid = new Set(rows.map((r) => r.userId));

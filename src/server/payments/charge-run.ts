@@ -14,6 +14,7 @@ import { hasLongLead, dueWithGrace, fixDeadline } from "@/lib/deadlines";
 import { cardModeActive, leadStart, payAndReadyPossible } from "../wallet";
 import { applyChargeInTx, bookChargeFee, type ChargeOutcome } from "./charge";
 import { notifyChargeProblem } from "./charge-notify";
+import { failSubstitute } from "./substitute-fail";
 import { graceUntil, inGraceWindow, isCardProblemCode } from "@/lib/grace";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 
@@ -151,6 +152,14 @@ async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
 
 async function failRow(tx: Tx, rowId: string, matchId: string, userId: string, code: string) {
   // Ein Problem des Spielers (keine Karte, Schluessel geaendert) beginnt wie ein abgelehnter Versuch das Nachzahlfenster und benachrichtigt; "match_closed" ist kein Problem des Spielers
+  const [kid] = await tx.select({ slotOf: paymentCharges.slotOf, resolution: paymentCharges.resolution }).from(paymentCharges).where(eq(paymentCharges.id, rowId));
+  if (kid?.slotOf) {
+    // Nachruecker (kein Fenster, keine Nachricht an Dritte): sofort draussen, der Naechste ist dran
+    await tx.update(paymentCharges).set({ status: "failed", failureCode: code, updatedAt: new Date() }).where(and(eq(paymentCharges.id, rowId), eq(paymentCharges.status, "pending")));
+    await audit(null, "charge.failed", "match", matchId, { after: { userId, outcome: "failed", code } }, tx);
+    if (kid.resolution === null) await failSubstitute(tx, { id: rowId, matchId, userId }, code);
+    return;
+  }
   const userProblem = isCardProblemCode(code); // technische Zustaende (idempotency_mismatch, match_closed, ...) sind kein Kartenproblem: kein Fenster, keine Nachricht
   const [game] = userProblem ? await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, matchId)) : [];
   const [current] = userProblem ? await tx.select({ attempt: paymentCharges.currentAttempt, grace: paymentCharges.graceUntil }).from(paymentCharges).where(eq(paymentCharges.id, rowId)) : [];

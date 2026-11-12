@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { COLOR_KEYS } from "../lib/team-color";
 ﻿import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -328,11 +329,19 @@ export const paymentCharges = pgTable(
     graceUntil: timestamp("grace_until", { withTimezone: true }),
     // Nummer des LAUFENDEN Versuchs (1 = erster Versuch). Diese Zeile ist der Zustand des laufenden Versuchs; abgeschlossene Versuche stehen in payment_charge_attempts.
     currentAttempt: integer("current_attempt").notNull().default(1),
+    // M3c-2 (Nachruecker): 'replaced' = der Spieler ist aus dem Spiel genommen (Platz vergeben; nichts erstattet, weil nichts gezahlt, oder ein spaeter Erfolg wird erstattet).
+    // Solche Zeilen zaehlen weder fuer die Abrechnung noch fuer die Erstattung der Absage.
+    resolution: text("resolution").$type<"replaced">(),
+    // Nachruecker-Zeile: zeigt auf die Ursprungszeile des ersetzten Spielers (der "Platz"). Je Platz hoechstens EINE aktive und hoechstens 3 gescheiterte Nachruecker-Zeilen.
+    slotOf: uuid("slot_of").references((): AnyPgColumn => paymentCharges.id, { onDelete: "cascade" }),
+    // Auf der Ursprungszeile: das Team des entfernten Spielers (dorthin kommt der Nachruecker), weil seine Teilnahmezeile geloescht wird
+    slotTeamId: uuid("slot_team_id").references(() => teams.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("payment_charges_match_user_idx").on(t.matchId, t.userId),
+    check("payment_charges_resolution_check", sql`${t.resolution} is null or ${t.resolution} = 'replaced'`),
     check("payment_charges_attempt_positive", sql`${t.currentAttempt} >= 1`),
     check("payment_charges_amount_positive", sql`${t.amountCents} > 0`),
     check("payment_charges_fee_nonneg", sql`${t.feeCents} is null or ${t.feeCents} >= 0`),
@@ -382,6 +391,8 @@ export const paymentRefunds = pgTable(
     idempotencyKey: text("idempotency_key").notNull().unique(),
     reason: text("reason"),
     failureCode: text("failure_code"),
+    // Erstattung eines ANDEREN PaymentIntents als dem der Zeile (spaeter Erfolg eines alten Versuchs, M3c-2b); null = der PaymentIntent der Zeile
+    paymentIntentId: text("payment_intent_id"),
     attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
