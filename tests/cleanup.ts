@@ -27,6 +27,8 @@ export async function cleanupTestData(pool: Pool) {
       "delete from leagues where created_by in (select id from _tu)",
       "delete from sponsors where name like 'E2E %'",
       "delete from media where owner_id in (select id from _tu)",
+      "delete from payment_dispute_entries where dispute_row_id in (select id from payment_disputes where match_id in (select id from _tm) or payer_user_id in (select id from _tu) or dispute_id like 'dp_test%')",
+      "delete from payment_disputes where match_id in (select id from _tm) or payer_user_id in (select id from _tu) or dispute_id like 'dp_test%'",
       "delete from matches where id in (select id from _tm)",
       "delete from venues where name like 'E2E %'",
       "delete from tournaments where organizer_id in (select id from _tu)",

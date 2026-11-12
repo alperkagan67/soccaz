@@ -133,6 +133,17 @@ export class FakeProvider implements PaymentProvider {
     return intent ? { intent, clientSecret: `${paymentIntentId}_secret_fake` } : null;
   }
 
+  /** Test-Hilfe (M4a): ein Streit-Objekt, das retrieveDispute liefert (wie bei Stripe samt Balance-Transactions). */
+  private readonly disputes = new Map<string, Record<string, unknown>>();
+  setDispute(dispute: Record<string, unknown> & { id: string }) {
+    this.disputes.set(dispute.id, dispute);
+  }
+  async retrieveDispute(disputeId: string): Promise<Record<string, unknown> | null> {
+    this.probe("retrieveDispute");
+    this.calls.push({ method: "retrieveDispute", args: { disputeId } });
+    return this.disputes.get(disputeId) ?? null;
+  }
+
   async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {
     this.probe("retrievePaymentIntent");
     this.calls.push({ method: "retrievePaymentIntent", args: { paymentIntentId } });
@@ -176,19 +187,19 @@ export class FakeProvider implements PaymentProvider {
 
   constructWebhookEvent(rawBody: string, signature: string | null): ProviderEvent {
     if (!verifyStripeSignature(rawBody, signature, this.webhookSecret)) throw new WebhookSignatureError();
-    let e: { id?: unknown; type?: unknown; data?: { object?: unknown } };
+    let e: { id?: unknown; type?: unknown; created?: unknown; data?: { object?: unknown } };
     try {
       e = JSON.parse(rawBody);
     } catch {
       throw new WebhookSignatureError();
     }
     if (typeof e.id !== "string" || typeof e.type !== "string") throw new WebhookSignatureError();
-    return { id: e.id, type: e.type, object: (e.data?.object ?? {}) as Record<string, unknown> };
+    return { id: e.id, type: e.type, object: (e.data?.object ?? {}) as Record<string, unknown>, created: typeof e.created === "number" ? e.created : undefined };
   }
 
   /** Test-Hilfe: ein signiertes Ereignis (roher Body und Header) wie von Stripe. */
-  signEvent(event: { id: string; type: string; object: Record<string, unknown> }, timestamp?: number) {
-    const rawBody = JSON.stringify({ id: event.id, type: event.type, data: { object: event.object } });
+  signEvent(event: { id: string; type: string; object: Record<string, unknown>; created?: number }, timestamp?: number) {
+    const rawBody = JSON.stringify({ id: event.id, type: event.type, created: event.created, data: { object: event.object } });
     return { rawBody, signature: signStripePayload(rawBody, this.webhookSecret, timestamp) };
   }
 }
