@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import { matches, teams, users } from "@/db/schema";
-import { can } from "@/lib/roles";
+import { canUser } from "@/lib/roles";
 import { formatDateTime } from "@/lib/time";
 import { renderReceiptPdf } from "@/server/receipt-pdf";
 import { getReceipt } from "@/server/receipts";
@@ -15,7 +15,7 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/belege/[id]
   if (!user) return new Response("Nicht angemeldet", { status: 401 });
 
   const receipt = await getReceipt(id);
-  if (!receipt || (receipt.userId !== user.id && !can(user.role, "finance"))) return new Response("Nicht gefunden", { status: 404 });
+  if (!receipt || (receipt.userId !== user.id && !canUser(user, "finance"))) return new Response("Nicht gefunden", { status: 404 });
 
   const [customer] = await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, receipt.userId));
   const details: { label: string; value: string }[] = [];

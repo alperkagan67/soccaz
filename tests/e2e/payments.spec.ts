@@ -8,7 +8,7 @@ import {
   callJob,
   fundWallet,
   query,
-  seedAdmin,
+  seedOwner,
   seedPaidPlayer,
   seedPromo,
   seedUserRole,
@@ -248,7 +248,7 @@ test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", 
 
 test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ browser, baseURL }) => {
   test.setTimeout(180_000);
-  await seedAdmin("p4adm"); // vor der Bestätigung, sonst bekommt er die Benachrichtigung nicht
+  await seedOwner("p4adm"); // Admin 1: Finanzbereich und Preisregeln (Vertrag 009 AC-1); vor der Bestätigung, sonst bekommt er die Benachrichtigung nicht
   const { a, b, matchId, nameA, nameB } = await setupLobby(browser, "p4");
   const teamA = await teamIdByName(nameA);
   const teamB = await teamIdByName(nameB);
@@ -457,7 +457,7 @@ test("Einstellungen: Zahlungen aus macht Spiele kostenlos", async ({ browser }) 
   await a.goto(`/lobby/${matchId}`);
   await expect(a.getByRole("region", { name: "Kosten" })).toBeVisible();
 
-  await seedAdmin("p7adm");
+  await seedOwner("p7adm"); // Einstellungen nur Admin 1 (Vertrag 009 AC-1)
   const adm = await (await browser.newContext()).newPage();
   await devLogin(adm, `p7adm-${run}@test.local`, "Admin p7adm", "/admin/einstellungen");
   await idle(adm);

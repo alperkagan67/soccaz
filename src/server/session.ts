@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { can, type Permission } from "@/lib/roles";
+import { canUser, isOwner, type Permission } from "@/lib/roles";
 import { ensureStaffOnboarded } from "./onboarding";
 
 export type CurrentUser = typeof users.$inferSelect;
@@ -45,7 +45,14 @@ export async function requireAdmin(): Promise<CurrentUser> {
 /** Verlangt eine Berechtigung (Plattform-Admins haben alle, Teilrollen nur ihren Bereich). Sonst Weiterleitung. */
 export async function requirePermission(permission: Permission, next = "/admin"): Promise<CurrentUser> {
   const user = await requireUser(next);
-  if (!can(user.role, permission)) redirect("/app");
+  if (!canUser(user, permission)) redirect("/app");
+  return user;
+}
+
+/** Nur Admin 1 (Seitenbetreiber: Rolle admin und is_owner). Sonst Weiterleitung. */
+export async function requireOwner(next = "/admin"): Promise<CurrentUser> {
+  const user = await requireUser(next);
+  if (!isOwner(user)) redirect("/app");
   return user;
 }
 

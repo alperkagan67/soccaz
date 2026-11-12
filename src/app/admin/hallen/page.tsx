@@ -3,7 +3,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { CITIES } from "@/lib/validation";
 import { formatEuro } from "@/lib/money";
 import { addPriceRuleAction, createVenueAction, setVenueManagerAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
-import { can } from "@/lib/roles";
+import { canUser } from "@/lib/roles";
 import { requirePermission } from "@/server/session";
 import { listPriceRules, listVenues } from "@/server/venues";
 
@@ -54,7 +54,7 @@ async function Rules({ venueId }: { venueId: string | null }) {
 
 export default async function VenuesPage() {
   const user = await requirePermission("booking", "/admin/hallen");
-  const canPrices = can(user.role, "finance");
+  const canPrices = canUser(user, "finance");
   const venues = await listVenues();
 
   return (

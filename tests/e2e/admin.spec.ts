@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { setupLobby } from "./flows";
 import { closeContexts, closeTestDb, createTeam, devLogin, newUser, run } from "./helpers";
-import { query, seedAdmin, seedUserRole, startMatchNow } from "./helpers-db";
+import { query, seedAdmin, seedOwner, seedUserRole, startMatchNow } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
 
@@ -12,8 +12,8 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
-async function adminPage(browser: import("@playwright/test").Browser, key: string, next = "/admin") {
-  await seedAdmin(key);
+async function adminPage(browser: import("@playwright/test").Browser, key: string, next = "/admin", owner = false) {
+  await (owner ? seedOwner(key) : seedAdmin(key));
   const page = await (await browser.newContext()).newPage();
   await devLogin(page, `${key}-${run}@test.local`, `Admin ${key}`, next);
   return page;
@@ -76,7 +76,7 @@ test("Admin: Nutzer sperren, Rolle ändern, Profi-Badge, Protokoll", async ({ br
   await newUser(victim, "ad3v");
   const email = `ad3v-${run}@test.local`;
 
-  const admin = await adminPage(browser, "ad3a", "/admin/nutzer");
+  const admin = await adminPage(browser, "ad3a", "/admin/nutzer", true); // Rollen vergibt nur Admin 1 (Vertrag 009 AC-1)
   await admin.getByLabel("Name oder E-Mail").fill(email);
   await admin.getByRole("button", { name: "Filtern" }).click();
   const card = admin.getByTestId(`user-${email}`);

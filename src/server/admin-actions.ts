@@ -7,8 +7,8 @@ import * as admin from "./admin";
 import { requirePermission } from "./session";
 import { DomainError } from "./teams";
 
-async function adminAction(path: string, fn: (actorId: string) => Promise<void>): Promise<ActionState> {
-  const user = await requirePermission("admin");
+async function adminAction(path: string, fn: (actorId: string) => Promise<void>, permission: "admin" | "owner" = "admin"): Promise<ActionState> {
+  const user = await requirePermission(permission);
   try {
     await fn(user.id);
   } catch (error) {
@@ -25,7 +25,7 @@ export async function setBannedAction(userId: string, banned: boolean, reason: s
 
 export async function setRoleAction(userId: string, role: string) {
   if (!ALL_ROLES.includes(role as Role)) return { error: "Unbekannte Rolle." } satisfies ActionState;
-  return adminAction("/admin/nutzer", (id) => admin.setRole(id, userId, role as Role));
+  return adminAction("/admin/nutzer", (id) => admin.setRole(id, userId, role as Role), "owner"); // nur Admin 1 vergibt Rollen
 }
 
 export async function setProBadgeAction(userId: string, value: boolean) {

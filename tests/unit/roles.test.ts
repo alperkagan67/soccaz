@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { can, isOwner, isPlatformAdmin } from "@/lib/roles";
+import { can, canUser, isOwner, isPlatformAdmin } from "@/lib/roles";
 
 // Vertrag 009 M1, E1a: Admin 1 trägt weiter die Rolle admin (zusätzlich is_owner), damit alle bisherigen Plattform-Prüfungen für ihn gelten.
 describe("isPlatformAdmin / isOwner", () => {
@@ -17,7 +17,9 @@ describe("isPlatformAdmin / isOwner", () => {
     expect(isOwner({ role: "player", isOwner: true })).toBe(false); // verletzt den CHECK der Datenbank, die Funktion lässt es trotzdem nicht durch
     expect(isOwner(null)).toBe(false);
   });
-  it("can() bleibt unverändert: Admin 1 hat als Rolle admin alle Berechtigungen", () => {
-    expect(can("admin", "finance")).toBe(true);
+  it("can() nach Rolle allein: admin (Admin 2) hat keine Finanzen mehr; mit is_owner (canUser) schon", () => {
+    expect(can("admin", "finance")).toBe(false);
+    expect(canUser({ role: "admin", isOwner: true }, "finance")).toBe(true);
+    expect(canUser({ role: "admin", isOwner: false }, "finance")).toBe(false);
   });
 });

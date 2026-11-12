@@ -136,7 +136,7 @@ Sobald ein bezahltes Spiel bestätigt ist, entsteht im Admin-Bereich unter **Buc
 ## Admin 1 festlegen (Vertrag 009 M1, nur Betreiber)
 Admin 1 (Seitenbetreiber) ist das eine Konto mit `users.role = 'admin'` UND `users.is_owner = true`; die Datenbank erlaubt höchstens eines. Es entsteht nie von selbst: Die Migration setzt niemanden, das macht dieser Schritt.
 
-**Reihenfolge beim Einspielen:** 1. Migration (`docker compose run --rm app node scripts/migrate.mjs` bzw. der übliche Update-Ablauf) → 2. neuen Code ausrollen (alle Plattform-Prüfungen kennen Admin 1, E1b) → 3. Admin 1 festlegen → 4. erst danach Alarme nur an Admin 1 (E2). Vor Schritt 3 verhält sich alles wie bisher, weil Admin 1 weiter die Rolle `admin` trägt.
+**Reihenfolge beim Einspielen:** 1. Migration (der übliche Update-Ablauf führt `scripts/migrate.mjs` aus) und Code E1a (Spalte, Skript; Verhalten unverändert, Admin 1 trägt weiter die Rolle `admin`) → 2. **Admin 1 festlegen** (dieser Abschnitt) → 3. erst danach Code E1b (Finanzen, Einstellungen und Rollenvergabe nur noch für Admin 1; Admin 2 verliert sie) → 4. danach Alarme nur an Admin 1 (E2). **E1b nie vor Schritt 2 ausrollen:** sonst hat bis zum Festlegen niemand Zugriff auf Finanzen und Einstellungen.
 
 **Festlegen** (Konto muss sich einmal angemeldet haben; Datenbank aus `DATABASE_URL` der Umgebung):
 ```

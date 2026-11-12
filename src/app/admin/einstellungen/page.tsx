@@ -8,7 +8,7 @@ import { getSetting, minPaidPlayers, paymentsEnabled } from "@/server/settings";
 export const metadata: Metadata = { title: "Admin: Einstellungen" };
 
 export default async function SettingsAdminPage() {
-  await requirePermission("admin", "/admin/einstellungen");
+  await requirePermission("owner", "/admin/einstellungen");
   const [enabled, minPaid, emergency] = await Promise.all([paymentsEnabled(), minPaidPlayers(), getSetting<string>("emergency_phone", "")]);
   const provider = activeProvider();
 

@@ -1,11 +1,11 @@
-import { can } from "@/lib/roles";
+import { canUser } from "@/lib/roles";
 import { currentMonth, exportLedgerCsv, monthPeriod } from "@/server/finance";
 import { getCurrentUser } from "@/server/session";
 
 /** Buchungsjournal eines Monats als CSV (Semikolon, Dezimalkomma, UTF-8 mit BOM) für den Steuerberater. */
 export async function GET(request: Request) {
   const user = await getCurrentUser();
-  if (!user || !can(user.role, "finance")) return new Response("Verboten", { status: 403 });
+  if (!user || !canUser(user, "finance")) return new Response("Verboten", { status: 403 });
 
   const url = new URL(request.url);
   const month = url.searchParams.get("monat") ?? currentMonth();
