@@ -355,6 +355,8 @@ Tests: HTML, RSC-Payload und Live-Kanal (SSE) je Rolle (`tournament-card-visibil
 
 ## 15. Fragen (nur Fragen, keine Entscheidungen)
 
+> **Beantwortet:** Die Produktfragen unten (S1, 1b, 2 bis 4, 6 bis 9) sind von t9 entschieden, siehe Abschnitt 16. Der Wortlaut bleibt als Verlauf stehen; maßgeblich ist Abschnitt 16.
+
 **FRAGE-PRODUKT**
 1. **S1 (Buchungsschnitt, Vertrag 009):** Variante A (Verbindlichkeit Halle, nur Provision ist Ertrag) entscheiden, oder M5-4 bis zum Entscheid zurückstellen? [ANNAHME: Variante A, M5-4 wartet]
 1b. Genügt es in M5, dass das Geld als Verbindlichkeit bei Soccaz liegt und der Hallenanteil nur buchhalterisch geführt wird (Vertrag: „direkt an die Halle“), oder ist Stripe Connect Bedingung? [ANNAHME: Buchhaltung]
@@ -380,3 +382,27 @@ Tests: HTML, RSC-Payload und Live-Kanal (SSE) je Rolle (`tournament-card-visibil
 3. Preisgelder aus Einsätzen (Glücksspielrecht), falls später gewünscht.
 4. Aufbewahrung der Belege und Mandatsnachweise für Turnier-Abbuchungen.
 5. Steuerliche Behandlung der Provision und der Erstattungsgebühren.
+
+## 16. Entscheide t9 zu 012 M5 (Stand 2026-11-12, maßgeblich vor Abschnitt 15)
+
+| Frage | Entscheid | Folge im Plan |
+|---|---|---|
+| **S1** Buchungsschnitt | **Variante A**: Verbindlichkeit Halle (`venue_payable`), nur die Provision ist Ertrag | **M5-4 ist freigegeben, nach 009 M2** (Abschnitt 3.5, Startbedingung 4) |
+| **1b** Hallenanteil | **Buchhaltung genügt**; Stripe Connect später | kein Connect in M5 |
+| **2** Zusage der Halle | **Attrappe** für die Zusage, **echte Anbindung nach 011 M1** (M5-7) | Abschnitt 3.6 und 12 unverändert |
+| **3** Fehlschlag nach Ablauf des Fensters | **Absage, Alles-oder-nichts** (Turnier komplett abgesagt, alle erstattet) | Zustände Z2 bis Z6 enden in der Absage; kein Ausschluss einzelner Teams |
+| **4** Bracket | **erst nach „gebucht“**, nicht vorläufig | kein Bracket vor `settled_at` |
+| **6** Konto-Löschung bei offenem Turnier mit Abbuchung | **Löschsperre wie im Teamspiel** | `deleteAccount` blockiert; Pflichten siehe unten |
+| **7** Partnerhalle | **Pflicht**: ein Turnier braucht eine Partnerhalle (`venue_id`) | **Z7 „ohne Partnerhalle“ entfällt** (Abschnitt 3.1); Anlage ohne Halle nicht möglich; die Provisionsregel „Z7: 0“ gilt nicht mehr |
+| **8** „Anteil übernehmen“ | **nur im eigenen Team** | wie Annahme |
+| **9** Mindestbetrag und Rundung | **0,50 € Mindestbetrag, Rundung wie im Teamspiel** | wie Annahme |
+
+**Sichtbarkeit (Entscheid):** Das Aggregat „Karten komplett / unvollständig“ sehen nur **Mitglieder dieses Teams, der Captain, der Veranstalter und Plattform-Admins** (`isPlatformAdmin`); keine anderen Teams, keine Gäste, keine Halle. Einzelne Zahlungsstände (wer hat bezahlt) bleiben wie im Teamspiel nur den Betroffenen und dem Captain.
+
+**Reihenfolge und Schalter:** **M5-3 darf vor der Impeccable-Prüfung der Turnierseiten gemergt werden**, weil der Schalter (`card_payments_enabled`) AUS bleibt (Status Degradiert, nicht Fertig). Die Impeccable-Pflicht (013 M5, AC-15) steht als **Backlog 114** und ist Bedingung für das Einschalten und den Pilot Turnier.
+
+**Migrationsnummern:** 0046 und 0047 sind gemergt (#132); 009 M2 nimmt 0048, 011 M1 0049; **0050 = M5-1**, **0051 = M5-3**. Die Nummer wird erst beim Merge endgültig (nie parallel zu anderen Schema-Tasks, Abschnitt 5).
+
+**Pflichten aus den Reviews (Backlog 117 bis 123, Einzelheiten dort):** `ensureRefundRow` mit `scopeOf` (117); Webhook: `scopeOf`-Zweige und Alarm bei unbekanntem Bereich (118); `finance.ts` Alarmliste: Link bei `matchId = null` (119); `deleteAccount`: `lockTournament`, offene Turnierzahlungen, `covered_by_user_id` aufräumen (120); `validCoversOf` bei der Abbuchung (121); Indizes (122); Seeds und `tests/cleanup.ts` löschen Zahlungszeilen zuerst (123). Sie gehören in M5-4 und M5-5 und sind dort Abnahmebedingung.
+
+**Nachtrag M5-1 (Reviews R-T207b):** (a) `hallZusageOk` hat die Signatur `{ venueAccessRequiredSnapshot: boolean | null; venueConfirmedAt: Date | null }` (null = noch nicht fixiert = keine Zusage verlangt, **fail-open nur mit der Attrappe**); mit der Echtlogik (M5-7) ist NULL im Kartenmodell in der Zahlungsphase ein **Fehler (fail-closed)** (G24-012). (b) Die Sackgasse „Turnier ohne Halle bei Schalter AUS angelegt, später AN“ ist mit einer Auswahl auf der Turnierseite (nur Veranstalter, Kader offen, `TournamentVenuePick`) behoben. (c) Das Formular verlangt die Halle serverkonform (nur bei Gesamtbetrag > 0), nicht per `required`. (d) Offen für M5-7: `maybeFixPrice` prüft vor `freezeVenueTerms` nicht erneut, dass die Halle aktiv und Partner ist; `setTournamentVenueAction` prüft Schalter/Kartenmodell nicht (wirkungslos).
