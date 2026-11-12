@@ -158,3 +158,40 @@ export async function listVenueAccess(viewer: { isOwner: boolean }): Promise<Ven
     .orderBy(asc(venueAccess.venueId));
   return rows.map((r) => ({ venueId: r.venueId, status: r.status, invitedAt: r.invitedAt, assignedAt: r.assignedAt, hasAccount: r.userId !== null, invitedEmail: viewer.isOwner ? r.invitedEmail : null }));
 }
+
+/** Aufbewahrung der Adresse einer abgelaufenen Einladung (Entscheid t9 R1): 30 Tage nach Ablauf (Einladung gilt 14 Tage), also 44 Tage nach dem Einladen. */
+export const INVITE_ADDRESS_RETENTION_DAYS = 30;
+
+/**
+ * Job: Einladungen, die seit mehr als INVITE_VALID_DAYS + INVITE_ADDRESS_RETENTION_DAYS Tagen offen sind, werden `revoked`, die Adresse wird geleert (Datenminimierung, R1).
+ * (Ein Entzug oder Rückzug leert die Adresse schon sofort, die Konto-Löschung ebenso.) Sperrreihenfolge wie überall: erst die Hallen (SKIP LOCKED: zwei Läufe tun nie dasselbe,
+ * eine gerade bearbeitete Halle kommt im nächsten Lauf dran), dann venue_access. Idempotent; das Eingriffsprotokoll enthält nur IDs und den Grund, nie die Adresse.
+ */
+export async function expireVenueInvites(now: Date = new Date(), limit = 100): Promise<number> {
+  const cutoff = new Date(now.getTime() - (INVITE_VALID_DAYS + INVITE_ADDRESS_RETENTION_DAYS) * 86_400_000);
+  return db.transaction(async (tx) => {
+    const due = await tx
+      .select({ venueId: venueAccess.venueId })
+      .from(venueAccess)
+      .where(and(eq(venueAccess.status, "invited"), sql`${venueAccess.invitedAt} < ${cutoff}`))
+      .orderBy(asc(venueAccess.venueId))
+      .limit(limit);
+    if (due.length === 0) return 0;
+    const locked = await tx
+      .select({ id: venues.id })
+      .from(venues)
+      .where(inArray(venues.id, [...new Set(due.map((d) => d.venueId))]))
+      .orderBy(asc(venues.id))
+      .for("update", { skipLocked: true });
+    if (locked.length === 0) return 0;
+    const rows = await tx
+      .update(venueAccess)
+      .set({ status: "revoked", revokedAt: now, invitedEmail: null })
+      .where(and(inArray(venueAccess.venueId, locked.map((l) => l.id)), eq(venueAccess.status, "invited"), sql`${venueAccess.invitedAt} < ${cutoff}`))
+      .returning({ id: venueAccess.id, venueId: venueAccess.venueId });
+    for (const r of rows.sort((a, b) => a.venueId.localeCompare(b.venueId))) {
+      await audit(null, "venue.access.expire", "venue", r.venueId, { before: { accessId: r.id }, after: { reason: "Einladung abgelaufen, Adresse nach Aufbewahrungsfrist geleert" } }, tx);
+    }
+    return rows.length;
+  });
+}

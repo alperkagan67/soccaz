@@ -6,6 +6,7 @@ import { closeCityChallenge } from "./city-challenge";
 import { runMatchmaker } from "./matchmaking";
 import { expireScheduling } from "./scheduling";
 import { advanceVetos } from "./veto";
+import { expireVenueInvites } from "./venue-access";
 import { runCardCharges } from "./payments/charge-trigger";
 import { runRefunds } from "./payments/refund";
 import { cancelUnderfilledLobbies, cleanup, expireOldRequests, expireStalePayments, notifyFinanceAlerts, sendMatchReminders, sendResultReminders, settleDueMatches } from "./scheduled";
@@ -30,6 +31,7 @@ export const JOBS: Record<string, () => Promise<unknown>> = {
   "run-matchmaker": () => runMatchmaker(),
   "expire-scheduling": () => expireScheduling(),
   "advance-vetos": () => advanceVetos(),
+  "expire-venue-invites": () => expireVenueInvites(),
 };
 
 /** Zeitplan (Cron, UTC). Läuft über pg-boss, siehe instrumentation.ts. */
@@ -51,6 +53,7 @@ export const SCHEDULE: Record<string, string> = {
   "run-matchmaker": "* * * * *",
   "expire-scheduling": "*/5 * * * *",
   "advance-vetos": "* * * * *",
+  "expire-venue-invites": "23 3 * * *", // Adresse abgelaufener Hallen-Einladungen 30 Tage nach Ablauf leeren (R1)
   "close-city-challenge": "30 5 1 * *", // am 1. jedes Monats den Vormonat festschreiben
 };
 
