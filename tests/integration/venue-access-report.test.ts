@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { Pool } from "pg";
@@ -5,7 +6,7 @@ import { formatReport, venueAccessReport } from "../../scripts/lib/venue-access-
 import { db } from "@/db";
 import { matches, users } from "@/db/schema";
 import { matchHallRequests } from "@/db/schema-matchmaking";
-import { venues } from "@/db/schema-finance";
+import { venueAccess, venues } from "@/db/schema-finance";
 import { cleanup, grantVenueAccess, makeMatch, makeUser } from "./helpers";
 
 // 011 M1 Migrationsbericht: nur lesend, nennt die Hallen ohne aktiven Zugang mit Grund und offenen Anfragen, nie E-Mail-Adressen.
@@ -59,6 +60,7 @@ describe("Migrationsbericht venue-access-report", () => {
     expect(text).toContain("Grund: admin");
     expect(text).toContain("Achtung: 1 offene Hallenanfrage");
     expect(text).toContain("gesperrtem Betreiber-Konto");
+    expect(text).toContain("nach der Antwortfrist (12 Stunden) werden sie abgelehnt");
     expect(text).not.toContain("@"); // keine E-Mail-Adressen
     expect(text).not.toContain(vOk.id);
   });
@@ -71,6 +73,25 @@ describe("Migrationsbericht venue-access-report", () => {
     const rows = mine(await venueAccessReport(pool, { predict: true }), [vAdmin.id, vOk.id]);
     expect(rows.find((r: Row) => r.id === vAdmin.id)?.geaendert).toBe(true);
     expect(rows.find((r: Row) => r.id === vOk.id)?.geaendert).toBe(false);
+  });
+
+  it("verwaist (Konto fehlt), sonst mit offener Einladung; Vorhersage verwaist/anonymisiert", async () => {
+    const plain = await makeUser("rplain");
+    const gone = await makeUser("rgone2");
+    await db.update(users).set({ email: `geloescht-${gone.id}@geloescht.invalid` }).where(eq(users.id, gone.id));
+    const vOrphan = await venue("orphan", randomUUID()); // manager_user_id ohne Fremdschlüssel: Konto existiert nicht
+    const vPlain = await venue("plain", plain.id);
+    const vAnon = await venue("anon2", gone.id);
+    await db.insert(venueAccess).values({ venueId: vPlain.id, invitedEmail: "x@test.local", status: "invited" });
+    const ids = [vOrphan.id, vPlain.id, vAnon.id];
+    type R = Row & { grund: string; einladungOffen: boolean };
+    const rows = mine(await venueAccessReport(pool), ids) as R[];
+    expect(rows.find((r) => r.id === vOrphan.id)).toMatchObject({ grund: "verwaist", geaendert: true });
+    expect(rows.find((r) => r.id === vPlain.id)).toMatchObject({ grund: "sonst", einladungOffen: true, geaendert: true });
+    const pred = mine(await venueAccessReport(pool, { predict: true }), ids) as R[];
+    expect(pred.find((r) => r.id === vOrphan.id)).toMatchObject({ grund: "verwaist", geaendert: true });
+    expect(pred.find((r) => r.id === vAnon.id)).toMatchObject({ grund: "anonymisiert", geaendert: true });
+    expect(pred.find((r) => r.id === vPlain.id)?.geaendert).toBe(false);
   });
 
   it("schreibt nichts: Sitzung READ ONLY", async () => {

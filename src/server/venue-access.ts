@@ -184,6 +184,7 @@ export async function expireVenueInvites(now: Date = new Date(), limit = 100): P
       .orderBy(asc(venues.id))
       .for("update", { skipLocked: true });
     if (locked.length === 0) return 0;
+    // invited_at-Bedingung auch im UPDATE: Verteidigungsschicht gegen eine Neu-Einladung, die zwischen Auswahl und Sperre eintrifft (nur per Rennen testbar)
     const rows = await tx
       .update(venueAccess)
       .set({ status: "revoked", revokedAt: now, invitedEmail: null })

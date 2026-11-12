@@ -54,6 +54,6 @@ export function formatReport(rows) {
     for (const r of info) lines.push(`  - ${r.id}  ${r.name} (${r.city})`);
   }
   const open = changed.reduce((n, r) => n + r.offeneAnfragen, 0);
-  if (open > 0) lines.push(`Achtung: ${open} offene Hallenanfrage(n) laufen bis zur Antwortfrist (12 Stunden) und gelten danach als belegt: Migration außerhalb offener Anfragen ausführen oder vorher neu einladen.`);
+  if (open > 0) lines.push(`Achtung: ${open} offene Hallenanfrage(n) (gleiche Definition wie pendingHallInquiries: pending, Spiel in der Hallenphase der Lobby). Die Migration wandelt sie NICHT in unmanaged um; ohne Zugang kann niemand antworten, nach der Antwortfrist (12 Stunden) werden sie abgelehnt (veto.ts). Migration außerhalb offener Anfragen ausführen oder vorher neu einladen.`);
   return lines.join("\n");
 }
