@@ -431,6 +431,38 @@ describe("Webhook-Zuordnung ueber die Versuche (Backlog 42)", () => {
   });
 });
 
+describe("Fehlerisolation je Zeile", () => {
+  it("wirft die Drehung bei EINER Zeile (Datenbankfehler/Lock-Timeout), laufen die anderen weiter; der naechste Lauf holt die erste nach", async () => {
+    const first = await failedGame();
+    await changeCard(first);
+    // derselbe Nutzer sitzt in einem zweiten Spiel, ebenfalls fehlgeschlagen im Fenster (Kandidaten ueber userId eingegrenzt)
+    const second = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
+    await db.insert(matchParticipants).values({ matchId: second.match.id, userId: first.u.id, teamId: second.home.id, cardStatus: "card_ready" });
+    await db.insert(paymentCharges).values({ matchId: second.match.id, userId: first.u.id, amountCents: 800, status: "failed", failureCode: "card_declined", graceUntil: new Date(Date.now() + 3_600_000), idempotencyKey: `charge:${second.match.id}:${first.u.id}`, paymentIntentId: nid("pi_gt2") });
+    const secondRow = async () => (await db.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, second.match.id), eq(paymentCharges.userId, first.u.id))))[0];
+
+    const original = db.transaction.bind(db);
+    let calls = 0;
+    (db as unknown as { transaction: unknown }).transaction = ((fn: never, cfg: never) => {
+      calls += 1;
+      if (calls === 1) return Promise.reject(new Error("Lock-Timeout (Test)")); // die erste Drehung scheitert
+      return (original as (f: never, c: never) => Promise<unknown>)(fn, cfg);
+    }) as never;
+    let started = -1;
+    try {
+      started = await retryChargesInWindow({ userId: first.u.id });
+    } finally {
+      (db as unknown as { transaction: unknown }).transaction = original;
+    }
+    expect(started).toBe(1); // die zweite Zeile wurde trotzdem gedreht und gesendet
+    expect(await rowOf(first)).toMatchObject({ status: "failed", currentAttempt: 1 });
+    expect(await secondRow()).toMatchObject({ status: "succeeded", currentAttempt: 2 });
+
+    expect(await retryChargesInWindow({ userId: first.u.id })).toBe(1); // der naechste Lauf holt die erste nach
+    expect(await rowOf(first)).toMatchObject({ status: "succeeded", currentAttempt: 2 });
+  });
+});
+
 describe("Struktur", () => {
   it("kein Netzaufruf (Suche, Abbrechen, Senden) innerhalb von db.transaction", async () => {
     let depth = 0;
@@ -447,6 +479,7 @@ describe("Struktur", () => {
       await changeCard(g);
       provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId });
       await retryChargesInWindow({ userId: g.u.id });
+      expect(provider.calls.some((c) => c.method === "retrievePaymentIntent")).toBe(true);
       expect(provider.calls.some((c) => c.method === "cancelPaymentIntent")).toBe(true);
       expect(createCalls()).toHaveLength(1);
       expect(provider.violations).toEqual([]);

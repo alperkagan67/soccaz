@@ -228,15 +228,26 @@ export async function retryChargesInWindow(opts: { userId?: string; matchId?: st
   let started = 0;
   const toSend = new Set<string>();
   for (const c of candidates) {
-    if ((await inspectKnownAttempts(c, now)) !== "go") continue;
-    // Phase 2 (Tx): Compare-and-set auf current_attempt
-    if (await rotateAttempt(c, now)) {
-      started += 1;
-      toSend.add(c.matchId);
+    // Ein Fehler bei EINER Zeile (Datenbankfehler, Lock-Timeout) stoppt die anderen nicht; der naechste Lauf holt sie nach
+    try {
+      if ((await inspectKnownAttempts(c, now)) !== "go") continue;
+      // Phase 2 (Tx): Compare-and-set auf current_attempt
+      if (await rotateAttempt(c, now)) {
+        started += 1;
+        toSend.add(c.matchId);
+      }
+    } catch (error) {
+      console.error("retryChargesInWindow: Fehler bei Zeile", c.id, error instanceof Error ? error.name : "Fehler");
     }
   }
 
-  // Phase 3 (Netz): die neuen pending-Versuche gehen den normalen Weg (Beanspruchen mit Lease, Senden, Verbuchen)
-  for (const matchId of toSend) await runCharges(matchId, now);
+  // Phase 3 (Netz): die neuen pending-Versuche gehen den normalen Weg (Beanspruchen mit Lease, Senden, Verbuchen); auch hier isoliert je Spiel
+  for (const matchId of toSend) {
+    try {
+      await runCharges(matchId, now);
+    } catch (error) {
+      console.error("retryChargesInWindow: Senden fehlgeschlagen", matchId, error instanceof Error ? error.name : "Fehler");
+    }
+  }
   return started;
 }
