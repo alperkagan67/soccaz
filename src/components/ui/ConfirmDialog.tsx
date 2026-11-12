@@ -22,11 +22,13 @@ export type ConfirmDialogProps = {
   /** Standard „Abbrechen“. */
   cancelLabel?: string;
   /** Läuft nach „Bestätigen“ (Server-Aktion, vom Server gereicht, oder Client-Funktion; der Name endet auf Action, weil Next so serialisierbare Props prüft). Ein `error` im Ergebnis (oder eine Ausnahme) bleibt im Dialog sichtbar; sonst schließt er. */
-  onConfirmAction: () => Promise<ActionState> | ActionState | void;
+  onConfirmAction: (info: { consent: boolean }) => Promise<ActionState> | ActionState | void;
   /** Unumkehrbar: Rahmen und Symbol, Abbrechen hat den Startfokus. */
   danger?: boolean;
   /** Wort, das getippt werden muss, bevor bestätigt werden kann (z. B. LÖSCHEN). */
   confirmText?: string;
+  /** Zustimmung mit Kästchen (z. B. Mandatszusatz): die Bestätigung bleibt gesperrt, bis es angehakt ist. Der Text kommt von der Seite (Rechtstext nie fest in der Komponente). `onConfirmAction` bekommt `{ consent: true }`. */
+  consent?: { label: string };
 };
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
@@ -38,15 +40,16 @@ function errorText(result: ActionState | void): string | undefined {
   return fields.length > 0 ? fields.join(" ") : undefined;
 }
 
-export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel, cancelLabel, onConfirmAction, danger = false, confirmText }: ConfirmDialogProps) {
+export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel, cancelLabel, onConfirmAction, danger = false, confirmText, consent }: ConfirmDialogProps) {
   const id = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
   const [typed, setTyped] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const t = (key: MessageKey, vars?: Record<string, string>) => translate(DEFAULT_LOCALE, key, vars);
-  const mayConfirm = !confirmText || typed.trim() === confirmText;
+  const mayConfirm = (!confirmText || typed.trim() === confirmText) && (!consent || agreed);
 
   function open(target: HTMLElement) {
     const dialog = dialogRef.current;
@@ -54,9 +57,10 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
     opener.current = target;
     setError(undefined);
     setTyped("");
+    setAgreed(false);
     dialog.showModal();
     // Startfokus: bei `danger` Abbrechen (die sichere Wahl), mit Bestätigungswort das Eingabefeld, sonst die Bestätigung
-    const start = danger ? '[data-role="cancel"]' : confirmText ? "input" : '[data-role="confirm"]';
+    const start = danger ? '[data-role="cancel"]' : confirmText ? "input[type=text]" : consent ? "input[type=checkbox]" : '[data-role="confirm"]'; // die gesperrte Bestätigung nähme keinen Fokus
     dialog.querySelector<HTMLElement>(start)?.focus();
   }
 
@@ -69,7 +73,7 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
     setPending(true);
     setError(undefined);
     try {
-      const message = errorText(await onConfirmAction());
+      const message = errorText(await onConfirmAction({ consent: Boolean(consent) && agreed }));
       if (message) setError(message);
       else close();
     } catch {
@@ -128,6 +132,12 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
               <span className="text-muted">{t("ui.confirmConsequence")}: </span>
               {consequence}
             </p>
+          )}
+          {consent && (
+            <label htmlFor={`${id}-consent`} className="flex min-h-[var(--tap)] cursor-pointer items-start gap-3 rounded-lg border border-line px-3 py-2 text-sm" data-testid="confirm-consent">
+              <input id={`${id}-consent`} type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} required className="ui-focus mt-0.5 size-5 shrink-0 accent-[var(--accent)]" />
+              <span>{consent.label}</span>
+            </label>
           )}
           {confirmText && (
             <div className="space-y-1">

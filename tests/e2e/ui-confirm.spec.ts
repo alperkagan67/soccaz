@@ -121,6 +121,38 @@ test.describe("ConfirmDialog: Inhalt, Bestätigen, Fehler", () => {
     await expect(confirm).toBeDisabled();
   });
 
+  test("Zustimmung: ohne Häkchen gesperrt, per Tastatur anhakbar, Aktion bekommt consent=true, beim nächsten Öffnen wieder leer", async ({ page }) => {
+    await open(page);
+    await trigger(page, "Anteil übernehmen").click();
+    const dlg = dialogOf(page, "Anteil von Alex übernehmen?");
+    const confirm = dlg.getByRole("button", { name: "Anteil übernehmen" });
+    const box = dlg.getByRole("checkbox", { name: /Ich stimme zu, dass Soccaz/ });
+    await expect(dlg.getByTestId("confirm-consequence")).toContainText("zusammen 12,00 €"); // Betrag bleibt sichtbar
+    await expect(box).toBeFocused(); // Startfokus bei Zustimmung (die gesperrte Bestätigung nähme keinen Fokus)
+    await expect(box).not.toBeChecked();
+    await expect(confirm).toBeDisabled();
+    await page.keyboard.press("Space"); // Tastatur genügt
+    await expect(box).toBeChecked();
+    await expect(confirm).toBeEnabled();
+    await page.keyboard.press("Space");
+    await expect(confirm).toBeDisabled(); // Häkchen weg: wieder gesperrt
+    await page.keyboard.press("Space");
+    await confirm.click();
+    await expect(dlg).toBeHidden({ timeout: 15_000 });
+    await expect(page.getByTestId("confirm-result")).toContainText("Anteil übernommen (Zustimmung: ja)");
+    await trigger(page, "Anteil übernehmen").click(); // jede Zustimmung gilt nur für einen Vorgang
+    await expect(box).not.toBeChecked();
+    await expect(confirm).toBeDisabled();
+    // Fokus-Falle schließt das Kästchen ein: Tab durchläuft Kästchen, Abbrechen, Bestätigung (bei gesperrter Bestätigung nur die zwei ersten)
+    const seen = new Set<string>();
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press("Tab");
+      expect(await insideDialog(page)).toBe(true);
+      seen.add(await page.evaluate(() => document.activeElement?.getAttribute("type") ?? document.activeElement?.textContent?.trim() ?? ""));
+    }
+    expect(seen.has("checkbox")).toBe(true);
+  });
+
   test("Fehler der Aktion erscheint im Dialog (role=alert), der Dialog bleibt offen, der Knopf ist wieder bedienbar", async ({ page }) => {
     await open(page);
     await trigger(page, "Lobby verlassen").click();

@@ -96,4 +96,29 @@ describe("ConfirmDialog (M2-3b)", () => {
     expect(d).toContain("max-h-[calc(100dvh-2rem)]");
     expect(d).toContain("backdrop:bg-black/70");
   });
+
+  it("Zustimmung: Kästchen mit Beschriftung von der Seite (label[for] = id), Bestätigung gesperrt, Text nicht fest in der Komponente", () => {
+    const d = dialog(html({ consent: { label: "Ich stimme dem Zusatz zu." } }));
+    const forId = /<label for="([^"]+)"/.exec(d)?.[1];
+    expect(forId).toBeTruthy();
+    expect(d).toMatch(new RegExp(`<input id="${forId}" type="checkbox"`));
+    expect(d).toContain("Ich stimme dem Zusatz zu.");
+    expect(d).toMatch(/<button[^>]*disabled=""[^>]*>Spieler entfernen<\/button>/); // ohne Häkchen gesperrt
+    expect(d).not.toMatch(/checked/); // Ausgangszustand: nicht angehakt
+    expect(d).toContain("min-h-[var(--tap)]"); // Tippziel >= 44 px (ganze Zeile klickbar)
+  });
+
+  it("ohne consent: kein Kästchen, Bestätigung nicht durch eine Zustimmung gesperrt", () => {
+    const d = dialog(html());
+    expect(d).not.toContain('type="checkbox"');
+    expect(d).not.toContain("confirm-consent");
+    expect(d).not.toMatch(/<button[^>]*disabled=""[^>]*>Spieler entfernen/);
+  });
+
+  it("Zustimmung und Bestätigungswort zusammen: beides nötig, Wort-Feld bleibt ein Textfeld", () => {
+    const d = dialog(html({ consent: { label: "Zustimmung" }, confirmText: "LÖSCHEN" }));
+    expect(d).toContain('type="checkbox"');
+    expect(d).toContain('type="text"');
+    expect(d).toMatch(/<button[^>]*disabled=""[^>]*>Spieler entfernen<\/button>/);
+  });
 });
