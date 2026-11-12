@@ -13,6 +13,7 @@ import { audit } from "./audit";
 import { requireLoggedIn, requireUser } from "./session";
 import { InsufficientFunds } from "./ledger";
 import * as lobby from "./lobby";
+import { releaseOwnCover, takeOverAndNotify } from "./payments/cover-flow";
 import { adminCancelMatch } from "./payments/refund";
 import * as results from "./results";
 import { NOTIFICATION_TYPES } from "@/lib/notification-types";
@@ -310,4 +311,22 @@ export async function markNoShowAction(matchId: string, userId: string, value: b
     throw error;
   }
   revalidatePath(`/spiele/${matchId}`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// "Anteil übernehmen" (Vertrag 012, M3c-3b). Der Übernehmer (payerId) ist IMMER der angemeldete Nutzer aus der Sitzung (lobbyAction), nie ein Wert vom Client. Die Einwilligung zum
+// Mandatszusatz wird SERVERSEITIG erzwungen (takeOverShare lehnt consent !== true ab); der Client schickt nur das Häkchen, nie den Text. Benachrichtigung erst nach dem Erfolg.
+// ---------------------------------------------------------------------------------------------
+
+export async function takeOverShareAction(matchId: string, targetUserId: string, consent: boolean) {
+  return lobbyAction(matchId, async (id) => {
+    await takeOverAndNotify(id, matchId, targetUserId, consent === true);
+  });
+}
+
+/** Zurücknehmen: nur die EIGENE Übernahme der Sitzung; es gibt kein Ziel-Argument vom Client (der Platz kommt aus der Datenbank). */
+export async function releaseCoverAction(matchId: string) {
+  return lobbyAction(matchId, async (id) => {
+    await releaseOwnCover(id, matchId);
+  });
 }

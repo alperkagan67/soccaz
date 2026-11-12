@@ -277,11 +277,34 @@ export async function retryChargesInWindow(opts: { userId?: string; matchId?: st
   // Phase 3 (Netz): die neuen pending-Versuche gehen den normalen Weg (Beanspruchen mit Lease, Senden, Verbuchen); auch hier isoliert je Spiel
   for (const matchId of toSend) {
     if (overBudget()) break;
-    try {
-      await runCharges(matchId, now);
-    } catch (error) {
-      console.error("retryChargesInWindow: Senden fehlgeschlagen", matchId, error instanceof Error ? error.name : "Fehler");
+    // Der Versand beansprucht die Zeile mit FOR UPDATE SKIP LOCKED. Haelt in diesem Moment eine ANDERE Transaktion die Zeile (z. B. ein paralleler Lauf, der gerade seine Drehung als Verlierer pruefte, oder ein
+    // Webhook), ueberspringt der Versand sie und der neue Versuch bliebe bis zum naechsten Job-Lauf (5 Minuten) liegen (Flake in CI, Run 43188949490). Darum: ist nach dem Versand noch ein nie gesendeter
+    // pending-Versuch uebrig, kurz warten und hoechstens noch dreimal versuchen (Gesamtwartezeit unter 1 Sekunde).
+    for (let attempt = 0; attempt <= SEND_RETRIES; attempt++) {
+      try {
+        await runCharges(matchId, now);
+        // Entschieden wird NUR ueber den Zustand: ein Lauf kann eine Zeile senden und eine andere (gesperrte) ueberspringen; `attempted > 0` waere dafuer kein Beweis
+        if (!(await hasUnsentPending(matchId))) break;
+      } catch (error) {
+        console.error("retryChargesInWindow: Senden fehlgeschlagen", matchId, error instanceof Error ? error.name : "Fehler");
+        break;
+      }
+      if (attempt < SEND_RETRIES) await new Promise((r) => setTimeout(r, SEND_RETRY_WAIT_MS * (attempt + 1)));
     }
   }
   return started;
+}
+
+/** Wie oft der Versand nach einem uebersprungenen (gesperrten) Versuch noch wiederholt wird, und die Basiswartezeit (100, 200, 300 ms). */
+export const SEND_RETRIES = 3;
+export const SEND_RETRY_WAIT_MS = 100;
+
+/** Gibt es in diesem Spiel einen pending-Versuch, der nie gesendet wurde (kein PaymentIntent, kein Sendestart)? */
+async function hasUnsentPending(matchId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: paymentCharges.id })
+    .from(paymentCharges)
+    .where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.status, "pending"), isNull(paymentCharges.paymentIntentId), isNull(paymentCharges.attemptStartedAt), isNull(paymentCharges.resolution)))
+    .limit(1);
+  return rows.length > 0;
 }
