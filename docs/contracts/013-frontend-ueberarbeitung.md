@@ -28,6 +28,32 @@ Der Nutzer hat G1 für diesen Vertrag erteilt, mit diesen Bedingungen und Entsch
 - Ligen, Profitag und Stadt-Challenge sind ZURÜCKGESTELLT und AUSGEBLENDET (nicht verlinken, Stadt-Challenge auf `/rangliste` ausblenden), aber NICHT GELÖSCHT (die Firmenliga aus 014 kann darauf aufbauen).
 - Degradiertes oder Blockiertes (Klassifizierer, Impeccable, Playwright) geht sofort als `NEEDS-USER`, spätestens nach 15 Minuten.
 
+### Sichtbarkeitsmatrix Rolle × Datenfeld (Produktfrage 3, vom Nutzer bestätigt; Eintrag 2026-11-12)
+Eine Regel für Lobby, Spielsuche und Kader. Zwei Begriffe von „Gast“ (Entscheid t9): Für Namen, Elo und Position heißt Gast „nicht angemeldet“; für den Zahlstatus je Person heißt Gast „keine Teilnahme am Spiel“. Stand der Tabelle: **Soll**; wo die Zelle auf `origin/main` (114ddcc) noch nicht gilt, steht „Soll ab M2b“ (Code auf `feat/m2b-look`, noch nicht gemergt). Die Entscheidung fällt auf dem Server; der Browser bekommt nie den Rohstatus oder den Fehlercode. Code: `src/lib/card-visibility.ts` (`audienceFor`, `canSeeAnyStatus`), `src/app/lobby/[id]/page.tsx`.
+
+| Datenfeld | Gast (nicht angemeldet) | Angemeldet, keine Teilnahme | Mitspieler | Betroffener (der eigene Platz) | Captain/Veranstalter/Admin des Teams, Plattform-Admin |
+|---|---|---|---|---|---|
+| Plätze und Bereitschaft als Zahlen („3 von 6 Plätzen“, „2 von 4 bereit“) | ja | ja | ja | ja | ja |
+| Initialen statt Name | ja (nur das) | nein, Namen | nein, Namen | nein, Namen | nein, Namen |
+| Name, Elo, Position je Person | nein | ja | ja | ja | ja |
+| Team-Elo und Team-Spielstärke (nicht pro Person; `lobby/[id]/page.tsx:410`, Kopfzeile der Teamkarte) | ja | ja | ja | ja | ja |
+| Kartenstatus je Person | nichts | nichts | nur neutral: „Zahlung ausstehend“ (deckt „fehlgeschlagen“ und „keine Karte“ ab) oder „gedeckt“ bzw. „Karte hinterlegt“; nie der Grund | echter Status; bei gültiger Übernahme `card_ready` mit „gedeckt“ (`card-visibility.ts:22`) | echter Status (Captain sieht bei Übernahme den echten Status) |
+| Fehlerzustand „Abbuchung fehlgeschlagen“ mit Grund und Weg „Karte ändern“ | nein | nein | nein (nur „Zahlung ausstehend“) | ja | ja (je betroffene Person mit Grund) |
+| Bereit-Badge je Person (**Soll ab M2b**: „Bereit“, „Noch nicht bereit“; „Bereit, Zahlung offen“ nur wo der echte Status sichtbar ist). Stand main: im Kartenmodus nur die Ampel `CardLight` aus `cardDisplays` (für Gast und Nichtteilnehmer `null`); der Altmodus zeigt über `canSeeLights` die `PlayerLight` mit „Bereit“ / „Bereit und bezahlt“ | nein | nein | ja (ohne „Zahlung offen“) | ja | ja |
+| Ampel-Legende | nein | nein | ja | ja | ja |
+| Eintrag „Abbuchung fehlgeschlagen“ in der Legende (**Soll ab M2b**; auf main zeigt `CardLightLegend` immer dieselben `CARD_LEGEND`-Einträge) | nein | nein | nein | ja, wenn der eigene Platz betroffen ist | ja, wenn es einen betroffenen Platz gibt |
+
+Regeln dazu:
+- Soll ab M2b: Der Bereit-Badge hängt an `canSeeLights` (`canSeeAnyStatus`): angemeldet und (Teilnahme oder Plattform-Admin oder Admin eines der Teams). Gäste und Fremde sehen ihn nie. Ist-Stand main: `canSeeLights` schaltet nur die `PlayerLight` des Altmodus; im Kartenmodus entscheidet allein `cardDisplays` (für Gast und Nichtteilnehmer `null`).
+- Kartenstatus: Dritte sehen nie den Grund; bei „gedeckt“ ist die Folge, dass Dritte erkennen, dass der Platz keine eigene Karte hatte, bewusst angenommen (`begriffe.md` Entscheid 11).
+- Soll ab M2b: Die Legende nennt „Abbuchung fehlgeschlagen“ nur, wenn der Betrachter diesen Zustand an einer Zeile sehen darf.
+- Prüfung: Tests je Rolle auf Seite und Live-Kanal (SSE) und RSC-Nutzlast, nicht nur auf das sichtbare HTML (012 AC-12/AC-20).
+
+### Entscheide zu AC-5-Konflikten (Auftrag t1d, 2026-11-12)
+AC-5 („Keine URL und keine Test-ID geändert, alle bisherigen E2E grün“) gilt weiter; Texte, die ein bestehender Test per Namen bindet, ändern sich deshalb nur zusammen mit dem Test. Daraus folgt für M2b:
+- „Ja, mein Team ist komplett: Spiel bestätigen“ (`payments.spec.ts:284,286`, `privatspiel.spec.ts:395`, `uebersicht.spec.ts:41,46`), „Karte ändern“ (`karte-privatsphaere.spec.ts:229`, `card-fail-notify.test.ts:70`) und „Anmelden und beitreten“ (`team-invite.spec.ts:33`) bleiben bis M3 unverändert. Die Wortwahl-Umstellung geschieht zusammen mit den Tests in M3.
+- Das Duplikat „Lobby aufmachen“ im Schnellzugriff von `/app` entfällt mit `AppNav` (M3); bis dahin bleibt es, weil `basics.spec.ts:38-39` es für neue Nutzer prüft (Backlog 76).
+
 ## Annahmen (Orchestrator-Vorschlag)
 - `DESIGN.md` wird in M2 komplett auf Richtung E umgeschrieben (Frontmatter, Tokens, Beispiele); der Ist-Stand-Teil entfällt.
 - Teststrategie: bestehende `data-testid` und URLs bleiben; neue Elemente bekommen Test-IDs nach vorhandenem Muster.
