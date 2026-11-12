@@ -1,9 +1,53 @@
 # M3-Plan: Navigation und Einstieg (Vertrag 013, M3)
-Stand: 2026-11-11 · Code-Stand `origin/main` 31e0aa2 · Verfasser: worker-4 (Plan, Doku, kein Code) · Status: Entwurf, Review offen
+Stand: v2 2026-11-12 (v1 2026-11-11) · Code-Stand `origin/main` a6b0824 (v1: 31e0aa2) · Verfasser: worker-4 (v1), worker-2 (v2: Stand nach M3c und M2b, Aufnahmeliste, AC-5-Freigaben; Plan, Doku, kein Code) · Status: Entwurf, Review offen
 
 Zweck: Plan für M3 (Umbauplan: 8 bis 10 Task-Tage): Navigation (`AppNav`), Start, Spiel suchen, Meine Spiele (`/app`), Lobby (Dein Stand, Hauptaktion, Captain-Leiste, Fehlerzustand), Neuling/Einladung/Onboarding, Turnierliste. Der Plan ändert keinen Code und keinen Vertrag. **Er trifft keine eigenen Entscheide; F1 (Leiste) ist von t9 entschieden und eingearbeitet, die übrigen offenen Punkte stehen als Fragen in Abschnitt 10.3.**
 
 Quellen: `docs/design/umbauplan-013.md` (Abschnitt 2 und M3-Zeile, Branch `docs/013-freigabe`), Vertrag 013 (AC-1 bis AC-15, Meilenstein M3), Vertrag 007 (AC-1 bis AC-4: Leiste, „Meine Spiele“, Begriffe), `docs/design/analyse-frontend-verdichtung.md` (Cluster K06, K08, K11, K12, K14; Top-30-Funde), die Funde der Analysen X/Y1/Y2 mit den im Text genannten IDs, `docs/design/begriffe.md` (Branch `docs/begriffe-entwurf`, Entscheide 1 bis 10 von t9), `docs/design/m2-komponenten-plan.md` (M2-2/M2-3), `docs/design/m2b-und-m2-5-plan.md` (M2b, M2-5), Backlog 58 und 63.
+
+## 0. Neu in v2: Stand nach M3c und M2b, Aufnahmeliste, Freigaben
+
+### 0.1 Stand (Code `origin/main` a6b0824, 2026-11-12)
+- **Auf main:** 012 M3c-1 bis M3c-3b (Nachzahlfenster und Wiederabbuchen, Nachrücker und Auto-Absage, 3-D-Secure-Freigabe, Anteil übernehmen mit Server, Migration 0041 und Oberfläche `CoverShare.tsx`), Härtungen 3, Doku-Sammel 2 und 3 (u. a. Sichtbarkeitsmatrix und AC-5-Entscheide in Vertrag 013, Admin-Absage in Vertrag 009).
+- **Noch nicht auf main:** M2b (`feat/m2b-look`: Lobby mit „Dein Stand“, einer Hauptaktion je Rolle, Frist aus `wallet.lobbyDeadline`, Bereit-Badge, Fehlerblock mit einem `role=alert`; zuletzt 6d7de87, Review R-T194 ohne Befund), 012 M3c-3c (Nachricht bei Verfall der Übernahme, Backlog 73), 012 M4 (`feat/charge-m4b`), M5, M6a. Die Bedingungen aus Abschnitt 1.1 gelten unverändert: M3 beginnt erst nach M5 und M6a.
+- Folge für M3-3: Der Aufbau der Lobby aus Abschnitt 4 setzt auf M2b auf und vervollständigt ihn; er beginnt nicht von vorn. Vor dem Start ist der Stand von `feat/m2b-look` gegen main zu prüfen (Konflikte in `LobbyClient.tsx`, `page.tsx`, `lobby.ts`).
+
+### 0.2 Was M3 aufnimmt (zugewiesen, mit Quelle)
+| Thema | Task | Quelle | Anmerkung |
+|---|---|---|---|
+| `AppNav` (Leiste nach 007 AC-1) | M3-1 | Abschnitt 2, Backlog 75 (Orange-Regel für Header „Anmelden“ und Mittelknopf) | unverändert zu v1, Orange-Regel kommt hinzu |
+| Duplikat „Lobby aufmachen“ im Schnellzugriff von `/app` entfällt mit `AppNav` | M3-1 (Navigation) und M3-2 (`/app`) | Backlog 76, Vertrag 013 (AC-5-Entscheide) | `basics.spec.ts:38-39` prüft den Link für neue Nutzer: Freigabe nötig (0.4) |
+| „Preis bestätigen“ statt „Ja, mein Team ist komplett: Spiel bestätigen“ | M3-3 | `begriffe.md` Entscheid 8, Abschnitt 4.2 | Knopftext ist per Test gebunden: Freigabe nötig (0.4) |
+| Native `confirm()` → `ConfirmDialog` | M3-3 (Lobby), übrige Stellen siehe F12 | Backlog 81; Stellen auf main: `LobbyClient.tsx:135,233`, `ActionButton.tsx:16` (Prop `confirm`), `AcceptSearch.tsx:36`, `suche/[id]/CancelButton.tsx:15`, `admin/teams/TeamActions.tsx:34` | Tests mit `page.on("dialog")` müssen den Dialog-Knopf klicken: Freigabe nötig (0.4) |
+| „gegen“ statt „VS.“ | M3-3 (`lobby/[id]/uebersicht/page.tsx:50`), M3-2 (`MyGames.tsx:24`); Lobby-Überschrift `page.tsx:182` siehe F11 | `begriffe.md` 3.2 (Ausnahme: Lobby-Überschrift behält „VS.“ bis M3) | `community.spec.ts:45` bindet „VS.“ per Text: Freigabe nötig (0.4) |
+| i18n: feste deutsche Texte → Schlüssel in `src/lib/i18n.ts` | M3-1 bis M3-5 je Teilbereich | Backlog 77 (`GameModes`, `MyGames`, `BoardSection`, `LobbyBoard`) und 79 (`lobby/[id]/*`) | `i18n.ts` bleibt gemeinsame Datei: ein Commit je Task (Frage F6) |
+| Weitere Lobby-Backlogs | M3-3 | Backlog 80 (`PlayerLight` auf Tokens), 82 (Texte für Nicht-Mitglieder), 83 (Kader früher am Handy), 84 (Siegchance als Balken), 85 (Stepper-Schritte; im Kartenmodell heißt der Schritt „Karte hinterlegen“), 86 (`text-xs` bei Pflichtangaben) | je Eintrag vor dem Start gegen den Stand von M2b prüfen; M2b hat einen Teil schon erledigt |
+| Sichtbarkeitsmatrix Rolle × Datenfeld | M3-3 (Lobby), M3-5 (Turniere) | Vertrag 013, Abschnitt Sichtbarkeitsmatrix | Soll-Stand ab M2b; Tests je Rolle auf HTML, RSC-Nutzlast und Live-Kanal |
+
+### 0.3 Reihenfolge in v2
+1. **Vor M3-1:** M2b gemergt (Look-Abnahme), 012 M5 und M6a durch (Abschnitt 1.1).
+2. **M3-1** allein (gemeinsame Dateien, Abschnitt 1.3): `AppNav`, Link-Modell, Header/BottomNav/Footer. Das Duplikat „Lobby aufmachen“ fällt in der Navigation weg, auf `/app` selbst erst mit M3-2.
+3. **M3-3 ‖ M3-4** (höchstens 2 Writer): M3-3 enthält jetzt zusätzlich „Preis bestätigen“, `ConfirmDialog` in der Lobby, „gegen“ und die Lobby-Backlogs 79 bis 86. Der Aufwand von 2 bis 2,5 Tagen (Abschnitt 10.1) ist damit zu knapp; die Posten sind vor dem Start einzeln zu schätzen.
+4. **M3-2 ‖ M3-5**, dann **M3-6** (Abnahme) wie in Abschnitt 7.
+5. **Freigaben (0.4) vor dem jeweiligen Task beantragen**, nicht erst beim Review: Ohne sie bleibt der Task wegen AC-5 stehen.
+
+### 0.4 AC-5-Freigaben, die M3 braucht (Beschluss durch t9 bzw. den Nutzer; bis dahin gilt AC-5)
+Vertrag 013 AC-5: „Keine URL und keine Test-ID geändert, alle bisherigen E2E grün.“ Texte, die ein Test per Namen bindet, ändern sich nur zusammen mit dem Test. Entschieden ist bereits, dass die Texte bis M3 unverändert bleiben (Vertrag 013, AC-5-Entscheide). Für M3 wird beantragt:
+
+| Test (Stelle) | gebundener Text | geplante Änderung | Task |
+|---|---|---|---|
+| `payments.spec.ts:284,286`, `privatspiel.spec.ts:395`, `uebersicht.spec.ts:41,46` | Knopf „Ja, mein Team ist komplett: Spiel bestätigen“ (`uebersicht`: Regex `/Spiel bestätigen/`) | „Preis bestätigen“ (`begriffe.md` Entscheid 8) | M3-3 |
+| `basics.spec.ts:39` | Link „Lobby aufmachen“ im Schnellzugriff `/app` für neue Nutzer | Eintrag entfällt mit `AppNav` (Backlog 76); der Test ändert die Linkliste | M3-2 |
+| `community.spec.ts:45` | Text „VS.“ | nur falls F11 mit „ja“ entschieden wird (sonst bleibt der Test) | M3-3 |
+| Tests mit `page.on("dialog")` bzw. `once("dialog")` auf Lobby-Aktionen. Kandidaten: `privatspiel.spec.ts:81,218,309,374,458`, `teamspiel-ablauf.spec.ts:58`, `payments.spec.ts:242`, `matchmaking.spec.ts:66,74,262`, `community.spec.ts:31`, `request.spec.ts:136`; je Stelle prüfen, ob sie „Lobby verlassen“ oder „Spieler entfernen“ bestätigen | nativer Dialog („Wirklich abmelden?“, „Spieler entfernen?“) | ConfirmDialog: der Test klickt den Bestätigen-Knopf des Dialogs | M3-3 |
+| `team-invite.spec.ts:33` („Anmelden und beitreten“), `karte-privatsphaere.spec.ts:229` und `card-fail-notify.test.ts:70` („Karte ändern“) | Knopf- bzw. Nachrichtentext | Vorschlag: bleiben unverändert (Begriff „Karte ändern“ ist entschieden, Entscheid 5); eine Freigabe ist nur nötig, falls ein Task sie trotzdem ändert | – |
+
+Test-IDs und URLs bleiben in allen Fällen. Jede Änderung eines Tests steht im PR einzeln mit Grund (AC-5).
+
+### 0.5 Neue offene Fragen in v2
+- **F11:** Wird die Lobby-Überschrift „VS.“ (`page.tsx:182`) in M3 zu „gegen“ (dann `community.spec.ts:45` mitändern), oder bleibt das Zeichen als Gestaltungselement? (`begriffe.md` 3.2 nennt es bis M3 als Ausnahme.)
+- **F12:** Übernimmt M3-5 die übrigen `window.confirm`-Stellen (`AcceptSearch`, `CancelButton`, `TeamActions`, `ActionButton`-Prop), oder ein eigener Mini-Task vor M3-3?
+- **F13:** M3-3 baut nur das Kartenmodell (Abschnitt 1.1). Bleibt das nur dann tragfähig, wenn M6a vor M3 durch ist; falls M6a später kommt, braucht M3-3 für den Altpfad (`!cardOn`) eine Übergangsregel.
 
 ## 1. Rahmen
 
@@ -108,7 +152,7 @@ Aufbau und Zeilen siehe `m2b-und-m2-5-plan.md` B2.2: `h1` `:147`, Schritt-Chips 
 - **Y1-CD-03 beheben:** `page.tsx:238` und `:286` zu einer Aussage: „Findet statt, sobald in beiden Teams mindestens 4 bereit sind“ (Stufe 1) und „Preis steht fest, sobald beide Captains bestätigen“ (Stufe 2), Knopf „Preis bestätigen“ (`FinalConfirm.tsx:8-14`, Entscheid 8).
 - Texte: `mygame.ts:60` „Findet statt (Preis folgt)“; Benachrichtigung `match.confirmed` (`lobby.ts` ca. 249) „Spiel bestätigt“ wird „Spiel findet statt“ (Umbauplan M3).
 - Schritte als Fortschrittsanzeige ohne Knopfoptik (Y1-GM-04); Kader mit `StatusBadge`, Dritte neutral; „(du)“ im Kader (Y1-SD-02).
-- Native `confirm()` (`LobbyClient.tsx:113,211`) → `ConfirmDialog` („Lobby verlassen“, „Spieler entfernen“).
+- Native `confirm()` (auf main `LobbyClient.tsx:135,233`; v1 nannte `:113,211`) → `ConfirmDialog` („Lobby verlassen“, „Spieler entfernen“).
 - Kartenmodell only; Altpfad weg (M6a/M6b).
 
 ### 4.3 Dateien
@@ -210,7 +254,7 @@ Aufbau und Zeilen siehe `m2b-und-m2-5-plan.md` B2.2: `h1` `:147`, Schritt-Chips 
 - `i18n.ts` bleibt gemeinsame Datei: neue Schlüssel nur in einem Commit je Task, in dem die Konflikte auflösbar sind (Frage F6).
 - Reviewer ≠ Writer je Task; Review von Datei + Impeccable-Belegen.
 
-## 8. Bestehende Tests: keine AC-5-Ausnahme nötig (F1 entschieden (t9, 2026-11-11, bindend))
+## 8. Bestehende Tests: keine AC-5-Ausnahme für die Leiste nötig (F1 entschieden (t9, 2026-11-11, bindend)); Freigaben für Texte siehe 0.4
 Mit der Leiste aus 007 AC-1 bleiben alle bisherigen Tests unverändert. Der Plan hält sie als **Randbedingungen** fest:
 - `tests/e2e/basics.spec.ts:258-300` und `:303-312`: Handy-Leiste Teamspiel, Privatspiel, Spiel suchen (Mitte), Turniere, Profil; Hrefs `/matchmaking`, `/app/privatspiel/neu`, `/suche`, `/turniere`, `/app`; Touch-Ziele ≥ 44 px; Mittelknopf mittig (±6 px bei 390 px); nach Klick auf „Spiel suchen“ URL `/suche$` und Überschrift „Offene Lobbys“; Gäste: Profil → `/anmelden`, „Spiel suchen“ → `/suche$`.
 - `tests/e2e/pwa.spec.ts:62-81` (Handy: Leiste mit aktivem Eintrag, Profil → `/app` für Angemeldete, `/anmelden` für Gäste, „Turniere“) und **`:107-110` (Desktop: die Navigation „Hauptnavigation“ ist versteckt)**: Die Desktop-Leiste von F1 braucht daher einen anderen zugänglichen Namen (2.5, AC 1a).
