@@ -13,6 +13,7 @@ import { audit } from "./audit";
 import { requireLoggedIn, requireUser } from "./session";
 import { InsufficientFunds } from "./ledger";
 import * as lobby from "./lobby";
+import { adminCancelMatch } from "./payments/refund";
 import * as results from "./results";
 import { NOTIFICATION_TYPES } from "@/lib/notification-types";
 import { markAllRead, removePushSubscription, savePrefs, savePushSubscription } from "./notifications";
@@ -202,6 +203,12 @@ export async function removeParticipantAction(matchId: string, targetUserId: str
 }
 export async function cancelMatchAction(matchId: string, reason: string) {
   return lobbyAction(matchId, (id) => lobby.cancelMatch(id, matchId, reason));
+}
+/** Absage eines Spiels mit laufender oder erfolgter Kartenabbuchung (012 M3a): nur Admin 1; erstattet zuerst auf die Karten, sagt dann ab. */
+export async function adminCancelMatchAction(matchId: string, reason: string) {
+  return lobbyAction(matchId, async (id) => {
+    await adminCancelMatch(id, matchId, reason);
+  });
 }
 
 // ---------------------------------------------------------------------------------------------

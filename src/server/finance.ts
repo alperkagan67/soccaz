@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { matches, paymentCharges, paymentRefunds, users } from "@/db/schema";
 import { expenses, ledgerEntries } from "@/db/schema-finance";
 import { euroForCsv, toCsv } from "@/lib/csv";
 import { formatEuro } from "@/lib/money";
@@ -14,6 +14,34 @@ import { DomainError } from "./teams";
 
 type Row = Record<string, unknown>;
 const rowsOf = <T extends Row>(result: { rows: unknown[] }) => result.rows as T[];
+
+/** Wie lange eine angeforderte Absage offen sein darf, bevor sie als Alarm gilt. */
+export const CANCEL_ALARM_MS = 60 * 60_000;
+
+/**
+ * Alarmliste für Admin 1 (nur lesen, 012 M3a): fehlgeschlagene Erstattungen (manuell klären, z. B. charge_disputed), Erstattungen mit unbekanntem Ausgang,
+ * Absagen, die seit mehr als CANCEL_ALARM_MS angefordert und nicht abgeschlossen sind, und Abbuchungen mit unbekanntem Ausgang / nach dem Anstoß.
+ * Enthält nur IDs und Codes, keine Personendaten.
+ */
+export async function getRefundAlerts(now: Date = new Date()) {
+  const failedRefunds = await db.select({ id: paymentRefunds.id, matchId: paymentRefunds.matchId, code: paymentRefunds.failureCode, amountCents: paymentRefunds.amountCents }).from(paymentRefunds).where(eq(paymentRefunds.status, "failed"));
+  const unknownRefunds = await db.select({ id: paymentRefunds.id, matchId: paymentRefunds.matchId }).from(paymentRefunds).where(and(eq(paymentRefunds.status, "pending"), eq(paymentRefunds.failureCode, "unknown_outcome")));
+  const stuckCancels = await db
+    .select({ matchId: matches.id, since: matches.cancelRequestedAt })
+    .from(matches)
+    .where(and(sql`${matches.cancelRequestedAt} is not null and ${matches.cancelRequestedAt} < ${new Date(now.getTime() - CANCEL_ALARM_MS)}`, sql`${matches.status} in ('lobby', 'confirmed')`));
+  const unclearedCharges = await db
+    .select({ id: paymentCharges.id, matchId: paymentCharges.matchId, code: paymentCharges.failureCode })
+    .from(paymentCharges)
+    .where(
+      and(
+        eq(paymentCharges.status, "pending"),
+        // markiert (unknown_outcome, after_start) ODER bei angeforderter Absage gesendet, aber ohne PaymentIntent und ohne Ergebnis (Stripe-Suche ohne Treffer)
+        sql`(${paymentCharges.failureCode} in ('unknown_outcome', 'after_start') or (${paymentCharges.paymentIntentId} is null and ${paymentCharges.attemptStartedAt} is not null and exists (select 1 from matches m where m.id = ${paymentCharges.matchId} and m.cancel_requested_at is not null)))`,
+      ),
+    );
+  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges };
+}
 
 export type Period = { from: Date; to: Date };
 

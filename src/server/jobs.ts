@@ -7,6 +7,7 @@ import { runMatchmaker } from "./matchmaking";
 import { expireScheduling } from "./scheduling";
 import { advanceVetos } from "./veto";
 import { runCardCharges } from "./payments/charge-trigger";
+import { runRefunds } from "./payments/refund";
 import { cancelUnderfilledLobbies, cleanup, expireOldRequests, expireStalePayments, notifyFinanceAlerts, sendMatchReminders, sendResultReminders, settleDueMatches } from "./scheduled";
 
 /** Alle Hintergrundjobs als einfache Funktionen. Zeitplaner und Test-Schnittstelle rufen sie über den Namen auf. */
@@ -16,6 +17,7 @@ export const JOBS: Record<string, () => Promise<unknown>> = {
   "send-reminders": () => sendMatchReminders(),
   "lobby-deadlines": () => cancelUnderfilledLobbies(),
   "card-charges": () => runCardCharges(),
+  "card-refunds": () => runRefunds(),
   "expire-requests": () => expireOldRequests(),
   "result-reminders": () => sendResultReminders(),
   cleanup: () => cleanup(),
@@ -36,6 +38,7 @@ export const SCHEDULE: Record<string, string> = {
   "send-reminders": "* * * * *",
   "lobby-deadlines": "*/5 * * * *",
   "card-charges": "*/5 * * * *",
+  "card-refunds": "*/5 * * * *",
   "auto-confirm-results": "*/5 * * * *",
   "result-reminders": "*/15 * * * *",
   "expire-requests": "*/10 * * * *",

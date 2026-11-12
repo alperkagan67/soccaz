@@ -42,13 +42,25 @@ test("PWA: Offline-Seite erscheint, wenn die Verbindung fehlt", async ({ page, c
     await navigator.serviceWorker.register("/sw.js", { scope: "/" });
     await navigator.serviceWorker.ready;
   });
-  // warten, bis der Service Worker die Seite kontrolliert
+  // warten, bis der Service Worker aktiv ist UND die Seite kontrolliert
   await page.reload();
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const reg = await navigator.serviceWorker.ready;
+        return Boolean(navigator.serviceWorker.controller) && reg.active?.state === "activated";
+      }),
+    )
+    .toBe(true);
 
+  // setOffline wirkt offenbar nicht sofort auf den Service-Worker-Prozess: Direkt nach dem Umschalten holt der
+  // Worker die Seite noch vom Netz (CI-Lauf 43108352392: Anfrage /suche vom Worker, 200 vom Server, im selben Moment wie setOffline).
+  // Deshalb die Navigation wiederholen, bis die Offline-Seite kommt (Fehler der Navigation sind hier erwartet).
   await context.setOffline(true);
-  await page.goto("/suche").catch(() => {});
-  await expect(page.getByRole("heading", { name: "Keine Verbindung" })).toBeVisible();
+  await expect(async () => {
+    await page.goto("/suche").catch(() => {});
+    await expect(page.getByRole("heading", { name: "Keine Verbindung" })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000, intervals: [250, 500, 1_000] });
   await context.setOffline(false);
   await page.evaluate(async () => {
     const regs = await navigator.serviceWorker.getRegistrations();

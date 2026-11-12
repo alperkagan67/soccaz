@@ -9,6 +9,12 @@ export type CardDisplay = { id: string; brand: string | null; last4: string | nu
 export type ChargeStatus = "succeeded" | "requires_action" | "processing" | "failed";
 export type ChargeResult = { id: string; status: ChargeStatus; failureCode: string | null };
 
+export type RefundStatus = "succeeded" | "pending" | "failed";
+/** failureCode "charge_disputed": Stripe verweigert die Erstattung, weil die Zahlung angefochten ist (Dispute); "charge_already_refunded": bei Stripe schon erstattet. */
+export type RefundResult = { id: string; status: RefundStatus; failureCode: string | null };
+/** Ein bei Stripe gefundener PaymentIntent (Suche nach Spiel und Nutzer aus den Metadaten). Alle Werte sind ungeprüfte Eingabe. */
+export type FoundIntent = { id: string; status: ChargeStatus | "other"; amountCents: number | null; currency: string | null; customerId: string | null; failureCode: string | null };
+
 export interface PaymentProvider {
   readonly name: "stripe" | "fake";
   /** Legt den Kunden an. Gleicher idempotencyKey liefert denselben Kunden. */
@@ -24,6 +30,16 @@ export interface PaymentProvider {
    * ein Fehler (Netz, Stripe) bedeutet "Ergebnis unbekannt".
    */
   createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult>;
+  /**
+   * Erstattet eine Abbuchung auf die Karte (voller gezahlter Betrag, EUR). Der idempotencyKey (je Abbuchungszeile) verhindert eine zweite Erstattung bei Wiederholung.
+   * Eine von Stripe abgelehnte Erstattung (z. B. charge_disputed) ist ein Ergebnis mit status failed; ein Fehler (Netz, Stripe) bedeutet "Ergebnis unbekannt".
+   */
+  createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult>;
+  /**
+   * Sucht PaymentIntents zu Spiel und Nutzer (Metadaten). Für Abbuchungen mit unbekanntem Ausgang: gibt es bei Stripe einen PaymentIntent, den wir nicht kennen?
+   * Die Suche von Stripe ist verzögert konsistent: eine leere Antwort beweist nur etwas, wenn der Versuch schon eine Weile zurückliegt.
+   */
+  findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]>;
   /** Echte Stripe-Gebühr der Zahlung in Cent (aus der balance_transaction), oder null, wenn noch nicht verfügbar. Nie geschätzt. */
   retrieveChargeFee(paymentIntentId: string): Promise<number | null>;
   /** Ist das Zahlungsmittel bei Stripe noch nutzbar: existiert, gehört noch zu diesem Kunden (nicht gelöst) und ist nicht abgelaufen? */

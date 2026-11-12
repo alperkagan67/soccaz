@@ -45,9 +45,30 @@ jobs:
       - run: node scripts/migrate.mjs
       - run: npm run build
 
+  # Reine Doku-PRs (alle geaenderten Dateien unter docs/ oder .md, nie .github, package.json, Lockfile oder Code-Baeume) ueberspringen die Browser-Tests.
+  # Logik und Tests: scripts/ci-gate.mjs, tests/unit/ci-gate.test.ts. Bei Fehler, leerer Liste, neuem Branch oder Force-Push gilt docs_only=false.
+  changes:
+    name: Änderungen prüfen
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.docs.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Nur Doku geändert?
+        id: docs
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: node scripts/ci-gate.mjs changes
+
   # Browser-Tests in 4 Teilen. Jeder Teil hat einen eigenen Postgres-Dienst (nichts wird geteilt).
   e2e-shard:
     name: Browser-Tests Teil ${{ matrix.shard }}/4
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -118,6 +139,8 @@ jobs:
 
   integration:
     name: Integrationstests
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -149,22 +172,20 @@ jobs:
       - run: npm run test:integration
 
   # Sammelcheck mit dem alten Namen: Das Ruleset "main-schutz" verlangt "Browser-Tests" genau so.
-  # Rot, sobald ein Teil nicht erfolgreich war (auch abgebrochen oder uebersprungen).
+  # Gruen nur, wenn changes, e2e-shard und integration erfolgreich waren ODER (docs_only ist true UND e2e-shard und integration uebersprungen wurden).
+  # Rot bei failure, cancelled und bei skipped ohne docs_only. Tabelle: scripts/ci-gate.mjs (aggregate), tests/unit/ci-gate.test.ts.
   browser-tests:
     name: Browser-Tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: always()
-    needs: [e2e-shard, integration]
+    needs: [changes, e2e-shard, integration]
     steps:
+      - uses: actions/checkout@v4
       - name: Ergebnisse pruefen
         env:
-          ERGEBNISSE: ${{ join(needs.*.result, ' ') }}
-        run: |
-          echo "Ergebnisse: $ERGEBNISSE"
-          for r in $ERGEBNISSE; do
-            if [ "$r" != "success" ]; then
-              echo "Mindestens ein Teil war nicht erfolgreich ($r)."
-              exit 1
-            fi
-          done
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          SHARD_RESULT: ${{ needs.e2e-shard.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+        run: node scripts/ci-gate.mjs aggregate

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { signStripePayload, verifyStripeSignature } from "@/lib/stripe-signature";
-import { PaymentIdempotencyError, WebhookSignatureError, type CardDisplay, type ChargeResult, type PaymentProvider, type ProviderEvent } from "./provider";
+import { PaymentIdempotencyError, WebhookSignatureError, type CardDisplay, type ChargeResult, type FoundIntent, type RefundResult, type PaymentProvider, type ProviderEvent } from "./provider";
 
 /** Steuerbarer Ausgang einer Abbuchung im FakeProvider. "error" wirft (Ergebnis unbekannt). */
 export type FakeChargeOutcome = "succeeded" | "declined" | "requires_action" | "processing" | "error" | "idempotency_mismatch";
@@ -79,6 +79,36 @@ export class FakeProvider implements PaymentProvider {
     if (outcome === "processing") return { id, status: "processing", failureCode: null };
     if (outcome === "requires_action") return { id, status: "requires_action", failureCode: "authentication_required" };
     return { id, status: "failed", failureCode: "card_declined" };
+  }
+
+  /** Test-Hilfe: Ausgang der Erstattungen je Nutzer (Standard succeeded). "error" wirft (unbekannt). */
+  private readonly refundOutcomes = new Map<string, "succeeded" | "pending" | "failed" | "disputed" | "error">();
+  setRefundOutcome(userId: string, outcome: "succeeded" | "pending" | "failed" | "disputed" | "error") {
+    this.refundOutcomes.set(userId, outcome);
+  }
+
+  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult> {
+    this.probe("createRefund");
+    this.calls.push({ method: "createRefund", args: { paymentIntentId: input.paymentIntentId, amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
+    const outcome = this.refundOutcomes.get(input.metadata.userId) ?? "succeeded";
+    if (outcome === "error") throw new Error("Netz weg");
+    const id = `re_fake_${short(input.idempotencyKey)}`;
+    if (outcome === "disputed") return { id: "", status: "failed", failureCode: "charge_disputed" };
+    if (outcome === "failed") return { id, status: "failed", failureCode: "refund_failed" };
+    if (outcome === "pending") return { id, status: "pending", failureCode: null };
+    return { id, status: "succeeded", failureCode: null };
+  }
+
+  /** Test-Hilfe: PaymentIntents, die die Suche zu Spiel und Nutzer liefert (z. B. ein Treffer, obwohl unsere Anfrage als Netzfehler endete). */
+  private readonly found = new Map<string, FoundIntent[]>();
+  setFound(matchId: string, userId: string, list: FoundIntent[]) {
+    this.found.set(`${matchId}:${userId}`, list);
+  }
+
+  async findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]> {
+    this.probe("findPaymentIntents");
+    this.calls.push({ method: "findPaymentIntents", args: input });
+    return this.found.get(`${input.matchId}:${input.userId}`) ?? [];
   }
 
   async retrieveChargeFee(paymentIntentId: string): Promise<number | null> {
