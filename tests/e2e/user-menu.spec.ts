@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { closeContexts, newUser, run } from "./helpers";
-import { query } from "./helpers-db";
+import { query, seedUserRole } from "./helpers-db";
 
 // M2-4a: Konto-Menü (natives Popover) in der Kopfleiste: Tastatur, Fokus, Schließen, Größen. Test-IDs und Rollen wie in basics.spec.ts (Konto-Menü).
 
@@ -311,6 +311,24 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
     expect(names.slice(0, 3)).toEqual(["Meine Spiele", "Mein Profil", "Admin"]);
     expect(names.at(-1)).toBe("Abmelden");
     expect(names.at(-2)).toBe("Hilfe");
+  });
+
+  test("Datenschutz: eine Halle, die einem ANDEREN Nutzer zugewiesen ist, gibt mir keinen Eintrag Meine Halle", async ({ page }) => {
+    await loggedIn(page, "um20");
+    const other = await seedUserRole("um20x", "player", "Anderer Betreiber");
+    const [venue] = await query<{ id: string }>("insert into venues (name, city, manager_user_id) values ($1, 'Essen', $2) returning id", [`E2E Fremdhalle ${run}`, other]);
+    try {
+      await page.reload();
+      await page.waitForLoadState("networkidle");
+      await hydrated(page);
+      await button(page).click();
+      await expect(menu(page)).toBeVisible();
+      const names = (await menu(page).getByRole("menuitem").allTextContents()).map((n) => n.replace(/\s+/g, " ").trim());
+      expect(names).not.toContain("Meine Halle");
+      expect(names).toHaveLength(ITEMS.length); // genau die Einträge eines Spielers
+    } finally {
+      await query("delete from venues where id = $1", [venue.id]);
+    }
   });
 
   test("Hallenbetreiber: Meine Halle erscheint nur mit zugewiesener Halle und führt zu /halle", async ({ page }) => {
