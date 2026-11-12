@@ -31,7 +31,7 @@ function toChargeReport(event: ProviderEvent): ChargeReport | null {
     amountCents: typeof event.object.amount === "number" && Number.isInteger(event.object.amount) ? event.object.amount : null,
     currency: str(event.object.currency),
     customerId: str(event.object.customer),
-    metadata: { matchId: str(meta.matchId), userId: str(meta.userId) },
+    metadata: { matchId: str(meta.matchId), tournamentId: str(meta.tournamentId), userId: str(meta.userId) },
     failureCode: str(err.code),
   };
 }

@@ -95,10 +95,10 @@ describe("M5-2a/2b: Schema der Zahlungstabellen", () => {
 });
 
 describe("M5-2b: kein Teamspiel-Pfad schreibt tournament_id", () => {
-  it("im Zahlungsmodul kommt tournamentId/tournament_id nur im LESENDEN Kontext-Helfer vor", () => {
+  it("im Zahlungsmodul kommt tournamentId/tournament_id nur in den Turnier-Dateien, im Kontext-Helfer und in charge.ts (Zweig + Erstattungszeile) vor; Teamspiel-Dateien nie", () => {
     const dir = "src/server/payments";
     const hits = readdirSync(dir).filter((f) => /tournament_?id/i.test(readFileSync(join(dir, f), "utf8")));
-    expect(hits).toEqual(["charge-context.ts"]);
+    expect(hits.sort()).toEqual(["charge-context.ts", "charge.ts", "dispute.ts", "fake.ts", "provider.ts", "stripe.ts", "tournament-charge.ts", "webhook.ts"]); // fake/provider/stripe: nur der Typ der Metadaten
     expect(readFileSync(join(dir, "charge-context.ts"), "utf8")).not.toMatch(/\.(insert|update|set|delete)\(/);
   });
 

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matchResults, matches, notifications, teamMembers, teams, users } from "@/db/schema";
+import { auditLog, matchParticipants, matchResults, matches, notifications, paymentCharges, teamMembers, teams, users } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLead } from "@/lib/deadlines";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
@@ -18,7 +18,7 @@ import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { isPlatformAdmin, type Role } from "@/lib/roles";
 import { clearTournamentCovers, getTournamentCardDisplays, tournamentCardMode, tournamentTeamCardsReady } from "./tournament-card";
-import { freezeVenueTerms, isPartnerVenue } from "./tournament-venue";
+import { freezeVenueTerms, hallZusageOk, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled } from "./settings";
 
@@ -487,14 +487,16 @@ export function setDrawRandom(random: (() => number) | null) {
  * Erzeugt das K.-o.-Bracket genau einmal, sobald der Preis feststeht, alle Spieler bezahlt haben und jedes Team nach der Zahlung "Bereit" gedrückt hat (`paid_ready_at`).
  * Läuft unter der Turniersperre und setzt `bracket_generated_at`, damit eine zweite Auslösung nichts mehr tut.
  */
-async function maybeGenerateBracket(tx: Tx, t: T) {
+export async function maybeGenerateBracket(tx: Tx, t: T) {
   const [fresh] = await tx.select().from(tournaments).where(eq(tournaments.id, t.id));
   if (!fresh || fresh.status !== "payment" || fresh.bracketGeneratedAt) return;
   const entries = await tx.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).orderBy(asc(tournamentTeams.registeredAt));
   if (entries.length !== fresh.maxTeams || entries.length < MIN_TOURNAMENT_TEAMS) return;
   const share = shareOf(fresh);
   const everyone = await tx.select({ paid: tournamentPlayers.paidCents }).from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
-  if (!everyone.every((p) => share === 0 || p.paid >= share)) return;
+  // Kartenmodell (M5-4): "gebucht" = settled_at ist gesetzt (alle Abbuchungen erfolgreich); dann zaehlt nicht paid_cents (bleibt 0). Altmodell: settled_at wird erst beim Ende gesetzt.
+  const booked = fresh.settledAt !== null;
+  if (!booked && !everyone.every((p) => share === 0 || p.paid >= share)) return;
   if (!entries.every((e) => e.readyAt && e.paidReadyAt)) return; // alle Teams: Kader vollzählig und nach voller Zahlung bereit
 
   await tx.update(tournaments).set({ status: "running", bracketGeneratedAt: new Date() }).where(eq(tournaments.id, t.id));
@@ -597,6 +599,8 @@ async function finishTournament(tx: Tx, t: T, winnerId: string) {
 
 /** Zahlt den Veranstalter aus (Eintritte abzüglich Provision) und verbucht die Provision als Umsatz. Genau einmal pro Turnier. */
 async function settle(tx: Tx, t: T) {
+  const [cur] = await tx.select({ settledAt: tournaments.settledAt }).from(tournaments).where(eq(tournaments.id, t.id));
+  if (cur?.settledAt) return; // Kartenmodell: schon bei der Abbuchung gebucht (settled_at), es gibt keine Veranstalter-Auszahlung; Altmodell: genau einmal
   const [{ total }] = await tx.select({ total: sql<number>`coalesce(sum(${tournamentPlayers.paidCents}), 0)`.mapWith(Number) }).from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
   const { commission, payout } = splitEntryFees(total, await commissionPercent(tx));
   if (payout > 0) await creditWallet(tx, t.organizerId, { from: "tournament", amountCents: payout, kind: "tournament_payout", tournamentId: t.id, idempotencyKey: `tournament-payout:${t.id}`, reason: `Auszahlung Eintritte ${t.name}` });
@@ -659,6 +663,8 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
         if ((t.status !== "registration" && t.status !== "payment") || t.bracketGeneratedAt || !t.startsAt || t.startsAt.getTime() <= now.getTime()) return;
         const locked = await dueOf(tx, t);
         if (!locked || locked.due.getTime() > now.getTime()) return;
+        // Kartenmodell (M5-4): ist abgebucht oder die Abbuchung angelaufen/faellig (alle Teams bereit, Zusage da), faellt das Turnier hier NICHT aus; Fehlschlaege behandelt die Abbuchung (M5-5)
+        if (await chargeUnderway(tx, t)) return;
         await cancelTournamentTx(tx, t, null, `${t.name} findet nicht statt: Zur Frist (${locked.long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, bezahlt und bereit. Dein Eintritt wurde vollständig erstattet.`);
         cancelled += 1;
       });
@@ -667,6 +673,16 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
     }
   }
   return cancelled;
+}
+
+/** Kartenmodell: laeuft die Abbuchung oder ist sie faellig (Zeilen vorhanden, oder alle Teams bereit und die Zusage der Halle erfuellt)? Dann wird das Turnier nicht wegen der Frist abgesagt. Unter der Turniersperre. */
+async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
+  if (!(await tournamentCardMode(tx, t.id))) return false;
+  const [row] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)).limit(1);
+  if (row) return true;
+  if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !hallZusageOk(t)) return false;
+  const entries = await tx.select({ ready: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+  return entries.length === t.maxTeams && entries.every((e) => e.ready !== null);
 }
 
 /** Fälligkeit der Frist eines Turniers (null = Altturnier oder ohne Start: der Job fasst es nicht an). */
@@ -679,7 +695,7 @@ async function dueOf(exec: Pick<typeof db, "select">, t: Pick<T, "id" | "startsA
 }
 
 /** Ab wann kann bezahlt werden? Ab dem (letzten) Festlegen des Preises (Audit "tournament.price"), sonst ab der Anlage. */
-async function tournamentPayOpenAt(exec: Pick<typeof db, "select">, t: Pick<T, "id" | "createdAt">): Promise<Date> {
+export async function tournamentPayOpenAt(exec: Pick<typeof db, "select">, t: Pick<T, "id" | "createdAt">): Promise<Date> {
   const [row] = await exec
     .select({ at: sql<Date | null>`max(${auditLog.at})`.mapWith(auditLog.at) })
     .from(auditLog)

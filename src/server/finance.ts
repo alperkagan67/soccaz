@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { auditLog, matches, paymentCharges, paymentRefunds, users } from "@/db/schema";
@@ -54,7 +54,17 @@ export async function getRefundAlerts(now: Date = new Date()) {
     .select({ matchId: auditLog.entityId, at: auditLog.at })
     .from(auditLog)
     .where(and(eq(auditLog.action, "charge.duplicate_success"), sql`${auditLog.at} > ${new Date(now.getTime() - 30 * 24 * 3_600_000)}`));
-  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses };
+  // Turnier auf Karte (012 M5-4): Erstattungen eines Turniers (match_id leer) werden vom Spiel-Ablauf nicht gesendet (kommt mit M5-5): offen = Alarm. Ausserdem haengt ein Turnier, wenn eine
+  // Abbuchung gescheitert und das Nachzahlfenster abgelaufen ist, ohne dass jemand reagiert (Absage bei Fensterablauf: M5-5).
+  const tournamentRefundsOpen = await db
+    .select({ id: paymentRefunds.id })
+    .from(paymentRefunds)
+    .where(and(isNotNull(paymentRefunds.tournamentId), eq(paymentRefunds.status, "pending"), isNull(paymentRefunds.refundId)));
+  const tournamentChargeStuck = (
+    await db.execute<{ id: string }>(sql`select distinct c.tournament_id as id from payment_charges c join tournaments t on t.id = c.tournament_id
+      where c.tournament_id is not null and c.status in ('failed', 'requires_action') and t.status = 'payment' and (c.grace_until is null or c.grace_until <= ${now})`)
+  ).rows;
+  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck };
 }
 
 export type Period = { from: Date; to: Date };
@@ -314,7 +324,7 @@ export type Alert = { code: string; severity: "high" | "medium"; title: string; 
  * keine Personendaten). Alles, was ein Automat NICHT loest und Geld oder einen haengenden Ablauf betrifft: Doppelabbuchung, fehlgeschlagene/ungeklaerte Erstattung, haengende Absage,
  * ungeklaerte Abbuchung, Schluesselkonflikt, Altzeile ohne Fenster.
  */
-export function cardAlertsFrom(ra: Awaited<ReturnType<typeof getRefundAlerts>>): Alert[] {
+export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck">>): Alert[] {
   const out: Alert[] = [];
   const add = (code: string, n: number, title: string, detail: string) => {
     if (n > 0) out.push({ code, severity: "high", title: `${title} (${n})`, detail });
@@ -325,6 +335,8 @@ export function cardAlertsFrom(ra: Awaited<ReturnType<typeof getRefundAlerts>>):
   add("card:stuck-cancels", ra.stuckCancels.length, "Absage haengt", "Eine angeforderte Absage ist seit Stunden nicht abgeschlossen.");
   add("card:uncleared-charges", ra.unclearedCharges.length, "Abbuchung ungeklaert", "Eine Abbuchung hat keinen bekannten Ausgang (unknown_outcome, nach dem Anstoss, Stripe-Suche ohne Treffer).");
   add("card:idempotency-mismatch", ra.idempotencyMismatches.length, "Abbuchung mit Schluesselkonflikt", "Ein Versuch ist am Idempotenzschluessel gescheitert und wird von keinem Automaten angefasst.");
+  add("card:tournament-refund-open", ra.tournamentRefundsOpen?.length ?? 0, "Turnier-Erstattung offen", "Eine Erstattung zu einem Turnier wartet auf den Versand (der automatische Versand fuer Turniere folgt mit M5-5). Bitte manuell erstatten.");
+  add("card:tournament-charge-stuck", ra.tournamentChargeStuck?.length ?? 0, "Turnier haengt nach gescheiterter Abbuchung", "Bei einem Turnier ist eine Abbuchung gescheitert und das Nachzahlfenster abgelaufen. Das Turnier ist weder gebucht noch abgesagt. Bitte entscheiden (Absage mit Erstattung).");
   add("card:legacy-failed", ra.legacyFailed.length, "Altzeile ohne Nachzahlfenster", "Eine fehlgeschlagene Abbuchung aus der Zeit vor dem Nachzahlfenster wird nicht automatisch bearbeitet.");
   return out;
 }

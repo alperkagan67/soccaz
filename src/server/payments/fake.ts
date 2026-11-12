@@ -81,7 +81,7 @@ export class FakeProvider implements PaymentProvider {
     if (this.inTransaction?.()) this.violations.push(method);
   }
 
-  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult> {
+  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string } }): Promise<ChargeResult> {
     this.probe("createPaymentIntent");
     this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata, customerId: input.customerId } });
     const outcome = this.outcomes.get(input.metadata.userId) ?? "succeeded";
@@ -114,7 +114,7 @@ export class FakeProvider implements PaymentProvider {
     this.refundOutcomes.set(userId, outcome);
   }
 
-  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult> {
+  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string; chargeId: string } }): Promise<RefundResult> {
     this.probe("createRefund");
     this.calls.push({ method: "createRefund", args: { paymentIntentId: input.paymentIntentId, amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
     const outcome = this.refundOutcomes.get(input.metadata.userId) ?? "succeeded";

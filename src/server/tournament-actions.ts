@@ -9,6 +9,7 @@ import { InsufficientFunds } from "./ledger";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
 import { setTournamentVenue } from "./tournament-venue";
+import { triggerTournamentChargesInBackground } from "./payments/tournament-charge";
 import { isPlatformAdmin } from "@/lib/roles";
 import { releaseTournamentCover, takeOverTournamentShare } from "./tournament-card";
 import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, payForTeam, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
@@ -108,7 +109,10 @@ export async function setRosterCompleteAction(tournamentId: string, complete: bo
 }
 /** Der Captain drückt Bereit, nachdem sein Team vollständig bezahlt hat (Prüfung serverseitig). */
 export async function setPaidReadyAction(tournamentId: string): Promise<ActionState> {
-  return touch(tournamentId, (uid) => setPaidReady(uid, tournamentId));
+  const r = await touch(tournamentId, (uid) => setPaidReady(uid, tournamentId));
+  // Kartenmodell (M5-4): ist das letzte Team bereit und kurzer Vorlauf, wird sofort abgebucht (im Hintergrund, nie auf Kosten von "Bereit"); der Job holt sonst nach
+  if (r?.ok) void triggerTournamentChargesInBackground(tournamentId);
+  return r;
 }
 export async function reopenRostersAction(tournamentId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => reopenRosters(uid, tournamentId));
