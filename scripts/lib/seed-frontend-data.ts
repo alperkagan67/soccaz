@@ -48,6 +48,21 @@ const REVIEWS = [
   ["Sehr freundlicher Betreiber.", 5], ["Halle war kalt.", 2],
 ] as const;
 
+/** Feste IDs der Spielsuchen (/suche/<id>) und offenen Lobbys (/lobby/offen/<id>), damit Analyse und Tests die URLs kennen. */
+export const SEED_REQUEST_IDS = {
+  offen: "5eed0000-0000-4000-8000-000000000101",
+  abgelaufen: "5eed0000-0000-4000-8000-000000000102",
+  angenommen: "5eed0000-0000-4000-8000-000000000103",
+  zurueckgezogen: "5eed0000-0000-4000-8000-000000000104",
+  herausforderung: "5eed0000-0000-4000-8000-000000000105",
+} as const;
+export const SEED_QUEUE_IDS = {
+  wartend: "5eed0000-0000-4000-8000-000000000201",
+  abgelaufen: "5eed0000-0000-4000-8000-000000000202",
+  angenommen: "5eed0000-0000-4000-8000-000000000203",
+  zurueckgezogen: "5eed0000-0000-4000-8000-000000000204",
+} as const;
+
 export type SeedCounts = Record<string, number>;
 
 export async function runSeed(pool: Pool): Promise<SeedCounts> {
@@ -137,7 +152,10 @@ export async function runSeed(pool: Pool): Promise<SeedCounts> {
     const seedUsers = (await q("select id from users where email = any($1::text[])", [ACCOUNTS.map((a) => a.email)])).map((x) => x.id);
     const teamIds = (await q("select id from teams where id = any($1::uuid[]) and created_by = any($2::uuid[])", [Object.values(tid), seedUsers])).map((x) => x.id);
     await q("delete from tournaments where organizer_id = any($1)", [seedUsers]);
+    await q("delete from matchmaking_queue where team_id = any($1)", [teamIds]); // queue_participants gehen per Cascade mit
     await q("delete from matches where home_team_id = any($1) or away_team_id = any($1)", [teamIds]);
+    await q("delete from match_requests where team_id = any($1)", [teamIds]);
+    await q("delete from notifications where user_id = any($1::uuid[])", [seedUsers]);
     await q("delete from comments where target_type = 'venue' and target_id = any($1)", [Object.values(vid)]);
     await q("delete from invites where token like 'seed-%' and created_by = any($1::uuid[])", [seedUsers]);
 
@@ -218,6 +236,56 @@ export async function runSeed(pool: Pool): Promise<SeedCounts> {
     // Team-Einladung: gültig und abgelaufen (Einladungslink eines Teams)
     await q("insert into invites (token, team_id, created_by, expires_at) values ('seed-team-gueltig', $1, $2, $3), ('seed-team-abgelaufen', $1, $2, $4)", [tid.rot, uid.capA, at(5 * D), at(-3 * D)]);
 
+    // 3h. Spielsuche-Anfragen (/suche/<id>): offen, abgelaufen, angenommen (mit Spiel), zurückgezogen, Herausforderung
+    const rq = SEED_REQUEST_IDS;
+    const insertRequest = (id: string, team: string, startsInMs: number, status: string, o: { strength?: number; visibility?: string; note?: string | null; target?: string | null } = {}) =>
+      q(
+        `insert into match_requests (id, team_id, city, starts_at, duration_min, strength, visibility, status, note, target_team_id)
+         values ($1, $2, $3, $4, 60, $5, $6, $7, $8, $9)`,
+        [id, tid[team], TEAMS.find((t) => t.key === team)!.city, at(startsInMs), o.strength ?? 3, o.visibility ?? "public", status, o.note ?? null, o.target ? tid[o.target] : null],
+      );
+    await insertRequest(rq.offen, "blau", 5 * D, "open", { strength: 3, note: "Wir suchen ein faires Spiel, gern abends. Halle Köln." });
+    await insertRequest(rq.abgelaufen, "gelb", -1 * D, "expired", { strength: 2, note: "Termin ist verstrichen, niemand hat angenommen." });
+    await insertRequest(rq.angenommen, "rot", 3 * D, "matched", { strength: 4 });
+    await q("update matches set request_id = $1 where id = $2", [rq.angenommen, mBereit]);
+    await insertRequest(rq.zurueckgezogen, "gruen", 7 * D, "cancelled", { strength: 3, note: "Zurückgezogen, Kader zu klein." });
+    await insertRequest(rq.herausforderung, "rot", 4 * D, "open", { strength: 4, target: "gelb", note: "Revanche?" });
+
+    // 3i. Offene Lobbys / Warteschlange (/lobby/offen/<id>): wartend (mit Beitritten), abgelaufen, angenommen (leitet zum Spiel), zurückgezogen
+    const qid = SEED_QUEUE_IDS;
+    const win = (fromMs: number) => JSON.stringify([{ from: at(fromMs).toISOString(), to: at(fromMs + 3 * H).toISOString() }, { from: at(fromMs + D).toISOString(), to: at(fromMs + D + 3 * H).toISOString() }]);
+    const insertQueue = (id: string, team: string, status: string, fromMs: number, expiresMs: number, matchId: string | null = null, note: string | null = null) => {
+      const t = TEAMS.find((x) => x.key === team)!;
+      return q(
+        `insert into matchmaking_queue (id, team_id, created_by, city, duration_min, windows, note, status, match_id, expires_at)
+         values ($1, $2, $3, $4, 60, $5::jsonb, $6, $7, $8, $9)`,
+        [id, tid[team], uid[t.cap], t.city, win(fromMs), note, status, matchId, at(expiresMs)],
+      );
+    };
+    await insertQueue(qid.wartend, "gelb", "waiting", 2 * D, 4 * D, null, "Offene Lobby, wir sind noch nicht vollzählig.");
+    for (const u of ["capD", "p13", "p14"]) await q("insert into queue_participants (queue_id, user_id) values ($1, $2)", [qid.wartend, uid[u]]);
+    await insertQueue(qid.abgelaufen, "blau", "expired", -3 * D, -1 * D);
+    await insertQueue(qid.angenommen, "rot", "matched", 2 * D, 3 * D, mBereit);
+    await insertQueue(qid.zurueckgezogen, "gruen", "cancelled", 3 * D, 5 * D, null, "Zurückgezogen.");
+
+    // 3j. Benachrichtigungen (gelesen/ungelesen; Arten aus notification-types)
+    const notif = (user: string, type: string, title: string, body: string, url: string | null, ageMs: number, read: boolean) =>
+      q(
+        "insert into notifications (user_id, type, title, body, url, created_at, read_at, delivered_at) values ($1, $2, $3, $4, $5, $6, $7, $6)",
+        [uid[user], type, title, body, url, at(-ageMs), read ? at(-ageMs + H) : null],
+      );
+    await notif("capC", "payment", "Abbuchung fehlgeschlagen", "Die Abbuchung deines Anteils für Seed Grün gegen Seed Gelb ist fehlgeschlagen (Karte abgelehnt).", `/lobby/${mFehler}`, 2 * H, false);
+    await notif("p09", "payment", "Zahlung ausstehend", "Deine Abbuchung für Seed Grün gegen Seed Gelb steht noch aus.", `/lobby/${mFehler}`, 5 * H, false);
+    await notif("capA", "match.cancelled", "Spiel abgesagt", "Seed Rot gegen Seed Grün wurde abgesagt.", `/lobby/${mAbgesagt}`, 20 * H, false);
+    await notif("p01", "match.cancelled", "Spiel abgesagt", "Seed Rot gegen Seed Grün wurde abgesagt.", `/lobby/${mAbgesagt}`, 20 * H, true);
+    await notif("capD", "request.challenge", "Dein Team wurde herausgefordert", "Seed Rot fordert Seed Gelb heraus.", `/suche/${rq.herausforderung}`, 1 * D, false);
+    await notif("capA", "request.accepted", "Deine Spielsuche wurde angenommen", "Seed Blau tritt an.", `/lobby/${mBereit}`, 2 * D, true);
+    await notif("p01", "match.reminder", "Erinnerung vor dem Anstoß", "Seed Rot gegen Seed Blau startet in drei Tagen.", `/lobby/${mBereit}`, 3 * H, false);
+    await notif("p02", "match.reminder", "Erinnerung vor dem Anstoß", "Seed Rot gegen Seed Blau startet in drei Tagen.", `/lobby/${mBereit}`, 3 * H, true);
+    await notif("p13", "lobby.joined", "Spieler tritt der Lobby bei", "Ein Spieler ist der offenen Lobby von Seed Gelb beigetreten.", `/lobby/offen/${qid.wartend}`, 6 * H, false);
+    await notif("capD", "team.joined", "Neues Mitglied in deinem Team", "Ein neues Mitglied ist Seed Gelb beigetreten (Einladung angenommen).", "/teams/seed-gelb", 3 * D, true);
+    await notif("p17", "system", "Willkommen bei Soccaz", "Dies ist eine Testbenachrichtigung aus dem Seed.", null, 4 * D, true);
+
     // 4. Turniere in vier Phasen (Organisator: seed-veranstalter)
     const tdef = [
       { status: "registration", name: "Seed-Turnier Anmeldung", token: "seed-turnier-anmeldung", teams: ["rot", "blau"], startsInD: 20 },
@@ -292,6 +360,11 @@ export async function runSeed(pool: Pool): Promise<SeedCounts> {
       await count("Turnier-Teams", `select count(*) n from tournament_teams where tournament_id in (${tourSub})`, seedUsers),
       await count("Turnier-Spieler", `select count(*) n from tournament_players where tournament_id in (${tourSub})`, seedUsers),
       await count("Turnier-Spiele", `select count(*) n from tournament_matches where tournament_id in (${tourSub})`, seedUsers),
+      await count("Spielsuchen", "select count(*) n from match_requests where team_id = any($1::uuid[])", teamIds),
+      await count("Warteschlangen-Einträge", "select count(*) n from matchmaking_queue where team_id = any($1::uuid[])", teamIds),
+      await count("Warteschlangen-Beitritte", "select count(*) n from queue_participants where queue_id in (select id from matchmaking_queue where team_id = any($1::uuid[]))", teamIds),
+      await count("Benachrichtigungen", "select count(*) n from notifications where user_id = any($1::uuid[])", seedUsers),
+      await count("Benachrichtigungen ungelesen", "select count(*) n from notifications where read_at is null and user_id = any($1::uuid[])", seedUsers),
     ];
     await client.query("commit");
     return Object.fromEntries(rows);
