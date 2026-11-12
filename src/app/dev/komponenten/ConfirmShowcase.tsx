@@ -41,7 +41,7 @@ export function ConfirmShowcase() {
           body="Du wirst zur Frist zusätzlich belastet, nicht sofort."
           consequence="Dein Anteil 6,00 € und der Anteil von Alex 6,00 €, zusammen 12,00 €."
           confirmLabel="Anteil übernehmen"
-          consent={{ label: "Ich stimme zu, dass Soccaz zur Frist zusätzlich den Anteil von Alex von meiner Karte abbucht. (Entwurf, Rechtstext durch Anwalt)" }}
+          consent={{ label: "Ich stimme zu." }} // bewusst kurz (eine Zeile auf 390 px): die Zeilenhöhe kommt vom Tippziel, nicht vom Text
           onConfirmAction={async ({ consent }) => {
             await wait();
             setResult(`Anteil übernommen (Zustimmung: ${consent ? "ja" : "nein"})`);

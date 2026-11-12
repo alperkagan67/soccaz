@@ -126,7 +126,7 @@ test.describe("ConfirmDialog: Inhalt, Bestätigen, Fehler", () => {
     await trigger(page, "Anteil übernehmen").click();
     const dlg = dialogOf(page, "Anteil von Alex übernehmen?");
     const confirm = dlg.getByRole("button", { name: "Anteil übernehmen" });
-    const box = dlg.getByRole("checkbox", { name: /Ich stimme zu, dass Soccaz/ });
+    const box = dlg.getByRole("checkbox", { name: "Ich stimme zu." });
     await expect(dlg.getByTestId("confirm-consequence")).toContainText("zusammen 12,00 €"); // Betrag bleibt sichtbar
     await expect(box).toBeFocused(); // Startfokus bei Zustimmung (die gesperrte Bestätigung nähme keinen Fokus)
     await expect(box).not.toBeChecked();
