@@ -18,3 +18,15 @@ export function safeInternalPath(value: unknown, fallback: string | null = "/app
   }
   return value;
 }
+
+/**
+ * Das erste gültige Rücksprungziel aus mehreren Kandidaten (in dieser Reihenfolge), sonst `null`. Ein ungültiger oder fehlender Kandidat
+ * überspringt nur sich selbst: ein beschädigter Altwert vorn in der Liste verdeckt kein gültiges Ziel dahinter.
+ */
+export function firstSafePath(...values: unknown[]): string | null {
+  for (const v of values) {
+    const p = safeInternalPath(v, null);
+    if (p !== null) return p;
+  }
+  return null;
+}

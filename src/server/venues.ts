@@ -118,3 +118,9 @@ export async function getPublicVenue(id: string) {
   const [r] = (await db.execute<{ avg: string | null; n: number }>(sql`select round(avg(rating)::numeric, 1)::text as avg, count(*)::int as n from comments where target_type = 'venue' and target_id = ${id} and status = 'visible'`)).rows;
   return { venue: { id: v.id, name: v.name, city: v.city, address: v.address, surface: v.surface, hasShowers: v.hasShowers, hasParking: v.hasParking, isPartner: v.isPartner }, avg: r.avg, n: r.n };
 }
+
+/** Ist dem Nutzer mindestens eine Halle als Betreiber zugewiesen? (Eintrag "Meine Halle" im Konto-Menü) */
+export async function isVenueManager(userId: string): Promise<boolean> {
+  const [row] = await db.select({ id: venues.id }).from(venues).where(eq(venues.managerUserId, userId)).limit(1);
+  return Boolean(row);
+}
