@@ -47,7 +47,7 @@ async function structure(pool) {
 async function evidenceStructure(pool) {
   if ((await pool.query("select 1 from information_schema.tables where table_name = 'booking_evidence'")).rowCount === 0) return; // Migration von 009 M3a nicht vorhanden
   check((await pool.query("select 1 from booking_evidence_counter where id = 1 and last_seq = 0")).rowCount === 1, "Beweisprotokoll: Zaehlerzeile (id 1) vorhanden");
-  for (const tg of ["booking_evidence_before_insert", "booking_evidence_append_only", "booking_evidence_counter_guard"]) {
+  for (const tg of ["booking_evidence_before_insert", "booking_evidence_append_only", "booking_evidence_counter_guard", "booking_evidence_no_truncate", "booking_evidence_counter_no_truncate"]) {
     check((await pool.query("select 1 from pg_trigger where tgname = $1", [tg])).rowCount === 1, "Beweisprotokoll: Trigger " + tg);
   }
   check((await pool.query("select 1 from pg_proc where proname = 'evidence_hash'")).rowCount === 1, "Beweisprotokoll: Funktion evidence_hash");
