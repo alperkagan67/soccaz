@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/ActionForm";
 import { activeProvider } from "@/server/payments";
 import { requirePermission } from "@/server/session";
-import { savePlatformSettingsAction } from "@/server/admin-finance-actions";
+import { saveInvoiceSettingsAction, savePlatformSettingsAction } from "@/server/admin-finance-actions";
 import { getSetting, minPaidPlayers, paymentsEnabled } from "@/server/settings";
 
 export const metadata: Metadata = { title: "Admin: Einstellungen" };
 
 export default async function SettingsAdminPage() {
   await requirePermission("owner", "/admin/einstellungen");
-  const [enabled, minPaid, emergency] = await Promise.all([paymentsEnabled(), minPaidPlayers(), getSetting<string>("emergency_phone", "")]);
+  const [enabled, minPaid, emergency, vatMode, vatNote] = await Promise.all([paymentsEnabled(), minPaidPlayers(), getSetting<string>("emergency_phone", ""), getSetting<string | number>("vat_mode", ""), getSetting<string>("vat_note", "")]);
   const provider = activeProvider();
 
   return (
@@ -35,6 +35,23 @@ export default async function SettingsAdminPage() {
           <label className="label" htmlFor="emergencyPhone">Notfallnummer des Betreibers</label>
           <input id="emergencyPhone" name="emergencyPhone" type="tel" maxLength={40} defaultValue={emergency} className="field" placeholder="+49 …" />
           <p className="mt-1 text-xs text-muted">Steht in der Spielübersicht beider Teams, falls am Spieltag etwas schiefgeht.</p>
+        </div>
+      </ActionForm>
+      <ActionForm action={saveInvoiceSettingsAction} submit="Rechnungseinstellungen speichern" keepOnSuccess>
+        <h2 className="font-semibold">Rechnungen an die Hallen</h2>
+        <div>
+          <label className="label" htmlFor="vatMode">Umsatzsteuer</label>
+          <select id="vatMode" name="vatMode" className="field" defaultValue={vatMode === undefined || vatMode === null ? "" : String(vatMode)} data-testid="vat-mode">
+            <option value="" disabled>Bitte wählen (kein Standardwert)</option>
+            <option value="19">19 % Umsatzsteuer</option>
+            <option value="kleinunternehmer">Kleinunternehmer, ohne Umsatzsteuer</option>
+          </select>
+          <p className="mt-1 text-xs text-muted">Ohne gesetzten Schalter werden keine Rechnungen erzeugt. Die Wahl und den Wortlaut klärt der Steuerberater.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="vatNote">Hinweistext auf der Rechnung</label>
+          <textarea id="vatNote" name="vatNote" className="field" rows={3} maxLength={600} defaultValue={vatNote ?? ""} />
+          <p className="mt-1 text-xs text-muted">Pflicht bei Kleinunternehmer. Der Wortlaut kommt vom Steuerberater.</p>
         </div>
       </ActionForm>
       <p className="card text-sm text-muted">

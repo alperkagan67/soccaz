@@ -1,4 +1,4 @@
-export type EmailMessage = { to: string; subject: string; text: string; html?: string };
+export type EmailMessage = { to: string; subject: string; text: string; html?: string; attachments?: { filename: string; contentBase64: string }[] };
 export type SendResult = { status: "sent" | "skipped" | "failed"; detail?: string };
 
 /** Versendet E-Mail über Resend. Ohne RESEND_API_KEY wird nur protokolliert (lokale Entwicklung). */
@@ -16,6 +16,7 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
         subject: message.subject,
         text: message.text,
         html: message.html,
+        attachments: message.attachments?.map((a) => ({ filename: a.filename, content: a.contentBase64 })),
       }),
       signal: AbortSignal.timeout(10_000),
     });

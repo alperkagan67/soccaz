@@ -31,22 +31,24 @@ export async function shareAccountFor(tx: Tx, matchId: string): Promise<Account>
  * Provision und 10er-Bonus einer Halle einstellen (nur Admin 1, der Aufrufer prüft die Berechtigung). Pflicht-Begründung (3 bis 200 Zeichen), Wertebereich 0 bis 100 mit höchstens
  * zwei Nachkommastellen, Protokoll wer/wann/vorher/nachher. Wirkt nur auf künftige Buchungen (Schnappschuss je Spiel).
  */
-export async function setVenueCommission(actorId: string, venueId: string, input: { percent: unknown; bonusEnabled: boolean; reason: string }) {
+export async function setVenueCommission(actorId: string, venueId: string, input: { percent: unknown; bonusEnabled: boolean; reason: string; invoiceEmail?: string | null }) {
   const percent = parseCommissionPercent(input.percent);
   if (percent === null) throw new DomainError("Der Satz muss eine Zahl von 0 bis 100 mit höchstens zwei Nachkommastellen sein.");
   const reason = input.reason.trim();
   if (reason.length < 3) throw new DomainError("Bitte gib einen Grund an (mindestens 3 Zeichen).");
   if (reason.length > 200) throw new DomainError("Der Grund darf höchstens 200 Zeichen lang sein.");
+  const email = (input.invoiceEmail ?? "").trim().toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new DomainError("Die Rechnungsadresse ist keine E-Mail-Adresse.");
   await db.transaction(async (tx) => {
     const [v] = await tx.select().from(venues).where(eq(venues.id, venueId)).for("update");
     if (!v) throw new DomainError("Halle nicht gefunden.");
-    await tx.update(venues).set({ commissionPercent: percent.toFixed(2), commissionBonusEnabled: input.bonusEnabled }).where(eq(venues.id, venueId));
+    await tx.update(venues).set({ commissionPercent: percent.toFixed(2), commissionBonusEnabled: input.bonusEnabled, ...(input.invoiceEmail === undefined ? {} : { invoiceEmail: email || null }) }).where(eq(venues.id, venueId));
     await audit(
       actorId,
       "venue.commission",
       "venue",
       venueId,
-      { before: { percent: percentFromDb(v.commissionPercent), bonus: v.commissionBonusEnabled }, after: { percent, bonus: input.bonusEnabled, reason } },
+      { before: { percent: percentFromDb(v.commissionPercent), bonus: v.commissionBonusEnabled, hasInvoiceEmail: Boolean(v.invoiceEmail) }, after: { percent, bonus: input.bonusEnabled, hasInvoiceEmail: input.invoiceEmail === undefined ? Boolean(v.invoiceEmail) : Boolean(email), reason } },
       tx,
     );
   });

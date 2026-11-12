@@ -139,6 +139,10 @@ export default async function VenuesPage() {
                         <input id={`provr-${v.id}`} name="reason" className="field" placeholder="Pflichtfeld" />
                       </div>
                     </div>
+                    <div>
+                      <label className="label" htmlFor={`provm-${v.id}`}>Rechnungsadresse (E-Mail der Halle)</label>
+                      <input id={`provm-${v.id}`} name="invoiceEmail" type="email" className="field" defaultValue={v.invoiceEmail ?? ""} placeholder="rechnung@beispiel.de (leer = keine)" />
+                    </div>
                     <p className="text-xs text-muted">Wirkt nur auf künftige Buchungen. 0 bis 100, höchstens zwei Nachkommastellen.</p>
                   </ActionForm>
                 )}

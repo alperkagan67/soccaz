@@ -155,6 +155,28 @@ export async function listMatchFinance(period: Period): Promise<MatchFinanceRow[
   }));
 }
 
+export type VenueCommissionRow = { venueId: string; name: string; commissionCents: number; feesCents: number; restCents: number; minus: boolean };
+
+/**
+ * Provision, Zahlungsgebühren und Rest je Halle im Zeitraum (Vertrag 009 M2, AC-15), nur Spiele im Provisionsmodell. Provision = Konto commission netto (Stornos und Bonus eingerechnet),
+ * Gebühren = Konto fees der Spiele dieser Halle. Eine Halle im Minus (Rest unter 0) wird markiert: der Admin warnt, statt zu begrenzen.
+ */
+export async function venueCommissionOverview(period: Period): Promise<VenueCommissionRow[]> {
+  await connection();
+  const rows = rowsOf<{ id: string; name: string; commission: number; fees: number }>(
+    await db.execute(sql`
+      select v.id, v.name,
+        coalesce((select sum(case when l.credit_account = 'commission' then l.amount_cents else 0 end) - sum(case when l.debit_account = 'commission' then l.amount_cents else 0 end)
+                  from ledger_entries l join matches m on m.id = l.match_id where m.venue_id = v.id and l.at >= ${period.from} and l.at < ${period.to}), 0)::int as commission,
+        coalesce((select sum(case when l.debit_account = 'fees' then l.amount_cents else 0 end) - sum(case when l.credit_account = 'fees' then l.amount_cents else 0 end)
+                  from ledger_entries l join matches m on m.id = l.match_id where m.venue_id = v.id and m.ledger_model = 'commission' and l.at >= ${period.from} and l.at < ${period.to}), 0)::int as fees
+      from venues v
+      where exists (select 1 from matches m join ledger_entries l on l.match_id = m.id where m.venue_id = v.id and m.ledger_model = 'commission')
+      order by v.name`),
+  );
+  return rows.map((r) => ({ venueId: r.id, name: r.name, commissionCents: r.commission, feesCents: r.fees, restCents: r.commission - r.fees, minus: r.commission - r.fees < 0 }));
+}
+
 export type PlayerFinanceRow = { userId: string; name: string; email: string; paidCents: number; refundedCents: number; netCents: number; pendingRefundCents: number; inLobby: boolean; hasPaidNow: boolean };
 
 /** Wer hat für dieses Spiel bezahlt, wie viel kam zurück, was ist offen. */
@@ -327,6 +349,10 @@ export async function getAlerts(): Promise<Alert[]> {
       group by u.id, u.name having count(*) >= 3 order by n desc limit 10`),
   );
   for (const f of frequent) alerts.push({ code: `refunds:${f.user_id}`, severity: "medium", title: `Viele Erstattungen: ${f.name}`, detail: `${f.n} Erstattungen in 30 Tagen.`, href: "/admin/nutzer" });
+
+  for (const h of await venueCommissionOverview({ from: new Date(now.getTime() - 60 * 86_400_000), to: new Date(now.getTime() + 86_400_000) })) {
+    if (h.minus) alerts.push({ code: `venue-minus:${h.venueId}`, severity: "medium", title: `Halle im Minus: ${h.name}`, detail: `Provision ${formatEuro(h.commissionCents)} reicht nicht für die Zahlungsgebühren ${formatEuro(h.feesCents)} (Rest ${formatEuro(h.restCents)}).` });
+  }
 
   const negative = rowsOf<{ name: string; balance: number; user_id: string }>(
     await db.execute(sql`
