@@ -138,6 +138,11 @@ describe("Status-Töne und Fokus (M2-1)", () => {
     });
   }
 
+  it("primary im Hover (hover:brightness-95): Schrift auf Orange bleibt mindestens 4,5:1", () => {
+    const scale = (hex: string, f: number) => "#" + [1, 3, 5].map((k) => Math.round(parseInt(hex.slice(k, k + 2), 16) * f).toString(16).padStart(2, "0")).join("");
+    for (const t of [THEMES.dark, THEMES.light]) expect(contrast(t.oi, scale(t.o, 0.95))).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("Schriftstufen: kleinste Stufe 12 px, aufsteigend", () => {
     const root = cssBlock(":root {");
     const px = ["xs", "sm", "base", "lg", "xl", "2xl", "3xl"].map((k) => parseFloat(root[`fs-${k}`]) * 16);

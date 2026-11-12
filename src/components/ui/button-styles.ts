@@ -8,7 +8,7 @@ const BASE =
 
 const VARIANT: Record<ButtonVariant, string> = {
   // Orange nur für die eine Hauptaktion
-  primary: "border-transparent bg-accent text-accent-ink hover:brightness-110",
+  primary: "border-transparent bg-accent text-accent-ink hover:brightness-95",
   secondary: "border-rim bg-transparent text-ink hover:bg-panel2",
   // Rahmen (2 px) und Wort, nicht nur Farbe
   danger: "border-2 border-danger bg-transparent text-danger hover:bg-danger-soft",
