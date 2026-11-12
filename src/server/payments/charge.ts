@@ -237,6 +237,7 @@ export async function bookChargeFee(paymentIntentId: string): Promise<"booked" |
         amountCents: fee,
         kind: "fee",
         matchId: fresh.matchId,
+        tournamentId: fresh.tournamentId, // Turnier-Abbuchung: die Gebuehr gehoert zum Turnier (Auswertung)
         idempotencyKey: `fee:${paymentIntentId}`,
         reason: "Stripe-Gebühr (echt)",
       });

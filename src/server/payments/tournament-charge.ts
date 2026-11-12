@@ -11,6 +11,7 @@ import { paymentCharges, paymentProfiles } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { audit } from "../audit";
+import { DomainError } from "../teams";
 import type { Tx } from "../tx";
 import { dueWithGrace, fixDeadline, hasLongLead } from "@/lib/deadlines";
 import { formatEuro } from "@/lib/money";
@@ -75,7 +76,11 @@ export type TournamentRunResult = { reason: TournamentEligibility | "rows_exist"
 /** Bucht ein Turnier ab (alle Phasen). Idempotent und nachholbar: zweiter oder paralleler Lauf legt nichts doppelt an und sendet nichts doppelt. */
 export async function runTournamentCharges(tournamentId: string, now: Date = new Date(), opts: { requireDue?: boolean } = {}): Promise<TournamentRunResult> {
   const phaseA = await db.transaction(async (tx) => {
-    const t = await lockTournament(tx, tournamentId).catch(() => null);
+    // nur "Turnier nicht gefunden" ist ein erwarteter Ausgang; jeder andere Fehler (Sperre, Datenbank) bricht den Lauf ab und wird nie verschluckt
+    const t = await lockTournament(tx, tournamentId).catch((error: unknown) => {
+      if (error instanceof DomainError) return null;
+      throw error;
+    });
     if (!t) return { reason: "not_open" as const, created: 0 };
     const existing = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, tournamentId)).limit(1);
     if (existing.length > 0) return { reason: "rows_exist" as const, created: 0 };
@@ -109,6 +114,7 @@ export async function runTournamentChargesDue(now: Date = new Date()): Promise<{
   let created = 0;
   for (const c of candidates) {
     try {
+      if (!(await tournamentCardMode(db, c.id))) continue; // nur Turniere im Kartenmodell (Guthabenturniere nicht alle 5 Minuten sperren)
       const r = await runTournamentCharges(c.id, now, { requireDue: true });
       if (r.created > 0 || r.attempted > 0) turniere += 1;
       created += r.created;
@@ -266,6 +272,7 @@ export async function applyTournamentCharge(tx: Tx, r: ChargeReport): Promise<Ap
     }
   }
   const tournamentId = row.tournamentId!;
+  if (r.metadata.matchId) return ignore("metadata_mismatch"); // genau eines von beiden: eine Turnier-Zeile traegt nie die Metadaten eines Spiels
   if ((r.metadata.tournamentId ?? null) !== null && r.metadata.tournamentId !== tournamentId) return ignore("metadata_mismatch");
   if (r.metadata.userId !== null && r.metadata.userId !== row.userId) return ignore("metadata_mismatch");
   if (r.amountCents !== row.amountCents || r.currency?.toLowerCase() !== "eur") return ignore("amount_mismatch");
