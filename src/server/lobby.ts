@@ -8,6 +8,7 @@ import { venues } from "@/db/schema-finance";
 import { MIN_READY_PER_TEAM, hasFreeSlot, teamCapacity, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
+import { reverseCommission } from "./commission";
 import { teamName, userName } from "./names";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 import { DomainError } from "./teams";
@@ -603,6 +604,7 @@ export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | n
   if (!opts.afterRefund && (await hasChargeRows(tx, match.id))) throw new DomainError("Für dieses Spiel hat die Abbuchung begonnen: Absage und Erstattung folgen erst mit der Karten-Erstattung. Bitte kontaktiere den Support.");
   await tx.update(matches).set({ status: "cancelled", cancelReason: reason }).where(eq(matches.id, match.id)); // der Grund bleibt am Spiel (Anzeige in der Lobby); der Erstattungspfad (refund.ts) hat denselben Text schon gesetzt
   await refundOnCancel(tx, match, actorId);
+  await reverseCommission(tx, match.id); // Vertrag 009 M2 (Entscheid t9 P7): Absage -> Provision ganz storniert (ein ausgeloester 10er-Bonus bleibt)
   await withdrawBookingJob(tx, match.id);
   await audit(actorId, "match.cancel", "match", match.id, { before: { status: match.status }, after: { status: "cancelled", reason } }, tx);
   await notifyUsers(

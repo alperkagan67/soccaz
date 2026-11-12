@@ -11,7 +11,7 @@ import { adminCancelMatch, runRefunds } from "@/server/payments/refund";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { runSubstitutes } from "@/server/payments/substitute";
 import { setSetting } from "@/server/settings";
-import { addPlayer, cleanup, makeUser } from "./helpers";
+import { addPlayer, cleanup, makeUser, SHARE_ACCOUNT } from "./helpers";
 import { childrenOf, lateSuccess, nid, slotGame, withCard } from "./slot-helpers";
 
 // Vertrag 012, M3c-2b (Entscheid t9): Erfolg eines alten PaymentIntents NACH dem Ersatz des Platzes (oder ein zweiter erfolgreicher PaymentIntent zur selben Zeile) =>
@@ -68,7 +68,7 @@ describe("spaeter Erfolg eines alten PaymentIntents nach dem Ersatz", () => {
     expect((await refundsOf(g.match.id)).find((r) => r.chargeId === g.rootRow.id)!.status).toBe("succeeded");
     const refundEntries = (await ledgerOf(g.match.id)).filter((e) => e.kind === "refund");
     expect(refundEntries).toHaveLength(1);
-    expect(refundEntries[0]).toMatchObject({ debitAccount: "revenue", creditAccount: "clearing", amountCents: 800 });
+    expect(refundEntries[0]).toMatchObject({ debitAccount: SHARE_ACCOUNT, creditAccount: "clearing", amountCents: 800 });
     expect((await trialBalance()).balanced).toBe(true);
 
     // der Nachruecker und das Spiel bleiben unberuehrt

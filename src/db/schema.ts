@@ -137,6 +137,8 @@ export const matches = pgTable("matches", {
   costCents: integer("cost_cents"),
   finalShareCents: integer("final_share_cents"),
   settledAt: timestamp("settled_at", { withTimezone: true }),
+  // Buchungsmodell (Vertrag 009 M2, Entscheid t9 P4): Altspiele 'legacy' (Abbuchung auf revenue, Hallenmiete als venue_cost), Spiele ab Einführung 'commission' (Abbuchung auf venue_payable, nur die Provision ist Ertrag)
+  ledgerModel: text("ledger_model").$type<"legacy" | "commission">().notNull().default("commission"),
   cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }), // 012 M3a: Absage angefordert; das Spiel bleibt lobby/confirmed, bis alle Erstattungen auf die Karte terminal sind
   cancelReason: text("cancel_reason"),
   finalizedAt: timestamp("finalized_at", { withTimezone: true }),
