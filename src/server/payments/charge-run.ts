@@ -18,6 +18,7 @@ import { failSubstitute } from "./substitute-fail";
 import { graceUntil, inGraceWindow, isCardProblemCode } from "@/lib/grace";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 import { validCoversOf } from "./cover";
+import { matchIdOf } from "./charge-context";
 
 /** failure_code einer pending-Zeile, deren Ausgang bei Stripe unbekannt ist (siehe markUnknown). */
 export const UNKNOWN_OUTCOME = "unknown_outcome";
@@ -181,7 +182,7 @@ async function failRow(tx: Tx, rowId: string, matchId: string, userId: string, c
   const [row] = await tx.update(paymentCharges).set({ status: "failed", failureCode: code, ...(userProblem ? { graceUntil: grace } : {}), updatedAt: new Date() }).where(and(eq(paymentCharges.id, rowId), eq(paymentCharges.status, "pending"))).returning();
   await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
   await audit(null, "charge.failed", "match", matchId, { after: { userId, outcome: "failed", code } }, tx);
-  if (userProblem && row) await notifyChargeProblem(tx, row, code, game && inGraceWindow(grace, game.startsAt, new Date()) ? grace : null);
+  if (userProblem && row) await notifyChargeProblem(tx, { ...row, matchId: matchIdOf(row) }, code, game && inGraceWindow(grace, game.startsAt, new Date()) ? grace : null);
 }
 
 /**

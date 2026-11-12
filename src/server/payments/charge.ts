@@ -17,6 +17,7 @@ import { notifyChargeProblem } from "./charge-notify";
 import { graceUntil, inGraceWindow } from "@/lib/grace";
 import { failSubstitute } from "./substitute-fail";
 import { refundVoidedByDispute } from "./dispute";
+import { matchIdOf } from "./charge-context";
 
 export const refundKey = (chargeId: string) => `refund:${chargeId}`;
 
@@ -82,7 +83,7 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     return (lock ? await q.for("update") : await q)[0];
   };
   const probe = (await byPi(false)) ?? (await byHistory(false)) ?? (await byMeta(false));
-  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, probe.matchId)).for("update");
+  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update");
   let row: typeof paymentCharges.$inferSelect | undefined = await byPi(true);
   let oldAttempt = false;
   if (!row) {
@@ -110,7 +111,7 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
 
   // Ereignis eines ALTEN Versuchs: ein Fehlschlag aendert nichts (der neuere Versuch zaehlt), ein Erfolg ist trotzdem Geld und wird verbucht (succeeded gewinnt immer)
   if (oldAttempt && r.outcome !== "succeeded") {
-    await audit(null, "charge.old_attempt_event", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome } }, tx);
+    await audit(null, "charge.old_attempt_event", "match", matchIdOf(row), { after: { userId: row.userId, outcome: r.outcome } }, tx);
     return { status: "already" };
   }
   // Ersetzter Platz (Platz vergeben): Fehlschlaege aendern nichts mehr
@@ -136,7 +137,7 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     } else {
       await ensureRefundRow(tx, row, "Doppelte Abbuchung", r.paymentIntentId);
     }
-    await audit(null, "charge.duplicate_success", "match", row.matchId, { after: { userId: row.userId, paymentIntentId: r.paymentIntentId, replaced: row.resolution === "replaced" } }, tx);
+    await audit(null, "charge.duplicate_success", "match", matchIdOf(row), { after: { userId: row.userId, paymentIntentId: r.paymentIntentId, replaced: row.resolution === "replaced" } }, tx);
     return { status: "applied" };
   }
   if (row.status === "succeeded") return { status: "already" };
@@ -167,15 +168,15 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
       reason: "Abbuchung Anteil (Karte)",
     });
     await tx.update(paymentCharges).set({ status: "succeeded", failureCode: null, updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
-    await tx.update(matchParticipants).set({ cardStatus: "charged" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
-    await audit(null, "charge.succeeded", "match", row.matchId, { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
+    await tx.update(matchParticipants).set({ cardStatus: "charged" }).where(and(eq(matchParticipants.matchId, matchIdOf(row)), eq(matchParticipants.userId, row.userId)));
+    await audit(null, "charge.succeeded", "match", matchIdOf(row), { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
     // Gelingt die Abbuchung erst NACH der Absage (oder während sie läuft), wird sofort erstattet: nie Geld einer abgesagten Lobby behalten
-    const [game] = await tx.select({ status: matches.status, cancelRequestedAt: matches.cancelRequestedAt }).from(matches).where(eq(matches.id, row.matchId));
+    const [game] = await tx.select({ status: matches.status, cancelRequestedAt: matches.cancelRequestedAt }).from(matches).where(eq(matches.id, matchIdOf(row)));
     if (game && (game.cancelRequestedAt !== null || game.status === "cancelled")) {
       await ensureRefundRow(tx, { ...row, status: "succeeded" }, "Abbuchung nach Absage");
-      await audit(null, "refund.auto", "match", row.matchId, { after: { userId: row.userId } }, tx);
+      await audit(null, "refund.auto", "match", matchIdOf(row), { after: { userId: row.userId } }, tx);
     }
-    await settleIfComplete(tx, row.matchId); // der letzte erfolgreiche Spieler bucht das Spiel, egal ob über den Job oder den Webhook
+    await settleIfComplete(tx, matchIdOf(row)); // der letzte erfolgreiche Spieler bucht das Spiel, egal ob über den Job oder den Webhook
     return { status: "applied" };
   }
 
@@ -187,20 +188,20 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     // Nachruecker: sofort draussen, kein Fenster, keine Nachricht an Captain oder Dritte (AC-8/AC-20); der Platz geht an den Naechsten
     const code = cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined");
     await tx.update(paymentCharges).set({ status: r.outcome, failureCode: code, updatedAt: now }).where(eq(paymentCharges.id, row.id));
-    await audit(null, "charge.failed", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome, code } }, tx);
-    if (row.resolution === null) await failSubstitute(tx, row, code);
+    await audit(null, "charge.failed", "match", matchIdOf(row), { after: { userId: row.userId, outcome: r.outcome, code } }, tx);
+    if (row.resolution === null) await failSubstitute(tx, { ...row, matchId: matchIdOf(row) }, code);
     return { status: "applied" };
   }
   // Nachzahlfenster (AC-6): beginnt mit dem ERSTEN Fehler und wird danach nicht mehr verschoben; unter 1 h bis zum Anstoss gibt es keins (null)
-  const [game] = await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, row.matchId));
+  const [game] = await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, matchIdOf(row)));
   // Nur der erste Versuch setzt das Fenster; ein fehlgeschlagener Wiederholungsversuch (current_attempt > 1) laesst es unveraendert
   const grace = firstProblem && row.currentAttempt === 1 ? graceUntil(now, game?.startsAt ?? now) : row.graceUntil; // immer gesetzt (kein Fenster = Ende ist jetzt)
   await tx.update(paymentCharges).set({ status: r.outcome, failureCode: cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), graceUntil: grace, updatedAt: now }).where(eq(paymentCharges.id, row.id));
-  await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
-  await audit(null, "charge.failed", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome, code: cleanCode(r.failureCode) } }, tx);
+  await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, matchIdOf(row)), eq(matchParticipants.userId, row.userId)));
+  await audit(null, "charge.failed", "match", matchIdOf(row), { after: { userId: row.userId, outcome: r.outcome, code: cleanCode(r.failureCode) } }, tx);
   // NUR beim ersten Wechsel in einen Problemzustand: war die Zeile schon failed oder requires_action, ändern sich Status und Code (und das Audit), aber es geht keine
   // zweite Nachricht raus (requires_action -> failed, Codewechsel). Empfänger: Betroffener + Captain/Veranstalter, nie Dritte (AC-12/AC-20)
-  if (firstProblem) await notifyChargeProblem(tx, row, cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), game && inGraceWindow(grace, game.startsAt, now) ? grace : null);
+  if (firstProblem) await notifyChargeProblem(tx, { ...row, matchId: matchIdOf(row) }, cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), game && inGraceWindow(grace, game.startsAt, now) ? grace : null);
   return { status: "applied" };
 }
 
