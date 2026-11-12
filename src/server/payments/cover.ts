@@ -50,7 +50,7 @@ export async function validCovers(tx: Pick<Tx, "select">, matchId: string): Prom
 }
 
 /** Ist der Countdown "Lobby schliesst" abgelaufen oder sind schon Abbuchungszeilen angelegt? Dann ist keine Uebernahme mehr moeglich. Unter der Spielsperre. */
-async function coverClosed(tx: Tx, match: typeof matches.$inferSelect, now: Date): Promise<boolean> {
+export async function coverClosed(tx: Pick<Tx, "select">, match: typeof matches.$inferSelect, now: Date): Promise<boolean> {
   if (!["lobby", "confirmed"].includes(match.status) || match.settledAt !== null || match.cancelRequestedAt !== null || match.startsAt.getTime() <= now.getTime()) return true;
   if (await hasChargeRows(tx, match.id)) return true;
   return joinClosedByTime(match.startsAt, await leadStart(tx, match), now, match.createdAt);
@@ -86,9 +86,9 @@ export async function takeOverShare(payerId: string, matchId: string, targetUser
 }
 
 /** B nimmt seine Uebernahme zurueck (bis zum Ablauf des Countdowns). A faellt dann auf rot zurueck. */
-export async function releaseCover(payerId: string, matchId: string, now: Date = new Date()): Promise<void> {
+export async function releaseCover(payerId: string, matchId: string, now: Date = new Date()): Promise<string> {
   if (typeof matchId !== "string" || !UUID.test(matchId)) throw new DomainError(NOT_POSSIBLE);
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
     if (!match || (await coverClosed(tx, match, now))) throw new DomainError("Die Übernahme kann nicht mehr zurückgenommen werden.");
     const released = await tx
@@ -98,5 +98,6 @@ export async function releaseCover(payerId: string, matchId: string, now: Date =
       .returning({ userId: matchParticipants.userId });
     if (released.length === 0) throw new DomainError("Du übernimmst in diesem Spiel keinen Anteil.");
     await audit(payerId, "cover.released", "match", matchId, { after: { targetUserId: released[0].userId } }, tx);
+    return released[0].userId; // der Platz, dessen Übernahme wirklich zurückgenommen wurde (nie ein Wert vom Client)
   });
 }
