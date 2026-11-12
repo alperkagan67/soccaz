@@ -274,6 +274,13 @@
       "when": 1794390779965,
       "tag": "0038_melted_ink",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794440336021,
+      "tag": "0039_volatile_frog_thor",
+      "breakpoints": true
     }
   ]
 }

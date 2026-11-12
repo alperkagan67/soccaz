@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matches, paymentCharges, paymentRefunds, users } from "@/db/schema";
+import { auditLog, matches, paymentCharges, paymentRefunds, users } from "@/db/schema";
 import { expenses, ledgerEntries } from "@/db/schema-finance";
 import { euroForCsv, toCsv } from "@/lib/csv";
 import { formatEuro } from "@/lib/money";
@@ -40,7 +40,21 @@ export async function getRefundAlerts(now: Date = new Date()) {
         sql`(${paymentCharges.failureCode} in ('unknown_outcome', 'after_start') or (${paymentCharges.paymentIntentId} is null and ${paymentCharges.attemptStartedAt} is not null and exists (select 1 from matches m where m.id = ${paymentCharges.matchId} and m.cancel_requested_at is not null)))`,
       ),
     );
-  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges };
+  // M3c-1: technische Zustaende, die KEIN Nachzahlfenster haben und kein Automat anfasst (Admin entscheidet): Schluesselkonflikt bei Stripe, Altzeilen (vor
+  // Migration 0039 fehlgeschlagen, ohne Fenster) und ein zweiter erfolgreicher PaymentIntent zur selben Zeile (Doppelabbuchung: manuell erstatten)
+  const idempotencyMismatches = await db
+    .select({ id: paymentCharges.id, matchId: paymentCharges.matchId })
+    .from(paymentCharges)
+    .where(and(eq(paymentCharges.status, "failed"), eq(paymentCharges.failureCode, "idempotency_mismatch")));
+  const legacyFailed = await db
+    .select({ id: paymentCharges.id, matchId: paymentCharges.matchId, code: paymentCharges.failureCode })
+    .from(paymentCharges)
+    .where(and(inArray(paymentCharges.status, ["failed", "requires_action"]), isNull(paymentCharges.graceUntil), sql`(${paymentCharges.failureCode} is null or ${paymentCharges.failureCode} not in ('idempotency_mismatch', 'match_closed', 'after_start', 'unknown_outcome'))`));
+  const duplicateSuccesses = await db
+    .select({ matchId: auditLog.entityId, at: auditLog.at })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, "charge.duplicate_success"), sql`${auditLog.at} > ${new Date(now.getTime() - 30 * 24 * 3_600_000)}`));
+  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses };
 }
 
 export type Period = { from: Date; to: Date };
@@ -273,6 +287,26 @@ export async function exportLedgerCsv(period: Period): Promise<string> {
 
 export type Alert = { code: string; severity: "high" | "medium"; title: string; detail: string; href?: string };
 
+/**
+ * Kartenzahlungen (Vertrag 012, Review PR #107): die Alarmliste getRefundAlerts war nirgends sichtbar. Hier wird sie in Alarme fuer die Finanzseite uebersetzt (nur Anzahl und Spiel-IDs,
+ * keine Personendaten). Alles, was ein Automat NICHT loest und Geld oder einen haengenden Ablauf betrifft: Doppelabbuchung, fehlgeschlagene/ungeklaerte Erstattung, haengende Absage,
+ * ungeklaerte Abbuchung, Schluesselkonflikt, Altzeile ohne Fenster.
+ */
+export function cardAlertsFrom(ra: Awaited<ReturnType<typeof getRefundAlerts>>): Alert[] {
+  const out: Alert[] = [];
+  const add = (code: string, n: number, title: string, detail: string) => {
+    if (n > 0) out.push({ code, severity: "high", title: `${title} (${n})`, detail });
+  };
+  add("card:duplicate-success", ra.duplicateSuccesses.length, "Doppelte Abbuchung", "Zu einer Zahlung ging ein zweiter erfolgreicher PaymentIntent ein (letzte 30 Tage). Bitte pruefen, ob die Erstattung durch ist (Stripe-Dashboard).");
+  add("card:failed-refunds", ra.failedRefunds.length, "Erstattung fehlgeschlagen", "Eine Erstattung auf die Karte ist gescheitert und muss manuell geklaert werden.");
+  add("card:unknown-refunds", ra.unknownRefunds.length, "Erstattung mit unbekanntem Ausgang", "Der Ausgang einer Erstattung ist bei Stripe unklar.");
+  add("card:stuck-cancels", ra.stuckCancels.length, "Absage haengt", "Eine angeforderte Absage ist seit Stunden nicht abgeschlossen.");
+  add("card:uncleared-charges", ra.unclearedCharges.length, "Abbuchung ungeklaert", "Eine Abbuchung hat keinen bekannten Ausgang (unknown_outcome, nach dem Anstoss, Stripe-Suche ohne Treffer).");
+  add("card:idempotency-mismatch", ra.idempotencyMismatches.length, "Abbuchung mit Schluesselkonflikt", "Ein Versuch ist am Idempotenzschluessel gescheitert und wird von keinem Automaten angefasst.");
+  add("card:legacy-failed", ra.legacyFailed.length, "Altzeile ohne Nachzahlfenster", "Eine fehlgeschlagene Abbuchung aus der Zeit vor dem Nachzahlfenster wird nicht automatisch bearbeitet.");
+  return out;
+}
+
 export async function getAlerts(): Promise<Alert[]> {
   await connection();
   const alerts: Alert[] = [];
@@ -331,6 +365,7 @@ export async function getAlerts(): Promise<Alert[]> {
     );
     for (const m of noJob) alerts.push({ code: `unbooked-hall:${m.id}`, severity: "high", title: `Halle noch nicht gebucht: ${m.home} gegen ${m.away}`, detail: "Das Spiel findet in weniger als 48 Stunden statt.", href: "/admin/buchungen" });
   }
+  alerts.push(...cardAlertsFrom(await getRefundAlerts()));
   return alerts;
 }
 

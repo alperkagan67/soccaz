@@ -75,9 +75,23 @@ export class FakeProvider implements PaymentProvider {
     if (outcome === "error") throw new Error("Netz weg");
     if (outcome === "idempotency_mismatch") throw new PaymentIdempotencyError();
     const id = `pi_fake_${short(input.idempotencyKey)}`; // gleicher Schlüssel, gleicher PaymentIntent (wie bei Stripe)
-    if (outcome === "succeeded") return { id, status: "succeeded", failureCode: null };
-    if (outcome === "processing") return { id, status: "processing", failureCode: null };
-    if (outcome === "requires_action") return { id, status: "requires_action", failureCode: "authentication_required" };
+    // Der Fake merkt sich den Zustand, den "Stripe" jetzt haette (fuer retrievePaymentIntent); setIntentStatus ueberschreibt ihn in Tests
+    const remember = (status: FoundIntent["status"], failureCode: string | null) => {
+      this.intents.set(id, { id, status, amountCents: input.amountCents, currency: "eur", customerId: input.customerId, failureCode });
+    };
+    if (outcome === "succeeded") {
+      remember("succeeded", null);
+      return { id, status: "succeeded", failureCode: null };
+    }
+    if (outcome === "processing") {
+      remember("processing", null);
+      return { id, status: "processing", failureCode: null };
+    }
+    if (outcome === "requires_action") {
+      remember("requires_action", "authentication_required");
+      return { id, status: "requires_action", failureCode: "authentication_required" };
+    }
+    remember("failed", "card_declined");
     return { id, status: "failed", failureCode: "card_declined" };
   }
 
@@ -103,6 +117,32 @@ export class FakeProvider implements PaymentProvider {
   private readonly found = new Map<string, FoundIntent[]>();
   setFound(matchId: string, userId: string, list: FoundIntent[]) {
     this.found.set(`${matchId}:${userId}`, list);
+  }
+
+  /** Test-Hilfe: Zustand eines PaymentIntents bei "Stripe" (retrieve). Von uns angelegte PaymentIntents kennt der Fake mit dem Ausgang der Anlage; unbekannte IDs liefern null. */
+  private readonly intents = new Map<string, FoundIntent>();
+  setIntentStatus(id: string, status: FoundIntent["status"], extra: Partial<FoundIntent> = {}) {
+    this.intents.set(id, { id, status, amountCents: 800, currency: "eur", customerId: null, failureCode: null, ...extra });
+  }
+
+  async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {
+    this.probe("retrievePaymentIntent");
+    this.calls.push({ method: "retrievePaymentIntent", args: { paymentIntentId } });
+    return this.intents.get(paymentIntentId) ?? null;
+  }
+
+  /** Test-Hilfe: Ergebnis von cancelPaymentIntent je PaymentIntent (Standard: canceled); "error" wirft einen Netzfehler. */
+  private readonly cancelOutcome = new Map<string, "canceled" | "succeeded" | "other" | "error">();
+  setCancelOutcome(paymentIntentId: string, outcome: "canceled" | "succeeded" | "other" | "error") {
+    this.cancelOutcome.set(paymentIntentId, outcome);
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }> {
+    this.probe("cancelPaymentIntent");
+    this.calls.push({ method: "cancelPaymentIntent", args: { paymentIntentId } });
+    const outcome = this.cancelOutcome.get(paymentIntentId) ?? "canceled";
+    if (outcome === "error") throw new Error("Netzfehler (Test)");
+    return { status: outcome };
   }
 
   async findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]> {

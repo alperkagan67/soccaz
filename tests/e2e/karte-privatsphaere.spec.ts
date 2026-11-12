@@ -38,8 +38,8 @@ async function failChargeOf(matchId: string, emailPrefix: string) {
     [matchId, u.id],
   );
   await query(
-    `insert into payment_charges (match_id, user_id, amount_cents, status, failure_code, idempotency_key)
-     values ($1, $2, 500, 'failed', 'card_declined', $3)`,
+    `insert into payment_charges (match_id, user_id, amount_cents, status, failure_code, idempotency_key, grace_until)
+     values ($1, $2, 500, 'failed', 'card_declined', $3, now() + interval '90 minutes')`,
     [matchId, u.id, `charge:${matchId}:${u.id}`],
   );
   return u.id;
@@ -88,6 +88,7 @@ test("Dritte sehen nur die neutrale rote Ampel; Gäste sehen keinen Status und n
   expect(own.html).toContain('data-card-status="failed"');
   expect(own.html).toContain('data-testid="charge-failed"'); // Fehlerblock mit Grund (AC-4)
   expect(own.html).toContain("Die Bank hat die Karte abgelehnt.");
+  expect(own.html).toMatch(/Du hast bis \d{1,2}:\d{2} Uhr/); // Fensterende fuer den Betroffenen (AC-6)
   expect(own.html).not.toContain("card_declined"); // der Rohcode geht nie an den Browser
   expect(own.rsc).not.toContain("card_declined");
 
@@ -95,6 +96,8 @@ test("Dritte sehen nur die neutrale rote Ampel; Gäste sehen keinen Status und n
   const member = await bodies(b, url);
   expect(member.html).toContain('data-card-status="open"');
   expect(member.html).not.toContain("charge-failed");
+  expect(member.html).not.toMatch(/bis \d{1,2}:\d{2} Uhr/); // das Fensterende sehen nur Betroffener und Captain
+  expect(member.rsc).not.toMatch(/graceEnd/);
   expect(member.html).not.toContain("Die Bank hat die Karte abgelehnt.");
   expect(member.html).toContain("Spieler kpa");
   for (const leak of LEAKS) {

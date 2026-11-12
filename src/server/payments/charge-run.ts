@@ -13,6 +13,8 @@ import type { Tx } from "../tx";
 import { hasLongLead, dueWithGrace, fixDeadline } from "@/lib/deadlines";
 import { cardModeActive, leadStart, payAndReadyPossible } from "../wallet";
 import { applyChargeInTx, bookChargeFee, type ChargeOutcome } from "./charge";
+import { notifyChargeProblem } from "./charge-notify";
+import { graceUntil, inGraceWindow, isCardProblemCode } from "@/lib/grace";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 
 /** failure_code einer pending-Zeile, deren Ausgang bei Stripe unbekannt ist (siehe markUnknown). */
@@ -148,9 +150,15 @@ async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
 }
 
 async function failRow(tx: Tx, rowId: string, matchId: string, userId: string, code: string) {
-  await tx.update(paymentCharges).set({ status: "failed", failureCode: code, updatedAt: new Date() }).where(and(eq(paymentCharges.id, rowId), eq(paymentCharges.status, "pending")));
+  // Ein Problem des Spielers (keine Karte, Schluessel geaendert) beginnt wie ein abgelehnter Versuch das Nachzahlfenster und benachrichtigt; "match_closed" ist kein Problem des Spielers
+  const userProblem = isCardProblemCode(code); // technische Zustaende (idempotency_mismatch, match_closed, ...) sind kein Kartenproblem: kein Fenster, keine Nachricht
+  const [game] = userProblem ? await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, matchId)) : [];
+  const [current] = userProblem ? await tx.select({ attempt: paymentCharges.currentAttempt, grace: paymentCharges.graceUntil }).from(paymentCharges).where(eq(paymentCharges.id, rowId)) : [];
+  const grace = current && current.attempt > 1 ? current.grace : graceUntil(new Date(), game?.startsAt ?? new Date()); // nur der erste Versuch setzt das Fenster
+  const [row] = await tx.update(paymentCharges).set({ status: "failed", failureCode: code, ...(userProblem ? { graceUntil: grace } : {}), updatedAt: new Date() }).where(and(eq(paymentCharges.id, rowId), eq(paymentCharges.status, "pending"))).returning();
   await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
   await audit(null, "charge.failed", "match", matchId, { after: { userId, outcome: "failed", code } }, tx);
+  if (userProblem && row) await notifyChargeProblem(tx, row, code, game && inGraceWindow(grace, game.startsAt, new Date()) ? grace : null);
 }
 
 /**

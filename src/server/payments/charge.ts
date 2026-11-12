@@ -3,7 +3,8 @@
 // Netzaufrufe laufen NIE innerhalb einer Datenbanktransaktion (die Gebühr wird vorher geholt oder in einem eigenen Folgeschritt gebucht).
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, paymentCharges, paymentProfiles, paymentRefunds } from "@/db/schema";
+import { matchParticipants, matches, paymentChargeAttempts, paymentCharges, paymentProfiles, paymentRefunds } from "@/db/schema";
+import { ledgerEntries } from "@/db/schema-finance";
 import { audit } from "../audit";
 import { formatEuro } from "@/lib/money";
 import { notifyUsers } from "../notifications";
@@ -13,6 +14,7 @@ import { post } from "../ledger";
 import type { Tx } from "../tx";
 import { getPaymentProvider } from "./provider";
 import { notifyChargeProblem } from "./charge-notify";
+import { graceUntil, inGraceWindow } from "@/lib/grace";
 
 export const refundKey = (chargeId: string) => `refund:${chargeId}`;
 
@@ -59,22 +61,41 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     const q = tx.select().from(paymentCharges).where(eq(paymentCharges.paymentIntentId, r.paymentIntentId));
     return (lock ? await q.for("update") : await q)[0];
   };
+  // Ein ALTER, abgeschlossener Versuch (Historie, M3c-1): die Zeile gehört zu dem Versuch, der inzwischen durch einen neueren ersetzt wurde
+  const byHistory = async (lock: boolean) => {
+    const [h] = await tx.select({ chargeId: paymentChargeAttempts.chargeId }).from(paymentChargeAttempts).where(eq(paymentChargeAttempts.paymentIntentId, r.paymentIntentId));
+    if (!h) return undefined;
+    const q = tx.select().from(paymentCharges).where(eq(paymentCharges.id, h.chargeId));
+    return (lock ? await q.for("update") : await q)[0];
+  };
   const byMeta = async (lock: boolean) => {
     const { matchId, userId } = r.metadata;
     if (!matchId || !userId || !UUID.test(matchId) || !UUID.test(userId)) return undefined;
     const q = tx.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId)));
     return (lock ? await q.for("update") : await q)[0];
   };
-  const probe = (await byPi(false)) ?? (await byMeta(false));
+  const probe = (await byPi(false)) ?? (await byHistory(false)) ?? (await byMeta(false));
   if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, probe.matchId)).for("update");
   let row: typeof paymentCharges.$inferSelect | undefined = await byPi(true);
+  let oldAttempt = false;
+  if (!row) {
+    row = await byHistory(true);
+    oldAttempt = row !== undefined;
+  }
   if (!row) {
     if (!r.metadata.matchId || !r.metadata.userId || !UUID.test(r.metadata.matchId) || !UUID.test(r.metadata.userId)) return ignore("unknown_payment_intent");
     row = await byMeta(true);
     if (!row) return ignore("unknown_charge");
     // Die Zeile gehört zu einem ANDEREN PaymentIntent. Derselbe PaymentIntent ist kein Fehler: ein paralleles Ereignis hat ihn gerade gebunden
     // (wir haben auf seine Sperre gewartet) und wird normal weiterverarbeitet, sonst ginge ein succeeded verloren (Geld abgebucht, nicht gebucht).
-    if (row.paymentIntentId !== null && row.paymentIntentId !== r.paymentIntentId) return ignore("other_payment_intent");
+    if (row.paymentIntentId !== null && row.paymentIntentId !== r.paymentIntentId) {
+      // Die Zeile ist schon erfolgreich gebucht, und nun meldet Stripe einen ZWEITEN erfolgreichen PaymentIntent dazu: nicht buchen, aber auffaellig machen (Erstattung: M3f)
+      if (r.outcome === "succeeded" && row.status === "succeeded") {
+        await audit(null, "charge.duplicate_success", "match", row.matchId, { after: { userId: row.userId, paymentIntentId: r.paymentIntentId } }, tx);
+        return { status: "already" };
+      }
+      return ignore("other_payment_intent");
+    }
   }
   if (r.metadata.matchId !== null && r.metadata.matchId !== row.matchId) return ignore("metadata_mismatch");
   if (r.metadata.userId !== null && r.metadata.userId !== row.userId) return ignore("metadata_mismatch");
@@ -82,10 +103,34 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   const [profile] = await tx.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, row.userId));
   if (!profile || r.customerId !== profile.stripeCustomerId) return ignore("customer_mismatch");
 
-  if (row.status === "succeeded") return { status: "already" };
+  // Ereignis eines ALTEN Versuchs: ein Fehlschlag aendert nichts (der neuere Versuch zaehlt), ein Erfolg ist trotzdem Geld und wird verbucht (succeeded gewinnt immer)
+  if (oldAttempt && r.outcome !== "succeeded") {
+    await audit(null, "charge.old_attempt_event", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome } }, tx);
+    return { status: "already" };
+  }
+  if (row.status === "succeeded") {
+    // Ein ZWEITER erfolgreicher PaymentIntent zur selben Zeile (anderer als der gebuchte): nicht doppelt buchen, aber auffaellig machen (Erstattung: M3f)
+    if (r.outcome === "succeeded") {
+      const [booked] = await tx.select({ id: ledgerEntries.id }).from(ledgerEntries).where(eq(ledgerEntries.idempotencyKey, `charge:${r.paymentIntentId}`));
+      if (!booked) await audit(null, "charge.duplicate_success", "match", row.matchId, { after: { userId: row.userId, paymentIntentId: r.paymentIntentId } }, tx);
+    }
+    return { status: "already" };
+  }
   // Rangfolge succeeded > failed > requires_action > pending: ein verspätetes, "schwächeres" Ereignis überschreibt nichts
   if (r.outcome !== "succeeded" && RANK[r.outcome] < RANK[row.status]) return { status: "already" };
-  if (row.paymentIntentId === null) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
+  if (r.outcome === "succeeded" && row.paymentIntentId !== r.paymentIntentId) {
+    // Der BEZAHLTE PaymentIntent ist nicht der gebundene (ein ALTER Versuch gewinnt das Rennen, oder die Zeile ist schon auf einen neueren Versuch gedreht): die Zeile muss auf den
+    // bezahlten zeigen, sonst findet die Gebuehrenbuchung (bookChargeFee/bookOpenFees) die Zeile nicht, bucht die Gebuehr eines unbezahlten PaymentIntents, und die Erstattung nimmt den
+    // falschen PaymentIntent. Der bisher gebundene PaymentIntent des laufenden Versuchs wandert in die Historie (spaetere Ereignisse zu ihm werden weiter zugeordnet).
+    if (row.paymentIntentId !== null) {
+      await tx
+        .insert(paymentChargeAttempts)
+        .values({ chargeId: row.id, attemptNo: row.currentAttempt, idempotencyKey: row.idempotencyKey, paymentIntentId: row.paymentIntentId, status: row.status, failureCode: row.failureCode, attemptStartedAt: row.attemptStartedAt })
+        .onConflictDoNothing();
+    }
+    await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
+    row = { ...row, paymentIntentId: r.paymentIntentId };
+  } else if (row.paymentIntentId === null && !oldAttempt) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
 
   if (r.outcome === "succeeded") {
     await post(tx, {
@@ -112,12 +157,18 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
 
   // Nicht erfolgreich: nur der Status und das Audit (Nachzahlfenster, Nachrücker und Absage sind M3). Eine zweite gleiche Meldung ändert nichts.
   if (row.status === r.outcome && row.failureCode === cleanCode(r.failureCode)) return { status: "already" };
-  await tx.update(paymentCharges).set({ status: r.outcome, failureCode: cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
+  const firstProblem = row.status !== "failed" && row.status !== "requires_action";
+  const now = new Date();
+  // Nachzahlfenster (AC-6): beginnt mit dem ERSTEN Fehler und wird danach nicht mehr verschoben; unter 1 h bis zum Anstoss gibt es keins (null)
+  const [game] = await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, row.matchId));
+  // Nur der erste Versuch setzt das Fenster; ein fehlgeschlagener Wiederholungsversuch (current_attempt > 1) laesst es unveraendert
+  const grace = firstProblem && row.currentAttempt === 1 ? graceUntil(now, game?.startsAt ?? now) : row.graceUntil; // immer gesetzt (kein Fenster = Ende ist jetzt)
+  await tx.update(paymentCharges).set({ status: r.outcome, failureCode: cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), graceUntil: grace, updatedAt: now }).where(eq(paymentCharges.id, row.id));
   await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
   await audit(null, "charge.failed", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome, code: cleanCode(r.failureCode) } }, tx);
   // NUR beim ersten Wechsel in einen Problemzustand: war die Zeile schon failed oder requires_action, ändern sich Status und Code (und das Audit), aber es geht keine
   // zweite Nachricht raus (requires_action -> failed, Codewechsel). Empfänger: Betroffener + Captain/Veranstalter, nie Dritte (AC-12/AC-20)
-  if (row.status !== "failed" && row.status !== "requires_action") await notifyChargeProblem(tx, row, cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"));
+  if (firstProblem) await notifyChargeProblem(tx, row, cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), game && inGraceWindow(grace, game.startsAt, now) ? grace : null);
   return { status: "applied" };
 }
 

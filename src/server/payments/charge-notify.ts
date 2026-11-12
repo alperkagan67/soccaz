@@ -4,6 +4,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { matchParticipants, matches, users } from "@/db/schema";
 import { chargeFailureText, needsBankConfirmation } from "@/lib/charge-failure-text";
+import { graceText } from "@/lib/grace";
 import { formatEuro } from "@/lib/money";
 import { teamName } from "../names";
 import { notifyUsers, teamAdminIds } from "../notifications";
@@ -16,7 +17,7 @@ async function notBanned(tx: Tx, ids: string[]): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId: string; amountCents: number }, code: string | null): Promise<void> {
+export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId: string; amountCents: number }, code: string | null, grace: Date | null = null): Promise<void> {
   const [game] = await tx.select({ home: matches.homeTeamId, away: matches.awayTeamId }).from(matches).where(eq(matches.id, row.matchId));
   if (!game) return;
   const [seat] = await tx.select({ teamId: matchParticipants.teamId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
@@ -30,13 +31,15 @@ export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId
   const amount = formatEuro(row.amountCents);
   const url = `/lobby/${row.matchId}`;
   const label = `${home} gegen ${away}`;
+  const forVictim = grace ? ` Du hast ${graceText(grace)} Zeit.` : "";
+  const forCaptain = grace ? ` Der Spieler hat ${graceText(grace)} Zeit.` : "";
 
   await notifyUsers(
     victimActive ? [victimActive] : [],
     {
       type: "payment",
       title: bank ? "Freigabe deiner Zahlung nötig" : "Abbuchung fehlgeschlagen",
-      body: `${label}: Die Abbuchung von ${amount} ist nicht durchgegangen. ${reason} Öffne die Lobby und ändere deine Karte (Karte ändern), damit du dabei bleibst.`,
+      body: `${label}: Die Abbuchung von ${amount} ist nicht durchgegangen. ${reason} Öffne die Lobby und ändere deine Karte (Karte ändern), damit du dabei bleibst.${forVictim}`,
       url,
     },
     tx,
@@ -46,7 +49,7 @@ export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId
     {
       type: "payment",
       title: bank ? "Zahlung braucht Freigabe" : "Abbuchung fehlgeschlagen",
-      body: `${label}: Bei ${victim?.nickname ?? victim?.name ?? "einem Spieler"} ist die Abbuchung von ${amount} nicht durchgegangen. ${reason} Der Spieler kann in der Lobby seine Karte ändern.`,
+      body: `${label}: Bei ${victim?.nickname ?? victim?.name ?? "einem Spieler"} ist die Abbuchung von ${amount} nicht durchgegangen. ${reason} Der Spieler kann in der Lobby seine Karte ändern.${forCaptain}`,
       url,
     },
     tx,

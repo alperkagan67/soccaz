@@ -40,6 +40,16 @@ export interface PaymentProvider {
    * Die Suche von Stripe ist verzögert konsistent: eine leere Antwort beweist nur etwas, wenn der Versuch schon eine Weile zurückliegt.
    */
   findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]>;
+  /**
+   * Bricht einen offenen PaymentIntent ab (vor einem neuen Versuch im Nachzahlfenster: nie zwei offene Versuche). Ist er schon abgebrochen: canceled.
+   * Hat er in der Zwischenzeit geklappt: succeeded (dann wird verbucht statt neu gesendet). Netzfehler werfen.
+   */
+  cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }>;
+  /**
+   * Liest einen BEKANNTEN PaymentIntent (konsistent, anders als die Suche). null = bei Stripe nicht vorhanden. Fuer den Neuversuch im Nachzahlfenster:
+   * die Suche ist verzoegert konsistent und bleibt unbekannten Ausgaengen (unknown_outcome) vorbehalten.
+   */
+  retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null>;
   /** Echte Stripe-Gebühr der Zahlung in Cent (aus der balance_transaction), oder null, wenn noch nicht verfügbar. Nie geschätzt. */
   retrieveChargeFee(paymentIntentId: string): Promise<number | null>;
   /** Ist das Zahlungsmittel bei Stripe noch nutzbar: existiert, gehört noch zu diesem Kunden (nicht gelöst) und ist nicht abgelaufen? */

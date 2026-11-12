@@ -323,11 +323,17 @@ export const paymentCharges = pgTable(
     failureCode: text("failure_code"),
     feeCents: integer("fee_cents"),
     attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
+    // Nachzahlfenster (Vertrag 012, AC-6): Ende des Fensters, bei jedem Kartenproblem GESETZT (bei hoechstens 1 h bis zum Anstoss ist das Ende der Fehlzeitpunkt = kein Fenster).
+    // NULL = nie ein Kartenproblem oder Altzeile (vor Migration 0039). Massgeblich ist das effektive Ende min(grace_until, Anstoss - 1 h), siehe src/lib/grace.ts.
+    graceUntil: timestamp("grace_until", { withTimezone: true }),
+    // Nummer des LAUFENDEN Versuchs (1 = erster Versuch). Diese Zeile ist der Zustand des laufenden Versuchs; abgeschlossene Versuche stehen in payment_charge_attempts.
+    currentAttempt: integer("current_attempt").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("payment_charges_match_user_idx").on(t.matchId, t.userId),
+    check("payment_charges_attempt_positive", sql`${t.currentAttempt} >= 1`),
     check("payment_charges_amount_positive", sql`${t.amountCents} > 0`),
     check("payment_charges_fee_nonneg", sql`${t.feeCents} is null or ${t.feeCents} >= 0`),
     check("payment_charges_status_check", sql`${t.status} in ('pending', 'requires_action', 'succeeded', 'failed')`),
@@ -339,6 +345,30 @@ export const paymentCharges = pgTable(
  * Hauptbuch erst bei Erfolg (revenue -> clearing, Schluessel refund:<refund_id>); die Stripe-Gebuehr wird nicht zurueckgebucht (Soccaz traegt sie).
  * status: pending (angelegt oder bei Stripe unterwegs), succeeded, failed (manuell zu klaeren, Admin-Alarm). idempotency_key = refund:<charge_id>.
  */
+/**
+ * Historie ABGESCHLOSSENER Abbuchungsversuche einer Zeile (Vertrag 012, M3c-1). Jeder Versuch hat einen eigenen Idempotenzschluessel und PaymentIntent
+ * (charge:<m>:<u>:<n> ab Versuch 2). Dient der Webhook-Zuordnung alter PaymentIntents; der laufende Versuch steht auf payment_charges.
+ */
+export const paymentChargeAttempts = pgTable(
+  "payment_charge_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    chargeId: uuid("charge_id").notNull().references(() => paymentCharges.id, { onDelete: "cascade" }),
+    attemptNo: integer("attempt_no").notNull(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    paymentIntentId: text("payment_intent_id").unique(),
+    status: text("status").$type<"pending" | "requires_action" | "succeeded" | "failed">().notNull(),
+    failureCode: text("failure_code"),
+    attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("payment_charge_attempts_charge_no_idx").on(t.chargeId, t.attemptNo),
+    check("payment_charge_attempts_no_positive", sql`${t.attemptNo} >= 1`),
+    check("payment_charge_attempts_status_check", sql`${t.status} in ('pending', 'requires_action', 'succeeded', 'failed')`),
+  ],
+);
+
 export const paymentRefunds = pgTable(
   "payment_refunds",
   {

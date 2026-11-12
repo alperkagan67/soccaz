@@ -79,6 +79,39 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
+  async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {
+    if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return null;
+    try {
+      const pi = await this.stripe().paymentIntents.retrieve(paymentIntentId, {}, SETUP_REQUEST);
+      return {
+        id: pi.id,
+        status: pi.status === "succeeded" ? "succeeded" : pi.status === "requires_action" ? "requires_action" : pi.status === "processing" ? "processing" : pi.status === "requires_payment_method" || pi.status === "canceled" ? "failed" : "other",
+        amountCents: Number.isInteger(pi.amount) ? pi.amount : null,
+        currency: pi.currency ?? null,
+        customerId: typeof pi.customer === "string" ? pi.customer : (pi.customer?.id ?? null),
+        failureCode: pi.last_payment_error?.code ?? null,
+      };
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return null;
+      throw error;
+    }
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }> {
+    if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return { status: "other" };
+    try {
+      await this.stripe().paymentIntents.cancel(paymentIntentId, {}, SETUP_REQUEST);
+      return { status: "canceled" };
+    } catch (error) {
+      // Schon in einem Endzustand (abgebrochen/erfolgreich): den echten Zustand lesen statt zu raten
+      if ((error as { code?: string } | null)?.code === "payment_intent_unexpected_state") {
+        const pi = await this.stripe().paymentIntents.retrieve(paymentIntentId, {}, SETUP_REQUEST);
+        return { status: pi.status === "succeeded" ? "succeeded" : pi.status === "canceled" ? "canceled" : "other" };
+      }
+      throw error;
+    }
+  }
+
   async findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]> {
     // Die Werte stammen aus unseren UUIDs (vom Aufrufer geprüft); trotzdem nur Zeichen einer UUID zulassen, bevor sie in die Suchanfrage kommen
     const uuid = /^[0-9a-f-]{36}$/i;
