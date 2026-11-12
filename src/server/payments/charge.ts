@@ -244,7 +244,7 @@ export async function settleIfComplete(tx: Tx, matchId: string): Promise<boolean
   // Ersetzte Zeilen (resolution=replaced: Platz vergeben, gescheiterter Nachruecker) zaehlen nicht mit
   const all = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
   // Ein vergebener Platz (Ursprungszeile resolution=replaced) muss durch einen ERFOLGREICHEN Nachruecker besetzt sein; ist er noch offen, fehlt ein Anteil und es wird NICHT abgerechnet
-  for (const root of all.filter((r) => r.slotOf === null && r.resolution === "replaced")) if (!all.some((k) => k.slotOf === root.id && k.status === "succeeded")) return false;
+  for (const root of all.filter((r) => r.slotOf === null && r.resolution === "replaced")) if (!all.some((k) => k.slotOf === root.id && k.status === "succeeded" && k.resolution === null)) return false; // ein ERSETZTER Nachruecker (auch mit spaetem Erfolg) besetzt den Platz nicht
   const rows = all.filter((r) => r.resolution === null);
   if (rows.length === 0 || rows.some((r) => r.status !== "succeeded")) return false;
   const seated = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId)));

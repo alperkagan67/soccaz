@@ -48,4 +48,17 @@ describe("Admin-Alarm fuer technische Abbuchungszustaende", () => {
     const text = JSON.stringify((await getRefundAlerts()).idempotencyMismatches.filter((a) => a.id === r.id));
     expect(text).not.toMatch(/@|name/i);
   });
+
+  it("Dauer-Fehlalarme sind ausgeschlossen: match_cancelled, Nachruecker-Zeilen und ersetzte Zeilen stehen NICHT in legacyFailed", async () => {
+    const cancelled = await row({ failureCode: "match_cancelled", graceUntil: null });
+    const base = await row({ failureCode: "card_declined", graceUntil: null });
+    const [kid] = await db.insert(paymentCharges).values({ matchId: base.m.match.id, userId: (await addPlayer(base.m.match.id, base.m.home.id, "alk")).id, amountCents: 800, status: "failed", failureCode: "card_declined", slotOf: base.r.id, idempotencyKey: `al:kid:${base.r.id}` }).returning();
+    const replaced = await row({ failureCode: "card_declined", graceUntil: null, resolution: "replaced" });
+    const alerts = await getRefundAlerts();
+    const ids = alerts.legacyFailed.map((a) => a.id);
+    expect(ids).not.toContain(cancelled.r.id);
+    expect(ids).not.toContain(kid.id);
+    expect(ids).not.toContain(replaced.r.id);
+    expect(ids).toContain(base.r.id); // die echte Altzeile bleibt im Alarm
+  });
 });

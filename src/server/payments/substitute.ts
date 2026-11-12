@@ -95,7 +95,9 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
     // 2) offene Plaetze: Nachruecker von der Warteliste
     for (const slot of roots.filter((r) => r.resolution === "replaced")) {
       const kids = await tx.select().from(paymentCharges).where(eq(paymentCharges.slotOf, slot.id));
-      if (kids.some((k) => k.status === "succeeded")) continue; // Platz besetzt
+      if (kids.some((k) => k.status === "succeeded" && k.resolution === null)) continue; // Platz besetzt (ein ERSETZTER Nachruecker mit spaetem Erfolg zaehlt nicht)
+      // Ein eingeteilter Nachruecker, dessen Zeile wegen Absage/Schalter AUS geschlossen wurde (match_closed), besetzt den Platz weiter; kein zweiter Kandidat, sonst zwei Spieler auf einem Platz
+      if (kids.some((k) => k.resolution === null && k.failureCode === "match_closed")) continue;
       if (kids.some((k) => k.status === "pending")) continue; // ein Nachruecker ist unterwegs: weder Versuch verbrauchen noch einen zweiten starten
       if (kids.filter((k) => (k.status === "failed" || k.status === "requires_action") && k.failureCode !== "match_closed").length >= MAX_SUBSTITUTE_FAILURES) {
         out.exhausted.push(slot.id);
@@ -111,7 +113,15 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
           for update of p skip locked`)
       ).rows as { user_id: string }[];
       if (!next) {
-        out.exhausted.push(slot.id);
+        // Gibt es Kandidaten, die nur gerade von einer anderen Transaktion gehalten werden (z. B. Kartenaenderung), ist der Platz NICHT erschoepft: Runde auslassen. Eine
+        // Auto-Absage ist unumkehrbar und darf nie auf einer zufaelligen Sperre beruhen.
+        const [locked] = (
+          await tx.execute(sql`
+            select count(*)::int as n from match_participants p join users u on u.id = p.user_id
+            where p.match_id = ${matchId} and p.team_id is null and p.card_status = 'card_ready' and u.banned_at is null
+              and not exists (select 1 from payment_charges c where c.match_id = p.match_id and c.user_id = p.user_id)`)
+        ).rows as { n: number }[];
+        if ((locked?.n ?? 0) === 0) out.exhausted.push(slot.id);
         continue;
       }
       const teamId = slot.slotTeamId ?? game.homeTeamId;

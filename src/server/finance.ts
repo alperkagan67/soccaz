@@ -49,7 +49,7 @@ export async function getRefundAlerts(now: Date = new Date()) {
   const legacyFailed = await db
     .select({ id: paymentCharges.id, matchId: paymentCharges.matchId, code: paymentCharges.failureCode })
     .from(paymentCharges)
-    .where(and(inArray(paymentCharges.status, ["failed", "requires_action"]), isNull(paymentCharges.graceUntil), sql`(${paymentCharges.failureCode} is null or ${paymentCharges.failureCode} not in ('idempotency_mismatch', 'match_closed', 'after_start', 'unknown_outcome'))`));
+    .where(and(inArray(paymentCharges.status, ["failed", "requires_action"]), isNull(paymentCharges.graceUntil), isNull(paymentCharges.slotOf), isNull(paymentCharges.resolution), sql`(${paymentCharges.failureCode} is null or ${paymentCharges.failureCode} not in ('idempotency_mismatch', 'match_closed', 'match_cancelled', 'after_start', 'unknown_outcome'))`));
   const duplicateSuccesses = await db
     .select({ matchId: auditLog.entityId, at: auditLog.at })
     .from(auditLog)

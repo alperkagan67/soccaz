@@ -168,3 +168,41 @@ describe("zweiter erfolgreicher PaymentIntent zur selben Zeile (Doppelabbuchung)
     expect(m.cancelRequestedAt).not.toBeNull();
   });
 });
+
+describe("spaeter Erfolg eines ERSETZTEN Nachrueckers (security-reviewer, Fund 1)", () => {
+  it("der Platz zaehlt NICHT als besetzt: der naechste Kandidat rueckt nach, abgerechnet wird erst mit ihm; der spaete Erfolg wird gebucht und erstattet", async () => {
+    const g = await slotGame(provider, { waitlist: 2, realPaid: true });
+    provider.setChargeOutcome(g.waiters[0].id, "processing"); // Ausgang kommt per Webhook
+    await runSubstitutes({ matchId: g.match.id });
+    const [kid0] = await childrenOf(g);
+    expect(kid0.status).toBe("pending");
+    const { paymentProfiles } = await import("@/db/schema");
+    const customer = (await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, g.waiters[0].id)))[0].stripeCustomerId;
+    const piOf = (await rowOf(kid0.id)).paymentIntentId ?? "pi_fake_x";
+    const { handleStripeWebhook } = await import("@/server/payments/webhook");
+    const failed = provider.signEvent({ id: nid("evt_sh"), type: "payment_intent.payment_failed", object: { id: piOf, amount: 800, currency: "eur", customer, metadata: { matchId: g.match.id, userId: g.waiters[0].id }, last_payment_error: { code: "card_declined" } } });
+    await handleStripeWebhook(failed.rawBody, failed.signature);
+    expect(await rowOf(kid0.id)).toMatchObject({ status: "failed", resolution: "replaced" });
+
+    // der gescheiterte Nachruecker wird doch erfolgreich gemeldet (PaymentIntent war noch offen)
+    await lateSuccess(provider, g, piOf, g.waiters[0].id, customer);
+    expect(await rowOf(kid0.id)).toMatchObject({ status: "succeeded", resolution: "replaced" });
+    expect((await refundsOf(g.match.id)).filter((r) => r.chargeId === kid0.id)).toHaveLength(1); // voll erstattet
+
+    // der Platz ist NICHT besetzt: der naechste Kandidat rueckt nach
+    await runSubstitutes({ matchId: g.match.id });
+    const kids = await childrenOf(g);
+    expect(kids.map((k) => k.userId)).toEqual([g.waiters[0].id, g.waiters[1].id]);
+    expect(kids[1].status).toBe("succeeded");
+  });
+
+  it("settleIfComplete: nur der ersetzte Nachruecker war erfolgreich => NICHT abgerechnet", async () => {
+    const g = await slotGame(provider, { waitlist: 0 });
+    await db.update(paymentCharges).set({ resolution: "replaced", slotTeamId: g.home.id }).where(eq(paymentCharges.id, g.rootRow.id));
+    await db.delete((await import("@/db/schema")).matchParticipants).where(and(eq((await import("@/db/schema")).matchParticipants.matchId, g.match.id), eq((await import("@/db/schema")).matchParticipants.userId, g.root.id)));
+    const u = await makeUser("slr");
+    await db.insert(paymentCharges).values({ matchId: g.match.id, userId: u.id, amountCents: 800, status: "succeeded", resolution: "replaced", slotOf: g.rootRow.id, idempotencyKey: `charge:${g.match.id}:${u.id}`, paymentIntentId: nid("pi_k") });
+    const { settleIfComplete } = await import("@/server/payments/charge");
+    expect(await db.transaction((tx) => settleIfComplete(tx, g.match.id))).toBe(false);
+  });
+});

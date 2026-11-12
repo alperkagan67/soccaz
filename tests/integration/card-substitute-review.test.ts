@@ -189,12 +189,44 @@ describe("match_closed ist kein Fehlversuch des Nachrueckers (security-reviewer 
     expect((await seatOf(g, k.u.id)).teamId).toBe(g.home.id);
     const notes = await db.select().from(notifications).where(eq(notifications.userId, k.u.id));
     expect(notes.filter((n) => /Nachrücken/.test(n.title))).toHaveLength(0);
-    // gezaehlt werden nur echte Fehlversuche: mit drei match_closed-Zeilen ist der Platz NICHT erschoepft
-    await kid(g, "failed", g.rootRow.id, { failureCode: "match_closed", resolution: null });
-    await kid(g, "failed", g.rootRow.id, { failureCode: "match_closed", resolution: null });
+    // Review-Fund 4: ein eingeteilter Nachruecker mit geschlossener Zeile besetzt den Platz weiter: bei spaeter wieder AN kein zweiter Kandidat
+    const res = await runSubstitutes({ matchId: g.match.id });
+    expect(res.filled).toBe(0);
+    expect(res.exhausted).not.toContain(g.rootRow.id);
+    expect((await seatOf(g, g.waiters[0].id)).teamId).toBeNull(); // der Wartelistenspieler bleibt auf der Warteliste
+    expect((await seatOf(g, k.u.id)).teamId).toBe(g.home.id);
+  });
+
+  it("gezaehlt werden nur echte Fehlversuche: drei Zeilen mit match_closed erschoepfen den Platz nicht", async () => {
+    const g = await slotGame(provider, { waitlist: 1 });
+    await release(g);
+    for (let i = 0; i < 3; i++) await kid(g, "failed", g.rootRow.id, { failureCode: "match_closed" });
     const res = await runSubstitutes({ matchId: g.match.id });
     expect(res.exhausted).not.toContain(g.rootRow.id);
-    expect(res.filled).toBe(1); // der Wartelistenspieler rueckt nach: drei geschlossene Zeilen haben den Platz nicht erschoepft
+    expect(res.filled).toBe(1);
+  });
+});
+
+describe("gesperrter Kandidat fuehrt nie zur Auto-Absage (security-reviewer, Fund 2)", () => {
+  it("haelt eine andere Transaktion die Teilnehmerzeile des einzigen Kandidaten (z. B. Kartenaenderung), wird die Runde ausgelassen: keine Absage, danach rueckt er nach", async () => {
+    const g = await slotGame(provider, { waitlist: 1 });
+    let releaseLock!: () => void;
+    const held = new Promise<void>((resolve) => (releaseLock = resolve));
+    let locked!: () => void;
+    const lockedP = new Promise<void>((resolve) => (locked = resolve));
+    const holder = db.transaction(async (tx) => {
+      await tx.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.waiters[0].id))).for("update");
+      locked();
+      await held;
+    });
+    await lockedP;
+    const res = await runSubstitutes({ matchId: g.match.id }); // darf nicht blockieren
+    expect(res.filled).toBe(0);
+    expect(res.exhausted).toHaveLength(0);
+    expect((await db.select().from(matches).where(eq(matches.id, g.match.id)))[0].cancelRequestedAt).toBeNull();
+    releaseLock();
+    await holder;
+    expect((await runSubstitutes({ matchId: g.match.id })).filled).toBe(1);
   });
 });
 
