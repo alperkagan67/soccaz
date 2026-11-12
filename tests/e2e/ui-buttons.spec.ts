@@ -14,7 +14,8 @@ test.describe("Zielgrößen", () => {
   for (const scheme of ["dark", "light"] as const) {
     test(`Zielgrößen: alle Knöpfe mindestens 44 px auf 390 px Breite (${scheme})`, async ({ page }) => {
       await open(page, scheme);
-      const targets = page.locator('main button, main a[href="/dev/komponenten"]');
+      // nur sichtbare: Knöpfe in geschlossenen Dialogen (ConfirmDialog, M2-3b) haben keine Fläche
+      const targets = page.locator('main button, main a[href="/dev/komponenten"]').filter({ visible: true });
       const n = await targets.count();
       expect(n).toBeGreaterThan(10);
       for (let i = 0; i < n; i++) {
@@ -31,7 +32,7 @@ test.describe("Zielgrößen", () => {
 
   test("Zielgrößen: Schrift der Knöpfe mindestens 14 px", async ({ page }) => {
     await open(page, "dark");
-    const sizes = await page.locator("main button, main a[href='/dev/komponenten']").evaluateAll((els) => els.map((e) => parseFloat(getComputedStyle(e).fontSize)));
+    const sizes = await page.locator("main button, main a[href='/dev/komponenten']").filter({ visible: true }).evaluateAll((els) => els.map((e) => parseFloat(getComputedStyle(e).fontSize)));
     for (const s of sizes) expect(s).toBeGreaterThanOrEqual(14);
   });
 });
