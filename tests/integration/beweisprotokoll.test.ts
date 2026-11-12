@@ -222,6 +222,57 @@ describe("Idempotenz und Parallelität (Zähler zuerst sperren, dann Existenz pr
   });
 });
 
+describe("Review-Fixes M3a (Security/Code-Review)", () => {
+  it("TRUNCATE auf booking_evidence und booking_evidence_counter wird ohne Wartungsausnahme abgelehnt (Zeilen-Trigger greifen bei TRUNCATE nicht), mit Wartungsausnahme erlaubt", async () => {
+    const { matchId, venueId } = await setup();
+    await rec(matchId, venueId, "request_sent");
+    await expect(db.execute(sql`truncate booking_evidence`)).rejects.toThrow();
+    await expect(db.execute(sql`truncate booking_evidence_counter`)).rejects.toThrow();
+    await expect(db.execute(sql`truncate booking_evidence cascade`)).rejects.toThrow();
+    expect(await all()).toHaveLength(1);
+    // mit Wartungsausnahme erlaubt (der Cleanup nutzt DELETE, nicht TRUNCATE)
+    await maintenance((tx) => tx.execute(sql`truncate booking_evidence cascade`));
+    expect(await all()).toHaveLength(0);
+  });
+
+  it("zwei parallele DIREKTE INSERTs (ohne recordEvidence) bekommen verschiedene, lueckenlose seq: die Trigger-Sperre allein reicht", async () => {
+    const { matchId, venueId } = await setup();
+    await Promise.all(
+      (["request_sent", "accepted", "expired", "declined"] as const).map((kind) => db.insert(bookingEvidence).values({ matchId, venueId, round: 1, kind })),
+    );
+    expect((await all()).map((r) => r.seq)).toEqual([1, 2, 3, 4]);
+    expect((await verifyEvidenceChain()).ok).toBe(true);
+  });
+
+  it("verifyEvidenceChain liefert unter gleichzeitigen Eintraegen nie einen Fehlalarm (Zeilen und Zaehlerstand aus einer Anweisung)", async () => {
+    const { matchId, venueId } = await setup();
+    await rec(matchId, venueId, "request_sent");
+    const writers = Array.from({ length: 25 }, (_, i) => db.insert(bookingEvidence).values({ matchId, venueId: null, round: 1, kind: "job_booked", jobId: null, reason: `w${i}` }));
+    const readers = Array.from({ length: 25 }, () => verifyEvidenceChain());
+    const results = await Promise.all([...writers, ...readers]);
+    const checks = results.filter((r): r is Awaited<ReturnType<typeof verifyEvidenceChain>> => typeof r === "object" && r !== null && "ok" in r);
+    expect(checks).toHaveLength(25);
+    expect(checks.filter((c) => !c.ok)).toEqual([]);
+    expect((await verifyEvidenceChain())).toMatchObject({ ok: true, count: 26 });
+  });
+
+  it("Zaehler-Guard: ein direktes UPDATE des Zaehlers ist auch innerhalb eines anderen Triggers/einer Funktion nicht erlaubt (nur der INSERT-Trigger setzt die Sitzungsvariable kurz)", async () => {
+    const { matchId, venueId } = await setup();
+    await rec(matchId, venueId, "request_sent");
+    await expect(db.update(bookingEvidenceCounter).set({ lastSeq: 99 })).rejects.toThrow();
+    await expect(db.execute(sql`do $$ begin update booking_evidence_counter set last_seq = 99; end $$`)).rejects.toThrow();
+    // die Sitzungsvariable bleibt nach einem Eintrag auf 'off'
+    const r = await db.execute(sql`select current_setting('socaz.evidence_insert', true) as v`);
+    expect(["off", "", null]).toContain((r.rows[0] as { v: string | null }).v);
+  });
+
+  it("Begruendung: Zero-Width- und Richtungszeichen werden entfernt (Wirkung im PDF, M3c)", async () => {
+    const { matchId, venueId } = await setup();
+    await rec(matchId, venueId, "declined", { reason: "Hal\u200Ble\u200F \uFEFFbelegt\u2060" });
+    expect((await all())[0].reason).toBe("Halle belegt");
+  });
+});
+
 describe("Personenfelder getrennt (evidence_actor, außerhalb des Hashes; Entwurf, Frage R3)", () => {
   it("Name und E-Mail landen nur in evidence_actor; im Hash steht nur der gesalzene Verpflichtungswert; Löschen/Anonymisieren des Actors lässt die Kette gültig", async () => {
     const { matchId, venueId } = await setup();

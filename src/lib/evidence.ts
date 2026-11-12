@@ -21,7 +21,7 @@ export const EVIDENCE_REASON_MAX = 300;
 /** Begründung der Halle ist Fremdtext: Steuerzeichen (außer Zeilenumbruch und Tab) entfernen, Leerraum zusammenfassen, auf 300 Zeichen kürzen. Leer = keine Begründung. */
 export function cleanReason(input: string | null | undefined): string {
   if (!input) return "";
-  const noControl = input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u2028\u2029\u202A-\u202E\u2066-\u2069]/g, "");
+  const noControl = input.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u2028\u2029\u202A-\u202E\u2066-\u2069\u200B-\u200F\u2060-\u2064\uFEFF]/g, "");
   const flat = noControl.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   return Array.from(flat).slice(0, EVIDENCE_REASON_MAX).join("");
 }

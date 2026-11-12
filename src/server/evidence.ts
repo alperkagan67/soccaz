@@ -69,12 +69,15 @@ export type ChainCheck = { ok: boolean; count: number; headHash: string; firstBa
 
 /**
  * Prüft die Gesamtkette: lückenlose seq ab 1, prev_hash = Hash der Vorgängerzeile, hash = evidence_hash(...) (dieselbe SQL-Funktion wie der Trigger) und Zählerstand = letzte Zeile.
- * Meldet die ERSTE abweichende seq. Läuft in einer Anweisung (ein Schnappschuss).
+ * Meldet die ERSTE abweichende seq. Zeilen UND Zählerstand kommen aus EINER Anweisung (ein Schnappschuss unter READ COMMITTED): ein Eintrag, der gleichzeitig committet, kann keinen
+ * Fehlalarm "zaehler" auslösen (wichtig für den Tagesjob).
  */
 export async function verifyEvidenceChain(exec: Exec = db): Promise<ChainCheck> {
-  const rows = rowsOf<{ seq: number; bad: string | null; hash: string }>(
+  const rows = rowsOf<{ seq: number; bad: string | null; hash: string; counter_seq: number; counter_hash: string }>(
     await exec.execute(sql`
       select e.seq, e.hash,
+        (select last_seq from booking_evidence_counter where id = 1)::int as counter_seq,
+        (select last_hash from booking_evidence_counter where id = 1) as counter_hash,
         case
           when e.seq <> row_number() over (order by e.seq) then 'seq-luecke'
           when e.prev_hash <> coalesce(lag(e.hash) over (order by e.seq), '') then 'prev_hash'
@@ -84,7 +87,10 @@ export async function verifyEvidenceChain(exec: Exec = db): Promise<ChainCheck> 
       from booking_evidence e
       order by e.seq`),
   );
-  const [counter] = rowsOf<{ last_seq: number; last_hash: string }>(await exec.execute(sql`select last_seq, last_hash from booking_evidence_counter where id = 1`));
+  // Leere Kette: nur der Zählerstand (zweite Anweisung ist hier unkritisch, es gibt keine Zeilen, die dazwischen committen könnten, ohne den Zähler zu ändern)
+  const counter = rows.length
+    ? { last_seq: rows[0].counter_seq, last_hash: rows[0].counter_hash }
+    : rowsOf<{ last_seq: number; last_hash: string }>(await exec.execute(sql`select last_seq, last_hash from booking_evidence_counter where id = 1`))[0];
   const first = rows.find((r) => r.bad !== null);
   const last = rows[rows.length - 1];
   const headHash = last?.hash ?? "";

@@ -85,7 +85,10 @@ BEGIN
   NEW.prev_hash := c.last_hash;
   NEW.at := clock_timestamp();
   NEW.hash := evidence_hash(NEW.seq, NEW.match_id, NEW.venue_id, NEW.round, NEW.job_id, NEW.kind, NEW.reason, NEW.at, NEW.actor_commitment, NEW.prev_hash);
+  -- nur dieser Trigger darf den Zaehler aendern: Sitzungsvariable nur fuer die Dauer dieses UPDATE gesetzt (Restrisiko: jede App-SQL koennte sie ebenfalls setzen, siehe BETRIEB.md)
+  PERFORM set_config('socaz.evidence_insert', 'on', true);
   UPDATE booking_evidence_counter SET last_seq = NEW.seq, last_hash = NEW.hash WHERE id = 1;
+  PERFORM set_config('socaz.evidence_insert', 'off', true);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -106,7 +109,7 @@ CREATE TRIGGER booking_evidence_append_only
 -- Der Zaehler wird nur vom INSERT-Trigger veraendert (UPDATE/DELETE durch die Anwendung ausser Wartung abgelehnt; der Trigger selbst aktualisiert ihn als Teil des INSERT)
 CREATE OR REPLACE FUNCTION booking_evidence_counter_guard() RETURNS trigger AS $$
 BEGIN
-  IF current_setting('socaz.ledger_maintenance', true) = 'on' OR pg_trigger_depth() > 1 THEN
+  IF coalesce(current_setting('socaz.ledger_maintenance', true), '') = 'on' OR coalesce(current_setting('socaz.evidence_insert', true), '') = 'on' THEN
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
   END IF;
@@ -119,3 +122,25 @@ DROP TRIGGER IF EXISTS booking_evidence_counter_guard ON booking_evidence_counte
 CREATE TRIGGER booking_evidence_counter_guard
   BEFORE UPDATE OR DELETE ON booking_evidence_counter
   FOR EACH ROW EXECUTE FUNCTION booking_evidence_counter_guard();
+--> statement-breakpoint
+-- TRUNCATE darf das Beweisprotokoll und seinen Zaehler nicht leeren (die Zeilen-Trigger greifen bei TRUNCATE nicht); gleiche Wartungsausnahme wie bei UPDATE/DELETE
+CREATE OR REPLACE FUNCTION forbid_evidence_truncate() RETURNS trigger AS $$
+BEGIN
+  IF coalesce(current_setting('socaz.ledger_maintenance', true), '') = 'on' THEN
+    RETURN NULL;
+  END IF;
+  RAISE EXCEPTION '% ist nur anhaengend (Operation TRUNCATE).', TG_TABLE_NAME;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS booking_evidence_no_truncate ON booking_evidence;
+--> statement-breakpoint
+CREATE TRIGGER booking_evidence_no_truncate
+  BEFORE TRUNCATE ON booking_evidence
+  FOR EACH STATEMENT EXECUTE FUNCTION forbid_evidence_truncate();
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS booking_evidence_counter_no_truncate ON booking_evidence_counter;
+--> statement-breakpoint
+CREATE TRIGGER booking_evidence_counter_no_truncate
+  BEFORE TRUNCATE ON booking_evidence_counter
+  FOR EACH STATEMENT EXECUTE FUNCTION forbid_evidence_truncate();

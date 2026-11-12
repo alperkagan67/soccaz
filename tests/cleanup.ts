@@ -37,7 +37,7 @@ export async function cleanupTestData(pool: Pool) {
       "delete from payment_setup_intents where tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",
       "delete from payment_disputes where match_id in (select id from _tm) or payer_user_id in (select id from _tu) or dispute_id like 'dp_test%'",
       // Beweisprotokoll (009 M3): Fremdschluessel RESTRICT, also vor Spielen und Hallen entfernen (Wartungsausnahme gilt in dieser Transaktion); leere Tabelle = Zaehler zurueck
-      "delete from booking_evidence where match_id in (select id from _tm) or venue_id in (select id from venues where name like 'E2E %' or osm_id like 'seed-venue-%')",
+      "delete from booking_evidence where match_id in (select id from _tm)", // nur Testspiele (Eintraege fremder Spiele und die Seed-Protokolle bleiben, die Kette bleibt dort lueckenlos)
       "update booking_evidence_counter set last_seq = 0, last_hash = '' where not exists (select 1 from booking_evidence)",
       "delete from matches where id in (select id from _tm)",
       "delete from venues where name like 'E2E %'",
