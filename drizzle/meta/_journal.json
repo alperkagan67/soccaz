@@ -309,6 +309,13 @@
       "when": 1794472523187,
       "tag": "0043_charming_sprite",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794492340379,
+      "tag": "0044_light_naoko",
+      "breakpoints": true
     }
   ]
 }
