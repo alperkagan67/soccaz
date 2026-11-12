@@ -73,6 +73,19 @@ const de = {
   "signin.google": "Mit Google anmelden",
   "signin.banned": "Dein Konto ist gesperrt. Wenn du das für einen Fehler hältst, schreib uns über die Kontaktseite (unten in der Fußzeile).",
   "signin.unavailable": "Die Anmeldung ist gerade nicht verfügbar. Bitte versuche es später noch einmal.",
+  "ui.pending": "Bitte warten…",
+  "ui.skipToContent": "Zum Inhalt springen",
+  "ui.required": "Pflichtfeld",
+  "ui.cancel": "Abbrechen",
+  "ui.close": "Schließen",
+  "ui.dateTimeHint": "Uhrzeit in deutscher Zeit",
+  "ui.dateTimeMin": "Frühestens {when} Uhr",
+  "ui.dateTimeMax": "Spätestens {when} Uhr",
+  "ui.saved": "Gespeichert.",
+  "ui.checkFields": "Bitte prüfe die markierten Felder.",
+  "ui.confirmConsequence": "Folge",
+  "ui.confirmType": "Zur Sicherheit: Tippe „{word}“ ein.",
+  "ui.confirmFailed": "Das hat nicht geklappt. Bitte versuche es noch einmal.",
 } as const;
 
 export type MessageKey = keyof typeof de;
@@ -141,6 +154,19 @@ const en: Record<MessageKey, string> = {
   "signin.google": "Sign in with Google",
   "signin.banned": "Your account is suspended. If you think this is a mistake, contact us.",
   "signin.unavailable": "Sign-in is currently unavailable. Please try again later.",
+  "ui.pending": "Please wait…",
+  "ui.skipToContent": "Skip to content",
+  "ui.required": "Required",
+  "ui.cancel": "Cancel",
+  "ui.close": "Close",
+  "ui.dateTimeHint": "Time in German time",
+  "ui.dateTimeMin": "Earliest {when}",
+  "ui.dateTimeMax": "Latest {when}",
+  "ui.saved": "Saved.",
+  "ui.checkFields": "Please check the marked fields.",
+  "ui.confirmConsequence": "Consequence",
+  "ui.confirmType": "To be safe, type “{word}”.",
+  "ui.confirmFailed": "That did not work. Please try again.",
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { de, en };
