@@ -79,6 +79,10 @@ const de = {
   "ui.cancel": "Abbrechen",
   "ui.close": "Schließen",
   "ui.dateTimeHint": "Uhrzeit in deutscher Zeit",
+  "ui.dateTimeMin": "Frühestens {when} Uhr",
+  "ui.dateTimeMax": "Spätestens {when} Uhr",
+  "ui.saved": "Gespeichert.",
+  "ui.checkFields": "Bitte prüfe die markierten Felder.",
 } as const;
 
 export type MessageKey = keyof typeof de;
@@ -153,6 +157,10 @@ const en: Record<MessageKey, string> = {
   "ui.cancel": "Cancel",
   "ui.close": "Close",
   "ui.dateTimeHint": "Time in German time",
+  "ui.dateTimeMin": "Earliest {when}",
+  "ui.dateTimeMax": "Latest {when}",
+  "ui.saved": "Saved.",
+  "ui.checkFields": "Please check the marked fields.",
 };
 
 export const MESSAGES: Record<Locale, Record<MessageKey, string>> = { de, en };
