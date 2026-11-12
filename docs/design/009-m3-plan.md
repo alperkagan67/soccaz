@@ -1,6 +1,6 @@
 # Plan 009 M3 (Entwurf v3): Beweisprotokoll mit PDF, Rest aus M2
 
-Status: Entwurf v3 mit Nachtrag Q1a (nur Doku, kein Code), Stand 2026-11-12, Verfasser worker-2. v3 arbeitet den Plan-Review R-T208 (10 Punkte) ein und enthält die Entscheide t9 (Abschnitt 0a). Grundlage: Vertrag 009 v4 (AC-7), Plan `docs/design/009-m2-plan.md`, Code nach 009 M2 (PR #134), Plan 011 M1.
+Status: Entwurf v3 mit Nachträgen Q1a und R-T210 (Abschnitt 12) (nur Doku, kein Code), Stand 2026-11-12, Verfasser worker-2. v3 arbeitet den Plan-Review R-T208 (10 Punkte) ein und enthält die Entscheide t9 (Abschnitt 0a). Grundlage: Vertrag 009 v4 (AC-7), Plan `docs/design/009-m2-plan.md`, Code nach 009 M2 (PR #134), Plan 011 M1.
 Rechts- und Steuerfragen werden nur gestellt (Anwalt, Steuerberater), nie von Agenten beantwortet.
 
 ## 0a. Entscheide t9 (2026-11-12) und offene Präzisierung
@@ -53,7 +53,7 @@ Für JEDEN Schreibpfad gilt: ohne Eintrag kein Wechsel (Test 5.2 prüft die Matr
 | `answerHallRequest` | `pending` → `declined` | `declined` (mit Begründung ab 011 M2, sonst leer) |
 | `settleHallCheck` (Frist) | `pending` → `declined` | `expired` |
 | `settleHallCheck`/`veto.ts:54` | Zeilen gelöscht („keine Halle frei“) | **kein eigener Eintrag nötig** (Ergebnis steht in den Einträgen davor); Test: Löschen verändert das Protokoll nicht |
-| Rückzug/Entzug (Betreiberzugang entzogen, Zeile fällt weg; 011) | Entzug | `withdrawn` |
+| Entzug des Betreiberzugangs / Konto-Löschung des Betreibers (011 M1, `venue-access.ts`/`account.ts`: `pending` → `unmanaged`, Plan 011 P5) | `pending` → `unmanaged` | `unmanaged` (die Art `withdrawn` entfällt; sie widerspräche P5) |
 | `createBookingJob` | Auftrag `open` | `job_open` |
 | `updateBookingJob` | jeder Wechsel nach `booked`, `confirmed`, `unavailable`, `withdrawn`, `done` | `job_booked`, `job_confirmed`, `job_unavailable`, `job_withdrawn`, `job_done` |
 | `runBookingAgent` | `booked` / `unavailable` | `job_booked` / `job_unavailable` |
@@ -73,7 +73,7 @@ Der Wechsel `in_progress` ist ein interner Arbeitsstand und wird nicht protokoll
 
 ### 3.5 Schreibpunkte und Idempotenz
 - Ein Haken `recordEvidence(tx, …)` je Zustandswechsel (Matrix 3.2), in **derselben Transaktion** wie der Wechsel (Rollback des Wechsels = kein Eintrag).
-- **Idempotenz ohne Lücke:** `UNIQUE (match_id, venue_id, round, kind)` und eine **Existenzprüfung VOR dem Zähler**; ein Doppelaufruf (Doppelklick, Wiederholung) verbraucht keine `seq`. (Das `round` ist nötig, weil `startHallCheck` je Spiel mehrfach läuft und die Anfragezeilen jedes Mal neu entstehen; ohne `round` wäre der zweite Termin blockiert.)
+- **Idempotenz ohne Lücke (Reihenfolge laut R-T210, ersetzt „Existenzprüfung VOR dem Zähler“):** (1) Zählerzeile nur **sperren** (`SELECT … FOR UPDATE`, nichts hochzählen), (2) Existenz prüfen (vorhanden: still weiter, keine `seq`), (3) hochzählen und einfügen. Ohne die Sperre vor der Prüfung gäbe es ein Rennen (beide prüfen „nicht vorhanden“, der zweite scheitert an UNIQUE und die Geschäftsaktion rollt zurück). Eindeutigkeit: partieller UNIQUE-Index auf (`match_id, venue_id, round, kind`) nur für die Anfrage-Arten (Abschnitt 12 a). (Das `round` ist nötig, weil `startHallCheck` je Spiel mehrfach läuft und die Anfragezeilen jedes Mal neu entstehen; ohne `round` wäre der zweite Termin blockiert.)
 - Test: „Doppelaufruf: `seq` lückenlos“.
 
 ### 3.6 PDF-Export und Abruf
@@ -136,3 +136,12 @@ Trigger (Append-only) entfernt; Zähler ohne `FOR UPDATE`; Hash ohne `prev_hash`
 | **Ablageort Kopf-Hash** außerhalb der Datenbank (Verfahren, Zeitstempeldienst) | Anwalt | Go-live-Bedingung (GO-LIVE-AUDIT „009 M3: Ablageort Kopf-Hash“); bis dahin Benachrichtigung an Admin 1 und Eintrag im Eingriffsprotokoll |
 | **Z** Kette je Spiel einsetzen | t9 (später) | Zusatzspalte liegt bereit, keine Auswertung |
 | **011 M2** Begründung der Halle bei Ablehnung | Plan 011 | Bis dahin ist `reason` leer |
+
+## 12. Nachtrag R-T210 (Plan-Re-Review v3, REVIEW-OK mit 1 Pflicht)
+**Pflicht (Idempotenz-Reihenfolge):** siehe 3.5 (Zähler zuerst sperren, dann Existenz prüfen, dann hochzählen/einfügen). Tests: `Promise.all` derselben Aktion → genau ein Eintrag, kein Fehler, `seq` lückenlos; Mutationen „Zähler vor Existenzprüfung hochgezählt“ und „Existenzprüfung ohne Zählersperre“ (beide müssen rot werden). Der Zähler hält `last_seq` und `last_hash`; **der Trigger setzt `seq`, `prev_hash`, `hash` und `at` aus dem Zählerstand**, die Anwendung kann keinen dieser Werte übergeben (Zusicherung per Test: ein beim INSERT übergebener Wert wird überschrieben).
+**a) Eindeutigkeit der Buchungs-Arten:** `booking_jobs.match_id` ist eindeutig (ein Auftrag je Spiel), aber derselbe Wechsel kann mehrfach vorkommen (z. B. `job_booked` nach `job_unavailable`). Der partielle UNIQUE-Index gilt darum **nur für die Anfrage-Arten** (`request_sent`, `unmanaged`, `accepted`, `declined`, `expired`); die `job_*`-Arten tragen `job_id` (nullable Spalte) und sind nicht eindeutig (ein Doppelaufruf ist dort ausgeschlossen, weil der Auftrag unter `FOR UPDATE` gewechselt wird und der zweite Aufruf an `canTransition` scheitert). `venue_id` ist für `job_*` nullable (Auftrag ohne Halle bei `job_open`).
+**b) 011-M1-Schreibpfade:** Entzug des Betreiberzugangs und Konto-Löschung des Betreibers setzen `pending` auf `unmanaged` (`venue-access.ts`, `account.ts`; Plan 011 P5); sie gehören in die Matrix (Art `unmanaged`) und in den Grep-Test, ebenso die **Seeds**. M3b setzt 011 M1 als gemergt voraus (sonst die Pfade nachziehen). **Deadlock-Test** zusätzlich für `updateBookingJob` und für den Entzug (Sperrreihenfolge Spiel → Halle → Anfragezeile → Zähler).
+**c) Abbildung auf AC-7:** AC-7 nennt „frei/belegt, Zusage/Ablehnung + Begründung“. Abbildung: `accepted` = frei und Zusage, `declined` = belegt bzw. Ablehnung (die Halle unterscheidet im Code nicht zwischen „belegt“ und „lehnt ab“), die Begründung ist optional (011 M2). **Abweichung vom Vertragstext:** „frei/belegt“ und „Zusage/Ablehnung“ fallen zu je einer Art zusammen; ein eigenes „frei, aber abgelehnt“ gibt es nicht.
+**d) Hash-Funktion:** Kern-`sha256()` (PostgreSQL 11+, kein pgcrypto).
+**e) Externe Prüfung:** Ein Auszug (PDF je Spiel) führt ohne Nachbarzeilen nicht zum Kopf-Hash. Darum zusätzlich ein **Gesamtketten-Export** (Admin 1, Datei, nur Anfrage-Felder ohne Personenfelder: `seq`, `at`, `kind`, `match_id`, `venue_id`, `round`, `reason`, `actor_commitment`, `hash`) für die externe Prüfung (M3c, Route `/api/beweis/kette`); das PDF sagt ausdrücklich: „prüfbar nur zusammen mit dem Gesamtketten-Export und dem extern abgelegten Kopf-Hash“. Der „letzte Lauf“ des Tagesjobs liegt in derselben Datenbank: **maßgeblich ist die externe Kopie** (Ablageort: Frage Anwalt).
+**f) Zugriff und Salz:** Die Route prüft ausdrücklich `canUser(user, "owner")` (Admin 1) im Handler. Das **Salz je Zeile** liegt in `evidence_actor` (nicht in `booking_evidence`), damit die Anonymisierung den Bezug endgültig löst.
