@@ -110,10 +110,12 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
         out.exhausted.push(slot.id);
         continue;
       }
+      // Kandidaten muessen eingerichtet sein (onboarded_at UND age_confirmed_at: Alterspruefung beim Onboarding, MIN_AGE): zweite Schicht neben dem Beitritts-Gate. Plattform-Mitarbeiter (ensureStaffOnboarded)
+      // bekommen onboarded_at ohne Alterspruefung, haben aber kein age_confirmed_at und spielen nicht mit: sie sind nie Kandidat.
       const [next] = (
         await tx.execute(sql`
           select p.user_id from match_participants p join users u on u.id = p.user_id
-          where p.match_id = ${matchId} and p.team_id is null and p.card_status = 'card_ready' and u.banned_at is null
+          where p.match_id = ${matchId} and p.team_id is null and p.card_status = 'card_ready' and u.banned_at is null and u.onboarded_at is not null and u.age_confirmed_at is not null
             and not exists (select 1 from payment_charges c where c.match_id = p.match_id and c.user_id = p.user_id)
           order by p.joined_at, p.user_id
           limit 1
@@ -125,7 +127,7 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
         const [locked] = (
           await tx.execute(sql`
             select count(*)::int as n from match_participants p join users u on u.id = p.user_id
-            where p.match_id = ${matchId} and p.team_id is null and p.card_status = 'card_ready' and u.banned_at is null
+            where p.match_id = ${matchId} and p.team_id is null and p.card_status = 'card_ready' and u.banned_at is null and u.onboarded_at is not null and u.age_confirmed_at is not null
               and not exists (select 1 from payment_charges c where c.match_id = p.match_id and c.user_id = p.user_id)`)
         ).rows as { n: number }[];
         if ((locked?.n ?? 0) === 0) out.exhausted.push(slot.id);
