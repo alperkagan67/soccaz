@@ -15,7 +15,10 @@ export type CardView = {
   hasCard: boolean;
 };
 
-export function cardView(status: CardStatus): CardView {
+/** "open" = neutrale Anzeige für Dritte (keine Karte ODER Abbuchung offen), siehe card-visibility.ts: nie ein Grund, nie das Wort "fehlgeschlagen". */
+export type CardViewStatus = CardStatus | "open";
+
+export function cardView(status: CardViewStatus): CardView {
   switch (status) {
     case "card_ready":
     case "charged":
@@ -23,7 +26,11 @@ export function cardView(status: CardStatus): CardView {
     case "charge_pending":
       return { tone: "neutral", glyph: "…", filled: false, label: "Abbuchung läuft", hasCard: true };
     case "failed":
+      // nur für den Betroffenen und den Captain/Veranstalter (siehe card-visibility.ts)
       return { tone: "red", glyph: "!", filled: false, label: "Abbuchung fehlgeschlagen", hasCard: false };
+    case "open":
+      // neutrale Anzeige für Dritte: keine Karte ODER Abbuchung offen, nie ein Grund
+      return { tone: "red", glyph: "!", filled: false, label: "Zahlung ausstehend", hasCard: false };
     case "none":
       return { tone: "red", glyph: "✕", filled: false, label: "Keine Karte", hasCard: false };
     default:
@@ -32,4 +39,4 @@ export function cardView(status: CardStatus): CardView {
 }
 
 /** Alle Status in Anzeigereihenfolge der Legende. */
-export const CARD_LEGEND: CardStatus[] = ["card_ready", "none", "charge_pending", "failed"];
+export const CARD_LEGEND: CardViewStatus[] = ["card_ready", "none", "charge_pending", "open"]; // "failed" steht nie in der Legende: das Wort sehen nur Betroffene und Captain an ihrer Zeile

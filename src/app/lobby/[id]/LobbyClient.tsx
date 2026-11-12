@@ -59,7 +59,7 @@ type MyActionsProps = {
   /** Wie viele Spieler des eigenen Teams haben schon bezahlt? Bereit geht erst, wenn alle bezahlt haben. */
   teamPaid?: { paid: number; total: number };
   /** Nur im Kartenmodell (Schalter card_payments_enabled EIN): Karte statt Guthaben, Vertrag 012. */
-  card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; stored: { brand: string | null; last4: string } | null } | null;
+  card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; stored: { brand: string | null; last4: string } | null; failure?: { text: string } | null } | null;
 };
 
 export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid, card }: MyActionsProps) {
@@ -72,7 +72,15 @@ export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid, card }
         <>
           {hasTeam ? (
             <>
-              {card && !card.ready && (
+              {card?.failure && (
+                <div className="space-y-3 rounded-lg border border-line p-3" role="alert" data-testid="charge-failed">
+                  <p className="font-semibold">Abbuchung fehlgeschlagen</p>
+                  <p className="text-sm" data-testid="charge-failed-reason">{card.failure.text}</p>
+                  <p className="text-sm text-muted">Ändere deine Karte, damit die Zahlung klappt.</p>
+                  <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change />
+                </div>
+              )}
+              {card && !card.ready && !card.failure && (
                 <>
                   <p className="text-sm text-muted" data-testid="card-hint">
                     Schritt 1: Karte hinterlegen.{card.shareCents !== null ? ` Dein Anteil von ${formatEuro(card.shareCents)} wird zur Frist abgebucht.` : " Dein Anteil wird zur Frist abgebucht."} Bis dahin wird nichts abgebucht.
