@@ -1,15 +1,17 @@
-// Betreiber-Schritt: Admin 1 (Seitenbetreiber) festlegen. Aufruf: node scripts/set-owner.mjs <email> --yes
-// Die Datenbank kommt aus DATABASE_URL der Umgebung (lokal: node --env-file=.env.local scripts/set-owner.mjs <email> --yes). Ohne --yes wird nur angezeigt, was passieren würde.
+// Betreiber-Schritt: Admin 1 (Seitenbetreiber) festlegen. Aufruf: OWNER_EMAIL=<email> node scripts/set-owner.mjs --yes
+// Die Datenbank kommt aus DATABASE_URL, das Konto aus OWNER_EMAIL (beides aus der Umgebung des Servers; der Wert steht nie im Repo und wird nie ausgegeben).
+// Es muss ein BESTEHENDES Konto mit role = 'admin' sein. Ohne OWNER_EMAIL: nur wenn es genau ein admin-Konto gibt, sonst Abbruch.
+// Lokal: node --env-file=.env.local scripts/set-owner.mjs --yes. Ohne --yes wird nur angezeigt, was passieren würde.
 // Ablauf und Rollback: docs/BETRIEB.md, Abschnitt "Admin 1 festlegen". Logik und Tests: scripts/lib/set-owner.mjs.
 import pg from "pg";
 import { SetOwnerError, setOwner } from "./lib/set-owner.mjs";
 
-const [email, ...flags] = process.argv.slice(2);
-const url = process.env.DATABASE_URL;
-if (!email || email.startsWith("--")) {
-  console.error("Aufruf: node scripts/set-owner.mjs <email> --yes");
+const flags = process.argv.slice(2);
+if (flags.some((f) => f !== "--yes")) {
+  console.error("Aufruf: OWNER_EMAIL=<email> node scripts/set-owner.mjs --yes   (die E-Mail kommt nur aus der Umgebung)");
   process.exit(2);
 }
+const url = process.env.DATABASE_URL;
 if (!url) {
   console.error("DATABASE_URL fehlt.");
   process.exit(2);
@@ -22,8 +24,9 @@ try {
 } catch {
   /* bleibt "unbekannt" */
 }
+const email = process.env.OWNER_EMAIL;
 if (!flags.includes("--yes")) {
-  console.log(`Trockenlauf: Admin 1 würde auf ${target} für ${email} festgelegt. Mit --yes ausführen.`);
+  console.log(`Trockenlauf: Admin 1 würde auf ${target} festgelegt (${email ? "Konto aus OWNER_EMAIL" : "OWNER_EMAIL nicht gesetzt: nur wenn es genau ein Admin-Konto gibt"}). Mit --yes ausführen.`);
   process.exit(0);
 }
 const pool = new pg.Pool({ connectionString: url, max: 1 });

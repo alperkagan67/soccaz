@@ -1,7 +1,8 @@
 // Migrationsprüfung auf Wegwerf-Datenbanken (Vertrag 009 M1, docs/design/009-m1-plan.md Abschnitte 5 und 8, Test M1-B).
 // Aufruf: node --env-file=.env.local scripts/migrate-check.mjs
 //  1. FRISCH: leere Datenbank, ALLE Migrationen in EINEM Lauf (wie CI und Worker-Datenbanken; der Drizzle-Migrator nutzt eine Transaktion).
-//  2. BESTEHEND: Datenbank auf dem Stand ohne die letzte Migration, mit einer Zeile in users, danach nur die letzte Migration.
+//  2. BESTEHEND: Datenbank auf dem Stand ohne die letzte Migration, mit Konten ALLER Rollen (auch moderator, finance, booking), danach nur die letzte Migration.
+//     Ist die letzte Migration die Auflösung der Teilrollen ("teilrollen" im Namen), wird geprüft: die drei Teilrollen sind player, je Konto steht ein Protokolleintrag (user.role, actor_id leer, Grund in after), andere Rollen sind unverändert.
 // Danach werden die Strukturen der letzten Migration geprüft (Spalte is_owner, Teilindex users_one_owner, CHECK users_owner_is_admin) und die Datenbanken gelöscht.
 // Es werden nur lokale Server zugelassen (wie die Integrationstests); die Wegwerf-Datenbanken heißen soccaz_migcheck_*.
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -68,6 +69,7 @@ try {
   console.log("== FRISCH (alle Migrationen in einem Lauf)");
   await migrate(drizzle(fresh), { migrationsFolder: "./drizzle" });
   await structure(fresh);
+  check((await fresh.query("select count(*)::int as n from audit_log")).rows[0].n === 0, "frische Datenbank: kein Protokolleintrag durch Migrationen");
   await secondOwnerRejected(fresh);
   await fresh.end();
 
@@ -82,11 +84,21 @@ try {
   writeFileSync(journalPath, JSON.stringify(journal));
   const existing = new pg.Pool({ connectionString: urlFor(names[1]), max: 2 });
   await migrate(drizzle(existing), { migrationsFolder: tmp });
-  await existing.query("insert into users (email, name, role) values ('alt@migcheck.test', 'Alt', 'admin')");
+  for (const [mail, role] of [['alt@migcheck.test', 'admin'], ['mod@migcheck.test', 'moderator'], ['fin@migcheck.test', 'finance'], ['buch@migcheck.test', 'booking'], ['spieler@migcheck.test', 'player']]) {
+    await existing.query("insert into users (email, name, role) values ($1, $1, $2)", [mail, role]);
+  }
   await migrate(drizzle(existing), { migrationsFolder: "./drizzle" });
   await structure(existing);
   const old = await existing.query("select role, is_owner from users where email = 'alt@migcheck.test'");
   check(old.rows[0]?.role === "admin" && old.rows[0]?.is_owner === false, "bestehende Zeile bleibt unverändert, is_owner = false");
+  if (/teilrollen/.test(journal.entries.length ? JSON.parse(readFileSync("./drizzle/meta/_journal.json", "utf8")).entries.at(-1).tag : "")) {
+    const roles = Object.fromEntries((await existing.query("select email, role from users where email like '%@migcheck.test'")).rows.map((r) => [r.email, r.role]));
+    check(roles['mod@migcheck.test'] === 'player' && roles['fin@migcheck.test'] === 'player' && roles['buch@migcheck.test'] === 'player', "moderator, finance, booking sind jetzt player");
+    check(roles['alt@migcheck.test'] === 'admin' && roles['spieler@migcheck.test'] === 'player', "admin und player bleiben unverändert");
+    const log = (await existing.query("select a.actor_id, a.before, a.after, u.email from audit_log a join users u on u.id::text = a.entity_id where a.action = 'user.role' and u.email like '%@migcheck.test' order by u.email")).rows;
+    check(log.length === 3 && log.every((l) => l.actor_id === null && /Rolle aufgelöst: war (moderator|finance|booking)/.test(l.after.reason)), "je Teilrollen-Konto genau ein Protokolleintrag (actor_id leer, Grund in after)");
+    check(log.some((l) => l.email === 'mod@migcheck.test' && l.before.role === 'moderator'), "Protokoll nennt die frühere Rolle (before.role)");
+  }
   await secondOwnerRejected(existing);
   await existing.end();
 } finally {

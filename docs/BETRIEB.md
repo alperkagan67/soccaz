@@ -138,12 +138,15 @@ Admin 1 (Seitenbetreiber) ist das eine Konto mit `users.role = 'admin'` UND `use
 
 **Reihenfolge beim Einspielen:** 1. Migration (der übliche Update-Ablauf führt `scripts/migrate.mjs` aus) und Code E1a (Spalte, Skript; Verhalten unverändert, Admin 1 trägt weiter die Rolle `admin`) → 2. **Admin 1 festlegen** (dieser Abschnitt) → 3. erst danach Code E1b (Finanzen, Einstellungen und Rollenvergabe nur noch für Admin 1; Admin 2 verliert sie) → 4. danach Alarme nur an Admin 1 (E2). **E1b nie vor Schritt 2 ausrollen:** sonst hat bis zum Festlegen niemand Zugriff auf Finanzen und Einstellungen.
 
-**Festlegen** (Konto muss sich einmal angemeldet haben; Datenbank aus `DATABASE_URL` der Umgebung):
+**Festlegen** (ein BESTEHENDES Konto mit `role = 'admin'`, das sich einmal angemeldet hat; Datenbank aus `DATABASE_URL`, Konto aus `OWNER_EMAIL`, beides aus der Umgebung des Servers, der Wert steht nie im Repo und wird nie ausgegeben; Name der Angabe in `docs/loop/FEHLT-NOCH.md`):
 ```
-node scripts/set-owner.mjs <email>          # Trockenlauf: zeigt nur Host, Port und Datenbankname
-node scripts/set-owner.mjs <email> --yes    # führt aus
+OWNER_EMAIL=<email> node scripts/set-owner.mjs          # Trockenlauf: zeigt nur Host, Port und Datenbankname
+OWNER_EMAIL=<email> node scripts/set-owner.mjs --yes    # führt aus
 ```
-Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert“), bricht ab, wenn ein ANDERES Konto schon Admin 1 ist, das Konto fehlt oder gesperrt ist, und schreibt einen Protokolleintrag `user.owner_set` ohne Akteur. Es zeigt nie Benutzer oder Passwort der Datenbank.
+Ohne `OWNER_EMAIL` handelt das Skript nur, wenn es genau EIN nicht gesperrtes Admin-Konto gibt; bei mehreren bricht es ab (keine Raterei). Ein E-Mail-Argument auf der Kommandozeile wird abgelehnt.
+Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert“), bricht ab, wenn ein ANDERES Konto schon Admin 1 ist, das Konto fehlt, kein Admin-Konto oder gesperrt ist, und schreibt einen Protokolleintrag `user.owner_set` ohne Akteur. Es zeigt nie E-Mail, Benutzer oder Passwort.
+
+**Teilrollen (Entscheid t9):** Die Migration `…_teilrollen_aufloesen` setzt Konten mit `moderator`, `finance` und `booking` automatisch auf `player` (geringste Rechte) und schreibt je Konto einen Protokolleintrag `user.role` (Akteur leer, `before.role` = frühere Rolle, Grund in `after.reason`). Die Enum-Werte bleiben bestehen. **Rollback:** nicht automatisch; die Rolle jedes Kontos steht im Protokoll (`select entity_id, before from audit_log where action = 'user.role' and after->>'reason' like 'Rolle aufgelöst%'`) und lässt sich daraus von Hand zurücksetzen. Danach ernennt ein Admin-Konto Admin 1 bewusst (dieser Abschnitt).
 
 **Ein anderes Konto soll Admin 1 werden (Übergabe):** zuerst das alte Konto freigeben (`update users set is_owner = false where email = '<alt>'`), dann das Skript für das neue Konto. Ohne Admin 1 gehen die Alarme ab E2 nicht an Dritte (nur Server-Log), deshalb die Lücke kurz halten.
 
