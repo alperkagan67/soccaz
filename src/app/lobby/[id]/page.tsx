@@ -379,7 +379,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
               <p className="text-sm text-muted">
                 Zur Frist wird er zusätzlich von deiner Karte abgebucht.{cover.releasable ? " Bis dahin kannst du zurücknehmen." : " Zurücknehmen ist nicht mehr möglich."}
               </p>
-              {cover.releasable && <ReleaseCover matchId={match.id} targetUserId={cover.covering} />}
+              {cover.releasable && <ReleaseCover matchId={match.id} />}
             </div>
           )}
           {cover.covered && (

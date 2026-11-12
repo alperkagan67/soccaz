@@ -90,7 +90,7 @@ describe("CoverButton (Markup)", () => {
 
 describe("ReleaseCover (Markup)", () => {
   it("Knopf Zurücknehmen, nur ein Knopf", () => {
-    const m = renderToStaticMarkup(createElement(ReleaseCover, { matchId: "m-1", targetUserId: "u-a" }));
+    const m = renderToStaticMarkup(createElement(ReleaseCover, { matchId: "m-1" }));
     expect(m).toContain(">Zurücknehmen<");
     expect(m).toContain('data-testid="cover-release"');
     expect((m.match(/<button/g) ?? []).length).toBe(1);

@@ -24,7 +24,7 @@ export function CoverButton({ matchId, targetUserId, targetName, amounts, mandat
 }
 
 /** "Zurücknehmen" (nur vor der Frist; der Server prüft es noch einmal). A fällt dann wieder auf rot. */
-export function ReleaseCover({ matchId, targetUserId }: { matchId: string; targetUserId: string }) {
+export function ReleaseCover({ matchId }: { matchId: string }) {
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
   return (
@@ -36,7 +36,7 @@ export function ReleaseCover({ matchId, targetUserId }: { matchId: string; targe
         onClick={() => {
           setError(undefined);
           start(async () => {
-            const result = await releaseCoverAction(matchId, targetUserId);
+            const result = await releaseCoverAction(matchId);
             if (result?.error) setError(result.error);
           });
         }}

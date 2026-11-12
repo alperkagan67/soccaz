@@ -86,9 +86,9 @@ export async function takeOverShare(payerId: string, matchId: string, targetUser
 }
 
 /** B nimmt seine Uebernahme zurueck (bis zum Ablauf des Countdowns). A faellt dann auf rot zurueck. */
-export async function releaseCover(payerId: string, matchId: string, now: Date = new Date()): Promise<void> {
+export async function releaseCover(payerId: string, matchId: string, now: Date = new Date()): Promise<string> {
   if (typeof matchId !== "string" || !UUID.test(matchId)) throw new DomainError(NOT_POSSIBLE);
-  await db.transaction(async (tx) => {
+  return db.transaction(async (tx) => {
     const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
     if (!match || (await coverClosed(tx, match, now))) throw new DomainError("Die Übernahme kann nicht mehr zurückgenommen werden.");
     const released = await tx
@@ -98,5 +98,6 @@ export async function releaseCover(payerId: string, matchId: string, now: Date =
       .returning({ userId: matchParticipants.userId });
     if (released.length === 0) throw new DomainError("Du übernimmst in diesem Spiel keinen Anteil.");
     await audit(payerId, "cover.released", "match", matchId, { after: { targetUserId: released[0].userId } }, tx);
+    return released[0].userId; // der Platz, dessen Übernahme wirklich zurückgenommen wurde (nie ein Wert vom Client)
   });
 }

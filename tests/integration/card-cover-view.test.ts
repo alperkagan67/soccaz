@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, notifications, paymentProfiles, stripeEvents } from "@/db/schema";
 import { runCharges } from "@/server/payments/charge-run";
 import { releaseCover, takeOverShare } from "@/server/payments/cover";
+import { releaseOwnCover, takeOverAndNotify } from "@/server/payments/cover-flow";
 import { notifyCoverReleased, notifyCoverTaken } from "@/server/payments/cover-notify";
 import { getCoverView } from "@/server/payments/cover-view";
 import { FakeProvider } from "@/server/payments/fake";
@@ -162,5 +163,60 @@ describe("Benachrichtigungen (cover-notify): nur A, B und Captain", () => {
     const g = await game();
     await expect(notifyCoverTaken("00000000-0000-0000-0000-000000000000", g.b.id, g.a.id, 800)).resolves.toBeUndefined();
     await expect(notifyCoverReleased("kein-uuid", g.b.id, g.a.id)).resolves.toBeUndefined();
+  });
+});
+
+// Security-Review R-T181 (MITTEL): Die Empfänger kommen nur aus dem Ergebnis der Domäne, nie aus einem Wert des Clients. Zurücknehmen kennt kein Ziel-Argument mehr.
+describe("Eintragen/Zurücknehmen mit Benachrichtigung (cover-flow)", () => {
+  const nobody = async (g: G, users: User[]) => {
+    for (const u of users) expect(await mails(u), u.id).toEqual([]);
+  };
+
+  it("Zurücknehmen benachrichtigt NUR den Platz, dessen Übernahme wirklich zurückgenommen wurde, und dessen Captain; Dritte, B und der andere Captain nichts", async () => {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    const target = await releaseOwnCover(g.b.id, g.match.id);
+    expect(target).toBe(g.a.id);
+    expect((await mails(g.a)).map((n) => n.title)).toEqual(["Dein Anteil wird nicht mehr übernommen"]);
+    expect((await mails(g.adminA)).map((n) => n.title)).toEqual(["Übernahme zurückgenommen"]);
+    await nobody(g, [g.b, g.c, g.away, g.adminB]);
+  });
+
+  it("Zurücknehmen hat kein Ziel-Argument (nur Übernehmer und Spiel): ein Wert vom Client kann nie Empfänger werden", () => {
+    expect(releaseOwnCover.length).toBe(2);
+  });
+
+  it("wer nichts übernimmt, kann nichts zurücknehmen: Fehler und KEINE Nachricht an irgendjemanden (kein Spam, kein Namensleck)", async () => {
+    const g = await game();
+    await expect(releaseOwnCover(g.c.id, g.match.id)).rejects.toThrow(/keinen Anteil/); // c übernimmt nichts
+    await expect(releaseOwnCover(g.away.id, g.match.id)).rejects.toThrow(/keinen Anteil/);
+    await nobody(g, [g.a, g.b, g.c, g.away, g.adminA, g.adminB]);
+  });
+
+  it("ein Übernehmer kann nach seiner Rücknahme nicht noch einmal Nachrichten auslösen (zweiter Aufruf: Fehler, keine weitere Nachricht)", async () => {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    await releaseOwnCover(g.b.id, g.match.id);
+    const before = (await mails(g.a)).length;
+    await expect(releaseOwnCover(g.b.id, g.match.id)).rejects.toThrow(/keinen Anteil/);
+    expect((await mails(g.a)).length).toBe(before);
+  });
+
+  it("Übernehmen: ohne Einwilligung Fehler und keine Nachricht; mit Einwilligung Nachricht an A, B und Captain, nie an Dritte", async () => {
+    const g = await game();
+    await expect(takeOverAndNotify(g.b.id, g.match.id, g.a.id, false)).rejects.toThrow(/Mandat/);
+    await nobody(g, [g.a, g.b, g.c, g.adminA]);
+    await takeOverAndNotify(g.b.id, g.match.id, g.a.id, true);
+    expect((await mails(g.a)).map((n) => n.title)).toEqual(["Dein Anteil wird übernommen"]);
+    expect((await mails(g.b)).map((n) => n.title)).toEqual(["Du übernimmst einen Anteil"]);
+    expect((await mails(g.adminA)).map((n) => n.title)).toEqual(["Anteil übernommen"]);
+    await nobody(g, [g.c, g.away, g.adminB]);
+  });
+
+  it("Übernehmen mit fremdem Ziel (Platz mit Karte, anderes Team): Fehler, keine Nachricht an diesen Spieler", async () => {
+    const g = await game();
+    await expect(takeOverAndNotify(g.b.id, g.match.id, g.away.id, true)).rejects.toThrow();
+    await expect(takeOverAndNotify(g.b.id, g.match.id, g.c.id, true)).rejects.toThrow();
+    await nobody(g, [g.away, g.c, g.a, g.b, g.adminA, g.adminB]);
   });
 });
