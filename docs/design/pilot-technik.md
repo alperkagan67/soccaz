@@ -24,7 +24,7 @@ Alle Werte stehen nur in der `.env` der jeweiligen Installation bzw. in der `.en
 | `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Google-Anmeldung (Produktions-Build) | Weiterleitungs-URI der Umgebung im Google-Projekt eintragen |
 | `JOB_SECRET` | manueller Job-Aufruf `/api/jobs/<Name>` | ohne Wert lehnt die Schnittstelle in Produktion jeden Aufruf mit 403 ab |
 | `STRIPE_SECRET_KEY` | Stripe, **Testmodus** (`sk_test_…`) | nie Live; ein Live-Schlüssel bricht den Pilot ab (Abbruchkriterium) |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Karteneingabe im Browser, Testmodus (`pk_test_…`) | wird beim Bauen eingebettet: nach einer Änderung neu bauen |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Karteneingabe im Browser, Testmodus (`pk_test_…`) | **wird beim BUILD in den Client-Code eingebettet** (`CardForm.tsx:12-14`: ohne Schlüssel gibt es kein Formular). **Voraussetzung:** Das `Dockerfile` kennt dafür heute kein `ARG`/`ENV` (im Build-Schritt steht nur `DATABASE_URL`), `docker-compose.yml` gibt dem Build keine `build.args`, und `env_file` wirkt nur zur Laufzeit. Bei `docker compose up -d --build` (Umgebung B und C) ist der Schlüssel im Client daher `undefined`, das Kartenformular fehlt, und der Fake-Pfad ist dort verboten. Abhilfe: Backlog 71 (`ARG` im `Dockerfile`, `build.args` in `docker-compose.yml`; worker-2). Bis dahin ist das Pilot-Gate nicht erreicht. Nach jeder Änderung des Schlüssels neu bauen |
 | `STRIPE_CARD_WEBHOOK_SECRET` | Signaturgeheimnis des Webhook-Endpunkts `/api/stripe/webhook` | je Endpunkt eigenes Geheimnis; das von `stripe listen` gilt nur lokal |
 | `STRIPE_WEBHOOK_SECRET` | alte Route `/api/webhooks/stripe` (Guthaben) | für den Pilot nicht nötig, nie dasselbe Geheimnis wie oben |
 | `SENTRY_DSN` | Fehlerprotokoll (optional) | ohne Wert nur `docker compose logs app` |
@@ -34,7 +34,7 @@ Alle Werte stehen nur in der `.env` der jeweiligen Installation bzw. in der `.en
 ## 3. Webhooks: stripe listen und Dashboard
 - **Umgebung A/B (lokal):** `stripe listen --forward-to localhost:<Port>/api/stripe/webhook` (Port des Dev-Servers bzw. `HTTP_PORT` der Compose-Installation). Das Signaturgeheimnis aus der Ausgabe von `stripe listen` kommt als `STRIPE_CARD_WEBHOOK_SECRET` in die `.env`/`.env.local` **dieser** Installation; danach die App neu starten.
 - **Umgebung C (Staging):** im Stripe-Dashboard (Testmodus) den Endpunkt `https://<Staging-Domain>/api/stripe/webhook` anlegen mit den Ereignissen aus G9-012: `setup_intent.succeeded`, `setup_intent.setup_failed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.requires_action`, `charge.updated`. Dessen Geheimnis in `STRIPE_CARD_WEBHOOK_SECRET`.
-- **Webhook-Test (vorher):** In Stripe unter den Zustellversuchen des Endpunkts prüfen, dass Ereignisse mit 200 beantwortet werden. 503 heißt „nicht konfiguriert“ (Geheimnis oder Schlüssel fehlt), 400 „Signatur ungültig“ (falsches Geheimnis oder zwei Endpunkte vermischt), 500 „Fehler beim Verarbeiten“ (Stripe wiederholt die Zustellung; nichts wurde festgeschrieben). Danach eine Testkarte hinterlegen (Karte `4242…`, siehe `pilot-plan.md` Abschnitt 5, vorher gegen die Stripe-Dokumentation prüfen) und im Lobby-Bildschirm „Karte hinterlegt“ sehen.
+- **Webhook-Test (vorher):** In Stripe unter den Zustellversuchen des Endpunkts prüfen, dass Ereignisse mit 200 beantwortet werden. 503 heißt „nicht konfiguriert“ (Geheimnis oder Schlüssel fehlt), 400 „Signatur ungültig“ (falsches Geheimnis oder zwei Endpunkte vermischt), 413 „Body zu groß“ (`route.ts:6`), 500 „Fehler beim Verarbeiten“ (Stripe wiederholt die Zustellung; nichts wurde festgeschrieben). Danach eine Testkarte hinterlegen (Karte `4242…`, siehe `pilot-plan.md` Abschnitt 5, vorher gegen die Stripe-Dokumentation prüfen) und im Lobby-Bildschirm „Karte hinterlegt“ sehen.
 
 ## 4. Testkonten
 - **Der Seed ist für Staging NICHT nutzbar.** `scripts/lib/seed-guard.ts` erlaubt nur `localhost`/`127.0.0.1`, Port 5433 und die Datenbanken `soccav2`, `soccaz_w1` bis `soccaz_w4`; gegen die Compose-Datenbank bricht der Seed ab. Das ist gewollt und bleibt so.
@@ -57,7 +57,8 @@ Zeitpunkte T-7 … T+1 wie `pilot-plan.md` Abschnitt 12 (T = Pilot-Abend).
 - [ ] **Vorab-Spiele** bei T-3 anlegen (Spiel A: Karten hinterlegt, beide Captains bereit; Spiel B: Fall mit abgelehnter Karte/Warteliste, damit „Fenster abgelaufen“ und „Nachrücker“ am Abend sichtbar sind), Beschreibung in `pilot-plan.md` 4.3. Bei T-2 die Frist-Abbuchung ansehen (Abschnitt 5.3).
 - [ ] **Fristlauf-Trockenlauf:** Jobs einmal von Hand anstoßen und im Protokoll prüfen (Befehle unten). Reihenfolge: `card-charges`, `card-refunds`, `lobby-deadlines`, `send-reminders`, `deliver-notifications`.
   `curl -X POST -H "x-job-secret: $JOB_SECRET" https://<Domain>/api/jobs/<Name>` (Jobnamen: `src/server/jobs.ts`; der Zeitplaner ruft `card-charges`/`card-refunds` alle 5 Minuten auf).
-- [ ] Überwachung: Uptime Kuma auf `/api/health`, `docker compose logs -f app` offen.
+- [ ] **Karteneingabe-Formular erscheint auf der Staging-Lobby (Produktions-Build):** in der Lobby eines Spiels (Spieler ohne Karte) ist das Stripe-Formular sichtbar, nicht nur der Hinweis „Kartenzahlung nicht verfügbar“. Fehlt es, ist `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` nicht im Build (Abschnitt 2, Backlog 71): Pilot-Gate nicht erreicht.
+- [ ] Überwachung: Uptime Kuma läuft nur mit Profil, nicht mit `up -d --build`: `docker compose --profile monitoring up -d` (`docs/BETRIEB.md`, Überwachung); Monitor auf `/api/health`. `docker compose logs -f app` offen.
 
 ### 5.2 Während
 - [ ] Stripe-Dashboard (Testmodus) offen: Zahlungen, Ereignisse, Zustellversuche; `docker compose logs -f app` im zweiten Fenster.
@@ -86,6 +87,7 @@ Nur Lesen; Abfragen laufen mit `docker compose exec db psql -U socaz -c "…"`. 
 
 ## 7. Abhängigkeiten
 - M2 → M2b → 012 M3b bis M5 → 012 M6a → 013 M3 → **Pilot** (Backlog 63, `pilot-plan.md` Abschnitt 1). Der Schalter wird erst gesetzt, wenn M3c-1, M3c-1c und M3c-2 gemergt UND deployt sind (G8-012).
+- **Voraussetzung Build-Schlüssel:** `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` muss beim Bauen im Image ankommen (Backlog 71: `ARG` im `Dockerfile` und `build.args` in `docker-compose.yml`). Ohne diese Änderung zeigt ein Compose-Build kein Kartenformular; der Pilot ist dann nicht möglich.
 - Die Kurzfassung „Lokale Entwicklung mit Stripe-Testmodus“ steht in `docs/BETRIEB.md`.
 
 ## 8. Offene Fragen (nicht von Agenten zu beantworten)
