@@ -18,6 +18,7 @@ import type { Tx } from "../tx";
 import { applyChargeInTx, bookChargeFee, ensureRefundRow } from "./charge";
 import { UNKNOWN_OUTCOME } from "./charge-run";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
+import { OPEN_DISPUTE_STATUSES } from "./dispute";
 
 /** Eine beanspruchte Erstattungszeile gilt so lange als "in Arbeit". */
 export const REFUND_LEASE_MS = 60_000;
@@ -217,6 +218,7 @@ async function claimRefund(matchId: string, now: Date): Promise<ClaimedRefund | 
       select r.id, r.charge_id, r.match_id, r.user_id, r.amount_cents, r.idempotency_key, r.attempt_started_at, r.updated_at, coalesce(r.payment_intent_id, c.payment_intent_id) as payment_intent_id
       from payment_refunds r join payment_charges c on c.id = r.charge_id
       where r.match_id = ${matchId} and r.status = 'pending' and r.refund_id is null and r.failure_code is distinct from ${UNKNOWN_OUTCOME}
+        and not exists (select 1 from payment_disputes d where (d.charge_id = r.charge_id or d.payment_intent_id = coalesce(r.payment_intent_id, c.payment_intent_id)) and (d.status in (${sql.join(OPEN_DISPUTE_STATUSES.map((s) => sql`${s}`), sql`, `)}) or d.status not in ('won', 'lost', 'warning_closed', 'prevented')))
       order by r.created_at, r.id
       for update of r skip locked`);
     for (const row of rows.rows as { id: string; charge_id: string; match_id: string; user_id: string; amount_cents: number; idempotency_key: string; attempt_started_at: Date | null; updated_at: Date; payment_intent_id: string | null }[]) {
@@ -304,9 +306,9 @@ export async function finalizeCancel(matchId: string): Promise<boolean> {
     const charges = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
     if (charges.some((c) => c.status === "pending")) return false; // unterwegs (processing) oder unbekannt: erst klären
     const refunds = await tx.select().from(paymentRefunds).where(eq(paymentRefunds.matchId, matchId));
-    const refunded = new Set(refunds.filter((r) => r.status === "succeeded").map((r) => r.chargeId));
+    const refunded = new Set(refunds.filter((r) => r.status === "succeeded" || r.status === "cancelled_dispute").map((r) => r.chargeId)); // cancelled_dispute: Streit verloren, nichts mehr zu erstatten (M4a)
     if (charges.some((c) => c.status === "succeeded" && !refunded.has(c.id))) return false;
-    if (refunds.some((r) => r.status !== "succeeded")) return false; // auch weitere Erstattungen (Doppelabbuchung / spaeter Erfolg) muessen durch sein
+    if (refunds.some((r) => r.status !== "succeeded" && r.status !== "cancelled_dispute")) return false; // auch weitere Erstattungen (Doppelabbuchung / spaeter Erfolg) muessen durch sein
     await cancelMatchTx(tx, m, null, m.cancelReason ?? "Das Spiel wurde abgesagt.", { afterRefund: true });
     await audit(null, "match.cancel_completed", "match", matchId, { after: { refunds: refunds.length } }, tx);
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);

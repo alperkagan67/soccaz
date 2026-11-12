@@ -7,6 +7,8 @@ import { retryChargesInWindow } from "./charge-retry";
 /** Obergrenze fuer das Wiederabbuchen direkt im Webhook-Request (Stripe-Zeitlimit je Aufruf 8 s): hoechstens so viele Plaetze, nach so vielen Millisekunden nichts Neues mehr. */
 export const WEBHOOK_RETRY_LIMIT = 3;
 export const WEBHOOK_RETRY_BUDGET_MS = 12_000;
+import { applyDisputeInTx } from "./dispute";
+import { parseDispute, type DisputeReport } from "./dispute-parse";
 import { applyRefundInTx, finalizeCancel, type RefundReport } from "./refund";
 import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ProviderEvent } from "./provider";
 
@@ -14,7 +16,7 @@ import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, ty
 export const MAX_WEBHOOK_BYTES = 256 * 1024;
 
 /** Nur diese Ereignistypen gehören zu diesem Endpunkt; alles andere wird angenommen, aber weder gespeichert noch verarbeitet (keine fremden Event-IDs in stripe_events). */
-export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.") || type.startsWith("payment_intent.") || type === "charge.updated" || type.startsWith("refund.") || type === "charge.refund.updated" || type === "charge.refunded";
+export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.") || type.startsWith("payment_intent.") || type === "charge.updated" || type.startsWith("refund.") || type === "charge.refund.updated" || type.startsWith("charge.dispute.") || type === "charge.refunded";
 
 /** Macht aus einem payment_intent.*-Ereignis eine ungeprüfte Meldung für applyChargeInTx; null, wenn der Typ keine Verbuchung auslöst. */
 function toChargeReport(event: ProviderEvent): ChargeReport | null {
@@ -109,6 +111,21 @@ async function processEvent(event: ProviderEvent) {
   let cancelCheck: string | null = null; // Erstattung verbucht: danach prüfen, ob die angeforderte Absage jetzt abgeschlossen werden kann
   let cardUserId: string | null = null; // neue Karte gespeichert: danach im Nachzahlfenster neu abbuchen (Netz, nach der Transaktion)
   let feeFor: string | null = null; // erfolgreiche Abbuchung: die Gebühr wird NACH der Transaktion gebucht (Netzaufruf)
+  // Zahlungsstreit (M4a): fehlt die Liste der Balance-Transactions im Ereignis, oder ist ein Streit "lost" ohne Abzug darin, wird der Streit VOR der Transaktion bei Stripe abgerufen
+  // (Netz, nie unter Sperre). Scheitert der Abruf, wird mit dem Ereignis weitergearbeitet (fehlende Abzuege melden den Alarm "verloren ohne Abzug").
+  let dispute: DisputeReport | null = null;
+  if (event.type.startsWith("charge.dispute.")) {
+    dispute = parseDispute(event.object);
+    if (dispute && (dispute.balanceTransactions === null || (dispute.status === "lost" && !dispute.balanceTransactions.some((b) => b.category === "dispute")))) {
+      try {
+        const full = await (await getPaymentProvider()).retrieveDispute(dispute.disputeId);
+        const parsed = full ? parseDispute(full) : null;
+        if (parsed?.balanceTransactions) dispute = { ...dispute, balanceTransactions: parsed.balanceTransactions };
+      } catch {
+        /* nichts loggen */
+      }
+    }
+  }
   if (event.type === "setup_intent.succeeded") {
     const pmId = str(event.object.payment_method);
     const intentId = str(event.object.id);
@@ -175,6 +192,11 @@ async function processEvent(event: ProviderEvent) {
       if (report) {
         const res = await applyRefundInTx(tx, report);
         if (res.status === "applied" && res.matchId) cancelCheck = res.matchId;
+      }
+    } else if (event.type.startsWith("charge.dispute.")) {
+      if (dispute) {
+        const res = await applyDisputeInTx(tx, dispute, typeof event.created === "number" ? new Date(event.created * 1000) : null);
+        if (res.cancelCheckMatchId) cancelCheck = res.cancelCheckMatchId;
       }
     } else if (event.type === "charge.updated") {
       feeFor = str(event.object.payment_intent); // die balance_transaction ist jetzt womöglich da; unbekannte PaymentIntents ignoriert bookChargeFee
