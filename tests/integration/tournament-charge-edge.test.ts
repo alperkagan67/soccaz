@@ -3,7 +3,7 @@ import { and, eq, like } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, notifications, paymentCharges, paymentProfiles, stripeEvents, teamMembers } from "@/db/schema";
 import { ledgerEntries, receipts, venues } from "@/db/schema-finance";
-import { tournaments } from "@/db/schema-league";
+import { tournamentPlayers, tournaments } from "@/db/schema-league";
 import { trialBalance } from "@/server/ledger";
 import { bookChargeFee } from "@/server/payments/charge";
 import { FakeProvider } from "@/server/payments/fake";
@@ -130,17 +130,36 @@ describe("M5-4: Randfaelle", () => {
     expect((await trialBalance()).balanced).toBe(true);
   });
 
-  it("geschlossenes Turnier (Schalter AUS): eine nie gesendete Zeile endet als tournament_closed OHNE Nachzahlfenster, OHNE Nachricht und ohne Alarm 'haengt' oder 'Altzeile'", async () => {
+  it("Schalter AUS (Notabschaltung): die Zeilen bleiben pending, nichts wird gesendet, keine Nachricht, kein Alarm; nach dem Wieder-Einschalten wird abgebucht und das Turnier gebucht", async () => {
+    const { getRefundAlerts } = await import("@/server/finance");
+    const { t, squads } = await ready();
+    const fixed = await tOf(t.id);
+    for (const s of squads) for (const p of s.players) await db.insert(paymentCharges).values({ tournamentId: t.id, userId: p.id, amountCents: fixed.finalShareCents!, idempotencyKey: `charge:t:${t.id}:${p.id}:${fixed.priceRound}:1` });
+    await setSetting(null, "card_payments_enabled", false);
+    try {
+      expect(await runTournamentCharges(t.id, DUE)).toMatchObject({ reason: "rows_exist", attempted: 0 });
+    } finally {
+      await setSetting(null, "card_payments_enabled", true);
+    }
+    const rows = await rowsOf(t.id);
+    expect(rows.every((x) => x.status === "pending" && x.failureCode === null && x.paymentIntentId === null)).toBe(true);
+    expect(piCallsOf(t.id)).toHaveLength(0);
+    expect((await db.select().from(notifications).where(eq(notifications.title, "Abbuchung fehlgeschlagen"))).filter((n) => rows.some((r) => r.userId === n.userId))).toHaveLength(0);
+    const alerts = await getRefundAlerts();
+    expect(alerts.tournamentChargeStuck.map((x) => x.id)).not.toContain(t.id);
+    // Schalter wieder EIN: das Turnier haengt nicht, die offenen Zeilen werden abgebucht, dann gebucht (Bracket)
+    expect(await runTournamentCharges(t.id, DUE)).toMatchObject({ attempted: 16, settled: true });
+    expect((await tOf(t.id)).status).toBe("running");
+    expect((await shares(t.id)).length).toBe(16);
+  });
+
+  it("das Turnier selbst ist nicht mehr offen (abgesagt): eine nie gesendete Zeile endet als tournament_closed OHNE Nachzahlfenster, OHNE Nachricht und ohne Alarm haengt oder Altzeile", async () => {
     const { getRefundAlerts } = await import("@/server/finance");
     const { t, squads } = await ready();
     const victim = squads[0].players[1];
     await db.insert(paymentCharges).values({ tournamentId: t.id, userId: victim.id, amountCents: 1000, idempotencyKey: `charge:t:${t.id}:${victim.id}:1:1` });
-    await setSetting(null, "card_payments_enabled", false);
-    try {
-      await runTournamentCharges(t.id, DUE);
-    } finally {
-      await setSetting(null, "card_payments_enabled", true);
-    }
+    await db.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, t.id));
+    await runTournamentCharges(t.id, DUE);
     const row = (await rowsOf(t.id))[0];
     expect(row).toMatchObject({ status: "failed", failureCode: "tournament_closed", graceUntil: null });
     const n = (uid: string) => db.select().from(notifications).where(and(eq(notifications.userId, uid), eq(notifications.title, "Abbuchung fehlgeschlagen")));
@@ -149,6 +168,27 @@ describe("M5-4: Randfaelle", () => {
     const alerts = await getRefundAlerts();
     expect(alerts.tournamentChargeStuck.map((x) => x.id)).not.toContain(t.id);
     expect(alerts.legacyFailed.map((x) => x.id)).not.toContain(row.id);
+  });
+
+  it("Alarm \"Turnier wartet auf Karten\": alle Teams bereit, Frist erreicht, aber keine Abbuchungszeilen (Karte nach Bereit entfernt); nur im Kartenmodell, nicht bei Guthabenturnieren", async () => {
+    const { getRefundAlerts, cardAlertsFrom } = await import("@/server/finance");
+    const { t, squads } = await ready();
+    await db.update(paymentProfiles).set({ paymentMethodId: null }).where(eq(paymentProfiles.userId, squads[1].players[2].id));
+    expect(await runTournamentCharges(t.id, DUE)).toMatchObject({ reason: "cards_missing", created: 0 });
+    const alerts = await getRefundAlerts(DUE);
+    expect(alerts.tournamentWaitsForCards.map((x) => x.id)).toContain(t.id);
+    expect(cardAlertsFrom(alerts).map((a) => a.code)).toContain("card:tournament-waits-for-cards");
+    expect((await getRefundAlerts(new Date(T0 + 1 * DAY))).tournamentWaitsForCards.map((x) => x.id)).not.toContain(t.id); // vor der Frist kein Alarm
+    // Guthabenturnier (Geld im Turnier, paid_cents > 0): kein Alarm, es bleibt im alten Modell
+    await db.update(tournamentPlayers).set({ paidCents: 1000 }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, squads[0].captain.id)));
+    expect((await getRefundAlerts(DUE)).tournamentWaitsForCards.map((x) => x.id)).not.toContain(t.id);
+    await db.update(tournamentPlayers).set({ paidCents: 0 }).where(eq(tournamentPlayers.tournamentId, t.id));
+    await setSetting(null, "card_payments_enabled", false);
+    try {
+      expect((await getRefundAlerts(DUE)).tournamentWaitsForCards).toHaveLength(0); // Schalter AUS: kein Alarm
+    } finally {
+      await setSetting(null, "card_payments_enabled", true);
+    }
   });
 
   it("die Stripe-Gebuehr einer Turnier-Abbuchung wird dem Turnier zugeordnet (tournament_id am Ledger-Eintrag)", async () => {

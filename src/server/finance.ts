@@ -9,7 +9,7 @@ import { formatEuro } from "@/lib/money";
 import { audit } from "./audit";
 import { creditWallet, totalWalletLiability, trialBalance } from "./ledger";
 import { notifyUsers } from "./notifications";
-import { paymentsEnabled } from "./settings";
+import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
 import { DomainError } from "./teams";
 
 type Row = Record<string, unknown>;
@@ -64,7 +64,19 @@ export async function getRefundAlerts(now: Date = new Date()) {
     await db.execute<{ id: string }>(sql`select distinct c.tournament_id as id from payment_charges c join tournaments t on t.id = c.tournament_id
       where c.tournament_id is not null and c.status in ('failed', 'requires_action') and t.status = 'payment' and c.failure_code is distinct from 'tournament_closed' and (c.grace_until is null or c.grace_until <= ${now})`)
   ).rows;
-  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck };
+  // Zweite stille Haengerlage (Delta-Review): Zahlungsphase, ALLE Teams bereit, die Frist ist erreicht, aber es gibt keine Abbuchungszeilen (z. B. Karte nach "Bereit" entfernt, Zusage/Halle fehlt).
+  // Nur im Kartenmodell (Schalter EIN, kein Guthaben im Turnier, nicht kostenlos): sonst waeren Guthabenturniere falsch positiv.
+  const tournamentWaitsForCards = (await cardPaymentsEnabled())
+    ? (
+        await db.execute<{ id: string }>(sql`select t.id from tournaments t
+          where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null and t.starts_at > ${now} and t.starts_at - interval '48 hours' <= ${now}
+            and coalesce(t.total_cents, 1) > 0 and coalesce(t.final_share_cents, 1) > 0
+            and not exists (select 1 from payment_charges c where c.tournament_id = t.id)
+            and not exists (select 1 from tournament_players p where p.tournament_id = t.id and p.paid_cents > 0)
+            and (select count(*) from tournament_teams x where x.tournament_id = t.id and x.paid_ready_at is not null) = t.max_teams`)
+      ).rows
+    : [];
+  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards };
 }
 
 export type Period = { from: Date; to: Date };
@@ -324,7 +336,7 @@ export type Alert = { code: string; severity: "high" | "medium"; title: string; 
  * keine Personendaten). Alles, was ein Automat NICHT loest und Geld oder einen haengenden Ablauf betrifft: Doppelabbuchung, fehlgeschlagene/ungeklaerte Erstattung, haengende Absage,
  * ungeklaerte Abbuchung, Schluesselkonflikt, Altzeile ohne Fenster.
  */
-export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck">>): Alert[] {
+export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards">>): Alert[] {
   const out: Alert[] = [];
   const add = (code: string, n: number, title: string, detail: string) => {
     if (n > 0) out.push({ code, severity: "high", title: `${title} (${n})`, detail });
@@ -337,6 +349,7 @@ export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlert
   add("card:idempotency-mismatch", ra.idempotencyMismatches.length, "Abbuchung mit Schluesselkonflikt", "Ein Versuch ist am Idempotenzschluessel gescheitert und wird von keinem Automaten angefasst.");
   add("card:tournament-refund-open", ra.tournamentRefundsOpen?.length ?? 0, "Turnier-Erstattung offen", "Eine Erstattung zu einem Turnier wartet auf den Versand (der automatische Versand fuer Turniere folgt mit M5-5). Bitte manuell erstatten.");
   add("card:tournament-charge-stuck", ra.tournamentChargeStuck?.length ?? 0, "Turnier haengt nach gescheiterter Abbuchung", "Bei einem Turnier ist eine Abbuchung gescheitert und das Nachzahlfenster abgelaufen. Das Turnier ist weder gebucht noch abgesagt. Bitte entscheiden (Absage mit Erstattung).");
+  add("card:tournament-waits-for-cards", ra.tournamentWaitsForCards?.length ?? 0, "Turnier wartet auf Karten", "Alle Teams sind bereit und die Frist ist erreicht, aber es gibt keine Abbuchung (Karte fehlt, Halle oder Zusage fehlt). Das Turnier haengt in der Zahlungsphase.");
   add("card:legacy-failed", ra.legacyFailed.length, "Altzeile ohne Nachzahlfenster", "Eine fehlgeschlagene Abbuchung aus der Zeit vor dem Nachzahlfenster wird nicht automatisch bearbeitet.");
   return out;
 }

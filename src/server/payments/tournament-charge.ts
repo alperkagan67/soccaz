@@ -141,7 +141,11 @@ type Claimed = { id: string; tournamentId: string; userId: string; payerUserId: 
 async function claimNext(tournamentId: string, now: Date): Promise<Claimed | null> {
   return db.transaction(async (tx) => {
     const [t] = await tx.select().from(tournaments).where(eq(tournaments.id, tournamentId)).for("share");
-    const open = Boolean(t) && t.status === "payment" && t.settledAt === null && t.bracketGeneratedAt === null && Boolean(t.startsAt) && t.startsAt!.getTime() > now.getTime() && (await tournamentCardMode(tx, tournamentId));
+    // "offen": das Turnier selbst laeuft noch (Zahlungsphase, nicht gebucht, nicht gestartet). tournament_closed (terminal) gibt es NUR, wenn das Turnier selbst nicht mehr offen ist.
+    // Ist es offen, aber das Kartenmodell gerade aus (Notabschaltung/Schalter AUS), bleiben die Zeilen pending und es wird nichts gesendet: nach dem Wieder-Einschalten geht es weiter.
+    const selfOpen = Boolean(t) && t.status === "payment" && t.settledAt === null && t.bracketGeneratedAt === null && Boolean(t.startsAt) && t.startsAt!.getTime() > now.getTime();
+    const open = selfOpen && (await tournamentCardMode(tx, tournamentId));
+    if (selfOpen && !open) return null;
     const rows = await tx.execute(sql`
       select id, tournament_id, user_id, payer_user_id, amount_cents, idempotency_key, attempt_started_at, updated_at
       from payment_charges
