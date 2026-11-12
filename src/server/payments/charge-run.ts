@@ -54,7 +54,7 @@ export type EligibilityReason = "not_open" | "not_due" | "not_card_mode" | "not_
  */
 export async function chargeEligibility(tx: Tx, match: typeof matches.$inferSelect, now: Date, requireDue = false): Promise<{ reason: EligibilityReason; seated: string[]; amountCents: number | null }> {
   const none = (reason: EligibilityReason) => ({ reason, seated: [] as string[], amountCents: null as number | null });
-  if (!["lobby", "confirmed"].includes(match.status) || match.settledAt !== null || match.startsAt.getTime() <= now.getTime()) return none("not_open");
+  if (!["lobby", "confirmed"].includes(match.status) || match.settledAt !== null || match.cancelRequestedAt !== null || match.startsAt.getTime() <= now.getTime()) return none("not_open");
   if (!(await cardModeActive(tx, match))) return none("not_card_mode");
   if (!match.homeFinalAt || !match.awayFinalAt) return none("not_confirmed");
   if (match.finalShareCents === null) return none("not_fixed");
@@ -118,7 +118,7 @@ type Claimed = { id: string; matchId: string; userId: string; amountCents: numbe
 async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
   return db.transaction(async (tx) => {
     const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("share");
-    const open = Boolean(match) && ["lobby", "confirmed"].includes(match.status) && match.settledAt === null && match.startsAt.getTime() > now.getTime() && (await cardModeActive(tx, match));
+    const open = Boolean(match) && ["lobby", "confirmed"].includes(match.status) && match.settledAt === null && match.cancelRequestedAt === null && match.startsAt.getTime() > now.getTime() && (await cardModeActive(tx, match));
     const rows = await tx.execute(sql`
       select id, match_id, user_id, amount_cents, idempotency_key, attempt_started_at, updated_at
       from payment_charges

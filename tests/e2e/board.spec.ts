@@ -37,11 +37,26 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   await expect(card).toContainText("Siegchance nach Elo");
   await expect(card).toContainText("Stärke 4/5");
   await expect(card).toContainText("Stärke 2/5");
-  // Ampel: Heim hat einen roten und einen orangen Spieler, Gast einen roten
+  // Datenschutz (Vertrag 012 AC-12/AC-20): Gaeste sehen nur Zahlen und Initialen, KEINE Ampel je Person und keine Legende
   const lights = await card.getByTestId("board-player").evaluateAll((els) => els.map((e) => e.getAttribute("data-light")));
-  expect(lights.sort()).toEqual(["orange", "red", "red"]);
+  expect(lights).toHaveLength(3);
+  expect(lights).toEqual([null, null, null]);
   await expect(card.getByTestId("board-team").first()).toContainText("1 von 2 bereit");
-  await expect(anon.getByTestId("light-legend")).toBeVisible();
+  await expect(anon.getByTestId("light-legend")).toHaveCount(0);
+  expect(await anon.content()).not.toContain("data-light=");
+  // angemeldeter Teilnehmer: Ampel je Person weiter sichtbar (Heim: orange + rot, Gast: rot), mit Legende
+  const member = await (await browser.newContext()).newPage();
+  await newUser(member, "boardmem");
+  const memberId = (await testDb().query("select id from users where email = $1", [`boardmem-${run}@test.local`])).rows[0].id as string;
+  await testDb().query("insert into team_members (team_id, user_id, role) values ($1, $2, 'player')", [home.id, memberId]);
+  await testDb().query("insert into match_participants (match_id, user_id, team_id) values ($1, $2, $3)", [matchId, memberId, home.id]);
+  await member.goto("/suche");
+  const memberCard = member.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: `Board Heim ${run}` });
+  await expect(memberCard).toBeVisible();
+  const ownLights = await memberCard.getByTestId("board-player").evaluateAll((els) => els.map((e) => e.getAttribute("data-light")));
+  expect(ownLights.every((l) => l !== null)).toBe(true);
+  expect(ownLights).toContain("red");
+  await expect(member.getByTestId("light-legend")).toBeVisible();
   await expect(card.getByRole("link", { name: "Zur Lobby" })).toBeVisible(); // in einer Lobby stehen schon beide Teams: kein Herausfordern mehr
 
   // Bestätigtes Spiel: die Bereiten werden grün
@@ -49,15 +64,23 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   await anon.reload();
   await expect(card).toContainText("Bestätigt");
   const after = await card.getByTestId("board-player").evaluateAll((els) => els.map((e) => e.getAttribute("data-light")));
-  expect(after.sort()).toEqual(["green", "red", "red"]);
+  expect(after).toEqual([null, null, null, null]); // (4 Plaetze mit dem angemeldeten Teilnehmer) Gaeste: auch nach Bestaetigung keine Ampel je Person
+  await member.reload();
+  const afterOwn = await memberCard.getByTestId("board-player").evaluateAll((els) => els.map((e) => e.getAttribute("data-light")));
+  expect(afterOwn).toContain("green");
 
   // Die Lobby selbst ist für Gäste lesbar, mit Nummer und Ampel
   await card.getByRole("link", { name: "Zur Lobby" }).click();
   await expect(anon).toHaveURL(new RegExp(`/lobby/${matchId}$`));
   await expect(anon.getByTestId("game-number").filter({ hasText: "Spiel #" }).locator("visible=true")).toContainText(`Spiel #${number}`);
   await expect(anon.getByTestId("win-chance").locator("visible=true")).toContainText("Siegchance");
-  await expect(anon.getByTestId("light-legend").locator("visible=true")).toBeVisible(); // die vorige Seite bleibt im Cache verborgen im DOM
-  await expect(anon.locator('[data-light="green"]').locator("visible=true").first()).toBeVisible();
+  // Gaeste: keine Legende, keine Ampel je Person (AC-12/AC-20); die vorige Seite bleibt im Cache verborgen im DOM
+  await expect(anon.getByTestId("light-legend").locator("visible=true")).toHaveCount(0);
+  await expect(anon.locator("[data-light]").locator("visible=true")).toHaveCount(0);
+  // der angemeldete Teilnehmer sieht in derselben Lobby die Ampel
+  await member.goto(`/lobby/${matchId}`);
+  await expect(member.getByTestId("light-legend").locator("visible=true")).toBeVisible();
+  await expect(member.locator('[data-light="green"]').locator("visible=true").first()).toBeVisible();
   await expect(anon.getByRole("link", { name: "Anmelden" }).locator("visible=true").first()).toBeVisible();
 
   // Eine Lobby mit zwei Teams kann niemand mehr herausfordern
@@ -89,7 +112,9 @@ test("Spielsuche mit festem Termin steht mit Nummer, Kader und Herausfordern öf
   const card = anon.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: teamA });
   await expect(card.getByTestId("game-number")).toHaveText(`#${number}`);
   await expect(card).toContainText("Gegner gesucht");
-  await expect(card).toContainText("Spieler bsa"); // Kader
+  await expect(card).toContainText("1 im Kader"); // Gaeste: nur Anzahl und Initialen (AC-12/AC-20), kein Name
+  await expect(card).toContainText("SB");
+  await expect(card).not.toContainText("Spieler bsa");
   await expect(card.getByRole("link", { name: "Anmelden und Team herausfordern" })).toBeVisible();
 
   // Wird die Suche angenommen, behält das Spiel die Nummer
