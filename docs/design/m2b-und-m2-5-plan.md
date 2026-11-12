@@ -82,7 +82,7 @@ Nach M2 sind Start und Lobby **komplett im neuen Look** (Richtung E „Trikot“
 ## B2. Die Seiten heute (Datei:Zeile) und ihr neuer Aufbau
 
 ### B2.1 Start
-Start (entschieden (t9, 2026-11-11)): Zwei Seiten tragen den „Start“: `/` (`src/app/page.tsx`, 82 Zeilen, Gast und Angemeldete) und `/app` (`src/app/app/page.tsx`, 123 Zeilen, „Meine Spiele“ für Angemeldete; Umbauplan: „Start (Meine Spiele)“). Beide gelten als „Start“ und bekommen je 4 Varianten (12 Pflichtbilder mit der Lobby). Die Guthaben-Karte auf `/app` entfällt (Bedingung 2 der Freigabe, AC-14).
+Start (entschieden (t9, 2026-11-11)): Zwei Seiten tragen den „Start“: `/` (`src/app/page.tsx`, 82 Zeilen, Gast und Angemeldete) und `/app` (`src/app/app/page.tsx`, 123 Zeilen, „Meine Spiele“ für Angemeldete; Umbauplan: „Meine Spiele“ im Profil-Tab nach Vertrag 007 AC-1). Beide gelten als „Start“ und bekommen je 4 Varianten (12 Pflichtbilder mit der Lobby). Die Guthaben-Karte auf `/app` entfällt (Bedingung 2 der Freigabe, AC-14).
 
 | Seite | Heute | Neu |
 |---|---|---|
