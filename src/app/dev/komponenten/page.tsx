@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { LinkButton } from "@/components/ui/LinkButton";
+import { ConfirmShowcase } from "./ConfirmShowcase";
 import { Counter } from "./Counter";
 import { FormShowcase } from "./FormShowcase";
 
@@ -50,6 +51,7 @@ export default function KomponentenPage() {
         <Counter />
       </section>
       <FormShowcase />
+      <ConfirmShowcase />
     </div>
   );
 }
