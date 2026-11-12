@@ -101,3 +101,12 @@ for (const view of VIEWS) {
     });
   }
 }
+
+test.describe("Raster nach Platz", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+  test("StateMessage-Karten sind auch neben der Seitenleiste mindestens 256 px breit", async ({ page }) => {
+    await open(page, "dark");
+    const widths = await page.locator("[data-kind]").evaluateAll((els) => els.map((e) => e.getBoundingClientRect().width));
+    for (const w of widths) expect(w).toBeGreaterThanOrEqual(255);
+  });
+});

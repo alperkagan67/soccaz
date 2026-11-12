@@ -79,7 +79,7 @@ export default function KomponentenPage() {
           </section>
           <section className="space-y-3" aria-labelledby="msg">
             <h2 id="msg" className="text-lg font-semibold">StateMessage</h2>
-            <div className="grid gap-3 sm:grid-cols-2" data-testid="messages">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(16rem,1fr))] gap-3" data-testid="messages">
               <StateMessage kind="empty" title="Noch keine Spiele" reason="Du hast noch kein Spiel in deiner Nähe gebucht." action={{ label: "Spiel suchen", href: "/suche" }} />
               <StateMessage kind="error" title="Abbuchung fehlgeschlagen" reason="Deine Karte wurde abgelehnt, bitte ändere sie." action={{ label: "Karte ändern", href: "/app/karte" }} />
               <StateMessage kind="ended" title="Die Spielsuche ist abgelaufen" reason="Der Anstoß liegt in der Vergangenheit." action={{ label: "Neue Spielsuche", href: "/app/suche/neu" }} />
