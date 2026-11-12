@@ -9,12 +9,14 @@ import { db } from "@/db";
 import { unreadCount } from "@/server/notifications";
 import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
+import { isVenueManager as checkVenueManager } from "@/server/venues";
 
 export async function Header() {
   const { t } = await getT();
   const user = await getCurrentUser();
   const unread = user ? await unreadCount(user.id) : 0;
   const balance = user ? await walletBalance(db, user.id) : 0;
+  const isVenueManager = user ? await checkVenueManager(user.id) : false;
 
   return (
     <header className="sticky top-0 z-20 border-b border-accent/15 bg-bg/80 backdrop-blur">
@@ -60,8 +62,9 @@ export async function Header() {
                 balanceText={formatEuro(balance)}
                 unread={unread}
                 showAdmin={can(user.role, "dashboard")}
-                labels={{ profile: t("menu.profile"), area: t("menu.area"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help") }}
-                signOut={async () => {
+                showVenue={isVenueManager}
+                labels={{ games: t("menu.games"), profile: t("menu.profile"), venue: t("menu.venue"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help"), account: t("menu.account"), unread: t("menu.unread") }}
+                signOutAction={async () => {
                   "use server";
                   await signOut({ redirectTo: "/" });
                 }}
