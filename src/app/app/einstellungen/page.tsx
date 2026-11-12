@@ -7,6 +7,7 @@ import { cardPaymentsEnabled } from "@/server/settings";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { getStoredCardDisplay } from "@/server/payments/card-status";
 import { fakeCardAllowed } from "@/server/payments/mode";
+import { listOpenAuthorizations } from "@/server/payments/authorize";
 import { requireUser } from "@/server/session";
 import { DeleteAccountForm, ProfileForm } from "./ProfileForm";
 import { PrefsForm } from "./PrefsForm";
@@ -21,6 +22,7 @@ export default async function SettingsPage() {
   // Karte ändern (Vertrag 012, M3b AC-5): nur wenn das Kartenmodell eingeschaltet ist
   const cardOn = await cardPaymentsEnabled();
   const storedCard = cardOn ? await getStoredCardDisplay(user.id) : null;
+  const openAuthorizations = cardOn ? await listOpenAuthorizations(user.id) : []; // nur Spiel und Fensterende, nie ein Secret
 
   return (
     <div className="space-y-6">
@@ -54,6 +56,20 @@ export default async function SettingsPage() {
           </p>
           <p className="text-sm text-muted">Mit „Karte ändern“ ersetzt du die gespeicherte Karte. Die alte wird gelöscht. Es wird nichts abgebucht.</p>
           <CardChange mandateText={MANDATE_TEXT} fake={fakeCardAllowed()} />
+          {openAuthorizations.length > 0 && (
+            <div className="space-y-1" data-testid="open-authorizations">
+              <h3 className="text-sm font-semibold">Offene Freigaben</h3>
+              <ul className="space-y-1 text-sm">
+                {openAuthorizations.map((a) => (
+                  <li key={a.matchId}>
+                    <Link href={`/lobby/${a.matchId}`} className="text-accent-fg underline">
+                      Zahlung freigeben ({a.until})
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 
