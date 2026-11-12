@@ -82,6 +82,36 @@ describe("Loeschauftrag abarbeiten", () => {
     expect((await reload(t.id)).status).toBe("done");
   });
 
+  it("Rennfall (R-T189): haelt eine andere Transaktion die Auftragszeile (FOR UPDATE), wartet claimNext NICHT und findet nichts (SKIP LOCKED); nach der Freigabe wird der Auftrag normal abgearbeitet", async () => {
+    const { t, customer } = await task();
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const heldP = new Promise<void>((r) => (held = r));
+    const holder = db.transaction(async (tx) => {
+      await tx.select().from(paymentErasureTasks).where(eq(paymentErasureTasks.id, t.id)).for("update");
+      held();
+      await hold;
+    });
+    await heldP;
+    const run = runErasureTasks(new Date(), 100, { onlyTaskId: t.id });
+    try {
+      // Mit SKIP LOCKED kehrt der Lauf sofort zurueck; ohne wuerde er bis zur Freigabe blockieren
+      const first = await Promise.race([run.then(() => "fertig" as const), new Promise<"blockiert">((r) => setTimeout(() => r("blockiert"), 1200))]);
+      expect(first).toBe("fertig");
+      expect(delCalls(customer!)).toHaveLength(0);
+      expect((await reload(t.id)).status).toBe("pending"); // nicht beansprucht, kein Versuch verbraucht
+      expect((await reload(t.id)).attempts).toBe(0);
+    } finally {
+      release(); // auch bei einem Fehlschlag die Sperre freigeben, sonst haengt der Lauf bis zum Zeitlimit
+      await holder;
+      await run.catch(() => undefined);
+    }
+    await runErasureTasks(new Date(), 100, { onlyTaskId: t.id });
+    expect(delCalls(customer!)).toHaveLength(1);
+    expect((await reload(t.id)).status).toBe("done");
+  });
+
   it("waehrend des Stripe-Aufrufs ist der Auftrag beansprucht (claimed) mit Lease in der Zukunft, der Versuch ist schon gezaehlt", async () => {
     const { t } = await task();
     let seen: { status: string; leaseOk: boolean; attempts: number } | null = null;
