@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { setBannedAction, setProBadgeAction, setRoleAction } from "@/server/admin-actions";
-import { ALL_ROLES, ROLE_LABEL, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, ROLE_LABEL, type Role } from "@/lib/roles";
 
 type Result = { error?: string } | undefined;
 
-export function UserActions({ userId, role, banned, pro, isSelf }: { userId: string; role: Role; banned: boolean; pro: boolean; isSelf: boolean }) {
+export function UserActions({ userId, role, banned, pro, isSelf, canSetRole = false }: { userId: string; role: Role; banned: boolean; pro: boolean; isSelf: boolean; /** nur Admin 1 vergibt Rollen (Vertrag 009) */ canSetRole?: boolean }) {
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
   const run = (fn: () => Promise<Result>) => {
@@ -21,10 +21,10 @@ export function UserActions({ userId, role, banned, pro, isSelf }: { userId: str
         id={`role-${userId}`}
         className="field !min-h-9 !w-auto"
         defaultValue={role}
-        disabled={pending || isSelf}
+        disabled={pending || isSelf || !canSetRole}
         onChange={(e) => run(() => setRoleAction(userId, e.target.value))}
       >
-        {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+        {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
       </select>
       <button className="btn btn-ghost !min-h-9" disabled={pending} onClick={() => run(() => setProBadgeAction(userId, !pro))}>
         {pro ? "Profi-Badge entziehen" : "Profi-Badge geben"}

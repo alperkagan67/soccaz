@@ -25,7 +25,9 @@ export const requestStatus = pgEnum("request_status", ["open", "matched", "cance
 export const matchStatus = pgEnum("match_status", ["lobby", "confirmed", "played", "disputed", "cancelled"]);
 export const eventType = pgEnum("event_type", ["goal", "yellow_card", "red_card"]);
 
-export const users = pgTable("users", {
+export const users = pgTable(
+  "users",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   googleId: text("google_id").unique(),
   email: text("email").notNull().unique(),
@@ -43,13 +45,21 @@ export const users = pgTable("users", {
   favoriteClub: text("favorite_club"),
   strongFoot: text("strong_foot"), // links | rechts | beidfüßig
   isOrganizer: boolean("is_organizer").notNull().default(false), // darf Turniere gegen Startgeld veranstalten
+  // Admin 1 (Vertrag 009 M1): genau ein Konto mit role = 'admin' UND is_owner. Ein boolean statt eines Enum-Werts: ein Teilindex auf enum::text ist in Postgres nicht erlaubt (nicht IMMUTABLE),
+  // und ADD VALUE ist nicht rückgängig zu machen. Weil der Admin 1 weiter role = 'admin' trägt, behalten alle bisherigen Plattform-Admin-Prüfungen für ihn ihre Wirkung.
+  isOwner: boolean("is_owner").notNull().default(false),
   locale: text("locale").notNull().default("de"),
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   ageConfirmedAt: timestamp("age_confirmed_at", { withTimezone: true }),
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
   bannedAt: timestamp("banned_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (t) => [
+    uniqueIndex("users_one_owner").on(t.isOwner).where(sql`${t.isOwner}`), // höchstens ein Admin 1
+    check("users_owner_is_admin", sql`not ${t.isOwner} or ${t.role} = 'admin'`), // Admin 1 ist immer Plattform-Admin
+  ],
+);
 
 export const teams = pgTable(
   "teams",

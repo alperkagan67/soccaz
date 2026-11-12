@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { setupLobby } from "./flows";
 import { closeContexts, closeTestDb, createTeam, devLogin, newUser, run } from "./helpers";
-import { query, seedAdmin, seedUserRole, startMatchNow } from "./helpers-db";
+import { query, seedAdmin, seedOwner, startMatchNow } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
 
@@ -12,8 +12,8 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
-async function adminPage(browser: import("@playwright/test").Browser, key: string, next = "/admin") {
-  await seedAdmin(key);
+async function adminPage(browser: import("@playwright/test").Browser, key: string, next = "/admin", owner = false) {
+  await (owner ? seedOwner(key) : seedAdmin(key));
   const page = await (await browser.newContext()).newPage();
   await devLogin(page, `${key}-${run}@test.local`, `Admin ${key}`, next);
   return page;
@@ -28,19 +28,23 @@ test("Admin: Zugriff nur mit Berechtigung", async ({ browser }) => {
   await expect(player).toHaveURL(/\/app$/);
   await expect(player.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
 
-  // Moderator sieht die Übersicht, aber nicht Nutzer und Teams
-  await seedUserRole("ad1m", "moderator");
-  const mod = await (await browser.newContext()).newPage();
-  await devLogin(mod, `ad1m-${run}@test.local`, "Moderator ad1m", "/admin");
-  await expect(mod.getByRole("heading", { name: "Admin", exact: true })).toBeVisible();
-  await expect(mod.getByRole("link", { name: "Nutzer" })).toHaveCount(0);
-  await mod.goto("/admin/nutzer");
-  await expect(mod).toHaveURL(/\/app$/);
-
-  // Admin sieht alles
+  // Admin 2 (role admin ohne is_owner): Übersicht, Nutzer, Protokoll, Moderation; KEINE Finanzen, Codes, Einstellungen (Vertrag 009 AC-1)
   const admin = await adminPage(browser, "ad1a");
-  await expect(admin.getByRole("link", { name: "Nutzer" })).toBeVisible();
-  await expect(admin.getByRole("link", { name: "Protokoll" })).toBeVisible();
+  const nav = (p: import("@playwright/test").Page) => p.getByRole("navigation", { name: "Admin-Bereich" });
+  await expect(nav(admin).getByRole("link", { name: "Nutzer" })).toBeVisible();
+  await expect(nav(admin).getByRole("link", { name: "Protokoll" })).toBeVisible();
+  await expect(nav(admin).getByRole("link", { name: "Moderation" })).toBeVisible();
+  for (const name of ["Finanzen", "Codes", "Einstellungen"]) await expect(nav(admin).getByRole("link", { name })).toHaveCount(0);
+  for (const url of ["/admin/finanzen", "/admin/codes", "/admin/einstellungen"]) {
+    await admin.goto(url);
+    await expect(admin).toHaveURL(/\/app$/);
+  }
+
+  // Admin 1 (role admin mit is_owner): zusätzlich Finanzen, Codes, Einstellungen
+  const owner = await adminPage(browser, "ad1o", "/admin", true);
+  for (const name of ["Nutzer", "Protokoll", "Finanzen", "Codes", "Einstellungen"]) await expect(nav(owner).getByRole("link", { name })).toBeVisible();
+  await owner.goto("/admin/einstellungen");
+  await expect(owner).toHaveURL(/\/admin\/einstellungen/);
 });
 
 test("Admin: Streitfall erscheint als Aufgabe, Spiele-Liste", async ({ browser }) => {
@@ -76,7 +80,7 @@ test("Admin: Nutzer sperren, Rolle ändern, Profi-Badge, Protokoll", async ({ br
   await newUser(victim, "ad3v");
   const email = `ad3v-${run}@test.local`;
 
-  const admin = await adminPage(browser, "ad3a", "/admin/nutzer");
+  const admin = await adminPage(browser, "ad3a", "/admin/nutzer", true); // Rollen vergibt nur Admin 1 (Vertrag 009 AC-1)
   await admin.getByLabel("Name oder E-Mail").fill(email);
   await admin.getByRole("button", { name: "Filtern" }).click();
   const card = admin.getByTestId(`user-${email}`);
@@ -103,8 +107,12 @@ test("Admin: Nutzer sperren, Rolle ändern, Profi-Badge, Protokoll", async ({ br
   await expect(victim).toHaveURL(/\/app$/);
 
   // Rolle ändern
-  await card.getByLabel("Rolle").selectOption("finance");
-  await expect.poll(async () => (await query<{ role: string }>("select role from users where email = $1", [email]))[0].role).toBe("finance");
+  // (die Teilrolle finance entfällt mit Vertrag 009 v4: vergeben werden nur Spieler und Admin; ihre Rechte prüft "Zugriff nur mit Berechtigung")
+  await expect(card.getByLabel("Rolle").locator("option")).toHaveText(["Spieler", "Plattform-Admin"]);
+  await card.getByLabel("Rolle").selectOption("admin");
+  await expect.poll(async () => (await query<{ role: string }>("select role from users where email = $1", [email]))[0].role).toBe("admin");
+  await card.getByLabel("Rolle").selectOption("player");
+  await expect.poll(async () => (await query<{ role: string }>("select role from users where email = $1", [email]))[0].role).toBe("player");
 
   // Admins können nicht gesperrt werden
   await seedAdmin("ad3x");

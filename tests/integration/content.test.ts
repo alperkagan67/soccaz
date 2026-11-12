@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { notifications } from "@/db/schema";
+import { notifications, users } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { comments, userWarnings } from "@/db/schema-content";
 import { playerStats } from "@/db/schema-community";
@@ -30,6 +30,9 @@ describe("Kommentare", () => {
     expect((await listComments("team", team.id, b.id))[0].mine).toBe(false);
 
     await expect(deleteComment(b.id, id)).rejects.toThrow(/nicht/);
+    const legacy = await makeUser("modl");
+    await db.update(users).set({ role: "moderator" }).where(eq(users.id, legacy.id));
+    await expect(deleteComment(legacy.id, id)).rejects.toThrow(/nicht/); // die entfallene Teilrolle moderiert nicht mehr (Vertrag 009 v4)
     await deleteComment(a.id, id);
     expect(await listComments("team", team.id)).toHaveLength(0);
   });
@@ -89,7 +92,7 @@ describe("Melden und Moderation", () => {
     expect(queue.find((q) => q.id === id)).toMatchObject({ reports: 3, status: "hidden" });
 
     // Wieder anzeigen erledigt die Meldungen, der Kommentar bleibt sichtbar
-    const mod = await makeUser("mod", "moderator");
+    const mod = await makeUser("mod", "admin"); // Moderation: Teilrolle moderator entfällt, Rolle admin moderiert (Vertrag 009 v4)
     await moderateComment(mod.id, id, "restore");
     expect(await statusOf(id)).toBe("visible");
     expect((await moderationQueue()).rows.find((q) => q.id === id)).toBeUndefined();
@@ -101,7 +104,7 @@ describe("Melden und Moderation", () => {
     const reporter = await makeUser("rep2");
     const id = await postComment(author.id, { targetType: "player", targetId: target.id, body: "Beleidigung" });
     await reportComment(reporter.id, id, "beleidigend");
-    const mod = await makeUser("mod2", "moderator");
+    const mod = await makeUser("mod2", "admin"); // wie oben
     await moderateComment(mod.id, id, "remove_and_warn", "Beleidigung");
     expect(await statusOf(id)).toBe("removed");
     expect(await db.select().from(userWarnings).where(eq(userWarnings.userId, author.id))).toHaveLength(1);

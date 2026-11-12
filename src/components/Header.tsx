@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "@/auth";
-import { can } from "@/lib/roles";
+import { canUser } from "@/lib/roles";
 import { formatEuro } from "@/lib/money";
 import { UserMenu } from "./UserMenu";
 import { walletBalance } from "@/server/ledger";
@@ -61,7 +61,7 @@ export async function Header() {
                 avatarUrl={user.avatarUrl ?? null}
                 balanceText={formatEuro(balance)}
                 unread={unread}
-                showAdmin={can(user.role, "dashboard")}
+                showAdmin={canUser(user, "dashboard")}
                 showVenue={isVenueManager}
                 labels={{ games: t("menu.games"), profile: t("menu.profile"), venue: t("menu.venue"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help"), account: t("menu.account"), unread: t("menu.unread") }}
                 signOutAction={async () => {

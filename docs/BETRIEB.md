@@ -134,3 +134,26 @@ Die Einzelheiten stehen oben; hier die Reihenfolge für Worker-Worktrees. Nur Na
 ## Hallen-Buchung
 
 Sobald ein bezahltes Spiel bestätigt ist, entsteht im Admin-Bereich unter **Buchungen** ein Auftrag. Es gibt noch keinen automatischen Buchungs-Agenten: Die Halle wird per Telefon, Mail oder Webseite gebucht und im Auftrag eingetragen. Für einen späteren Agenten gibt es die Schnittstelle `src/server/booking-agent.ts`.
+
+## Admin 1 festlegen (Vertrag 009 M1, nur Betreiber)
+Admin 1 (Seitenbetreiber) ist das eine Konto mit `users.role = 'admin'` UND `users.is_owner = true`; die Datenbank erlaubt höchstens eines. Es entsteht nie von selbst: Die Migration setzt niemanden, das macht dieser Schritt.
+
+**Reihenfolge beim Einspielen:** 1. Migration (der übliche Update-Ablauf führt `scripts/migrate.mjs` aus) und Code E1a (Spalte, Skript; Verhalten unverändert, Admin 1 trägt weiter die Rolle `admin`) → 2. **Admin 1 festlegen** (dieser Abschnitt) → 3. erst danach Code E1b (Finanzen, Einstellungen und Rollenvergabe nur noch für Admin 1; Admin 2 verliert sie) → 4. danach Alarme nur an Admin 1 (E2). **E1b nie vor Schritt 2 ausrollen:** sonst hat bis zum Festlegen niemand Zugriff auf Finanzen und Einstellungen.
+
+**Festlegen** (ein BESTEHENDES Konto mit `role = 'admin'`, das sich einmal angemeldet hat; Datenbank aus `DATABASE_URL`, Konto aus `OWNER_EMAIL`, beides aus der Umgebung des Servers, der Wert steht nie im Repo und wird nie ausgegeben; Name der Angabe in `docs/loop/FEHLT-NOCH.md`):
+```
+OWNER_EMAIL=<email> node scripts/set-owner.mjs          # Trockenlauf: zeigt nur Host, Port und Datenbankname
+OWNER_EMAIL=<email> node scripts/set-owner.mjs --yes    # führt aus
+```
+Ohne `OWNER_EMAIL` handelt das Skript nur, wenn es genau EIN nicht gesperrtes Admin-Konto gibt; bei mehreren bricht es ab (keine Raterei). Ein E-Mail-Argument auf der Kommandozeile wird abgelehnt.
+Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert“), bricht ab, wenn ein ANDERES Konto schon Admin 1 ist, das Konto fehlt, kein Admin-Konto oder gesperrt ist, und schreibt einen Protokolleintrag `user.owner_set` ohne Akteur. Es zeigt nie E-Mail, Benutzer oder Passwort.
+
+**Release-Bedingung (Security-Review E1c):** E1c (Teilrollen-Migration und -Code) und E2 (Alarme nur an Admin 1, `ownerIds`) gehen im SELBEN Release produktiv. Bis E2 gehen die täglichen Finanz-Alarme an alle nicht gesperrten Admin-Konten, auch an Admin 2; dessen Link `/admin/finanzen` leitet auf `/app` um (keine Finanzrechte). E1c allein ausrollen ist daher nicht zulässig.
+
+**Teilrollen (Entscheid t9):** Die Migration `…_teilrollen_aufloesen` setzt Konten mit `moderator`, `finance` und `booking` automatisch auf `player` (geringste Rechte) und schreibt je Konto einen Protokolleintrag `user.role` (Akteur leer, `before.role` = frühere Rolle, Grund in `after.reason`). Die Enum-Werte bleiben bestehen. **Rollback:** nicht automatisch; die Rolle jedes Kontos steht im Protokoll (`select entity_id, before from audit_log where action = 'user.role' and after->>'reason' like 'Rolle aufgelöst%'`) und lässt sich daraus von Hand zurücksetzen. Danach ernennt ein Admin-Konto Admin 1 bewusst (dieser Abschnitt).
+
+**Ein anderes Konto soll Admin 1 werden (Übergabe):** zuerst das alte Konto freigeben (`update users set is_owner = false where email = '<alt>'`), dann das Skript für das neue Konto. Ohne Admin 1 gehen die Alarme ab E2 nicht an Dritte (nur Server-Log), deshalb die Lücke kurz halten.
+
+**Rückgängig (Rollback):** Code auf den vorherigen Stand zurück; Admin 1 lässt sich ohne Datenverlust abgeben (`is_owner = false`). Die Spalte `is_owner` und der Teilindex `users_one_owner` bleiben ungenutzt stehen (Datenbankänderungen sind nur vorwärts, vorher sichern).
+
+**Prüfung der Migration** (lokal, Wegwerf-Datenbanken, löscht sie danach): `node --env-file=.env.local scripts/migrate-check.mjs` (frische Datenbank mit allen Migrationen in einem Lauf und bestehende Datenbank mit Daten).

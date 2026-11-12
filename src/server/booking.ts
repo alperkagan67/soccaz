@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
@@ -30,8 +30,9 @@ export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
   return from === to || TRANSITIONS[from].includes(to);
 }
 
+/** Empfänger der Buchungsaufgaben: alle NICHT GESPERRTEN Plattform-Admins (die Teilrolle booking entfällt mit Vertrag 009 M1). */
 async function bookingStaffIds(tx: Pick<typeof db, "select">): Promise<string[]> {
-  const rows = await tx.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "booking"]));
+  const rows = await tx.select({ id: users.id }).from(users).where(and(inArray(users.role, ["admin"]), isNull(users.bannedAt)));
   return rows.map((r) => r.id);
 }
 

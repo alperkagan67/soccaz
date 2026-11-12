@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import Credentials from "next-auth/providers/credentials";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import type { Role } from "@/lib/roles";
@@ -37,8 +37,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               if (!email) return null;
               const user = await upsertUser({ email, name: String(c?.name || email.split("@")[0]) });
               // Nur lokal: Wer sich mit admin@… anmeldet, ist Plattform-Admin (so lässt sich der Betreiber-Weg ausprobieren)
-              if (email.toLowerCase().startsWith("admin@") && user.role !== "admin") {
-                await db.update(users).set({ role: "admin" }).where(eq(users.id, user.id));
+              if (email.toLowerCase().startsWith("admin@") && (user.role !== "admin" || !user.isOwner)) {
+                // lokal ist admin@ Admin 1 (users.is_owner), solange es noch keinen anderen Admin 1 gibt (der Teilindex erlaubt nur einen)
+                await db
+                  .update(users)
+                  .set({ role: "admin", isOwner: sql`not exists (select 1 from users o where o.is_owner and o.id <> ${user.id})` })
+                  .where(eq(users.id, user.id));
               }
               return { id: user.id, email: user.email, name: user.name };
             },

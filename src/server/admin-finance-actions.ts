@@ -158,7 +158,7 @@ export async function addPriceRuleAction(venueId: string | null, _prev: ActionSt
 export async function savePlatformSettingsAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const minPaid = Number(text(fd, "minPaid"));
   if (!Number.isInteger(minPaid) || minPaid < 2 || minPaid > 12) return { error: "Die Mindestzahl zahlender Spieler liegt zwischen 2 und 12." };
-  return guarded("admin", "/admin/einstellungen", async (actor) => {
+  return guarded("owner", "/admin/einstellungen", async (actor) => {
     await setSetting(actor, "payments_enabled", fd.get("paymentsEnabled") === "on");
     await setSetting(actor, "min_paid_players", minPaid);
     await setSetting(actor, "emergency_phone", String(fd.get("emergencyPhone") ?? "").trim().slice(0, 40));

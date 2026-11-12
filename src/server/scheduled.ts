@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, matchParticipants, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
 import { abortDeadline, dueReminders, dueWithGrace, fixDeadline, hasLongLead, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
@@ -217,11 +217,14 @@ export async function expireStalePayments(now: Date = new Date()): Promise<numbe
   return rows.length;
 }
 
-/** Meldet Finanz-Alarme einmal pro Tag an Plattform-Admins und Finanz-Rolle. */
+/**
+ * Meldet Finanz-Alarme einmal pro Tag an alle NICHT GESPERRTEN Plattform-Admins (role admin: Admin 1 und Admin 2). Die Finanz-Rolle entfällt mit Vertrag 009 M1.
+ * Übergang bis E2: Dann gehen Alarme nur an Admin 1 (AC-18); E1c darf nicht ohne E2 produktiv gehen (docs/BETRIEB.md).
+ */
 export async function notifyFinanceAlerts(): Promise<number> {
   const alerts = await getAlerts();
   if (alerts.length === 0) return 0;
-  const staff = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "finance"]));
+  const staff = await db.select({ id: users.id }).from(users).where(and(inArray(users.role, ["admin"]), isNull(users.bannedAt)));
   const since = new Date(Date.now() - 20 * 3_600_000);
   const already = await db
     .select({ userId: notifications.userId })

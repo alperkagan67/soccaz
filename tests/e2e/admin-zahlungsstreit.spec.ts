@@ -52,7 +52,7 @@ test("Zahlungsstreit: Liste, Detail und Markierung am Spieler nur fuer Admin", a
   await expect(admin.getByRole("heading", { name: "Beweise für das Stripe-Dashboard" })).toHaveCount(0);
 });
 
-test("Zahlungsstreit: Spieler, Moderator und Finanzrolle kommen nicht hinein", async ({ browser }) => {
+test("Zahlungsstreit: Spieler und die entfallenen Teilrollen kommen nicht hinein", async ({ browser }) => {
   // eine ECHTE Streitzeile: auch das Detail (mit Beweis-Ansicht) darf fuer diese Rollen nicht erreichbar sein (R-T186: requirePermission admin der Detailseite ist eigenstaendig, das Admin-Layout verlangt nur dashboard)
   const [detail] = await query<{ id: string }>("insert into payment_disputes (dispute_id, amount_cents, currency, status) values ($1, 700, 'eur', 'needs_response') returning id", [`${DISPUTE}_detail`]);
   const player = await (await browser.newContext()).newPage();
@@ -66,8 +66,10 @@ test("Zahlungsstreit: Spieler, Moderator und Finanzrolle kommen nicht hinein", a
     await seedUserRole(`zs${role}`, role);
     const p = await (await browser.newContext()).newPage();
     await devLogin(p, `zs${role}-${run}@test.local`, `${role} zs`, "/admin");
-    await expect(p.getByRole("heading", { name: "Admin", exact: true })).toBeVisible(); // Anmeldung abgeschlossen
-    await expect(p.getByRole("link", { name: "Zahlungsstreit" })).toHaveCount(0);
+    // Teilrollen entfallen (Vertrag 009 v4): ein Altbestand-Konto hat keine Rechte mehr, auch nicht die Admin-Uebersicht
+    await expect(p).toHaveURL(/\/app$/);
+    await p.goto("/admin");
+    await expect(p).toHaveURL(/\/app$/);
     await p.goto("/admin/zahlungsstreit");
     await expect(p).toHaveURL(/\/app$/);
     await p.goto(`/admin/zahlungsstreit/${detail.id}`);

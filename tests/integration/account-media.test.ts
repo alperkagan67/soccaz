@@ -74,8 +74,10 @@ describe("Bilder", () => {
     await expect(removeMedia({ id: stranger.id, role: "player" }, ids[0])).rejects.toThrow(/darfst/);
     await removeMedia(actor, ids[0]);
     expect(await getMedia(ids[0])).toBeNull();
-    const mod = await makeUser("modm", "moderator");
-    await removeMedia({ id: mod.id, role: "moderator" }, ids[1]);
+    const legacy = await makeUser("modl");
+    await expect(removeMedia({ id: legacy.id, role: "moderator" }, ids[1])).rejects.toThrow(/darfst/); // die entfallene Teilrolle moderiert nicht mehr (Vertrag 009 v4)
+    const mod = await makeUser("modm", "admin"); // Moderation hat jetzt nur noch die Rolle admin (Teilrolle moderator entfällt, Vertrag 009 v4)
+    await removeMedia({ id: mod.id, role: "admin" }, ids[1]);
     expect(await getMedia(ids[1])).toBeNull();
     expect((await db.select().from(media).where(eq(media.refId, m.match.id))).filter((r) => r.status === "visible")).toHaveLength(6);
   });

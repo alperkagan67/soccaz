@@ -8,10 +8,10 @@ import {
   callJob,
   fundWallet,
   query,
-  seedAdmin,
+  seedOwner,
   seedPaidPlayer,
   seedPromo,
-  seedUserRole,
+  seedAdmin,
   setMatchTimes,
   setPlatformSetting,
   userIdByEmail,
@@ -248,7 +248,7 @@ test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", 
 
 test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ browser, baseURL }) => {
   test.setTimeout(180_000);
-  await seedAdmin("p4adm"); // vor der Bestätigung, sonst bekommt er die Benachrichtigung nicht
+  await seedOwner("p4adm"); // Admin 1: Finanzbereich und Preisregeln (Vertrag 009 AC-1); vor der Bestätigung, sonst bekommt er die Benachrichtigung nicht
   const { a, b, matchId, nameA, nameB } = await setupLobby(browser, "p4");
   const teamA = await teamIdByName(nameA);
   const teamB = await teamIdByName(nameB);
@@ -372,46 +372,45 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
 });
 
 test("Berechtigungen im Geldbereich", async ({ browser }) => {
-  await seedUserRole("pm5b", "booking");
-  await seedUserRole("pm5f", "finance");
-  const booking = await (await browser.newContext()).newPage();
-  const finance = await (await browser.newContext()).newPage();
+  // Teilrollen booking und finance entfallen (Vertrag 009 v4): Admin 2 (role admin) hat Buchungen und Hallen, aber keine Preise/Finanzen; Admin 1 hat zusätzlich Finanzen
+  await seedAdmin("pm5b");
+  await seedOwner("pm5f");
+  const admin2 = await (await browser.newContext()).newPage();
+  const owner = await (await browser.newContext()).newPage();
   const player = await (await browser.newContext()).newPage();
-  await devLogin(booking, `pm5b-${run}@test.local`, "Buchung pm5b", "/admin/buchungen");
-  await devLogin(finance, `pm5f-${run}@test.local`, "Finanz pm5f", "/admin/finanzen");
+  await devLogin(admin2, `pm5b-${run}@test.local`, "Admin 2 pm5b", "/admin/buchungen");
+  await devLogin(owner, `pm5f-${run}@test.local`, "Admin 1 pm5f", "/admin/finanzen");
   await newUser(player, "pm5p");
 
-  await expect(booking.getByRole("heading", { name: "Hallen-Buchungen" })).toBeVisible();
-  await booking.goto("/admin/hallen");
-  await expect(booking.getByRole("heading", { name: "Hallen und Preise" })).toBeVisible();
-  // Buchung darf keine Preise ändern
-  await expect(booking.getByRole("button", { name: "Preisregel hinzufügen" })).toHaveCount(0);
-  await booking.goto("/admin/finanzen");
-  await expect(booking).toHaveURL(/\/app$/);
-  await booking.goto("/admin/codes");
-  await expect(booking).toHaveURL(/\/app$/);
+  await expect(admin2.getByRole("heading", { name: "Hallen-Buchungen" })).toBeVisible();
+  await admin2.goto("/admin/hallen");
+  await expect(admin2.getByRole("heading", { name: "Hallen und Preise" })).toBeVisible();
+  // Admin 2 darf keine Preise ändern
+  await expect(admin2.getByRole("button", { name: "Preisregel hinzufügen" })).toHaveCount(0);
+  for (const url of ["/admin/finanzen", "/admin/codes", "/admin/einstellungen"]) {
+    await admin2.goto(url);
+    await expect(admin2).toHaveURL(/\/app$/);
+  }
 
-  await expect(finance.getByRole("heading", { name: "Finanzen" })).toBeVisible();
-  await finance.goto("/admin/codes");
-  await expect(finance.getByRole("heading", { name: "Rabattcodes" })).toBeVisible();
-  await finance.goto("/admin/buchungen");
-  await expect(finance).toHaveURL(/\/app$/);
-  await finance.goto("/admin/einstellungen");
-  await expect(finance).toHaveURL(/\/app$/);
+  await expect(owner.getByRole("heading", { name: "Finanzen" })).toBeVisible();
+  await owner.goto("/admin/codes");
+  await expect(owner.getByRole("heading", { name: "Rabattcodes" })).toBeVisible();
+  await owner.goto("/admin/einstellungen");
+  await expect(owner).toHaveURL(/\/admin\/einstellungen/);
 
-  // CSV nur für Finanz
-  expect((await finance.request.get("/admin/finanzen/export")).status()).toBe(200);
-  expect((await booking.request.get("/admin/finanzen/export")).status()).toBe(403);
+  // CSV nur für Admin 1
+  expect((await owner.request.get("/admin/finanzen/export")).status()).toBe(200);
+  expect((await admin2.request.get("/admin/finanzen/export")).status()).toBe(403);
   expect((await player.request.get("/admin/finanzen/export")).status()).toBe(403);
-  expect((await finance.request.get("/admin/finanzen/export?monat=quatsch")).status()).toBe(400);
+  expect((await owner.request.get("/admin/finanzen/export?monat=quatsch")).status()).toBe(400);
   await player.goto("/admin/finanzen");
   await expect(player).toHaveURL(/\/app$/);
 });
 
 test("Rabattcodes im Admin anlegen und verwenden", async ({ browser }) => {
-  await seedUserRole("pm6f", "finance");
+  await seedOwner("pm6f"); // Codes: nur Admin 1 (Teilrolle finance entfällt, Vertrag 009 v4)
   const fin = await (await browser.newContext()).newPage();
-  await devLogin(fin, `pm6f-${run}@test.local`, "Finanz pm6f", "/admin/codes");
+  await devLogin(fin, `pm6f-${run}@test.local`, "Admin 1 pm6f", "/admin/codes");
   await idle(fin);
   const code = `ADM${run}`.toUpperCase();
   await fin.getByLabel("Code", { exact: true }).fill(code);
@@ -457,7 +456,7 @@ test("Einstellungen: Zahlungen aus macht Spiele kostenlos", async ({ browser }) 
   await a.goto(`/lobby/${matchId}`);
   await expect(a.getByRole("region", { name: "Kosten" })).toBeVisible();
 
-  await seedAdmin("p7adm");
+  await seedOwner("p7adm"); // Einstellungen nur Admin 1 (Vertrag 009 AC-1)
   const adm = await (await browser.newContext()).newPage();
   await devLogin(adm, `p7adm-${run}@test.local`, "Admin p7adm", "/admin/einstellungen");
   await idle(adm);
