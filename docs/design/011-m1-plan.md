@@ -134,7 +134,7 @@ A1 E-Mail klein und getrimmt, keine Provider-Normalisierung. ~~A2~~ **entfällt 
 - **P11:** Wie geht Admin 1 mit Hallen um, deren Zuordnung die Datenübernahme überspringt (verwaist, anonymisiert, ggf. gesperrt): sofort neu einladen vor dem Rollout, oder zunächst „ohne Zugang“ lassen?
 
 **Recht (Anwalt)**
-- **R1:** Aufbewahrung/Löschung der Zuordnungs- und Einladungsdaten (E-Mail-Adresse) und Auskunft; Zusammenhang mit dem Partnervertrag der Hallen (FEHLT-NOCH) und dem Beweisprotokoll, das Entscheidungen der Betreiber dauerhaft enthält.
+- **R1 (Annahme t9, Anwalt bestätigt, 2026-11-12: Adresse einer abgelaufenen oder zurückgezogenen Einladung wird 30 Tage nach Ablauf bzw. Rückzug geleert; siehe Abschnitt 13):** Aufbewahrung/Löschung der Zuordnungs- und Einladungsdaten (E-Mail-Adresse) und Auskunft; Zusammenhang mit dem Partnervertrag der Hallen (FEHLT-NOCH) und dem Beweisprotokoll, das Entscheidungen der Betreiber dauerhaft enthält.
 
 ## 13. Nachtrag v3.1 (2026-11-12): Entscheide t9 und Stand der Umsetzung
 Dieser Nachtrag ändert den Plan nur dort, wo ein Entscheid ihn überholt; die Umsetzung liegt auf dem Branch `feat/011-m1-server` (lokal, Review läuft). **Migration: 0049** (Reihenfolge 0047 M5-2b, 0048 009 M2, dann 011 M1; beim Merge wird die Snapshot-Kette neu erzeugt, danach `db:generate`: „No schema changes“).
@@ -154,3 +154,9 @@ Dieser Nachtrag ändert den Plan nur dort, wo ein Entscheid ihn überholt; die U
 | P11 | Verwaiste und anonymisierte Hallen „ohne Zugang“, Admin 1 lädt neu ein | Migration überspringt sie (auch Admin-Konten); Bericht der übersprungenen Hallen als kleines Skript (eigener Task nach Review) |
 
 Weitere Festlegungen der Umsetzung: Zuordnen und Entziehen prüfen **in der Funktion** selbst `is_owner` (nicht nur im Wächter der Server-Aktion); das Einlösen verlangt zusätzlich, dass die E-Mail des angemeldeten Kontos der Einladung entspricht; gesperrte Konten werden bei der Datenübernahme als `active` übernommen und haben ohne Entsperren keinen Zugriff (A7).
+
+### 13.1 Nachtrag zu R1: Leeren der Einladungsadresse (Entscheid t9, Annahme, Anwalt bestätigt)
+- **Regel:** Die E-Mail-Adresse (`venue_access.invited_email`) einer **abgelaufenen** (14 Tage nach `invited_at`) oder **zurückgezogenen** Einladung wird **30 Tage nach Ablauf bzw. Rückzug geleert**. Im Protokoll bleibt „Einladung abgelaufen“ bzw. „zurückgezogen“ **ohne Adresse** (das Eingriffsprotokoll enthielt nie eine Adresse).
+- **Stand der Umsetzung (`feat/011-m1-server`):** Ein **Entzug oder Rückzug** (auch das Ersetzen durch eine neue Einladung und die Konto-Löschung) leert die Adresse **sofort** (`revoked`, `invited_email = NULL`); das ist strenger als die 30 Tage und erfüllt die Regel. Offen ist nur der **Ablauf ohne Rückzug**: eine `invited`-Zeile nach 14 Tagen, die nie eingelöst wurde.
+- **Task (nach dem Migrationsbericht-Skript, eigener PR):** Job nach dem Muster von `erasure.ts` (Zeilen mit `FOR UPDATE SKIP LOCKED`, idempotent, Stapelgröße begrenzt, im Zeitplaner): Zeilen mit `status = 'invited'` und `invited_at < now() - 44 Tage` (14 Tage Gültigkeit + 30 Tage Frist) werden `revoked`, `revoked_at = now()`, `invited_email = NULL`; Protokolleintrag `venue.access.expire` mit `accessId` und Grund „Einladung abgelaufen“, **ohne Adresse**. Test mit Zeitreise (Zeilen älter und jünger als 44 Tage, zweimal ausgeführt, nur abgelaufene Zeilen, gleichzeitige Läufe). Keine Migration nötig (Status und Spalte bestehen).
+- **Abgrenzung:** Der Job ändert weder aktive Zugänge noch Zeilen, die noch einlösbar sind (bis 14 Tage); die Einlösebedingung (14 Tage) bleibt im Einlöse-UPDATE.
