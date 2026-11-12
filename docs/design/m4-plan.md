@@ -185,11 +185,21 @@ Unterschiede Privatspiel: Veranstalter statt Captain, zufällige Einteilung, „
 
 Gespeichert werden nur Stripe-IDs, Beträge, Status, Zeiten, Stripe-Gründe als Codes. Keine Karteninhaberdaten, keine Freitexte von Stripe, keine Namen Dritter im Export. Zahlungsstreit-Daten nur für Admin 1/2, nie für Captain, Dritte oder Gäste. Kein Logging von Kunden-/Streit-IDs in Server-Logs. Export und Löschung nach AC-16; Stripe bleibt Auftragsverarbeiter (GO-LIVE-AUDIT).
 
-## 9. Offene Entscheide
+## 9. Entscheide und offene Fragen
 
-**Produkt** (8): (1) Folgen eines Zahlungsstreits für den Spieler (nur Markierung oder Sperre, Aufhebung). (2) Absage bei offenem Streit auf derselben Zahlung (warten oder abschließen). (3) Behandlung der Streitgebühr bei gewonnenem Streit (gegen Stripe-Doku prüfen). (4) Beweise nur manuell im Dashboard oder später Export. (5) Konto `chargeback` nach M6 behalten. (6) E2E manuell oder CI-Secret. (7) Alarme nur Admin 1 (Voreinstellung) oder auch Admin 2. (8) Umgang mit dem Doppelverlust, wenn ein Streit nach einer schon gesendeten Erstattung verloren geht (Rückforderung beim Spieler, Abschreibung).
+Wo frühere Abschnitte (insbesondere 4.3: Erstattung bleibt bis zur Entscheidung `pending`, Absage wartet) etwas anderes sagen, gelten die Entscheide unten.
 
-**Recht/Steuer** (kein Agent beantwortet das): (1) Aufbewahrung von Mandat, Belegen, Buchungen gegen Löschpflicht (Art. 17 DSGVO, HGB/AO-Fristen), Dauer, Anonymisierungsgrad. (2) Löschung bei offenem Streit und Streit nach Löschung (bis ca. 120 Tage), Mandat als Beweis. (3) Auskunftsumfang: Zahlungsmittel-ID, Kunden-ID, Gerätedaten. (4) Steuerliche Behandlung von Streitverlust und Streitgebühr (Konto `chargeback` vs. `fees`). (5) Datenschutzerklärung zu Stripe (Aufbewahrung bei Stripe als **[ANNAHME]**), Mandatstexte (G2-012, G11-012). (6) Pseudonyme in `payment_charges` nach Anonymisierung. (7) Rückforderung eines doppelt verlorenen Betrags beim Spieler (Streit verloren nach schon erstatteter Zahlung).
+**Produkt: ENTSCHIEDEN** (Entscheide t9, verbindlich für den Code von M4a-1):
+1. **Folgen eines Zahlungsstreits:** nur eine **Markierung** am Spieler im Admin und ein Hinweis an Admin 1, **keine automatische Sperre**. Eine Sperre und ihre Aufhebung gibt es nur manuell durch Admin 1 (protokolliert).
+2. **Absage bei offenem Streit:** wird **nicht blockiert**. Die strittige Zahlung wird **nicht zusätzlich erstattet** (die Erstattungszeile endet als `cancelled_dispute`), alle anderen Zahlungen werden erstattet, Admin 1 bekommt einen Alarm. Gewinnt Soccaz den Streit nach der Absage, bleibt das Geld bei Soccaz: Admin 1 bekommt dafür einen Hinweis (manuelle Entscheidung).
+3. **Streitgebühr:** gebucht wird, was Stripe tatsächlich abzieht oder zurückgibt (Balance-Transaction), als Aufwand auf Konto `fees`, **nie geschätzt**; bei gewonnenem Streit wird eine Gebührenrückerstattung ebenso aus der Balance-Transaction gebucht (negative Gebühr = Gegenbuchung `fees`).
+4. **Beweise:** manuell im Stripe-Dashboard; ein Export aus Soccaz ist **Backlog**.
+5. **Konto `chargeback`** bleibt auch nach 012 M6.
+6. **E2E im Stripe-Testmodus:** **manuell** (Ausgabe und Ereignis-IDs im DONE), **kein CI-Secret**.
+7. **Alarme:** nur **Admin 1**.
+8. **Doppelverlust** (Streit verloren, obwohl die Erstattung schon gesendet war): **Abschreibung auf Konto `chargeback`**, **keine Rückforderung** beim Spieler.
+
+**Recht/Steuer: weiter OFFEN, FRAGE** (kein Agent beantwortet das): (1) Aufbewahrung von Mandat, Belegen, Buchungen gegen Löschpflicht (Art. 17 DSGVO, HGB/AO-Fristen), Dauer, Anonymisierungsgrad. (2) Löschung bei offenem Streit und Streit nach Löschung (bis ca. 120 Tage), Mandat als Beweis. (3) Auskunftsumfang: Zahlungsmittel-ID, Kunden-ID, Gerätedaten. (4) Steuerliche Behandlung von Streitverlust und Streitgebühr (Konto `chargeback` vs. `fees`). (5) Datenschutzerklärung zu Stripe (Aufbewahrung bei Stripe als **[ANNAHME]**), Mandatstexte (G2-012, G11-012). (6) Pseudonyme in `payment_charges` nach Anonymisierung. (7) Rückforderung eines doppelt verlorenen Betrags beim Spieler (Streit verloren nach schon erstatteter Zahlung).
 
 ## 10. Freigabe und Review
 
