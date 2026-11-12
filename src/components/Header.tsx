@@ -63,7 +63,7 @@ export async function Header() {
                 unread={unread}
                 showAdmin={can(user.role, "dashboard")}
                 showVenue={isVenueManager}
-                labels={{ games: t("menu.games"), venue: t("menu.venue"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help"), account: t("menu.account"), unread: t("menu.unread") }}
+                labels={{ games: t("menu.games"), profile: t("menu.profile"), venue: t("menu.venue"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help"), account: t("menu.account"), unread: t("menu.unread") }}
                 signOutAction={async () => {
                   "use server";
                   await signOut({ redirectTo: "/" });

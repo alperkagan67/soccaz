@@ -20,8 +20,8 @@ async function loggedIn(page: Page, key: string, scheme: "dark" | "light" = "dar
 const button = (page: Page) => page.getByTestId("user-menu-button");
 const menu = (page: Page) => page.getByTestId("user-menu");
 const activeName = (page: Page) => page.evaluate(() => (document.activeElement as HTMLElement | null)?.textContent?.trim() ?? "");
-// Reihenfolge im Menü (Textentscheid t9): Meine Spiele [Meine Halle] [Admin] | Konto-Gruppe | Abmelden
-const ITEMS = ["Meine Spiele", "Benachrichtigungen", "Guthaben", "Konto und Einstellungen", "Hilfe", "Abmelden"];
+// Reihenfolge im Menü (Textentscheid t9): Meine Spiele, Mein Profil, [Meine Halle], [Admin] | Benachrichtigungen, Guthaben (auslaufend bis 012 M6a), Konto, Hilfe | Abmelden
+const ITEMS = ["Meine Spiele", "Mein Profil", "Benachrichtigungen", "Guthaben", "Konto und Einstellungen", "Hilfe", "Abmelden"];
 
 test.describe("Konto-Menü: Tastatur und Fokus", () => {
   test("Enter öffnet, Fokus liegt auf dem ersten Eintrag, aria-expanded und Popover im Top-Layer", async ({ page }) => {
@@ -53,11 +53,11 @@ test.describe("Konto-Menü: Tastatur und Fokus", () => {
     await page.keyboard.press("Enter");
     await expect(menu(page).getByRole("menuitem").first()).toBeFocused(); // erst wenn das Menü gerendert und fokussiert ist
     await page.keyboard.press("ArrowDown");
-    expect(await activeName(page)).toContain("Benachrichtigungen");
+    expect(await activeName(page)).toContain("Mein Profil");
     await page.keyboard.press("ArrowDown");
-    expect(await activeName(page)).toContain("Guthaben");
-    await page.keyboard.press("ArrowUp");
     expect(await activeName(page)).toContain("Benachrichtigungen");
+    await page.keyboard.press("ArrowUp");
+    expect(await activeName(page)).toContain("Mein Profil");
     await page.keyboard.press("End");
     expect(await activeName(page)).toContain("Abmelden");
     await page.keyboard.press("ArrowDown"); // vom letzten zum ersten
@@ -299,7 +299,7 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
     });
   }
 
-  test("Admin: Eintrag Admin steht in der ersten Gruppe direkt nach Meine Spiele (Text bleibt Admin)", async ({ page }) => {
+  test("Admin: Eintrag Admin steht in der ersten Gruppe nach Meine Spiele und Mein Profil (Text bleibt Admin)", async ({ page }) => {
     await loggedIn(page, "um18");
     await query("update users set role = 'admin' where email = $1", [`um18-${run}@test.local`]);
     await page.reload();
@@ -308,7 +308,7 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
     await button(page).click();
     await expect(menu(page)).toBeVisible();
     const names = (await menu(page).getByRole("menuitem").allTextContents()).map((n) => n.replace(/\s+/g, " ").trim());
-    expect(names.slice(0, 2)).toEqual(["Meine Spiele", "Admin"]);
+    expect(names.slice(0, 3)).toEqual(["Meine Spiele", "Mein Profil", "Admin"]);
     expect(names.at(-1)).toBe("Abmelden");
     expect(names.at(-2)).toBe("Hilfe");
   });
@@ -329,7 +329,7 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
       await button(page).click();
       await expect(menu(page)).toBeVisible();
       const names = (await menu(page).getByRole("menuitem").allTextContents()).map((n) => n.replace(/\s+/g, " ").trim());
-      expect(names.slice(0, 2)).toEqual(["Meine Spiele", "Meine Halle"]);
+      expect(names.slice(0, 3)).toEqual(["Meine Spiele", "Mein Profil", "Meine Halle"]);
       await menu(page).getByRole("menuitem", { name: "Meine Halle" }).click();
       await expect(page).toHaveURL(/\/halle$/);
     } finally {

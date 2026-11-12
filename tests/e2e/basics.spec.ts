@@ -174,11 +174,10 @@ test("Kopfleiste: Konto-Menü mit Meine Spiele, Einstellungen und Abmelden", asy
   await p.getByTestId("user-menu-button").click();
   const menu = p.getByTestId("user-menu");
   await expect(menu.getByTestId("user-menu-name")).toContainText("menu"); // der Name steht ganz oben im Menü
-  for (const item of ["Meine Spiele", "Guthaben", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"]) await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
-  // Mein Profil / Mein Bereich sind kein Menüeintrag mehr (Textentscheid t9): Meine Spiele = /app, das Profil ist von den Einstellungen aus erreichbar
-  await menu.getByRole("menuitem", { name: "Konto und Einstellungen" }).click();
-  await expect(p).toHaveURL(/\/app\/einstellungen$/);
-  await expect(p.locator(`a[href="/spieler/${id}"]`).first()).toBeVisible();
+  for (const item of ["Meine Spiele", "Mein Profil", "Guthaben", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"]) await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
+  // Mein Profil ist wieder ein eigener Eintrag (Textentscheid t9), Mein Bereich heißt Meine Spiele
+  await menu.getByRole("menuitem", { name: "Mein Profil" }).click();
+  await expect(p).toHaveURL(new RegExp(`/spieler/${id}$`));
   // Escape schließt das Menü
   await p.getByTestId("user-menu-button").click();
   await expect(p.getByTestId("user-menu")).toBeVisible();
