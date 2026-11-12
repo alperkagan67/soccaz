@@ -3,7 +3,8 @@
 // ausschließlich in Stripe Elements im Browser ein (M1b), hier laufen nur Stripe-IDs.
 import { DomainError } from "../teams";
 
-export type ProviderEvent = { id: string; type: string; object: Record<string, unknown> };
+/** created = Zeitpunkt des Ereignisses bei Stripe (Unix-Sekunden), fuer die Reihenfolge von Streit-Ereignissen */
+export type ProviderEvent = { id: string; type: string; object: Record<string, unknown>; created?: number };
 export type CardDisplay = { id: string; brand: string | null; last4: string | null };
 
 export type ChargeStatus = "succeeded" | "requires_action" | "processing" | "failed";
@@ -50,6 +51,8 @@ export interface PaymentProvider {
    * die Suche ist verzoegert konsistent und bleibt unbekannten Ausgaengen (unknown_outcome) vorbehalten.
    */
   retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null>;
+  /** Zahlungsstreit samt Balance-Transactions (M4a); null, wenn es ihn nicht gibt. Netzaufruf, nie in einer Transaktion. Das Ergebnis ist ungepruefte Eingabe (siehe dispute-parse.ts). */
+  retrieveDispute(disputeId: string): Promise<Record<string, unknown> | null>;
   /**
    * Liest einen BEKANNTEN PaymentIntent samt clientSecret (nur fuer die 3-D-Secure-Freigabe des Betroffenen, M3c-1c). Das Secret geht nie in Logs, Audit, URLs oder Seiten-Props,
    * nur als Ergebnis der Server-Aktion an den Betroffenen. null = bei Stripe nicht vorhanden.

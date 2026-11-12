@@ -79,6 +79,17 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
+  async retrieveDispute(disputeId: string): Promise<Record<string, unknown> | null> {
+    if (!/^dp_[A-Za-z0-9_]{1,64}$/.test(disputeId)) return null;
+    try {
+      const d = await this.stripe().disputes.retrieve(disputeId, { expand: ["balance_transactions"] }, SETUP_REQUEST);
+      return d as unknown as Record<string, unknown>;
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return null;
+      throw error;
+    }
+  }
+
   async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {
     if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return null;
     try {
@@ -177,7 +188,7 @@ export class StripeProvider implements PaymentProvider {
     if (!signature) throw new WebhookSignatureError();
     try {
       const e = this.stripe().webhooks.constructEvent(rawBody, signature, secret);
-      return { id: e.id, type: e.type, object: e.data.object as unknown as Record<string, unknown> };
+      return { id: e.id, type: e.type, object: e.data.object as unknown as Record<string, unknown>, created: typeof e.created === "number" ? e.created : undefined };
     } catch {
       throw new WebhookSignatureError();
     }
