@@ -166,7 +166,7 @@ export const matchParticipants = pgTable(
     cardStatus: text("card_status").$type<CardStatus>().notNull().default("none"),
     // "Anteil uebernehmen" (M3c-3, Variante B): Der Spieler covered_by_user_id uebernimmt den Endanteil DIESES Platzes (er braucht eine eigene Karte). Der Platz bleibt seiner;
     // zur Frist wird der Anteil ueber den Kunden des Uebernehmers abgebucht (payment_charges.payer_user_id). Ein Platz je Uebernehmer, keine Kette. Mandatszusatz: Text-Schluessel + Zeitpunkt.
-    coveredByUserId: uuid("covered_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    coveredByUserId: uuid("covered_by_user_id").references(() => users.id), // NO ACTION (nicht SET NULL): ein stilles Nullsetzen liesse cover_accepted_at ohne Uebernehmer zurueck und verletzte cover_consent; Uebernahmen enden ueber clearCoversInvolving
     coverMandateText: text("cover_mandate_text"),
     coverAcceptedAt: timestamp("cover_accepted_at", { withTimezone: true }),
   },

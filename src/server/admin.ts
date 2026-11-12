@@ -1,4 +1,5 @@
 import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { clearCoversInvolving } from "./payments/cover-clear";
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
@@ -263,6 +264,7 @@ export async function mergeTeams(actorId: string, sourceId: string, targetId: st
       join match_participants b on b.match_id = a.match_id and b.user_id = a.user_id
       where a.team_id = ${sourceId} and b.team_id = ${targetId}`);
     for (const row of clash.rows as { match_id: string; user_id: string }[]) {
+      await clearCoversInvolving(tx, row.match_id, row.user_id); // (Primaerschluessel match_id+user_id macht diesen Fall praktisch unerreichbar; die Regel gilt trotzdem an jeder Stelle, die Teilnahmen loescht)
       await tx.delete(matchParticipants).where(and(eq(matchParticipants.matchId, row.match_id), eq(matchParticipants.userId, row.user_id), eq(matchParticipants.teamId, sourceId)));
     }
     await tx.update(matchParticipants).set({ teamId: targetId }).where(eq(matchParticipants.teamId, sourceId));

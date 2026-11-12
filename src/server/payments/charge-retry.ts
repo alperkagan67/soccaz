@@ -93,6 +93,8 @@ export async function rotateAttempt(c: Candidate, now: Date): Promise<boolean> {
     if (row.payerUserId === null) {
       if (seat.cardStatus !== "card_ready") return false;
     } else {
+      // (Bewusst: die Profil-Aktualisierung ist das Signal. Sie kann auch aus einem anderen Anlass kommen, z. B. Karte im Konto geaendert; das ist gewollt und begrenzt: es gibt hoechstens
+      // einen Versuch je Kartenaenderung (danach ist updated_at der Zeile juenger) und nur im Nachzahlfenster.)
       // Anteil eines anderen (Variante B): Signal ist die NEUE Karte des Zahlers (Profil nach dem Fehlschlag aktualisiert, Zahlungsmittel vorhanden), NICHT sein Platzstatus -
       // nach der ersten Abbuchung ist der Platz des Zahlers charge_pending/charged und wird nie wieder card_ready (Review-Fund 1). Ohne neue Karte kein Wiederholen (kein Dauerbeschuss).
       const [prof] = await tx.select({ pm: paymentProfiles.paymentMethodId, at: paymentProfiles.updatedAt }).from(paymentProfiles).where(eq(paymentProfiles.userId, payerId)).for("share");

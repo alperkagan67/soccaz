@@ -16,6 +16,9 @@ import { handleStripeWebhook } from "@/server/payments/webhook";
 import { setSetting } from "@/server/settings";
 import { COVER_MANDATE_KEY } from "@/lib/cover";
 import { leaveLobby, removeParticipant, unassignParticipant } from "@/server/lobby";
+import { rotateAttempt } from "@/server/payments/charge-retry";
+import { failSubstitute } from "@/server/payments/substitute-fail";
+import { runSubstitutes } from "@/server/payments/substitute";
 import { addPlayer, cleanup, makeMatch } from "./helpers";
 
 // Vertrag 012, M3c-3a: "Anteil uebernehmen" (AC-13/AC-14), Variante B. Spieler B (Karte) uebernimmt den Anteil des Platzes von Spieler A (keine Karte). Die Zeile bleibt A's,
@@ -407,5 +410,62 @@ describe("Anzeige und Datenschutz (Auflage 4)", () => {
     expect(await view("member")).toEqual({ status: "open", reason: null });
     expect(await view("self")).toEqual({ status: "open", reason: null });
     expect(await view("manager")).toMatchObject({ status: "failed", reason: "card_declined" });
+  });
+});
+
+describe("R-T176: Ersatz beendet die Uebernahme, rotateAttempt direkt, mergeTeams", () => {
+  async function failedPayer() {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    provider.setChargeOutcome(g.b.id, "declined"); // B's eigener Anteil scheitert, A's Posten (beim Kunden von B) geht durch
+    await runCharges(g.match.id);
+    return g;
+  }
+
+  it("Zahler B wird nach Fensterende durch einen Nachruecker ersetzt: die Uebernahme von A's Platz endet (kein Eintrag, kein Zahler mehr zugeordnet)", async () => {
+    const g = await failedPayer();
+    expect((await rowOf(g, g.a)).status).toBe("succeeded");
+    expect((await seatOf(g, g.a)).coveredByUserId).toBe(g.b.id);
+    const sub = await addPlayer(g.match.id, g.home.id, "cvsub");
+    await db.update(matchParticipants).set({ teamId: null, cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, sub.id)));
+    await db.insert(paymentProfiles).values({ userId: sub.id, stripeCustomerId: nid("cus_cvsub"), paymentMethodId: nid("pm_cvsub") });
+    await runSubstitutes({ matchId: g.match.id, now: new Date(Date.now() + 3 * 3_600_000) });
+    expect((await rowOf(g, g.b)).resolution).toBe("replaced");
+    expect((await seatOf(g, g.a)).coveredByUserId).toBeNull();
+    expect((await seatOf(g, g.a)).coverAcceptedAt).toBeNull();
+  });
+
+  it("gescheiterter Nachruecker (failSubstitute) loescht Uebernahmen, an denen er beteiligt ist", async () => {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    await runCharges(g.match.id);
+    const bRow = await rowOf(g, g.b);
+    await db.transaction((tx) => failSubstitute(tx, { id: bRow.id, matchId: g.match.id, userId: g.b.id }, "card_declined"));
+    expect((await seatOf(g, g.a)).coveredByUserId).toBeNull();
+  });
+
+  it("rotateAttempt direkt (zweite Schicht): fremder Anteil nur nach NEUER Karte des Zahlers; ohne neue Karte, ohne Zahlungsmittel oder ohne Platz des Zahlers false", async () => {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    provider.setChargeOutcome(g.a.id, "declined");
+    await runCharges(g.match.id);
+    const row = await rowOf(g, g.a);
+    const c = { id: row.id, matchId: g.match.id, userId: g.a.id, attempt: row.currentAttempt, amountCents: row.amountCents };
+    expect(await rotateAttempt(c, new Date())).toBe(false); // keine neue Karte
+    await new Promise((r) => setTimeout(r, 20));
+    await db.update(paymentProfiles).set({ paymentMethodId: null, updatedAt: new Date() }).where(eq(paymentProfiles.userId, g.b.id));
+    expect(await rotateAttempt(c, new Date())).toBe(false); // Profil neuer, aber kein Zahlungsmittel
+    await db.update(paymentProfiles).set({ paymentMethodId: nid("pm_neu"), updatedAt: new Date() }).where(eq(paymentProfiles.userId, g.b.id));
+    await db.update(matchParticipants).set({ teamId: null }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.b.id)));
+    expect(await rotateAttempt(c, new Date())).toBe(false); // Zahler nicht mehr eingeteilt
+    await db.update(matchParticipants).set({ teamId: g.home.id }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.b.id)));
+    expect(await rotateAttempt({ ...c, attempt: 7 }, new Date())).toBe(false); // veraltete Versuchsnummer
+    expect(await rotateAttempt(c, new Date())).toBe(true);
+    expect((await rowOf(g, g.a)).currentAttempt).toBe(2);
+  });
+
+  it("mergeTeams: Teilnahmen eines Spiels koennen nicht doppelt auf beiden Teams stehen (Primaerschluessel), der 'clash'-Zweig ist unerreichbar; die Loeschregel steht trotzdem dort", async () => {
+    const g = await game();
+    await expect(db.insert(matchParticipants).values({ matchId: g.match.id, userId: g.b.id, teamId: g.match.awayTeamId })).rejects.toThrow();
   });
 });
