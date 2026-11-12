@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, paymentCharges, paymentDisputeEntries, paymentDisputes, paymentSetupIntents, users } from "@/db/schema";
 import { receipts } from "@/db/schema-finance";
@@ -59,6 +59,24 @@ describe("listDisputes", () => {
     const second = await listDisputes({ onlyOpen: true, page: 2 });
     expect(second.rows.length).toBeGreaterThan(0);
     expect(second.rows.some((r) => res.rows.some((x) => x.id === r.id))).toBe(false);
+  });
+});
+
+describe("listDisputes/countOpenDisputes: Filter in SQL, keine Obergrenze (R-T186)", () => {
+  it("ein altes OFFENES Verfahren bleibt auffindbar, auch wenn mehr als 500 neuere abgeschlossene existieren; Zaehlung stimmt", async () => {
+    const before = await countOpenDisputes();
+    await db.insert(paymentDisputes).values({ disputeId: nid("dp_test_alt"), amountCents: 111, currency: "eur", status: "under_review", createdAt: new Date("2020-01-01T00:00:00Z") });
+    await db.execute(sql`insert into payment_disputes (dispute_id, amount_cents, currency, status, created_at) select 'dp_test_cap' || g || '_' || ${Date.now().toString(36)}, 100, 'eur', 'lost', now() + g * interval '1 second' from generate_series(1, 520) g`);
+    expect(await countOpenDisputes()).toBe(before + 1);
+    let found = false;
+    for (let page = 1; page <= 40 && !found; page++) {
+      const res = await listDisputes({ onlyOpen: true, page });
+      if (res.rows.some((r) => r.amountCents === 111 && r.status === "under_review")) found = true;
+      if (!res.hasMore) break;
+    }
+    expect(found).toBe(true);
+    const all = await listDisputes({ onlyOpen: false, page: 21 }); // die Seiten der Gesamtliste laufen ueber die 500 hinaus
+    expect(all.rows.length).toBeGreaterThan(0);
   });
 });
 

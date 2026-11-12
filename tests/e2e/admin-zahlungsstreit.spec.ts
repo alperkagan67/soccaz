@@ -53,9 +53,13 @@ test("Zahlungsstreit: Liste, Detail und Markierung am Spieler nur fuer Admin", a
 });
 
 test("Zahlungsstreit: Spieler, Moderator und Finanzrolle kommen nicht hinein", async ({ browser }) => {
+  // eine ECHTE Streitzeile: auch das Detail (mit Beweis-Ansicht) darf fuer diese Rollen nicht erreichbar sein (R-T186: requirePermission admin der Detailseite ist eigenstaendig, das Admin-Layout verlangt nur dashboard)
+  const [detail] = await query<{ id: string }>("insert into payment_disputes (dispute_id, amount_cents, currency, status) values ($1, 700, 'eur', 'needs_response') returning id", [`${DISPUTE}_detail`]);
   const player = await (await browser.newContext()).newPage();
   await newUser(player, "zsq");
   await player.goto("/admin/zahlungsstreit");
+  await expect(player).toHaveURL(/\/app$/);
+  await player.goto(`/admin/zahlungsstreit/${detail.id}`);
   await expect(player).toHaveURL(/\/app$/);
 
   for (const role of ["moderator", "finance", "booking"]) {
@@ -66,5 +70,8 @@ test("Zahlungsstreit: Spieler, Moderator und Finanzrolle kommen nicht hinein", a
     await expect(p.getByRole("link", { name: "Zahlungsstreit" })).toHaveCount(0);
     await p.goto("/admin/zahlungsstreit");
     await expect(p).toHaveURL(/\/app$/);
+    await p.goto(`/admin/zahlungsstreit/${detail.id}`);
+    await expect(p).toHaveURL(/\/app$/);
+    await expect(p.getByTestId("dispute-status")).toHaveCount(0); // keine Beweis-Ansicht gerendert
   }
 });

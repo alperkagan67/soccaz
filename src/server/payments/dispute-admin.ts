@@ -6,10 +6,13 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges, paymentDisputeEntries, paymentDisputes, paymentSetupIntents, users } from "@/db/schema";
 import { receipts } from "@/db/schema-finance";
-import { disputeRank, isDisputeOpen } from "./dispute-parse";
+import { disputeRank, isDisputeOpen, KNOWN_DISPUTE_STATUSES, OPEN_DISPUTE_STATUSES } from "./dispute-parse";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE_SIZE = 25;
+
+/** SQL-Entsprechung von isDisputeOpen: offener Status ODER ein unbekannter (alles ausser den bekannten Statuswerten). Gleiche Regel wie in der Erstattungssperre (refund.ts). */
+const openCondition = sql`(${paymentDisputes.status} in (${sql.join(OPEN_DISPUTE_STATUSES.map((s) => sql`${s}`), sql`, `)}) or ${paymentDisputes.status} not in (${sql.join(KNOWN_DISPUTE_STATUSES.map((s) => sql`${s}`), sql`, `)}))`;
 
 export type DisputeListRow = {
   id: string;
@@ -52,12 +55,12 @@ export async function listDisputes(opts: { onlyOpen?: boolean; page?: number } =
     })
     .from(paymentDisputes)
     .leftJoin(users, eq(users.id, paymentDisputes.payerUserId))
+    // Filter und Seiten in SQL (keine Obergrenze, die ein altes offenes Verfahren hinter vielen neuen abgeschlossenen verstecken wuerde)
+    .where(opts.onlyOpen ? openCondition : undefined)
     .orderBy(desc(paymentDisputes.createdAt), desc(paymentDisputes.id))
-    .limit(500); // die Tabelle ist klein (Streite sind selten); gefiltert und geblaettert wird im Speicher, damit "unbekannt = offen" an einer Stelle (isDisputeOpen) steht
-  const mapped = rows.map((r) => ({ ...r, open: isDisputeOpen(r.status) }));
-  const filtered = opts.onlyOpen ? mapped.filter((r) => r.open) : mapped;
-  const slice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE + 1);
-  return { rows: slice.slice(0, PAGE_SIZE), hasMore: slice.length > PAGE_SIZE };
+    .limit(PAGE_SIZE + 1)
+    .offset((page - 1) * PAGE_SIZE);
+  return { rows: rows.slice(0, PAGE_SIZE).map((r) => ({ ...r, open: isDisputeOpen(r.status) })), hasMore: rows.length > PAGE_SIZE };
 }
 
 export type DisputeDetail = {
@@ -153,6 +156,6 @@ export async function disputeMarks(userIds: string[]): Promise<Map<string, Dispu
 /** Anzahl offener Streite (fuer den Hinweis in der Navigation / Uebersicht). */
 export async function countOpenDisputes(): Promise<number> {
   await connection();
-  const rows = await db.select({ status: paymentDisputes.status }).from(paymentDisputes);
-  return rows.filter((r) => isDisputeOpen(r.status)).length;
+  const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(paymentDisputes).where(openCondition);
+  return r?.n ?? 0;
 }
