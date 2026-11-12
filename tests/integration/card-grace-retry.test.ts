@@ -568,9 +568,10 @@ describe("Review PR #107 (security, mittel): ein ALTER PaymentIntent gewinnt das
     await requestMatchCancel(null, g.match.id, "Test");
     const refund = provider.calls.find((c) => c.method === "createRefund");
     expect((refund!.args as { paymentIntentId: string }).paymentIntentId).toBe(g.piId); // der bezahlte, nicht der neuere
-    // ein spaeter Erfolg des neueren PI wird nicht doppelt gebucht, nur auditiert
+    // ein spaeter Erfolg des neueren PI ist ein ZWEITER Erfolg zur selben Zeile: auditiert (Doppelabbuchung); ob er zusaetzlich gebucht und erstattet wird, regelt M3c-2, hier zaehlt nur die Zuordnung
     await send(g, second, "payment_intent.succeeded", null);
-    expect((await ledgerOf(g)).filter((e) => e.kind === "match_share")).toHaveLength(1);
+    expect(await auditCount("charge.duplicate_success", g.match.id)).toBeGreaterThanOrEqual(1);
+    expect((await rowOf(g)).paymentIntentId).toBe(g.piId); // die Zeile bleibt beim bezahlten PI
   });
 
   it("neuer Versuch noch nicht gesendet (PI leer): Erfolg des alten PI bindet die Zeile an den bezahlten PI", async () => {
