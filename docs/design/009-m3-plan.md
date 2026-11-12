@@ -1,11 +1,13 @@
 # Plan 009 M3 (Entwurf v3): Beweisprotokoll mit PDF, Rest aus M2
 
-Status: Entwurf v3 (nur Doku, kein Code), Stand 2026-11-12, Verfasser worker-2. v3 arbeitet den Plan-Review R-T208 (10 Punkte) ein und enthält die Entscheide t9 (Abschnitt 0a). Grundlage: Vertrag 009 v4 (AC-7), Plan `docs/design/009-m2-plan.md`, Code nach 009 M2 (PR #134), Plan 011 M1.
+Status: Entwurf v3 mit Nachtrag Q1a (nur Doku, kein Code), Stand 2026-11-12, Verfasser worker-2. v3 arbeitet den Plan-Review R-T208 (10 Punkte) ein und enthält die Entscheide t9 (Abschnitt 0a). Grundlage: Vertrag 009 v4 (AC-7), Plan `docs/design/009-m2-plan.md`, Code nach 009 M2 (PR #134), Plan 011 M1.
 Rechts- und Steuerfragen werden nur gestellt (Anwalt, Steuerberater), nie von Agenten beantwortet.
 
 ## 0a. Entscheide t9 (2026-11-12) und offene Präzisierung
 - **Q0:** Vertrag 009 gilt: M3 = Beweisprotokoll (AC-7), M4 = Kalender/DATEV, M5 = KI-Belege. Gutschrift S3 bleibt blockiert (Steuerberater); die Kontenzuordnung gehört zu M4.
 - **Q1 (entschieden: global):** eine globale Hash-Kette mit lückenlosem `seq`. **Präzisierung offen (Q1a, an t9, Abschnitt 3.3):** ein Spiel-Auszug einer globalen Kette ist ohne die Nachbarzeilen nicht prüfbar, und eine Kette in derselben Datenbank fängt einen Datenbank-Administrator nicht ab. Der Plan legt dazu zwei Varianten offen dar.
+- **Q1a (entschieden, t9): Variante G jetzt.** Globale Kette; **Kopf-Hash und Anzahl** werden in **jedem Admin-Abruf** und **täglich außerhalb der Datenbank** ausgegeben; das PDF nennt Kopf-Hash, Anzahl und Prüfergebnis der **Gesamtkette**. **Variante Z** (Kette je Spiel) wird nur als **Zusatzspalte** (`match_prev_hash`, ohne Auswertung) angelegt; ihr Einsatz wird später entschieden. Der **Ablageort des Kopf-Hashs** außerhalb der Datenbank ist eine **Frage an den Anwalt** (FEHLT-NOCH Abschnitt 11, GO-LIVE-AUDIT-Zeile „009 M3: Ablageort Kopf-Hash“, kommt mit dem Doku-PR).
+- **evidence_actor außerhalb des Hashes (t9, Entwurf, R3 bleibt offen):** bestätigt als Entwurf. **Test:** Löschen oder Anonymisieren eines Actors lässt die Kette gültig (`verifyEvidenceChain` meldet keine Abweichung, `evidence_actor` leer/gelöscht).
 - **Q2:** Hallen-Abruf ja, später mit 011 M3, nur die eigene Halle, nie Spielernamen. In 009 M3 nur Admin 1.
 - **R3 und S3** bleiben bei Anwalt bzw. Steuerberater, stehen als FEHLT-NOCH (Abschnitt 11) und als Eintrag im GO-LIVE-AUDIT (kommt mit dem Doku-PR des Task Managers).
 - Der Bau der **Gutschrift** beginnt erst nach der Antwort zu S3. Der Rest von 009 M3 (Protokoll, Hash-Kette, PDF-Export) darf **ohne S3** gebaut werden.
@@ -59,9 +61,9 @@ Für JEDEN Schreibpfad gilt: ohne Eintrag kein Wechsel (Test 5.2 prüft die Matr
 Der Wechsel `in_progress` ist ein interner Arbeitsstand und wird nicht protokolliert (Begründung: kein Ergebnis gegenüber der Halle). Die Liste der Arten ist ein CHECK in der Tabelle und eine Konstante im Code; der Matrix-Test vergleicht beide.
 
 ### 3.3 Hash-Kette: Variante und Verankerung (Frage Q1a an t9, nicht entschieden)
-- **Variante G (entschieden als Grundlage, Q1): eine globale Kette.** Vorteil: Lücken über alle Spiele fallen auf. Nachteile (Review): (a) ein **Spiel-Auszug** (PDF) ist ohne die Nachbarzeilen nicht prüfbar; (b) die Kette liegt in derselben Datenbank, ein Datenbank-Administrator kann sie neu berechnen. Abhilfe in G: **Kopf-Hash und Anzahl** (`seq` des letzten Eintrags + Hash) werden **außerhalb der Datenbank verankert** (täglich und bei jedem Admin-Abruf des PDFs ausgegeben; Ziel und Verfahren sind eine Frage an den Anwalt, z. B. Mail an Admin 1, Ablage im Sicherungsziel, Zeitstempeldienst).
-- **Variante Z (Alternative, zur Entscheidung durch t9): zwei Ebenen.** Je Spiel eine eigene Kette (für das PDF, in sich prüfbar) **plus** eine globale `seq` nur zur Lückenerkennung. Vorteil: Das Spiel-PDF ist allein prüfbar. Nachteil: zwei Zähler, mehr Aufwand.
-- Der Bau (M3a) ist für G ausgelegt; Z ist ein Zusatz (zweite Spalte `match_prev_hash`) und kein Umbau.
+- **Variante G (entschieden, Q1/Q1a): eine globale Kette.** Vorteil: Lücken über alle Spiele fallen auf. Nachteile (Review): (a) ein **Spiel-Auszug** (PDF) ist ohne die Nachbarzeilen nicht prüfbar; (b) die Kette liegt in derselben Datenbank, ein Datenbank-Administrator kann sie neu berechnen. Abhilfe in G: **Kopf-Hash und Anzahl** (`seq` des letzten Eintrags + Hash) werden **außerhalb der Datenbank verankert** (täglich und bei jedem Admin-Abruf des PDFs ausgegeben; Ziel und Verfahren sind eine Frage an den Anwalt, z. B. Mail an Admin 1, Ablage im Sicherungsziel, Zeitstempeldienst).
+- **Variante Z (nur als Zusatzspalte, Einsatz später): zwei Ebenen.** Je Spiel eine eigene Kette (für das PDF, in sich prüfbar) **plus** eine globale `seq` nur zur Lückenerkennung. Vorteil: Das Spiel-PDF ist allein prüfbar. Nachteil: zwei Zähler, mehr Aufwand.
+- Der Bau (M3a) setzt G um: Kopf-Hash und Anzahl stehen in jedem Admin-Abruf (Seite und PDF) und werden **täglich** als Job (`evidence-head`, Cron täglich) an das noch festzulegende Ziel außerhalb der Datenbank gegeben (bis zur Antwort des Anwalts: Ausgabe an Admin 1 per Benachrichtigung und Eintrag im Eingriffsprotokoll). Z wird nur als Spalte `match_prev_hash` (NULL erlaubt) angelegt und nicht ausgewertet; kein Umbau nötig, wenn Z später gewählt wird.
 
 ### 3.4 Hash-Definition (kanonisch)
 - Eingabe: **längenpräfixierte Kodierung** (jedes Feld als `<Länge in Byte>:<Bytes>` in fester Reihenfolge, UTF-8), nicht `|`-getrennt, weil `reason` Trennzeichen enthalten kann. Feldfolge: `seq`, `match_id`, `venue_id`, `round`, `kind`, `reason` (leer = Länge 0), `at` (UTC, ISO 8601 mit Mikrosekunden), `actor_commitment`, `prev_hash`.
@@ -95,7 +97,9 @@ Ein Writer je Etappe, Reviewer ≠ Writer, Security-Review Pflicht (Berechtigung
 5. `seq` lückenlos bei parallelen Schreibern (Gate-Test) und bei Abbruch der Transaktion (keine verbrauchte Nummer); mehrere Termine desselben Spiels (`round`) erzeugen getrennte Einträge.
 6. Hash: gleiche Eingabe = gleicher Hash (Sonderzeichen, Unicode, `|`), `at` stammt aus der Datenbank (ein vom Client übergebener Wert wird nicht übernommen).
 7. PDF: Admin 1 erhält ein gültiges PDF mit Gesamtzahl, Kopf-Hash, Prüfergebnis, UTC und Berlin; Admin 2, Betreiber, Spieler, Gast, unbekannte und ungültige ID erhalten dieselbe 404-Antwort; `no-store`; Dateiname ohne Personenbezug; keine Spieler- oder Teamnamen; Fremdtext mit Steuerzeichen und Pseudo-Markup bleibt Text.
-8. Deadlock-Test: `advanceVetos` (eine Transaktion je Spiel) und `answerHallRequest` gleichzeitig; Reihenfolge der Sperren siehe 8.3.
+8. **Actor-Test:** Löschen oder Anonymisieren eines `evidence_actor` lässt die Kette gültig; der Hash enthält nur den Verpflichtungswert.
+9. **Kopf-Hash:** jeder Admin-Abruf (Seite und PDF) nennt Anzahl, Kopf-Hash und Prüfergebnis der Gesamtkette; der tägliche Job gibt dieselben Werte aus und schlägt Alarm, wenn die Anzahl kleiner ist als beim letzten Lauf oder der frühere Kopf-Hash nicht mehr in der Kette liegt.
+10. Deadlock-Test: `advanceVetos` (eine Transaktion je Spiel) und `answerHallRequest` gleichzeitig; Reihenfolge der Sperren siehe 8.3.
 
 ## 6. Mutationsliste (je Mutation muss ein Test rot werden)
 Trigger (Append-only) entfernt; Zähler ohne `FOR UPDATE`; Hash ohne `prev_hash`; `at` vom Client; Haken außerhalb der Transaktion (Eintrag trotz Rollback); Doppelaufruf erzeugt zweiten Eintrag (Existenzprüfung weg); Existenzprüfung NACH dem Zähler (Lücke); Admin 2 oder Betreiber erhält das PDF; Namen im PDF; `reason` ungekürzt oder mit Steuerzeichen; `verifyEvidenceChain` meldet die erste Abweichung nicht; Wartungsausnahme ohne Prüfung; `round` fehlt (zweiter Termin blockiert); ein Schreibpfad der Matrix ohne Haken.
@@ -120,7 +124,7 @@ Trigger (Append-only) entfernt; Zähler ohne `FOR UPDATE`; Hash ohne `prev_hash`
 
 ## 10. Fragen (Stand nach Entscheid t9 und Review)
 - ~~Q0~~, ~~Q1~~ (global entschieden), ~~Q2~~: Abschnitt 0a.
-- **Q1a** (t9): Variante G mit Verankerung außerhalb der Datenbank oder Variante Z (zwei Ebenen), siehe 3.3.
+- ~~Q1a~~: entschieden (Variante G jetzt, Z als Zusatzspalte, Abschnitt 0a). Offen bleibt der **Ablageort des Kopf-Hashs** (Anwalt, R3).
 - **R3** (Anwalt): Personenfelder in `evidence_actor` außerhalb des Hashes zulässig? Begründung im Hash oder nur Verpflichtungswert? Aufbewahrung, Löschkonzept, Beweiswert, Verfahren der Verankerung des Kopf-Hashs.
 - **S3** (Steuerberater): Gutschrift als eigene Rechnung oder Verrechnung; Nummernkreis; Ausweis der USt.
 
@@ -129,5 +133,6 @@ Trigger (Append-only) entfernt; Zähler ohne `FOR UPDATE`; Hash ohne `prev_hash`
 |---|---|---|
 | **R3** Aufbewahrungsdauer, Löschkonzept, Beweiswert, Personenfelder und Verankerung des Beweisprotokolls | Anwalt | Go-live-Bedingung (GO-LIVE-AUDIT „009 M3: Aufbewahrung und Beweiswert des Beweisprotokolls (R3)“); Protokoll bleibt bis dahin nur anhängend, keine Löschung |
 | **S3** Gutschrift als eigene Rechnung oder Verrechnung, Nummernkreis, USt-Ausweis | Steuerberater | Bau der Gutschrift wartet (GO-LIVE-AUDIT „009 M2/M3: Gutschrift-Ablauf (S3)“); Rechnungen bleiben unverändert |
-| **Q1a** Kette global + Verankerung oder zwei Ebenen | t9 | Auslegung M3a (Variante G ist Grundlage) |
+| **Ablageort Kopf-Hash** außerhalb der Datenbank (Verfahren, Zeitstempeldienst) | Anwalt | Go-live-Bedingung (GO-LIVE-AUDIT „009 M3: Ablageort Kopf-Hash“); bis dahin Benachrichtigung an Admin 1 und Eintrag im Eingriffsprotokoll |
+| **Z** Kette je Spiel einsetzen | t9 (später) | Zusatzspalte liegt bereit, keine Auswertung |
 | **011 M2** Begründung der Halle bei Ablehnung | Plan 011 | Bis dahin ist `reason` leer |
