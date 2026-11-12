@@ -25,7 +25,7 @@ function wanted(min: number | null, max: number | null): string {
   return lo === hi ? `Stufe ${lo} (${STRENGTH_LABELS[lo]})` : `Stufe ${lo} bis ${hi}`;
 }
 
-function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: BoardPlayer[]; ready: number; free: number }) {
+function TeamColumn({ team, players, ready, free, loggedIn }: { team: BoardTeam; players: BoardPlayer[]; ready: number; free: number; loggedIn: boolean }) {
   return (
     <div className="space-y-2" data-testid="board-team">
       <div>
@@ -43,13 +43,17 @@ function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: 
       ) : (
         <ul className="space-y-1 text-sm">
           {players.map((p) => (
-            <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="board-player" data-light={p.light}>
-              <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">
-                {p.name}
-                {p.isSubstitute && <span className="ml-1 text-xs text-muted">Ersatz</span>}
-                {p.isPro && <span className="ml-1 text-xs text-accent-fg">Profi</span>}
-              </Link>
-              <PlayerLight light={p.light} />
+            <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="board-player" data-light={p.light ?? undefined}>
+              {loggedIn ? (
+                <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">
+                  {p.name}
+                  {p.isSubstitute && <span className="ml-1 text-xs text-muted">Ersatz</span>}
+                  {p.isPro && <span className="ml-1 text-xs text-accent-fg">Profi</span>}
+                </Link>
+              ) : (
+                <span className="min-w-0 truncate">{p.name}</span>
+              )}
+              {p.light !== null && <PlayerLight light={p.light} />}
             </li>
           ))}
         </ul>
@@ -61,7 +65,7 @@ function TeamColumn({ team, players, ready, free }: { team: BoardTeam; players: 
   );
 }
 
-function MatchCard({ m, mine, shareBase }: { m: BoardMatch; mine: Mine[]; shareBase: string }) {
+function MatchCard({ m, mine, shareBase, loggedIn }: { m: BoardMatch; mine: Mine[]; shareBase: string; loggedIn: boolean }) {
   const targetAdmin = m.challengePending && mine.some((t) => t.id === m.away.id);
   const status = m.challengePending ? "Herausforderung: wartet auf Annahme" : m.vetoRunning ? "Hallen-Veto läuft" : m.schedulingOpen ? "Termin wird gewählt" : m.confirmed ? "Bestätigt" : "Wartet auf Spieler";
   const tone = m.confirmed ? "text-accent-fg" : "text-ink";
@@ -78,8 +82,8 @@ function MatchCard({ m, mine, shareBase }: { m: BoardMatch; mine: Mine[]; shareB
         </span>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <TeamColumn team={m.home} players={m.homePlayers} ready={m.readyHome} free={m.freeHome} />
-        <TeamColumn team={m.away} players={m.awayPlayers} ready={m.readyAway} free={m.freeAway} />
+        <TeamColumn team={m.home} players={m.homePlayers} ready={m.readyHome} free={m.freeHome} loggedIn={loggedIn} />
+        <TeamColumn team={m.away} players={m.awayPlayers} ready={m.readyAway} free={m.freeAway} loggedIn={loggedIn} />
       </div>
       <div aria-label="Siegchance">
         <div className="flex h-2 overflow-hidden rounded-full bg-white/10">
@@ -138,7 +142,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
           <ul className="space-y-1 text-sm">
             {s.roster.map((p) => (
               <li key={p.userId} className="flex items-center justify-between gap-2">
-                <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">{p.name}</Link>
+                {loggedIn ? <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">{p.name}</Link> : <span className="min-w-0 truncate">{p.name}</span>}
                 <span className="shrink-0 text-xs text-muted">{[p.position, p.elo ? `Elo ${p.elo}` : null, p.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
               </li>
             ))}
@@ -233,11 +237,11 @@ export function LobbyBoard({ entries, mine, myWaitingTeamIds, loggedIn, shareBas
   }
   return (
     <div className="space-y-3" data-testid="lobby-board">
-      <LightLegend paymentsOn={paymentsOn} />
+      {loggedIn && <LightLegend paymentsOn={paymentsOn} />}
       <ul className="space-y-3">
         {entries.map((e) =>
           e.kind === "match" ? (
-            <MatchCard key={`m-${e.id}`} m={e} mine={mine} shareBase={shareBase} />
+            <MatchCard key={`m-${e.id}`} m={e} mine={mine} shareBase={shareBase} loggedIn={loggedIn} />
           ) : (
             <SearchCard key={`${e.sub}-${e.id}`} s={e} loggedIn={loggedIn} mine={mine} myWaitingTeamIds={myWaitingTeamIds} shareBase={shareBase} />
           ),

@@ -3,16 +3,24 @@ import Image from "next/image";
 import Link from "next/link";
 import { ImageUpload } from "@/components/ImageUpload";
 import { getPrefs } from "@/server/notifications";
+import { cardPaymentsEnabled } from "@/server/settings";
+import { MANDATE_TEXT } from "@/server/payments/card-setup";
+import { getStoredCardDisplay } from "@/server/payments/card-status";
+import { fakeCardAllowed } from "@/server/payments/mode";
 import { requireUser } from "@/server/session";
 import { DeleteAccountForm, ProfileForm } from "./ProfileForm";
 import { PrefsForm } from "./PrefsForm";
 import { PushToggle } from "./PushToggle";
+import { CardChange } from "./CardChange";
 
 export const metadata: Metadata = { title: "Einstellungen" };
 
 export default async function SettingsPage() {
   const user = await requireUser("/app/einstellungen");
   const prefs = await getPrefs(user.id);
+  // Karte ändern (Vertrag 012, M3b AC-5): nur wenn das Kartenmodell eingeschaltet ist
+  const cardOn = await cardPaymentsEnabled();
+  const storedCard = cardOn ? await getStoredCardDisplay(user.id) : null;
 
   return (
     <div className="space-y-6">
@@ -37,6 +45,17 @@ export default async function SettingsPage() {
         </div>
         <ProfileForm name={user.name} city={user.city ?? null} position={user.position ?? null} profilePublic={user.profilePublic} bio={user.bio ?? null} gamer={{ nickname: user.nickname ?? null, accentColor: user.accentColor ?? null, shirtNumber: user.shirtNumber ?? null, favoriteClub: user.favoriteClub ?? null, strongFoot: user.strongFoot ?? null }} />
       </section>
+
+      {cardOn && (
+        <section className="space-y-2" aria-label="Zahlungskarte" data-testid="account-card">
+          <h2 className="text-lg font-semibold">Zahlungskarte</h2>
+          <p className="text-sm text-muted" data-testid="account-card-current">
+            {storedCard ? <>Gespeicherte Karte: <strong>{storedCard.brand ? `${storedCard.brand} ` : ""}•••• {storedCard.last4}</strong></> : "Keine Karte gespeichert."}
+          </p>
+          <p className="text-sm text-muted">Mit „Karte ändern“ ersetzt du die gespeicherte Karte. Die alte wird gelöscht. Es wird nichts abgebucht.</p>
+          <CardChange mandateText={MANDATE_TEXT} fake={fakeCardAllowed()} />
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Benachrichtigungen</h2>
