@@ -62,8 +62,10 @@ export async function getAuthorizationSecret(userId: string, matchId: string, no
   const [recent] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(auditLog)
-    .where(and(eq(auditLog.actorId, userId), eq(auditLog.action, "charge.authorization_requested"), gt(auditLog.at, since)));
+    .where(and(eq(auditLog.actorId, userId), eq(auditLog.action, "charge.authorization_attempt"), gt(auditLog.at, since)));
   if ((recent?.n ?? 0) >= AUTHORIZE_LIMIT_PER_HOUR) throw new DomainError("Zu viele Versuche. Bitte warte etwas und versuche es später noch einmal.");
+  // Der Versuch zaehlt VOR dem Netzaufruf (auch abgelehnte Anfragen): sonst koennte ein Nutzer mit unpassendem Stripe-Stand ungebremst paymentIntents.retrieve ausloesen. Ohne Secret, ohne PaymentIntent-ID.
+  await audit(userId, "charge.authorization_attempt", "match", matchId, { after: { attempt: row.currentAttempt } });
 
   const [profile] = await db.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
   if (!profile) throw new DomainError(NOT_AVAILABLE);
@@ -87,13 +89,14 @@ export async function getAuthorizationSecret(userId: string, matchId: string, no
 /** Offene Freigaben des Nutzers (nur Spiel und Fensterende, KEIN Secret): fuer die Liste im Konto. Liest nur eigene Zeilen. */
 export async function listOpenAuthorizations(userId: string, now: Date = new Date()): Promise<{ matchId: string; until: string }[]> {
   const rows = await db
-    .select({ matchId: paymentCharges.matchId, graceUntil: paymentCharges.graceUntil, startsAt: matches.startsAt, matchStatus: matches.status, cancelRequestedAt: matches.cancelRequestedAt })
+    .select({ matchId: paymentCharges.matchId, graceUntil: paymentCharges.graceUntil, paymentIntentId: paymentCharges.paymentIntentId, startsAt: matches.startsAt, matchStatus: matches.status, cancelRequestedAt: matches.cancelRequestedAt, settledAt: matches.settledAt })
     .from(paymentCharges)
     .innerJoin(matches, eq(matches.id, paymentCharges.matchId))
     .where(and(eq(paymentCharges.userId, userId), eq(paymentCharges.status, "requires_action"), eq(paymentCharges.failureCode, "authentication_required")));
   const out: { matchId: string; until: string }[] = [];
   for (const r of rows) {
-    if (!["lobby", "confirmed"].includes(r.matchStatus) || r.cancelRequestedAt !== null || r.startsAt.getTime() <= now.getTime()) continue;
+    // dieselben Bedingungen wie getAuthorizationSecret/openRow: Anzeige und Server stimmen ueberein
+    if (!["lobby", "confirmed"].includes(r.matchStatus) || r.cancelRequestedAt !== null || r.settledAt !== null || !r.paymentIntentId || r.startsAt.getTime() <= now.getTime()) continue;
     const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
     if (end === null || end.getTime() <= now.getTime()) continue;
     out.push({ matchId: r.matchId, until: graceText(end, now) });

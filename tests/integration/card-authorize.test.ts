@@ -247,3 +247,37 @@ describe("Fake-Freigabe (Tests/CI): geht ueber den Webhook, nie direkt", () => {
     expect((await db.select().from(ledgerEntries)).length).toBe(before);
   });
 });
+
+describe("Review-Hinweise zu M3c-1c (security-reviewer, niedrig)", () => {
+  it("(a) auch ABGELEHNTE Anfragen zaehlen gegen das Rate-Limit: 10 Versuche mit unpassendem Stripe-Stand loesen hoechstens 10 Abfragen bei Stripe aus", async () => {
+    const g = await game({ graceMs: 3 * 3_600_000 });
+    provider.setIntentStatus(g.piId, "succeeded", { customerId: g.customerId, amountCents: 800, currency: "eur" }); // Stand passt nicht => abgelehnt
+    for (let i = 0; i < AUTHORIZE_LIMIT_PER_HOUR; i++) await expect(getAuthorizationSecret(g.u.id, g.match.id)).rejects.toThrow(NEUTRAL);
+    await expect(getAuthorizationSecret(g.u.id, g.match.id)).rejects.toThrow(/Zu viele Versuche/);
+    expect(provider.calls.filter((c) => c.method === "retrievePaymentIntentSecret")).toHaveLength(AUTHORIZE_LIMIT_PER_HOUR);
+    const attempts = await db.select().from(auditLog).where(and(eq(auditLog.action, "charge.authorization_attempt"), eq(auditLog.actorId, g.u.id)));
+    expect(JSON.stringify(attempts)).not.toMatch(/secret|pi_az/); // der Zaehl-Eintrag enthaelt kein Secret und keine PaymentIntent-ID
+  });
+
+  it("(b) Anzeige und Konto-Liste stimmen mit dem Server ueberein: abgesagt/abgerechnet/ohne PaymentIntent => kein Knopf, kein Listeneintrag", async () => {
+    const { getCardDisplays } = await import("@/server/payments/card-status");
+    const { audienceFor } = await import("@/lib/card-visibility");
+    const asSelf = (g: G) => getCardDisplays(g.match.id, (p) => audienceFor({ userId: g.u.id, platformAdmin: false, adminOf: [], isParticipant: true }, p));
+    const ok = await game();
+    expect((await asSelf(ok))[ok.u.id]).toHaveProperty("authorize", true);
+    expect(await listOpenAuthorizations(ok.u.id)).toHaveLength(1);
+
+    const requested = await game();
+    await db.update(matches).set({ cancelRequestedAt: new Date(), cancelReason: "Test" }).where(eq(matches.id, requested.match.id));
+    const settled = await game();
+    await db.update(matches).set({ settledAt: new Date() }).where(eq(matches.id, settled.match.id));
+    const noPi = await game();
+    await db.update(paymentCharges).set({ paymentIntentId: null }).where(eq(paymentCharges.id, noPi.row.id));
+    const cancelled = await game();
+    await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, cancelled.match.id));
+    for (const g of [requested, settled, noPi, cancelled]) {
+      expect((await asSelf(g))[g.u.id]).not.toHaveProperty("authorize");
+      expect(await listOpenAuthorizations(g.u.id)).toHaveLength(0);
+    }
+  });
+});

@@ -29,6 +29,7 @@ export function AuthorizeButton({ matchId, fake }: { matchId: string; fake: bool
 
   const refreshSoon = () => {
     router.refresh();
+    timers.current.forEach(clearTimeout); // fruehere Timer aufraeumen, sonst ueberschreibt der naechste Klick sie (Timer liefen unkontrolliert weiter)
     timers.current = [1500, 4000, 8000].map((ms) => setTimeout(() => router.refresh(), ms));
   };
 
