@@ -10,6 +10,7 @@ import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { adminCancelMatch } from "@/server/payments/refund";
 import { setSetting } from "@/server/settings";
+import { createPrivateGame } from "@/server/privategame";
 import { createVenue } from "@/server/venues";
 import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -243,6 +244,19 @@ describe("Gesamtablauf im Provisionsmodell: keine Doppelzählung (S1 Variante A,
     const e = await entries(g.match.id);
     expect(e.filter((x) => x.kind === "match_share").every((x) => x.creditAccount === "revenue")).toBe(true);
     expect(e.some((x) => x.kind === "commission")).toBe(false);
+  });
+
+  it("OHNE Hilfsfunktion-Standard: ein über den echten Weg (createPrivateGame) angelegtes Spiel hat das Modell 'commission' und bekommt die Provision", async () => {
+    const organizer = await makeUser("pvprov");
+    const { match } = await createPrivateGame(organizer.id, { city: "Essen", venueText: "Halle X", startsAt: new Date(Date.now() + 4 * 86_400_000), durationMin: 60, rentCents: 8000 });
+    expect(match.ledgerModel).toBe("commission");
+    const v = await venue();
+    await db.update(matches).set({ venueId: v.id }).where(eq(matches.id, match.id));
+    const [m] = await db.select().from(matches).where(eq(matches.id, match.id));
+    expect(m.ledgerModel).toBe("commission");
+    await book(m);
+    const e = await entries(match.id);
+    expect(e.filter((x) => x.kind === "commission")).toMatchObject([{ amountCents: 800, debitAccount: "venue_payable", creditAccount: "commission" }]);
   });
 });
 
