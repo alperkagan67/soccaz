@@ -10,15 +10,18 @@ import { FakeProvider } from "@/server/payments/fake";
 import { getPaymentProvider, PaymentsUnavailableError, setPaymentProviderForTests, WebhookSignatureError } from "@/server/payments/provider";
 import { StripeProvider } from "@/server/payments/stripe";
 import { handleStripeWebhook } from "@/server/payments/webhook";
+import { setSetting } from "@/server/settings";
 import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
 
 let provider: FakeProvider;
-beforeEach(() => {
+beforeEach(async () => {
+  await setSetting(null, "card_payments_enabled", true); // Voraussetzung für jede Karten-Einrichtung (AC-5: auch serverseitig geprüft)
   provider = new FakeProvider();
   setPaymentProviderForTests(provider);
 });
 afterEach(() => setPaymentProviderForTests(null));
 afterAll(async () => {
+  await setSetting(null, "card_payments_enabled", false);
   await db.delete(stripeEvents).where(like(stripeEvents.eventId, "evt_cs_%"));
   await cleanup();
 });
@@ -43,6 +46,19 @@ function succeededEvent(p: { intentId: string; customer: string; pm: string; id?
   return provider.signEvent({ id: p.id ?? evtId(), type: "setup_intent.succeeded", object: { id: p.intentId, customer: p.customer, payment_method: p.pm } });
 }
 const deliver = (e: { rawBody: string; signature: string }) => handleStripeWebhook(e.rawBody, e.signature);
+
+describe("Schalter card_payments_enabled AUS: serverseitig nichts einrichten (M3b AC-5)", () => {
+  it("createCardSetup wirft, legt weder Stripe-Kunde noch SetupIntent an (mit und ohne Spiel)", async () => {
+    const { match, me } = await lobby();
+    await setSetting(null, "card_payments_enabled", false);
+    const calls = () => provider.calls.filter((c) => c.method === "createCustomer" || c.method === "createSetupIntent").length;
+    await expect(createCardSetup(me.id, { mandateAccepted: true })).rejects.toThrow(/nicht verfügbar/);
+    await expect(createCardSetup(me.id, { matchId: match.id, mandateAccepted: true })).rejects.toThrow(/nicht verfügbar/);
+    expect(calls()).toBe(0);
+    expect(await db.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.userId, me.id))).toHaveLength(0);
+    expect(await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, me.id))).toHaveLength(0);
+  });
+});
 
 describe("AC-1: Karte hinterlegen (SetupIntent)", () => {
   it("SetupIntent erfolgreich: Platz card_ready, Zahlungsmittel nur als Anzeige gespeichert, Mandat mit Zeitpunkt, nichts abgebucht, kein Ledger-Eintrag", async () => {

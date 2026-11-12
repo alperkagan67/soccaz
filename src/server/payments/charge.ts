@@ -3,7 +3,7 @@
 // Netzaufrufe laufen NIE innerhalb einer Datenbanktransaktion (die Gebühr wird vorher geholt oder in einem eigenen Folgeschritt gebucht).
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, paymentCharges, paymentProfiles } from "@/db/schema";
+import { matchParticipants, matches, paymentCharges, paymentProfiles, paymentRefunds } from "@/db/schema";
 import { audit } from "../audit";
 import { formatEuro } from "@/lib/money";
 import { notifyUsers } from "../notifications";
@@ -12,6 +12,14 @@ import { teamName } from "../names";
 import { post } from "../ledger";
 import type { Tx } from "../tx";
 import { getPaymentProvider } from "./provider";
+import { notifyChargeProblem } from "./charge-notify";
+
+export const refundKey = (chargeId: string) => `refund:${chargeId}`;
+
+/** Legt die (einzige, volle) Erstattungszeile einer erfolgreichen Abbuchung an. Idempotent (UNIQUE charge_id). Gesendet wird sie vom Erstattungs-Ablauf (refund.ts). */
+export async function ensureRefundRow(tx: Tx, charge: typeof paymentCharges.$inferSelect, reason: string) {
+  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.userId, amountCents: charge.amountCents, idempotencyKey: refundKey(charge.id), reason }).onConflictDoNothing();
+}
 
 export type ChargeOutcome = "succeeded" | "requires_action" | "failed";
 
@@ -92,6 +100,12 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     await tx.update(paymentCharges).set({ status: "succeeded", failureCode: null, updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
     await tx.update(matchParticipants).set({ cardStatus: "charged" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
     await audit(null, "charge.succeeded", "match", row.matchId, { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
+    // Gelingt die Abbuchung erst NACH der Absage (oder während sie läuft), wird sofort erstattet: nie Geld einer abgesagten Lobby behalten
+    const [game] = await tx.select({ status: matches.status, cancelRequestedAt: matches.cancelRequestedAt }).from(matches).where(eq(matches.id, row.matchId));
+    if (game && (game.cancelRequestedAt !== null || game.status === "cancelled")) {
+      await ensureRefundRow(tx, { ...row, status: "succeeded" }, "Abbuchung nach Absage");
+      await audit(null, "refund.auto", "match", row.matchId, { after: { userId: row.userId } }, tx);
+    }
     await settleIfComplete(tx, row.matchId); // der letzte erfolgreiche Spieler bucht das Spiel, egal ob über den Job oder den Webhook
     return { status: "applied" };
   }
@@ -101,6 +115,9 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   await tx.update(paymentCharges).set({ status: r.outcome, failureCode: cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
   await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
   await audit(null, "charge.failed", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome, code: cleanCode(r.failureCode) } }, tx);
+  // NUR beim ersten Wechsel in einen Problemzustand: war die Zeile schon failed oder requires_action, ändern sich Status und Code (und das Audit), aber es geht keine
+  // zweite Nachricht raus (requires_action -> failed, Codewechsel). Empfänger: Betroffener + Captain/Veranstalter, nie Dritte (AC-12/AC-20)
+  if (row.status !== "failed" && row.status !== "requires_action") await notifyChargeProblem(tx, row, cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"));
   return { status: "applied" };
 }
 
@@ -156,7 +173,7 @@ export async function bookOpenFees(limit = 50): Promise<number> {
  */
 export async function settleIfComplete(tx: Tx, matchId: string): Promise<boolean> {
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
-  if (!match || match.settledAt !== null || !["lobby", "confirmed"].includes(match.status)) return false;
+  if (!match || match.settledAt !== null || !["lobby", "confirmed"].includes(match.status) || match.cancelRequestedAt !== null) return false; // Absage angefordert: nie abrechnen
   const rows = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
   if (rows.length === 0 || rows.some((r) => r.status !== "succeeded")) return false;
   const seated = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId)));

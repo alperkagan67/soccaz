@@ -11,7 +11,8 @@ import { listOpenSearches } from "./matchmaking";
 import { teamRoster } from "./roster";
 
 export type BoardTeam = { id: string; name: string; slug: string; city: string; elo: number; playedMatches: number; strength: number; verified: boolean; members: number };
-export type BoardPlayer = { userId: string; name: string; light: Light; isSubstitute: boolean; isPro: boolean };
+/** light = null: für Gäste kein Status je Person (Vertrag 012 AC-12, 013 Sichtbarkeitsmatrix) */
+export type BoardPlayer = { userId: string; name: string; light: Light | null; isSubstitute: boolean; isPro: boolean };
 export type RosterEntry = { userId: string; name: string; position: string | null; elo: number | null; isAdmin: boolean };
 
 export type BoardMatch = {

@@ -16,7 +16,10 @@ import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "
 import { fakeCardAllowed } from "@/server/payments/mode";
 import { cardModeActive } from "@/server/wallet";
 import { cardView } from "@/lib/card-view";
-import { getCardStatuses, getStoredCardDisplay } from "@/server/payments/card-status";
+import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/server/payments/card-status";
+import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
+import { chargeFailureText } from "@/lib/charge-failure-text";
+import { guestRosterView, initialsOf } from "@/lib/guest-roster";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
 import { canViewLobby, getLobby } from "@/server/lobby";
@@ -57,12 +60,24 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const confirmed = match.status === "confirmed";
   // Kartenmodell (Vertrag 012): Schalter card_payments_enabled, Standard AUS = bisheriges Guthaben-Verhalten
   const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Guthabenmodell
-  const cardStatuses = cardOn ? await getCardStatuses(match.id) : {};
+  // Sichtbarkeit je Betrachter wird HIER auf dem Server entschieden (Vertrag 012, AC-12/AC-20): Gäste sehen keinen Status je Person, Mitspieler nur die neutrale
+  // rote Ampel ohne Grund, nur der Betroffene und der Captain/Veranstalter den echten Status. Der Rohstatus erreicht die Seite nie.
+  // "Gast" für Namen = nicht angemeldet; "Gast" für den Zahlstatus je Person = keine Teilnahme (siehe audienceFor in card-visibility.ts)
+  const cardViewer = { userId: user?.id ?? null, platformAdmin: v.platformAdmin, adminOf: v.adminOf, isParticipant: Boolean(v.participant) };
+  const canSeeLights = canSeeAnyStatus(cardViewer);
+  const cardDisplays = cardOn ? await getCardDisplays(match.id, (p) => audienceFor(cardViewer, p)) : {};
+  // "Alle haben eine Karte" je Team wird aus dem ROHSTATUS auf dem Server abgeleitet und nur als Ja/Nein weitergegeben (Gäste sehen sonst fälschlich "nicht vollständig")
+  const teamCardsReady = cardOn ? await getTeamCardsReady(match.id) : {};
   const storedCard = cardOn && user ? await getStoredCardDisplay(user.id) : null;
-  const cardStatusOf = (userId: string) => cardStatuses[userId] ?? "none";
-  const hasCard = (userId: string) => cardView(cardStatusOf(userId)).hasCard;
+  // Eigener Fehlerzustand (nur der Betroffene bekommt ihn, siehe cardDisplayFor): Grund im Klartext; der Rohcode geht nicht an den Browser
+  const myDisplay = user ? cardDisplays[user.id] : undefined;
+  const myFailure = myDisplay?.status === "failed" ? { text: chargeFailureText(myDisplay.reason) } : null;
+  // Captain/Veranstalter/Admin: wen es betrifft und warum (nur Einträge mit Grund; der Betroffene selbst sieht oben seinen eigenen Block)
+  const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === "failed" && id !== user?.id).map(([id, d]) => ({ userId: id, name: participants.find((p) => p.userId === id)?.name ?? "Spieler", text: chargeFailureText(d.reason) }));
+  const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
+  const myFinalTeamId = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null; // Team, für das der Betrachter bestätigen darf
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
   // Haben beide Captains bestätigt, ist die Spielübersicht die Hauptseite für alle Beteiligten
   if (finalDone && match.status !== "cancelled" && user && (v.participant || v.membershipTeamId || v.platformAdmin)) redirect(`/lobby/${match.id}/uebersicht`);
@@ -319,13 +334,26 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
-          card={cardOn ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard } : null}
+          card={cardOn ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard, failure: myFailure } : null}
           pay={!cardOn && payments.enabled && payments.reservationCents !== null ? { reserveCents: owes ? (payments.myDueCents ?? 0) : payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid) && !owes, backTo: `/lobby/${match.id}` } : null}
           teamPaid={{ paid: participants.filter((p) => p.teamId === v.participant?.teamId && p.paid).length, total: participants.filter((p) => p.teamId === v.participant?.teamId).length }}
         />
       )}
 
-      {cardOn ? <CardLightLegend /> : <LightLegend paymentsOn={payments.enabled} />}
+      {failedForManager.length > 0 && (
+        <section className="card space-y-2" role="alert" aria-label="Abbuchung fehlgeschlagen" data-testid="charge-failed-captain">
+          <h2 className="font-semibold">Abbuchung fehlgeschlagen</h2>
+          <ul className="space-y-1 text-sm">
+            {failedForManager.map((f) => (
+              <li key={f.userId} data-testid="charge-failed-player">
+                <strong>{f.name}</strong>: {f.text} Der Spieler kann in der Lobby seine Karte ändern.
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {canSeeLights && (cardOn ? <CardLightLegend /> : <LightLegend paymentsOn={payments.enabled} />)}
       <div className="grid gap-3 sm:grid-cols-2">
         {teamsView.map((t) => (
           <section key={t.id} className="card space-y-2">
@@ -339,13 +367,13 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
               {participants.filter((p) => p.teamId === t.id).map((p) => (
                 <li key={p.userId} className="flex items-center justify-between gap-2">
                   <span>
-                    {p.name}
+                    {user ? p.name : initialsOf(p.name)}
                     {p.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
                     {p.isSubstitute && <span className="ml-2 text-xs text-muted">Ersatz</span>}
                     {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                   </span>
                   <span className="flex items-center gap-2">
-                    {cardOn ? <CardLight status={cardStatusOf(p.userId)} /> : <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel />}
+                    {cardOn ? (cardDisplays[p.userId] ? <CardLight status={cardDisplays[p.userId].status} /> : null) : canSeeLights ? <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel /> : null}
                     {active && p.userId !== user?.id && canAdminTeam(t.id) && (
                       <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} canUnassign={isPrivate && !p.ready && !p.paid} />
                     )}
@@ -359,7 +387,15 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                 </li>
               ))}
             </ul>
-            {!isPrivate && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
+            {!isPrivate && !user && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
+              // Gäste (nicht angemeldet): nur Anzahl und Initialen, keine Namen, Links, Positionen oder Elo (Vertrag 012 AC-12, 013 Sichtbarkeitsmatrix)
+              <div className="border-t border-line pt-2" data-testid={`roster-${t.slug}`}>
+                <p className="text-xs text-muted">
+                  Weitere Teammitglieder (noch nicht in der Lobby): {guestRosterView(roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId))).count} · {guestRosterView(roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId))).initials.join(" ")}
+                </p>
+              </div>
+            )}
+            {!isPrivate && user && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
               <div className="border-t border-line pt-2" data-testid={`roster-${t.slug}`}>
                 <p className="mb-1 text-xs text-muted">Weitere Teammitglieder (noch nicht in der Lobby)</p>
                 <ul className="space-y-1 text-sm text-muted">
@@ -383,7 +419,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <ul className="space-y-2 text-sm">
             {pendingStrangers.map((p) => (
               <li key={p.userId} className="flex items-center justify-between gap-2">
-                <span>{p.name}{p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}</span>
+                <span>{user ? p.name : initialsOf(p.name)}{p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}</span>
                 {active && v.canManage && p.userId !== user?.id && (
                   <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={assignTargets} />
                 )}
@@ -398,7 +434,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           matchId={match.id}
           paymentsOn={payments.enabled && !cardOn}
           minPlayers={MIN_READY_PER_TEAM}
-          myTeamId={[match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null}
+          myTeamId={myFinalTeamId}
           teams={[
             { id: match.homeId, name: match.homeName, final: match.homeFinalAt },
             { id: match.awayId, name: match.awayName, final: match.awayFinalAt },
@@ -406,7 +442,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             const list = participants.filter((p) => p.teamId === t.id);
             const paid = list.filter((p) => p.paid).length;
             const ready = list.filter((p) => p.ready).length;
-            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: list.length >= MIN_READY_PER_TEAM && ready === list.length && (cardOn ? list.every((p) => hasCard(p.userId)) : !payments.enabled || paid === list.length) };
+            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: t.id === myFinalTeamId && list.length >= MIN_READY_PER_TEAM && // nur für das eigene Team true: das andere Team liegt nie im Payload (auch nicht für Gäste)
+               ready === list.length && (cardOn ? teamCardsReady[t.id] === true : !payments.enabled || paid === list.length) };
           })}
         />
       )}
