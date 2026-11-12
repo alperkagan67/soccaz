@@ -110,6 +110,8 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
         onCancel={(e) => {
           if (pending) e.preventDefault();
         }}
+        // Vormerkung M3: Ist der Auslöser nach der Aktion nicht mehr im DOM (Weiterleitung, Eintrag entfernt), scheitert diese Fokus-Rückgabe still;
+        // die Seite muss dann selbst einen sinnvollen Fokus setzen (z. B. auf die Überschrift der Liste).
         onClose={() => opener.current?.focus()}
         onKeyDown={onKeyDown}
         className={`m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl bg-panel p-0 text-ink backdrop:bg-black/70 ${danger ? "border-2 border-danger" : "border border-line"}`}

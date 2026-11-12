@@ -53,6 +53,20 @@ test.describe("ConfirmDialog: Tastatur und Fokus", () => {
     await expect(page.getByTestId("confirm-result")).toContainText("noch nichts bestätigt");
   });
 
+  test("Escape während die Aktion läuft schließt den Dialog nicht; danach schließt er mit dem Ergebnis", async ({ page }) => {
+    await open(page);
+    await trigger(page, "Preis bestätigen").click();
+    const dlg = dialogOf(page, "Preis bestätigen?");
+    expect(await activeText(page)).toBe("Preis bestätigen"); // ohne danger startet der Fokus auf der Bestätigung
+    await page.keyboard.press("Enter");
+    await expect(dlg.getByRole("button", { name: "Bitte warten…" })).toHaveAttribute("aria-busy", "true"); // Aktion läuft (200 ms)
+    await page.keyboard.press("Escape");
+    await expect(page.locator("dialog[open]")).toHaveCount(1); // Escape wird während der Aktion geschluckt
+    await expect(page.getByTestId("confirm-result")).toContainText("noch nichts bestätigt");
+    await expect(dlg).toBeHidden({ timeout: 15_000 }); // fertig: schließt von selbst
+    await expect(page.getByTestId("confirm-result")).toContainText("Preis steht fest");
+  });
+
   test("Abbrechen per Klick schließt ebenfalls und gibt den Fokus zurück", async ({ page }) => {
     await open(page);
     await trigger(page, "Spieler entfernen").click();
