@@ -4,7 +4,7 @@ export type ButtonVariant = "primary" | "secondary" | "danger";
 export type ButtonSize = "md" | "sm";
 
 const BASE =
-  "ui-focus relative inline-flex min-h-[var(--tap)] select-none items-center justify-center gap-2 rounded-[10px] border font-semibold no-underline transition-colors";
+  "ui-focus relative inline-flex min-h-[var(--tap)] select-none items-center justify-center gap-2 rounded-[10px] border font-semibold no-underline transition-[color,background-color,border-color]";
 
 const VARIANT: Record<ButtonVariant, string> = {
   // Orange nur für die eine Hauptaktion
