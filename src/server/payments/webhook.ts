@@ -1,7 +1,8 @@
-import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
 import { applyChargeInTx, bookChargeFee, type ChargeReport } from "./charge";
+import { retryChargesInWindow } from "./charge-retry";
 import { applyRefundInTx, finalizeCancel, type RefundReport } from "./refund";
 import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ProviderEvent } from "./provider";
 
@@ -102,6 +103,7 @@ async function processEvent(event: ProviderEvent) {
   let card: CardDisplay | null = null;
   let oldMethod: string | null = null;
   let cancelCheck: string | null = null; // Erstattung verbucht: danach prüfen, ob die angeforderte Absage jetzt abgeschlossen werden kann
+  let cardUserId: string | null = null; // neue Karte gespeichert: danach im Nachzahlfenster neu abbuchen (Netz, nach der Transaktion)
   let feeFor: string | null = null; // erfolgreiche Abbuchung: die Gebühr wird NACH der Transaktion gebucht (Netzaufruf)
   if (event.type === "setup_intent.succeeded") {
     const pmId = str(event.object.payment_method);
@@ -143,15 +145,18 @@ async function processEvent(event: ProviderEvent) {
             .set({ paymentMethodId: card.id, cardBrand: card.brand, cardLast4: card.last4, mandateText: intent.mandateText, mandateAcceptedAt: intent.mandateAcceptedAt, updatedAt: new Date() })
             .where(eq(paymentProfiles.userId, intent.userId));
           await tx.update(paymentSetupIntents).set({ status: "succeeded" }).where(eq(paymentSetupIntents.id, intentId));
-          // Eine neue Karte (auch aus dem Konto, ohne Spiel) macht ALLE Plätze dieses Nutzers wieder bereit, deren Abbuchung fehlgeschlagen ist, in offenen Spielen ohne
-          // angeforderte Absage. Plätze ohne Karte (none) brauchen weiter das Mandat je Platz in der Lobby. Abgebucht wird hier nichts (Wiederabbuchen im Fenster: M3c).
+          // Eine neue Karte (auch aus dem Konto, ohne Spiel) macht ALLE Plätze dieses Nutzers wieder bereit, deren Abbuchung fehlgeschlagen ist UND deren Nachzahlfenster noch
+          // läuft (effektives Ende: min(grace_until, Anstoß − 1 h)), in offenen Spielen ohne angeforderte Absage. Nach dem Fensterende bleibt der Platz failed (die Karte wird
+          // trotzdem gespeichert). Plätze ohne Karte (none) brauchen weiter das Mandat je Platz in der Lobby. Abgebucht wird NACH dieser Transaktion (retryChargesInWindow).
+          cardUserId = intent.userId;
+          const windowOpen = sql`exists (select 1 from payment_charges pc join matches pm on pm.id = pc.match_id where pc.match_id = ${matchParticipants.matchId} and pc.user_id = ${matchParticipants.userId} and pc.grace_until is not null and least(pc.grace_until, pm.starts_at - interval '1 hour') > now())`;
           const openGames = tx.select({ id: matches.id }).from(matches).where(and(inArray(matches.status, ["lobby", "confirmed"]), isNull(matches.cancelRequestedAt)));
           await tx
             .update(matchParticipants)
             .set({ cardStatus: "card_ready" })
-            .where(and(eq(matchParticipants.userId, intent.userId), eq(matchParticipants.cardStatus, "failed"), inArray(matchParticipants.matchId, openGames)));
+            .where(and(eq(matchParticipants.userId, intent.userId), eq(matchParticipants.cardStatus, "failed"), windowOpen, inArray(matchParticipants.matchId, openGames)));
           if (intent.matchId) {
-            await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, intent.matchId), eq(matchParticipants.userId, intent.userId), inArray(matchParticipants.cardStatus, ["none", "failed"]))); // nie aus charge_pending/charged zurücksetzen
+            await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, intent.matchId), eq(matchParticipants.userId, intent.userId), or(eq(matchParticipants.cardStatus, "none"), and(eq(matchParticipants.cardStatus, "failed"), windowOpen)))); // nie aus charge_pending/charged zurücksetzen; failed nur im Fenster
           }
         }
       }
@@ -187,6 +192,13 @@ async function processEvent(event: ProviderEvent) {
   if (feeFor) {
     try {
       await bookChargeFee(feeFor); // eigener Folgeschritt, idempotent; "nicht verfügbar" holt der Nachholer später nach
+    } catch {
+      /* nichts loggen */
+    }
+  }
+  if (cardUserId) {
+    try {
+      await retryChargesInWindow({ userId: cardUserId }); // Stripe-Aufrufe ausserhalb der Transaktion; der Job card-charges holt Fehlschlaege nach
     } catch {
       /* nichts loggen */
     }

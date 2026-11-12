@@ -3,7 +3,8 @@ import { and, asc, eq, like } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentChargeAttempts, paymentCharges, paymentProfiles, stripeEvents } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
-import { retryChargesInWindow } from "@/server/payments/charge-retry";
+import { inGraceWindow } from "@/lib/grace";
+import { retryChargesInWindow, rotateAttempt } from "@/server/payments/charge-retry";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { handleStripeWebhook } from "@/server/payments/webhook";
@@ -93,11 +94,12 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
   it("vorher sucht es bei Stripe nach dem alten Versuch; ist er dort inzwischen erfolgreich, wird verbucht und NICHT neu abgebucht", async () => {
     const g = await failedGame();
     await changeCard(g);
-    provider.setFound(g.match.id, g.u.id, [{ id: g.piId, status: "succeeded", amountCents: 800, currency: "eur", customerId: g.customerId, failureCode: null }]);
+    provider.setIntentStatus(g.piId, "succeeded", { customerId: g.customerId });
 
     await retryChargesInWindow({ userId: g.u.id });
 
-    expect(provider.calls.filter((c) => c.method === "findPaymentIntents")).toHaveLength(1);
+    expect(provider.calls.filter((c) => c.method === "retrievePaymentIntent" && (c.args as { paymentIntentId: string }).paymentIntentId === g.piId)).toHaveLength(1);
+    expect(provider.calls.filter((c) => c.method === "findPaymentIntents")).toHaveLength(0); // keine Suche (verzoegert konsistent), nur retrieve
     expect(createCalls()).toHaveLength(0);
     expect(await rowOf(g)).toMatchObject({ status: "succeeded", currentAttempt: 1 });
     const entries = await ledgerOf(g);
@@ -108,7 +110,7 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
   it("ein noch offener alter PaymentIntent wird erst abgebrochen; nie zwei offene Versuche", async () => {
     const g = await failedGame();
     await changeCard(g);
-    provider.setFound(g.match.id, g.u.id, [{ id: g.piId, status: "requires_action", amountCents: 800, currency: "eur", customerId: g.customerId, failureCode: null }]);
+    provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId });
 
     await retryChargesInWindow({ userId: g.u.id });
 
@@ -121,7 +123,7 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
   it("Abbrechen scheitert (Netzfehler): in dieser Runde wird NICHT neu abgebucht, die Zeile bleibt unveraendert; die naechste Runde klappt", async () => {
     const g = await failedGame();
     await changeCard(g);
-    provider.setFound(g.match.id, g.u.id, [{ id: g.piId, status: "requires_action", amountCents: 800, currency: "eur", customerId: g.customerId, failureCode: null }]);
+    provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId });
     provider.setCancelOutcome(g.piId, "error");
 
     expect(await retryChargesInWindow({ userId: g.u.id })).toBe(0);
@@ -137,7 +139,7 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
   it("Abbrechen meldet 'schon erfolgreich': wird verbucht, nicht neu abgebucht", async () => {
     const g = await failedGame();
     await changeCard(g);
-    provider.setFound(g.match.id, g.u.id, [{ id: g.piId, status: "requires_action", amountCents: 800, currency: "eur", customerId: g.customerId, failureCode: null }]);
+    provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId });
     provider.setCancelOutcome(g.piId, "succeeded");
 
     await retryChargesInWindow({ userId: g.u.id });
@@ -158,9 +160,54 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
   it("ohne Fenster (weniger als 1 h bis zum Anstoss) wird nichts gesendet", async () => {
     const g = await failedGame(0.9);
     await changeCard(g);
-    expect((await rowOf(g)).graceUntil).toBeNull();
+    expect(inGraceWindow((await rowOf(g)).graceUntil, g.match.startsAt, new Date())).toBe(false);
     expect(await retryChargesInWindow({ userId: g.u.id })).toBe(0);
     expect(createCalls()).toHaveLength(0);
+  });
+
+  it("alter Versuch noch 'processing': Runde ausgelassen, kein zweiter Versuch, keine Abbuchung", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    provider.setIntentStatus(g.piId, "processing", { customerId: g.customerId });
+    expect(await retryChargesInWindow({ userId: g.u.id })).toBe(0);
+    expect(createCalls()).toHaveLength(0);
+    expect(provider.calls.some((c) => c.method === "cancelPaymentIntent")).toBe(false);
+    expect(await rowOf(g)).toMatchObject({ status: "failed", currentAttempt: 1 });
+  });
+
+  it("technische Zustaende (idempotency_mismatch, after_start) bekommen kein Wiederabbuchen, auch nicht mit neuer Karte", async () => {
+    for (const code of ["idempotency_mismatch", "after_start"]) {
+      const g = await failedGame();
+      await db.update(paymentCharges).set({ failureCode: code }).where(eq(paymentCharges.id, g.row.id));
+      await changeCard(g);
+      expect(await retryChargesInWindow({ userId: g.u.id }), code).toBe(0);
+    }
+    expect(createCalls()).toHaveLength(0);
+  });
+
+  it("der Termin wird nach dem Fehler vorverlegt: das Fenster endet spaetestens 1 h vor dem neuen Anstoss (Punkt 7)", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    expect(inGraceWindow((await rowOf(g)).graceUntil, g.match.startsAt, new Date())).toBe(true);
+    await db.update(matches).set({ startsAt: new Date(Date.now() + 50 * 60_000) }).where(eq(matches.id, g.match.id)); // Anstoss in 50 Minuten
+    expect(await retryChargesInWindow({ userId: g.u.id })).toBe(0);
+    expect(createCalls()).toHaveLength(0);
+  });
+
+  it("auch die Versuche der Historie werden per retrieve geprueft (alle bekannten PaymentIntents)", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    provider.setChargeOutcome(g.u.id, "declined");
+    await retryChargesInWindow({ userId: g.u.id }); // Versuch 2 scheitert
+    await changeCard(g);
+    provider.setChargeOutcome(g.u.id, "succeeded");
+    provider.calls.length = 0;
+    await retryChargesInWindow({ userId: g.u.id });
+    const retrieved = provider.calls.filter((c) => c.method === "retrievePaymentIntent").map((c) => (c.args as { paymentIntentId: string }).paymentIntentId);
+    const hist = await attemptsOf(g);
+    expect(retrieved).toContain(g.piId); // Versuch 1 (Historie)
+    expect(retrieved.length).toBeGreaterThanOrEqual(2); // und der laufende Versuch 2
+    expect(hist.length).toBe(2);
   });
 
   it("solange der Platz nicht card_ready ist (keine neue Karte), wird nichts gesendet", async () => {
@@ -185,7 +232,7 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
   it("zwei parallele Laeufe erzeugen genau EINEN neuen Versuch (ein PaymentIntent, ein Historieneintrag, eine Buchung)", async () => {
     const g = await failedGame();
     await changeCard(g);
-    await Promise.all([retryChargesInWindow({ userId: g.u.id }), retryChargesInWindow({ userId: g.u.id }), retryChargesInWindow({})]);
+    await Promise.all([retryChargesInWindow({ userId: g.u.id }), retryChargesInWindow({ userId: g.u.id }), retryChargesInWindow({ matchId: g.match.id })]);
     expect(createCalls()).toHaveLength(1);
     expect(await attemptsOf(g)).toHaveLength(1);
     expect(await ledgerOf(g)).toHaveLength(1);
@@ -209,6 +256,67 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
     expect((createCalls().at(-1)!.args as { idempotencyKey: string }).idempotencyKey).toBe(`${g.base}:3`);
     expect((await attemptsOf(g)).map((a) => a.attemptNo)).toEqual([1, 2]);
     expect((await rowOf(g)).status).toBe("succeeded");
+  });
+});
+
+describe("rotateAttempt: Bedingungen werden IN der Transaktion erneut geprueft", () => {
+  const cand = (g: G, attempt = 1) => ({ id: g.row.id, matchId: g.match.id, userId: g.u.id, attempt, amountCents: 800 });
+  it("veralteter Kandidat (current_attempt hat sich geaendert): kein weiterer Versuch (Compare-and-set)", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    expect(await rotateAttempt(cand(g, 1), new Date())).toBe(true); // Versuch 2 angelegt
+    // der Versuch 2 scheitert sofort wieder, der Platz ist erneut bereit; ein VERALTETER Kandidat (Versuch 1) darf nicht noch einmal drehen
+    await db.update(paymentCharges).set({ status: "failed", failureCode: "card_declined" }).where(eq(paymentCharges.id, g.row.id));
+    await changeCard(g);
+    expect(await rotateAttempt(cand(g, 1), new Date())).toBe(false);
+    expect((await rowOf(g)).currentAttempt).toBe(2);
+    expect(await attemptsOf(g)).toHaveLength(1);
+  });
+  it("Fenster abgelaufen oder Termin vorverlegt: false, auch wenn der Kandidat schon ausgewaehlt war", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    await db.update(paymentCharges).set({ graceUntil: new Date(Date.now() - 1000) }).where(eq(paymentCharges.id, g.row.id));
+    expect(await rotateAttempt(cand(g), new Date())).toBe(false);
+    await db.update(paymentCharges).set({ graceUntil: new Date(Date.now() + 3_600_000) }).where(eq(paymentCharges.id, g.row.id));
+    await db.update(matches).set({ startsAt: new Date(Date.now() + 50 * 60_000) }).where(eq(matches.id, g.match.id));
+    expect(await rotateAttempt(cand(g), new Date())).toBe(false);
+  });
+  it("technischer Zustand (idempotency_mismatch): false", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    await db.update(paymentCharges).set({ failureCode: "idempotency_mismatch" }).where(eq(paymentCharges.id, g.row.id));
+    expect(await rotateAttempt(cand(g), new Date())).toBe(false);
+  });
+});
+
+describe("Sperrreihenfolge (Spiel zuerst)", () => {
+  it("eine parallele Absage haelt die Spielsperre: das Wiederabbuchen wartet und legt danach KEINEN neuen Versuch an", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const lockedP = new Promise<void>((resolve) => (locked = resolve));
+    const cancelTx = db.transaction(async (tx) => {
+      await tx.select().from(matches).where(eq(matches.id, g.match.id)).for("update");
+      await tx.update(matches).set({ cancelRequestedAt: new Date(), cancelReason: "parallel" }).where(eq(matches.id, g.match.id));
+      locked();
+      await held;
+    });
+    await lockedP;
+    let done = false;
+    const retry = retryChargesInWindow({ userId: g.u.id }).then((n) => {
+      done = true;
+      return n;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(done).toBe(false); // wartet auf die Spielsperre
+    release();
+    await cancelTx;
+    expect(await retry).toBe(0);
+    expect(createCalls()).toHaveLength(0);
+    expect(await rowOf(g)).toMatchObject({ status: "failed", currentAttempt: 1 });
+    expect(await attemptsOf(g)).toHaveLength(0);
   });
 });
 
@@ -264,7 +372,7 @@ describe("Struktur", () => {
     try {
       const g = await failedGame();
       await changeCard(g);
-      provider.setFound(g.match.id, g.u.id, [{ id: g.piId, status: "requires_action", amountCents: 800, currency: "eur", customerId: g.customerId, failureCode: null }]);
+      provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId });
       await retryChargesInWindow({ userId: g.u.id });
       expect(provider.calls.some((c) => c.method === "cancelPaymentIntent")).toBe(true);
       expect(createCalls()).toHaveLength(1);
