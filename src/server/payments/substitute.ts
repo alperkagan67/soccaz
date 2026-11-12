@@ -67,6 +67,8 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
 
     // 1) Fenster abgelaufen: der Platz wird frei
     for (const r of roots) {
+      // Doppelte Verteidigung: prepareReleases laesst technische Zustaende (kein Kartenfehler) nie in `allowed`; die Pruefung hier faengt sie unabhaengig davon ab (aequivalente Mutante
+      // bei einzelner Entfernung, Review R-T158)
       if (r.resolution !== null || !["failed", "requires_action"].includes(r.status) || r.graceUntil === null || !isCardProblemCode(r.failureCode)) continue;
       const end = effectiveGraceEnd(r.graceUntil, game.startsAt);
       if (end === null || end.getTime() > now.getTime()) continue;

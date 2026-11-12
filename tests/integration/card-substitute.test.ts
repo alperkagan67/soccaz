@@ -99,6 +99,15 @@ describe("Platz frei und Nachruecker (AC-8)", () => {
     expect(createCalls()).toHaveLength(1);
   });
 
+  it("Datenschutz: die Nachricht 'Dein Platz wurde vergeben' geht NUR an den Ersetzten, nie an Captains, Mitspieler oder den Gegner (Review R-T158)", async () => {
+    const g = await slotGame({ waitlist: 0 });
+    await runSubstitutes({ matchId: g.match.id });
+    const others = await notesFor([g.adminA.id, g.adminB.id, g.mate.id]);
+    expect(others.filter((n) => /Platz wurde vergeben/.test(n.title + n.body))).toHaveLength(0);
+    const own = await notesFor([g.root.id]);
+    expect(own.filter((n) => /Platz wurde vergeben/.test(n.title))).toHaveLength(1);
+  });
+
   it("die Reihenfolge ist die Beitrittszeit, nicht die Anlage- oder ID-Reihenfolge", async () => {
     const g = await slotGame({ waitlist: 3 });
     // der Letzte angelegte war am laengsten dabei
