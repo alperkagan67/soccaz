@@ -81,3 +81,20 @@ describe("audienceFor: Rolle des Betrachters zu einem Platz (eine Funktion für 
     expect(canSeeAnyStatus({ ...base, userId: null })).toBe(false);
   });
 });
+
+describe("cardDisplayFor: Fensterende (graceEnd) nur für Betroffenen und Captain/Veranstalter", () => {
+  const end = new Date("2026-11-20T12:00:00Z");
+  it("self und manager bekommen das Ende bei failed", () => {
+    for (const a of ["self", "manager"] as Audience[]) {
+      expect(cardDisplayFor(a, "failed", "card_declined", end)).toEqual({ status: "failed", reason: "card_declined", graceEnd: "2026-11-20T12:00:00.000Z" });
+    }
+  });
+  it("Mitspieler und Gäste nie (auch nicht als Teil der neutralen Anzeige)", () => {
+    expect(JSON.stringify(cardDisplayFor("member", "failed", "card_declined", end))).not.toMatch(/graceEnd|2026-11-20/);
+    expect(cardDisplayFor("guest", "failed", "card_declined", end)).toBeNull();
+  });
+  it("kein Ende bei anderen Status und ohne Fenster (Altzeile)", () => {
+    expect(cardDisplayFor("self", "card_ready", null, end)).toEqual({ status: "card_ready", reason: null });
+    expect(cardDisplayFor("self", "failed", "card_declined", null)).toEqual({ status: "failed", reason: "card_declined" });
+  });
+});

@@ -19,6 +19,7 @@ import { cardView } from "@/lib/card-view";
 import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/server/payments/card-status";
 import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
 import { chargeFailureText } from "@/lib/charge-failure-text";
+import { graceText } from "@/lib/grace";
 import { guestRosterView, initialsOf } from "@/lib/guest-roster";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
@@ -71,9 +72,14 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const storedCard = cardOn && user ? await getStoredCardDisplay(user.id) : null;
   // Eigener Fehlerzustand (nur der Betroffene bekommt ihn, siehe cardDisplayFor): Grund im Klartext; der Rohcode geht nicht an den Browser
   const myDisplay = user ? cardDisplays[user.id] : undefined;
-  const myFailure = myDisplay?.status === "failed" ? { text: chargeFailureText(myDisplay.reason) } : null;
+  const nowForWindow = new Date();
+  const windowOf = (d: { graceEnd?: string } | undefined) => {
+    const end = d?.graceEnd ? new Date(d.graceEnd) : null;
+    return { open: end !== null && end.getTime() > nowForWindow.getTime(), until: end !== null && end.getTime() > nowForWindow.getTime() ? graceText(end, nowForWindow) : null };
+  };
+  const myFailure = myDisplay?.status === "failed" ? { text: chargeFailureText(myDisplay.reason), until: windowOf(myDisplay).until, expired: !windowOf(myDisplay).open } : null;
   // Captain/Veranstalter/Admin: wen es betrifft und warum (nur Einträge mit Grund; der Betroffene selbst sieht oben seinen eigenen Block)
-  const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === "failed" && id !== user?.id).map(([id, d]) => ({ userId: id, name: participants.find((p) => p.userId === id)?.name ?? "Spieler", text: chargeFailureText(d.reason) }));
+  const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === "failed" && id !== user?.id).map(([id, d]) => ({ userId: id, name: participants.find((p) => p.userId === id)?.name ?? "Spieler", text: chargeFailureText(d.reason), until: windowOf(d).until }));
   const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
@@ -346,7 +352,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <ul className="space-y-1 text-sm">
             {failedForManager.map((f) => (
               <li key={f.userId} data-testid="charge-failed-player">
-                <strong>{f.name}</strong>: {f.text} Der Spieler kann in der Lobby seine Karte ändern.
+                <strong>{f.name}</strong>: {f.text} {f.until ? `Der Spieler kann in der Lobby seine Karte ändern (${f.until}).` : "Das Zeitfenster ist abgelaufen."}
               </li>
             ))}
           </ul>

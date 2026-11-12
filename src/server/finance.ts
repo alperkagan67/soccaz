@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matches, paymentCharges, paymentRefunds, users } from "@/db/schema";
+import { auditLog, matches, paymentCharges, paymentRefunds, users } from "@/db/schema";
 import { expenses, ledgerEntries } from "@/db/schema-finance";
 import { euroForCsv, toCsv } from "@/lib/csv";
 import { formatEuro } from "@/lib/money";
@@ -40,7 +40,21 @@ export async function getRefundAlerts(now: Date = new Date()) {
         sql`(${paymentCharges.failureCode} in ('unknown_outcome', 'after_start') or (${paymentCharges.paymentIntentId} is null and ${paymentCharges.attemptStartedAt} is not null and exists (select 1 from matches m where m.id = ${paymentCharges.matchId} and m.cancel_requested_at is not null)))`,
       ),
     );
-  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges };
+  // M3c-1: technische Zustaende, die KEIN Nachzahlfenster haben und kein Automat anfasst (Admin entscheidet): Schluesselkonflikt bei Stripe, Altzeilen (vor
+  // Migration 0039 fehlgeschlagen, ohne Fenster) und ein zweiter erfolgreicher PaymentIntent zur selben Zeile (Doppelabbuchung: manuell erstatten)
+  const idempotencyMismatches = await db
+    .select({ id: paymentCharges.id, matchId: paymentCharges.matchId })
+    .from(paymentCharges)
+    .where(and(eq(paymentCharges.status, "failed"), eq(paymentCharges.failureCode, "idempotency_mismatch")));
+  const legacyFailed = await db
+    .select({ id: paymentCharges.id, matchId: paymentCharges.matchId, code: paymentCharges.failureCode })
+    .from(paymentCharges)
+    .where(and(inArray(paymentCharges.status, ["failed", "requires_action"]), isNull(paymentCharges.graceUntil), sql`(${paymentCharges.failureCode} is null or ${paymentCharges.failureCode} not in ('idempotency_mismatch', 'match_closed', 'after_start', 'unknown_outcome'))`));
+  const duplicateSuccesses = await db
+    .select({ matchId: auditLog.entityId, at: auditLog.at })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, "charge.duplicate_success"), sql`${auditLog.at} > ${new Date(now.getTime() - 30 * 24 * 3_600_000)}`));
+  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses };
 }
 
 export type Period = { from: Date; to: Date };

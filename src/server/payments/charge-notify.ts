@@ -4,6 +4,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { matchParticipants, matches, users } from "@/db/schema";
 import { chargeFailureText, needsBankConfirmation } from "@/lib/charge-failure-text";
+import { graceText } from "@/lib/grace";
 import { formatEuro } from "@/lib/money";
 import { teamName } from "../names";
 import { notifyUsers, teamAdminIds } from "../notifications";
@@ -14,14 +15,6 @@ async function notBanned(tx: Tx, ids: string[]): Promise<string[]> {
   if (ids.length === 0) return [];
   const rows = await tx.select({ id: users.id }).from(users).where(and(inArray(users.id, ids), isNull(users.bannedAt)));
   return rows.map((r) => r.id);
-}
-
-/** "bis 21:30 Uhr" (Berliner Zeit), bei einem anderen Kalendertag mit Datum. */
-export function graceText(until: Date, now: Date = new Date()): string {
-  const tz = "Europe/Berlin";
-  const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: tz }).format(until);
-  const day = (d: Date) => new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", timeZone: tz }).format(d);
-  return day(until) === day(now) ? `bis ${time} Uhr` : `bis ${time} Uhr am ${day(until)}.`;
 }
 
 export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId: string; amountCents: number }, code: string | null, grace: Date | null = null): Promise<void> {

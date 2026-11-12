@@ -8,15 +8,15 @@ import type { CardStatus } from "@/db/schema";
  *  - guest: nicht angemeldet oder kein Teilnehmer: nichts je Person.
  */
 export type Audience = "self" | "manager" | "member" | "guest";
-export type CardDisplay = { status: CardStatus | "open"; reason: string | null };
+export type CardDisplay = { status: CardStatus | "open"; reason: string | null; /** ISO-Zeitpunkt: effektives Ende des Nachzahlfensters, nur Betroffener und Captain/Veranstalter (AC-12/AC-20) */ graceEnd?: string };
 
-export function cardDisplayFor(audience: Audience, status: CardStatus, failureCode: string | null): CardDisplay | null {
+export function cardDisplayFor(audience: Audience, status: CardStatus, failureCode: string | null, graceEnd: Date | null = null): CardDisplay | null {
   switch (audience) {
     case "guest":
       return null;
     case "self":
     case "manager":
-      return { status, reason: status === "failed" ? (failureCode ?? "unknown") : null };
+      return { status, reason: status === "failed" ? (failureCode ?? "unknown") : null, ...(status === "failed" && graceEnd ? { graceEnd: graceEnd.toISOString() } : {}) };
     case "member":
       return status === "failed" || status === "none" ? { status: "open", reason: null } : { status, reason: null };
     default:

@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, paymentCharges, paymentProfiles, type CardStatus } from "@/db/schema";
+import { matchParticipants, matches, paymentCharges, paymentProfiles, type CardStatus } from "@/db/schema";
+import { effectiveGraceEnd } from "@/lib/grace";
 import { cardDisplayFor, type Audience, type CardDisplay } from "@/lib/card-visibility";
 import { cardView } from "@/lib/card-view";
 
@@ -14,13 +15,14 @@ export type { CardStatus };
  */
 export async function getCardDisplays(matchId: string, audienceOf: (p: { userId: string; teamId: string | null }) => Audience): Promise<Record<string, CardDisplay>> {
   const rows = await db
-    .select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, failureCode: paymentCharges.failureCode })
+    .select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, failureCode: paymentCharges.failureCode, graceUntil: paymentCharges.graceUntil, startsAt: matches.startsAt })
     .from(matchParticipants)
+    .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
     .leftJoin(paymentCharges, and(eq(paymentCharges.matchId, matchParticipants.matchId), eq(paymentCharges.userId, matchParticipants.userId)))
     .where(eq(matchParticipants.matchId, matchId));
   const out: Record<string, CardDisplay> = {};
   for (const r of rows) {
-    const d = cardDisplayFor(audienceOf({ userId: r.userId, teamId: r.teamId }), r.cardStatus, r.failureCode);
+    const d = cardDisplayFor(audienceOf({ userId: r.userId, teamId: r.teamId }), r.cardStatus, r.failureCode, effectiveGraceEnd(r.graceUntil, r.startsAt));
     if (d) out[r.userId] = d;
   }
   return out;

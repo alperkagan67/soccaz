@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, like } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, notifications, paymentChargeAttempts, paymentCharges, paymentProfiles, stripeEvents } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
-import { GRACE_MS } from "@/lib/grace";
+import { GRACE_MS, inGraceWindow } from "@/lib/grace";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { handleStripeWebhook } from "@/server/payments/webhook";
@@ -76,12 +76,14 @@ describe("AC-6: Nachzahlfenster beginnt mit dem ersten Fehler", () => {
     expect(Math.abs(r.graceUntil!.getTime() - (g.match.startsAt.getTime() - H))).toBeLessThan(1000);
   });
 
-  it("weniger als 1 Stunde bis zum Anstoss: kein Fenster (grace_until null), der Platz ist trotzdem failed", async () => {
+  it("weniger als 1 Stunde bis zum Anstoss: kein Fenster (grace_until = Fehlzeitpunkt, sofort abgelaufen), der Platz ist trotzdem failed", async () => {
     const g = await game(0.9);
     await send(g, "payment_intent.payment_failed", "card_declined");
     const r = await rowOf(g);
     expect(r.status).toBe("failed");
-    expect(r.graceUntil).toBeNull();
+    expect(r.graceUntil).not.toBeNull(); // immer gesetzt: NULL bleibt den Altzeilen vorbehalten
+    expect(Math.abs(r.graceUntil!.getTime() - Date.now())).toBeLessThan(5000);
+    expect(inGraceWindow(r.graceUntil, g.match.startsAt, new Date())).toBe(false);
   });
 
   it("das Fenster wird nur beim ERSTEN Fehler gesetzt: requires_action -> failed oder ein Codewechsel verschieben es nicht", async () => {
@@ -116,6 +118,19 @@ describe("AC-6: Nachzahlfenster beginnt mit dem ersten Fehler", () => {
     const notes = await db.select().from(notifications).where(inArray(notifications.userId, [g.u.id, g.adminA.id]));
     expect(notes.length).toBeGreaterThan(0);
     for (const n of notes) expect(n.body).not.toMatch(/bis \d{1,2}[:.]\d{2} Uhr/);
+  });
+});
+
+describe("Technische Zustaende (kein Kartenfehler): kein Fenster, keine Spielernachricht", () => {
+  it("Schluesselkonflikt bei Stripe (idempotency_mismatch): Zeile failed, grace_until bleibt NULL, niemand wird benachrichtigt (Admin-Alarm)", async () => {
+    const g = await game(72);
+    await db.update(paymentCharges).set({ paymentIntentId: null }).where(eq(paymentCharges.id, g.row.id));
+    provider.setChargeOutcome(g.u.id, "idempotency_mismatch");
+    await runCharges(g.match.id);
+    const r = await rowOf(g);
+    expect(r).toMatchObject({ status: "failed", failureCode: "idempotency_mismatch", graceUntil: null });
+    const notes = await db.select().from(notifications).where(inArray(notifications.userId, [g.u.id, g.adminA.id, g.adminB.id]));
+    expect(notes).toHaveLength(0);
   });
 });
 
