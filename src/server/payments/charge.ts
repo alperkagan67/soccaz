@@ -221,6 +221,7 @@ export async function bookChargeFee(paymentIntentId: string): Promise<"booked" |
         reason: "Stripe-Gebühr (echt)",
       });
     }
+    // Hinweis: setzt updated_at. Unkritisch fuer das Wiederholen bei fremdem Anteil (charge-retry vergleicht updated_at mit der Karte des Zahlers): die Gebuehr gibt es nur bei erfolgreichen Zeilen, wiederholt werden nur failed/requires_action.
     await tx.update(paymentCharges).set({ feeCents: fee, updatedAt: new Date() }).where(eq(paymentCharges.id, fresh.id));
     return "booked" as const;
   });

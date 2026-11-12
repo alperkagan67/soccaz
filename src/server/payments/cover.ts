@@ -31,7 +31,9 @@ export function validCoversOf(seats: CoverSeat[], teamGame = true): Map<string, 
     if (!s.coveredByUserId || s.teamId === null || s.cardStatus === "card_ready") continue;
     const payer = by.get(s.coveredByUserId);
     if (!payer || payer.userId === s.userId || payer.teamId === null || payer.cardStatus !== "card_ready") continue;
-    if (teamGame && payer.teamId !== s.teamId) continue; // Teamspiel: nur im selben Team (auch nach einem Teamwechsel nicht mehr gueltig) // keine Kette: ein uebernommener Platz hat keine Karte und kann damit nie selbst Zahler sein
+    // Teamspiel: nur im selben Team (nach einem Teamwechsel nicht mehr gueltig)
+    if (teamGame && payer.teamId !== s.teamId) continue;
+    // Keine Kette ergibt sich von selbst: ein uebernommener Platz hat keine Karte (siehe oben) und kann damit nie selbst Zahler sein
     out.set(s.userId, payer.userId);
   }
   return out;
