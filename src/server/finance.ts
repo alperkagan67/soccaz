@@ -287,6 +287,26 @@ export async function exportLedgerCsv(period: Period): Promise<string> {
 
 export type Alert = { code: string; severity: "high" | "medium"; title: string; detail: string; href?: string };
 
+/**
+ * Kartenzahlungen (Vertrag 012, Review PR #107): die Alarmliste getRefundAlerts war nirgends sichtbar. Hier wird sie in Alarme fuer die Finanzseite uebersetzt (nur Anzahl und Spiel-IDs,
+ * keine Personendaten). Alles, was ein Automat NICHT loest und Geld oder einen haengenden Ablauf betrifft: Doppelabbuchung, fehlgeschlagene/ungeklaerte Erstattung, haengende Absage,
+ * ungeklaerte Abbuchung, Schluesselkonflikt, Altzeile ohne Fenster.
+ */
+export function cardAlertsFrom(ra: Awaited<ReturnType<typeof getRefundAlerts>>): Alert[] {
+  const out: Alert[] = [];
+  const add = (code: string, n: number, title: string, detail: string) => {
+    if (n > 0) out.push({ code, severity: "high", title: `${title} (${n})`, detail });
+  };
+  add("card:duplicate-success", ra.duplicateSuccesses.length, "Doppelte Abbuchung", "Zu einer Zahlung ging ein zweiter erfolgreicher PaymentIntent ein (letzte 30 Tage). Bitte pruefen, ob die Erstattung durch ist (Stripe-Dashboard).");
+  add("card:failed-refunds", ra.failedRefunds.length, "Erstattung fehlgeschlagen", "Eine Erstattung auf die Karte ist gescheitert und muss manuell geklaert werden.");
+  add("card:unknown-refunds", ra.unknownRefunds.length, "Erstattung mit unbekanntem Ausgang", "Der Ausgang einer Erstattung ist bei Stripe unklar.");
+  add("card:stuck-cancels", ra.stuckCancels.length, "Absage haengt", "Eine angeforderte Absage ist seit Stunden nicht abgeschlossen.");
+  add("card:uncleared-charges", ra.unclearedCharges.length, "Abbuchung ungeklaert", "Eine Abbuchung hat keinen bekannten Ausgang (unknown_outcome, nach dem Anstoss, Stripe-Suche ohne Treffer).");
+  add("card:idempotency-mismatch", ra.idempotencyMismatches.length, "Abbuchung mit Schluesselkonflikt", "Ein Versuch ist am Idempotenzschluessel gescheitert und wird von keinem Automaten angefasst.");
+  add("card:legacy-failed", ra.legacyFailed.length, "Altzeile ohne Nachzahlfenster", "Eine fehlgeschlagene Abbuchung aus der Zeit vor dem Nachzahlfenster wird nicht automatisch bearbeitet.");
+  return out;
+}
+
 export async function getAlerts(): Promise<Alert[]> {
   await connection();
   const alerts: Alert[] = [];
@@ -345,6 +365,7 @@ export async function getAlerts(): Promise<Alert[]> {
     );
     for (const m of noJob) alerts.push({ code: `unbooked-hall:${m.id}`, severity: "high", title: `Halle noch nicht gebucht: ${m.home} gegen ${m.away}`, detail: "Das Spiel findet in weniger als 48 Stunden statt.", href: "/admin/buchungen" });
   }
+  alerts.push(...cardAlertsFrom(await getRefundAlerts()));
   return alerts;
 }
 

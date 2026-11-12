@@ -212,8 +212,11 @@ export async function inspectKnownAttempts(c: Candidate, now: Date): Promise<"bo
  * Spiel. Liefert die Zahl der neu angelegten Versuche. Wiederholbar und parallel sicher. Ausloeser: Webhook 'Karte aendern' (sofort) UND der Job card-charges
  * (runCardCharges, alle 5 Minuten; holt Fehlschlaege des Webhook-Pfads nach).
  */
-export async function retryChargesInWindow(opts: { userId?: string; matchId?: string; now?: Date } = {}): Promise<number> {
+export async function retryChargesInWindow(opts: { userId?: string; matchId?: string; now?: Date; limit?: number; budgetMs?: number } = {}): Promise<number> {
   const now = opts.now ?? new Date();
+  // Begrenzung fuer den Webhook-Pfad (Review PR #107, niedrig): hoechstens `limit` Plaetze und ab `budgetMs` Laufzeit wird nichts Neues mehr begonnen; der Rest bleibt fuer den Job (alle 5 Minuten)
+  const startedAt = Date.now();
+  const overBudget = () => opts.budgetMs !== undefined && Date.now() - startedAt >= opts.budgetMs;
   const filters = eligibleFilters(now);
   if (opts.userId) filters.push(eq(paymentCharges.userId, opts.userId));
   if (opts.matchId) filters.push(eq(paymentCharges.matchId, opts.matchId));
@@ -227,7 +230,8 @@ export async function retryChargesInWindow(opts: { userId?: string; matchId?: st
 
   let started = 0;
   const toSend = new Set<string>();
-  for (const c of candidates) {
+  for (const c of opts.limit !== undefined ? candidates.slice(0, Math.max(0, opts.limit)) : candidates) {
+    if (overBudget()) break;
     // Ein Fehler bei EINER Zeile (Datenbankfehler, Lock-Timeout) stoppt die anderen nicht; der naechste Lauf holt sie nach
     try {
       if ((await inspectKnownAttempts(c, now)) !== "go") continue;
@@ -243,6 +247,7 @@ export async function retryChargesInWindow(opts: { userId?: string; matchId?: st
 
   // Phase 3 (Netz): die neuen pending-Versuche gehen den normalen Weg (Beanspruchen mit Lease, Senden, Verbuchen); auch hier isoliert je Spiel
   for (const matchId of toSend) {
+    if (overBudget()) break;
     try {
       await runCharges(matchId, now);
     } catch (error) {
