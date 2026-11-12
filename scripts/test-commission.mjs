@@ -9,6 +9,7 @@ const files = readdirSync("tests/integration")
 const r = spawnSync("npx", ["vitest", "run", "--config", "vitest.integration.config.mts", "--testTimeout=60000", ...files], {
   stdio: "inherit",
   shell: true,
-  env: { ...process.env, TEST_LEDGER_MODEL: "commission" },
+  env: { ...process.env, TEST_LEDGER_MODEL: "commission", STRIPE_SECRET_KEY: "" }, // nie ein echter Stripe-Schlüssel in Tests (wie beim Wegwerf-Lauf)
+  timeout: 15 * 60_000, // Gesamtzeitlimit: kein unbegrenzter Lauf (Speicherregel)
 });
 process.exit(r.status ?? 1);

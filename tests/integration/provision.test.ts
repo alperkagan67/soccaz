@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, paymentProfiles } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles } from "@/db/schema";
 import { ledgerEntries, matchCommissions, venues } from "@/db/schema-finance";
 import { bookCommission, reverseCommission, setVenueCommission } from "@/server/commission";
 import { post, trialBalance } from "@/server/ledger";
@@ -456,7 +456,9 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     expect(c).not.toContain(`commission-unset:${unset.id}`);
   });
 
-  it("Mischspiel (ein Spieler zahlt per Guthaben, die anderen per Karte): das Spiel wird NIE abgerechnet, also keine Provision und kein Bonus; der Guthaben-Anteil bleibt auf revenue, die Kartenanteile auf venue_payable", async () => {
+  // Übergangsregel bis M6a (Guthaben-Spiele laufen aus): Zahlt ein Spieler per Guthaben, hat er keine Karte; die Abbuchung (Phase A, cards_missing) belastet dann KEINE Karte (Alles-oder-nichts, AC-4),
+  // das Spiel gilt nie als gebucht (settledAt bleibt leer, ABSICHT, kein Testaufbau-Fehler) und bekommt keine Provision. Es liegt also nichts auf venue_payable.
+  it("Mischspiel (ein Spieler zahlt per Guthaben, die anderen per Karte): das Spiel wird NIE abgerechnet, also keine Provision und kein Bonus; der Guthaben-Anteil liegt auf revenue, es wird keine Karte belastet (cards_missing)", async () => {
     const v = await venue({ bonus: true });
     const g = await game(v.id);
     const walletPayer = g.adminB;
@@ -472,8 +474,16 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     const e = await entries(g.match.id);
     expect(e.some((x) => x.kind === "commission" || x.kind === "commission_bonus")).toBe(false);
     expect(await db.select().from(matchCommissions).where(eq(matchCommissions.matchId, g.match.id))).toHaveLength(0);
-    expect(e.filter((x) => x.creditAccount === "venue_payable").every((x) => x.kind === "match_share")).toBe(true);
-    expect(e.filter((x) => x.creditAccount === "revenue")).toHaveLength(1);
+    // Grund: Phase A der Abbuchung (cards_missing) belastet gar keine Karte, solange ein eingeteilter Spieler weder eine Karte noch einen Übernehmer hat (Alles-oder-nichts, AC-4)
+    expect(await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id))).toHaveLength(0);
+    expect(e.some((x) => x.creditAccount === "venue_payable" || x.debitAccount === "venue_payable")).toBe(false);
+    expect(e.filter((x) => x.creditAccount === "revenue")).toHaveLength(1); // nur der Guthaben-Anteil
+    // Gegenprobe (keine leere Behauptung): ohne den Guthabenzahler, mit Karte für alle, läuft derselbe Aufbau über venue_payable und bucht die Provision
+    const ok = await game(v.id);
+    await runCharges(ok.match.id);
+    const okEntries = await entries(ok.match.id);
+    expect(okEntries.filter((x) => x.creditAccount === "venue_payable" && x.kind === "match_share").length).toBeGreaterThan(0);
+    expect(okEntries.some((x) => x.kind === "commission")).toBe(true);
     expect((await trialBalance()).balanced).toBe(true);
   });
 
