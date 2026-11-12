@@ -295,8 +295,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             Halle {match.durationMin} Minuten: <strong>{formatEuro(payments.priceCents)}</strong>, geteilt durch alle Spieler.
           </p>
           <p className="text-muted">
-            {cardShareCents !== null ? <>Dein Anteil: <strong className="text-ink">{formatEuro(cardShareCents)}</strong> (Miete geteilt durch die eingeteilten Spieler). </> : null}
-            Ändert sich die Spielerzahl, ändert sich der Anteil. Dein Anteil wird zur Frist von deiner Karte abgebucht; bis dahin wird nichts abgebucht.
+            {user && cardShareCents !== null ? <>Dein Anteil: <strong className="text-ink">{formatEuro(cardShareCents)}</strong> (Miete geteilt durch die eingeteilten Spieler). </> : null}
+            Ändert sich die Spielerzahl, ändert sich der Anteil.{user ? " Dein Anteil wird zur Frist von deiner Karte abgebucht; bis dahin wird nichts abgebucht." : null}
           </p>
         </section>
       )}
