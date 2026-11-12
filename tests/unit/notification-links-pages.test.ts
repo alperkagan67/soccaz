@@ -19,6 +19,7 @@ vi.mock("@/server/finance", () => ({
   overview: async () => new Proxy({}, { get: () => 0 }),
   getAlerts: vi.fn(async () => rows.alerts),
   listMatchFinance: async () => [],
+  venueCommissionOverview: async () => [], // Finanzseite zeigt seit 009 M2 die Provision je Halle (hier nicht Gegenstand des Tests)
 }));
 const { default: NotificationsPage } = await import("../../src/app/app/benachrichtigungen/page");
 const { default: FinancePage } = await import("../../src/app/admin/finanzen/page");

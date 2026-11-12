@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { Pool } from "pg";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
+import { venues } from "@/db/schema-finance";
 import { cleanupTestData } from "../cleanup";
 
 const run = randomUUID().slice(0, 8);
@@ -42,20 +43,30 @@ export async function makeTeam(adminId: string, name: string) {
 }
 
 /** Zwei Teams und ein Spiel in der Lobby (in `hoursAhead` Stunden), optional mit festem Preis. */
-export async function makeMatch(opts: { legacy?: boolean; hoursAhead?: number; durationMin?: number; priceCents?: number | null; costCents?: number | null } = {}) {
+export async function makeMatch(opts: { ledgerModel?: "legacy" | "commission"; legacy?: boolean; hoursAhead?: number; durationMin?: number; priceCents?: number | null; costCents?: number | null } = {}) {
   const adminA = await makeUser("ha");
   const adminB = await makeUser("ga");
   const home = await makeTeam(adminA.id, "Heim");
   const away = await makeTeam(adminB.id, "Gast");
+  // Lauf im Provisionsmodell (TEST_LEDGER_MODEL=commission): dieselben Suiten pruefen den Produktivpfad (Abbuchung/Erstattung/Streit auf venue_payable); das Spiel bekommt dann eine Halle
+  const model = opts.ledgerModel ?? (process.env.TEST_LEDGER_MODEL === "commission" ? "commission" : "legacy");
+  let venueId: string | null = null;
+  if (model === "commission") {
+    const [v] = await db.insert(venues).values({ name: `E2E Test Halle ${Math.random().toString(36).slice(2, 8)}`, city: "Essen", source: "manual", commissionPercent: "10" }).returning({ id: venues.id });
+    venueId = v.id;
+  }
   const [m] = await db
     .insert(matches)
     .values({
+      venueId,
       homeTeamId: home.id,
       awayTeamId: away.id,
       startsAt: new Date(Date.now() + (opts.hoursAhead ?? 72) * 3_600_000),
       durationMin: opts.durationMin ?? 60,
       priceCents: opts.priceCents === undefined ? 8000 : opts.priceCents,
       costCents: opts.costCents === undefined ? 8000 : opts.costCents,
+      // Buchungsmodell (Vertrag 009 M2): Standard der Tests bleibt das ALTE Modell (revenue), damit bestehende Tests unveraendert gelten; Tests der Provision setzen ledgerModel: "commission"
+      ledgerModel: model,
       legacyShareModel: opts.legacy ?? false, // Standard: neues Modell (Preis ÷ Spielerzahl); legacy: true = Altspiel mit Reservierung
     })
     .returning();
@@ -84,3 +95,6 @@ export async function cleanup() {
   await pool?.end();
   pool = undefined;
 }
+
+/** Konto, auf das die Kartenabbuchung eines Spielanteils im aktuellen Testlauf fließt (revenue im alten Modell, venue_payable im Provisionsmodell, TEST_LEDGER_MODEL=commission). */
+export const SHARE_ACCOUNT = process.env.TEST_LEDGER_MODEL === "commission" ? "venue_payable" : "revenue";

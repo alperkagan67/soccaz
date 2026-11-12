@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/ActionForm";
 import { CITIES } from "@/lib/validation";
 import { formatEuro } from "@/lib/money";
-import { addPriceRuleAction, createVenueAction, setVenueManagerAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
+import { addPriceRuleAction, createVenueAction, setVenueCommissionAction, setVenueManagerAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
 import { canUser } from "@/lib/roles";
 import { requirePermission } from "@/server/session";
 import { listPriceRules, listVenues } from "@/server/venues";
@@ -55,6 +55,7 @@ async function Rules({ venueId }: { venueId: string | null }) {
 export default async function VenuesPage() {
   const user = await requirePermission("booking", "/admin/hallen");
   const canPrices = canUser(user, "finance");
+  const canCommission = canUser(user, "owner"); // Provision je Halle: nur Admin 1 (Vertrag 009 M2); Admin 2 sieht sie nicht
   const canAssign = canUser(user, "owner"); // Betreiber zuordnen nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht nur, ob einer zugewiesen ist
   const venues = await listVenues();
 
@@ -123,6 +124,29 @@ export default async function VenuesPage() {
                 <p className="text-xs text-muted">{[v.address, v.surface, v.contact, v.hasShowers && "Duschen", v.hasParking && "Parkplätze"].filter(Boolean).join(" · ")}</p>
                 <Rules venueId={v.id} />
                 <PriceForm venueId={v.id} canEdit={canPrices} />
+                {canCommission && (
+                  <ActionForm action={setVenueCommissionAction.bind(null, v.id)} submit="Provision übernehmen" className="space-y-2" keepOnSuccess>
+                    <p className="text-sm font-semibold">Provision dieser Halle</p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div>
+                        <label className="label" htmlFor={`prov-${v.id}`}>Satz in Prozent der Hallenmiete</label>
+                        <input id={`prov-${v.id}`} name="percent" inputMode="decimal" className="field" defaultValue={String(v.commissionPercent)} data-testid="commission-percent" />
+                      </div>
+                      <label className="flex items-center gap-2 text-sm sm:mt-6">
+                        <input type="checkbox" name="bonus" defaultChecked={v.commissionBonusEnabled} /> 10er-Bonus
+                      </label>
+                      <div>
+                        <label className="label" htmlFor={`provr-${v.id}`}>Grund der Änderung</label>
+                        <input id={`provr-${v.id}`} name="reason" className="field" placeholder="Pflichtfeld" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="label" htmlFor={`provm-${v.id}`}>Rechnungsadresse (E-Mail der Halle)</label>
+                      <input id={`provm-${v.id}`} name="invoiceEmail" type="email" className="field" defaultValue={v.invoiceEmail ?? ""} placeholder="rechnung@beispiel.de (leer = keine)" />
+                    </div>
+                    <p className="text-xs text-muted">Wirkt nur auf künftige Buchungen. 0 bis 100, höchstens zwei Nachkommastellen.</p>
+                  </ActionForm>
+                )}
                 {canAssign ? (
                   <ActionForm action={setVenueManagerAction.bind(null, v.id)} submit={v.managerUserId ? "Betreiber ändern" : "Betreiber zuweisen"} className="flex items-end gap-2" keepOnSuccess>
                     <div className="flex-1">
