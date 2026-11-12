@@ -1,6 +1,6 @@
 # 009 – Admin-Bereich, Einnahmemodell und Buchhaltung
 Status: Freigegeben (2026-11-11)
-Version: 2 (v2 2026-11-11: durch Vertrag 012: Provision inklusive Zahlungsabwicklung, 10 % Startwert ohne Untergrenze, Stripe-Gebühren und Warnung im Admin, Erstattung auf die Karte; davor v1)
+Version: 3 (v3 2026-11-12: Entscheide t9 zu Admin-Absage ohne Oberfläche und Alarm-Empfängern, AC-18; v2 2026-11-11: durch Vertrag 012: Provision inklusive Zahlungsabwicklung, 10 % Startwert ohne Untergrenze, Stripe-Gebühren und Warnung im Admin, Erstattung auf die Karte; davor v1)
 
 ## Ziel
 Soccaz ist Vermittler. Spieler zahlen per Karte (Stripe, Vertrag 012) den Hallenpreis geteilt durch die Spielerzahl (aufgerundet), ohne Gebühr für Spieler. Soccaz verdient über eine Provision der Halle (Prozent pro Buchung und/oder 10er-Bonus), die nur Admin 1 pro Halle einstellt. Die Provision ist "Provision inklusive Zahlungsabwicklung": Soccaz trägt die Stripe-Gebühren aus der Provision. Der Admin-Bereich zeigt je Halle und je Spiel Provision, Stripe-Gebühren und Rest und warnt bei einer Halle im Minus. Der Admin-Bereich bekommt zwei Rollen (Admin 1 Betreiber, Admin 2 Mitarbeiter), ein unveränderbares Beweisprotokoll für Hallenanfragen, ein Eingriffsprotokoll und eine Buchhaltung (doppelte Buchung, lückenlose Rechnungsnummern, Kalendermodus, DATEV-Export, KI-geprüfte Belege, Sicherung), die nur Admin 1 sieht.
@@ -59,9 +59,10 @@ Soccaz ist Vermittler. Spieler zahlen per Karte (Stripe, Vertrag 012) den Hallen
 | AC-15 | Übersicht Admin | Aufruf | Kennzahlen: Provisionsumsatz, Anzahl Buchungen, Auslastung pro Halle; pro Halle Spiele mit Datum/Preis und Zähler; je Halle und je Spiel Provision, Stripe-Gebühren und Rest; Warnung, wenn die Provision die echten Stripe-Gebühren (Karte, 0,25 € je Spieler, Auszahlung) nicht deckt oder eine Halle im Minus ist | tests/e2e/admin.spec.ts |
 | AC-16 | Spieler mit Konto | DSGVO-Export/Löschung | Export vollständig; Löschung anonymisiert, Buchungsdaten bleiben ohne Personenbezug | tests/integration/account.test.ts |
 | AC-17 | Sicherung | Täglicher Lauf | Verschlüsseltes externes Ziel, Restore-Test dokumentiert | docs/BETRIEB.md, scripts/restore-test.sh |
+| AC-18 | Admin-Alarm (Zahlungsstreit, Doppelerfolge, Aufgaben) | Wird ausgelöst, sobald die Rolle `owner` existiert (nach M1) | Nur Admin 1 (`owner`) bekommt ihn, nie Admin 2 und kein anderer Nutzer mit Rolle `admin`; bis M1 (die Rolle `owner` gibt es noch nicht) geht er an alle nicht gesperrten Nutzer mit Rolle `admin` (derzeit identisch mit Admin 1) | tests/integration/admin-alarm-empfaenger.test.ts |
 
 ## Meilensteine (seriell, Schema-Änderungen nie parallel)
-- M1: Rollen (owner/admin), Rechteprüfung, Eingriffsprotokoll, Absagevorschlag (AC-1, 2, 8, 9)
+- M1: Rollen (owner/admin), Rechteprüfung, Eingriffsprotokoll, Absagevorschlag mit Oberfläche (Admin 2 schlägt vor, Admin 1 sagt ab und erstattet, Pflicht-Begründung, Eingriffsprotokoll) (AC-1, 2, 8, 9, 18); die Oberfläche wird nicht vor der Grundlage 013 M2 und der Admin-Oberfläche 013 M7 gebaut
 - M2: Provision pro Halle, 10er-Zähler, Rechnungen, USt-Schalter, Anzeige Provision/Stripe-Gebühren/Rest und Minus-Warnung (AC-3 bis 6, 10, 15); die Stripe-Gebühren-Anzeige hängt an 012 M2 (Abbuchung)
 - M3: Beweisprotokoll mit PDF (AC-7)
 - M4: Kalender, Auswertungen, DATEV-CSV (AC-11)
@@ -90,6 +91,10 @@ Security-Review Pflicht (Auth, Rollen, Zahlungen, Schlüssel). Keine Schlüssel/
 ## Weitere Entscheidungen (Nutzer, 2026-11-10)
 - 10 % ist nur der Startwert für neue Hallen; Admin 1 trägt pro Halle den vereinbarten Wert ein.
 - Rechnungen: PDF im Admin und automatisch per Mail an die Halle (Mailadresse der Halle im Hallen-Datensatz, Versand protokolliert, Wiederholung bei Fehler).
+
+## Entscheide t9 (2026-11-12)
+- Die Admin-Absage ohne Oberfläche reicht vor dem Go-live NICHT. Absagevorschlag (Admin 2), Absage mit Erstattung (Admin 1), Pflicht-Begründung und Eingriffsprotokoll mit Oberfläche gehören zu M1 und sind Go-live-MUSS (`docs/loop/GO-LIVE-AUDIT.md`, G20-012). Der E2E zu AC-10 im M4-Plan (Absage durch Admin 1 mit Erstattung) bleibt bis dahin `fixme`; der Server-Test deckt die Funktion.
+- Alarm-Empfänger: bis M1 (die Rolle `owner` gibt es noch nicht) an alle nicht gesperrten Nutzer mit Rolle `admin` (derzeit identisch mit Admin 1), danach NUR an `owner` (Admin 1). Nachweis: AC-18 mit Test in M1.
 
 ## End-to-End-Nachweis
 `tests/e2e/admin.spec.ts`: Admin 1 stellt Provision ein, ein Spiel wird gebucht, Provision im Hauptbuch, Monatsrechnung als PDF mit lückenloser Nummer, Admin 2 sieht Finanzen nicht und schlägt eine Absage vor, Admin 1 bestätigt, Eingriffe im Protokoll.
