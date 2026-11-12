@@ -79,6 +79,17 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
+  async retrieveDispute(disputeId: string): Promise<Record<string, unknown> | null> {
+    if (!/^dp_[A-Za-z0-9_]{1,64}$/.test(disputeId)) return null;
+    try {
+      const d = await this.stripe().disputes.retrieve(disputeId, { expand: ["balance_transactions"] }, SETUP_REQUEST);
+      return d as unknown as Record<string, unknown>;
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return null;
+      throw error;
+    }
+  }
+
   async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {
     if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return null;
     try {
@@ -171,13 +182,23 @@ export class StripeProvider implements PaymentProvider {
     await this.stripe().paymentMethods.detach(id);
   }
 
+  async deleteCustomer(customerId: string): Promise<void> {
+    if (!/^cus_[A-Za-z0-9_]{1,64}$/.test(customerId)) return; // keine gueltige Kunden-ID: es gibt nichts zu loeschen
+    try {
+      await this.stripe().customers.del(customerId, {}, SETUP_REQUEST);
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return; // gibt es nicht (mehr): erledigt
+      throw error;
+    }
+  }
+
   constructWebhookEvent(rawBody: string, signature: string | null): ProviderEvent {
     const secret = this.config.webhookSecret ?? process.env.STRIPE_CARD_WEBHOOK_SECRET; // eigenes Secret dieses Endpunkts; STRIPE_WEBHOOK_SECRET gehört der alten Route /api/webhooks/stripe
     if (!secret) throw new PaymentsUnavailableError();
     if (!signature) throw new WebhookSignatureError();
     try {
       const e = this.stripe().webhooks.constructEvent(rawBody, signature, secret);
-      return { id: e.id, type: e.type, object: e.data.object as unknown as Record<string, unknown> };
+      return { id: e.id, type: e.type, object: e.data.object as unknown as Record<string, unknown>, created: typeof e.created === "number" ? e.created : undefined };
     } catch {
       throw new WebhookSignatureError();
     }
