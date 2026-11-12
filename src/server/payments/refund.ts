@@ -12,7 +12,7 @@ import { db } from "@/db";
 import { matches, paymentCharges, paymentProfiles, paymentRefunds, users } from "@/db/schema";
 import { audit } from "../audit";
 import { post } from "../ledger";
-import { shareAccountFor } from "../commission";
+import { chargeAccountFor } from "../commission";
 import { cancelMatchTx } from "../lobby";
 import { DomainError } from "../teams";
 import type { Tx } from "../tx";
@@ -90,7 +90,7 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   if (r.outcome === "succeeded") {
     if (!r.refundId) return ignore("missing_refund_id");
     await post(tx, {
-      debit: { account: await shareAccountFor(tx, row.matchId) }, // Altspiel revenue, neues Modell venue_payable
+      debit: { account: await chargeAccountFor(tx, row.matchId, row.paymentIntentId ?? charge.paymentIntentId) }, // dorthin zurück, wo die Abbuchung gelandet ist (revenue oder venue_payable)
       credit: { account: "clearing" },
       amountCents: row.amountCents,
       kind: "refund",

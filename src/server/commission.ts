@@ -1,7 +1,7 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
-import { matchCommissions, venues } from "@/db/schema-finance";
+import { ledgerEntries, matchCommissions, venues } from "@/db/schema-finance";
 import { bonusNumber, commissionCents, parseCommissionPercent, percentFromDb } from "@/lib/commission";
 import { audit } from "./audit";
 import { getSetting } from "./settings";
@@ -22,9 +22,23 @@ export function shareAccount(model: "legacy" | "commission"): Account {
   return model === "commission" ? "venue_payable" : "revenue";
 }
 
+/** Provisionsfähig: Modell commission UND Halle UND Hallenmiete bekannt. Sonst fließt der Anteil wie bisher auf revenue (kein Geld ohne Halle als Verbindlichkeit, Review t1d Punkt 1). */
+export function commissionEligible<T extends { ledgerModel: "legacy" | "commission"; venueId: string | null; costCents: number | null }>(m: T): m is T & { venueId: string; costCents: number } {
+  return m.ledgerModel === "commission" && Boolean(m.venueId) && m.costCents !== null;
+}
+
 export async function shareAccountFor(tx: Tx, matchId: string): Promise<Account> {
-  const [m] = await tx.select({ model: matches.ledgerModel }).from(matches).where(eq(matches.id, matchId));
-  return shareAccount(m?.model ?? "legacy");
+  const [m] = await tx.select({ ledgerModel: matches.ledgerModel, venueId: matches.venueId, costCents: matches.costCents }).from(matches).where(eq(matches.id, matchId));
+  return m && commissionEligible(m) ? "venue_payable" : "revenue";
+}
+
+/** Konto der ursprünglichen Abbuchung (aus dem Hauptbuch), damit eine Erstattung immer von dort zurückgeht, wo das Geld liegt – auch wenn sich Halle/Miete danach geändert haben. */
+export async function chargeAccountFor(tx: Tx, matchId: string, paymentIntentId: string | null): Promise<Account> {
+  if (paymentIntentId) {
+    const [e] = await tx.select({ account: ledgerEntries.creditAccount }).from(ledgerEntries).where(eq(ledgerEntries.idempotencyKey, `charge:${paymentIntentId}`));
+    if (e) return e.account as Account;
+  }
+  return shareAccountFor(tx, matchId);
 }
 
 /**
@@ -71,7 +85,7 @@ export async function countedGames(tx: Pick<typeof db, "select">, venueId: strin
  * ein ausgelöster Bonus bleibt auch bei späterer Absage, Entscheid t9 P1/P3). Idempotent über die Buchungsschlüssel.
  */
 export async function bookCommission(tx: Tx, match: MatchRow): Promise<{ booked: boolean }> {
-  if (match.ledgerModel !== "commission" || !match.venueId || match.costCents === null) return { booked: false }; // Altspiel, Halle unbekannt oder ohne Hallenmiete: keine Provision
+  if (!commissionEligible(match)) return { booked: false }; // Altspiel, Halle unbekannt oder ohne Hallenmiete: keine Provision
   const [venue] = await tx.select().from(venues).where(eq(venues.id, match.venueId)).for("update"); // Hallensperre vor dem Zählen (Rennen um den 10. Platz)
   if (!venue) return { booked: false };
   const [existing] = await tx.select({ id: matchCommissions.id }).from(matchCommissions).where(eq(matchCommissions.matchId, match.id));

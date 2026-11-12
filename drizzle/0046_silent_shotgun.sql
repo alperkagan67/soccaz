@@ -62,7 +62,7 @@ CREATE TABLE "match_commissions" (
 -- Vertrag 009 M2 (Entscheid t9 P4): bestehende Spiele behalten das alte Buchungsmodell ('legacy'), Spiele ab Einfuehrung bekommen 'commission'
 ALTER TABLE "matches" ADD COLUMN "ledger_model" text DEFAULT 'legacy' NOT NULL;--> statement-breakpoint
 ALTER TABLE "matches" ALTER COLUMN "ledger_model" SET DEFAULT 'commission';--> statement-breakpoint
-ALTER TABLE "venues" ADD COLUMN "commission_percent" numeric(5, 2) DEFAULT '10' NOT NULL;--> statement-breakpoint
+ALTER TABLE "venues" ADD COLUMN "commission_percent" numeric(5, 2) DEFAULT '0' NOT NULL;--> statement-breakpoint
 ALTER TABLE "venues" ADD COLUMN "commission_bonus_enabled" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "venues" ADD COLUMN "invoice_email" text;--> statement-breakpoint
 ALTER TABLE "invoice_deliveries" ADD CONSTRAINT "invoice_deliveries_invoice_id_invoices_id_fk" FOREIGN KEY ("invoice_id") REFERENCES "public"."invoices"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -105,3 +105,19 @@ DROP TRIGGER IF EXISTS invoice_lines_append_only ON invoice_lines;
 CREATE TRIGGER invoice_lines_append_only
   BEFORE UPDATE OR DELETE ON invoice_lines
   FOR EACH ROW EXECUTE FUNCTION forbid_append_only_mutation();
+--> statement-breakpoint
+-- matches.ledger_model ist unveraenderlich (ein Spiel wechselt das Buchungsmodell nie, sonst stimmen Abbuchung und Erstattung nicht); Ausnahme nur Wartung: set local socaz.ledger_maintenance = 'on'
+CREATE OR REPLACE FUNCTION forbid_ledger_model_change() RETURNS trigger AS $$
+BEGIN
+  IF NEW.ledger_model IS DISTINCT FROM OLD.ledger_model AND coalesce(current_setting('socaz.ledger_maintenance', true), '') <> 'on' THEN
+    RAISE EXCEPTION 'matches.ledger_model ist unveraenderlich.';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS matches_ledger_model_immutable ON matches;
+--> statement-breakpoint
+CREATE TRIGGER matches_ledger_model_immutable
+  BEFORE UPDATE OF ledger_model ON matches
+  FOR EACH ROW EXECUTE FUNCTION forbid_ledger_model_change();

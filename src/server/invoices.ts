@@ -73,7 +73,7 @@ async function createForVenue(venueId: string, period: string, until: Date, s: I
     const net = lines.reduce((sum, l) => sum + l.amountCents, 0);
     if (net <= 0) return { created: false };
 
-    const year = now.getUTCFullYear();
+    const year = Number(period.slice(0, 4)); // Rechnungsjahr = Abrechnungsjahr des Zeitraums, nicht das Ausstellungsjahr (S2 offen)
     await tx.insert(invoiceNumberCounters).values({ year, last: 0 }).onConflictDoNothing();
     const [counter] = await tx.select().from(invoiceNumberCounters).where(eq(invoiceNumberCounters.year, year)).for("update");
     const n = counter.last + 1;
@@ -99,13 +99,14 @@ async function createForVenue(venueId: string, period: string, until: Date, s: I
 export async function createInvoicesForMonth(period: string, now: Date = new Date()): Promise<{ created: number; venues: number }> {
   if (!isPeriod(period)) throw new DomainError("Ungültiger Zeitraum (JJJJ-MM).");
   const range = monthPeriod(period)!;
-  const s = await invoiceSettings();
   const res = await db.execute(sql`
     select distinct mc.venue_id
     from ledger_entries l join match_commissions mc on mc.match_id = l.match_id
     where l.kind in ('commission', 'commission_bonus') and l.at < ${range.to}
       and not exists (select 1 from invoice_lines il where il.ledger_entry_id = l.id)`);
   const venueIds = (res.rows as { venue_id: string }[]).map((r) => r.venue_id);
+  if (venueIds.length === 0) return { created: 0, venues: 0 }; // nichts abzurechnen: keine Pflichtangaben nötig, kein Alarm
+  const s = await invoiceSettings();
   let created = 0;
   for (const venueId of venueIds) if ((await createForVenue(venueId, period, range.to, s, now)).created) created += 1;
   return { created, venues: venueIds.length };
@@ -171,42 +172,61 @@ export async function loadInvoiceData(invoiceId: string): Promise<InvoiceData | 
   };
 }
 
-/** Versand der Rechnungen (Outbox): PDF erzeugen und per Mail an die Adresse der Halle; Fehler werden wiederholt (höchstens 5 Versuche), ohne Adresse oder ohne Mail-Dienst bleibt die Rechnung im Admin abrufbar. */
+/** Sperrzeit einer in Arbeit genommenen Zeile: ein zweiter Lauf fasst sie nicht an; stürzt der erste ab, wird sie danach erneut versucht. */
+const LEASE_MS = 10 * 60_000;
+const RETRY_SKIPPED_MS = 24 * 3600_000;
+
+/**
+ * Versand der Rechnungen (Outbox): PDF erzeugen und per Mail an die Adresse der Halle. Die Zeile wird VOR dem Senden reserviert (Versuch gezählt, nächster Versuch erst nach der Sperrzeit),
+ * damit zwei Läufe nie dieselbe Rechnung senden. Ein Fehler bei EINER Rechnung (PDF, Daten, Mail) wird gezählt und mit Wartezeit wiederholt (höchstens 5 Versuche) und blockiert die
+ * folgenden nicht. "skipped" (keine Adresse, kein Mail-Dienst) ist nicht endgültig: nach einem Tag wird erneut geprüft, der Versuch zählt nicht.
+ */
 export async function deliverInvoices(now: Date = new Date(), limit = 20): Promise<number> {
   const due = await db.transaction(async (tx) => {
     const rows = await tx.execute(sql`
-      select invoice_id from invoice_deliveries where status = 'pending' and next_try_at <= ${now} order by next_try_at limit ${limit} for update skip locked`);
-    return (rows.rows as { invoice_id: string }[]).map((r) => r.invoice_id);
+      select invoice_id, status, attempts from invoice_deliveries where status in ('pending', 'skipped') and next_try_at <= ${now} order by next_try_at limit ${limit} for update skip locked`);
+    const list = rows.rows as { invoice_id: string; status: string; attempts: number }[];
+    for (const r of list) {
+      await tx.update(invoiceDeliveries).set({ attempts: r.attempts + 1, nextTryAt: new Date(now.getTime() + LEASE_MS), updatedAt: new Date() }).where(eq(invoiceDeliveries.invoiceId, r.invoice_id));
+    }
+    return list.map((r) => ({ id: r.invoice_id, attempts: r.attempts + 1 }));
   });
   let sent = 0;
-  for (const id of due) {
-    const [inv] = await db.select().from(invoices).where(eq(invoices.id, id));
-    if (!inv) continue;
-    const [venue] = await db.select({ email: venues.invoiceEmail }).from(venues).where(eq(venues.id, inv.venueId));
-    const finish = (status: "sent" | "skipped" | "failed" | "pending", error: string | null, attempts: number, next: Date) =>
-      db.update(invoiceDeliveries).set({ status, lastError: error, attempts, nextTryAt: next, updatedAt: new Date() }).where(eq(invoiceDeliveries.invoiceId, id));
-    const [d] = await db.select().from(invoiceDeliveries).where(eq(invoiceDeliveries.invoiceId, id));
-    if (!venue?.email) {
-      await finish("skipped", "Keine Rechnungsadresse bei der Halle hinterlegt.", d.attempts, now);
-      continue;
-    }
-    const data = await loadInvoiceData(id);
-    if (!data) continue;
-    const { renderInvoicePdf } = await import("./invoice-pdf");
-    const pdf = await renderInvoicePdf(data);
-    const result = await sendEmail({
-      to: venue.email,
-      subject: `Rechnung ${data.number} (${data.period})`,
-      text: `Im Anhang findest du die Rechnung ${data.number} über die Provision für ${data.period}.`,
-      attachments: [{ filename: `${data.number}.pdf`, contentBase64: pdf.toString("base64") }],
-    });
-    if (result.status === "sent") {
-      await finish("sent", null, d.attempts + 1, now);
-      sent += 1;
-    } else if (result.status === "skipped") await finish("skipped", result.detail ?? null, d.attempts, now);
-    else {
-      const attempts = d.attempts + 1;
-      await finish(attempts >= MAX_ATTEMPTS ? "failed" : "pending", result.detail ?? "Versand fehlgeschlagen", attempts, new Date(now.getTime() + attempts * 15 * 60_000));
+  for (const { id, attempts } of due) {
+    const finish = (status: "sent" | "skipped" | "failed" | "pending", error: string | null, n: number, next: Date) =>
+      db.update(invoiceDeliveries).set({ status, lastError: error, attempts: n, nextTryAt: next, updatedAt: new Date() }).where(eq(invoiceDeliveries.invoiceId, id));
+    const fail = (detail: string) => finish(attempts >= MAX_ATTEMPTS ? "failed" : "pending", detail, attempts, new Date(now.getTime() + attempts * 15 * 60_000));
+    try {
+      const [inv] = await db.select().from(invoices).where(eq(invoices.id, id));
+      if (!inv) {
+        await fail("Rechnung nicht gefunden.");
+        continue;
+      }
+      const [venue] = await db.select({ email: venues.invoiceEmail }).from(venues).where(eq(venues.id, inv.venueId));
+      if (!venue?.email) {
+        await finish("skipped", "Keine Rechnungsadresse bei der Halle hinterlegt.", attempts - 1, new Date(now.getTime() + RETRY_SKIPPED_MS));
+        continue;
+      }
+      const data = await loadInvoiceData(id);
+      if (!data) {
+        await fail("Rechnungsdaten nicht lesbar.");
+        continue;
+      }
+      const { renderInvoicePdf } = await import("./invoice-pdf");
+      const pdf = await renderInvoicePdf(data);
+      const result = await sendEmail({
+        to: venue.email,
+        subject: `Rechnung ${data.number} (${data.period})`,
+        text: `Im Anhang findest du die Rechnung ${data.number} über die Provision für ${data.period}.`,
+        attachments: [{ filename: `${data.number}.pdf`, contentBase64: pdf.toString("base64") }],
+      });
+      if (result.status === "sent") {
+        await finish("sent", null, attempts, now);
+        sent += 1;
+      } else if (result.status === "skipped") await finish("skipped", result.detail ?? null, attempts - 1, new Date(now.getTime() + RETRY_SKIPPED_MS));
+      else await fail(result.detail ?? "Versand fehlgeschlagen");
+    } catch (error) {
+      await fail(error instanceof Error ? error.message.slice(0, 300) : "Unbekannter Fehler");
     }
   }
   return sent;

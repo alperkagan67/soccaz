@@ -50,6 +50,7 @@ async function commissionStructure(pool, withOldMatch) {
   check((await pool.query("select 1 from information_schema.columns where table_name = 'venues' and column_name in ('commission_percent', 'commission_bonus_enabled')")).rowCount === 2, "venues: Provisionsspalten");
   check((await pool.query("select 1 from pg_constraint where conname = 'venues_commission_percent_range'")).rowCount === 1, "CHECK Satz 0 bis 100");
   check((await pool.query("select 1 from pg_trigger where tgname = 'match_commissions_append_only'")).rowCount === 1, "match_commissions ist nur anhängend (Trigger)");
+  check((await pool.query("select 1 from pg_trigger where tgname = 'matches_ledger_model_immutable'")).rowCount === 1, "matches.ledger_model ist unveränderlich (Trigger)");
   const enums = (await pool.query("select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname in ('ledger_account', 'ledger_kind')")).rows.map((r) => r.enumlabel);
   check(["venue_payable", "commission", "commission_bonus"].every((x) => enums.includes(x)), "Hauptbuch kennt venue_payable, commission, commission_bonus");
   let code = "";
@@ -60,7 +61,7 @@ async function commissionStructure(pool, withOldMatch) {
   }
   check(code === "23514", "Satz über 100 wird von der Datenbank abgelehnt");
   const v = await pool.query("insert into venues (name, city) values ('Standard', 'Essen') returning commission_percent");
-  check(Number(v.rows[0].commission_percent) === 10, "neue Halle: Standardsatz 10");
+  check(Number(v.rows[0].commission_percent) === 0, "Halle ohne Angabe (Altbestand, OSM-Import): Satz 0 (die Vorgabe 10 setzt createVenue)");
   if (withOldMatch) {
     const m = await pool.query("select ledger_model from matches where home_team_id in (select id from teams where slug = 'mig-a')");
     check(m.rows[0]?.ledger_model === "legacy", "bestehendes Spiel bleibt im alten Buchungsmodell (legacy)");

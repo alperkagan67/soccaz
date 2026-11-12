@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentProfiles } from "@/db/schema";
 import { ledgerEntries, matchCommissions, venues } from "@/db/schema-finance";
@@ -10,6 +10,10 @@ import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { adminCancelMatch } from "@/server/payments/refund";
 import { setSetting } from "@/server/settings";
+import { recordExpense } from "@/server/booking";
+import { getAlerts, manualRefund } from "@/server/finance";
+import { creditWallet, walletBalance } from "@/server/ledger";
+import { payShare } from "@/server/lobby";
 import { createPrivateGame } from "@/server/privategame";
 import { createVenue } from "@/server/venues";
 import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
@@ -239,7 +243,10 @@ describe("Gesamtablauf im Provisionsmodell: keine Doppelzählung (S1 Variante A,
   it("Altspiel (legacy): Abbuchung weiter auf revenue, keine Provision", async () => {
     const v = await venue();
     const g = await game(v.id);
-    await db.update(matches).set({ ledgerModel: "legacy" }).where(eq(matches.id, g.match.id));
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('socaz.ledger_maintenance', 'on', true)`); // Wartungsausnahme: sonst ist ledger_model unveränderlich
+      await tx.update(matches).set({ ledgerModel: "legacy" }).where(eq(matches.id, g.match.id));
+    });
     await runCharges(g.match.id);
     const e = await entries(g.match.id);
     expect(e.filter((x) => x.kind === "match_share").every((x) => x.creditAccount === "revenue")).toBe(true);
@@ -322,5 +329,130 @@ describe("Provisionssatz einstellen (AC-5): nur Admin 1, Pflicht-Begründung, We
     const b = await createVenue(owner.id, { name: `Vorgabe B ${nid("x")}`, city: "Essen" });
     expect(Number(b.commissionPercent)).toBe(15);
     await setSetting(owner.id, "tournament_commission_percent", 10);
+  });
+});
+
+describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgabe, Alarm", () => {
+  it("Punkt 1: Kartenspiel OHNE Halle: die Abbuchung fließt auf revenue (nie als Verbindlichkeit ohne Halle), keine Provision, Hauptbuch ausgeglichen", async () => {
+    const v = await venue();
+    const g = await game(v.id);
+    await db.update(matches).set({ venueId: null }).where(eq(matches.id, g.match.id));
+    await runCharges(g.match.id);
+    const e = await entries(g.match.id);
+    const shares = e.filter((x) => x.kind === "match_share");
+    expect(shares.length).toBe(g.n);
+    expect(shares.every((x) => x.creditAccount === "revenue")).toBe(true);
+    expect(e.some((x) => x.creditAccount === "venue_payable" || x.debitAccount === "venue_payable" || x.kind === "commission")).toBe(false);
+    expect((await trialBalance()).balanced).toBe(true);
+    // Erstattung geht dorthin zurück, wo die Abbuchung liegt (revenue)
+    await adminCancelMatch(g.admin.id, g.match.id, "Test");
+    const all = await entries(g.match.id);
+    expect(all.filter((x) => x.kind === "refund").every((x) => x.debitAccount === "revenue")).toBe(true);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Punkt 1b: Kartenspiel ohne Hallenmiete (cost_cents leer): ebenfalls revenue, keine Provision", async () => {
+    const v = await venue();
+    const g = await game(v.id);
+    await db.update(matches).set({ costCents: null }).where(eq(matches.id, g.match.id));
+    await runCharges(g.match.id);
+    const e = await entries(g.match.id);
+    expect(e.filter((x) => x.kind === "match_share").every((x) => x.creditAccount === "revenue")).toBe(true);
+    expect(e.some((x) => x.kind === "commission" || x.creditAccount === "venue_payable")).toBe(false);
+  });
+
+  it("Punkt 7: Teilerfolg (ein Spieler scheitert): Abbuchungen bleiben auf venue_payable, das Spiel ist nicht gebucht, KEINE Provision", async () => {
+    const v = await venue({ bonus: true });
+    const g = await game(v.id);
+    provider.setChargeOutcome(g.adminB.id, "declined");
+    await runCharges(g.match.id);
+    const [m] = await db.select().from(matches).where(eq(matches.id, g.match.id));
+    expect(m.settledAt).toBeNull();
+    const e = await entries(g.match.id);
+    expect(e.filter((x) => x.kind === "match_share").length).toBe(g.n - 1);
+    expect(e.filter((x) => x.kind === "match_share").every((x) => x.creditAccount === "venue_payable")).toBe(true);
+    expect(e.some((x) => x.kind === "commission" || x.kind === "commission_bonus")).toBe(false);
+    expect(await db.select().from(matchCommissions).where(eq(matchCommissions.matchId, g.match.id))).toHaveLength(0);
+  });
+
+  it("Punkt 7 (C3): Hallenmiete als Ausgabe wird bei einem Kartenspiel im Provisionsmodell abgelehnt (nichts gebucht), bei Altspiel und bei Spiel ohne Abbuchung nicht", async () => {
+    const v = await venue();
+    const g = await game(v.id);
+    await runCharges(g.match.id);
+    const before = (await entries(g.match.id)).length;
+    await expect(recordExpense(g.admin.id, { matchId: g.match.id, kind: "venue", amountCents: 6000 })).rejects.toThrow(/Provisionsmodell/);
+    expect((await entries(g.match.id)).length).toBe(before); // die Transaktion wurde zurückgerollt
+    const noCharge = await commissionMatch(v.id);
+    await expect(recordExpense(g.admin.id, { matchId: noCharge.id, kind: "venue", amountCents: 5000 })).resolves.toBeTruthy();
+    const old = await commissionMatch(v.id, 8000, "legacy");
+    await expect(recordExpense(g.admin.id, { matchId: old.id, kind: "venue", amountCents: 5000 })).resolves.toBeTruthy();
+    await expect(recordExpense(g.admin.id, { matchId: g.match.id, kind: "other", amountCents: 100 })).resolves.toBeTruthy(); // andere Ausgaben bleiben möglich
+  });
+
+  it("Punkt 2: Guthaben-Pfade bleiben auf revenue (Hin UND Zurück), Ausnahme-Erstattung berührt venue_payable nie; Kartenzahler ist nicht ausnahme-erstattbar", async () => {
+    const v = await venue();
+    // Guthaben-Spiel im Provisionsmodell: Zahlung wallet -> revenue, Ausnahme-Erstattung revenue -> wallet
+    const w = await makeMatch({ legacy: true, priceCents: 4000, costCents: 4000, ledgerModel: "commission" });
+    await db.update(matches).set({ venueId: v.id }).where(eq(matches.id, w.match.id));
+    const payer = w.adminA;
+    await db.transaction((tx) => creditWallet(tx, payer.id, { from: "bank", amountCents: 5000, kind: "adjustment", idempotencyKey: nid("fund") }));
+    await setSetting(null, "payments_enabled", true);
+    try {
+      await payShare(payer.id, w.match.id);
+    } finally {
+      await setSetting(null, "payments_enabled", false);
+    }
+    const paid = (await entries(w.match.id)).filter((x) => x.kind === "match_share");
+    expect(paid.length).toBeGreaterThan(0);
+    expect(paid.every((x) => x.debitAccount === "wallet" && x.creditAccount === "revenue")).toBe(true);
+    const before = await walletBalance(db, payer.id);
+    await manualRefund(w.adminB.id, w.match.id, payer.id, 100, "Test-Erstattung");
+    expect(await walletBalance(db, payer.id)).toBe(before + 100);
+    const ref = (await entries(w.match.id)).filter((x) => x.kind === "refund");
+    expect(ref).toMatchObject([{ debitAccount: "revenue", creditAccount: "wallet", amountCents: 100 }]);
+    expect((await entries(w.match.id)).some((x) => x.creditAccount === "venue_payable" || x.debitAccount === "venue_payable")).toBe(false);
+    expect((await trialBalance()).balanced).toBe(true);
+
+    // Kartenzahler: kein Guthaben-Eintrag, also netto 0: die Ausnahme-Erstattung ist abgelehnt und kann nie aus revenue/venue_payable ins Guthaben buchen
+    const g = await game(v.id);
+    await runCharges(g.match.id);
+    await expect(manualRefund(g.admin.id, g.match.id, g.adminA.id, 100, "Test")).rejects.toThrow(/höchstens 0,00/);
+  });
+
+  it("Punkt 3 (C4): matches.ledger_model ist unveränderlich; nur die Wartungsausnahme darf es ändern", async () => {
+    const v = await venue();
+    const m = await commissionMatch(v.id);
+    await expect(db.update(matches).set({ ledgerModel: "legacy" }).where(eq(matches.id, m.id))).rejects.toThrow();
+    expect((await db.select().from(matches).where(eq(matches.id, m.id)))[0].ledgerModel).toBe("commission");
+    await expect(db.update(matches).set({ ledgerModel: "commission" }).where(eq(matches.id, m.id))).resolves.toBeDefined(); // gleicher Wert ist keine Änderung
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('socaz.ledger_maintenance', 'on', true)`);
+      await tx.update(matches).set({ ledgerModel: "legacy" }).where(eq(matches.id, m.id));
+    });
+    expect((await db.select().from(matches).where(eq(matches.id, m.id)))[0].ledgerModel).toBe("legacy");
+  });
+
+  it("Entscheid t9: bestehende Hallen starten mit Satz 0 (Spaltenvorgabe), neue Hallen mit der Vorgabe aus der Einstellung", async () => {
+    const [raw] = await db.insert(venues).values({ name: `Altbestand ${nid("v")}`, city: "Essen", source: "osm" }).returning();
+    expect(Number(raw.commissionPercent)).toBe(0);
+    const owner = await makeUser("pr7", "owner");
+    const fresh = await createVenue(owner.id, { name: `Neu ${nid("v")}`, city: "Essen" });
+    expect(Number(fresh.commissionPercent)).toBe(10);
+  });
+
+  it("Entscheid t9: Alarm 'Provision nicht gesetzt' für Partnerhallen mit Satz 0 ohne Protokolleintrag; weg nach bewusstem Setzen (auch 0), nicht für Nicht-Partner und nicht bei Satz > 0", async () => {
+    const owner = await makeUser("pr8", "owner");
+    const mk = async (o: { partner: boolean; percent: string }) => (await db.insert(venues).values({ name: `Alarm ${nid("v")}`, city: "Essen", source: "manual", isPartner: o.partner, commissionPercent: o.percent }).returning())[0];
+    const unset = await mk({ partner: true, percent: "0" });
+    const noPartner = await mk({ partner: false, percent: "0" });
+    const withRate = await mk({ partner: true, percent: "12" });
+    const codes = async () => (await getAlerts()).map((a) => a.code);
+    let c = await codes();
+    expect(c).toContain(`commission-unset:${unset.id}`);
+    expect(c).not.toContain(`commission-unset:${noPartner.id}`);
+    expect(c).not.toContain(`commission-unset:${withRate.id}`);
+    await setVenueCommission(owner.id, unset.id, { percent: 0, bonusEnabled: false, reason: "bewusst 0" });
+    c = await codes();
+    expect(c).not.toContain(`commission-unset:${unset.id}`);
   });
 });

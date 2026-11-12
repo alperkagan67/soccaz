@@ -18,9 +18,11 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
-const mail = vi.hoisted(() => ({ result: { status: "sent" } as { status: "sent" | "skipped" | "failed"; detail?: string }, calls: [] as { to: string; subject: string; text: string; attachments?: { filename: string; contentBase64: string }[] }[] }));
+const mail = vi.hoisted(() => ({ gate: null as Promise<void> | null, throwFor: null as string | null, result: { status: "sent" } as { status: "sent" | "skipped" | "failed"; detail?: string }, calls: [] as { to: string; subject: string; text: string; attachments?: { filename: string; contentBase64: string }[] }[] }));
 vi.mock("@/server/providers/email", () => ({
   sendEmail: async (m: (typeof mail.calls)[number]) => {
+    if (mail.gate) await mail.gate;
+    if (mail.throwFor && m.subject.includes(mail.throwFor)) throw new Error("PDF/Mail-Fehler (Test)");
     mail.calls.push(m);
     return mail.result;
   },
@@ -55,6 +57,8 @@ beforeEach(async () => {
   Object.assign(process.env, env);
   mail.result = { status: "sent" };
   mail.calls.length = 0;
+  mail.gate = null;
+  mail.throwFor = null;
   invoiceHooks.afterNumber = async () => {};
   await setSetting(null, "vat_mode", "19");
   await setSetting(null, "vat_note", "");
@@ -286,6 +290,65 @@ describe("Versand (Outbox mit Wiederholung)", () => {
     mail.result = { status: "sent" };
     await deliverInvoices(new Date(Date.now() + 1000), 50);
     expect((await deliveryOf(noMail.id)).status).toBe("skipped");
+  });
+
+  it("Punkt 4: zwei gleichzeitige Läufe senden dieselbe Rechnung nur einmal (Zeile ist beim Senden reserviert)", async () => {
+    const inv = await invoiceFor();
+    let release: () => void = () => {};
+    mail.gate = new Promise<void>((r) => (release = r));
+    const now = new Date();
+    const first = deliverInvoices(now, 50); // hängt im Senden
+    await new Promise((r) => setTimeout(r, 400));
+    const second = await deliverInvoices(now, 50); // fasst die reservierte Zeile nicht an
+    expect(second).toBe(0);
+    mail.gate = null;
+    release();
+    expect(await first).toBeGreaterThanOrEqual(1);
+    expect(mail.calls.filter((c) => c.subject.includes(inv.number))).toHaveLength(1);
+    expect((await deliveryOf(inv.id)).status).toBe("sent");
+  });
+
+  it("Punkt 4: ein Fehler bei EINER Rechnung (PDF/Mail wirft) wird gezählt und mit Wartezeit wiederholt und blockiert die folgenden nicht", async () => {
+    const a = await invoiceFor("a@test.invalid");
+    const b = await invoiceFor("b@test.invalid");
+    mail.throwFor = a.number;
+    const now = new Date();
+    await deliverInvoices(now, 50);
+    const da = await deliveryOf(a.id);
+    expect(da).toMatchObject({ status: "pending", attempts: 1 });
+    expect(da.nextTryAt.getTime()).toBeGreaterThan(now.getTime());
+    expect(da.lastError).toBeTruthy();
+    expect((await deliveryOf(b.id)).status).toBe("sent");
+    mail.throwFor = null;
+  });
+
+  it("Punkt 4: 'skipped' ist nicht endgültig: nach Eintragen der Adresse wird die Rechnung später gesendet, der übersprungene Versuch zählt nicht", async () => {
+    const inv = await invoiceFor(null);
+    await deliverInvoices(new Date(), 50);
+    expect(await deliveryOf(inv.id)).toMatchObject({ status: "skipped", attempts: 0 });
+    await db.update(venues).set({ invoiceEmail: "spaeter@test.invalid" }).where(eq(venues.id, inv.venueId));
+    await deliverInvoices(new Date(Date.now() + 25 * 3600_000), 50);
+    expect(await deliveryOf(inv.id)).toMatchObject({ status: "sent", attempts: 1 });
+    expect(mail.calls.some((c) => c.to === "spaeter@test.invalid")).toBe(true);
+  });
+});
+
+describe("Rechnungsnummer und Erzeugung (Review-Fixes)", () => {
+  it("Punkt 6: das Jahr der Nummer kommt aus dem Abrechnungszeitraum, nicht aus dem Ausstellungsdatum", async () => {
+    const v = await venue();
+    await booked(v.id);
+    await createInvoicesForMonth("2099-12", new Date("2100-01-02T03:00:00Z"));
+    const [inv] = await invoicesOf(v.id);
+    expect(inv.number).toMatch(/^RE-2099-\d{6}$/);
+    await db.execute(sql`delete from invoice_number_counters where year = 2099`);
+  });
+
+  it("Punkt 5: ohne offene Provisionsbuchungen wirft die Erzeugung auch bei fehlenden Pflichtangaben nicht (kein monatlicher Alarm); mit offenen Buchungen schon", async () => {
+    await setSetting(null, "vat_mode", "");
+    await expect(createInvoicesForMonth("2000-01")).resolves.toEqual({ created: 0, venues: 0 });
+    const v = await venue();
+    await booked(v.id);
+    await expect(createInvoicesForMonth(period)).rejects.toThrow();
   });
 });
 

@@ -4920,7 +4920,7 @@
           "type": "numeric(5, 2)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'10'"
+          "default": "'0'"
         },
         "commission_bonus_enabled": {
           "name": "commission_bonus_enabled",

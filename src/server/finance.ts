@@ -354,6 +354,16 @@ export async function getAlerts(): Promise<Alert[]> {
     if (h.minus) alerts.push({ code: `venue-minus:${h.venueId}`, severity: "medium", title: `Halle im Minus: ${h.name}`, detail: `Provision ${formatEuro(h.commissionCents)} reicht nicht für die Zahlungsgebühren ${formatEuro(h.feesCents)} (Rest ${formatEuro(h.restCents)}).` });
   }
 
+  // Partnerhallen mit Satz 0, der nie bewusst gesetzt wurde (kein Protokolleintrag venue.commission): keine stille Provision auf Altbestand (Entscheid t9), aber sichtbar
+  const unset = rowsOf<{ id: string; name: string }>(
+    await db.execute(sql`
+      select v.id, v.name from venues v
+      where v.is_partner and v.active and v.commission_percent = 0
+        and not exists (select 1 from audit_log a where a.action = 'venue.commission' and a.entity = 'venue' and a.entity_id = v.id::text)
+      order by v.name limit 20`),
+  );
+  for (const h of unset) alerts.push({ code: `commission-unset:${h.id}`, severity: "medium", title: `Provision nicht gesetzt: ${h.name}`, detail: "Partnerhalle mit Satz 0 %, der nie eingestellt wurde. Satz unter Hallen eintragen (nur Admin 1).", href: "/admin/hallen" });
+
   const negative = rowsOf<{ name: string; balance: number; user_id: string }>(
     await db.execute(sql`
       select u.id as user_id, u.name,

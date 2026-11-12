@@ -57,7 +57,7 @@ export const venues = pgTable(
   active: boolean("active").notNull().default(true),
   managerUserId: uuid("manager_user_id"), // Hallenbetreiber: bestätigt Spielanfragen für diese Halle
   // Vertrag 009 M2: Provision je Halle (nur Admin 1). Prozent der Hallenmiete (0 bis 100, höchstens 2 Nachkommastellen); der 10er-Bonus ist kumulierbar (Entscheid t9).
-  commissionPercent: numeric("commission_percent", { precision: 5, scale: 2 }).notNull().default("10"),
+  commissionPercent: numeric("commission_percent", { precision: 5, scale: 2 }).notNull().default("0"),
   commissionBonusEnabled: boolean("commission_bonus_enabled").notNull().default(false),
   invoiceEmail: text("invoice_email"), // Adresse für die Monatsrechnung (Vertrag 009 M2); ohne Adresse bleibt die Rechnung im Admin abrufbar
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -12,7 +12,7 @@ import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { setSetting } from "@/server/settings";
-import { addPlayer, cleanup, makeMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, SHARE_ACCOUNT } from "./helpers";
 
 // Vertrag 012, M3c-1 (AC-7): Nachzahlen im Fenster. Ein neuer Versuch bekommt einen neuen Schluessel (charge:<m>:<u>:<n>) und einen neuen PaymentIntent, aber
 // erst nach der Stripe-Suche nach dem alten; nie zwei offene Versuche, nie zwei Buchungen.
@@ -91,7 +91,7 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
     expect(hist[0]).toMatchObject({ attemptNo: 1, idempotencyKey: g.base, paymentIntentId: g.piId, status: "failed", failureCode: "card_declined" });
     const entries = await ledgerOf(g);
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({ debitAccount: "clearing", creditAccount: "revenue", amountCents: 800, kind: "match_share" });
+    expect(entries[0]).toMatchObject({ debitAccount: "clearing", creditAccount: SHARE_ACCOUNT, amountCents: 800, kind: "match_share" });
   });
 
   it("vorher sucht es bei Stripe nach dem alten Versuch; ist er dort inzwischen erfolgreich, wird verbucht und NICHT neu abgebucht", async () => {
