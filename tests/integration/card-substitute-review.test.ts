@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, notifications, paymentCharges, stripeEvents, teamMembers } from "@/db/schema";
 import { getRefundAlerts } from "@/server/finance";
@@ -260,5 +260,33 @@ describe("Beitritt waehrend der Freigabe (Zusatz 4)", () => {
     expect(subst.filled).toBe(1);
     expect(join).toMatch(/Abbuchung|gesperrt/);
     expect(await seatOf(g, newcomer.id)).toBeUndefined();
+  });
+});
+
+describe("R-T183: Auswaertsteam und nicht eingerichtete Konten", () => {
+  it("ersetzter Platz im AUSWAERTSteam: der Nachruecker rueckt ins Auswaertsteam, die neutrale Kader-Nachricht geht an den Captain dieses Teams, nicht an den des Heimteams", async () => {
+    const g = await slotGame(provider, { waitlist: 1 });
+    await db.update(matchParticipants).set({ teamId: g.match.awayTeamId }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.root.id)));
+    await runSubstitutes({ matchId: g.match.id });
+    const seat = (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.waiters[0].id))))[0];
+    expect(seat.teamId).toBe(g.match.awayTeamId);
+    const rootRow = (await db.select().from(paymentCharges).where(eq(paymentCharges.id, g.rootRow.id)))[0];
+    expect(rootRow.slotTeamId).toBe(g.match.awayTeamId);
+    const notes = async (id: string) => (await db.select().from(notifications).where(eq(notifications.userId, id))).filter((n) => n.title === "Kader geändert").length;
+    expect(await notes(g.adminB.id)).toBe(1); // Captain des Auswaertsteams
+    expect(await notes(g.adminA.id)).toBe(0); // nicht der des Heimteams
+  });
+
+  it("nicht eingerichtetes Konto (ohne onboarded_at oder ohne age_confirmed_at) ist kein Kandidat: Platz bleibt unbesetzt, kein Stripe-Aufruf", async () => {
+    for (const col of ["onboarded_at", "age_confirmed_at"]) {
+      const g = await slotGame(provider, { waitlist: 1 });
+      await db.execute(sql.raw(`update users set ${col} = null where id = '${g.waiters[0].id}'`));
+      const res = await runSubstitutes({ matchId: g.match.id });
+      expect(res.filled, col).toBe(0);
+      expect(res.exhausted, col).toContain(g.rootRow.id); // kein Kandidat und auch keiner, der nur gerade gehalten wird: der Platz ist erschoepft (zweite Abfrage filtert ebenso)
+      const seat = (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.waiters[0].id))))[0];
+      expect(seat.teamId, col).toBeNull();
+      expect(provider.calls.filter((c) => c.method === "createPaymentIntent" && (c.args as { metadata: { userId: string } }).metadata.userId === g.waiters[0].id), col).toHaveLength(0);
+    }
   });
 });
