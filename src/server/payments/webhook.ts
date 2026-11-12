@@ -1,6 +1,6 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
+import { matchParticipants, matches, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
 import { applyChargeInTx, bookChargeFee, type ChargeReport } from "./charge";
 import { applyRefundInTx, finalizeCancel, type RefundReport } from "./refund";
 import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ProviderEvent } from "./provider";
@@ -121,6 +121,18 @@ async function processEvent(event: ProviderEvent) {
       const intentId = str(event.object.id);
       const customer = str(event.object.customer);
       if (intentId && customer && card) {
+        // Sperrreihenfolge wie überall: ERST die betroffenen Spiele (sortiert nach id, FOR SHARE: eine parallele Absage/Abbuchung wartet oder hat schon gewonnen), DANN die
+        // Platzzeilen (sortiert), ZULETZT Setup-Intent und Zahlungsprofil des Nutzers. Welche Spiele das sind, steht ohne Sperre fest (Plätze mit failed + das Spiel des Intents);
+        // die Bedingungen werden nach dem Sperren im UPDATE erneut geprüft.
+        const [probe] = await tx.select({ userId: paymentSetupIntents.userId, matchId: paymentSetupIntents.matchId }).from(paymentSetupIntents).where(eq(paymentSetupIntents.id, intentId));
+        if (probe) {
+          const mine = probe.matchId ? or(eq(matchParticipants.cardStatus, "failed"), eq(matchParticipants.matchId, probe.matchId)) : eq(matchParticipants.cardStatus, "failed");
+          const gameIds = (await tx.select({ id: matchParticipants.matchId }).from(matchParticipants).where(and(eq(matchParticipants.userId, probe.userId), mine))).map((g) => g.id).sort();
+          if (gameIds.length > 0) {
+            await tx.select({ id: matches.id }).from(matches).where(inArray(matches.id, gameIds)).orderBy(asc(matches.id)).for("share");
+            await tx.select({ id: matchParticipants.matchId }).from(matchParticipants).where(and(eq(matchParticipants.userId, probe.userId), inArray(matchParticipants.matchId, gameIds))).orderBy(asc(matchParticipants.matchId)).for("update");
+          }
+        }
         const [intent] = await tx.select().from(paymentSetupIntents).where(eq(paymentSetupIntents.id, intentId)).for("update");
         const [profile] = intent ? await tx.select().from(paymentProfiles).where(eq(paymentProfiles.userId, intent.userId)).for("update") : [];
         // Nur wenn der SetupIntent uns gehört und zum Kunden dieses Nutzers passt
@@ -131,6 +143,13 @@ async function processEvent(event: ProviderEvent) {
             .set({ paymentMethodId: card.id, cardBrand: card.brand, cardLast4: card.last4, mandateText: intent.mandateText, mandateAcceptedAt: intent.mandateAcceptedAt, updatedAt: new Date() })
             .where(eq(paymentProfiles.userId, intent.userId));
           await tx.update(paymentSetupIntents).set({ status: "succeeded" }).where(eq(paymentSetupIntents.id, intentId));
+          // Eine neue Karte (auch aus dem Konto, ohne Spiel) macht ALLE Plätze dieses Nutzers wieder bereit, deren Abbuchung fehlgeschlagen ist, in offenen Spielen ohne
+          // angeforderte Absage. Plätze ohne Karte (none) brauchen weiter das Mandat je Platz in der Lobby. Abgebucht wird hier nichts (Wiederabbuchen im Fenster: M3c).
+          const openGames = tx.select({ id: matches.id }).from(matches).where(and(inArray(matches.status, ["lobby", "confirmed"]), isNull(matches.cancelRequestedAt)));
+          await tx
+            .update(matchParticipants)
+            .set({ cardStatus: "card_ready" })
+            .where(and(eq(matchParticipants.userId, intent.userId), eq(matchParticipants.cardStatus, "failed"), inArray(matchParticipants.matchId, openGames)));
           if (intent.matchId) {
             await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, intent.matchId), eq(matchParticipants.userId, intent.userId), inArray(matchParticipants.cardStatus, ["none", "failed"]))); // nie aus charge_pending/charged zurücksetzen
           }
