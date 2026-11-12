@@ -14,6 +14,9 @@ import { db } from "@/db";
 import { getCurrentUser } from "@/server/session";
 import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
 import { fakeCardAllowed } from "@/server/payments/mode";
+import { getCoverView } from "@/server/payments/cover-view";
+import { chargeAmount } from "@/server/payments/charge-run";
+import { DEFAULT_LOCALE, translate } from "@/lib/i18n";
 import { cardModeActive } from "@/server/wallet";
 import { cardView } from "@/lib/card-view";
 import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/server/payments/card-status";
@@ -36,6 +39,7 @@ import { windowSlots } from "@/lib/matchmaking";
 import { SchedulingPanel } from "./SchedulingPanel";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
+import { CoverButton, ReleaseCover } from "./CoverShare";
 
 export const metadata: Metadata = { title: "Lobby", robots: { index: false } };
 
@@ -85,6 +89,14 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
   const myFinalTeamId = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null; // Team, für das der Betrachter bestätigen darf
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
+  // "Anteil übernehmen" (012 M3c-3b): was wer sieht, entscheidet der SERVER je Betrachter (cover-view.ts, Plan Abschnitt 3 bis 5); die Namen kommen aus der Lobby-Liste
+  const cover = cardOn
+    ? await getCoverView(match.id, { userId: user?.id ?? null, platformAdmin: v.platformAdmin, adminOf: v.adminOf })
+    : { canCover: [] as string[], covering: null as string | null, releasable: false, covered: false, pairs: [] as { targetUserId: string; payerUserId: string }[] };
+  const coverPost = chargeAmount(payments.priceCents ?? null, cardShareCents);
+  const coverAmounts = coverPost !== null ? { own: formatEuro(coverPost), target: formatEuro(coverPost), total: formatEuro(coverPost * 2), estimated: !finalDone } : null;
+  const coverMandate = translate(DEFAULT_LOCALE, "cover.mandate.v1.entwurf"); // Entwurf, Rechtstext durch Anwalt
+  const seatName = (id: string) => participants.find((p) => p.userId === id)?.name ?? "Mitspieler";
   // Haben beide Captains bestätigt, ist die Spielübersicht die Hauptseite für alle Beteiligten
   if (finalDone && match.status !== "cancelled" && user && (v.participant || v.membershipTeamId || v.platformAdmin)) redirect(`/lobby/${match.id}/uebersicht`);
   const winChanceHome = Math.round(expectedScore(strength[match.homeId].elo, strength[match.awayId].elo) * 100);
@@ -359,6 +371,34 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         </section>
       )}
 
+      {(cover.covering || cover.covered || cover.pairs.length > 0) && (
+        <section className="card space-y-2" data-testid="cover-status">
+          {cover.covering && (
+            <div className="space-y-2" data-testid="cover-covering">
+              <p className="font-semibold">Du übernimmst den Anteil von {seatName(cover.covering)}.</p>
+              <p className="text-sm text-muted">
+                Zur Frist wird er zusätzlich von deiner Karte abgebucht.{cover.releasable ? " Bis dahin kannst du zurücknehmen." : " Zurücknehmen ist nicht mehr möglich."}
+              </p>
+              {cover.releasable && <ReleaseCover matchId={match.id} targetUserId={cover.covering} />}
+            </div>
+          )}
+          {cover.covered && (
+            <p className="font-semibold" data-testid="cover-covered">
+              Dein Anteil wird übernommen. Du musst nichts tun.
+            </p>
+          )}
+          {cover.pairs.length > 0 && (
+            <ul className="space-y-1 text-sm" data-testid="cover-pairs">
+              {cover.pairs.map((c) => (
+                <li key={c.targetUserId}>
+                  <strong>{seatName(c.payerUserId)}</strong> übernimmt den Anteil von <strong>{seatName(c.targetUserId)}</strong>.
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {canSeeLights && (cardOn ? <CardLightLegend /> : <LightLegend paymentsOn={payments.enabled} />)}
       <div className="grid gap-3 sm:grid-cols-2">
         {teamsView.map((t) => (
@@ -379,7 +419,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
                     {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                   </span>
                   <span className="flex items-center gap-2">
-                    {cardOn ? (cardDisplays[p.userId] ? <CardLight status={cardDisplays[p.userId].status} /> : null) : canSeeLights ? <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel /> : null}
+                    {cardOn ? (cardDisplays[p.userId] ? <CardLight status={cardDisplays[p.userId].covered && !canAdminTeam(t.id) ? "covered" : cardDisplays[p.userId].status} /> : null) : canSeeLights ? <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel /> : null}
+                    {cover.canCover.includes(p.userId) && <CoverButton matchId={match.id} targetUserId={p.userId} targetName={p.name} amounts={coverAmounts} mandateText={coverMandate} />}
                     {active && p.userId !== user?.id && canAdminTeam(t.id) && (
                       <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={[]} canUnassign={isPrivate && !p.ready && !p.paid} />
                     )}

@@ -50,7 +50,7 @@ export async function validCovers(tx: Pick<Tx, "select">, matchId: string): Prom
 }
 
 /** Ist der Countdown "Lobby schliesst" abgelaufen oder sind schon Abbuchungszeilen angelegt? Dann ist keine Uebernahme mehr moeglich. Unter der Spielsperre. */
-async function coverClosed(tx: Tx, match: typeof matches.$inferSelect, now: Date): Promise<boolean> {
+export async function coverClosed(tx: Pick<Tx, "select">, match: typeof matches.$inferSelect, now: Date): Promise<boolean> {
   if (!["lobby", "confirmed"].includes(match.status) || match.settledAt !== null || match.cancelRequestedAt !== null || match.startsAt.getTime() <= now.getTime()) return true;
   if (await hasChargeRows(tx, match.id)) return true;
   return joinClosedByTime(match.startsAt, await leadStart(tx, match), now, match.createdAt);

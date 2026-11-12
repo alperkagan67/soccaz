@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { matches, users } from "@/db/schema";
 import { signOut } from "@/auth";
 import { isOldEnough } from "@/lib/age";
 import { ActionState, onboardingSchema, requestSchema, teamSchema, zodToState } from "@/lib/validation";
@@ -13,6 +13,9 @@ import { audit } from "./audit";
 import { requireLoggedIn, requireUser } from "./session";
 import { InsufficientFunds } from "./ledger";
 import * as lobby from "./lobby";
+import { chargeAmount } from "./payments/charge-run";
+import { releaseCover, takeOverShare } from "./payments/cover";
+import { notifyCoverReleased, notifyCoverTaken } from "./payments/cover-notify";
 import { adminCancelMatch } from "./payments/refund";
 import * as results from "./results";
 import { NOTIFICATION_TYPES } from "@/lib/notification-types";
@@ -310,4 +313,28 @@ export async function markNoShowAction(matchId: string, userId: string, value: b
     throw error;
   }
   revalidatePath(`/spiele/${matchId}`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// "Anteil übernehmen" (Vertrag 012, M3c-3b). Der Übernehmer (payerId) ist IMMER der angemeldete Nutzer aus der Sitzung (lobbyAction), nie ein Wert vom Client. Die Einwilligung zum
+// Mandatszusatz wird SERVERSEITIG erzwungen (takeOverShare lehnt consent !== true ab); der Client schickt nur das Häkchen, nie den Text. Benachrichtigung erst nach dem Erfolg.
+// ---------------------------------------------------------------------------------------------
+
+export async function takeOverShareAction(matchId: string, targetUserId: string, consent: boolean) {
+  const result = await lobbyAction(matchId, (id) => takeOverShare(id, matchId, targetUserId, consent === true));
+  if (!result?.error) {
+    const user = await requireUser(`/lobby/${matchId}`);
+    const [m] = await db.select({ price: matches.priceCents, final: matches.finalShareCents }).from(matches).where(eq(matches.id, matchId));
+    await notifyCoverTaken(matchId, user.id, targetUserId, m ? chargeAmount(m.price, m.final) : null);
+  }
+  return result;
+}
+
+export async function releaseCoverAction(matchId: string, targetUserId: string) {
+  const result = await lobbyAction(matchId, (id) => releaseCover(id, matchId));
+  if (!result?.error) {
+    const user = await requireUser(`/lobby/${matchId}`);
+    await notifyCoverReleased(matchId, user.id, targetUserId);
+  }
+  return result;
 }
