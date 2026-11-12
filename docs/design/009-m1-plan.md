@@ -1,117 +1,193 @@
 # 009 M1-Plan: Rollen, Absagevorschlag, Eingriffsprotokoll, Admin-Alarm
-Stand: 2026-11-12 · Code-Stand `origin/main` 872f1d6 · Verfasser: worker-2 (Plan, Doku, kein Code) · Status: Entwurf, Review durch einen anderen Worker offen
+Stand: v2 2026-11-12 (v1 am selben Tag; Review R-T200: 12 Punkte eingearbeitet) · Code-Stand `origin/main` 872f1d6 · Verfasser: worker-2 (Plan, Doku, kein Code) · Status: Entwurf, Review durch einen anderen Worker offen
 
-Zweck: Plan für den Meilenstein M1 des Vertrags `docs/contracts/009-admin-einnahmen-buchhaltung.md` (Version 3): Rollen `owner`/`admin`, Rechteprüfung, Eingriffsprotokoll mit Pflicht-Begründung, Absagevorschlag (Admin 2) mit Absage und Erstattung nur durch Admin 1, Admin-Alarm nur an Admin 1 (AC-18), Oberfläche für die Admin-Absage. Der Plan ändert weder Code noch Vertrag und **beantwortet keine Produkt- oder Rechtsfrage**: Sie stehen in Abschnitt 10 als FRAGE. Annahmen sind als solche markiert.
+Zweck: Plan für den Meilenstein M1 des Vertrags `docs/contracts/009-admin-einnahmen-buchhaltung.md` (Version 3): Rollen `owner`/`admin`, Rechteprüfung, Eingriffsprotokoll mit Pflicht-Begründung, Absagevorschlag (Admin 2) mit Absage und Erstattung nur durch Admin 1, Admin-Alarm nur an Admin 1 (AC-18), Oberfläche für die Admin-Absage. Der Plan ändert weder Code noch Vertrag und **beantwortet keine Produkt- oder Rechtsfrage**: Sie stehen in Abschnitt 11 als FRAGE. Annahmen und Empfehlungen sind als solche markiert; wo der Nutzer entscheiden muss, steht „Entscheid Nutzer“.
 
 Quellen: Vertrag 009 (Rollen, AC-1, 2, 8, 9, 18, Meilenstein M1, Entscheide t9 2026-11-12), `docs/loop/GO-LIVE-AUDIT.md` (G20-012 Admin-Absage mit Oberfläche = Go-live-MUSS, G21-012 Absagegrund), `docs/loop/FEHLT-NOCH.md` (Alarm-Empfänger ENTSCHIEDEN), `docs/design/m4-plan.md` (Admin-Alarm Admin 1, `admin.task`), `docs/design/m3-plan.md`, Vertrag 013 (Admin am Handy: nur Übersicht, Moderation, Sperren, Protokoll lesen).
 
 ## 1. Entscheide, die gelten (nicht neu verhandeln)
 - Admin 1 = Rolle `owner`, genau einer. Admin 2 = Rolle `admin` (Mitarbeiter). Admin 2 hat keine Buchhaltung, Provisionen, Einstellungen, Rollenverwaltung (Vertrag 009, Rollen).
 - Absage mit Erstattung nur durch Admin 1. Admin 2 schlägt vor, mit Begründung; keine Erstattung durch den Vorschlag (AC-9).
-- Admin-Absage ohne Oberfläche reicht vor dem Go-live nicht (Go-live-MUSS G20-012). Die Oberfläche wird nicht vor der Grundlage 013 M2 und der Admin-Oberfläche 013 M7 gebaut. Der E2E zu M4-AC-10 bleibt bis dahin `fixme`; der Server-Test deckt die Funktion.
-- Admin-Alarm: bis zu dieser M1 (die Rolle `owner` gibt es noch nicht) an alle nicht gesperrten Nutzer mit Rolle `admin` (derzeit identisch mit Admin 1), danach NUR an `owner` (AC-18, Test `tests/integration/admin-alarm-empfaenger.test.ts`).
+- Admin-Absage ohne Oberfläche reicht vor dem Go-live nicht (Go-live-MUSS G20-012, **bleibt offen bis E4**). Die Oberfläche wird nicht vor der Grundlage 013 M2 und der Admin-Oberfläche 013 M7 gebaut. Der E2E zu M4-AC-10 bleibt bis dahin `fixme`; der Server-Test deckt die Funktion.
+- Admin-Alarm: bis zu dieser M1 (die Rolle `owner` gibt es noch nicht) an alle nicht gesperrten Nutzer mit Rolle `admin` (derzeit identisch mit Admin 1), danach NUR an `owner` (AC-18, Test `tests/integration/admin-alarm-empfaenger.test.ts`). **Kein Ersatzkreis** nach der Migration (ein Fallback auf `admin` würde AC-18 öffnen).
 - Eingriffe (Sperren, Lobby schließen, Absage, Halle) werden mit wer/wann/was/warum protokolliert, Begründung Pflicht (AC-8).
 
 ## 2. Bestand (Code 872f1d6)
-- **Rollen:** Enum `user_role` = `player`, `admin`, `moderator`, `finance`, `booking` (`src/db/schema.ts:21`), kein `owner`. `src/lib/roles.ts`: `GRANTS` gibt `admin` ALLE Berechtigungen (`admin`, `moderation`, `finance`, `booking`, `dashboard`); `can(role, permission)`. Heute ist jeder Plattform-Admin faktisch Admin 1.
-- **Prüfstellen:** 53 Zeilen in 29 Dateien prüfen `role === "admin"` bzw. `eq(users.role, "admin")` (u. a. `session.ts` `requireAdmin`, `lobby.ts:201` `isPlatformAdmin` mit 4 Aufrufern, `admin.ts`, `results.ts`, `tournaments.ts`, `teams.ts`, `auth.ts`). 12 Aufrufe `requirePermission("admin"|"finance")` unter `src/app`.
-- **Admin-Bereich:** `src/app/admin/layout.tsx` (Navigation nach Berechtigung: Übersicht, Spiele, Nutzer, Teams, Ligen, Profi-Tag, Sponsoren, Moderation, Finanzen, Buchungen, Hallen, Codes, Protokoll, Einstellungen). `Einstellungen` hängt an `admin`, `Finanzen`/`Codes` an `finance`.
-- **Rollen ändern und sperren:** `admin.ts` `setRole` (Audit `user.role`, ohne Begründung), `setBanned(actorId, userId, banned, reason)` (Plattform-Admins sind nicht sperrbar, `:161`), UI `src/app/admin/nutzer/UserActions.tsx` (Rollenauswahl).
-- **Absage mit Erstattung (012 M3a):** `payments/refund.ts` `adminCancelMatch(actorId, matchId, reason)` (Grund 3 bis 200 Zeichen; prüft `actor.role === "admin"`) und `requestMatchCancel`; Server-Aktion `actions.ts:209` `adminCancelMatchAction`. **Es gibt keinen Aufrufer in der Oberfläche.** Absage durch Captain/Plattform-Admin ohne Abbuchung: `lobby.ts` `cancelMatch` → `canManageMatch` (Plattform-Admin erlaubt) → `cancelMatchTx`; nach der ersten Abbuchung lehnt `cancelMatchTx` ab.
-- **Protokoll:** Tabelle `audit_log` (`actor_id`, `action`, `entity`, `entity_id`, `before`, `after`, `at`), Helfer `server/audit.ts`, Liste `admin.ts` `listAudit`, Seite `src/app/admin/protokoll/page.tsx`. Eine Begründung ist kein eigenes Feld (sie steht, wenn überhaupt, in `after`); eine Pflicht gibt es nur je Funktion (`setBanned`, `adminCancelMatch`).
-- **Alarm-Empfänger:** `notifications.ts:48` `platformAdminIds` = alle nicht gesperrten `role = 'admin'`; Aufrufer `api/webhooks/stripe/route.ts:49` und `results.ts:409`. M4 (`docs/design/m4-plan.md`) benachrichtigt Admin 1 über `admin.task`.
-- **Tests:** `tests/integration/helpers.ts` `makeUser(tag, role)` kennt `player|admin|finance|booking|moderator`; die in 009 genannten Dateien `admin-rollen.test.ts`, `audit.test.ts`, `admin-absage.test.ts` gibt es noch nicht; E2E `tests/e2e/admin.spec.ts` existiert.
-- **Migrationen:** letzte auf main `drizzle/0041_perfect_whistler.sql`; die Nummern 0042 und 0043 sind durch M4 belegt. M1 nimmt **0044 aufwärts, seriell**, die Nummer vor dem Start gegen main prüfen (Regel: Migrationen laufen nie parallel zu Tasks mit Schema-Annahmen).
+- **Rollen:** Enum `user_role` = `player`, `admin`, `moderator`, `finance`, `booking` (`src/db/schema.ts:21`), kein `owner`. Davon getrennt das Enum `team_role` = `admin`, `player` (`schema.ts:22`, Team-Admin/Captain). `src/lib/roles.ts`: `GRANTS` gibt `admin` ALLE Berechtigungen; `can(role, permission)`. Heute ist jeder Plattform-Admin faktisch Admin 1.
+- **Prüfstellen:** Die Suche nach `role === "admin"` / `role !== "admin"` / `eq(users.role, "admin")` findet 53 Zeilen in 29 Dateien. **Davon betreffen rund die Hälfte die Team-Rolle** (`team_members.role`, Captain), die M1 nicht anfasst. Die Plattform-Rolle (`users.role`) prüfen die Stellen in Abschnitt 4. Dazu kommen Prüfungen über `can(user.role, …)` (Finanzexport, Belege, Hallenpreise, Kopfleiste) und Empfängerlisten mit `inArray(users.role, [...])`.
+- **Admin-Bereich:** `src/app/admin/layout.tsx` (Navigation nach Berechtigung; Einstellungen an `admin`, Finanzen/Codes an `finance`). Rollen ändern und sperren: `admin.ts` `setRole` (Audit `user.role`, ohne Begründung), `setBanned(actorId, userId, banned, reason)` (Plattform-Admins sind nicht sperrbar, `admin.ts:161`), UI `src/app/admin/nutzer/UserActions.tsx`.
+- **Absage mit Erstattung (012 M3a):** `payments/refund.ts` `adminCancelMatch(actorId, matchId, reason)` (Grund 3 bis 200 Zeichen; prüft `actor.role === "admin"`, `:138`) und `requestMatchCancel`; Server-Aktion `actions.ts:209` `adminCancelMatchAction`. **Kein Aufrufer in der Oberfläche.** Absage ohne Abbuchung: `lobby.ts` `cancelMatch` → `canManageMatch` (Plattform-Admin erlaubt, `lobby.ts:214`) → `cancelMatchTx`; nach der ersten Abbuchung lehnt `cancelMatchTx` ab.
+- **Protokoll:** Tabelle `audit_log` (`actor_id` mit Fremdschlüssel auf `users`, `action`, `entity`, `entity_id`, `before`, `after`, `at`), Helfer `server/audit.ts`, `admin.ts` `listAudit`, Seite `src/app/admin/protokoll/page.tsx`. Es gibt kein Feld für die Begründung (sie steht, wenn überhaupt, in `after`).
+- **Alarm-Empfänger:** `notifications.ts:48` `platformAdminIds` (alle nicht gesperrten `role = 'admin'`; Aufrufer `api/webhooks/stripe/route.ts:49` und `results.ts:409`), außerdem `scheduled.ts:224` (`notifyFinanceAlerts`, täglich an `admin` und `finance`) und `booking.ts:34` (`["admin","booking"]`, Buchungsanfragen). M4 (`docs/design/m4-plan.md`) fügt weitere Aufrufer hinzu.
+- **Tests:** `tests/integration/helpers.ts` `makeUser(tag, role)` kennt `player|admin|finance|booking|moderator`; `admin-rollen.test.ts`, `audit.test.ts`, `admin-absage.test.ts` aus Vertrag 009 gibt es noch nicht; E2E `tests/e2e/admin.spec.ts` existiert.
+- **Migrationen:** letzte auf main `drizzle/0041_perfect_whistler.sql`. `scripts/migrate.mjs` ruft den Drizzle-Migrator (`migrate()` aus `drizzle-orm/node-postgres/migrator`) auf; **er führt alle offenen Migrationen in EINER Transaktion aus**.
 
 ## 3. Zielbild
 ### 3.1 Rollenmodell
-- Neue Rolle `owner` mit allen Berechtigungen plus der neuen Berechtigung `owner` (Rollenverwaltung, Einstellungen, Finanzen/Codes/Provisionen, Absage-Entscheid, Protokoll-Eingriffe lesen).
-- `admin` (Admin 2): `admin`, `moderation`, `booking`, `dashboard`; **nicht** `finance` und nicht `owner` (Vertrag 009, Rollen). Das ändert heute bestehende Rechte: `Finanzen`, `Codes`, `Einstellungen` und `setRole` werden `owner`-only (AC-1).
-- Eine Hilfsfunktion `isPlatformAdmin(role)` (= `owner` oder `admin`) ersetzt die 53 Stellen `role === "admin"`; die Bedeutung dort ist durchgehend „Plattform-Admin“, nicht „Admin 1“. Stellen, die Admin-1-Rechte meinen (Finanzen, Einstellungen, Rollen, Absage mit Erstattung, Alarme), prüfen `owner` ausdrücklich.
-- `owner` ist genau einer (AC-2): durch die Datenbank erzwungen (Teilindex `unique ... where role = 'owner'`), nicht nur im Code. `setRole` ist `owner`-only; niemand setzt `owner` per Oberfläche außer Admin 1 selbst (Übergabe siehe Frage P2). Der `owner` ist nicht sperrbar (wie heute die Plattform-Admins).
-- Rollen `moderator`, `finance`, `booking`: Annahme des Vertrags 009 (Rollenmigration): werden zu `admin` bzw. `player` **nach Absprache mit Admin 1**; kein Nutzer behält stillschweigend mehr Rechte. Technisch: Migration ändert sie NICHT automatisch; ein Prüfbericht (Abschnitt 5, E1) listet die betroffenen Konten, Admin 1 entscheidet (Frage P3).
+- Neue Rolle `owner` (Berechtigungen: alle, plus die neue Berechtigung `owner` für Rollenverwaltung, Einstellungen, Finanzen/Codes/Provisionen, Absage-Entscheid).
+- `admin` (Admin 2): `admin`, `moderation`, `booking`, `dashboard`; **nicht** `finance` und nicht `owner` (Vertrag 009). Das nimmt `admin` heute bestehende Rechte: Finanzen, Codes, Einstellungen, `setRole` werden `owner`-only (AC-1).
+- Eine Hilfsfunktion `isPlatformAdmin(role)` (= `owner` oder `admin`) ersetzt die Plattform-Prüfungen aus Abschnitt 4; Stellen, die Admin-1-Rechte meinen, prüfen `owner` ausdrücklich (`requireOwner`).
+- `owner` ist genau einer (AC-2), **von der Datenbank** erzwungen (Teilindex, Abschnitt 5). `setRole` ist `owner`-only; `owner` ist nicht über die Rollenauswahl vergebbar (Übergabe nur über den Betreiber-Schritt, Frage P2). Der `owner` ist nicht sperrbar: der Sperrschutz `admin.ts:161` muss `owner` UND `admin` einschließen (Test, Mutation).
+- **Altrollen `moderator`, `finance`, `booking`: Default = bleiben unverändert** (Rechte wie heute), bis der Nutzer entschieden hat (Frage P1/P3). Die Migration ändert keine Rolle. `finance` behält damit die Finanz-Berechtigung, `moderator` die Moderation, `booking` die Buchung.
 
-### 3.2 Absagevorschlag und Absage (AC-9)
-- Neue Tabelle `admin_cancel_proposals` (Entwurf): `id`, `match_id`, `proposed_by`, `reason` (3 bis 200 Zeichen), `status` (`open` | `approved` | `rejected` | `withdrawn`), `decided_by`, `decided_at`, `decision_reason`, `created_at`; höchstens ein offener Vorschlag je Spiel (Teilindex). Der Vorschlag löst **keine** Erstattung und keine Statusänderung am Spiel aus.
-- Server: `proposeCancel` (nur `admin` oder `owner`), `decideCancel` (nur `owner`): `approve` ruft `adminCancelMatch` auf (bestehender Ablauf mit Erstattung, `requestMatchCancel`), `reject` mit Pflicht-Begründung. Beide schreiben in das Eingriffsprotokoll. Der Vorschlagende kann nicht selbst entscheiden (auch nicht, wenn er später `owner` würde).
-- `adminCancelMatch` prüft künftig `owner` statt `admin`. Die Absage durch Plattform-Admin über `cancelMatch` (Spiel ohne Abbuchung) bleibt zu klären (Frage P4: AC-9 sagt „Admin 2 kann nicht selbst absagen“).
-- Benachrichtigung bei neuem Vorschlag: nur an `owner` (Typ `admin.task`, Link auf die Detailseite), nach demselben Empfängerkreis wie AC-18.
+### 3.2 Berechtigungsmatrix (Soll, Rolle × Funktion)
+„ja“ = erlaubt, „–“ = abgelehnt (Seite UND Server-Aktion). Spalte „heute“: nur Abweichungen zum Stand 872f1d6 sind markiert (Δ).
+| Funktion | player | moderator | finance | booking | admin (Admin 2) | owner (Admin 1) |
+|---|---|---|---|---|---|---|
+| Admin-Übersicht / Navigation (`dashboard`) | – | ja | ja | ja | ja | ja |
+| Spiele, Lobbys, Turniere, Nutzer/Support (inkl. Sperren), Teams, Ligen, Sponsoren (`admin`) | – | – | – | – | ja | ja |
+| Moderation (`moderation`) | – | ja | – | – | ja | ja |
+| Buchungen, Hallen (`booking`) | – | – | – | ja | ja | ja |
+| Finanzen, Codes, Hallenpreise, Belege/Export (`finance`) | – | – | ja | – | – (Δ) | ja |
+| Provisionen, Einstellungen, Kartenschalter | – | – | – | – | – (Δ) | ja |
+| Rollen vergeben/entziehen | – | – | – | – | – (Δ) | ja |
+| Nutzer sperren / entsperren (mit Begründung) | – | – | – | – | ja | ja |
+| `owner` oder `admin` sperren | – | – | – | – | – | – (`owner` nie sperrbar) |
+| Absage vorschlagen | – | – | – | – | ja | ja (entscheidet selbst) |
+| Absage entscheiden (bestätigen mit Erstattung / ablehnen) | – | – | – | – | – | ja |
+| Spiel direkt absagen (`cancelMatch`) | Captain wie bisher | – | – | – | – (Δ, Frage P4) | ja |
+| Protokoll lesen | – | – | – | – | ja (Frage P7) | ja |
+| Admin-Alarm erhalten | – | – | – | – | – (Δ) | ja |
+Die Matrix wird als Test umgesetzt (Rolle × Seite × Server-Aktion, Abschnitt 7) und ist die Grundlage der Umstellung in E1b.
 
-### 3.3 Eingriffsprotokoll (AC-8)
-- Ein zentraler Helfer `recordIntervention(actor, action, entity, id, { reason, before, after }, tx)`: erzwingt die Begründung (3 bis 200 Zeichen, serverseitig), schreibt in `audit_log` mit `after.reason`, Aktionsname aus einer festen Liste (Beispiele, Namen beim Bau festlegen: `user.ban`, `user.unban`, `lobby.close`, `match.cancel_proposed`, `match.cancel_requested`, `match.cancel_rejected`, `venue.*`, `user.role`). Bestehende Eingriffe (`setBanned`, `setRole`, Hallen, Lobby schließen) werden darauf umgestellt.
-- Die Seite Protokoll bekommt einen Filter „Eingriffe“ mit Spalte „Begründung“. Lesen: `admin` und `owner` (Vertrag 013: Protokoll lesen am Handy). Das Protokoll wird nie über die Oberfläche geändert; ob die Datenbank UPDATE/DELETE zusätzlich sperrt, ist AC-7/M3 (Beweisprotokoll) und hier nicht Teil (Frage R1 zur Aufbewahrung).
+### 3.3 Absagevorschlag und Absage (AC-9)
+- Neue Tabelle `admin_cancel_proposals`: `id`, `match_id`, `proposed_by`, `reason` (3 bis 200 Zeichen), `status` (`open` | `approved` | `rejected` | `withdrawn` | `obsolete`), `decided_by`, `decided_at`, `decision_reason`, `created_at`. Datenbank erzwingt: höchstens ein offener Vorschlag je Spiel (Teilindex `where status = 'open'`), **`CHECK (decided_by IS NULL OR decided_by <> proposed_by)`** (Vorschlagender entscheidet nie selbst, auch nicht als später ernannter `owner`).
+- Server: `proposeCancel` (nur `admin`/`owner`), `decideCancel` (nur `owner`), `withdrawProposal` (Vorschlagender oder `owner`). `approve` ruft den bestehenden Ablauf (`adminCancelMatch` → `requestMatchCancel`) auf. Der Vorschlag selbst löst **keine** Erstattung und keine Statusänderung am Spiel aus.
+- **Sperrreihenfolge:** Spiel (`FOR UPDATE`) → Vorschlagszeile → `payment_refunds`/Abbuchungszeilen (die bestehende Reihenfolge Spiel zuerst bleibt). `approve` und das Anfordern der Absage laufen in **einer** Transaktion (`status = approved`, `cancel_requested_at` gesetzt); die Erstattungen laufen danach wie bisher über den Job/`progressCancel`, Wiederholung über `payment_refunds` (idempotent). `approve` auf einen schon `approved` Vorschlag ist ein No-op ohne Fehler und ohne zweite Absage.
+- Hat sich das Spiel zwischenzeitlich geändert (abgesagt, gespielt, `cancel_requested_at` gesetzt, Anstoß vorbei), wird der Vorschlag `obsolete` (bei `approve` abgelehnt mit klarer Meldung; ein Job räumt offene Vorschläge zu beendeten Spielen auf). Wird dem Vorschlagenden die Rolle `admin` entzogen oder wird er gesperrt/gelöscht, werden seine offenen Vorschläge `withdrawn` (Frage P6).
+- `adminCancelMatch` prüft künftig `owner` statt `admin`. Absage über `cancelMatch` (Spiel ohne Abbuchung): **Empfehlung (Entscheid Nutzer, Frage P4):** Vertrag wörtlich, Admin 2 darf nicht selbst absagen: `canManageMatch` lehnt die Rolle `admin` für die Absage ab; erlaubt bleiben `owner` und der Captain (Team-Admin) wie bisher. Eine Absage durch `owner` über `cancelMatch` läuft ebenfalls durch `recordIntervention` (Aktionsnamen `match.cancel` ergänzen).
+- Benachrichtigung bei neuem Vorschlag: nur an `owner` (Typ `admin.task`, Link auf die Detailseite), Empfängerkreis wie AC-18.
+- **Server ohne UI ist per POST erreichbar** (Server-Aktionen sind ohne Oberfläche aufrufbar): Security-Review der Aktionen schon in E3, nicht erst mit E4.
 
-### 3.4 Alarme (AC-18)
-- Neue Funktion `ownerIds(exec)` (nicht gesperrte Nutzer mit Rolle `owner`). `platformAdminIds` bleibt für Nachrichten an ALLE Plattform-Admins (falls es sie braucht: heute keine; die zwei Aufrufer sind Alarme) und wird für Alarme durch `ownerIds` ersetzt: `api/webhooks/stripe/route.ts:49`, `results.ts:409` und die neuen Aufrufer aus M4.
-- Übergang: Solange die Migration nicht gelaufen ist, gilt der heutige Kreis (alle `admin`). Nach der Migration: nur `owner`. Gibt es nach der Migration KEINEN `owner`, geht der Alarm ins Leere: Schutz durch Warnung in der Admin-Übersicht und einen Start-Check (Vorschlag, Frage P2).
+### 3.4 Eingriffsprotokoll (AC-8)
+- **Struktur festgelegt:** `audit_log` bekommt in einer Migration ein eigenes Feld `reason text` (nullable für Altzeilen). `recordIntervention(actor, action, entity, id, { reason, before, after }, tx)` erzwingt die Begründung (3 bis 200 Zeichen, serverseitig; ohne Begründung wird nichts geändert) und schreibt `reason`. Aktionsnamen aus einer festen Liste (Beispiele, Namen beim Bau festlegen): `user.ban`, `user.unban`, `user.role`, `lobby.close`, `match.cancel`, `match.cancel_proposed`, `match.cancel_requested`, `match.cancel_rejected`, `venue.*`.
+- Der Protokolleintrag steht **in derselben Transaktion** wie der Eingriff: scheitert der Eingriff, gibt es keinen Eintrag; (Test: Rollback → kein Protokolleintrag).
+- Die Seite Protokoll bekommt den Filter „Eingriffe“ mit Spalte „Begründung“. Lesen: `owner` und `admin` (Default, Frage P7). Hinweis im Eingabefeld: „Keine Namen Dritter und keine persönlichen Angaben eintragen.“
+- Das Protokoll wird über die Oberfläche nie geändert. Ob die Datenbank UPDATE/DELETE zusätzlich sperrt, gehört zu AC-7 (Beweisprotokoll, M3).
+- `audit_log.actor_id` hat einen Fremdschlüssel auf `users`: Wie die Konto-Löschung (Anonymisierung) mit Eingriffszeilen umgeht, ist Frage R1.
 
-### 3.5 Oberfläche (nicht vor 013 M2 und 013 M7-Admin)
-- Spiel-Detail im Admin (`/admin/spiele`): Block „Absage“: Admin 2 sieht „Absage vorschlagen“ (Pflichtfeld Begründung); Admin 1 sieht offene Vorschläge, „Absage bestätigen“ (mit Folgen: Anzahl der Abbuchungen und Summe, die erstattet werden, aus den Daten des Spiels) und „Ablehnen“ (Pflicht-Begründung). `ConfirmDialog` (kein natives `confirm()`), Text in einfachen Worten, Handy: Admin am Handy ist nach Vertrag 013 nur Übersicht, Moderation, Sperren und Protokoll lesen; die Absage ist **am Desktop** mit Hinweis am Handy.
-- Übersicht: Zähler „offene Absagevorschläge“ für Admin 1. Nutzer-Seite: Rollenauswahl nur für Admin 1, `owner` nicht auswählbar.
-- Komponenten aus 013 M2 (`Button`, `ConfirmDialog`, `Form`/`Field`, `StatusBadge`, `StateMessage`, `PageShell`). Die Oberfläche folgt dem Aufbau der Admin-Seiten aus 013 M7; bis dahin gibt es nur Server und Tests.
+### 3.5 Alarme (AC-18)
+- Neue Funktion `ownerIds(exec)` (nicht gesperrte Nutzer mit Rolle `owner`). Alle Alarmpfade nutzen sie: `api/webhooks/stripe/route.ts:49`, `results.ts:409`, `scheduled.ts:224` (Finanz-Alarme; Frage P8, ob `finance` weiter mitbekommt), `booking.ts:34` (Buchungsanfragen: Empfänger `booking`/`admin` bleiben, KEIN Alarm im Sinne AC-18; zu bestätigen) und alle neuen M4-Aufrufer. **E2 stellt sie um**; neue Aufrufer aus M4 müssen vorher `ownerIds`-fähig sein oder werden von E2 umgestellt. Ein grep-Test verbietet `platformAdminIds` in Alarmpfaden.
+- **Übergang:** `ownerIds` liefert NUR `owner`. Die Deploy-Reihenfolge (Abschnitt 6) stellt sicher, dass der Betreiber-Schritt vor dem Code läuft. Gibt es trotzdem keinen `owner`, wird der Alarm **nicht still verworfen**: Eintrag im Server-Log (ohne personenbezogene Daten, mit Alarmtyp) und eine Warnung in der Admin-Übersicht („Es gibt keinen Admin 1“, sichtbar für `admin`). Kein Ersatzkreis.
 
-## 4. Dateiliste (Entwurf)
+### 3.6 Oberfläche (E4, nicht vor 013 M2 und 013 M7-Admin)
+- Spiel-Detail im Admin (`/admin/spiele`): Block „Absage“: Admin 2 sieht „Absage vorschlagen“ (Pflichtfeld Begründung); Admin 1 sieht offene Vorschläge, „Absage bestätigen“ (mit Folgen: Anzahl der Abbuchungen und Summe, die erstattet werden) und „Ablehnen“ (Pflicht-Begründung). `ConfirmDialog` (kein natives `confirm()`), Text in einfachen Worten. Admin am Handy ist nach Vertrag 013 nur Übersicht, Moderation, Sperren, Protokoll lesen: die Absage ist **am Desktop** mit Hinweis am Handy.
+- Übersicht: Zähler „offene Absagevorschläge“ und die Warnung „kein Admin 1“. Nutzer-Seite: Rollenauswahl nur für Admin 1, `owner` nicht auswählbar. Komponenten aus 013 M2 (`Button`, `ConfirmDialog`, `Form`/`Field`, `StatusBadge`, `StateMessage`, `PageShell`).
+
+## 4. Inventar der Prüfstellen (Plattform-Rolle `users.role`; Team-Rolle ausgenommen)
+Kategorien: **PA** = Plattform-Admin (`isPlatformAdmin`: `owner` und `admin`), **O** = nur `owner`, **M** = Moderation (`admin`, `moderator`; `owner` ergänzt), **Empf.** = Empfängerkreis, **Dev** = nur lokal.
+| Stelle | Zweck | M1 |
+|---|---|---|
+| `src/server/session.ts:41` `requireAdmin` | Seitenschutz Plattform-Admin | PA |
+| `src/server/session.ts:48` `requirePermission` → `can()` | Berechtigung je Bereich | Matrix 3.2 |
+| `src/server/admin.ts:161` Sperrschutz | Plattform-Admins nicht sperrbar | `owner` UND `admin` |
+| `src/server/admin.ts:144` Rollenfilter | Filterliste der Rollen | `owner` aufnehmen |
+| `src/server/admin.ts:167` `setRole` | Rolle vergeben | O |
+| `src/server/payments/refund.ts:138` `adminCancelMatch` | Absage mit Erstattung | O |
+| `src/server/lobby.ts:119` `platformAdmin` (Sicht) | Anzeige/Rechte in der Lobby | PA |
+| `src/server/lobby.ts:202` `isPlatformAdmin` (Aufrufer `:216,:503,:576`) | Spiel verwalten, Zuweisung | PA; Absage: nicht `admin` (P4) |
+| `src/server/results.ts:95,229-238` | Ergebnis entscheiden (Schiedsrichter) | PA |
+| `src/server/tournaments.ts:59,124,711` | Turniere anlegen/verwalten/sehen | PA |
+| `src/server/privategame.ts:106,115` | Einladungslink verwalten | PA |
+| `src/server/stats.ts:158-160` | Statistik markieren | PA |
+| `src/server/streams.ts:15` | Stream eintragen | PA |
+| `src/server/media.ts:37,82` | Team-Logo hochladen / moderieren | PA; Moderation M |
+| `src/server/content.ts:78-79` | Kommentar entfernen | M |
+| `src/server/clips-actions.ts:28`, `lobby/[id]/uebersicht/page.tsx:146` | Clip löschen | PA |
+| `src/server/profiles.ts:49,60`, `app/spieler/[id]/page.tsx:84` | Zuverlässigkeit/Spielplan sehen | PA |
+| `src/app/app/turniere/neu/page.tsx:16` | Turnier anlegen (Seite) | PA |
+| `src/server/notifications.ts:48-49` `platformAdminIds` | Alarm-Empfänger | Empf. → `ownerIds` |
+| `src/server/scheduled.ts:224` | Finanz-Alarme (`notifyFinanceAlerts`, `admin` und `finance`) | Empf., Frage P8 |
+| `src/server/booking.ts:34` | Empfänger der Buchungsanfragen (`bookingStaffIds`: `admin`, `booking`) | Empf., unverändert zu bestätigen |
+| `src/app/admin/finanzen/export/route.ts:8`, `api/belege/[id]/route.ts:18`, `admin/hallen/page.tsx:57` | `can(…, "finance")` | Matrix (`finance`, `owner`) |
+| `src/components/Header.tsx:64` | Link zum Admin-Bereich | `dashboard` |
+| `src/auth.ts:39-41` | lokaler Dev-Login `admin@` | Dev: wird `owner` (Admin 2 für Tests per `makeUser`) |
+Die übrigen Treffer der Suche betreffen die Team-Rolle (`teamMembers.role`/`team_role`: u. a. `challenges.ts`, `leagues.ts`, `matchmaking.ts`, `pro-events.ts`, `requests.ts`, `roster.ts`, `team-admin.ts`, `teams.ts`, `account.ts`, `privategame.ts:73-74`) und bleiben unverändert. **Das Inventar wird zu Beginn von E1b gegen den dann gültigen Code neu erzeugt** (grep), jede Zeile bekommt eine Kategorie; die Tabelle ist der Startpunkt, nicht die Endliste.
+**grep-Test:** ein Unit-Test durchsucht `src/` und scheitert bei `role === "admin"` / `role !== "admin"` / `eq(users.role, "admin")` / `inArray(users.role` außerhalb von `src/lib/roles.ts` und einer Ausnahmeliste (Team-Rolle ist nicht betroffen, weil sie `teamMembers.role` heißt; die Ausnahmeliste enthält nur diese Dateien mit Begründung).
+
+## 5. Migrationen (Nummern: jeweils die nächste freie, nie fest)
+**Harte Startbedingung jeder Etappe:** Die Nummer wird gegen `origin/main` geprüft; M4-Migrationen (0042/0043 offen, M4-Rest eventuell 0044) kommen zuerst. Im Plan stehen deshalb keine festen Nummern. Migrationen laufen nie parallel zu anderen Tasks mit Schema- oder Rollenannahmen.
+- **M-1 (E1a):** `ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'owner'` **allein**, ohne ein Enum-Literal `'owner'` im selben Lauf. Der Teilindex nutzt den Text-Cast: `CREATE UNIQUE INDEX ... ON users ((1)) WHERE role::text = 'owner'`. (Alternative, falls der Cast nicht trägt: Spalte `is_owner boolean` mit Teilindex `WHERE is_owner`; Entscheid beim Bau, mit Vertrag 009 abstimmen.) **Kein** `UPDATE ... SET role = 'owner'` in der Migration. Hintergrund: Der Migrator führt alle offenen Migrationen in einer Transaktion aus; eine Trennung in mehrere Dateien hilft auf frischer Datenbank, in CI und auf Worker-Datenbanken nicht.
+- **Zuweisung des ersten `owner`:** Betreiber-Schritt NACH dem Commit der Migration (Abschnitt 6).
+- **M-2 (E2):** `audit_log.reason text`.
+- **M-3 (E3):** Tabelle `admin_cancel_proposals` mit Teilindex (ein offener je Spiel) und `CHECK (decided_by IS NULL OR decided_by <> proposed_by)`.
+- **Rollback:** `ADD VALUE` ist nicht rückgängig zu machen. Rollback = Code zurück, Konten mit `owner` auf `admin` setzen, Teilindex droppen, der Enum-Wert bleibt ungenutzt. Das steht in `docs/BETRIEB.md`.
+
+## 6. Bootstrap des ersten `owner` und Deploy-Reihenfolge
+- Ohne `owner` ist M1 eine Sackgasse (`setRole` ist `owner`-only, Alarme gehen ins Leere). Deshalb gibt es einen konkreten Weg: ein Skript `scripts/set-owner.mjs <email>` (alternativ ein Betreiber-SQL in `docs/BETRIEB.md`). Eigenschaften: **idempotent** (zweiter Aufruf für dasselbe Konto ändert nichts), **bricht ab**, wenn schon ein anderer `owner` existiert, prüft, dass das Konto existiert und nicht gesperrt ist, schreibt einen Protokolleintrag (`user.role`), nutzt die Datenbankverbindung der Umgebung und führt gegen eine lokale Datenbank wie gegen Produktion nur mit ausdrücklicher Bestätigung aus (Guard wie bei den Seed-Skripten, kein `.env`-Lesen im Agenten).
+- **Deploy-Reihenfolge:** 1. Migration (M-1) → 2. Bootstrap (`set-owner`) → 3. Code (E1b/E2 mit `ownerIds`). Zwischen 1 und 3 verhält sich das System wie heute.
+- Dev-Login `admin@` wird lokal `owner`; Test-Helper `makeUser(tag, "owner")` berücksichtigt den Teilindex (höchstens ein `owner` je Datenbank: das Aufräumen setzt die Rolle zurück bzw. löscht den Nutzer, damit Folgetests nicht am Index scheitern; Fixture-Regel dokumentieren).
+- Tests: Bootstrap zweimal (idempotent), Bootstrap mit vorhandenem anderem `owner` (Abbruch), unbekannte E-Mail, gesperrtes Konto.
+
+## 7. Dateiliste (Entwurf)
 | Bereich | Dateien |
 |---|---|
-| Schema/Migration | `src/db/schema.ts` (Enum `owner`, Tabelle `admin_cancel_proposals`), `drizzle/0044_*.sql` (Rolle `owner`, Teilindex), `drizzle/0045_*.sql` (Vorschläge), `drizzle/meta/*` |
-| Rollen | `src/lib/roles.ts` (`Role`, `GRANTS`, `ROLE_LABEL`, `isPlatformAdmin`), `src/server/session.ts` (`requireAdmin`, `requireOwner`), die 29 Dateien mit `role === "admin"` (mechanisch auf `isPlatformAdmin`), `src/server/admin.ts` (`setRole`, `setBanned`), `src/app/admin/layout.tsx` (Berechtigung je Eintrag), `src/app/admin/nutzer/*`, `src/auth.ts` (lokaler Dev-Login `admin@` wird `owner`) |
-| Absage | `src/server/payments/refund.ts` (`adminCancelMatch` → `owner`), neu `src/server/admin-cancel.ts` (`proposeCancel`, `decideCancel`), `src/server/admin-actions.ts` (Aktionen), `src/server/lobby.ts` (`canManageMatch`/`isPlatformAdmin`, siehe Frage P4) |
-| Protokoll | `src/server/audit.ts` oder neu `src/server/intervention.ts` (`recordIntervention`), `src/server/admin.ts` (`listAudit` Filter), `src/app/admin/protokoll/page.tsx` |
-| Alarme | `src/server/notifications.ts` (`ownerIds`), `src/app/api/webhooks/stripe/route.ts`, `src/server/results.ts` |
-| Oberfläche (Etappe E4) | `src/app/admin/spiele/*` (Absage-Block), `src/app/admin/page.tsx` (Zähler), neue Client-Komponenten |
-| Doku | `docs/BETRIEB.md` (Admin 1 festlegen/übergeben), `docs/loop/GO-LIVE-AUDIT.md` (G20-012 Stand), Vertrag 009 (AC-Tabelle bei Abweichung) |
-| Tests | siehe Abschnitt 6 |
+| Schema/Migration | `src/db/schema.ts` (Enum `owner`, `audit_log.reason`, Tabelle `admin_cancel_proposals`), `drizzle/<nächste freie Nummer>_*.sql` (je Etappe), `drizzle/meta/*` |
+| Rollen | `src/lib/roles.ts` (`Role`, `GRANTS`, `ROLE_LABEL`, `isPlatformAdmin`), `src/server/session.ts` (`requireAdmin`, `requireOwner`), die Stellen aus Abschnitt 4, `src/server/admin.ts`, `src/app/admin/layout.tsx`, `src/app/admin/nutzer/*`, `src/auth.ts` (Dev-Login) |
+| Bootstrap | `scripts/set-owner.mjs` (neu), `docs/BETRIEB.md` (Ablauf, Rollback) |
+| Absage | `src/server/payments/refund.ts`, neu `src/server/admin-cancel.ts` (`proposeCancel`, `decideCancel`, `withdrawProposal`), `src/server/admin-actions.ts`, `src/server/lobby.ts` (`canManageMatch`) |
+| Protokoll | neu `src/server/intervention.ts` (`recordIntervention`), `src/server/audit.ts`, `src/server/admin.ts` (`listAudit`), `src/app/admin/protokoll/page.tsx` |
+| Alarme | `src/server/notifications.ts` (`ownerIds`), Webhook-Route, `results.ts`, `scheduled.ts`, `booking.ts` |
+| Oberfläche (E4) | `src/app/admin/spiele/*`, `src/app/admin/page.tsx`, neue Client-Komponenten |
+| Tests | Abschnitt 8 |
 
-## 5. Etappenschnitt (seriell, Schema nie parallel)
-| Etappe | Inhalt | Migration | Voraussetzung |
-|---|---|---|---|
-| E1 Rollenmodell | Enum `owner`, Teilindex (genau einer), `GRANTS`, `isPlatformAdmin`, Umstellung der 53 Stellen, `requireOwner`, `setRole`/Layout nach Berechtigung, Prüfbericht für `moderator`/`finance`/`booking`, Admin-1-Festlegung (Frage P2) | 0044 | M4-Migrationen 0042/0043 gemergt (Nummern), Security-Review |
-| E2 Eingriffsprotokoll und Alarme | `recordIntervention`, Umstellung bestehender Eingriffe, Protokoll-Filter, `ownerIds`, Alarme (AC-18) | keine | E1 |
-| E3 Absagevorschlag (Server) | Tabelle, `proposeCancel`/`decideCancel`, `adminCancelMatch` → `owner`, Benachrichtigung an `owner`, Server-Tests (AC-9) | 0045 | E1, E2 |
-| E4 Oberfläche | Absage-Block, Übersicht-Zähler, Rollenauswahl, E2E (M4-AC-10 von `fixme` auf aktiv) | keine | E3 und **013 M2 und 013 M7-Admin-UI** |
-E1 bis E3 können vor der Oberfläche gebaut werden; Go-live braucht E4 (G20-012). Die Migration 0044 ändert Rechte: sie läuft nie parallel zu anderen Tasks mit Rollenannahmen.
-
-## 6. Akzeptanzkriterien und Tests
+## 8. Akzeptanzkriterien und Tests
 | AC | Inhalt | Test |
 |---|---|---|
-| AC-1 | `admin` (Admin 2) bekommt bei Finanzen, Provisionen, Einstellungen, Rollen, Buchhaltung (Seite und Server-Aktion) 403 bzw. Weiterleitung; `owner` darf | `tests/integration/admin-rollen.test.ts` (neu) |
-| AC-2 | Admin 1 ernennt/entfernt Admin 2 (protokolliert); Admin 2 versucht es: abgelehnt; es gibt nie zwei `owner` (Datenbank lehnt den zweiten ab); `owner` nicht sperrbar | `admin-rollen.test.ts` |
-| AC-8 | Jeder Eingriff (Sperren, Lobby schließen, Absage, Halle, Rolle) schreibt wer/wann/was/warum; ohne Begründung (leer, 2 Zeichen, 201 Zeichen) abgelehnt, nichts geändert | `tests/integration/audit.test.ts` (neu) |
-| AC-9 | Admin 2 schlägt vor: gespeichert mit Begründung, keine Erstattung, Spiel unverändert; nur `owner` entscheidet; Bestätigen → Absage + Erstattung (FakeProvider); Ablehnen mit Begründung; Admin 2 kann nicht selbst absagen; Vorschlagender entscheidet nie selbst; ein offener Vorschlag je Spiel; parallele Entscheidungen (Rennen) enden in genau einem Ergebnis | `tests/integration/admin-absage.test.ts` (neu) |
-| AC-18 | Alarm (Zahlungsstreit, Doppelerfolg, Aufgabe) geht nur an `owner`, nie an Admin 2 und nicht an andere `admin`; vor der Migration an alle `admin` (Übergang dokumentiert) | `tests/integration/admin-alarm-empfaenger.test.ts` (neu) |
-| M1-A | Alle bisherigen Aufrufe mit `role === "admin"` verhalten sich für `admin` und `owner` gleich, wo „Plattform-Admin“ gemeint ist (Regression) | bestehende Integrations- und E2E-Tests grün; `makeUser` kennt `owner` |
-| M1-B | Migration 0044/0045 auf frischer und auf bestehender Datenbank (`npm run db:migrate`), Enum-Wert in derselben Migrationsfolge nutzbar | Migrationstest im Task-Beleg (siehe Risiko 1) |
+| AC-1 | `admin` bekommt bei Finanzen, Provisionen, Einstellungen, Rollen, Buchhaltung (Seite und Server-Aktion) 403/Weiterleitung; `owner` darf. **Matrix-Test Rolle × Seite × Server-Aktion** nach 3.2 | `tests/integration/admin-rollen.test.ts` (neu) |
+| AC-2 | Admin 1 ernennt/entfernt Admin 2 (protokolliert); Admin 2 versucht es: abgelehnt; zweiter `owner` wird von der Datenbank abgelehnt; `owner` nicht sperrbar (auch nicht von `admin`) | `admin-rollen.test.ts` |
+| AC-8 | Jeder Eingriff schreibt wer/wann/was/warum in `audit_log.reason`; leere/zu kurze/zu lange Begründung: abgelehnt, nichts geändert, kein Eintrag; Rollback des Eingriffs → kein Eintrag | `tests/integration/audit.test.ts` (neu) |
+| AC-9 | Vorschlag gespeichert, keine Erstattung, Spiel unverändert; nur `owner` entscheidet; `approve` → Absage + Erstattung (FakeProvider); `reject` mit Begründung; Admin 2 kann nicht selbst absagen; Vorschlagender entscheidet nie selbst (CHECK); ein offener Vorschlag je Spiel; `approve` auf `approved` = No-op; Vorschlag zu inzwischen abgesagtem/gespieltem Spiel `obsolete`; Rolle entzogen → Vorschläge `withdrawn`; **Parallel-Test `approve` + Captain-`cancelMatch` + Job** → genau eine Absage, eine Erstattung je Platz | `tests/integration/admin-absage.test.ts` (neu) |
+| AC-18 | Alarm (Zahlungsstreit, Doppelerfolg, Aufgabe, Finanz-Alarme) nur an `owner`; nie an `admin`; **Fall kein `owner`**: kein Alarm an Dritte, Log-Eintrag, Warnung in der Übersicht; grep-Test: kein `platformAdminIds` in Alarmpfaden | `tests/integration/admin-alarm-empfaenger.test.ts` (neu) + Unit-grep-Test |
+| M1-A | Regression: Stellen der Kategorie PA verhalten sich für `admin` und `owner` gleich; grep-Test verbietet `role === "admin"` außerhalb `roles.ts` | bestehende Integrations-/E2E-Tests grün, neuer grep-Test, `makeUser` kennt `owner` |
+| M1-B | Migrationstest **frische Datenbank (alle Migrationen in einem Lauf, wie CI/Worker-DB)** und **bestehende Datenbank** (nur die neuen Migrationen), jeweils `npm run db:migrate` und danach `db:generate` = „No schema changes“; Bootstrap danach | im Task-Beleg, plus CI-Lauf |
+| M1-C | Bootstrap zweimal, mit vorhandenem anderem `owner`, unbekannte E-Mail, gesperrtes Konto (Abschnitt 6) | `tests/integration/set-owner.test.ts` (neu) |
 | E2E (E4) | Admin 2 schlägt Absage vor, Admin 1 bestätigt, Erstattung im Testmodus sichtbar, Eingriffe im Protokoll | `tests/e2e/admin.spec.ts` (erweitern), M4-AC-10 |
-Mutationen je Task (Pflicht): Berechtigungsprüfung `owner` entfernen → rot; Teilindex entfernen → rot; Pflicht-Begründung entfernen → rot; `ownerIds` durch `platformAdminIds` ersetzen → rot.
 
-## 7. Beleg-Befehle
-`npm run typecheck`; `npm run lint`; `npm test`; `npm run test:integration` (mit leerem `STRIPE_SECRET_KEY`, Aufräumen prüfen); `npm run db:generate` (danach „No schema changes“); `npm run db:migrate` auf frischer Datenbank; `npx playwright test tests/e2e/admin.spec.ts` (E4); `npm run build`. Security-Review (Auth, Rollen, Zahlungen) ist Pflicht für jede Etappe; die Oberfläche (E4) zusätzlich Impeccable-Durchgänge nach 013 AC-15.
+**Mutationen je Task (Pflicht, einzeln belegt):** `owner`-Prüfung in `requireOwner`/`decideCancel`/`adminCancelMatch` entfernen → rot; Teilindex `owner` entfernen → rot; Teilindex „ein offener Vorschlag je Spiel“ entfernen → rot; `CHECK decided_by <> proposed_by` entfernen → rot; Pflicht-Begründung in `recordIntervention` entfernen → rot; Sperrschutz ohne `owner` (`admin.ts:161`) → rot; `ownerIds` durch `platformAdminIds` ersetzen → rot; `approve`-Idempotenz entfernen (zweiter Aufruf bucht doppelt) → rot; Eintrag außerhalb der Transaktion → rot (Rollback-Test).
 
-## 8. Datenschutz und Sicherheit
-- Das Eingriffsprotokoll enthält Freitext-Begründungen, die personenbezogene Daten Dritter enthalten können (z. B. Name eines gesperrten Spielers). Sichtbar nur für `admin` und `owner`, nie für Captain, Spieler oder Gäste; nicht im Export anderer Nutzer; nicht in Logs/Benachrichtigungstexten (Benachrichtigungen enthalten nur Typ und Link). Aufbewahrung, Auskunft, Löschung: Rechtsfrage R1.
-- Interne Begründung des Eingriffs und der **Absagegrund** (`matches.cancel_reason`, für Teilnehmer sichtbar, G21-012) sind verschieden: Die interne Begründung bleibt im Protokoll; der Text für die Teilnehmer wird getrennt eingegeben (Frage P5).
-- Rechte werden nur serverseitig geprüft (Seite UND Server-Aktion); keine Rolle kommt aus dem Client. `owner` ist nicht sperrbar und nicht per Oberfläche vergebbar außer durch Übergabe (Frage P2). Dev-Login `admin@` bleibt außerhalb der Produktion.
-- Alarmtexte ohne Karten- und Zahlungsdaten; die Absage-Erstattung nutzt den bestehenden geprüften Ablauf (`requestMatchCancel`, idempotent).
+## 9. Etappenschnitt (seriell, Schema nie parallel)
+| Etappe | Inhalt | Migration | Voraussetzung |
+|---|---|---|---|
+| E1a Grundlage | Enum `owner` (allein), Teilindex per Text-Cast, `isPlatformAdmin`/`requireOwner`, `scripts/set-owner.mjs`, `makeUser owner`, Dev-Login, BETRIEB (Ablauf, Rollback), Migrationstest frisch + bestehend | M-1 | M4-Migrationen gemergt, freie Nummer |
+| E1b Umstellung | Stellen aus Abschnitt 4 auf `isPlatformAdmin`/`owner`, Berechtigungsmatrix 3.2, grep-Test, Sperrschutz, Matrix-Test | keine | E1a und Bootstrap in der Zielumgebung |
+| E2 Protokoll und Alarme | `audit_log.reason`, `recordIntervention`, Umstellung bestehender Eingriffe (`setBanned`, `setRole`, Lobby schließen, Halle, `cancelMatch`), Protokoll-Filter, `ownerIds` und alle Alarmpfade, Warnung „kein Admin 1“ (Daten dafür), grep-Test | M-2 | E1b |
+| E3 Absagevorschlag (Server) | Tabelle, `proposeCancel`/`decideCancel`/`withdrawProposal`, `adminCancelMatch` → `owner`, Benachrichtigung an `owner`, Aufräum-Job, Server-Tests inkl. Parallel-Test; **Security-Review der Aktionen** (per POST erreichbar) | M-3 | E1b, E2 |
+| E4 Oberfläche | Absage-Block, Übersicht-Zähler und Warnung, Rollenauswahl, E2E | keine | E3 und **013 M2 und 013 M7-Admin-UI** |
+Go-live-MUSS G20-012 (Admin-Absage mit Oberfläche) **bleibt offen bis E4**. Beleg je Task einzeln (Befehl + Ergebnis), Reviewer ≠ Writer, Security-Review Pflicht (Auth, Rollen, Zahlungen) für jede Etappe.
 
-## 9. Risiken
-1. **Enum-Wert und Migration:** `ALTER TYPE ... ADD VALUE 'owner'` kann in derselben Transaktion nicht verwendet werden, in der er angelegt wird; `scripts/migrate.mjs` führt die offenen Migrationen mit dem Drizzle-Migrator aus. Ein Teilindex auf `role = 'owner'` in derselben Folge könnte scheitern. Vor dem Bau auf frischer und bestehender Datenbank prüfen; Alternativen (Spalte statt Enum-Wert, getrennte Läufe) sind eine Entscheidung des Task Managers mit dem Vertrag (009 nennt die Rolle `owner`).
-2. **Rechte gehen verloren oder zu weit:** `admin` verliert Finanzen/Einstellungen/Rollen (gewollt, AC-1); ein Fehler bei der Umstellung der 53 Stellen kann Admin-Funktionen sperren (Regressionstests) oder öffnen (Security-Review, Mutationen).
-3. **Kein `owner` nach der Migration:** Alarme gehen ins Leere, niemand kann Vorschläge entscheiden. Schutz: Start-Check und Warnung (Frage P2), Reihenfolge Migration → Festlegen → Alarme umstellen.
-4. **Schema-Kollision:** Migrationsnummern 0042/0043 gehören M4; M1 darf erst nach deren Merge nummerieren (seriell).
-5. **Oberfläche zu früh:** E4 vor 013 M2/M7 erzeugt Doppelarbeit; der Plan hält E4 bis dahin zurück, Go-live wartet auf E4 (G20-012).
-6. **Absage-Rennen:** Entscheidung des Vorschlags und paralleles Absagen durch den Captain (nur vor der ersten Abbuchung) oder den Job; Sperrreihenfolge Spiel zuerst (`FOR UPDATE`), Test mit Parallelaufruf.
-7. **Vertrag und Realität weichen ab:** Vertrag 009 nennt Dateien/Tests, die es nicht gibt (`admin-rollen.test.ts` usw.); sie entstehen in M1.
+## 10. Beleg-Befehle
+`npm run typecheck`; `npm run lint`; `npm test`; `npm run test:integration` (mit leerem `STRIPE_SECRET_KEY`); `npm run db:generate` (danach „No schema changes“); `npm run db:migrate` auf frischer UND bestehender Datenbank; `node scripts/set-owner.mjs <email>` zweimal (lokal); `npx playwright test tests/e2e/admin.spec.ts` (E4); `npm run build`. Oberfläche (E4) zusätzlich Impeccable-Durchgänge nach 013 AC-15.
 
-## 10. Fragen (nicht entschieden; Produkt: Nutzer/t9, Recht: Anwalt, kein Agent beantwortet sie)
+## 11. Datenschutz, Risiken, Fragen
+### 11.1 Datenschutz und Sicherheit
+- Das Eingriffsprotokoll enthält Freitext-Begründungen, die personenbezogene Daten Dritter enthalten können. Sichtbar nur für `owner` und `admin`, nie für Captain, Spieler oder Gäste; nicht im Export anderer Nutzer; nicht in Logs oder Benachrichtigungstexten (Benachrichtigungen enthalten nur Typ und Link). Eingabehinweis „keine Namen Dritter“. Aufbewahrung, Auskunft, Löschung, `actor_id`-Fremdschlüssel bei Konto-Löschung: Rechtsfrage R1.
+- Interne Begründung des Eingriffs und der **Absagegrund** (`matches.cancel_reason`, für Teilnehmer sichtbar, G21-012) sind verschieden; ob getrennte Felder nötig sind, ist Frage P5.
+- Rechte werden nur serverseitig geprüft (Seite UND Server-Aktion); keine Rolle kommt aus dem Client. Der Bootstrap-Schritt läuft nur durch den Betreiber. Dev-Login `admin@` bleibt außerhalb der Produktion.
+- Alarmtexte ohne Karten- und Zahlungsdaten; die Absage-Erstattung nutzt den bestehenden geprüften Ablauf.
+
+### 11.2 Risiken
+1. **Enum und Migrator:** siehe Abschnitt 5; Pflicht: Test auf frischer Datenbank mit allen Migrationen in einem Lauf. Rollback unvollständig (Wert bleibt).
+2. **Rechte gehen verloren oder zu weit:** `admin` verliert Finanzen/Einstellungen/Rollen (gewollt); Fehler bei der Umstellung sperren Funktionen (Regressionstests) oder öffnen sie (Security-Review, Mutationen, Matrix-Test).
+3. **Kein `owner`:** Bootstrap-Reihenfolge (Abschnitt 6), Warnung statt Ersatzkreis; Vertretung bei Ausfall von Admin 1: Frage P2.
+4. **Schema-Kollision:** Migrationsnummern; M4 zuerst; jede Etappe prüft die freie Nummer.
+5. **Oberfläche zu früh:** E4 wartet auf 013 M2/M7; Go-live wartet auf E4.
+6. **Absage-Rennen:** Sperrreihenfolge Spiel → Vorschlag → Erstattungszeilen, Idempotenz, Parallel-Test.
+7. **Server ohne UI:** Aktionen aus E3 sind per POST erreichbar; Security-Review vor dem Merge von E3.
+8. **Vertrag und Realität weichen ab:** Vertrag 009 nennt Dateien/Tests, die es noch nicht gibt; sie entstehen in M1.
+9. **Test-Fixtures:** Ein einziger `owner` je Datenbank kollidiert mit parallelen oder nicht aufgeräumten Tests.
+
+### 11.3 Fragen (nicht entschieden; Produkt: Nutzer/t9, Recht: Anwalt, kein Agent beantwortet sie)
 **Produkt**
-- **P1:** Sollen `moderator`, `finance` und `booking` in M1 entfallen (Vertrag 009: zu `admin` bzw. `player`), oder bleiben sie als Teilrollen neben `owner`/`admin` bestehen?
-- **P2:** Welches Konto ist in der Produktion Admin 1 (`owner`), und wie wird es festgelegt oder übergeben (einmaliger Betreiber-Schritt vs. Umgebungsangabe)? Wie wird verhindert, dass es nach der Migration keinen `owner` gibt (Start-Check, Warnung)? Gibt es einen Vertretungsweg, wenn Admin 1 ausfällt?
-- **P3:** Wer ordnet die vorhandenen Konten mit `moderator`/`finance`/`booking` zu (Admin 1 vor der Migration)? Der Prüfbericht liefert die Liste, die Zuordnung ist Sache von Admin 1.
-- **P4:** Gilt „Admin 2 kann nicht selbst absagen“ (AC-9) auch für Spiele OHNE Abbuchung (heute darf jeder Plattform-Admin über `cancelMatch` absagen), oder nur für Spiele mit Abbuchung?
-- **P5:** Ist die Begründung des Admin-Eingriffs zugleich der Absagegrund für die Teilnehmer (`matches.cancel_reason`), oder gibt es zwei Felder (interne Begründung und Text an die Teilnehmer)?
-- **P6:** Läuft ein offener Absagevorschlag ab (z. B. bei Spielbeginn automatisch erledigt)? Darf Admin 2 ihn zurückziehen?
-- **P7:** Darf Admin 2 das Protokoll vollständig lesen (Vertrag 013: „Protokoll lesen“ am Handy), auch Rollen- und Absageentscheide von Admin 1?
+- **P1:** Sollen `moderator`, `finance` und `booking` in M1 entfallen (Vertrag 009: zu `admin` bzw. `player`), oder bleiben sie als Teilrollen bestehen? (Default des Plans: unverändert.)
+- **P2:** Welches Konto ist in der Produktion Admin 1 (`owner`), und gibt es einen Vertretungsweg, wenn Admin 1 ausfällt oder das Konto verloren geht (erneuter Bootstrap durch den Betreiber)?
+- **P3:** Wer ordnet die vorhandenen Konten mit `moderator`/`finance`/`booking` zu, falls P1 „entfallen“ lautet (Admin 1 vor der Migration; der Prüfbericht liefert die Liste)?
+- **P4 (Entscheid Nutzer):** Gilt „Admin 2 kann nicht selbst absagen“ auch für Spiele OHNE Abbuchung? Empfehlung des Plans: ja, wörtlich nach Vertrag (nur `owner` und Captain wie bisher).
+- **P5:** Ist die Begründung des Admin-Eingriffs zugleich der Absagegrund für die Teilnehmer (`matches.cancel_reason`), oder gibt es zwei Felder?
+- **P6:** Läuft ein offener Absagevorschlag ab? Darf Admin 2 ihn zurückziehen? Was geschieht mit offenen Vorschlägen, wenn Admin 2 die Rolle verliert oder gesperrt wird (Plan: `withdrawn`)?
+- **P7:** Darf Admin 2 das Protokoll vollständig lesen (Default des Plans: `owner` und `admin` lesen), auch die Rollen- und Absageentscheide von Admin 1?
+- **P8:** Sollen die täglichen Finanz-Alarme (`scheduled.ts:224`, heute an `admin` und `finance`) ein Admin-Alarm im Sinne AC-18 sein (nur `owner`), oder bleibt sie bei den Mitarbeitern?
 
 **Recht**
-- **R1:** Aufbewahrungsdauer, Auskunft (Art. 15) und Löschung/Anonymisierung der Freitext-Begründungen im Eingriffsprotokoll (zusammen mit G21-012 Absagegrund).
-- **R2:** Darf bei einer Absage durch den Betreiber die Begründung gegenüber den Teilnehmern Dritte (z. B. gesperrte Spieler) nennen? Antwort bestimmt, ob nur ein Standardtext erlaubt ist.
+- **R1:** Aufbewahrungsdauer, Auskunft (Art. 15) und Löschung/Anonymisierung der Freitext-Begründungen im Eingriffsprotokoll (zusammen mit G21-012 Absagegrund); Umgang mit `audit_log.actor_id` bei Konto-Löschung (Fremdschlüssel auf `users`).
+- **R2:** Darf bei einer Absage durch den Betreiber die Begründung gegenüber den Teilnehmern Dritte (z. B. gesperrte Spieler) nennen? Die Antwort bestimmt, ob nur ein Standardtext erlaubt ist.
