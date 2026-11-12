@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { venues } from "@/db/schema-finance";
+import { venueAccess, venues } from "@/db/schema-finance";
 import { cleanup, makeUser } from "./helpers";
 
 // Vertrag 011 AC-7: Hallenbetreiber zuordnen/entziehen darf nur Admin 1 (vorher war die Server-Aktion mit booking geschützt, also auch Admin 2).
@@ -31,6 +31,8 @@ const form = (email: string) => {
   return fd;
 };
 const managerOf = async (id: string) => (await db.select({ m: venues.managerUserId }).from(venues).where(eq(venues.id, id)))[0].m;
+// 011 M1: Zuordnen heißt Einladen (Einlösepfad für alle, Entscheid t9 P10); die offene Zeile liegt in venue_access
+const openAccess = async (id: string) => (await db.select().from(venueAccess).where(eq(venueAccess.venueId, id))).filter((r) => r.status !== "revoked");
 
 describe("setVenueManagerAction: nur Admin 1", () => {
   it("Admin 2 (role admin ohne is_owner) wird abgelehnt: Weiterleitung, Zuordnung unverändert", async () => {
@@ -48,8 +50,11 @@ describe("setVenueManagerAction: nur Admin 1", () => {
     const v = await venue();
     currentUserId = owner.id;
     expect(await setVenueManagerAction(v.id, undefined, form(manager.email))).toEqual({ ok: true });
-    expect(await managerOf(v.id)).toBe(manager.id);
+    const [row] = await openAccess(v.id);
+    expect(row).toMatchObject({ status: "invited", invitedEmail: manager.email.toLowerCase() });
+    expect(await managerOf(v.id)).toBeNull(); // erst der verifizierte Google-Login macht den Zugang aktiv
     expect(await setVenueManagerAction(v.id, undefined, form(""))).toEqual({ ok: true });
+    expect(await openAccess(v.id)).toHaveLength(0);
     expect(await managerOf(v.id)).toBeNull();
   });
 
@@ -64,6 +69,6 @@ describe("setVenueManagerAction: nur Admin 1", () => {
       currentUserId = u.id;
       await expect(setVenueManagerAction(v.id, undefined, form(other.email))).rejects.toThrow(/REDIRECT:\/app/);
     }
-    expect(await managerOf(v.id)).toBe(manager.id);
+    expect(await openAccess(v.id)).toMatchObject([{ status: "invited", invitedEmail: manager.email.toLowerCase() }]); // unverändert
   });
 });

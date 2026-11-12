@@ -6,6 +6,7 @@ test.setTimeout(120_000);
 
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
+  await query("delete from venue_access where venue_id in (select id from venues where name in ($1, $2))", [`E2E Betreiberhalle ${run}`, `E2E Offene Halle ${run}`]);
   await query("delete from venues where name in ($1, $2)", [`E2E Betreiberhalle ${run}`, `E2E Offene Halle ${run}`]); // Hallen mit Betreiber dürfen nicht in die Pools anderer Tests geraten
 });
 
@@ -20,13 +21,14 @@ test("Hallenbetreiber: Anfrage sehen, Halle als frei bestätigen, danach läuft 
   await createTeam(a, teamA);
   await createTeam(b, teamB);
 
-  // ohne Halle sieht der Betreiber nichts
+  // ohne Zugang zu einer Halle gibt es den Bereich nicht (Vertrag 011 AC-1: 404)
   await boss.goto("/halle");
-  await expect(boss.getByTestId("no-inquiries")).toBeVisible();
+  await expect(boss.getByRole("heading", { name: "Seite nicht gefunden" })).toBeVisible(); // Streaming liefert 200, der Inhalt ist die Fehlerseite
 
   // Spiel mit vereinbartem Termin und zwei angefragten Hallen: eine mit Betreiber (boss), eine ohne
   const bossId = await userIdByEmail(`hlm-${run}@test.local`);
   const [halle] = await query<{ id: string }>("insert into venues (name, city, manager_user_id) values ($1, 'Gelsenkirchen', $2) returning id", [`E2E Betreiberhalle ${run}`, bossId]);
+  await query("insert into venue_access (venue_id, user_id, status, assigned_at) values ($1, $2, 'active', now())", [halle.id, bossId]); // 011 M1: Zugang in venue_access
   const [offen] = await query<{ id: string }>("insert into venues (name, city) values ($1, 'Gelsenkirchen') returning id", [`E2E Offene Halle ${run}`]);
   const [ta] = await query<{ id: string }>("select id from teams where name = $1", [teamA]);
   const [tb] = await query<{ id: string }>("select id from teams where name = $1", [teamB]);
