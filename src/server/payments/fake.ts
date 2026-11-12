@@ -45,6 +45,19 @@ export class FakeProvider implements PaymentProvider {
     this.detached.add(id);
   }
 
+  /** Test-Hilfe (M4b): Ausgang von deleteCustomer je Kunde (Standard: ok); "error" wirft einen Netzfehler. Geloeschte Kunden stehen in deletedCustomers. */
+  readonly deletedCustomers = new Set<string>();
+  private readonly deleteOutcome = new Map<string, "ok" | "error">();
+  setDeleteCustomerOutcome(customerId: string | "*", outcome: "ok" | "error") {
+    this.deleteOutcome.set(customerId, outcome);
+  }
+  async deleteCustomer(customerId: string): Promise<void> {
+    this.probe("deleteCustomer");
+    this.calls.push({ method: "deleteCustomer", args: { customerId } });
+    if ((this.deleteOutcome.get(customerId) ?? this.deleteOutcome.get("*")) === "error") throw new Error("Netz weg");
+    this.deletedCustomers.add(customerId); // zweiter Aufruf fuer denselben Kunden: weiter Erfolg (idempotent)
+  }
+
   /** Test-Hilfe: macht dieses Zahlungsmittel unbrauchbar (abgelaufen, gelöst) oder wieder nutzbar. */
   setUsable(id: string, usable: boolean) {
     if (usable) this.unusable.delete(id);

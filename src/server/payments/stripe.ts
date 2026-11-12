@@ -182,6 +182,16 @@ export class StripeProvider implements PaymentProvider {
     await this.stripe().paymentMethods.detach(id);
   }
 
+  async deleteCustomer(customerId: string): Promise<void> {
+    if (!/^cus_[A-Za-z0-9_]{1,64}$/.test(customerId)) return; // keine gueltige Kunden-ID: es gibt nichts zu loeschen
+    try {
+      await this.stripe().customers.del(customerId, {}, SETUP_REQUEST);
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return; // gibt es nicht (mehr): erledigt
+      throw error;
+    }
+  }
+
   constructWebhookEvent(rawBody: string, signature: string | null): ProviderEvent {
     const secret = this.config.webhookSecret ?? process.env.STRIPE_CARD_WEBHOOK_SECRET; // eigenes Secret dieses Endpunkts; STRIPE_WEBHOOK_SECRET gehört der alten Route /api/webhooks/stripe
     if (!secret) throw new PaymentsUnavailableError();

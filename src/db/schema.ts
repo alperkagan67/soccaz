@@ -483,3 +483,30 @@ export const paymentDisputeEntries = pgTable(
     check("payment_dispute_entries_fee_nonneg", sql`${t.feeCents} >= 0`),
   ],
 );
+
+/**
+ * Loeschauftrag fuer den Stripe-Kunden eines geloeschten Kontos (Vertrag 012, M4b, AC-16). Wird in DERSELBEN Transaktion wie die Anonymisierung angelegt; dort verschwinden payment_profiles und das Mandat
+ * (payment_setup_intents), die Kunden-ID steht danach NUR noch hier. Ein Job ruft Stripe auf (Netz, nie in einer Transaktion) und setzt die Kunden-ID nach Erfolg auf NULL.
+ * status: pending (wartet), claimed (ein Lauf arbeitet, bis claimed_until), done, failed (nach zu vielen Versuchen: Admin-Alarm, manuell klaeren). NO ACTION: der Nachweis bleibt erhalten.
+ */
+export const paymentErasureTasks = pgTable(
+  "payment_erasure_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    stripeCustomerId: text("stripe_customer_id"),
+    status: text("status").$type<"pending" | "claimed" | "done" | "failed">().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextTryAt: timestamp("next_try_at", { withTimezone: true }).notNull().defaultNow(),
+    claimedUntil: timestamp("claimed_until", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("payment_erasure_tasks_user_idx").on(t.userId),
+    index("payment_erasure_tasks_due_idx").on(t.status, t.nextTryAt),
+    check("payment_erasure_tasks_status_check", sql`${t.status} in ('pending', 'claimed', 'done', 'failed')`),
+    check("payment_erasure_tasks_attempts_nonneg", sql`${t.attempts} >= 0`),
+  ],
+);
