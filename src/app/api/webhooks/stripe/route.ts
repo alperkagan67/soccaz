@@ -1,7 +1,5 @@
 import { verifyStripeSignature } from "@/lib/stripe-signature";
-import { notifyUsers, platformAdminIds } from "@/server/notifications";
 import { completePayment, failPayment } from "@/server/payments";
-import { db } from "@/db";
 
 type StripeEvent = {
   id: string;
@@ -44,12 +42,7 @@ export async function POST(request: Request) {
     case "checkout.session.expired":
       await failPayment(ref, "canceled", "Sitzung abgelaufen");
       break;
-    case "charge.dispute.created":
-      await notifyUsers(
-        await platformAdminIds(db),
-        { type: "admin.task", title: "Rückbuchung eingegangen", body: "Bei Stripe wurde eine Zahlung angefochten. Bitte im Stripe-Dashboard prüfen und im Finanzbereich eine Korrektur buchen.", url: "/admin/finanzen" },
-      );
-      break;
+    // charge.dispute.* gehoert seit 012 M4a zum Kartenwebhook (/api/stripe/webhook). Dieses Ereignis dort abmelden und hier NICHT mehr abonnieren (sonst doppelte Meldung).
     default:
       break; // andere Ereignisse sind uns egal
   }
