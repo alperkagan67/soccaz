@@ -5,7 +5,7 @@
 //  D  (Tx, Spielsperre)  sind alle Zeilen erfolgreich: Spiel gebucht (in applyChargeInTx -> settleIfComplete).
 // Wiederholung ist ungefährlich: Zeilen sind eindeutig, eine an einen PaymentIntent gebundene Zeile bekommt nie einen zweiten, derselbe Schlüssel liefert bei Stripe
 // denselben PaymentIntent. Nach 20 Stunden ohne Ergebnis wird nicht mehr gesendet (der Schlüssel gilt bei Stripe nur etwa 24 Stunden): Zeile failed, Audit.
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges, paymentProfiles } from "@/db/schema";
 import { audit } from "../audit";
@@ -17,6 +17,7 @@ import { notifyChargeProblem } from "./charge-notify";
 import { failSubstitute } from "./substitute-fail";
 import { graceUntil, inGraceWindow, isCardProblemCode } from "@/lib/grace";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
+import { validCoversOf } from "./cover";
 
 /** failure_code einer pending-Zeile, deren Ausgang bei Stripe unbekannt ist (siehe markUnknown). */
 export const UNKNOWN_OUTCOME = "unknown_outcome";
@@ -55,8 +56,8 @@ export type EligibilityReason = "not_open" | "not_due" | "not_card_mode" | "not_
  * Darf dieses Spiel jetzt abgebucht werden? Läuft in der Transaktion des Aufrufers unter der Spielsperre.
  * Kartenspiel (Schalter EIN, Frist-Regel, kein Guthaben-Platz), beide Captains bereit, Anteil fixiert, alle Eingeteilten mit Karte, Summe der Abbuchungen >= Miete.
  */
-export async function chargeEligibility(tx: Tx, match: typeof matches.$inferSelect, now: Date, requireDue = false): Promise<{ reason: EligibilityReason; seated: string[]; amountCents: number | null }> {
-  const none = (reason: EligibilityReason) => ({ reason, seated: [] as string[], amountCents: null as number | null });
+export async function chargeEligibility(tx: Tx, match: typeof matches.$inferSelect, now: Date, requireDue = false): Promise<{ reason: EligibilityReason; seated: string[]; amountCents: number | null; payers: Map<string, string> }> {
+  const none = (reason: EligibilityReason) => ({ reason, seated: [] as string[], amountCents: null as number | null, payers: new Map<string, string>() });
   if (!["lobby", "confirmed"].includes(match.status) || match.settledAt !== null || match.cancelRequestedAt !== null || match.startsAt.getTime() <= now.getTime()) return none("not_open");
   if (!(await cardModeActive(tx, match))) return none("not_card_mode");
   if (!match.homeFinalAt || !match.awayFinalAt) return none("not_confirmed");
@@ -64,11 +65,18 @@ export async function chargeEligibility(tx: Tx, match: typeof matches.$inferSele
   if (requireDue && !(await chargeDue(tx, match, now))) return none("not_due");
   const amount = chargeAmount(match.priceCents, match.finalShareCents);
   if (amount === null) return none("free");
-  const seated = await tx.select({ userId: matchParticipants.userId, cardStatus: matchParticipants.cardStatus }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
+  // Variante B (M3c-3): ein Platz ohne Karte zaehlt als bereit, wenn ein anderer Spieler seinen Anteil gueltig uebernommen hat (Zahler eingeteilt UND card_ready, keine Kette); sonst verfaellt die Uebernahme
+  const all = await tx
+    .select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, coveredByUserId: matchParticipants.coveredByUserId })
+    .from(matchParticipants)
+    .where(eq(matchParticipants.matchId, match.id));
+  const seated = all.filter((s) => s.teamId !== null);
   if (seated.length === 0) return none("no_players");
-  if (seated.some((s) => s.cardStatus !== "card_ready")) return { reason: "cards_missing", seated: seated.map((s) => s.userId), amountCents: amount };
-  if (seated.length * amount < (match.priceCents ?? 0)) return { reason: "uncovered", seated: seated.map((s) => s.userId), amountCents: amount };
-  return { reason: "ready", seated: seated.map((s) => s.userId), amountCents: amount };
+  const payers = validCoversOf(all);
+  const ids = seated.map((s) => s.userId);
+  if (seated.some((s) => s.cardStatus !== "card_ready" && !payers.has(s.userId))) return { reason: "cards_missing", seated: ids, amountCents: amount, payers };
+  if (seated.length * amount < (match.priceCents ?? 0)) return { reason: "uncovered", seated: ids, amountCents: amount, payers };
+  return { reason: "ready", seated: ids, amountCents: amount, payers };
 }
 
 export type RunResult = { reason: EligibilityReason | "rows_exist"; created: number; attempted: number; settled: boolean };
@@ -87,7 +95,8 @@ export async function runCharges(matchId: string, now: Date = new Date(), opts: 
     const e = await chargeEligibility(tx, match, now, opts.requireDue === true);
     if (e.reason !== "ready" || e.amountCents === null) return { reason: e.reason, created: 0 };
     for (const userId of e.seated) {
-      await tx.insert(paymentCharges).values({ matchId, userId, amountCents: e.amountCents, idempotencyKey: chargeKey(matchId, userId) }).onConflictDoNothing();
+      // payerUserId nur, wenn die Uebernahme JETZT gueltig ist (Zahler eingeteilt, card_ready, Platz ohne eigene Karte); sonst zahlt der Spieler selbst
+      await tx.insert(paymentCharges).values({ matchId, userId, amountCents: e.amountCents, idempotencyKey: chargeKey(matchId, userId), payerUserId: e.payers.get(userId) ?? null }).onConflictDoNothing();
       await tx.update(matchParticipants).set({ cardStatus: "charge_pending" }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
     }
     await audit(null, "charge.created", "match", matchId, { after: { players: e.seated.length, amountCents: e.amountCents } }, tx);
@@ -106,7 +115,7 @@ export async function runCharges(matchId: string, now: Date = new Date(), opts: 
   return { reason: phaseA.reason, created: phaseA.created, attempted, settled: Boolean(after?.settledAt) };
 }
 
-type Claimed = { id: string; matchId: string; userId: string; amountCents: number; idempotencyKey: string };
+type Claimed = { id: string; matchId: string; userId: string; payerUserId: string | null; amountCents: number; idempotencyKey: string };
 
 /**
  * Beansprucht die nächste sendefähige Zeile (pending, ohne PaymentIntent, nicht gerade in Arbeit) in einer kurzen Transaktion.
@@ -123,12 +132,12 @@ async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
     const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("share");
     const open = Boolean(match) && ["lobby", "confirmed"].includes(match.status) && match.settledAt === null && match.cancelRequestedAt === null && match.startsAt.getTime() > now.getTime() && (await cardModeActive(tx, match));
     const rows = await tx.execute(sql`
-      select id, match_id, user_id, amount_cents, idempotency_key, attempt_started_at, updated_at
+      select id, match_id, user_id, payer_user_id, amount_cents, idempotency_key, attempt_started_at, updated_at
       from payment_charges
       where match_id = ${matchId} and status = 'pending' and payment_intent_id is null and (failure_code is null or failure_code not in (${UNKNOWN_OUTCOME}, ${AFTER_START}))
       order by created_at, id
       for update skip locked`);
-    for (const row of rows.rows as { id: string; match_id: string; user_id: string; amount_cents: number; idempotency_key: string; attempt_started_at: Date | null; updated_at: Date }[]) {
+    for (const row of rows.rows as { id: string; match_id: string; user_id: string; payer_user_id: string | null; amount_cents: number; idempotency_key: string; attempt_started_at: Date | null; updated_at: Date }[]) {
       if (!open) {
         // Wurde schon einmal gesendet (attempt_started_at), kann bei Stripe ein PaymentIntent existieren: nicht auf failed setzen, sondern markieren (M3 sucht bei Stripe).
         if (row.attempt_started_at) await markUnknown(tx, row.id, row.match_id, row.user_id, "match_closed");
@@ -144,7 +153,7 @@ async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
       // Eine Zeile, die gerade ein anderer Lauf bearbeitet (Lease), wird übersprungen; nach Ablauf der Lease darf sie erneut gesendet werden (gleicher Schlüssel)
       if (started !== null && now.getTime() - new Date(row.updated_at).getTime() < CLAIM_LEASE_MS) continue;
       await tx.update(paymentCharges).set({ attemptStartedAt: started === null ? now : new Date(started), updatedAt: now }).where(eq(paymentCharges.id, row.id));
-      return { id: row.id, matchId: row.match_id, userId: row.user_id, amountCents: row.amount_cents, idempotencyKey: row.idempotency_key };
+      return { id: row.id, matchId: row.match_id, userId: row.user_id, payerUserId: row.payer_user_id, amountCents: row.amount_cents, idempotencyKey: row.idempotency_key };
     }
     return null;
   });
@@ -191,7 +200,8 @@ async function markUnknown(tx: Tx, rowId: string, matchId: string, userId: strin
 
 /** Phase B (Netz) und C (Verbuchung) für eine beanspruchte Zeile. */
 async function sendCharge(c: Claimed): Promise<void> {
-  const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.userId));
+  // WESSEN Karte: bei einer Uebernahme (Variante B) die des Zahlers, sonst die des Spielers; die Metadaten nennen den Platz (userId = Spieler des Platzes)
+  const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.payerUserId ?? c.userId));
   if (!profile?.paymentMethodId) {
     await db.transaction((tx) => failRow(tx, c.id, c.matchId, c.userId, "no_payment_method"));
     return;

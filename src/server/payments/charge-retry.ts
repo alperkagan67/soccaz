@@ -81,17 +81,14 @@ export async function rotateAttempt(c: Candidate, now: Date): Promise<boolean> {
       return false;
     if (!inGraceWindow(row.graceUntil, game.startsAt, now)) return false; // effektives Ende, Altzeilen (null) nie
     if (NON_CARD_CODES.includes(row.failureCode ?? "") || row.slotOf !== null || row.resolution !== null) return false;
+    // WESSEN Karte: bei einer Uebernahme (Variante B) die des ZAHLERS (payer_user_id), sonst die des Spielers. Zuerst der Platz des Zahlers (Sperrreihenfolge: nie umgekehrt), dann der des Spielers.
+    const payerId = row.payerUserId ?? c.userId;
     const [seat] = await tx
-      .select({ cardStatus: matchParticipants.cardStatus })
+      .select({ cardStatus: matchParticipants.cardStatus, teamId: matchParticipants.teamId })
       .from(matchParticipants)
-      .where(
-        and(
-          eq(matchParticipants.matchId, c.matchId),
-          eq(matchParticipants.userId, c.userId),
-        ),
-      )
+      .where(and(eq(matchParticipants.matchId, c.matchId), eq(matchParticipants.userId, payerId)))
       .for("update");
-    if (!seat || seat.cardStatus !== "card_ready") return false;
+    if (!seat || seat.teamId === null || seat.cardStatus !== "card_ready") return false;
 
     await tx.insert(paymentChargeAttempts).values({
       chargeId: row.id,
@@ -171,7 +168,8 @@ const eligibleFrom = () =>
       currentPi: paymentCharges.paymentIntentId,
     })
     .from(paymentCharges)
-    .innerJoin(matchParticipants, and(eq(matchParticipants.matchId, paymentCharges.matchId), eq(matchParticipants.userId, paymentCharges.userId)))
+    // der Platz des ZAHLERS entscheidet (Variante B): coalesce(payer_user_id, user_id)
+    .innerJoin(matchParticipants, and(eq(matchParticipants.matchId, paymentCharges.matchId), eq(matchParticipants.userId, sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId})`)))
     .innerJoin(matches, eq(matches.id, paymentCharges.matchId));
 
 /**
@@ -226,7 +224,8 @@ export async function reconcileKnownIntents(c: Candidate, currentPi: string | nu
 export async function retryChargesInWindow(opts: { userId?: string; matchId?: string; now?: Date } = {}): Promise<number> {
   const now = opts.now ?? new Date();
   const filters = eligibleFilters(now);
-  if (opts.userId) filters.push(eq(paymentCharges.userId, opts.userId));
+  // ein Nutzer, der "Karte aendern" gemacht hat: seine eigenen Zeilen UND die Zeilen, die er als Zahler uebernommen hat
+  if (opts.userId) filters.push(sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${opts.userId}`);
   if (opts.matchId) filters.push(eq(paymentCharges.matchId, opts.matchId));
   const candidates: Candidate[] = (await eligibleFrom().where(and(...filters)).orderBy(asc(paymentCharges.createdAt), asc(paymentCharges.id))).map((r) => ({
     id: r.id,

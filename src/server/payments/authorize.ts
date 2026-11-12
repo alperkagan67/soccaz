@@ -17,11 +17,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const AUTHORIZE_LIMIT_PER_HOUR = 10;
 const NOT_AVAILABLE = "Für diese Zahlung ist gerade keine Freigabe möglich.";
 
+type Row = { id: string; amountCents: number; paymentIntentId: string | null; currentAttempt: number; graceUntil: Date | null; status: string; failureCode: string | null; startsAt: Date; matchStatus: string; cancelRequestedAt: Date | null; settledAt: Date | null };
 type OpenRow = { id: string; amountCents: number; paymentIntentId: string | null; currentAttempt: number; graceUntil: Date | null; startsAt: Date; matchId: string };
 
 /** Die offene Freigabe-Zeile des Nutzers in diesem Spiel, wenn ALLE Bedingungen stimmen; sonst null. Liest nur eigene Zeilen (Nutzer-ID aus der Sitzung). */
 async function openRow(userId: string, matchId: string, now: Date): Promise<OpenRow | null> {
-  const [r] = await db
+  const rows = await db
     .select({
       id: paymentCharges.id,
       amountCents: paymentCharges.amountCents,
@@ -37,8 +38,17 @@ async function openRow(userId: string, matchId: string, now: Date): Promise<Open
     })
     .from(paymentCharges)
     .innerJoin(matches, eq(matches.id, paymentCharges.matchId))
-    .where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId)));
-  if (!r) return null;
+    // Zeilen, die der Nutzer ZAHLT: seine eigenen (payer_user_id NULL) und uebernommene Anteile (payer_user_id = Nutzer); nie die eines Fremden
+    .where(and(eq(paymentCharges.matchId, matchId), sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${userId}`))
+    .orderBy(paymentCharges.createdAt, paymentCharges.id);
+  for (const r of rows) {
+    const open = openFrom(r, matchId, now);
+    if (open) return open;
+  }
+  return null;
+}
+
+function openFrom(r: Row, matchId: string, now: Date): OpenRow | null {
   if (r.status !== "requires_action" || r.failureCode !== "authentication_required") return null;
   if (!["lobby", "confirmed"].includes(r.matchStatus) || r.cancelRequestedAt !== null || r.settledAt !== null || r.startsAt.getTime() <= now.getTime()) return null;
   const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
@@ -92,14 +102,14 @@ export async function listOpenAuthorizations(userId: string, now: Date = new Dat
     .select({ matchId: paymentCharges.matchId, graceUntil: paymentCharges.graceUntil, paymentIntentId: paymentCharges.paymentIntentId, startsAt: matches.startsAt, matchStatus: matches.status, cancelRequestedAt: matches.cancelRequestedAt, settledAt: matches.settledAt })
     .from(paymentCharges)
     .innerJoin(matches, eq(matches.id, paymentCharges.matchId))
-    .where(and(eq(paymentCharges.userId, userId), eq(paymentCharges.status, "requires_action"), eq(paymentCharges.failureCode, "authentication_required")));
+    .where(and(sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${userId}`, eq(paymentCharges.status, "requires_action"), eq(paymentCharges.failureCode, "authentication_required")));
   const out: { matchId: string; until: string }[] = [];
   for (const r of rows) {
     // dieselben Bedingungen wie getAuthorizationSecret/openRow: Anzeige und Server stimmen ueberein
     if (!["lobby", "confirmed"].includes(r.matchStatus) || r.cancelRequestedAt !== null || r.settledAt !== null || !r.paymentIntentId || r.startsAt.getTime() <= now.getTime()) continue;
     const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
     if (end === null || end.getTime() <= now.getTime()) continue;
-    out.push({ matchId: r.matchId, until: graceText(end, now) });
+    if (!out.some((o) => o.matchId === r.matchId)) out.push({ matchId: r.matchId, until: graceText(end, now) });
   }
   return out;
 }

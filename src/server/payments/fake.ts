@@ -70,7 +70,7 @@ export class FakeProvider implements PaymentProvider {
 
   async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult> {
     this.probe("createPaymentIntent");
-    this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
+    this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata, customerId: input.customerId } });
     const outcome = this.outcomes.get(input.metadata.userId) ?? "succeeded";
     if (outcome === "error") throw new Error("Netz weg");
     if (outcome === "idempotency_mismatch") throw new PaymentIdempotencyError();

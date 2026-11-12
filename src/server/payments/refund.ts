@@ -262,7 +262,8 @@ async function resolveUnknown(matchId: string, now: Date): Promise<void> {
   if (unknown.length === 0) return;
   const provider = await getPaymentProvider();
   for (const c of unknown) {
-    const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.userId));
+    // Variante B: der Kunde des ZAHLERS (payer_user_id), nicht der des Platzes
+    const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.payerUserId ?? c.userId));
     let found;
     try {
       found = await provider.findPaymentIntents({ matchId: c.matchId, userId: c.userId });

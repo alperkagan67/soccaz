@@ -17,14 +17,16 @@ async function notBanned(tx: Tx, ids: string[]): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
-export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId: string; amountCents: number }, code: string | null, grace: Date | null = null): Promise<void> {
+export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId: string; payerUserId?: string | null; amountCents: number }, code: string | null, grace: Date | null = null): Promise<void> {
+  // Betroffener = der ZAHLER (Variante B: bei einer Uebernahme der Spieler, dessen Karte belastet wird), sonst der Spieler des Platzes. Der Platzhalter A bekommt nichts.
+  const who = row.payerUserId ?? row.userId;
   const [game] = await tx.select({ home: matches.homeTeamId, away: matches.awayTeamId }).from(matches).where(eq(matches.id, row.matchId));
   if (!game) return;
-  const [seat] = await tx.select({ teamId: matchParticipants.teamId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
+  const [seat] = await tx.select({ teamId: matchParticipants.teamId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, who)));
   // Captain = Admin des Teams des Betroffenen; ohne Team (Privatspiel, noch nicht eingeteilt) der Veranstalter = Admin des Heimteams
   const captains = await notBanned(tx, await teamAdminIds(tx, seat?.teamId ?? game.home));
-  const [victimActive] = await notBanned(tx, [row.userId]);
-  const [victim] = await tx.select({ name: users.name, nickname: users.nickname }).from(users).where(eq(users.id, row.userId));
+  const [victimActive] = await notBanned(tx, [who]);
+  const [victim] = await tx.select({ name: users.name, nickname: users.nickname }).from(users).where(eq(users.id, who));
   const [home, away] = [await teamName(tx, game.home), await teamName(tx, game.away)];
   const reason = chargeFailureText(code);
   const bank = needsBankConfirmation(code);
@@ -45,7 +47,7 @@ export async function notifyChargeProblem(tx: Tx, row: { matchId: string; userId
     tx,
   );
   await notifyUsers(
-    captains.filter((id) => id !== row.userId),
+    captains.filter((id) => id !== who),
     {
       type: "payment",
       title: bank ? "Zahlung braucht Freigabe" : "Abbuchung fehlgeschlagen",

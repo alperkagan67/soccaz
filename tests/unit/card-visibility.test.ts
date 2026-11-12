@@ -114,3 +114,21 @@ describe("cardDisplayFor: Freigabe der Bank offen (authorize), M3c-1c", () => {
     expect(cardDisplayFor("guest", "failed", "authentication_required", end, true)).toBeNull();
   });
 });
+
+describe("cardDisplayFor: Anteil uebernommen (cover), M3c-3a / AC-12", () => {
+  const end = new Date("2026-11-20T12:00:00Z");
+  it("aktiv: Betroffener und Mitspieler sehen neutral gruen 'gedeckt', ohne Grund und ohne Namen; Gaeste nichts; Captain den echten Status plus Hinweis", () => {
+    for (const a of ["self", "member"] as Audience[]) for (const s of ["none", "failed"] as CardStatus[]) expect(cardDisplayFor(a, s, "card_declined", end, false, "active")).toEqual({ status: "card_ready", reason: null, covered: true });
+    expect(cardDisplayFor("guest", "none", null, null, false, "active")).toBeNull();
+    expect(cardDisplayFor("manager", "none", null, null, false, "active")).toEqual({ status: "none", reason: null, covered: true });
+  });
+  it("gescheitert: Betroffener und Mitspieler nur die neutrale rote Ampel ohne Grund, Captain den echten Grund", () => {
+    for (const a of ["self", "member"] as Audience[]) expect(cardDisplayFor(a, "failed", "card_declined", end, false, "failed")).toEqual({ status: "open", reason: null });
+    expect(cardDisplayFor("manager", "failed", "card_declined", end, false, "failed")).toMatchObject({ status: "failed", reason: "card_declined" });
+    expect(cardDisplayFor("guest", "failed", "card_declined", end, false, "failed")).toBeNull();
+  });
+  it("ohne cover bleibt alles wie bisher", () => {
+    for (const a of ["self", "manager", "member", "guest"] as Audience[]) for (const s of ALL) expect(cardDisplayFor(a, s, "card_declined", end, false)).toEqual(cardDisplayFor(a, s, "card_declined", end, false, null));
+    expect(cardDisplayFor("self", "none", null)).not.toHaveProperty("covered");
+  });
+});

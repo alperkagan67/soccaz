@@ -288,6 +288,13 @@
       "when": 1794445820101,
       "tag": "0040_yellow_talisman",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794459023080,
+      "tag": "0041_natural_rictor",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,7 @@ export async function ensureRefundRow(tx: Tx, charge: typeof paymentCharges.$inf
   // Standard: die Erstattung des PaymentIntents der Zeile (Schluessel refund:<Abbuchung>). Mit extraPaymentIntentId: ein WEITERER erfolgreicher PaymentIntent derselben Abbuchung
   // (Doppelabbuchung), eigene Zeile und Schluessel refund:<Abbuchung>:<PaymentIntent>.
   const key = extraPaymentIntentId ? `${refundKey(charge.id)}:${extraPaymentIntentId}` : refundKey(charge.id);
-  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.userId, amountCents: charge.amountCents, idempotencyKey: key, reason, paymentIntentId: extraPaymentIntentId }).onConflictDoNothing();
+  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.payerUserId ?? charge.userId, amountCents: charge.amountCents, idempotencyKey: key, reason, paymentIntentId: extraPaymentIntentId }).onConflictDoNothing();
 }
 
 export type ChargeOutcome = "succeeded" | "requires_action" | "failed";
@@ -101,7 +101,8 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   if (r.metadata.matchId !== null && r.metadata.matchId !== row.matchId) return ignore("metadata_mismatch");
   if (r.metadata.userId !== null && r.metadata.userId !== row.userId) return ignore("metadata_mismatch");
   if (r.amountCents !== row.amountCents || r.currency?.toLowerCase() !== "eur") return ignore("amount_mismatch");
-  const [profile] = await tx.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, row.userId));
+  // WESSEN Kunde: bei einer Uebernahme (Variante B) der des ZAHLERS; Metadaten und Betrag gehoeren zum Platz (row.userId)
+  const [profile] = await tx.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, row.payerUserId ?? row.userId));
   if (!profile || r.customerId !== profile.stripeCustomerId) return ignore("customer_mismatch");
 
   // Ereignis eines ALTEN Versuchs: ein Fehlschlag aendert nichts (der neuere Versuch zaehlt), ein Erfolg ist trotzdem Geld und wird verbucht (succeeded gewinnt immer)
@@ -253,9 +254,12 @@ export async function settleIfComplete(tx: Tx, matchId: string): Promise<boolean
 
   await tx.update(matches).set({ settledAt: new Date() }).where(and(eq(matches.id, matchId), isNull(matches.settledAt)));
   const [home, away] = [await teamName(tx, match.homeTeamId), await teamName(tx, match.awayTeamId)];
-  for (const r of rows) {
-    await issueReceipt(tx, { userId: r.userId, kind: "match", matchId, amountCents: r.amountCents });
-    await notifyUsers([r.userId], { type: "payment", title: "Abrechnung", body: `${home} gegen ${away}: ${formatEuro(r.amountCents)} wurden von deiner Karte abgebucht.`, url: `/lobby/${matchId}` }, tx);
+  // Beleg und Nachricht gehen an den, dessen Karte belastet wurde (Zahler); uebernimmt B einen Anteil, bekommt B EINEN Beleg ueber die Summe beider Posten
+  const byPayer = new Map<string, number>();
+  for (const r of rows) byPayer.set(r.payerUserId ?? r.userId, (byPayer.get(r.payerUserId ?? r.userId) ?? 0) + r.amountCents);
+  for (const [payer, cents] of byPayer) {
+    await issueReceipt(tx, { userId: payer, kind: "match", matchId, amountCents: cents });
+    await notifyUsers([payer], { type: "payment", title: "Abrechnung", body: `${home} gegen ${away}: ${formatEuro(cents)} wurden von deiner Karte abgebucht.`, url: `/lobby/${matchId}` }, tx);
   }
   await audit(null, "charge.settled", "match", matchId, { after: { payers: rows.length, totalCents: rows.reduce((s, r) => s + r.amountCents, 0) } }, tx);
   return true;
