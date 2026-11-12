@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { clearCoversInvolving } from "./payments/cover-clear";
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
@@ -521,6 +522,8 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false,
     if (match.kind !== "private") throw new DomainError("Zufällig einteilen gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
     if (reshuffle) {
+      // neue Einteilung: alle Uebernahmen dieses Spiels enden (neue Zustimmung noetig)
+      await tx.update(matchParticipants).set({ coveredByUserId: null, coverMandateText: null, coverAcceptedAt: null }).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.coveredByUserId)));
       await tx
         .update(matchParticipants)
         .set({ teamId: null })
@@ -553,6 +556,7 @@ export function unassignParticipant(actorId: string, matchId: string, targetUser
     const p = await findParticipant(tx, matchId, targetUserId);
     if (!p || !p.teamId) throw new DomainError("Dieser Spieler ist keinem Team zugeteilt.");
     if (p.readyAt || p.paidCents > 0) throw new DomainError("Der Spieler ist schon bereit oder hat bezahlt. Entferne ihn, wenn er gehen soll.");
+    await clearCoversInvolving(tx, matchId, targetUserId);
     await tx.update(matchParticipants).set({ teamId: null }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, targetUserId)));
     await audit(actorId, "lobby.unassign", "match", matchId, { after: { userId: targetUserId } }, tx);
   });

@@ -24,13 +24,14 @@ export type CoverSeat = { userId: string; teamId: string | null; cardStatus: str
  * Gueltige Uebernahmen eines Spiels (Ziel-Platz -> Zahler): Zahler ist noch eingeteilt (team_id gesetzt), hat card_ready und ist nicht selbst uebernommen (keine Kette), und der
  * Ziel-Platz hat KEINE Karte (hat A selbst eine Karte, zahlt A selbst). Reine Funktion ueber die Plaetze des Spiels.
  */
-export function validCoversOf(seats: CoverSeat[]): Map<string, string> {
+export function validCoversOf(seats: CoverSeat[], teamGame = true): Map<string, string> {
   const by = new Map(seats.map((s) => [s.userId, s]));
   const out = new Map<string, string>();
   for (const s of seats) {
     if (!s.coveredByUserId || s.teamId === null || s.cardStatus === "card_ready") continue;
     const payer = by.get(s.coveredByUserId);
-    if (!payer || payer.userId === s.userId || payer.teamId === null || payer.cardStatus !== "card_ready") continue; // keine Kette: ein uebernommener Platz hat keine Karte und kann damit nie selbst Zahler sein
+    if (!payer || payer.userId === s.userId || payer.teamId === null || payer.cardStatus !== "card_ready") continue;
+    if (teamGame && payer.teamId !== s.teamId) continue; // Teamspiel: nur im selben Team (auch nach einem Teamwechsel nicht mehr gueltig) // keine Kette: ein uebernommener Platz hat keine Karte und kann damit nie selbst Zahler sein
     out.set(s.userId, payer.userId);
   }
   return out;
@@ -38,11 +39,12 @@ export function validCoversOf(seats: CoverSeat[]): Map<string, string> {
 
 /** Gueltige Uebernahmen eines Spiels, gelesen in der Transaktion des Aufrufers. */
 export async function validCovers(tx: Pick<Tx, "select">, matchId: string): Promise<Map<string, string>> {
+  const [m] = await tx.select({ kind: matches.kind }).from(matches).where(eq(matches.id, matchId));
   const seats = await tx
     .select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, coveredByUserId: matchParticipants.coveredByUserId })
     .from(matchParticipants)
     .where(eq(matchParticipants.matchId, matchId));
-  return validCoversOf(seats);
+  return validCoversOf(seats, m?.kind === "team");
 }
 
 /** Ist der Countdown "Lobby schliesst" abgelaufen oder sind schon Abbuchungszeilen angelegt? Dann ist keine Uebernahme mehr moeglich. Unter der Spielsperre. */
@@ -71,7 +73,7 @@ export async function takeOverShare(payerId: string, matchId: string, targetUser
     if (payer.cardStatus !== "card_ready") throw new DomainError("Zum Übernehmen brauchst du selbst eine hinterlegte Karte.");
     if (["card_ready", "charge_pending", "charged"].includes(target.cardStatus)) throw new DomainError(NOT_POSSIBLE); // nur ein roter Platz (ohne Karte oder Abbuchung fehlgeschlagen)
     if (match.kind === "team" && payer.teamId !== target.teamId) throw new DomainError(NOT_POSSIBLE); // im Teamspiel nur aus demselben Team
-    const valid = validCoversOf(seats);
+    const valid = validCoversOf(seats, match.kind === "team");
     if (valid.has(targetUserId)) throw new DomainError("Dieser Anteil ist schon übernommen.");
     if ([...valid.values()].includes(payerId)) throw new DomainError("Du übernimmst in diesem Spiel schon einen Anteil."); // ein Platz je Uebernehmer
     // veraltete (nicht mehr gueltige) Uebernahmen dieses Zahlers aufraeumen, damit der eindeutige Index nicht blockiert

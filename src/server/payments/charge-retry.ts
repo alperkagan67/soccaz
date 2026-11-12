@@ -5,7 +5,7 @@
 //  2  (Tx)    Spiel FOR SHARE, Zeile FOR UPDATE, Platz FOR UPDATE (Spiel -> Zeile -> Platz), alle Bedingungen erneut pruefen (Compare-and-set auf
 //             current_attempt), den abgeschlossenen Versuch in die Historie schreiben und die Zeile auf einen frischen pending-Versuch zuruecksetzen.
 //  3  (Netz)  den neuen Versuch sendet derselbe Weg wie der erste (runCharges: Beanspruchen mit Lease, Senden, Verbuchen ueber applyChargeInTx).
-import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { inGraceWindow, NON_CARD_CODES } from "@/lib/grace";
 import { db } from "@/db";
 import {
@@ -13,6 +13,7 @@ import {
   matches,
   paymentChargeAttempts,
   paymentCharges,
+  paymentProfiles,
 } from "@/db/schema";
 import { audit } from "../audit";
 import { cardModeActive } from "../wallet";
@@ -88,7 +89,15 @@ export async function rotateAttempt(c: Candidate, now: Date): Promise<boolean> {
       .from(matchParticipants)
       .where(and(eq(matchParticipants.matchId, c.matchId), eq(matchParticipants.userId, payerId)))
       .for("update");
-    if (!seat || seat.teamId === null || seat.cardStatus !== "card_ready") return false;
+    if (!seat || seat.teamId === null) return false;
+    if (row.payerUserId === null) {
+      if (seat.cardStatus !== "card_ready") return false;
+    } else {
+      // Anteil eines anderen (Variante B): Signal ist die NEUE Karte des Zahlers (Profil nach dem Fehlschlag aktualisiert, Zahlungsmittel vorhanden), NICHT sein Platzstatus -
+      // nach der ersten Abbuchung ist der Platz des Zahlers charge_pending/charged und wird nie wieder card_ready (Review-Fund 1). Ohne neue Karte kein Wiederholen (kein Dauerbeschuss).
+      const [prof] = await tx.select({ pm: paymentProfiles.paymentMethodId, at: paymentProfiles.updatedAt }).from(paymentProfiles).where(eq(paymentProfiles.userId, payerId)).for("share");
+      if (!prof?.pm || prof.at.getTime() <= row.updatedAt.getTime()) return false;
+    }
 
     await tx.insert(paymentChargeAttempts).values({
       chargeId: row.id,
@@ -145,7 +154,15 @@ function eligibleFilters(now: Date) {
     isNull(paymentCharges.slotOf), // Nachruecker-Zeilen werden nie nachgezahlt (sofort gescheitert)
     isNull(paymentCharges.resolution), // ersetzte Plaetze nie
     sql`least(${paymentCharges.graceUntil}, ${matches.startsAt} - interval '1 hour') > ${now}`, // effektives Ende: nie nach Anstoss minus 1 h (Punkt 7)
-    eq(matchParticipants.cardStatus, "card_ready"),
+    // eigener Anteil: Platz des Spielers card_ready; fremder Anteil (Variante B): der Zahler hat NACH dem Fehlschlag eine neue Karte gespeichert (Profil aktualisiert, Zahlungsmittel da)
+    or(
+      and(isNull(paymentCharges.payerUserId), eq(matchParticipants.cardStatus, "card_ready")),
+      and(
+        isNotNull(paymentCharges.payerUserId),
+        isNotNull(matchParticipants.teamId),
+        sql`exists (select 1 from payment_profiles pp where pp.user_id = ${paymentCharges.payerUserId} and pp.payment_method_id is not null and pp.updated_at > ${paymentCharges.updatedAt})`,
+      ),
+    ),
     inArray(matches.status, ["lobby", "confirmed"]),
     isNull(matches.cancelRequestedAt),
     isNull(matches.settledAt),

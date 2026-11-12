@@ -72,7 +72,7 @@ export async function chargeEligibility(tx: Tx, match: typeof matches.$inferSele
     .where(eq(matchParticipants.matchId, match.id));
   const seated = all.filter((s) => s.teamId !== null);
   if (seated.length === 0) return none("no_players");
-  const payers = validCoversOf(all);
+  const payers = validCoversOf(all, match.kind === "team");
   const ids = seated.map((s) => s.userId);
   if (seated.some((s) => s.cardStatus !== "card_ready" && !payers.has(s.userId))) return { reason: "cards_missing", seated: ids, amountCents: amount, payers };
   if (seated.length * amount < (match.priceCents ?? 0)) return { reason: "uncovered", seated: ids, amountCents: amount, payers };

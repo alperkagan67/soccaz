@@ -15,6 +15,7 @@ import { requestMatchCancel } from "@/server/payments/refund";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { setSetting } from "@/server/settings";
 import { COVER_MANDATE_KEY } from "@/lib/cover";
+import { leaveLobby, removeParticipant, unassignParticipant } from "@/server/lobby";
 import { addPlayer, cleanup, makeMatch } from "./helpers";
 
 // Vertrag 012, M3c-3a: "Anteil uebernehmen" (AC-13/AC-14), Variante B. Spieler B (Karte) uebernimmt den Anteil des Platzes von Spieler A (keine Karte). Die Zeile bleibt A's,
@@ -272,12 +273,19 @@ describe("Scheitern beim Zahler, Wiederabbuchen, Freigabe", () => {
     await takeOverShare(g.b.id, g.match.id, g.a.id, true);
     provider.setChargeOutcome(g.a.id, "declined");
     await runCharges(g.match.id);
-    expect(await retryChargesInWindow({ userId: g.b.id })).toBe(0); // B's Platz ist charged: keine neue Karte, nichts zu tun
-    // B aendert die Karte (Platz wieder card_ready), A's Platz bleibt 'failed'
-    await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.b.id)));
+    // ECHTER Ablauf (Review-Fund 1): B's eigener Anteil ist abgebucht, sein Platz ist charged und bleibt es; nur A's Posten ist gescheitert
+    expect((await seatOf(g, g.b)).cardStatus).toBe("charged");
+    expect((await rowOf(g, g.b)).status).toBe("succeeded");
+    expect(await retryChargesInWindow({ userId: g.b.id })).toBe(0); // ohne neue Karte kein Wiederholen (kein Dauerbeschuss derselben Karte)
+    expect(await retryChargesInWindow()).toBe(0);
+    // B speichert eine neue Karte (das tut der Webhook setup_intent.succeeded: Profil aktualisiert); sein Platz bleibt charged
+    await new Promise((r) => setTimeout(r, 20));
+    await db.update(paymentProfiles).set({ paymentMethodId: nid("pm_neu"), updatedAt: new Date() }).where(eq(paymentProfiles.userId, g.b.id));
+    expect((await seatOf(g, g.b)).cardStatus).toBe("charged");
     provider.setChargeOutcome(g.a.id, "succeeded");
     expect(await retryChargesInWindow({ userId: g.a.id })).toBe(0); // A's eigene Karte zaehlt nicht (Filter auf den Zahler)
     expect(await retryChargesInWindow({ userId: g.b.id })).toBe(1);
+    expect(await retryChargesInWindow({ userId: g.b.id })).toBe(0); // der neue Versuch ist durch: nichts mehr offen
     const aRow = await rowOf(g, g.a);
     expect(aRow).toMatchObject({ status: "succeeded", currentAttempt: 2, payerUserId: g.b.id });
     const call = piCalls().filter((c) => (c.args as { metadata: { userId: string } }).metadata.userId === g.a.id).pop()!;
@@ -323,6 +331,52 @@ describe("Erstattung geht an den Zahler (AC-14)", () => {
     expect(rA.status).toBe("succeeded");
     expect((await trialBalance()).balanced).toBe(true);
     expect((await db.select().from(notifications).where(eq(notifications.userId, g.a.id))).filter((n) => n.type === "payment")).toHaveLength(0);
+  });
+});
+
+describe("Einwilligung endet mit dem Platz (Review-Fund 2)", () => {
+  it("Teamspiel: wechselt B in das andere Team, ist die Uebernahme ungueltig (Eintrag bleibt, zaehlt aber nicht)", async () => {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    await db.update(matchParticipants).set({ teamId: g.away.id === g.all[3].id ? g.match.awayTeamId : g.match.awayTeamId }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.b.id)));
+    expect((await runCharges(g.match.id)).reason).toBe("cards_missing");
+    expect((await getCardDisplays(g.match.id, () => "member"))[g.a.id]).toEqual({ status: "open", reason: null });
+  });
+
+  it("Austritt von B (oder Rauswurf) loescht die Uebernahme; nach Wiedereintritt gilt sie NICHT wieder", async () => {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    await leaveLobby(g.b.id, g.match.id);
+    expect((await seatOf(g, g.a)).coveredByUserId).toBeNull();
+    await db.insert(matchParticipants).values({ matchId: g.match.id, userId: g.b.id, teamId: g.home.id, cardStatus: "card_ready" });
+    await db.update(matches).set({ homeFinalAt: new Date(), awayFinalAt: new Date(), finalShareCents: 800 }).where(eq(matches.id, g.match.id)); // Austritt hebt die Bestaetigung auf: wieder fixieren
+    expect((await runCharges(g.match.id)).reason).toBe("cards_missing"); // ohne die alte Uebernahme ist A wieder rot
+    expect(await rowsOf(g)).toHaveLength(0);
+  });
+
+  it("Rauswurf durch den Captain loescht die Uebernahme ebenfalls", async () => {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    await removeParticipant(g.adminA.id, g.match.id, g.b.id);
+    expect((await seatOf(g, g.a)).coveredByUserId).toBeNull();
+  });
+
+  it("Austritt von A loescht die Uebernahme (Zeile weg); A wieder eingeteilt braucht neue Zustimmung", async () => {
+    const g = await game();
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    await leaveLobby(g.a.id, g.match.id);
+    await db.insert(matchParticipants).values({ matchId: g.match.id, userId: g.a.id, teamId: g.home.id, cardStatus: "none" });
+    await db.update(matches).set({ homeFinalAt: new Date(), awayFinalAt: new Date(), finalShareCents: 800 }).where(eq(matches.id, g.match.id));
+    expect((await seatOf(g, g.a)).coveredByUserId).toBeNull();
+    expect((await runCharges(g.match.id)).reason).toBe("cards_missing");
+  });
+
+  it("Rueck-Einteilung (unassign) loescht die Uebernahme beider Beteiligten", async () => {
+    const g = await game();
+    await db.update(matches).set({ kind: "private", homeFinalAt: null, awayFinalAt: null, finalShareCents: null }).where(eq(matches.id, g.match.id)); // Rueck-Einteilung gibt es nur bei Privatspielen
+    await takeOverShare(g.b.id, g.match.id, g.a.id, true);
+    await unassignParticipant(g.adminA.id, g.match.id, g.b.id);
+    expect((await seatOf(g, g.a)).coveredByUserId).toBeNull();
   });
 });
 

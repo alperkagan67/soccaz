@@ -7,6 +7,7 @@
 //  3  Senden: normaler Weg (runCharges: Beanspruchen mit Lease, Senden ausserhalb jeder Transaktion, Verbuchen ueber applyChargeInTx).
 // Ohne Kandidaten oder nach 3 Fehlschlaegen bleibt der Platz offen und wird als "erschoepft" gemeldet (die automatische Absage ist M3c-2b).
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { clearCoversInvolving } from "./cover-clear";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges } from "@/db/schema";
 import { effectiveGraceEnd, isCardProblemCode } from "@/lib/grace";
@@ -75,6 +76,7 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
       if (!allowed.has(r.id)) continue; // der offene PaymentIntent konnte noch nicht geklaert/abgebrochen werden: naechste Runde
       const [seat] = await tx.select({ teamId: matchParticipants.teamId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, r.userId))).for("update");
       const slotTeamId = seat?.teamId ?? game.homeTeamId;
+      await clearCoversInvolving(tx, matchId, r.userId);
       await tx.delete(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, r.userId)));
       await tx.update(paymentCharges).set({ resolution: "replaced", slotTeamId, updatedAt: now }).where(eq(paymentCharges.id, r.id));
       r.resolution = "replaced";
