@@ -166,7 +166,7 @@ test("Profile: Steckbrief, Form, Elo-Verlauf, Direktvergleich", async ({ browser
   await expect(b.getByTestId("head-to-head")).toContainText("1 Siege, 0 Remis, 1 Niederlagen");
 });
 
-test("Kopfleiste: Konto-Menü mit Profil, Einstellungen und Abmelden", async ({ browser }) => {
+test("Kopfleiste: Konto-Menü mit Meine Spiele, Einstellungen und Abmelden", async ({ browser }) => {
   const p = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
   await newUser(p, "menu");
   const id = (await query<{ id: string }>("select id from users where email = $1", [`menu-${run}@test.local`]))[0].id;
@@ -174,9 +174,11 @@ test("Kopfleiste: Konto-Menü mit Profil, Einstellungen und Abmelden", async ({ 
   await p.getByTestId("user-menu-button").click();
   const menu = p.getByTestId("user-menu");
   await expect(menu.getByTestId("user-menu-name")).toContainText("menu"); // der Name steht ganz oben im Menü
-  for (const item of ["Mein Profil", "Mein Bereich", "Guthaben", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"]) await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
-  await menu.getByRole("menuitem", { name: "Mein Profil" }).click();
-  await expect(p).toHaveURL(new RegExp(`/spieler/${id}$`));
+  for (const item of ["Meine Spiele", "Guthaben", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"]) await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
+  // Mein Profil / Mein Bereich sind kein Menüeintrag mehr (Textentscheid t9): Meine Spiele = /app, das Profil ist von den Einstellungen aus erreichbar
+  await menu.getByRole("menuitem", { name: "Konto und Einstellungen" }).click();
+  await expect(p).toHaveURL(/\/app\/einstellungen$/);
+  await expect(p.locator(`a[href="/spieler/${id}"]`).first()).toBeVisible();
   // Escape schließt das Menü
   await p.getByTestId("user-menu-button").click();
   await expect(p.getByTestId("user-menu")).toBeVisible();

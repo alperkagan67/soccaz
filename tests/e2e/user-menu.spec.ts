@@ -20,8 +20,8 @@ async function loggedIn(page: Page, key: string, scheme: "dark" | "light" = "dar
 const button = (page: Page) => page.getByTestId("user-menu-button");
 const menu = (page: Page) => page.getByTestId("user-menu");
 const activeName = (page: Page) => page.evaluate(() => (document.activeElement as HTMLElement | null)?.textContent?.trim() ?? "");
-// Reihenfolge im Menü: Konto-Gruppe (Benachrichtigungen zuerst), Trenner, Hilfe (und Admin), Trenner, Abmelden
-const ITEMS = ["Benachrichtigungen", "Mein Profil", "Mein Bereich", "Guthaben", "Konto und Einstellungen", "Hilfe", "Abmelden"];
+// Reihenfolge im Menü (Textentscheid t9): Meine Spiele [Meine Halle] [Admin] | Konto-Gruppe | Abmelden
+const ITEMS = ["Meine Spiele", "Benachrichtigungen", "Guthaben", "Konto und Einstellungen", "Hilfe", "Abmelden"];
 
 test.describe("Konto-Menü: Tastatur und Fokus", () => {
   test("Enter öffnet, Fokus liegt auf dem ersten Eintrag, aria-expanded und Popover im Top-Layer", async ({ page }) => {
@@ -33,7 +33,7 @@ test.describe("Konto-Menü: Tastatur und Fokus", () => {
     await page.keyboard.press("Enter");
     await expect(menu(page)).toBeVisible();
     await expect(button(page)).toHaveAttribute("aria-expanded", "true");
-    expect(await activeName(page)).toContain("Benachrichtigungen");
+    expect(await activeName(page)).toContain("Meine Spiele");
     // natives Popover: im Top-Layer, nicht nur ein positioniertes div
     const popoverOpen = await page.evaluate(() => document.querySelector("[popover]:popover-open") !== null);
     expect(popoverOpen).toBe(true);
@@ -53,19 +53,19 @@ test.describe("Konto-Menü: Tastatur und Fokus", () => {
     await page.keyboard.press("Enter");
     await expect(menu(page).getByRole("menuitem").first()).toBeFocused(); // erst wenn das Menü gerendert und fokussiert ist
     await page.keyboard.press("ArrowDown");
-    expect(await activeName(page)).toContain("Mein Profil");
+    expect(await activeName(page)).toContain("Benachrichtigungen");
     await page.keyboard.press("ArrowDown");
-    expect(await activeName(page)).toContain("Mein Bereich");
+    expect(await activeName(page)).toContain("Guthaben");
     await page.keyboard.press("ArrowUp");
-    expect(await activeName(page)).toContain("Mein Profil");
+    expect(await activeName(page)).toContain("Benachrichtigungen");
     await page.keyboard.press("End");
     expect(await activeName(page)).toContain("Abmelden");
     await page.keyboard.press("ArrowDown"); // vom letzten zum ersten
-    expect(await activeName(page)).toContain("Benachrichtigungen");
+    expect(await activeName(page)).toContain("Meine Spiele");
     await page.keyboard.press("ArrowUp"); // vom ersten zum letzten
     expect(await activeName(page)).toContain("Abmelden");
     await page.keyboard.press("Home");
-    expect(await activeName(page)).toContain("Benachrichtigungen");
+    expect(await activeName(page)).toContain("Meine Spiele");
   });
 
   test("Escape schließt, der Fokus kehrt zum Knopf zurück", async ({ page }) => {
@@ -248,7 +248,7 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
     await expect(page.getByRole("menu", { name })).toBeVisible();
     expect(await page.locator("[role=menu] [data-testid=user-menu-name]").count()).toBe(0); // Titel nicht im Menü
     expect(await page.locator("[role=menu] > [role=separator]").count()).toBe(2);
-    await expect(menu(page)).toMatchAriaSnapshot(`- menuitem "Benachrichtigungen"`);
+    await expect(menu(page)).toMatchAriaSnapshot(`- menuitem "Meine Spiele"`);
   });
 
   test("B-06 Ungelesen-Zähler: Schrift ≥ 14 px, Zahl nur zur Zierde, vorgelesen als N ungelesen", async ({ page }) => {
@@ -299,7 +299,7 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
     });
   }
 
-  test("Admin: Eintrag Admin in der zweiten Gruppe (nach Hilfe, vor Abmelden)", async ({ page }) => {
+  test("Admin: Eintrag Admin steht in der ersten Gruppe direkt nach Meine Spiele (Text bleibt Admin)", async ({ page }) => {
     await loggedIn(page, "um18");
     await query("update users set role = 'admin' where email = $1", [`um18-${run}@test.local`]);
     await page.reload();
@@ -308,8 +308,32 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
     await button(page).click();
     await expect(menu(page)).toBeVisible();
     const names = (await menu(page).getByRole("menuitem").allTextContents()).map((n) => n.replace(/\s+/g, " ").trim());
+    expect(names.slice(0, 2)).toEqual(["Meine Spiele", "Admin"]);
     expect(names.at(-1)).toBe("Abmelden");
-    expect(names.at(-2)).toBe("Admin");
-    expect(names.at(-3)).toBe("Hilfe");
+    expect(names.at(-2)).toBe("Hilfe");
+  });
+
+  test("Hallenbetreiber: Meine Halle erscheint nur mit zugewiesener Halle und führt zu /halle", async ({ page }) => {
+    await loggedIn(page, "um19");
+    await button(page).click();
+    await expect(menu(page)).toBeVisible();
+    await expect(menu(page).getByRole("menuitem", { name: "Meine Halle" })).toHaveCount(0); // Spieler: nicht da
+    await page.keyboard.press("Escape");
+    const [u] = await query<{ id: string }>("select id from users where email = $1", [`um19-${run}@test.local`]);
+    // eigene Halle mit diesem Nutzer als Betreiber (wird danach gelöscht, kein Eingriff in vorhandene Hallen)
+    const [venue] = await query<{ id: string }>("insert into venues (name, city, manager_user_id) values ($1, 'Essen', $2) returning id", [`E2E Menühalle ${run}`, u.id]);
+    try {
+      await page.reload();
+      await page.waitForLoadState("networkidle");
+      await hydrated(page);
+      await button(page).click();
+      await expect(menu(page)).toBeVisible();
+      const names = (await menu(page).getByRole("menuitem").allTextContents()).map((n) => n.replace(/\s+/g, " ").trim());
+      expect(names.slice(0, 2)).toEqual(["Meine Spiele", "Meine Halle"]);
+      await menu(page).getByRole("menuitem", { name: "Meine Halle" }).click();
+      await expect(page).toHaveURL(/\/halle$/);
+    } finally {
+      await query("delete from venues where id = $1", [venue.id]);
+    }
   });
 });

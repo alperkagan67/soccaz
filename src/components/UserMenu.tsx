@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { buttonClasses } from "./ui/button-styles";
 
-export type MenuLabels = { profile: string; area: string; wallet: string; settings: string; notifications: string; admin: string; signOut: string; help: string; account: string; unread: string };
+export type MenuLabels = { games: string; venue: string; wallet: string; settings: string; notifications: string; admin: string; signOut: string; help: string; account: string; unread: string };
 
 const ITEM = "ui-focus flex min-h-[var(--tap)] w-full items-center rounded-md px-3 text-left text-sm text-ink no-underline hover:bg-panel2";
 const SEPARATOR = "my-1 border-t border-line";
@@ -20,12 +20,14 @@ export type UserMenuProps = {
   balanceText: string;
   unread: number;
   showAdmin: boolean;
+  /** Hallenbetreiber (mindestens eine Halle zugewiesen): Eintrag "Meine Halle" */
+  showVenue: boolean;
   labels: MenuLabels;
   signOutAction: () => Promise<void>;
 };
 
 /** Der Inhalt des Menüs (eigene Komponente, damit er ohne Browser als statisches Markup geprüft werden kann). */
-export function UserMenuContent({ name, userId, balanceText, unread, showAdmin, labels, signOutAction, onNavigate }: Omit<UserMenuProps, "avatarUrl"> & { onNavigate?: () => void }) {
+export function UserMenuContent({ name, balanceText, unread, showAdmin, showVenue, labels, signOutAction, onNavigate }: Omit<UserMenuProps, "avatarUrl" | "userId"> & { onNavigate?: () => void }) {
   const titleId = useId();
   return (
     <div data-testid="user-menu" className="space-y-1">
@@ -34,6 +36,22 @@ export function UserMenuContent({ name, userId, balanceText, unread, showAdmin, 
         {name}
       </p>
       <div role="menu" aria-labelledby={titleId} className="space-y-1">
+        {/* Gruppe 1: wohin der Nutzer meistens will (Textentscheid t9): Meine Spiele, bei Betreibern Meine Halle, bei Admins Admin */}
+        <Link role="menuitem" href="/app" className={ITEM} onClick={onNavigate}>
+          {labels.games}
+        </Link>
+        {showVenue && (
+          <Link role="menuitem" href="/halle" className={ITEM} onClick={onNavigate}>
+            {labels.venue}
+          </Link>
+        )}
+        {showAdmin && (
+          <Link role="menuitem" href="/admin" className={ITEM} onClick={onNavigate}>
+            {labels.admin}
+          </Link>
+        )}
+        <div role="separator" className={SEPARATOR} />
+        {/* Gruppe 2: Konto (Einstellungen mit Karte ändern, Profil-Link, Guthaben bis 012 M5, Benachrichtigungen, Hilfe) */}
         <Link role="menuitem" href="/app/benachrichtigungen" className={`${ITEM} justify-between`} onClick={onNavigate}>
           <span>{labels.notifications}</span>
           {unread > 0 && (
@@ -48,12 +66,6 @@ export function UserMenuContent({ name, userId, balanceText, unread, showAdmin, 
             </>
           )}
         </Link>
-        <Link role="menuitem" href={`/spieler/${userId}`} className={ITEM} onClick={onNavigate}>
-          {labels.profile}
-        </Link>
-        <Link role="menuitem" href="/app" className={ITEM} onClick={onNavigate}>
-          {labels.area}
-        </Link>
         <Link role="menuitem" href="/app/guthaben" className={`${ITEM} justify-between`} onClick={onNavigate}>
           <span>{labels.wallet}</span>
           <span className="tabular-nums text-muted">{balanceText}</span>
@@ -61,16 +73,11 @@ export function UserMenuContent({ name, userId, balanceText, unread, showAdmin, 
         <Link role="menuitem" href="/app/einstellungen" className={ITEM} onClick={onNavigate}>
           {labels.settings}
         </Link>
-        <div role="separator" className={SEPARATOR} />
         <Link role="menuitem" href="/hilfe" className={ITEM} onClick={onNavigate}>
           {labels.help}
         </Link>
-        {showAdmin && (
-          <Link role="menuitem" href="/admin" className={ITEM} onClick={onNavigate}>
-            {labels.admin}
-          </Link>
-        )}
         <div role="separator" className={SEPARATOR} />
+        {/* Abmelden ist nur das Abmelden vom Konto (Logout, begriffe.md) */}
         <form action={signOutAction} role="none">
           <button role="menuitem" type="submit" className={ITEM}>
             {labels.signOut}
