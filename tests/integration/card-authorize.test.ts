@@ -281,3 +281,14 @@ describe("Review-Hinweise zu M3c-1c (security-reviewer, niedrig)", () => {
     }
   });
 });
+
+describe("Review-Nit R-T163: erste Schicht (Zeile gehoert dem Aufrufer) isoliert", () => {
+  it("Mitspieler MIT eigenem Zahlungsprofil, aber ohne eigene Zeile, fragt Stripe nie ab (der Kunden-Vergleich ist nur die zweite Schicht)", async () => {
+    const g = await game();
+    const mate = await addPlayer(g.match.id, g.home.id, "az");
+    await db.insert(paymentProfiles).values({ userId: mate.id, stripeCustomerId: nid("cus_mate"), paymentMethodId: nid("pm_mate") });
+    await expect(getAuthorizationSecret(mate.id, g.match.id)).rejects.toThrow(NEUTRAL);
+    expect(provider.calls.filter((c) => c.method === "retrievePaymentIntentSecret")).toHaveLength(0); // ohne userId-Filter in openRow wuerde hier bereits abgefragt
+    expect(await db.select().from(auditLog).where(and(eq(auditLog.actorId, mate.id), eq(auditLog.action, "charge.authorization_attempt")))).toHaveLength(0);
+  });
+});
