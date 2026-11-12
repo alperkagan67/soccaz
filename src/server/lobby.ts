@@ -466,8 +466,9 @@ export function setVenue(userId: string, matchId: string, venue: string) {
 }
 
 export function joinAsSubstitute(userId: string, matchId: string) {
-  return mutateLobby(userId, matchId, async (tx, match) => {
+  return mutateLobby(userId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst."); // wie joinLobby: auch der Direktaufruf nach der Frist
     if (match.visibility !== "public") throw new DomainError("Diese Lobby ist privat.");
     const mine = await tx
       .select({ teamId: teamMembers.teamId })
@@ -495,8 +496,9 @@ export function joinAsSubstitute(userId: string, matchId: string) {
 }
 
 export function assignSubstitute(actorId: string, matchId: string, targetUserId: string, teamId: string) {
-  return mutateLobby(actorId, matchId, async (tx, match) => {
+  return mutateLobby(actorId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst."); // die Einteilung gehört zur Liste: nach der Frist gesperrt
     if (teamId !== match.homeTeamId && teamId !== match.awayTeamId) throw new DomainError("Ungültiges Team.");
     if (!(await isPlatformAdmin(tx, actorId)) && !(await isAdminOf(tx, actorId, teamId))) {
       throw new DomainError("Nur Admins dieses Teams können Ersatzspieler zuweisen.");
@@ -550,8 +552,9 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false,
 
 /** Privatspiel: Ein eingeteilter Spieler (noch nicht bereit, nicht bezahlt) geht zurück in den Pool der Nichteingeteilten. */
 export function unassignParticipant(actorId: string, matchId: string, targetUserId: string) {
-  return mutateLobby(actorId, matchId, async (tx, match) => {
+  return mutateLobby(actorId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await leaveClosed(tx, match, now)) throw new DomainError(LIST_LOCKED); // wie removeParticipant
     if (match.kind !== "private") throw new DomainError("Das gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
     const p = await findParticipant(tx, matchId, targetUserId);
