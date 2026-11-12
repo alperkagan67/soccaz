@@ -44,24 +44,25 @@ Gast, Spieler, Captain, Veranstalter, Hallenbetreiber (011), Admin 1, Admin 2. G
 | AC-8 | Nach M3 | Pilot-Test | Pilot mit Freunden in einer Halle mit Stripe-Testkarten durchgeführt, Feedback liegt vor; M4 bis M7 starten erst danach | Gate durch den Nutzer |
 | AC-9 | Komponenten-Grundlage (M2) | ADR 0002 (akzeptiert) | Technik laut ADR 0002: nativ plus eigene Bausteine, kein shadcn/Radix; Radix nur bei echtem Bedarf (mehr als 4 Overlay-Komponenten oder A11y-Beanstandung) nach Vorschlag an den Nutzer; Fremdcode mit Version/Commit festgehalten, Dateien gelesen, kein MCP/Skill dazu (gilt nur für die Komponenten-Grundlage; AC-12 nutzt den Skill aus Backlog 52) | ADR 0002, security-reviewer |
 | AC-10 | Hell und dunkel | Systemeinstellung wechselt | Beide Varianten lesbar, keine Farbe außerhalb der Tokens | Screenshots, Impeccable audit |
-| AC-11 | Laufzeit | CI-Dauer | Browser-Tests laufen in unter 10 Minuten (Shards), vor M3 | CI-Lauf, Ausnahme-PR `.github/` |
+| AC-11 | Laufzeit | CI-Dauer | Browser-Tests laufen in unter 10 Minuten (Shards), vor M2 (Umbauplan) | CI-Lauf, Ausnahme-PR `.github/` |
 | AC-12 | Jede Seite | Prüfung gegen die Web Interface Guidelines (sobald der Skill freigegeben ist, Backlog 52) | Jede Seite wird gegen die Web Interface Guidelines geprüft, Funde im PR belegt | PR-Text, Skill `web-design-guidelines` |
 
 ## Meilensteine
 - M1: Analyse und Umbauplan (nur lesend). Gate: Nutzer-Ja.
-- M2: Grundlage: `DESIGN.md` auf Richtung E umschreiben, Tokens, Komponenten-Grundlage (nach ADR 0002), `UserMenu.tsx`-Neubau (natives popover/details, Tastatur- und Fokus-Test per Playwright), PR-Vorlage, schnellere CI.
-- M3: Navigation, Startseite, Suche, Lobby (inklusive Lobby-Feld und Meine Spiele aus 007). Gate: Pilot-Test mit Freunden in einer Halle (Stripe-Testkarten), Feedback.
-- M4: Team, Profil, Spielerseiten, Ranglisten.
-- M5: Turnier, Privatspiel, Zahlen/Karte (012-Oberflächen).
-- M6: Hallen, Halle-Dashboard (011), Spieler-Funktionen (010), Rest.
-- M7: Admin-Bereich (Desktop zuerst, 009).
-- M8: Abnahme: Impeccable polish und audit über alles, Screenshots Gesamtstrecke.
+- M2 (6 bis 8 Task-Tage): Grundlage: `DESIGN.md` auf Richtung E umschreiben, Tokens (Typo-Skala, Status, Fokus), Basiskomponenten nach ADR 0002 (`Button`, `PageShell`, `PageHeader`/`PageTitle`/Skip-Link, `StateMessage`, `StatusBadge`, `ConfirmDialog`, `Form`, `DateTimeField`), `format.ts`, Begriffsverzeichnis (`docs/design/begriffe.md`: Findet statt / Preis steht fest / Ergebnis bestätigt), `UserMenu.tsx`-Neubau (natives popover/details, Tastatur- und Fokus-Test per Playwright), Lint- und UI-Regel-Tests, erweiterter Kontrasttest, PR-Vorlage. Voraussetzung: schnellere CI (Backlog 49).
+- M3 (8 bis 10 Task-Tage): Navigation und Einstieg: `AppNav`, Start, Spiel suchen, Meine Spiele (`/app`), Lobby (Dein Stand, Hauptaktion, Captain-Leiste, Fehlerzustand mit Grund und Nachzahl-Weg aus 012 M3b), Neuling/Einladung/Onboarding, Turnierliste, UI-Texte (`lobby/[id]/page.tsx:238`: „Findet statt, sobald in beiden Teams mindestens 4 bereit sind“; `FinalConfirm.tsx:8-14`: „Preis steht fest, sobald beide Captains bestätigen“ statt „Letzte Bestätigung“; `mygame.ts:60`: „Findet statt (Preis folgt)“; Benachrichtigung `match.confirmed` (`lobby.ts` ca. 247, Mail/Push): „Spiel bestätigt“ wird „Spiel findet statt“). Gate: Pilot-Test mit Freunden in einer Halle (Stripe-Testkarten), Feedback.
+- M4 (5 bis 7 Task-Tage): Team, Profil, Spielersuche, Ranglisten, Benachrichtigungen, Konto und Einstellungen, Spielsuche für Gäste.
+- M5 (5 bis 6 Task-Tage): Turnier-Detail, Privatspiel anlegen, Zahlen/Karte erneuern (012-Oberflächen), Spiel und Ergebnis.
+- M6 (4 bis 6 Task-Tage): Hallen (öffentlich), `/halle` für Betreiber (011), Spieler-Funktionen (010), Overlay, Hilfe, Rechtliches, Fußzeile; Ligen, Profitag und Stadt-Challenge erst nach Entscheid des Nutzers.
+- M7 (5 bis 7 Task-Tage): Admin-Bereich (Desktop zuerst, Rollen nach 009); am Handy nur Übersicht, Moderation, Nutzer sperren, Protokoll lesen.
+- M8 (3 bis 4 Task-Tage): Abnahme: Impeccable polish und audit über alles, Screenshots Gesamtstrecke.
+- Aufwand gesamt: 36 bis 48 Task-Tage (Summe der Stufen M2 bis M8); Gestaltung, Muster und Reihenfolge: `docs/design/umbauplan-013.md`.
 
 ## Betroffene Bereiche
 `src/app/**` (62 Seiten), `src/components/**` (34 Komponenten), `src/app/globals.css`, `DESIGN.md`, `docs/design/`, `.github/` (PR-Vorlage, CI), Texte/i18n. Keine Datenbank.
 
 ## Risiken und Randfälle
-- Dauer (geschätzt 25 bis 40 Task-Tage) und Engpass CI (Browser-Tests ca. 25 Minuten): Browser-Tests vor dem Umbau beschleunigen.
+- Dauer (geschätzt 36 bis 48 Task-Tage, siehe `docs/design/umbauplan-013.md`) und Engpass CI (Browser-Tests ca. 25 Minuten): Browser-Tests vor dem Umbau beschleunigen.
 - Doppelbau mit 009/010/011 und 012-Oberflächen: sie warten auf die Grundlage aus M2.
 - Regression durch Umbau: E2E-Tests als Netz, Test-IDs und URLs fest.
 - Einheitsoptik durch Standardkomponenten: kein shadcn, nativ plus eigene Bausteine (ADR 0002), Aussehen aus Tokens; Prüfung in der Abnahme.
@@ -74,8 +75,9 @@ Keine neuen Daten. Neue Abhängigkeiten (falls Radix, ADR 0002): security-review
 
 ## Offene Fragen
 - Entschieden: ADR 0002 ist akzeptiert (Option B+: nativ plus eigene Bausteine, kein shadcn).
-- Reihenfolge innerhalb von M3 bis M6 nach den Funden aus M1 (Umbauplan).
+- Reihenfolge innerhalb von M3 bis M6: festgelegt im Umbauplan (`docs/design/umbauplan-013.md`), Gate G1 beim Nutzer.
 - Soll der Pilot-Test eine feste Teilnehmerzahl und Dauer haben? Vorschlag: ein Spiel, 8 bis 10 Spieler, ein Abend.
+- Hinweis für G1: Gegenüber dem ersten Entwurf ändert sich nur AC-11 (Browser-Tests unter 10 Minuten jetzt vor M2 statt vor M3); das ist die einzige AC-Änderung. Die Shards bleiben Voraussetzung: die Anhebung der Zeitgrenze (PR 95) allein ergibt noch 26 Minuten.
 
 ## End-to-End-Nachweis
 `tests/e2e/` Gesamtstrecke je Rolle (Gast: Suche und Lobby ansehen; Spieler: beitreten, Karte hinterlegen; Captain: bereit, Termin; Admin: Spiel ansehen) auf 390 px und 1280 px, grün, mit Screenshots im PR; Pilot-Test nach M3 als Gate.
