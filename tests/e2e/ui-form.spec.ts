@@ -56,7 +56,7 @@ test.describe("Form, Field, DateTimeField: Tastatur und Fehler", () => {
     await open(page);
     await demo(page).getByLabel("Teamname").fill("vergeben");
     await demo(page).getByLabel("Hinweis").fill("bleibt stehen");
-    await demo(page).getByLabel("Teamname").press("Enter");
+    await demo(page).getByRole("button", { name: "Speichern" }).click(); // Fokus liegt auf dem Knopf: er muss zum Feld springen
 
     const err = demo(page).getByTestId("error-teamname");
     await expect(err).toBeVisible({ timeout: 15_000 });
