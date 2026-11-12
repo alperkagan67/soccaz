@@ -228,7 +228,7 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
     const admins = await platformAdminIds(tx);
     for (const reason of alerts) {
       const [title, body] = ALERT_TEXT[reason];
-      await notifyUsers(admins, { type: "admin.task", title, body, url: "/admin/finanzen" }, tx);
+      await notifyUsers(admins, { type: "admin.task", title, body, url: "/admin/zahlungsstreit" }, tx);
     }
     await tx.update(paymentDisputes).set({ alertedReasons: sql`${paymentDisputes.alertedReasons} || ARRAY[${sql.join(alerts.map((x) => sql`${x}`), sql`, `)}]::text[]` }).where(eq(paymentDisputes.id, row.id));
   }
