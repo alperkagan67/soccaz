@@ -19,8 +19,8 @@ Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rolle
 | 7 | DONE-Zeile mit „Vorgaben: erfüllt/nicht“ | AGENTS-SETUP 3b / LOOP-SPEC 8 | Worker, Task Manager |
 | 8 | Worker pushen nie | CLAUDE.md / AGENTS-SETUP 2.3 | Worker |
 | 9 | Hauptrepo nie auschecken | CLAUDE.md (Konventionen) | alle |
-| 10 | Review-Worktrees mit `git worktree remove` entfernen | AGENTS-SETUP 3a | Worker, Reviewer |
-| 11 | `hc`-Nachrichten ohne Backticks und Sonderzeichen | AGENTS-SETUP 3b | alle |
+| 10 | Review-Worktrees mit `git worktree remove` entfernen | AGENTS-SETUP 3a | Task Manager, Worker, Reviewer |
+| 11 | `hc`-Nachrichten aus einer Datei, ohne Backticks im Text | AGENTS-SETUP 3b | alle |
 | 12 | PR-Text per `gh api`, wenn `gh pr edit` scheitert | AGENTS-SETUP 3a | Task Manager |
 
 ---
@@ -50,7 +50,7 @@ Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rolle
 **Wortlaut-Vorschlag** (Ergänzung der Merge-Regel):
 - „Vor dem Merge `gh pr update-branch <nr>`, dann CI auf dem aktuellen `main`-Stand abwarten (gilt, solange ‚Require branches to be up to date‘ aktiv ist).“
 - „Nach einer Merge-Serie die CI von `main` prüfen (`gh run list --branch main`), bevor der nächste Auftrag startet.“
-- „Ein-Lauf-Regel: pro PR höchstens ein Browser-Test-Lauf in Folge; weitere Pushes erst nach dem Ergebnis des laufenden Laufs.“
+- „Ein-Lauf-Regel: höchstens ein CI-Lauf pro 30 Minuten (Wortlaut der Nutzervorgabe, wie `docs/loop/HERZSCHLAG.md`); weitere Pushes erst nach dem Ergebnis des laufenden Laufs.“ Hinweis: Mit PR A (#97, Browser-Tests in 4 Teilen) hat sich die Laufzeit auf rund 10 Minuten verkürzt; ob die 30-Minuten-Grenze dann auf „ein Browser-Test-Lauf gleichzeitig“ gelockert wird, entscheidet der Nutzer. Gleiche Formulierung wie in Kandidat 2.
 
 **Zieldatei:** `CLAUDE.md`, Abschnitt „Merge-Regel“ (dort steht bereits: einzeln, nie mit `&&`, Prüfen und Mergen getrennt).
 
@@ -80,7 +80,7 @@ Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rolle
 
 ## 6. Herzschlag nach Neustart erneuern
 
-**Wortlaut-Vorschlag:** „Nach jedem Neustart der Sitzung erneuert der Orchestrator den Herzschlag mit `/loop 15m` und dem Prompt aus `docs/loop/HERZSCHLAG.md`, und danach spätestens alle 7 Tage, weil wiederkehrende Aufgaben ablaufen.“
+**Wortlaut (Vorschlag t9; `/loop 15m` und „alle 7 Tage“ stehen nicht in `docs/loop/HERZSCHLAG.md`):** „Nach jedem Neustart der Sitzung erneuert der Orchestrator den Herzschlag mit `/loop 15m` und dem Prompt aus `docs/loop/HERZSCHLAG.md`, und danach spätestens alle 7 Tage, weil wiederkehrende Aufgaben ablaufen.“
 
 **Zieldatei:** `AGENTS-SETUP.md`, Abschnitt 5 „Neustart ab jetzt“.
 
@@ -124,17 +124,17 @@ Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rolle
 
 ## 10. Review-Worktrees mit `git worktree remove` entfernen
 
-**Wortlaut-Vorschlag:** „Review-Worktrees werden mit `git worktree remove <pfad>` entfernt, nicht mit `node scripts/worktree.mjs remove`. Letzteres löscht auch die Worker-Datenbank (DB-Drop). Vorher den Dev-Server des Worktrees beenden, sonst scheitert das Entfernen an gehaltenen Dateien.“
+**Wortlaut-Vorschlag:** „Review-Worktrees werden mit `git worktree remove <pfad>` entfernt, nicht mit `node scripts/worktree.mjs remove`. Letzteres bricht bei ungetrackten Dateien ab und löscht außerdem die Worker-Datenbank (DB-Drop). Vorher den Dev-Server des Worktrees beenden, sonst scheitert das Entfernen an gehaltenen Dateien.“ Quelle der Teile, die schon gelten: `AGENTS-SETUP.md` Abschnitt 3a (Task-Ende: Dev-Server per Port beenden; Nach dem Merge: `git worktree remove <pfad>`). Neu ist nur das Verbot von `worktree.mjs remove`/DB-Drop und der Hinweis auf ungetrackte Dateien.
 
 **Zieldatei:** `AGENTS-SETUP.md` Abschnitt 3a (Git-Worktrees).
 
 **Begründung:** Die Worker-Datenbanken `soccaz_w1` bis `soccaz_w4` sind geteilt; ein DB-Drop beim Entfernen eines Review-Worktrees trifft die nächste Arbeit. Beobachtet: Ein laufender Dev-Server ließ das Entfernen scheitern und den Ordner halb zurück.
 
-**Rollen:** Worker, Reviewer.
+**Rollen:** Task Manager (räumt nach dem Merge auf, `AGENTS-SETUP.md` 3a); Worker und Reviewer nur für ihre eigenen Review-Worktrees, wenn der Task Manager das Aufräumen nicht übernimmt.
 
-## 11. `hc`-Nachrichten ohne Backticks und Sonderzeichen
+## 11. `hc`-Nachrichten aus einer Datei, ohne Backticks im Text
 
-**Wortlaut-Vorschlag:** „In `hc send`-Texten keine Backticks, kein `$(...)` und keine unmaskierten Anführungszeichen verwenden; die Shell expandiert sie. Pfade, Code und Befehle als schlichten Text schreiben.“
+**Wortlaut-Vorschlag:** „Längere `hc send`-Nachrichten aus einer Datei lesen. Im Text selbst keine Backticks und keine Inline-Kommandos (Dollarzeichen mit Klammer) verwenden; steht der Text inline in doppelten Anführungszeichen, expandiert die Shell sie. Pfade, Code und Befehle als schlichten Text schreiben.“
 
 **Zieldatei:** `AGENTS-SETUP.md` Abschnitt 3b.
 
