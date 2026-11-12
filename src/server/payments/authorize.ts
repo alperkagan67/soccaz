@@ -12,6 +12,7 @@ import { audit } from "../audit";
 import { cardPaymentsEnabled } from "../settings";
 import { DomainError } from "../teams";
 import { getPaymentProvider } from "./provider";
+import { matchIdOf } from "./charge-context";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const AUTHORIZE_LIMIT_PER_HOUR = 10;
@@ -121,7 +122,8 @@ export async function listOpenAuthorizations(userId: string, now: Date = new Dat
     if (!["lobby", "confirmed"].includes(r.matchStatus) || r.cancelRequestedAt !== null || r.settledAt !== null || !r.paymentIntentId || r.startsAt.getTime() <= now.getTime()) continue;
     const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
     if (end === null || end.getTime() <= now.getTime()) continue;
-    if (!out.some((o) => o.matchId === r.matchId)) out.push({ matchId: r.matchId, until: graceText(end, now) });
+    const rowMatchId = matchIdOf(r);
+    if (!out.some((o) => o.matchId === rowMatchId)) out.push({ matchId: rowMatchId, until: graceText(end, now) });
   }
   return out;
 }

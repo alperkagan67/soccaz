@@ -310,12 +310,14 @@ export const paymentSetupIntents = pgTable(
     id: text("id").primaryKey(), // Stripe-ID seti_...
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     matchId: uuid("match_id").references(() => matches.id, { onDelete: "cascade" }),
+    // M5 (Turnier auf Karte): Platz im Turnier statt im Spiel (optional). Fremdschluessel auf tournaments (NO ACTION, KEIN cascade: Zahlungsnachweise bleiben erhalten) steht in der Migration, weil schema-league aus diesem Modul importiert.
+    tournamentId: uuid("tournament_id"),
     status: text("status").$type<"created" | "succeeded" | "failed">().notNull().default("created"),
     mandateText: text("mandate_text").notNull(),
     mandateAcceptedAt: timestamp("mandate_accepted_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("payment_setup_intents_user_idx").on(t.userId, t.createdAt), check("payment_setup_intents_status_check", sql`${t.status} in ('created', 'succeeded', 'failed')`)],
+  (t) => [index("payment_setup_intents_user_idx").on(t.userId, t.createdAt), index("payment_setup_intents_tournament_idx").on(t.tournamentId), check("payment_setup_intents_status_check", sql`${t.status} in ('created', 'succeeded', 'failed')`)],
 );
 
 /** Verarbeitete Stripe-Webhook-Ereignisse: event_id eindeutig, damit ein doppelt zugestelltes Ereignis nur einmal wirkt. */
@@ -336,7 +338,9 @@ export const paymentCharges = pgTable(
   "payment_charges",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    matchId: uuid("match_id").references(() => matches.id, { onDelete: "cascade" }),
+    // M5 (Turnier auf Karte): Zeile gehoert zu einem Turnier (2a: nullable, match_id bleibt NOT NULL; ab 2b genau eines von beiden). Fremdschluessel auf tournaments (NO ACTION, KEIN cascade: Zahlungsnachweise bleiben erhalten) steht in der Migration, weil schema-league aus diesem Modul importiert.
+    tournamentId: uuid("tournament_id"),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     amountCents: integer("amount_cents").notNull(),
     status: text("status").$type<"pending" | "requires_action" | "succeeded" | "failed">().notNull().default("pending"),
@@ -365,9 +369,13 @@ export const paymentCharges = pgTable(
   },
   (t) => [
     uniqueIndex("payment_charges_match_user_idx").on(t.matchId, t.userId),
+    uniqueIndex("payment_charges_tournament_user_idx").on(t.tournamentId, t.userId).where(sql`${t.tournamentId} is not null`),
     check("payment_charges_payer_not_self", sql`${t.payerUserId} is null or ${t.payerUserId} <> ${t.userId}`),
     check("payment_charges_resolution_check", sql`${t.resolution} is null or ${t.resolution} = 'replaced'`),
     check("payment_charges_attempt_positive", sql`${t.currentAttempt} >= 1`),
+    // M5-2b: genau eines von beiden (Spiel ODER Turnier); Turnier-Zeilen haben weder Nachruecker-Kette noch Platz-Team
+    check("payment_charges_scope_xor", sql`(${t.matchId} is null) <> (${t.tournamentId} is null)`),
+    check("payment_charges_tournament_no_slot", sql`${t.tournamentId} is null or (${t.slotOf} is null and ${t.slotTeamId} is null)`),
     check("payment_charges_amount_positive", sql`${t.amountCents} > 0`),
     check("payment_charges_fee_nonneg", sql`${t.feeCents} is null or ${t.feeCents} >= 0`),
     check("payment_charges_status_check", sql`${t.status} in ('pending', 'requires_action', 'succeeded', 'failed')`),
@@ -408,7 +416,9 @@ export const paymentRefunds = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     chargeId: uuid("charge_id").notNull().references(() => paymentCharges.id, { onDelete: "cascade" }),
-    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    matchId: uuid("match_id").references(() => matches.id, { onDelete: "cascade" }),
+    // M5 (Turnier auf Karte): Erstattung zu einer Turnier-Abbuchung. Fremdschluessel auf tournaments (NO ACTION, KEIN cascade: Zahlungsnachweise bleiben erhalten) steht in der Migration, weil schema-league aus diesem Modul importiert.
+    tournamentId: uuid("tournament_id"),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     amountCents: integer("amount_cents").notNull(),
     status: text("status").$type<"pending" | "succeeded" | "failed" | "cancelled_dispute">().notNull().default("pending"), // cancelled_dispute (M4a): Streit verloren, bevor die Erstattung gesendet wurde: nichts mehr zu erstatten
@@ -426,6 +436,8 @@ export const paymentRefunds = pgTable(
     // eine Erstattung je Abbuchung UND PaymentIntent: der PaymentIntent der Zeile (payment_intent_id NULL) oder ein weiterer erfolgreicher (spaeter Erfolg / Doppelabbuchung, M3c-2b)
     uniqueIndex("payment_refunds_charge_idx").on(t.chargeId, sql`coalesce(${t.paymentIntentId}, '')`),
     check("payment_refunds_amount_positive", sql`${t.amountCents} > 0`),
+    check("payment_refunds_scope_xor", sql`(${t.matchId} is null) <> (${t.tournamentId} is null)`),
+    index("payment_refunds_tournament_idx").on(t.tournamentId),
     check("payment_refunds_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed', 'cancelled_dispute')`),
   ],
 );
@@ -443,6 +455,8 @@ export const paymentDisputes = pgTable(
     chargeId: uuid("charge_id").references(() => paymentCharges.id),
     paymentIntentId: text("payment_intent_id"),
     matchId: uuid("match_id").references(() => matches.id),
+    // M5 (Turnier auf Karte): Streit zu einer Turnier-Abbuchung (Zuordnung primaer ueber charge_id). Fremdschluessel auf tournaments (NO ACTION, KEIN cascade: Zahlungsnachweise bleiben erhalten) steht in der Migration, weil schema-league aus diesem Modul importiert.
+    tournamentId: uuid("tournament_id"),
     payerUserId: uuid("payer_user_id").references(() => users.id),
     amountCents: integer("amount_cents").notNull(),
     currency: text("currency").notNull(),
@@ -461,6 +475,7 @@ export const paymentDisputes = pgTable(
   },
   (t) => [
     index("payment_disputes_payer_idx").on(t.payerUserId),
+    index("payment_disputes_tournament_idx").on(t.tournamentId),
     index("payment_disputes_status_idx").on(t.status),
     index("payment_disputes_pi_idx").on(t.paymentIntentId),
     check("payment_disputes_amount_positive", sql`${t.amountCents} > 0`),

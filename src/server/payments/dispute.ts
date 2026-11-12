@@ -15,6 +15,7 @@ import type { Tx } from "../tx";
 import type { DisputeBalanceTransaction, DisputeReport } from "./dispute-parse";
 
 import { disputeRank, isDisputeOpen, OPEN_DISPUTE_STATUSES, RANK } from "./dispute-parse";
+import { matchIdOf } from "./charge-context";
 export { disputeRank, isDisputeOpen, OPEN_DISPUTE_STATUSES };
 
 type AlertReason = "opened" | "rejected_amount" | "unknown_payment" | "lost_without_withdrawal" | "refund_conflict" | "refund_blocked" | "won_after_cancel" | "unknown_status" | "closed";
@@ -57,7 +58,7 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
     return (lock ? await q2.for("update") : await q2)[0];
   };
   const probe = await findCharge(false);
-  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, probe.matchId)).for("update"); // Spiel zuerst
+  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update"); // Spiel zuerst
   const charge = probe ? await findCharge(true) : undefined; // dann die Abbuchungszeile
   const refunds = charge ? await tx.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, charge.id)).orderBy(asc(paymentRefunds.id)).for("update") : []; // dann die Erstattungszeilen
 
@@ -207,9 +208,9 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
     // alle anderen Zahlungen werden normal erstattet. Gewonnen: eine schon beendete Erstattung bleibt beendet (Hinweis an Admin 1).
     if ((isDisputeOpen(row.status) || row.status === "lost") && unsent.length > 0) {
       await tx.update(paymentRefunds).set({ status: "cancelled_dispute", updatedAt: new Date() }).where(inArray(paymentRefunds.id, unsent.map((r) => r.id)));
-      await audit(null, "refund.cancelled_dispute", "match", charge.matchId, { after: { refunds: unsent.length } }, tx);
+      await audit(null, "refund.cancelled_dispute", "match", matchIdOf(charge), { after: { refunds: unsent.length } }, tx);
       want("refund_blocked");
-      result.cancelCheckMatchId = charge.matchId; // eine angeforderte Absage kann jetzt abgeschlossen werden
+      result.cancelCheckMatchId = matchIdOf(charge); // eine angeforderte Absage kann jetzt abgeschlossen werden
     }
     if (row.status === "won" && refunds.some((r) => r.status === "cancelled_dispute")) want("won_after_cancel");
     const sentRefunds = refunds.filter((r) => r.status !== "cancelled_dispute" && r.status !== "failed" && sent(r));

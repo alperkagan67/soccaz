@@ -29,6 +29,12 @@ export async function cleanupTestData(pool: Pool) {
       "delete from media where owner_id in (select id from _tu)",
       "delete from payment_erasure_tasks where user_id in (select id from _tu)",
       "delete from payment_dispute_entries where dispute_row_id in (select id from payment_disputes where match_id in (select id from _tm) or payer_user_id in (select id from _tu) or dispute_id like 'dp_test%')",
+      // M5 (Turnier auf Karte): Zahlungszeilen eines Turniers (Fremdschluessel ohne cascade) vor dem Loeschen des Turniers entfernen
+      "delete from payment_dispute_entries where dispute_row_id in (select id from payment_disputes where tournament_id in (select id from tournaments where organizer_id in (select id from _tu)))",
+      "delete from payment_disputes where tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",
+      "delete from payment_refunds where tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",
+      "delete from payment_charges where tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",
+      "delete from payment_setup_intents where tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",
       "delete from payment_disputes where match_id in (select id from _tm) or payer_user_id in (select id from _tu) or dispute_id like 'dp_test%'",
       "delete from matches where id in (select id from _tm)",
       "delete from venues where name like 'E2E %'",

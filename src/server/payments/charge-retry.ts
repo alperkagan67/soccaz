@@ -20,6 +20,7 @@ import { cardModeActive } from "../wallet";
 import { applyChargeInTx, bookChargeFee } from "./charge";
 import { chargeKey, runCharges } from "./charge-run";
 import { getPaymentProvider, type FoundIntent } from "./provider";
+import { matchIdOf } from "./charge-context";
 
 export type Candidate = {
   id: string;
@@ -251,7 +252,7 @@ export async function retryChargesInWindow(opts: { userId?: string; matchId?: st
   if (opts.matchId) filters.push(eq(paymentCharges.matchId, opts.matchId));
   const candidates: Candidate[] = (await eligibleFrom().where(and(...filters)).orderBy(asc(paymentCharges.createdAt), asc(paymentCharges.id))).map((r) => ({
     id: r.id,
-    matchId: r.matchId,
+    matchId: matchIdOf(r),
     userId: r.userId,
     attempt: r.attempt,
     amountCents: r.amountCents,

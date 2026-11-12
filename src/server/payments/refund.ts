@@ -19,6 +19,7 @@ import { applyChargeInTx, bookChargeFee, ensureRefundRow } from "./charge";
 import { UNKNOWN_OUTCOME } from "./charge-run";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 import { OPEN_DISPUTE_STATUSES } from "./dispute";
+import { matchIdOf } from "./charge-context";
 
 /** Eine beanspruchte Erstattungszeile gilt so lange als "in Arbeit". */
 export const REFUND_LEASE_MS = 60_000;
@@ -73,7 +74,7 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   };
   const probe = await find(false);
   if (!probe) return ignore("unknown_refund");
-  await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, probe.matchId)).for("update"); // Spiel zuerst
+  await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update"); // Spiel zuerst
   const row = await find(true);
   if (!row) return ignore("unknown_refund");
   if (r.refundId && row.refundId !== null && row.refundId !== r.refundId) return ignore("other_refund");
@@ -85,7 +86,7 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   if (!charge || charge.status !== "succeeded") return ignore("charge_not_succeeded");
   if (r.paymentIntentId !== null && r.paymentIntentId !== (row.paymentIntentId ?? charge.paymentIntentId)) return ignore("payment_intent_mismatch");
 
-  if (row.status === "succeeded") return { status: "already", matchId: row.matchId };
+  if (row.status === "succeeded") return { status: "already", matchId: matchIdOf(row) };
   if (r.outcome === "succeeded") {
     if (!r.refundId) return ignore("missing_refund_id");
     await post(tx, {
@@ -98,21 +99,21 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
       reason: "Erstattung Abbuchung auf die Karte",
     });
     await tx.update(paymentRefunds).set({ status: "succeeded", refundId: r.refundId, failureCode: null, updatedAt: new Date() }).where(eq(paymentRefunds.id, row.id));
-    await audit(null, "refund.succeeded", "match", row.matchId, { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
-    return { status: "applied", matchId: row.matchId };
+    await audit(null, "refund.succeeded", "match", matchIdOf(row), { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
+    return { status: "applied", matchId: matchIdOf(row) };
   }
   if (r.outcome === "pending") {
     if (r.refundId && row.refundId === null) await tx.update(paymentRefunds).set({ refundId: r.refundId, updatedAt: new Date() }).where(eq(paymentRefunds.id, row.id));
-    return { status: "applied", matchId: row.matchId };
+    return { status: "applied", matchId: matchIdOf(row) };
   }
   // failed: manuell zu klären (Admin-Alarm). Die Zeile wird nie automatisch erneut gesendet.
-  if (row.status === "failed" && row.failureCode === cleanCode(r.failureCode)) return { status: "already", matchId: row.matchId };
+  if (row.status === "failed" && row.failureCode === cleanCode(r.failureCode)) return { status: "already", matchId: matchIdOf(row) };
   await tx
     .update(paymentRefunds)
     .set({ status: "failed", refundId: row.refundId ?? (r.refundId || null), failureCode: cleanCode(r.failureCode) ?? "refund_failed", updatedAt: new Date() })
     .where(eq(paymentRefunds.id, row.id));
-  await audit(null, "refund.failed", "match", row.matchId, { after: { userId: row.userId, code: cleanCode(r.failureCode) } }, tx);
-  return { status: "applied", matchId: row.matchId };
+  await audit(null, "refund.failed", "match", matchIdOf(row), { after: { userId: row.userId, code: cleanCode(r.failureCode) } }, tx);
+  return { status: "applied", matchId: matchIdOf(row) };
 }
 
 /** Absage anfordern und so weit wie möglich abarbeiten. Die Berechtigung prüft der Aufrufer (Admin 1; nie der Captain nach der ersten Abbuchung). */
@@ -268,7 +269,7 @@ async function resolveUnknown(matchId: string, now: Date): Promise<void> {
     const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.payerUserId ?? c.userId));
     let found;
     try {
-      found = await provider.findPaymentIntents({ matchId: c.matchId, userId: c.userId });
+      found = await provider.findPaymentIntents({ matchId: matchIdOf(c), userId: c.userId });
     } catch {
       continue; // Stripe nicht erreichbar: der nächste Lauf versucht es erneut
     }
@@ -276,7 +277,7 @@ async function resolveUnknown(matchId: string, now: Date): Promise<void> {
       // leere Antwort: erst nach einiger Zeit aussagekräftig (verzögerte Suche); dann einmal Audit + Alarm, die Zeile bleibt ungelöst
       if (now.getTime() - (c.attemptStartedAt as Date).getTime() < SEARCH_MIN_AGE_MS) continue;
       const [seen] = await db.execute(sql`select 1 from audit_log where entity = 'match' and entity_id = ${c.matchId} and action = 'charge.search_empty' and after ->> 'userId' = ${c.userId} limit 1`).then((r) => r.rows);
-      if (!seen) await audit(null, "charge.search_empty", "match", c.matchId, { after: { userId: c.userId } });
+      if (!seen) await audit(null, "charge.search_empty", "match", matchIdOf(c), { after: { userId: c.userId } });
       continue;
     }
     // Erfolgreiche zuerst: ein Erfolg gewinnt immer
