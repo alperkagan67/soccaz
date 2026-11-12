@@ -97,6 +97,28 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
+  async retrievePaymentIntentSecret(paymentIntentId: string): Promise<{ intent: FoundIntent; clientSecret: string } | null> {
+    if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return null;
+    try {
+      const pi = await this.stripe().paymentIntents.retrieve(paymentIntentId, {}, SETUP_REQUEST);
+      if (!pi.client_secret) return null;
+      return {
+        clientSecret: pi.client_secret,
+        intent: {
+          id: pi.id,
+          status: pi.status === "succeeded" ? "succeeded" : pi.status === "requires_action" ? "requires_action" : pi.status === "processing" ? "processing" : pi.status === "requires_payment_method" || pi.status === "canceled" ? "failed" : "other",
+          amountCents: Number.isInteger(pi.amount) ? pi.amount : null,
+          currency: pi.currency ?? null,
+          customerId: typeof pi.customer === "string" ? pi.customer : (pi.customer?.id ?? null),
+          failureCode: pi.last_payment_error?.code ?? null,
+        },
+      };
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return null;
+      throw error;
+    }
+  }
+
   async cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }> {
     if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return { status: "other" };
     try {
