@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { ALL_ROLES, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, type Role } from "@/lib/roles";
 import type { ActionState } from "@/lib/validation";
 import * as admin from "./admin";
 import { requirePermission } from "./session";
@@ -24,7 +24,7 @@ export async function setBannedAction(userId: string, banned: boolean, reason: s
 }
 
 export async function setRoleAction(userId: string, role: string) {
-  if (!ALL_ROLES.includes(role as Role)) return { error: "Unbekannte Rolle." } satisfies ActionState;
+  if (!ASSIGNABLE_ROLES.includes(role as Role)) return { error: "Unbekannte Rolle." } satisfies ActionState;
   return adminAction("/admin/nutzer", (id) => admin.setRole(id, userId, role as Role), "owner"); // nur Admin 1 vergibt Rollen
 }
 

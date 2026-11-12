@@ -16,7 +16,7 @@ import {
   teams,
   users,
 } from "@/db/schema";
-import { isOwner, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, isOwner, type Role } from "@/lib/roles";
 import { audit } from "./audit";
 import { DomainError } from "./teams";
 import { hasChargeRows } from "./wallet";
@@ -142,7 +142,7 @@ export async function listUsers(filter: { q?: string; role?: string; banned?: bo
     .where(
       and(
         filter.q ? or(ilike(users.name, likeTerm(filter.q)), ilike(users.email, likeTerm(filter.q))) : undefined,
-        filter.role && ["player", "admin", "moderator", "finance", "booking"].includes(filter.role) ? eq(users.role, filter.role as Role) : undefined,
+        filter.role && ["player", "admin"].includes(filter.role) ? eq(users.role, filter.role as Role) : undefined,
         filter.banned ? isNotNull(users.bannedAt) : undefined,
       ),
     )
@@ -169,6 +169,7 @@ export async function setRole(actorId: string, userId: string, role: Role) {
   if (actorId === userId) throw new DomainError("Du kannst deine eigene Rolle nicht ändern.");
   await db.transaction(async (tx) => {
     // Rollen vergibt nur Admin 1 (Vertrag 009, AC-1/AC-2): auch hier im Server geprüft, nicht nur an der Seite
+    if (!ASSIGNABLE_ROLES.includes(role)) throw new DomainError("Diese Rolle gibt es nicht mehr. Vergeben werden nur Spieler und Admin.");
     const [actor] = await tx.select({ role: users.role, isOwner: users.isOwner }).from(users).where(eq(users.id, actorId));
     if (!isOwner(actor)) throw new DomainError("Nur Admin 1 darf Rollen vergeben.");
     const [target] = await tx.select().from(users).where(eq(users.id, userId)).for("update");

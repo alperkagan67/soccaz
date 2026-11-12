@@ -1,28 +1,25 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { canUser, type Permission, type Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, canUser, type Permission, type Role } from "@/lib/roles";
 
 // Vertrag 009 M1, E1b (docs/design/009-m1-plan.md 3.2): Berechtigungsmatrix Rolle × Seite × Server-Aktion.
 // Die Seiten und Aktionen werden aus dem Quelltext gelesen (requirePermission / guarded), damit eine neue Seite ohne Eintrag hier den Test bricht.
 
-type Who = "player" | "moderator" | "finance" | "booking" | "admin" | "owner";
+type Who = "player" | "admin" | "owner";
 const USERS: Record<Who, { role: Role; isOwner: boolean }> = {
   player: { role: "player", isOwner: false },
-  moderator: { role: "moderator", isOwner: false },
-  finance: { role: "finance", isOwner: false },
-  booking: { role: "booking", isOwner: false },
   admin: { role: "admin", isOwner: false }, // Admin 2
   owner: { role: "admin", isOwner: true }, // Admin 1
 };
 
 // Soll: wer darf welche Berechtigung (Plan 3.2). Admin 2 hat KEINE Finanzen und keine Einstellungen/Rollen.
 const ALLOWED: Record<Permission, Who[]> = {
-  dashboard: ["moderator", "finance", "booking", "admin", "owner"],
+  dashboard: ["admin", "owner"],
   admin: ["admin", "owner"],
-  moderation: ["moderator", "admin", "owner"],
-  booking: ["booking", "admin", "owner"],
-  finance: ["finance", "owner"],
+  moderation: ["admin", "owner"],
+  booking: ["admin", "owner"],
+  finance: ["owner"],
   owner: ["owner"],
 };
 
@@ -95,6 +92,14 @@ describe("Matrix: Rolle × Berechtigung (canUser)", () => {
   it("is_owner ohne Rolle admin zählt nie (der CHECK der Datenbank verbietet es, die Funktion auch)", () => {
     expect(canUser({ role: "player", isOwner: true }, "finance")).toBe(false);
     expect(canUser({ role: "moderator", isOwner: true }, "owner")).toBe(false);
+  });
+  it("entfallene Teilrollen (moderator, finance, booking) geben keine Rechte mehr (Vertrag 009 v4)", () => {
+    for (const role of ["moderator", "finance", "booking"] as const) {
+      for (const permission of Object.keys(ALLOWED) as Permission[]) expect(canUser({ role, isOwner: false }, permission), `${role}/${permission}`).toBe(false);
+    }
+  });
+  it("vergeben werden nur Spieler und Admin", () => {
+    expect(ASSIGNABLE_ROLES).toEqual(["player", "admin"]);
   });
   it("kein Nutzer: nichts", () => {
     expect(canUser(null, "dashboard")).toBe(false);

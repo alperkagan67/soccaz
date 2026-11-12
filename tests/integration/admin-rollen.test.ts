@@ -16,8 +16,19 @@ describe("setRole: nur Admin 1", () => {
   it("Admin 1 vergibt eine Rolle", async () => {
     const owner = await makeUser("rl1", "owner");
     const p = await makeUser("rl2", "player");
-    await setRole(owner.id, p.id, "moderator");
-    expect((await roleOf(p.id)).role).toBe("moderator");
+    await setRole(owner.id, p.id, "admin");
+    expect((await roleOf(p.id)).role).toBe("admin");
+    await setRole(owner.id, p.id, "player");
+    expect((await roleOf(p.id)).role).toBe("player");
+  });
+
+  it("entfallene Teilrollen werden nicht mehr vergeben (moderator, finance, booking)", async () => {
+    const owner = await makeUser("rl1b", "owner");
+    const p = await makeUser("rl2b", "player");
+    for (const role of ["moderator", "finance", "booking"] as const) {
+      await expect(setRole(owner.id, p.id, role)).rejects.toThrow(/gibt es nicht mehr/);
+    }
+    expect((await roleOf(p.id)).role).toBe("player");
   });
 
   it("Admin 2 (role admin ohne is_owner) wird abgelehnt, nichts geändert", async () => {

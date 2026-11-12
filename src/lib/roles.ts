@@ -14,9 +14,10 @@ const GRANTS: Record<Role, Permission[]> = {
   player: [],
   // Admin 2 (Vertrag 009, Rollen): kein Finanzen, keine Provisionen/Einstellungen/Rollenverwaltung; die hat nur Admin 1 (users.is_owner, siehe OWNER_GRANTS)
   admin: ["admin", "moderation", "booking", "dashboard"],
-  moderator: ["moderation", "dashboard"],
-  finance: ["finance", "dashboard"],
-  booking: ["booking", "dashboard"],
+  // Teilrollen entfallen mit Vertrag 009 M1 (Entscheid t9): die Migration setzt Konten auf player; die Enum-Werte bleiben, geben aber keine Rechte mehr
+  moderator: [],
+  finance: [],
+  booking: [],
 };
 
 /** Zusätzlich zur Rolle admin hat Admin 1 (is_owner): Finanzen, Einstellungen, Rollenverwaltung, Absage-Entscheid. */
@@ -44,4 +45,5 @@ export function isOwner(user: { role?: Role | null; isOwner?: boolean | null } |
   return user?.role === "admin" && user.isOwner === true;
 }
 
-export const ALL_ROLES = Object.keys(ROLE_LABEL) as Role[];
+/** Rollen, die vergeben werden dürfen. moderator, finance und booking entfallen mit Vertrag 009 M1 (die Enum-Werte bleiben, werden aber nicht mehr vergeben). */
+export const ASSIGNABLE_ROLES: Role[] = ["player", "admin"];

@@ -221,7 +221,7 @@ export async function expireStalePayments(now: Date = new Date()): Promise<numbe
 export async function notifyFinanceAlerts(): Promise<number> {
   const alerts = await getAlerts();
   if (alerts.length === 0) return 0;
-  const staff = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "finance"]));
+  const staff = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["admin"]));
   const since = new Date(Date.now() - 20 * 3_600_000);
   const already = await db
     .select({ userId: notifications.userId })

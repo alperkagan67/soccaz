@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Pager } from "@/components/Pager";
 import { formatDateTime } from "@/lib/time";
-import { ALL_ROLES, ROLE_LABEL, isOwner } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, ROLE_LABEL, isOwner } from "@/lib/roles";
 import { listUsers } from "@/server/admin";
 import { requirePermission } from "@/server/session";
 import { ActionButton } from "@/components/ActionButton";
@@ -32,7 +32,7 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
           <label className="label" htmlFor="role">Rolle</label>
           <select id="role" name="role" defaultValue={role ?? ""} className="field">
             <option value="">Alle</option>
-            {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
           </select>
         </div>
         <label className="col-span-2 flex items-center gap-3 text-sm">

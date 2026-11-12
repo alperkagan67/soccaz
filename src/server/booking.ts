@@ -31,7 +31,7 @@ export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
 }
 
 async function bookingStaffIds(tx: Pick<typeof db, "select">): Promise<string[]> {
-  const rows = await tx.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "booking"]));
+  const rows = await tx.select({ id: users.id }).from(users).where(inArray(users.role, ["admin"]));
   return rows.map((r) => r.id);
 }
 

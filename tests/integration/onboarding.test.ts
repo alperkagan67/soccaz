@@ -8,8 +8,8 @@ import { cleanup, makeUser } from "./helpers";
 afterAll(cleanup);
 
 describe("Onboarding für Betreiber", () => {
-  it("Admin, Finanzen, Buchung und Moderation brauchen kein Spieler-Onboarding, Spieler schon", async () => {
-    for (const role of ["admin", "finance", "booking", "moderator"] as const) {
+  it("Admin 1 und Admin 2 brauchen kein Spieler-Onboarding, Spieler schon (Teilrollen entfallen, Vertrag 009 v4)", async () => {
+    for (const role of ["admin", "owner"] as const) {
       const u = await makeUser("staff", role);
       await db.update(users).set({ onboardedAt: null }).where(eq(users.id, u.id));
       const [fresh] = await db.select().from(users).where(eq(users.id, u.id));

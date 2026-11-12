@@ -79,7 +79,7 @@ export async function listMatchPhotos(matchId: string) {
 export async function removeMedia(actor: { id: string; role: string }, id: string) {
   const [row] = await db.select().from(media).where(eq(media.id, id));
   if (!row || row.status === "removed") throw new DomainError("Bild nicht gefunden.");
-  const mod = actor.role === "admin" || actor.role === "moderator";
+  const mod = actor.role === "admin";
   if (row.ownerId !== actor.id && !mod) throw new DomainError("Das darfst du nicht.");
   await db.update(media).set({ status: "removed" }).where(eq(media.id, id));
   if (row.kind === "avatar") await db.update(users).set({ avatarUrl: null }).where(eq(users.id, row.refId));
