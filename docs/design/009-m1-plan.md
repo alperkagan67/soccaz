@@ -41,7 +41,9 @@ Quellen: Vertrag 009 (Rollen, AC-1, 2, 8, 9, 18, Meilenstein M1, Entscheide t9 2
 | Spiele, Lobbys, Turniere, Nutzer/Support (inkl. Sperren), Teams, Ligen, Sponsoren (`admin`) | – | – | – | – | ja | ja |
 | Moderation (`moderation`) | – | ja | – | – | ja | ja |
 | Buchungen, Hallen (`booking`) | – | – | – | ja | ja | ja |
-| Finanzen, Codes, Hallenpreise, Belege/Export (`finance`) | – | – | ja | – | – (Δ) | ja |
+| Finanzseite, Export, Belege (`finance`) | – | – | ja | – | – (Δ) | ja |
+| Rabattcodes (`/admin/codes`, `finance`) | – | – | ja | – | – (Δ) | ja |
+| Hallenpreise / Preisregeln (`/admin/hallen`, `finance`; Hallen selbst `booking`) | – | – | ja | – | – (Δ; Hallen ja, Preise nein) | ja |
 | Provisionen, Einstellungen, Kartenschalter | – | – | – | – | – (Δ) | ja |
 | Rollen vergeben/entziehen | – | – | – | – | – (Δ) | ja |
 | Nutzer sperren / entsperren (mit Begründung) | – | – | – | – | ja | ja |
