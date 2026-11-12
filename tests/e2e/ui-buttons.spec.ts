@@ -66,6 +66,28 @@ test.describe("Fokus", () => {
     });
   }
 
+  test("Fokus: der Ring steht sofort in --focus, ohne Überblendung aus der Textfarbe", async ({ page }) => {
+    await open(page, "dark");
+    const btn = page.getByTestId("counter-button");
+    const focus = await page.evaluate(() => {
+      const p = document.createElement("i");
+      p.style.color = "var(--focus)";
+      document.body.appendChild(p);
+      const c = getComputedStyle(p).color;
+      p.remove();
+      return c;
+    });
+    // fokussieren und im selben Frame lesen: kein Warten auf eine Transition
+    const sofort = await btn.evaluate((el) => {
+      (el as HTMLElement).focus();
+      return getComputedStyle(el).outlineColor;
+    });
+    expect(sofort).toBe(focus);
+    const props = await btn.evaluate((el) => getComputedStyle(el).transitionProperty);
+    expect(props).not.toContain("outline");
+    expect(props).not.toBe("all");
+  });
+
   test("Fokus: Enter und Leertaste lösen aus, auch beim Icon-Knopf", async ({ page }) => {
     await open(page, "dark");
     const value = page.getByTestId("counter-value");
