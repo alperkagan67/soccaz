@@ -19,7 +19,7 @@ Schritt im Workflow (nach dem normalen Integrationslauf, gleiche Datenbank-Vorbe
     TEST_LEDGER_MODEL: commission
 ```
 
-## Dateiliste (24 Dateien card-* plus dispute-admin, lokal grün in beiden Modellen; lokal: `npm run test:integration:commission`)
+## Dateiliste (21 Suiten, lokal grün in beiden Modellen)
 
 Abbuchung, Erstattung, Streit, Wechsel: `card-charge`, `card-refund`, `card-run`, `card-late-success`, `card-grace-retry`, `card-grace`, `card-cover`, `card-cover-view`, `card-substitute`, `card-substitute-review`, `card-trigger`, `card-lobby`, `card-auto-cancel`, `card-alarms`, `card-dispute`, `dispute-admin`.
 Guthaben- und Finanzpfade: `finance`, `wallet`, `privategame`, `final`, `lobby-ready`.
