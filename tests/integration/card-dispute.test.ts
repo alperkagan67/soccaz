@@ -352,6 +352,24 @@ describe("Reihenfolge der Statusfelder, unbekannte Status, Entprellung", () => {
     // Erstattung bleibt vorsorglich gesperrt (unbekannt = offen)
     await requestMatchCancel(null, g.match.id, "Test");
     expect(provider.calls.filter((c) => c.method === "createRefund" && (c.args as { paymentIntentId: string }).paymentIntentId === g.piId)).toHaveLength(0);
+    // R-T185 (D15): die NEUE Erstattungszeile (ensureRefundRow / refundVoidedByDispute) wird bei unbekanntem Status gleich als cancelled_dispute angelegt, nicht nur vom Versand zurueckgehalten
+    const refund = (await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, g.row.id)))[0];
+    expect(refund.status).toBe("cancelled_dispute");
+  });
+
+  it("ein spaeteres Ereignis ohne Grund ueberschreibt den bekannten Grund nicht (Nit R-T185)", async () => {
+    const g = await game();
+    const id = dpId();
+    await send("charge.dispute.created", dispute(g, id, { reason: "fraudulent", balance_transactions: [] }), 1000);
+    expect((await rowOf(id)).reason).toBe("fraudulent");
+    const { reason: _omit, ...withoutReason } = dispute(g, id, { status: "under_review", balance_transactions: [] }) as Record<string, unknown>;
+    void _omit;
+    await send("charge.dispute.updated", withoutReason, 2000);
+    const row = await rowOf(id);
+    expect(row.status).toBe("under_review"); // das Ereignis wurde angewendet
+    expect(row.reason).toBe("fraudulent"); // der Grund bleibt
+    await send("charge.dispute.updated", dispute(g, id, { reason: "general", status: "under_review", balance_transactions: [] }), 3000);
+    expect((await rowOf(id)).reason).toBe("general"); // ein geliefeter neuer Grund wird uebernommen
   });
 
   it("Entprellung: jedes Ereignis dreimal (neue Ereignis-IDs) ergibt je Grund genau eine Nachricht", async () => {
