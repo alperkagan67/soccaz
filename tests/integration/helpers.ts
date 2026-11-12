@@ -42,7 +42,7 @@ export async function makeTeam(adminId: string, name: string) {
 }
 
 /** Zwei Teams und ein Spiel in der Lobby (in `hoursAhead` Stunden), optional mit festem Preis. */
-export async function makeMatch(opts: { legacy?: boolean; hoursAhead?: number; durationMin?: number; priceCents?: number | null; costCents?: number | null } = {}) {
+export async function makeMatch(opts: { ledgerModel?: "legacy" | "commission"; legacy?: boolean; hoursAhead?: number; durationMin?: number; priceCents?: number | null; costCents?: number | null } = {}) {
   const adminA = await makeUser("ha");
   const adminB = await makeUser("ga");
   const home = await makeTeam(adminA.id, "Heim");
@@ -56,6 +56,8 @@ export async function makeMatch(opts: { legacy?: boolean; hoursAhead?: number; d
       durationMin: opts.durationMin ?? 60,
       priceCents: opts.priceCents === undefined ? 8000 : opts.priceCents,
       costCents: opts.costCents === undefined ? 8000 : opts.costCents,
+      // Buchungsmodell (Vertrag 009 M2): Standard der Tests bleibt das ALTE Modell (revenue), damit bestehende Tests unveraendert gelten; Tests der Provision setzen ledgerModel: "commission"
+      ledgerModel: opts.ledgerModel ?? "legacy",
       legacyShareModel: opts.legacy ?? false, // Standard: neues Modell (Preis ÷ Spielerzahl); legacy: true = Altspiel mit Reservierung
     })
     .returning();

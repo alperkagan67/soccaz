@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { priceRules, venues } from "@/db/schema-finance";
 import { audit } from "./audit";
+import { defaultCommissionPercent } from "./commission";
 import { DomainError } from "./teams";
 
 export type VenueInput = {
@@ -46,7 +47,7 @@ export async function createVenue(actorId: string, input: VenueInput) {
   const v = clean(input);
   const [row] = await db
     .insert(venues)
-    .values({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false })
+    .values({ commissionPercent: (await defaultCommissionPercent()).toFixed(2), name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false })
     .returning();
   await audit(actorId, "venue.create", "venue", row.id, { after: row });
   return row;

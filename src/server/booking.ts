@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { matches, teams, users } from "@/db/schema";
 import { bookingJobs, expenses, priceRules, venues } from "@/db/schema-finance";
 import { audit } from "./audit";
+import { hasChargeRows } from "./wallet";
 import { getAgent } from "./booking-agent";
 import { post } from "./ledger";
 import { teamName } from "./names";
@@ -173,6 +174,10 @@ export async function recordExpense(
       .insert(expenses)
       .values({ matchId: input.matchId ?? null, kind: input.kind, amountCents: input.amountCents, note: input.note ?? null, receiptUrl: input.receiptUrl ?? null, paidOn: input.paidOn ?? new Date().toISOString().slice(0, 10), createdBy: actorId })
       .returning();
+    if (input.matchId && input.kind === "venue") {
+      const [mm] = await tx.select({ model: matches.ledgerModel }).from(matches).where(eq(matches.id, input.matchId));
+      if (mm?.model === "commission" && (await hasChargeRows(tx, input.matchId))) throw new DomainError("Bei Kartenspielen im Provisionsmodell ist die Hallenmiete durchlaufendes Geld (Verbindlichkeit gegenüber der Halle) und wird nicht als Ausgabe gebucht. Die Auszahlung folgt mit Stripe Connect.");
+    }
     const entry = await post(tx, {
       debit: { account: "venue_cost" },
       credit: { account: "bank" },

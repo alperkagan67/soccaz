@@ -11,6 +11,7 @@ import { notifyUsers } from "../notifications";
 import { issueReceipt } from "../receipts";
 import { teamName } from "../names";
 import { post } from "../ledger";
+import { bookCommission, shareAccountFor } from "../commission";
 import type { Tx } from "../tx";
 import { getPaymentProvider } from "./provider";
 import { notifyChargeProblem } from "./charge-notify";
@@ -122,7 +123,7 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     if (booked) return { status: "already" };
     await post(tx, {
       debit: { account: "clearing" },
-      credit: { account: "revenue" },
+      credit: { account: await shareAccountFor(tx, row.matchId) },
       amountCents: row.amountCents,
       kind: "match_share",
       matchId: row.matchId,
@@ -159,7 +160,7 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   if (r.outcome === "succeeded") {
     await post(tx, {
       debit: { account: "clearing" },
-      credit: { account: "revenue" },
+      credit: { account: await shareAccountFor(tx, row.matchId) }, // Altspiel revenue, neues Modell venue_payable (Verbindlichkeit Halle), Vertrag 009 M2
       amountCents: row.amountCents,
       kind: "match_share",
       matchId: row.matchId,
@@ -269,6 +270,7 @@ export async function settleIfComplete(tx: Tx, matchId: string): Promise<boolean
   if (seated.length === 0 || seated.some((s) => !paid.has(s.userId))) return false; // jemand ist eingeteilt, aber wurde nie belastet
 
   await tx.update(matches).set({ settledAt: new Date() }).where(and(eq(matches.id, matchId), isNull(matches.settledAt)));
+  await bookCommission(tx, match); // Vertrag 009 M2: Provision und 10er-Bonus genau einmal, wenn das Spiel gebucht ist (nur Modell commission)
   const [home, away] = [await teamName(tx, match.homeTeamId), await teamName(tx, match.awayTeamId)];
   // Beleg und Nachricht gehen an den, dessen Karte belastet wurde (Zahler); uebernimmt B einen Anteil, bekommt B EINEN Beleg ueber die Summe beider Posten
   const byPayer = new Map<string, number>();

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { parseEuro } from "@/lib/money";
 import type { ActionState } from "@/lib/validation";
 import { recordExpense, updateBookingJob, type BookingPatch, type BookingStatus } from "./booking";
+import { setVenueCommission } from "./commission";
 import { manualRefund } from "./finance";
 import { createPromo, setPromoActive } from "./promo";
 import { requirePermission } from "./session";
@@ -134,6 +135,13 @@ export async function toggleVenueAction(venueId: string, active: boolean, _prev:
 export async function setVenueManagerAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
   return guarded("booking", "/admin/hallen", async (actor) => {
     await setVenueManager(actor, venueId, String(fd.get("email") ?? ""));
+  });
+}
+
+/** Provision und 10er-Bonus einer Halle: nur Admin 1, Pflicht-Begründung (Vertrag 009 M2, AC-5). */
+export async function setVenueCommissionAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guarded("owner", "/admin/hallen", async (actor) => {
+    await setVenueCommission(actor, venueId, { percent: fd.get("percent"), bonusEnabled: fd.get("bonus") === "on", reason: String(fd.get("reason") ?? "") });
   });
 }
 

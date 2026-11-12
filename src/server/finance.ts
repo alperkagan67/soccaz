@@ -85,7 +85,7 @@ export async function overview(period: Period) {
   }>(
     await db.execute(sql`
       select
-        (coalesce(sum(case when credit_account = 'revenue' then amount_cents else 0 end), 0) - coalesce(sum(case when debit_account = 'revenue' then amount_cents else 0 end), 0))::int as revenue,
+        (coalesce(sum(case when credit_account in ('revenue', 'commission') then amount_cents else 0 end), 0) - coalesce(sum(case when debit_account in ('revenue', 'commission') then amount_cents else 0 end), 0))::int as revenue,
         (coalesce(sum(case when debit_account = 'venue_cost' then amount_cents else 0 end), 0) - coalesce(sum(case when credit_account = 'venue_cost' then amount_cents else 0 end), 0))::int as venue_cost,
         (coalesce(sum(case when debit_account = 'fees' then amount_cents else 0 end), 0) - coalesce(sum(case when credit_account = 'fees' then amount_cents else 0 end), 0))::int as fees,
         (coalesce(sum(case when debit_account = 'promo' then amount_cents else 0 end), 0) - coalesce(sum(case when credit_account = 'promo' then amount_cents else 0 end), 0))::int as promo,
@@ -131,7 +131,7 @@ export async function listMatchFinance(period: Period): Promise<MatchFinanceRow[
     await db.execute(sql`
       select m.id, m.starts_at, m.status, h.name as home, a.name as away, m.price_cents, m.final_share_cents,
         (select count(*)::int from match_participants p where p.match_id = m.id and p.paid_cents > 0) as payers,
-        (select coalesce(sum(case when l.credit_account = 'revenue' then l.amount_cents else 0 end) - sum(case when l.debit_account = 'revenue' then l.amount_cents else 0 end), 0)::int from ledger_entries l where l.match_id = m.id) as revenue,
+        (select coalesce(sum(case when l.credit_account in ('revenue', 'commission') then l.amount_cents else 0 end) - sum(case when l.debit_account in ('revenue', 'commission') then l.amount_cents else 0 end), 0)::int from ledger_entries l where l.match_id = m.id) as revenue,
         (select coalesce(sum(case when l.debit_account = 'venue_cost' then l.amount_cents else 0 end) - sum(case when l.credit_account = 'venue_cost' then l.amount_cents else 0 end), 0)::int from ledger_entries l where l.match_id = m.id) as cost
       from matches m
       join teams h on h.id = m.home_team_id

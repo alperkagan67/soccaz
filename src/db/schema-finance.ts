@@ -7,6 +7,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -20,8 +21,8 @@ import { matches, users } from "./schema";
 // Phase 2: Geld und Halle
 // ---------------------------------------------------------------------------------------------
 
-export const ledgerAccount = pgEnum("ledger_account", ["wallet", "clearing", "bank", "revenue", "venue_cost", "fees", "promo", "chargeback", "tournament"]);
-export const ledgerKind = pgEnum("ledger_kind", ["topup", "fee", "promo_credit", "match_share", "refund", "venue_cost", "adjustment", "chargeback", "tournament_entry", "tournament_refund", "tournament_payout", "tournament_commission"]);
+export const ledgerAccount = pgEnum("ledger_account", ["wallet", "clearing", "bank", "revenue", "venue_cost", "fees", "promo", "chargeback", "tournament", "venue_payable", "commission"]);
+export const ledgerKind = pgEnum("ledger_kind", ["topup", "fee", "promo_credit", "match_share", "refund", "venue_cost", "adjustment", "chargeback", "tournament_entry", "tournament_refund", "tournament_payout", "tournament_commission", "commission", "commission_bonus"]);
 export const paymentProvider = pgEnum("payment_provider", ["dev", "stripe"]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "canceled"]);
 export const bookingStatus = pgEnum("booking_status", ["open", "in_progress", "booked", "unavailable", "confirmed", "withdrawn", "done"]);
@@ -34,7 +35,9 @@ export const settings = pgTable("settings", {
   updatedBy: uuid("updated_by").references(() => users.id),
 });
 
-export const venues = pgTable("venues", {
+export const venues = pgTable(
+  "venues",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   city: text("city").notNull(),
@@ -52,8 +55,35 @@ export const venues = pgTable("venues", {
   verified: boolean("verified").notNull().default(true), // false = Angaben aus OpenStreetMap, Buchbarkeit und Preis ungeprüft
   active: boolean("active").notNull().default(true),
   managerUserId: uuid("manager_user_id"), // Hallenbetreiber: bestätigt Spielanfragen für diese Halle
+  // Vertrag 009 M2: Provision je Halle (nur Admin 1). Prozent der Hallenmiete (0 bis 100, höchstens 2 Nachkommastellen); der 10er-Bonus ist kumulierbar (Entscheid t9).
+  commissionPercent: numeric("commission_percent", { precision: 5, scale: 2 }).notNull().default("10"),
+  commissionBonusEnabled: boolean("commission_bonus_enabled").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (t) => [check("venues_commission_percent_range", sql`${t.commissionPercent} >= 0 and ${t.commissionPercent} <= 100`)],
+);
+
+/**
+ * Provision je Spiel (Vertrag 009 M2): Schnappschuss von Satz und Bemessungsgrundlage zum Buchungszeitpunkt, genau eine Zeile je Spiel. NUR ANHÄNGEN (Trigger wie das Hauptbuch):
+ * Die Stornierung steht im Hauptbuch (Gegenbuchung), nicht hier. Die Hallenmiete (cost_cents des Spiels) ist die Bemessungsgrundlage (Entscheid t9, P6).
+ */
+export const matchCommissions = pgTable(
+  "match_commissions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    matchId: uuid("match_id").notNull().unique().references(() => matches.id, { onDelete: "cascade" }),
+    venueId: uuid("venue_id").notNull().references(() => venues.id, { onDelete: "restrict" }),
+    ratePercent: numeric("rate_percent", { precision: 5, scale: 2 }).notNull(),
+    baseCents: integer("base_cents").notNull(),
+    commissionCents: integer("commission_cents").notNull(),
+    ledgerEntryId: uuid("ledger_entry_id"), // die Provisionsbuchung (kann fehlen, wenn die Provision 0 ist)
+    bookedAt: timestamp("booked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("match_commissions_venue_idx").on(t.venueId, t.bookedAt),
+    check("match_commissions_amounts_check", sql`${t.baseCents} >= 0 and ${t.commissionCents} >= 0 and ${t.commissionCents} <= ${t.baseCents}`),
+  ],
+);
 
 /** Preis, den Spieler für die Halle zahlen, und Kosten, die uns die Halle berechnet. Ohne Halle gilt der Standard. */
 export const priceRules = pgTable("price_rules", {
