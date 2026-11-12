@@ -120,16 +120,9 @@ test("Gespeicherte Karte: 'Andere Karte hinterlegen' setzt die Zustimmung zurüc
   await expect(a.getByTestId("card-fake")).toBeDisabled();
 });
 
-test("Gast sieht keinen persönlichen Betrag und keinen Kartentext (Kosten nur als Hallenpreis)", async ({ browser }) => {
+test("Spieler im Spiel sieht seinen Anteil und den Kartentext (Gegenprobe zu lobby-gast-kosten.spec.ts, dort ohne Fake-Pfad der Gast)", async ({ browser }) => {
   const { a, matchId } = await setupLobby(browser, "kg");
-  const guest = await (await browser.newContext()).newPage();
-  await guest.goto(`/lobby/${matchId}`);
-  const costs = guest.getByTestId("card-costs");
-  await expect(costs).toContainText("geteilt durch alle Spieler"); // der Hallenpreis ist öffentlich
-  await expect(costs).not.toContainText("Dein Anteil");
-  await expect(costs).not.toContainText("deiner Karte");
-  await expect(guest.locator("main")).not.toContainText("von deiner Karte abgebucht");
-  // Gegenprobe: der Spieler im Spiel sieht seinen Anteil weiterhin
   await a.goto(`/lobby/${matchId}`);
   await expect(a.getByTestId("card-costs")).toContainText("Dein Anteil");
+  await expect(a.getByTestId("card-costs")).toContainText("von deiner Karte abgebucht");
 });
