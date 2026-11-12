@@ -99,6 +99,7 @@ try {
   await commissionStructure(fresh, false);
   await fresh.end();
 
+  // VORLÄUFIG ("letzte zwei" ist fest verdrahtet): die robuste Marke (erste Migration mit ledger_model, alle späteren danach) kommt mit 009 M3a.
   // 2. BESTEHEND: ohne die letzten ZWEI Migrationen (009 M2: Buchungsmodell, 011 M1: venue_access) anlegen, Daten einfügen, dann beide nachziehen
   console.log("== BESTEHEND (Stand ohne die letzten zwei Migrationen, mit Daten, dann diese)");
   const tmp = mkdtempSync(path.join(tmpdir(), "migcheck-"));

@@ -38,7 +38,7 @@ export async function cleanupTestData(pool: Pool) {
       "delete from payment_disputes where match_id in (select id from _tm) or payer_user_id in (select id from _tu) or dispute_id like 'dp_test%'",
       "delete from matches where id in (select id from _tm)",
       // 011 M1: Betreiber-Zugänge zuerst (Fremdschlüssel auf Nutzer ohne cascade, auf Halle restrict)
-      "delete from venue_access where user_id in (select id from _tu) or assigned_by in (select id from _tu) or venue_id in (select id from venues where name like 'E2E %' or osm_id like 'seed-venue-%')",
+      "delete from venue_access where user_id in (select id from _tu) or assigned_by in (select id from _tu) or lower(invited_email) like '%@test.local' or venue_id in (select id from venues where name like 'E2E %' or manager_user_id in (select id from _tu))",
       "delete from venues where name like 'E2E %'",
       "delete from tournaments where organizer_id in (select id from _tu)",
       // venues.manager_user_id hat keinen Fremdschlüssel: ohne Zurücksetzen bliebe nach dem Löschen der Testnutzer ein Betreiber ohne Nutzer stehen
