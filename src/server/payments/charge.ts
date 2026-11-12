@@ -12,6 +12,7 @@ import { teamName } from "../names";
 import { post } from "../ledger";
 import type { Tx } from "../tx";
 import { getPaymentProvider } from "./provider";
+import { notifyChargeProblem } from "./charge-notify";
 
 export const refundKey = (chargeId: string) => `refund:${chargeId}`;
 
@@ -114,6 +115,9 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   await tx.update(paymentCharges).set({ status: r.outcome, failureCode: cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
   await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
   await audit(null, "charge.failed", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome, code: cleanCode(r.failureCode) } }, tx);
+  // NUR beim ersten Wechsel in einen Problemzustand: war die Zeile schon failed oder requires_action, ändern sich Status und Code (und das Audit), aber es geht keine
+  // zweite Nachricht raus (requires_action -> failed, Codewechsel). Empfänger: Betroffener + Captain/Veranstalter, nie Dritte (AC-12/AC-20)
+  if (row.status !== "failed" && row.status !== "requires_action") await notifyChargeProblem(tx, row, cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"));
   return { status: "applied" };
 }
 
