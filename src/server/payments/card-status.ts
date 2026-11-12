@@ -15,14 +15,26 @@ export type { CardStatus };
  */
 export async function getCardDisplays(matchId: string, audienceOf: (p: { userId: string; teamId: string | null }) => Audience): Promise<Record<string, CardDisplay>> {
   const rows = await db
-    .select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, failureCode: paymentCharges.failureCode, graceUntil: paymentCharges.graceUntil, startsAt: matches.startsAt })
+    .select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, failureCode: paymentCharges.failureCode, chargeStatus: paymentCharges.status, chargePi: paymentCharges.paymentIntentId, graceUntil: paymentCharges.graceUntil, startsAt: matches.startsAt, matchStatus: matches.status, cancelRequestedAt: matches.cancelRequestedAt, settledAt: matches.settledAt })
     .from(matchParticipants)
     .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
     .leftJoin(paymentCharges, and(eq(paymentCharges.matchId, matchParticipants.matchId), eq(paymentCharges.userId, matchParticipants.userId)))
     .where(eq(matchParticipants.matchId, matchId));
   const out: Record<string, CardDisplay> = {};
   for (const r of rows) {
-    const d = cardDisplayFor(audienceOf({ userId: r.userId, teamId: r.teamId }), r.cardStatus, r.failureCode, effectiveGraceEnd(r.graceUntil, r.startsAt));
+    const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
+    // dieselben Bedingungen wie der Server (authorize.ts openRow): offenes Spiel, keine angeforderte Absage, nicht abgerechnet, PaymentIntent vorhanden, Anstoss in der Zukunft
+    const awaiting =
+      r.chargeStatus === "requires_action" &&
+      r.failureCode === "authentication_required" &&
+      !!r.chargePi &&
+      ["lobby", "confirmed"].includes(r.matchStatus) &&
+      r.cancelRequestedAt === null &&
+      r.settledAt === null &&
+      r.startsAt.getTime() > Date.now() &&
+      end !== null &&
+      end.getTime() > Date.now();
+    const d = cardDisplayFor(audienceOf({ userId: r.userId, teamId: r.teamId }), r.cardStatus, r.failureCode, end, awaiting);
     if (d) out[r.userId] = d;
   }
   return out;

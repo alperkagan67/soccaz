@@ -77,9 +77,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     const end = d?.graceEnd ? new Date(d.graceEnd) : null;
     return { open: end !== null && end.getTime() > nowForWindow.getTime(), until: end !== null && end.getTime() > nowForWindow.getTime() ? graceText(end, nowForWindow) : null };
   };
-  const myFailure = myDisplay?.status === "failed" ? { text: chargeFailureText(myDisplay.reason), until: windowOf(myDisplay).until, expired: !windowOf(myDisplay).open } : null;
+  const myFailure = myDisplay?.status === "failed" ? { text: chargeFailureText(myDisplay.reason), until: windowOf(myDisplay).until, expired: !windowOf(myDisplay).open, authorize: myDisplay.authorize === true && windowOf(myDisplay).open } : null;
   // Captain/Veranstalter/Admin: wen es betrifft und warum (nur Einträge mit Grund; der Betroffene selbst sieht oben seinen eigenen Block)
-  const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === "failed" && id !== user?.id).map(([id, d]) => ({ userId: id, name: participants.find((p) => p.userId === id)?.name ?? "Spieler", text: chargeFailureText(d.reason), until: windowOf(d).until }));
+  const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === "failed" && id !== user?.id).map(([id, d]) => ({ userId: id, name: participants.find((p) => p.userId === id)?.name ?? "Spieler", text: chargeFailureText(d.reason), until: windowOf(d).until, authorizing: d.authorize === true }));
   const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
@@ -352,7 +352,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <ul className="space-y-1 text-sm">
             {failedForManager.map((f) => (
               <li key={f.userId} data-testid="charge-failed-player">
-                <strong>{f.name}</strong>: {f.text} {f.until ? `Der Spieler kann in der Lobby seine Karte ändern (${f.until}).` : "Das Zeitfenster ist abgelaufen."}
+                <strong>{f.name}</strong>: {f.text} {f.authorizing && f.until ? `Die Bank braucht eine Freigabe der Zahlung; der Spieler kann sie in der Lobby geben (${f.until}).` : f.until ? `Der Spieler kann in der Lobby seine Karte ändern (${f.until}).` : "Das Zeitfenster ist abgelaufen."}
               </li>
             ))}
           </ul>

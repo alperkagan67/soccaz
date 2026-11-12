@@ -8,15 +8,15 @@ import type { CardStatus } from "@/db/schema";
  *  - guest: nicht angemeldet oder kein Teilnehmer: nichts je Person.
  */
 export type Audience = "self" | "manager" | "member" | "guest";
-export type CardDisplay = { status: CardStatus | "open"; reason: string | null; /** ISO-Zeitpunkt: effektives Ende des Nachzahlfensters, nur Betroffener und Captain/Veranstalter (AC-12/AC-20) */ graceEnd?: string };
+export type CardDisplay = { status: CardStatus | "open"; reason: string | null; /** ISO-Zeitpunkt: effektives Ende des Nachzahlfensters, nur Betroffener und Captain/Veranstalter (AC-12/AC-20) */ graceEnd?: string; /** Freigabe der Bank offen (3-D-Secure, M3c-1c): nur Betroffener und Captain/Veranstalter; nur der Betroffene bekommt den Knopf */ authorize?: true };
 
-export function cardDisplayFor(audience: Audience, status: CardStatus, failureCode: string | null, graceEnd: Date | null = null): CardDisplay | null {
+export function cardDisplayFor(audience: Audience, status: CardStatus, failureCode: string | null, graceEnd: Date | null = null, awaitingAuthorization = false): CardDisplay | null {
   switch (audience) {
     case "guest":
       return null;
     case "self":
     case "manager":
-      return { status, reason: status === "failed" ? (failureCode ?? "unknown") : null, ...(status === "failed" && graceEnd ? { graceEnd: graceEnd.toISOString() } : {}) };
+      return { status, reason: status === "failed" ? (failureCode ?? "unknown") : null, ...(status === "failed" && graceEnd ? { graceEnd: graceEnd.toISOString() } : {}), ...(status === "failed" && awaitingAuthorization && graceEnd ? { authorize: true as const } : {}) };
     case "member":
       return status === "failed" || status === "none" ? { status: "open", reason: null } : { status, reason: null };
     default:

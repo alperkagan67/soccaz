@@ -125,6 +125,14 @@ export class FakeProvider implements PaymentProvider {
     this.intents.set(id, { id, status, amountCents: 800, currency: "eur", customerId: null, failureCode: null, ...extra });
   }
 
+  /** Test-Hilfe: das Fake-Secret eines PaymentIntents ist 'pi_..._secret_fake'; Zustand wie bei retrievePaymentIntent. */
+  async retrievePaymentIntentSecret(paymentIntentId: string): Promise<{ intent: FoundIntent; clientSecret: string } | null> {
+    this.probe("retrievePaymentIntentSecret");
+    this.calls.push({ method: "retrievePaymentIntentSecret", args: { paymentIntentId } });
+    const intent = this.intents.get(paymentIntentId);
+    return intent ? { intent, clientSecret: `${paymentIntentId}_secret_fake` } : null;
+  }
+
   async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {
     this.probe("retrievePaymentIntent");
     this.calls.push({ method: "retrievePaymentIntent", args: { paymentIntentId } });

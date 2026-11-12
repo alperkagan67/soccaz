@@ -9,6 +9,7 @@ import { DomainError } from "../teams";
 import { assertNoFakeInProduction, getPaymentProvider } from "./provider";
 import { cardModeActive } from "../wallet";
 import { fakeCardAllowed } from "./mode";
+import { fakeAuthorizeCore } from "./fake-authorize";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -40,4 +41,19 @@ export async function fakeCardReadyAction(matchId: string): Promise<{ error?: st
     if (error instanceof DomainError) return { error: error.message };
     throw error;
   }
+}
+
+/**
+ * NUR TESTS und CI: simuliert die Freigabe bei der Bank (3-D-Secure), OHNE Stripe. Die Zahlung wird dabei NICHT direkt gesetzt: es wird ein signiertes Fake-Ereignis
+ * (payment_intent.succeeded bzw. payment_failed) erzeugt und durch handleStripeWebhook geschickt, also derselbe Weg wie in Produktion. Gleiche Sperren wie fakeCardReadyAction.
+ */
+export async function fakeAuthorizeAction(matchId: string, outcome: "ok" | "fail"): Promise<{ error?: string }> {
+  assertNoFakeInProduction();
+  if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
+  const provider = await getPaymentProvider();
+  if (provider.name !== "fake") return { error: "Nicht verfügbar." };
+  const user = await requireUser("/app");
+  const r = await fakeAuthorizeCore(user.id, matchId, outcome);
+  if (!r.error) revalidatePath(`/lobby/${matchId}`);
+  return r;
 }
