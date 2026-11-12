@@ -251,7 +251,7 @@ describe("Webhook: Idempotenz (AC-10-Grundlage)", () => {
   });
 
   it("fremde Ereignistypen (z. B. von der alten Route) werden mit 200 angenommen, aber weder gespeichert noch verarbeitet", async () => {
-    for (const type of ["checkout.session.completed", "charge.dispute.created", "customer.created", "invoice.paid"]) {
+    for (const type of ["checkout.session.completed", "customer.created", "invoice.paid"]) { // charge.dispute.* gehoert seit M4a zu diesem Endpunkt
       const id = evtId();
       expect((await deliver(provider.signEvent({ id, type, object: { id: "x" } }))).status).toBe(200);
       expect(await db.select().from(stripeEvents).where(eq(stripeEvents.eventId, id)), type).toHaveLength(0);

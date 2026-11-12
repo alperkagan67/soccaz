@@ -7,6 +7,7 @@ import { matches } from "@/db/schema";
 import { audit } from "../audit";
 import { cardPaymentsEnabled } from "../settings";
 import { bookOpenFees } from "./charge";
+import { runErasureTasks } from "./erasure";
 import { retryChargesInWindow } from "./charge-retry";
 import { runSubstitutes } from "./substitute";
 import { AFTER_START, runCharges, UNKNOWN_OUTCOME, type RunResult } from "./charge-run";
@@ -98,6 +99,12 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
     } catch (error) {
       console.error("runCardCharges: Nachruecker", error instanceof Error ? error.name : "Fehler");
     }
+  }
+  // DSGVO (M4b): Loeschauftraege fuer Stripe-Kunden abarbeiten, unabhaengig vom Kartenmodell (eine Kontoloeschung muss auch bei ausgeschaltetem Kartenmodell zu Ende gehen)
+  try {
+    await runErasureTasks(now);
+  } catch (error) {
+    console.error("runCardCharges: Loeschauftraege", error instanceof Error ? error.name : "Fehler");
   }
   try {
     await markAfterStart(now);
