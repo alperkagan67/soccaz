@@ -6,7 +6,7 @@ import { DEFAULT_LOCALE, MESSAGES, translate } from "@/lib/i18n";
 
 // Die Server-Aktionen brauchen Sitzung und Datenbank: für die Markup-Tests durch Attrappen ersetzt (Verhalten: Integrationstests und E2E).
 vi.mock("@/server/actions", () => ({ takeOverShareAction: vi.fn(), releaseCoverAction: vi.fn() }));
-const { CoverButton, ReleaseCover } = await import("../../src/app/lobby/[id]/CoverShare");
+const { CoverButton, CoverCoveringCard, ReleaseCover } = await import("../../src/app/lobby/[id]/CoverShare");
 
 const mandate = translate(DEFAULT_LOCALE, "cover.mandate.v1.entwurf");
 const amounts = { own: "6,00 €", target: "6,00 €", total: "12,00 €", estimated: false };
@@ -94,5 +94,15 @@ describe("ReleaseCover (Markup)", () => {
     expect(m).toContain(">Zurücknehmen<");
     expect(m).toContain('data-testid="cover-release"');
     expect((m.match(/<button/g) ?? []).length).toBe(1);
+  });
+});
+
+describe("CoverCoveringCard (Backlog 72)", () => {
+  it("ist ein Sprungziel (tabIndex -1, kein Tab-Stopp), ohne eigenen Fokusrahmen, mit Test-ID und Inhalt", () => {
+    const m = renderToStaticMarkup(createElement(CoverCoveringCard, null, "Du übernimmst den Anteil von Alex."));
+    expect(m).toContain('tabindex="-1"');
+    expect(m).toContain('data-testid="cover-covering"');
+    expect(m).toContain("outline-none");
+    expect(m).toContain("Du übernimmst den Anteil von Alex.");
   });
 });

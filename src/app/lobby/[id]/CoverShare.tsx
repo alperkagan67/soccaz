@@ -3,11 +3,32 @@
 // "Anteil übernehmen" in der Lobby (Vertrag 012, M3c-3b): Knopf neben einem roten Platz (nur für berechtigte Mitspieler, die der SERVER bestimmt), Dialog mit Betrag, klarem Text und
 // Zustimmung zum Mandatszusatz (ConfirmDialog mit consent, M2-3b) und "Zurücknehmen" bis zur Frist. Der Übernehmer kommt immer aus der Sitzung (Server-Aktion), nie vom Client;
 // die Einwilligung erzwingt der Server noch einmal (takeOverShare). Eigene Datei, damit der Look-Umbau der Lobby (M3-3) die Seite ohne Konflikte anfassen kann.
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { coverConsequence, coverDialogBody, type CoverAmounts } from "@/lib/cover-text";
 import { releaseCoverAction, takeOverShareAction } from "@/server/actions";
+
+// Backlog 72: Nach erfolgreicher Übernahme verschwindet der Auslöser, die neue Statuskarte erscheint erst nach dem Neuladen der Seite durch die Server-Aktion. Der Fokus soll dann
+// auf der Karte liegen (nicht verloren auf der Seite): der Knopf merkt sich den Erfolg, die Karte nimmt beim Erscheinen den Fokus. Nur wenn die Übernahme gerade hier erfolgt ist
+// (ein Neuladen oder ein anderer Betrachter nimmt dem Nutzer den Fokus nie weg).
+let focusCoveringCard = false;
+
+/** Die Statuskarte "Du übernimmst den Anteil von …": Sprungziel mit tabIndex -1, bekommt nach einer Übernahme in dieser Sitzung den Fokus. */
+export function CoverCoveringCard({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusCoveringCard) {
+      focusCoveringCard = false;
+      ref.current?.focus();
+    }
+  }, []);
+  return (
+    <div ref={ref} tabIndex={-1} className="space-y-2 outline-none" data-testid="cover-covering">
+      {children}
+    </div>
+  );
+}
 
 export function CoverButton({ matchId, targetUserId, targetName, amounts, mandateText }: { matchId: string; targetUserId: string; targetName: string; amounts: CoverAmounts | null; mandateText: string }) {
   return (
@@ -18,7 +39,11 @@ export function CoverButton({ matchId, targetUserId, targetName, amounts, mandat
       consequence={amounts ? coverConsequence(targetName, amounts) : undefined}
       confirmLabel="Anteil übernehmen"
       consent={{ label: mandateText }}
-      onConfirmAction={async ({ consent }) => (await takeOverShareAction(matchId, targetUserId, consent)) ?? { ok: true }}
+      onConfirmAction={async ({ consent }) => {
+        const result = await takeOverShareAction(matchId, targetUserId, consent);
+        if (!result?.error) focusCoveringCard = true; // die Statuskarte erscheint gleich und übernimmt den Fokus
+        return result ?? { ok: true };
+      }}
     />
   );
 }

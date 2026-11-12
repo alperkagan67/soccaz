@@ -108,10 +108,11 @@ test("nur Tastatur: Auslöser per Fokus und Enter, Fokus auf dem Haken, Tab blei
   await expect(g.B.getByTestId("cover-covering")).toContainText(`Du übernimmst den Anteil von ${g.nameA}.`);
   const [row] = await query<{ by: string | null }>("select covered_by_user_id as by from match_participants where match_id = $1 and user_id = $2", [g.matchId, await idOf("kax")]);
   expect(row.by).toBe(await idOf("kay"));
-  // Der Auslöser ist nach der Übernahme weg (der Platz ist gedeckt): der Fokus darf nicht in einem geschlossenen Dialog hängen; Tab erreicht wieder die Seite
+  // Der Auslöser ist nach der Übernahme weg (der Platz ist gedeckt): der Fokus liegt auf der neuen Statuskarte (Backlog 72), nicht im geschlossenen Dialog und nicht verloren auf der Seite
+  await expect(g.B.getByTestId("cover-covering")).toBeFocused();
   expect((await activeInfo(g.B)).inDialog).toBe(false);
-  await g.B.keyboard.press("Tab");
-  expect((await activeInfo(g.B)).inDialog).toBe(false);
+  await g.B.keyboard.press("Tab"); // die Karte ist kein Tab-Stopp: der nächste Tab geht zu "Zurücknehmen"
+  await expect(g.B.getByTestId("cover-release")).toBeFocused();
 
   // "Zurücknehmen" ist ebenfalls per Tastatur erreichbar und bedienbar (Fokus, Enter)
   const release = g.B.getByTestId("cover-release");

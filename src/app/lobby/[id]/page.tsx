@@ -39,7 +39,7 @@ import { windowSlots } from "@/lib/matchmaking";
 import { SchedulingPanel } from "./SchedulingPanel";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
-import { CoverButton, ReleaseCover } from "./CoverShare";
+import { CoverButton, CoverCoveringCard, ReleaseCover } from "./CoverShare";
 
 export const metadata: Metadata = { title: "Lobby", robots: { index: false } };
 
@@ -374,13 +374,13 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
       {(cover.covering || cover.covered || cover.pairs.length > 0) && (
         <section className="card space-y-2" data-testid="cover-status">
           {cover.covering && (
-            <div className="space-y-2" data-testid="cover-covering">
+            <CoverCoveringCard>
               <p className="font-semibold">Du übernimmst den Anteil von {seatName(cover.covering)}.</p>
               <p className="text-sm text-muted">
                 Zur Frist wird er zusätzlich von deiner Karte abgebucht.{cover.releasable ? " Bis dahin kannst du zurücknehmen." : " Zurücknehmen ist nicht mehr möglich."}
               </p>
               {cover.releasable && <ReleaseCover matchId={match.id} />}
-            </div>
+            </CoverCoveringCard>
           )}
           {cover.covered && (
             <p className="font-semibold" data-testid="cover-covered">
