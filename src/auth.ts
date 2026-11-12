@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import type { Role } from "@/lib/roles";
+import { redeemVenueInvites } from "@/server/venue-access";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -53,12 +54,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ account, profile }) {
       if (account?.provider === "google" && profile?.email) {
-        await upsertUser({
+        const user = await upsertUser({
           email: profile.email,
           name: profile.name ?? profile.email,
           googleId: profile.sub ?? undefined,
           avatarUrl: typeof profile.picture === "string" ? profile.picture : undefined,
         });
+        // Betreiber-Einladungen einlösen (011 M1): nur Google mit verifizierter E-Mail, nie der Dev-Login; ein Fehler hier darf die Anmeldung nicht verhindern
+        try {
+          await redeemVenueInvites({ userId: user.id, email: user.email, provider: "google", emailVerified: profile.email_verified === true });
+        } catch (e) {
+          console.error("Einlösen der Betreiber-Einladung fehlgeschlagen", e);
+        }
       }
       return true;
     },

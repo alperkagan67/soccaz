@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { and, asc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, teamMembers } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
@@ -10,6 +10,7 @@ import { teamName } from "./names";
 import { notifyUsers, teamAdminIds } from "./notifications";
 import { priceFor } from "./pricing";
 import { DomainError } from "./teams";
+import { accessHolders, hasVenueAccess, venueIdsOf } from "./venue-access-rules";
 import type { Tx } from "./tx";
 
 type MatchRow = typeof matches.$inferSelect;
@@ -22,17 +23,18 @@ export const HALL_REPLY_MS = 12 * 3_600_000; // so lange hat ein Hallenbetreiber
  */
 export async function startHallCheck(tx: Tx, match: MatchRow, city: string, now: Date = new Date()): Promise<void> {
   const rows = await tx
-    .select({ id: venues.id, name: venues.name, city: venues.city, lat: venues.lat, lng: venues.lng, partner: venues.isPartner, verified: venues.verified, manager: venues.managerUserId })
+    .select({ id: venues.id, name: venues.name, city: venues.city, lat: venues.lat, lng: venues.lng, partner: venues.isPartner, verified: venues.verified })
     .from(venues)
     .where(eq(venues.active, true));
+  const holders = await accessHolders(tx); // Halle mit Zugang (venue_access) muss antworten, ohne Zugang bleibt sie „unmanaged"
   const pool = buildPool(rows as PoolVenue[], city);
   await tx.delete(matchHallRequests).where(eq(matchHallRequests.matchId, match.id));
   if (pool.length) {
-    await tx.insert(matchHallRequests).values(pool.map((v, position) => ({ matchId: match.id, venueId: v.id, position, status: rows.find((r) => r.id === v.id)?.manager ? ("pending" as const) : ("unmanaged" as const) })));
+    await tx.insert(matchHallRequests).values(pool.map((v, position) => ({ matchId: match.id, venueId: v.id, position, status: holders.has(v.id) ? ("pending" as const) : ("unmanaged" as const) })));
   }
   await tx.update(matches).set({ vetoStatus: "halls", vetoTurnTeamId: null, vetoTurnDeadline: new Date(now.getTime() + HALL_REPLY_MS) }).where(eq(matches.id, match.id));
   const when = match.startsAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-  const managers = new Set(rows.filter((r) => pool.some((p) => p.id === r.id) && r.manager).map((r) => r.manager!));
+  const managers = new Set(rows.filter((r) => pool.some((p) => p.id === r.id) && holders.has(r.id)).map((r) => holders.get(r.id)!));
   await notifyUsers([...managers], { type: "hall.request", title: "Neue Spielanfrage für eure Halle", body: `${when} Uhr, ${match.durationMin} Minuten. Bitte bestätigt, ob die Halle frei ist.`, url: "/halle" }, tx);
   await settleHallCheck(tx, (await tx.select().from(matches).where(eq(matches.id, match.id)))[0], now);
 }
@@ -76,8 +78,8 @@ export async function answerHallRequest(userId: string, matchId: string, venueId
   await db.transaction(async (tx) => {
     const [m] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
     if (!m || m.vetoStatus !== "halls" || m.status !== "lobby") throw new DomainError("Diese Anfrage ist nicht mehr offen.");
-    const [v] = await tx.select({ manager: venues.managerUserId, name: venues.name }).from(venues).where(eq(venues.id, venueId));
-    if (!v || v.manager !== userId) throw new DomainError("Diese Halle gehört nicht zu deinem Konto.");
+    // Zugang in der Transaktion prüfen (Snapshot-Lesen nach der Spielsperre, Sperrreihenfolge unverändert; ein Entzug wirkt, sobald er vor dem Lesen committet)
+    if (!(await hasVenueAccess(venueId, userId, tx))) throw new DomainError("Diese Halle gehört nicht zu deinem Konto.");
     const [r] = await tx.select().from(matchHallRequests).where(and(eq(matchHallRequests.matchId, matchId), eq(matchHallRequests.venueId, venueId)));
     if (!r || r.status !== "pending") throw new DomainError("Diese Anfrage ist schon beantwortet.");
     await tx.update(matchHallRequests).set({ status: accept ? "confirmed" : "declined", answeredBy: userId, answeredAt: new Date() }).where(and(eq(matchHallRequests.matchId, matchId), eq(matchHallRequests.venueId, venueId)));
@@ -87,19 +89,21 @@ export async function answerHallRequest(userId: string, matchId: string, venueId
   });
 }
 
-export type HallInquiry = { matchId: string; number: number | null; venueId: string; venueName: string; startsAt: Date; durationMin: number; home: string; away: string; deadline: Date | null };
+export type HallInquiry = { matchId: string; number: number | null; venueId: string; venueName: string; startsAt: Date; durationMin: number; home: string; away: string; deadline: Date | null; /** Spielerzahl (keine Namen: Vertrag 011 AC-5, Entscheid P8) */ players: number };
 
 /** Offene Anfragen für die Hallen eines Betreibers. */
 export async function pendingHallInquiries(userId: string): Promise<HallInquiry[]> {
+  const mine = await venueIdsOf(userId); // nur die Hallen mit Zugang (aktiv, Konto nicht gesperrt, kein Admin)
+  if (mine.length === 0) return [];
   const rows = await db
-    .select({ matchId: matches.id, number: matches.number, venueId: venues.id, venueName: venues.name, startsAt: matches.startsAt, durationMin: matches.durationMin, homeId: matches.homeTeamId, awayId: matches.awayTeamId, deadline: matches.vetoTurnDeadline })
+    .select({ matchId: matches.id, number: matches.number, venueId: venues.id, venueName: venues.name, startsAt: matches.startsAt, durationMin: matches.durationMin, homeId: matches.homeTeamId, awayId: matches.awayTeamId, deadline: matches.vetoTurnDeadline, players: sql<number>`(select count(*)::int from match_participants p where p.match_id = ${matches.id})` })
     .from(matchHallRequests)
-    .innerJoin(venues, and(eq(venues.id, matchHallRequests.venueId), eq(venues.managerUserId, userId)))
+    .innerJoin(venues, and(eq(venues.id, matchHallRequests.venueId), inArray(venues.id, mine)))
     .innerJoin(matches, and(eq(matches.id, matchHallRequests.matchId), eq(matches.vetoStatus, "halls"), eq(matches.status, "lobby")))
     .where(eq(matchHallRequests.status, "pending"))
     .orderBy(asc(matches.startsAt));
   const out: HallInquiry[] = [];
-  for (const r of rows) out.push({ matchId: r.matchId, number: r.number, venueId: r.venueId, venueName: r.venueName, startsAt: r.startsAt, durationMin: r.durationMin, deadline: r.deadline, home: await teamName(db, r.homeId), away: await teamName(db, r.awayId) });
+  for (const r of rows) out.push({ matchId: r.matchId, number: r.number, venueId: r.venueId, venueName: r.venueName, startsAt: r.startsAt, durationMin: r.durationMin, deadline: r.deadline, players: r.players, home: await teamName(db, r.homeId), away: await teamName(db, r.awayId) });
   return out;
 }
 
