@@ -66,6 +66,8 @@ export function parseDispute(o: Record<string, unknown>): DisputeReport | null {
 /** Rang des Streitstatus: ein Endstatus (3) wird nie ueberschrieben, Unbekanntes hat Rang 0 (wird toleriert, nie als Fehler abgelehnt). */
 export const RANK: Record<string, number> = { needs_response: 1, warning_needs_response: 1, under_review: 2, warning_under_review: 2, won: 3, lost: 3, warning_closed: 3, prevented: 3 };
 export const disputeRank = (status: string) => RANK[status] ?? 0;
+/** Alle bekannten Streitstatus (alles andere gilt als unbekannt und damit als OFFEN). */
+export const KNOWN_DISPUTE_STATUSES = Object.keys(RANK);
 /** Offene Streite sperren die Erstattung. Ein UNBEKANNTER Status gilt als offen (lieber keine Erstattung als Geld verlieren). */
 export const OPEN_DISPUTE_STATUSES = ["needs_response", "under_review", "warning_needs_response", "warning_under_review"] as const;
 export const isDisputeOpen = (status: string) => (OPEN_DISPUTE_STATUSES as readonly string[]).includes(status) || !(status in RANK);
