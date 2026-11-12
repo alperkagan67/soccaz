@@ -295,8 +295,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             Halle {match.durationMin} Minuten: <strong>{formatEuro(payments.priceCents)}</strong>, geteilt durch alle Spieler.
           </p>
           <p className="text-muted">
-            {cardShareCents !== null ? <>Dein Anteil: <strong className="text-ink">{formatEuro(cardShareCents)}</strong> (Miete geteilt durch die eingeteilten Spieler). </> : null}
-            Ändert sich die Spielerzahl, ändert sich der Anteil. Dein Anteil wird zur Frist von deiner Karte abgebucht; bis dahin wird nichts abgebucht.
+            {v.participant && cardShareCents !== null ? <>Dein Anteil: <strong className="text-ink">{formatEuro(cardShareCents)}</strong> (Miete geteilt durch die eingeteilten Spieler). </> : null}
+            Ändert sich die Spielerzahl, ändert sich der Anteil.{v.participant ? " Dein Anteil wird zur Frist von deiner Karte abgebucht; bis dahin wird nichts abgebucht." : null}
           </p>
         </section>
       )}
@@ -352,7 +352,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
-          card={cardOn ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard, failure: myFailure } : null}
+          card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard, failure: myFailure } : null}
           pay={!cardOn && payments.enabled && payments.reservationCents !== null ? { reserveCents: owes ? (payments.myDueCents ?? 0) : payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid) && !owes, backTo: `/lobby/${match.id}` } : null}
           teamPaid={{ paid: participants.filter((p) => p.teamId === v.participant?.teamId && p.paid).length, total: participants.filter((p) => p.teamId === v.participant?.teamId).length }}
         />
