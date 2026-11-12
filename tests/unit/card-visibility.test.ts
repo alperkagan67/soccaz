@@ -98,3 +98,19 @@ describe("cardDisplayFor: Fensterende (graceEnd) nur für Betroffenen und Captai
     expect(cardDisplayFor("self", "failed", "card_declined", null)).toEqual({ status: "failed", reason: "card_declined" });
   });
 });
+
+describe("cardDisplayFor: Freigabe der Bank offen (authorize), M3c-1c", () => {
+  const end = new Date("2026-11-20T12:00:00Z");
+  it("nur Betroffener und Captain/Veranstalter bekommen das Flag, nur bei failed mit Fenster", () => {
+    for (const a of ["self", "manager"] as Audience[]) {
+      expect(cardDisplayFor(a, "failed", "authentication_required", end, true)).toEqual({ status: "failed", reason: "authentication_required", graceEnd: "2026-11-20T12:00:00.000Z", authorize: true });
+      expect(cardDisplayFor(a, "failed", "authentication_required", end, false)).not.toHaveProperty("authorize");
+      expect(cardDisplayFor(a, "failed", "authentication_required", null, true)).not.toHaveProperty("authorize"); // ohne Fenster kein Knopf
+      expect(cardDisplayFor(a, "card_ready", null, end, true)).not.toHaveProperty("authorize");
+    }
+  });
+  it("Mitspieler und Gaeste bekommen es nie", () => {
+    expect(JSON.stringify(cardDisplayFor("member", "failed", "authentication_required", end, true))).not.toMatch(/authorize|authentication/);
+    expect(cardDisplayFor("guest", "failed", "authentication_required", end, true)).toBeNull();
+  });
+});

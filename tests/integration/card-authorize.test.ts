@@ -213,3 +213,37 @@ describe("Struktur und Liste", () => {
 });
 
 void (null as unknown as G);
+
+describe("Fake-Freigabe (Tests/CI): geht ueber den Webhook, nie direkt", () => {
+  it("ok: payment_intent.succeeded ueber handleStripeWebhook => Zeile succeeded, Platz charged, genau eine Buchung", async () => {
+    const { fakeAuthorizeCore } = await import("@/server/payments/fake-authorize");
+    const g = await game();
+    const before = (await db.select().from(ledgerEntries)).length;
+    expect(await fakeAuthorizeCore(g.u.id, g.match.id, "ok")).toEqual({});
+    expect((await db.select().from(paymentCharges).where(eq(paymentCharges.id, g.row.id)))[0].status).toBe("succeeded");
+    expect((await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.u.id))))[0].cardStatus).toBe("charged");
+    expect((await db.select().from(ledgerEntries)).length).toBe(before + 1);
+  });
+
+  it("fail: payment_failed ueber den Webhook => Zeile failed im Fenster (Karte aendern moeglich), nichts gebucht", async () => {
+    const { fakeAuthorizeCore } = await import("@/server/payments/fake-authorize");
+    const g = await game();
+    const before = (await db.select().from(ledgerEntries)).length;
+    expect(await fakeAuthorizeCore(g.u.id, g.match.id, "fail")).toEqual({});
+    const row = (await db.select().from(paymentCharges).where(eq(paymentCharges.id, g.row.id)))[0];
+    expect(row.status).toBe("failed");
+    expect(row.graceUntil).not.toBeNull(); // das Fenster bleibt
+    expect((await db.select().from(ledgerEntries)).length).toBe(before);
+  });
+
+  it("nur die eigene Zeile im Zustand requires_action: fremder Nutzer, falscher Status und ungueltige ID werden neutral abgelehnt, es wird nichts gebucht", async () => {
+    const { fakeAuthorizeCore } = await import("@/server/payments/fake-authorize");
+    const g = await game();
+    const failedRow = await game({ status: "failed" });
+    const before = (await db.select().from(ledgerEntries)).length;
+    for (const [uid, mid] of [[g.adminA.id, g.match.id], [failedRow.u.id, failedRow.match.id], [g.u.id, "kein-uuid"]] as const) {
+      expect((await fakeAuthorizeCore(uid, mid, "ok")).error).toMatch(NEUTRAL);
+    }
+    expect((await db.select().from(ledgerEntries)).length).toBe(before);
+  });
+});
