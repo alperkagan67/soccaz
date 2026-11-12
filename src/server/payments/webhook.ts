@@ -198,7 +198,9 @@ async function processEvent(event: ProviderEvent) {
   }
   if (cardUserId) {
     try {
-      await retryChargesInWindow({ userId: cardUserId }); // Stripe-Aufrufe ausserhalb der Transaktion; der Job card-charges holt Fehlschlaege nach
+      // Bewusste Entscheidung: synchron NACH der Transaktion (der Spieler soll nach 'Karte aendern' sofort abgebucht werden). Das kostet Stripe-Latenz im Webhook-Request
+      // (Zeitlimits der Stripe-Aufrufe: 8 s); Fehler sind isoliert, und der Job card-charges holt alles Ausgelassene nach (siehe docs/BETRIEB.md)
+      await retryChargesInWindow({ userId: cardUserId });
     } catch {
       /* nichts loggen */
     }

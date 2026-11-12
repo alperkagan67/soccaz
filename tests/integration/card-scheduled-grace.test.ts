@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges } from "@/db/schema";
 import { markAfterStart } from "@/server/payments/charge-trigger";
 import { closeLobbiesAtDeadline } from "@/server/scheduled";
+import { cancelMatchTx } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
 import { addPlayer, cleanup, makeMatch } from "./helpers";
 
@@ -69,5 +70,14 @@ describe("Planer und Fenster", () => {
     const bad = rows.find((r) => r.userId === g.bad.id)!;
     expect(bad).toMatchObject({ status: "failed", failureCode: "card_declined" });
     expect((await stateOf(g.match.id)).settledAt).toBeNull();
+  });
+
+  it("zweite Schicht: cancelMatchTx (auch System/Job, actorId null) wirft bei vorhandenen Abbuchungszeilen und aendert nichts", async () => {
+    const g = await game(72, 90 * 60_000);
+    const m = await stateOf(g.match.id);
+    await expect(db.transaction((tx) => cancelMatchTx(tx, m, null, "Test"))).rejects.toThrow(/Abbuchung/);
+    const after = await stateOf(g.match.id);
+    expect(after.status).toBe("lobby");
+    expect(after.cancelRequestedAt).toBeNull();
   });
 });

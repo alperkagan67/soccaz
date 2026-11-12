@@ -463,6 +463,50 @@ describe("Fehlerisolation je Zeile", () => {
   });
 });
 
+describe("Fehlerisolation in Phase 3 (Senden je Spiel)", () => {
+  it("wirft das Senden fuer Spiel 1 (Datenbankfehler), wird Spiel 2 trotzdem gesendet; Spiel 1 bleibt pending und wird vom naechsten Lauf gesendet", async () => {
+    const first = await failedGame();
+    await changeCard(first);
+    const second = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
+    await db.insert(matchParticipants).values({ matchId: second.match.id, userId: first.u.id, teamId: second.home.id, cardStatus: "card_ready" });
+    await db.insert(paymentCharges).values({ matchId: second.match.id, userId: first.u.id, amountCents: 800, status: "failed", failureCode: "card_declined", graceUntil: new Date(Date.now() + 3_600_000), idempotencyKey: `charge:${second.match.id}:${first.u.id}`, paymentIntentId: nid("pi_gt3") });
+    const secondRow = async () => (await db.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, second.match.id), eq(paymentCharges.userId, first.u.id))))[0];
+
+    const original = db.transaction.bind(db);
+    let calls = 0;
+    (db as unknown as { transaction: unknown }).transaction = ((fn: never, cfg: never) => {
+      calls += 1; // 1+2: die beiden Drehungen, 3: Phase A von runCharges fuer Spiel 1 (wirft), danach laeuft alles normal
+      if (calls === 3) return Promise.reject(new Error("Datenbankfehler (Test)"));
+      return (original as (f: never, c: never) => Promise<unknown>)(fn, cfg);
+    }) as never;
+    let started = -1;
+    try {
+      started = await retryChargesInWindow({ userId: first.u.id });
+    } finally {
+      (db as unknown as { transaction: unknown }).transaction = original;
+    }
+    expect(started).toBe(2); // beide Zeilen wurden gedreht
+    expect(await rowOf(first)).toMatchObject({ status: "pending", currentAttempt: 2, paymentIntentId: null }); // gedreht, aber noch nicht gesendet
+    expect(await secondRow()).toMatchObject({ status: "succeeded", currentAttempt: 2 }); // Spiel 2 trotzdem gesendet
+    await runCardCharges(new Date()); // der Job sendet die offene Zeile (Beanspruchen mit Lease)
+    expect((await rowOf(first)).status).toBe("succeeded");
+  });
+});
+
+describe("Technische Zustaende werden in Phase 1 nie angefasst (Review R-T154)", () => {
+  it.each(["idempotency_mismatch", "after_start", "match_closed", "attempt_expired"])("%s: keine retrieve/cancel/create/find-Aufrufe, Zeile unveraendert", async (code) => {
+    const g = await failedGame();
+    await changeCard(g);
+    await db.update(paymentCharges).set({ failureCode: code }).where(eq(paymentCharges.id, g.row.id));
+    provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId }); // ein offener alter PaymentIntent, der NICHT abgebrochen werden darf
+    provider.calls.length = 0;
+    expect(await retryChargesInWindow({ userId: g.u.id })).toBe(0);
+    expect(provider.calls.filter((c) => ["retrievePaymentIntent", "cancelPaymentIntent", "createPaymentIntent", "findPaymentIntents"].includes(c.method))).toHaveLength(0);
+    expect(await rowOf(g)).toMatchObject({ status: "failed", failureCode: code, currentAttempt: 1 });
+    expect(await attemptsOf(g)).toHaveLength(0);
+  });
+});
+
 describe("Struktur", () => {
   it("kein Netzaufruf (Suche, Abbrechen, Senden) innerhalb von db.transaction", async () => {
     let depth = 0;

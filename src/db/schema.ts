@@ -323,7 +323,8 @@ export const paymentCharges = pgTable(
     failureCode: text("failure_code"),
     feeCents: integer("fee_cents"),
     attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
-    // Nachzahlfenster (Vertrag 012, AC-6): Ende des Fensters nach dem ersten Fehler, null = kein Fenster (weniger als 1 h bis zum Anstoss oder kein Problem)
+    // Nachzahlfenster (Vertrag 012, AC-6): Ende des Fensters, bei jedem Kartenproblem GESETZT (bei hoechstens 1 h bis zum Anstoss ist das Ende der Fehlzeitpunkt = kein Fenster).
+    // NULL = nie ein Kartenproblem oder Altzeile (vor Migration 0039). Massgeblich ist das effektive Ende min(grace_until, Anstoss - 1 h), siehe src/lib/grace.ts.
     graceUntil: timestamp("grace_until", { withTimezone: true }),
     // Nummer des LAUFENDEN Versuchs (1 = erster Versuch). Diese Zeile ist der Zustand des laufenden Versuchs; abgeschlossene Versuche stehen in payment_charge_attempts.
     currentAttempt: integer("current_attempt").notNull().default(1),
