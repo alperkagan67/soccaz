@@ -94,7 +94,7 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
     const stale = eventAt !== null && row.lastEventAt !== null && eventAt.getTime() < row.lastEventAt.getTime();
     const terminalChange = disputeRank(row.status) === 3 && d.status !== row.status;
     if (!stale && !terminalChange && disputeRank(d.status) >= disputeRank(row.status)) {
-      Object.assign(patch, { status: d.status, evidenceDueBy: d.evidenceDueBy ?? row.evidenceDueBy, lastEventAt: eventAt ?? row.lastEventAt, reason: d.reason });
+      Object.assign(patch, { status: d.status, evidenceDueBy: d.evidenceDueBy ?? row.evidenceDueBy, lastEventAt: eventAt ?? row.lastEventAt, reason: d.reason === "unknown" ? row.reason : d.reason }); // ein spaeteres Ereignis ohne Grund ueberschreibt den bekannten Grund nicht
       if (disputeRank(d.status) === 3 && !row.closedAt) Object.assign(patch, { closedAt: eventAt ?? new Date() });
     } else if (d.status !== row.status) {
       await audit(null, "dispute.event_dropped", "payment_dispute", d.disputeId, { after: { status: d.status, stale } }, tx);
