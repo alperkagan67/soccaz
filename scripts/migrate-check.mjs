@@ -111,8 +111,8 @@ try {
   await evidenceStructure(fresh);
   await fresh.end();
 
-  // 2. BESTEHEND: ohne die letzte Migration anlegen, Daten einfügen, dann die letzte nachziehen
-  console.log("== BESTEHEND (Stand ohne die letzte Migration, mit Daten, dann die letzte)");
+  // 2. BESTEHEND: Stand vor der 009-M2-Migration (feste Marke: die erste Migration mit ledger_model, nicht "die letzte") anlegen, Daten einfügen, dann ALLE weiteren nachziehen
+  console.log("== BESTEHEND (Stand vor der Migration von 009 M2 (ledger_model), mit Daten, dann alle weiteren Migrationen)");
   const tmp = mkdtempSync(path.join(tmpdir(), "migcheck-"));
   cpSync("./drizzle", tmp, { recursive: true });
   const journalPath = path.join(tmp, "meta", "_journal.json");
