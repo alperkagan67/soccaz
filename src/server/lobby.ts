@@ -585,10 +585,11 @@ export function cancelMatch(actorId: string, matchId: string, reason: string) {
 }
 
 /** Sagt ein Spiel ab, protokolliert es und informiert alle Beteiligten. Wird auch von der automatischen Absage genutzt. */
-export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | null, reason: string) {
+export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | null, reason: string, opts: { afterRefund?: boolean } = {}) {
   // Gibt es Abbuchungszeilen, wurde (oder wird gleich) von Karten abgebucht. Eine Absage würde still stornieren, ohne das Geld per Stripe zu erstatten
   // (die Erstattung auf die Karte kommt mit M3). Deshalb für ALLE Pfade (Captain, Admin, System/Job: actorId null) abgelehnt; kein Wallet-Eintrag, Status bleibt.
-  if (await hasChargeRows(tx, match.id)) throw new DomainError("Für dieses Spiel hat die Abbuchung begonnen: Absage und Erstattung folgen erst mit der Karten-Erstattung. Bitte kontaktiere den Support.");
+  // Einzige Ausnahme: der Erstattungs-Ablauf (refund.ts) ruft mit afterRefund auf, NACHDEM jede Abbuchung erstattet ist (finalizeCancel). Absage von Hand: nur Admin 1 über adminCancelMatch.
+  if (!opts.afterRefund && (await hasChargeRows(tx, match.id))) throw new DomainError("Für dieses Spiel hat die Abbuchung begonnen: Absage und Erstattung folgen erst mit der Karten-Erstattung. Bitte kontaktiere den Support.");
   await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, match.id));
   await refundOnCancel(tx, match, actorId);
   await withdrawBookingJob(tx, match.id);

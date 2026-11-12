@@ -3,6 +3,7 @@ import { and, count, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentProfiles, paymentSetupIntents, users } from "@/db/schema";
 import { DomainError } from "../teams";
+import { cardPaymentsEnabled } from "../settings";
 import { getPaymentProvider } from "./provider";
 
 /** Der Text, dem der Spieler beim Hinterlegen der Karte zustimmt (Mandat). Wird mit dem Zeitpunkt je SetupIntent gespeichert. */
@@ -29,6 +30,8 @@ export const SETUP_LIMIT_PER_HOUR = 10;
  */
 export async function createCardSetup(userId: string, input: { matchId?: string; mandateAccepted: boolean }): Promise<{ setupIntentId: string; clientSecret: string }> {
   if (input.mandateAccepted !== true) throw new DomainError("Bitte stimme der Kartenzahlung zu.");
+  // Serverseitig, nicht nur in der Oberfläche: bei ausgeschaltetem Kartenmodell wird weder ein Stripe-Kunde noch ein SetupIntent angelegt (mit und ohne Spiel)
+  if (!(await cardPaymentsEnabled())) throw new DomainError("Die Kartenzahlung ist gerade nicht verfügbar.");
 
   const [user] = await db.select({ id: users.id, email: users.email, bannedAt: users.bannedAt }).from(users).where(eq(users.id, userId));
   if (!user || user.bannedAt) throw new DomainError("Nutzer nicht gefunden.");

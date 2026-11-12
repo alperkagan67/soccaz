@@ -9,6 +9,7 @@ import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 import { paymentsEnabled } from "@/server/settings";
 import { LobbyBoard } from "./LobbyBoard";
+import { guestBoardEntries } from "@/lib/guest-board";
 
 /** Lädt die offenen Lobbys und Suchen samt dem, was die angemeldete Person damit tun kann, und zeigt sie. `limit` kürzt die Liste. */
 export async function BoardSection({ filter = {}, limit }: { filter?: BoardFilter; limit?: number }) {
@@ -21,7 +22,8 @@ export async function BoardSection({ filter = {}, limit }: { filter?: BoardFilte
   const myWaiting = waiting.map((w) => w.teamId).filter((id) => adminTeams.some((t) => t.id === id));
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
-  const shown = limit ? all.slice(0, limit) : all;
+  const cut = limit ? all.slice(0, limit) : all;
+  const shown = user ? cut : guestBoardEntries(cut); // Gäste: nur Initialen, schon auf dem Server (nicht erst im Browser)
   return (
     <>
       <LobbyBoard entries={shown} mine={mine} myWaitingTeamIds={myWaiting} loggedIn={Boolean(user)} shareBase={process.env.APP_URL ?? `${proto}://${host}`} paymentsOn={payOn} />
