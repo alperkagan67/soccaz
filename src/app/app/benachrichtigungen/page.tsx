@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { safeInternalPath } from "@/lib/safe-path";
 import { formatDateTime } from "@/lib/time";
 import { listNotifications } from "@/server/notifications";
 import { requireUser } from "@/server/session";
@@ -34,10 +35,11 @@ export default async function NotificationsPage() {
               </>
             );
             const tone = n.readAt ? "" : "border-accent";
+            const href = safeInternalPath(n.url, null); // Altzeilen mit ungültiger Adresse werden nicht verlinkt
             return (
               <li key={n.id}>
-                {n.url ? (
-                  <Link href={n.url} className={`card block hover:border-accent ${tone}`}>{body}</Link>
+                {href ? (
+                  <Link href={href} className={`card block hover:border-accent ${tone}`}>{body}</Link>
                 ) : (
                   <div className={`card ${tone}`}>{body}</div>
                 )}
