@@ -44,6 +44,8 @@ const PAGES: Record<string, Permission> = {
   "spiele/page.tsx": "admin",
   "sponsoren/page.tsx": "admin",
   "teams/page.tsx": "admin",
+  "zahlungsstreit/page.tsx": "admin", // M4a-2: Admin 2 liest Liste und Detail (m4-plan), Entscheidungen gehoeren Admin 1 (Vertrag 009)
+  "zahlungsstreit/[id]/page.tsx": "admin",
 };
 
 const walk = (dir: string): string[] =>
