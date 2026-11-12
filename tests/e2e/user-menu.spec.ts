@@ -217,11 +217,13 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
     await page.setViewportSize({ width: 844, height: 390 });
     await loggedIn(page, "um13");
     await button(page).click();
-    const pop = page.locator("[popover]:popover-open");
-    const box = (await pop.boundingBox())!;
-    expect(box.y + box.height).toBeLessThanOrEqual(390); // nichts ragt aus dem Bild
-    expect(await pop.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true); // und scrollt innen
+    // Das Popover öffnet sich sofort, der Inhalt aber erst, wenn React das toggle-Ereignis verarbeitet hat: erst warten, bis das Menü gerendert und fokussiert ist,
+    // dann messen (sonst misst man ein leeres Popover; unter Last war das der einzige rote Lauf), und die Geometrie wiederholt lesen statt einmal sofort.
+    await expect(menu(page)).toBeVisible();
     await expect(menu(page).getByRole("menuitem").first()).toBeFocused();
+    const pop = page.locator("[popover]:popover-open");
+    await expect.poll(async () => { const box = await pop.boundingBox(); return box ? box.y + box.height : Infinity; }, { message: "nichts ragt aus dem Bild" }).toBeLessThanOrEqual(390);
+    await expect.poll(() => pop.evaluate((e) => e.scrollHeight > e.clientHeight), { message: "das Menü scrollt innen" }).toBe(true);
     await page.keyboard.press("End");
     const out = menu(page).getByRole("menuitem", { name: "Abmelden" });
     await expect(out).toBeFocused();

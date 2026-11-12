@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { safeInternalPath } from "@/lib/safe-path";
 import Link from "next/link";
 import { formatEuro } from "@/lib/money";
 import { formatDateTime } from "@/lib/time";
@@ -54,7 +55,7 @@ export default async function FinancePage({ searchParams }: PageProps<"/admin/fi
               <li key={a.code} className={`card ${a.severity === "high" ? "border-ink" : "border-ink"}`}>
                 <p className="font-semibold">{a.title}</p>
                 <p className="text-sm text-muted">{a.detail}</p>
-                {a.href && <Link href={a.href} className="text-sm underline">Ansehen</Link>}
+                {safeInternalPath(a.href, null) && <Link href={safeInternalPath(a.href, null)!} className="text-sm underline">Ansehen</Link>}
               </li>
             ))}
           </ul>
