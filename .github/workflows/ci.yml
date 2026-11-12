@@ -10,9 +10,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Name unveraendert: Pflicht-Check im Ruleset "main-schutz".
   check:
     name: Typen, Lint, Unit-Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: socaz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Der Build rendert Seiten vor und braucht dafuer eine migrierte Datenbank.
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/socaz
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,11 +42,39 @@ jobs:
       - run: npm run typecheck
       - run: npx eslint src tests scripts
       - run: npm test
+      - run: node scripts/migrate.mjs
+      - run: npm run build
 
-  e2e:
-    name: Browser-Tests
+  # Reine Doku-PRs (alle geaenderten Dateien unter docs/ oder .md, nie .github, package.json, Lockfile oder Code-Baeume) ueberspringen die Browser-Tests.
+  # Logik und Tests: scripts/ci-gate.mjs, tests/unit/ci-gate.test.ts. Bei Fehler, leerer Liste, neuem Branch oder Force-Push gilt docs_only=false.
+  changes:
+    name: Änderungen prüfen
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.docs.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Nur Doku geändert?
+        id: docs
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: node scripts/ci-gate.mjs changes
+
+  # Browser-Tests in 4 Teilen. Jeder Teil hat einen eigenen Postgres-Dienst (nichts wird geteilt).
+  e2e-shard:
+    name: Browser-Tests Teil ${{ matrix.shard }}/4
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     # Offizielles Playwright-Image, Version EXAKT wie @playwright/test in package-lock.json
     # (der Schritt "Playwright-Version pruefen" bricht bei Abweichung ab). Digest = Multi-Arch-Index (MCR, abgefragt 2026-11-11 15:14 UTC).
     container:
@@ -68,8 +115,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/migrate.mjs
-      - run: npm run test:integration
       - name: Entwicklungsserver starten
+        env:
+          PAYMENTS_FAKE: "1"
         run: |
           npm run dev -- -p 3100 > dev-server.log 2>&1 &
           for i in $(seq 1 60); do
@@ -78,13 +126,66 @@ jobs:
           done
           cat dev-server.log
           exit 1
-      - run: npx playwright test
+      - run: npx playwright test --shard=${{ matrix.shard }}/4
       - name: Berichte sichern
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-fehler
+          name: playwright-fehler-${{ matrix.shard }}
           path: |
             test-results
             dev-server.log
           retention-days: 7
+
+  integration:
+    name: Integrationstests
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: socaz
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Ohne Container direkt auf dem Runner: der Dienst ist ueber 127.0.0.1 erreichbar (wie bisher).
+      DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/socaz
+      AUTH_SECRET: ci-only-secret-not-used-anywhere-else
+      STRIPE_WEBHOOK_SECRET: whsec_e2e_lokaler_testschluessel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/migrate.mjs
+      - run: npm run test:integration
+
+  # Sammelcheck mit dem alten Namen: Das Ruleset "main-schutz" verlangt "Browser-Tests" genau so.
+  # Gruen nur, wenn changes, e2e-shard und integration erfolgreich waren ODER (docs_only ist true UND e2e-shard und integration uebersprungen wurden).
+  # Rot bei failure, cancelled und bei skipped ohne docs_only. Tabelle: scripts/ci-gate.mjs (aggregate), tests/unit/ci-gate.test.ts.
+  browser-tests:
+    name: Browser-Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [changes, e2e-shard, integration]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ergebnisse pruefen
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          SHARD_RESULT: ${{ needs.e2e-shard.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+        run: node scripts/ci-gate.mjs aggregate
