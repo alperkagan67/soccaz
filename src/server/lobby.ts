@@ -466,8 +466,9 @@ export function setVenue(userId: string, matchId: string, venue: string) {
 }
 
 export function joinAsSubstitute(userId: string, matchId: string) {
-  return mutateLobby(userId, matchId, async (tx, match) => {
+  return mutateLobby(userId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst."); // wie joinLobby: auch der Direktaufruf nach der Frist
     if (match.visibility !== "public") throw new DomainError("Diese Lobby ist privat.");
     const mine = await tx
       .select({ teamId: teamMembers.teamId })
@@ -495,8 +496,9 @@ export function joinAsSubstitute(userId: string, matchId: string) {
 }
 
 export function assignSubstitute(actorId: string, matchId: string, targetUserId: string, teamId: string) {
-  return mutateLobby(actorId, matchId, async (tx, match) => {
+  return mutateLobby(actorId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst."); // die Einteilung gehört zur Liste: nach der Frist gesperrt
     if (teamId !== match.homeTeamId && teamId !== match.awayTeamId) throw new DomainError("Ungültiges Team.");
     if (!(await isPlatformAdmin(tx, actorId)) && !(await isAdminOf(tx, actorId, teamId))) {
       throw new DomainError("Nur Admins dieses Teams können Ersatzspieler zuweisen.");
@@ -550,8 +552,9 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false,
 
 /** Privatspiel: Ein eingeteilter Spieler (noch nicht bereit, nicht bezahlt) geht zurück in den Pool der Nichteingeteilten. */
 export function unassignParticipant(actorId: string, matchId: string, targetUserId: string) {
-  return mutateLobby(actorId, matchId, async (tx, match) => {
+  return mutateLobby(actorId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await leaveClosed(tx, match, now)) throw new DomainError(LIST_LOCKED); // wie removeParticipant
     if (match.kind !== "private") throw new DomainError("Das gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
     const p = await findParticipant(tx, matchId, targetUserId);
@@ -598,7 +601,7 @@ export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | n
   // (die Erstattung auf die Karte kommt mit M3). Deshalb für ALLE Pfade (Captain, Admin, System/Job: actorId null) abgelehnt; kein Wallet-Eintrag, Status bleibt.
   // Einzige Ausnahme: der Erstattungs-Ablauf (refund.ts) ruft mit afterRefund auf, NACHDEM jede Abbuchung erstattet ist (finalizeCancel). Absage von Hand: nur Admin 1 über adminCancelMatch.
   if (!opts.afterRefund && (await hasChargeRows(tx, match.id))) throw new DomainError("Für dieses Spiel hat die Abbuchung begonnen: Absage und Erstattung folgen erst mit der Karten-Erstattung. Bitte kontaktiere den Support.");
-  await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, match.id));
+  await tx.update(matches).set({ status: "cancelled", cancelReason: reason }).where(eq(matches.id, match.id)); // der Grund bleibt am Spiel (Anzeige in der Lobby); der Erstattungspfad (refund.ts) hat denselben Text schon gesetzt
   await refundOnCancel(tx, match, actorId);
   await withdrawBookingJob(tx, match.id);
   await audit(actorId, "match.cancel", "match", match.id, { before: { status: match.status }, after: { status: "cancelled", reason } }, tx);
