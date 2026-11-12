@@ -5,7 +5,7 @@
 //  2  (Tx)    Spiel FOR SHARE, Zeile FOR UPDATE, Platz FOR UPDATE (Spiel -> Zeile -> Platz), alle Bedingungen erneut pruefen (Compare-and-set auf
 //             current_attempt), den abgeschlossenen Versuch in die Historie schreiben und die Zeile auf einen frischen pending-Versuch zuruecksetzen.
 //  3  (Netz)  den neuen Versuch sendet derselbe Weg wie der erste (runCharges: Beanspruchen mit Lease, Senden, Verbuchen ueber applyChargeInTx).
-import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { inGraceWindow, NON_CARD_CODES } from "@/lib/grace";
 import { db } from "@/db";
 import {
@@ -13,6 +13,7 @@ import {
   matches,
   paymentChargeAttempts,
   paymentCharges,
+  paymentProfiles,
 } from "@/db/schema";
 import { audit } from "../audit";
 import { cardModeActive } from "../wallet";
@@ -81,17 +82,24 @@ export async function rotateAttempt(c: Candidate, now: Date): Promise<boolean> {
       return false;
     if (!inGraceWindow(row.graceUntil, game.startsAt, now)) return false; // effektives Ende, Altzeilen (null) nie
     if (NON_CARD_CODES.includes(row.failureCode ?? "") || row.slotOf !== null || row.resolution !== null) return false;
+    // WESSEN Karte: bei einer Uebernahme (Variante B) die des ZAHLERS (payer_user_id), sonst die des Spielers. Zuerst der Platz des Zahlers (Sperrreihenfolge: nie umgekehrt), dann der des Spielers.
+    const payerId = row.payerUserId ?? c.userId;
     const [seat] = await tx
-      .select({ cardStatus: matchParticipants.cardStatus })
+      .select({ cardStatus: matchParticipants.cardStatus, teamId: matchParticipants.teamId })
       .from(matchParticipants)
-      .where(
-        and(
-          eq(matchParticipants.matchId, c.matchId),
-          eq(matchParticipants.userId, c.userId),
-        ),
-      )
+      .where(and(eq(matchParticipants.matchId, c.matchId), eq(matchParticipants.userId, payerId)))
       .for("update");
-    if (!seat || seat.cardStatus !== "card_ready") return false;
+    if (!seat || seat.teamId === null) return false;
+    if (row.payerUserId === null) {
+      if (seat.cardStatus !== "card_ready") return false;
+    } else {
+      // (Bewusst: die Profil-Aktualisierung ist das Signal. Sie kann auch aus einem anderen Anlass kommen, z. B. Karte im Konto geaendert; das ist gewollt und begrenzt: es gibt hoechstens
+      // einen Versuch je Kartenaenderung (danach ist updated_at der Zeile juenger) und nur im Nachzahlfenster.)
+      // Anteil eines anderen (Variante B): Signal ist die NEUE Karte des Zahlers (Profil nach dem Fehlschlag aktualisiert, Zahlungsmittel vorhanden), NICHT sein Platzstatus -
+      // nach der ersten Abbuchung ist der Platz des Zahlers charge_pending/charged und wird nie wieder card_ready (Review-Fund 1). Ohne neue Karte kein Wiederholen (kein Dauerbeschuss).
+      const [prof] = await tx.select({ pm: paymentProfiles.paymentMethodId, at: paymentProfiles.updatedAt }).from(paymentProfiles).where(eq(paymentProfiles.userId, payerId)).for("share");
+      if (!prof?.pm || prof.at.getTime() <= row.updatedAt.getTime()) return false;
+    }
 
     await tx.insert(paymentChargeAttempts).values({
       chargeId: row.id,
@@ -148,7 +156,15 @@ function eligibleFilters(now: Date) {
     isNull(paymentCharges.slotOf), // Nachruecker-Zeilen werden nie nachgezahlt (sofort gescheitert)
     isNull(paymentCharges.resolution), // ersetzte Plaetze nie
     sql`least(${paymentCharges.graceUntil}, ${matches.startsAt} - interval '1 hour') > ${now}`, // effektives Ende: nie nach Anstoss minus 1 h (Punkt 7)
-    eq(matchParticipants.cardStatus, "card_ready"),
+    // eigener Anteil: Platz des Spielers card_ready; fremder Anteil (Variante B): der Zahler hat NACH dem Fehlschlag eine neue Karte gespeichert (Profil aktualisiert, Zahlungsmittel da)
+    or(
+      and(isNull(paymentCharges.payerUserId), eq(matchParticipants.cardStatus, "card_ready")),
+      and(
+        isNotNull(paymentCharges.payerUserId),
+        isNotNull(matchParticipants.teamId),
+        sql`exists (select 1 from payment_profiles pp where pp.user_id = ${paymentCharges.payerUserId} and pp.payment_method_id is not null and pp.updated_at > ${paymentCharges.updatedAt})`,
+      ),
+    ),
     inArray(matches.status, ["lobby", "confirmed"]),
     isNull(matches.cancelRequestedAt),
     isNull(matches.settledAt),
@@ -171,7 +187,8 @@ const eligibleFrom = () =>
       currentPi: paymentCharges.paymentIntentId,
     })
     .from(paymentCharges)
-    .innerJoin(matchParticipants, and(eq(matchParticipants.matchId, paymentCharges.matchId), eq(matchParticipants.userId, paymentCharges.userId)))
+    // der Platz des ZAHLERS entscheidet (Variante B): coalesce(payer_user_id, user_id)
+    .innerJoin(matchParticipants, and(eq(matchParticipants.matchId, paymentCharges.matchId), eq(matchParticipants.userId, sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId})`)))
     .innerJoin(matches, eq(matches.id, paymentCharges.matchId));
 
 /**
@@ -229,7 +246,8 @@ export async function retryChargesInWindow(opts: { userId?: string; matchId?: st
   const startedAt = Date.now();
   const overBudget = () => opts.budgetMs !== undefined && Date.now() - startedAt >= opts.budgetMs;
   const filters = eligibleFilters(now);
-  if (opts.userId) filters.push(eq(paymentCharges.userId, opts.userId));
+  // ein Nutzer, der "Karte aendern" gemacht hat: seine eigenen Zeilen UND die Zeilen, die er als Zahler uebernommen hat
+  if (opts.userId) filters.push(sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${opts.userId}`);
   if (opts.matchId) filters.push(eq(paymentCharges.matchId, opts.matchId));
   const candidates: Candidate[] = (await eligibleFrom().where(and(...filters)).orderBy(asc(paymentCharges.createdAt), asc(paymentCharges.id))).map((r) => ({
     id: r.id,

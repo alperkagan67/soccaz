@@ -8,15 +8,24 @@ import type { CardStatus } from "@/db/schema";
  *  - guest: nicht angemeldet oder kein Teilnehmer: nichts je Person.
  */
 export type Audience = "self" | "manager" | "member" | "guest";
-export type CardDisplay = { status: CardStatus | "open"; reason: string | null; /** ISO-Zeitpunkt: effektives Ende des Nachzahlfensters, nur Betroffener und Captain/Veranstalter (AC-12/AC-20) */ graceEnd?: string; /** Freigabe der Bank offen (3-D-Secure, M3c-1c): nur Betroffener und Captain/Veranstalter; nur der Betroffene bekommt den Knopf */ authorize?: true };
+export type CardDisplay = { status: CardStatus | "open"; reason: string | null; /** ISO-Zeitpunkt: effektives Ende des Nachzahlfensters, nur Betroffener und Captain/Veranstalter (AC-12/AC-20) */ graceEnd?: string; /** Freigabe der Bank offen (3-D-Secure, M3c-1c): nur Betroffener und Captain/Veranstalter; nur der Betroffene bekommt den Knopf */ authorize?: true; /** Anteil uebernommen (Variante B, M3c-3): der Platz ist durch einen anderen Spieler gedeckt, ohne Namen; Dritte sehen ihn neutral gruen (AC-12) */ covered?: true };
 
-export function cardDisplayFor(audience: Audience, status: CardStatus, failureCode: string | null, graceEnd: Date | null = null, awaitingAuthorization = false): CardDisplay | null {
+/**
+ * cover (Variante B): "active" = der Anteil dieses Platzes ist gueltig uebernommen und noch nicht gescheitert: der Platz zaehlt als gedeckt (gruen, "gedeckt", ohne Namen des Uebernehmers);
+ * "failed" = die Abbuchung beim Uebernehmer ist gescheitert: der Platz ist wieder rot, Dritte und der Platzhalter selbst sehen nur die neutrale Ampel ohne Grund (der Betroffene ist der Uebernehmer).
+ * Captain/Veranstalter sehen weiter den echten Status samt Grund.
+ */
+export function cardDisplayFor(audience: Audience, status: CardStatus, failureCode: string | null, graceEnd: Date | null = null, awaitingAuthorization = false, cover: "active" | "failed" | null = null): CardDisplay | null {
+  if (audience !== "guest" && audience !== "manager" && cover === "active") return { status: "card_ready", reason: null, covered: true };
+  if ((audience === "self" || audience === "member") && cover === "failed") return { status: "open", reason: null };
   switch (audience) {
     case "guest":
       return null;
     case "self":
     case "manager":
-      return { status, reason: status === "failed" ? (failureCode ?? "unknown") : null, ...(status === "failed" && graceEnd ? { graceEnd: graceEnd.toISOString() } : {}), ...(status === "failed" && awaitingAuthorization && graceEnd ? { authorize: true as const } : {}) };
+      return {
+        ...(audience === "manager" && cover === "active" ? { covered: true as const } : {}), status, reason: status === "failed" ? (failureCode ?? "unknown") : null, ...(status === "failed" && graceEnd ? { graceEnd: graceEnd.toISOString() } : {}), ...(status === "failed" && awaitingAuthorization && graceEnd ? { authorize: true as const } : {}),
+      };
     case "member":
       return status === "failed" || status === "none" ? { status: "open", reason: null } : { status, reason: null };
     default:

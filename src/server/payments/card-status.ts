@@ -4,6 +4,7 @@ import { matchParticipants, matches, paymentCharges, paymentProfiles, type CardS
 import { effectiveGraceEnd } from "@/lib/grace";
 import { cardDisplayFor, type Audience, type CardDisplay } from "@/lib/card-visibility";
 import { cardView } from "@/lib/card-view";
+import { validCoversOf } from "./cover";
 
 // Der Typ gehört dem Schema (eine Quelle); hier nur zum Weiterreichen für bestehende Importe
 export type { CardStatus };
@@ -15,16 +16,18 @@ export type { CardStatus };
  */
 export async function getCardDisplays(matchId: string, audienceOf: (p: { userId: string; teamId: string | null }) => Audience): Promise<Record<string, CardDisplay>> {
   const rows = await db
-    .select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, failureCode: paymentCharges.failureCode, chargeStatus: paymentCharges.status, chargePi: paymentCharges.paymentIntentId, graceUntil: paymentCharges.graceUntil, startsAt: matches.startsAt, matchStatus: matches.status, cancelRequestedAt: matches.cancelRequestedAt, settledAt: matches.settledAt })
+    .select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, coveredBy: matchParticipants.coveredByUserId, payer: paymentCharges.payerUserId, failureCode: paymentCharges.failureCode, chargeStatus: paymentCharges.status, chargePi: paymentCharges.paymentIntentId, graceUntil: paymentCharges.graceUntil, startsAt: matches.startsAt, matchStatus: matches.status, matchKind: matches.kind, cancelRequestedAt: matches.cancelRequestedAt, settledAt: matches.settledAt })
     .from(matchParticipants)
     .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
     .leftJoin(paymentCharges, and(eq(paymentCharges.matchId, matchParticipants.matchId), eq(paymentCharges.userId, matchParticipants.userId)))
     .where(eq(matchParticipants.matchId, matchId));
   const out: Record<string, CardDisplay> = {};
+  const valid = validCoversOf(rows.map((r) => ({ userId: r.userId, teamId: r.teamId, cardStatus: r.cardStatus, coveredByUserId: r.coveredBy })), rows[0]?.matchKind === "team");
   for (const r of rows) {
     const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
     // dieselben Bedingungen wie der Server (authorize.ts openRow): offenes Spiel, keine angeforderte Absage, nicht abgerechnet, PaymentIntent vorhanden, Anstoss in der Zukunft
     const awaiting =
+      r.payer === null && // Zeile mit Zahler (Variante B): die Freigabe gehoert dem Zahler, nicht dem Platz
       r.chargeStatus === "requires_action" &&
       r.failureCode === "authentication_required" &&
       !!r.chargePi &&
@@ -34,7 +37,9 @@ export async function getCardDisplays(matchId: string, audienceOf: (p: { userId:
       r.startsAt.getTime() > Date.now() &&
       end !== null &&
       end.getTime() > Date.now();
-    const d = cardDisplayFor(audienceOf({ userId: r.userId, teamId: r.teamId }), r.cardStatus, r.failureCode, end, awaiting);
+    // Anteil uebernommen (Variante B): vor der Abbuchung gedeckt (gueltige Uebernahme, noch keine Zeile); danach zaehlt die Zeile mit Zahler: gescheitert => wieder rot, sonst normal
+    const cover = r.payer !== null ? (r.cardStatus === "failed" ? ("failed" as const) : null) : r.chargeStatus === null && valid.has(r.userId) ? ("active" as const) : null;
+    const d = cardDisplayFor(audienceOf({ userId: r.userId, teamId: r.teamId }), r.cardStatus, r.failureCode, end, awaiting, cover);
     if (d) out[r.userId] = d;
   }
   return out;
@@ -45,11 +50,13 @@ export async function getCardDisplays(matchId: string, audienceOf: (p: { userId:
  * davon, was der Betrachter je Person sehen darf. Ein leeres Team ist nicht vollständig.
  */
 export async function getTeamCardsReady(matchId: string): Promise<Record<string, boolean>> {
-  const rows = await db.select({ teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus }).from(matchParticipants).where(eq(matchParticipants.matchId, matchId));
+  const rows = await db.select({ userId: matchParticipants.userId, teamId: matchParticipants.teamId, cardStatus: matchParticipants.cardStatus, coveredBy: matchParticipants.coveredByUserId }).from(matchParticipants).where(eq(matchParticipants.matchId, matchId));
+  const [m] = await db.select({ kind: matches.kind }).from(matches).where(eq(matches.id, matchId));
+  const valid = validCoversOf(rows.map((r) => ({ userId: r.userId, teamId: r.teamId, cardStatus: r.cardStatus, coveredByUserId: r.coveredBy })), m?.kind === "team");
   const out: Record<string, boolean> = {};
   for (const r of rows) {
     if (r.teamId === null) continue;
-    out[r.teamId] = (out[r.teamId] ?? true) && cardView(r.cardStatus).hasCard;
+    out[r.teamId] = (out[r.teamId] ?? true) && (cardView(r.cardStatus).hasCard || valid.has(r.userId)); // gueltig uebernommene Plaetze zaehlen als gedeckt
   }
   return out;
 }
