@@ -103,6 +103,8 @@ test("Zustand ist nie nur Farbe: gesperrte Knöpfe haben gestrichelten Rahmen, p
 // ui-confirm.spec.ts; hier gelten dieselben Regeln wie für die übrigen Komponenten: Fokusring überall, Tastatur genügt.
 // ---------------------------------------------------------------------------------------------------------------------
 
+const insideDialog = (page: Page) => page.evaluate(() => !!document.activeElement?.closest("dialog[open]"));
+
 const focusColorOf = (page: Page) =>
   page.evaluate(() => {
     const p = document.createElement("i");
@@ -131,6 +133,34 @@ for (const scheme of ["dark", "light"] as const) {
       const ring = await el.evaluate((e) => ({ style: getComputedStyle(e).outlineStyle, w: parseFloat(getComputedStyle(e).outlineWidth) }));
       expect(ring.style).toBe("solid");
       expect(ring.w).toBeGreaterThanOrEqual(2);
+    }
+  });
+}
+
+for (const scheme of ["dark", "light"] as const) {
+  test(`ConfirmDialog mit Zustimmung: Kästchen und Knöpfe zeigen den Fokusring, Tab bleibt im Dialog (${scheme})`, async ({ page }) => {
+    await open(page, scheme);
+    const focusColor = await focusColorOf(page);
+    await page.getByTestId("confirm-demo").getByRole("button", { name: "Anteil übernehmen", exact: true }).first().focus();
+    await page.keyboard.press("Enter");
+    const dlg = page.getByRole("dialog", { name: "Anteil von Alex übernehmen?" });
+    await expect(dlg).toBeVisible();
+    const box = dlg.getByRole("checkbox");
+    await expect(box).toBeFocused(); // Startfokus auf dem Kästchen
+    await page.keyboard.press("Space"); // anhaken, damit die Bestätigung bedienbar wird
+    const items = dlg.locator("button:not([disabled]), input");
+    expect(await items.count()).toBe(3); // Kästchen, Abbrechen, Bestätigung
+    for (let i = 0; i < 3; i++) {
+      const el = items.nth(i);
+      await el.focus();
+      await expect.poll(() => el.evaluate((e) => getComputedStyle(e).outlineColor), { message: `Ring-Farbe Element ${i}` }).toBe(focusColor);
+      const ring = await el.evaluate((e) => ({ style: getComputedStyle(e).outlineStyle, w: parseFloat(getComputedStyle(e).outlineWidth) }));
+      expect(ring.style).toBe("solid");
+      expect(ring.w).toBeGreaterThanOrEqual(2);
+    }
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press("Tab");
+      expect(await insideDialog(page)).toBe(true); // Fokus-Falle schließt das Kästchen ein
     }
   });
 }

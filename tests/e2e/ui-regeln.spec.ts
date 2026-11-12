@@ -169,6 +169,7 @@ const DIALOGS = [
   { opener: "Preis bestätigen", title: "Preis bestätigen?" },
   { opener: "Konto löschen", title: "Konto löschen?" },
   { opener: "Lobby verlassen", title: "Lobby verlassen?" },
+  { opener: "Anteil übernehmen", title: "Anteil von Alex übernehmen?" }, // mit Zustimmungs-Kästchen (consent)
 ] as const;
 
 for (const view of VIEWS) {
@@ -192,7 +193,9 @@ for (const view of VIEWS) {
             (el, fn) => {
               const small: string[] = [];
               for (const e of el.querySelectorAll<HTMLElement>("button, a[href], input")) {
-                const r = e.getBoundingClientRect();
+                // das Kästchen selbst ist klein: sein Tippziel ist die ganze Beschriftungszeile (label), die geprüft wird
+                const target = e instanceof HTMLInputElement && e.type === "checkbox" ? (e.closest("label") as HTMLElement) : e;
+                const r = target.getBoundingClientRect();
                 if (r.height < 43.5 || (e.tagName !== "INPUT" && r.width < 43.5)) small.push(`${(e.textContent || e.getAttribute("type") || "").trim()} ${Math.round(r.width)}x${Math.round(r.height)}`);
               }
               const tiny: string[] = [];
