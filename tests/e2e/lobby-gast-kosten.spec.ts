@@ -29,4 +29,14 @@ test("Gast sieht Hallenpreis, aber keinen persönlichen Betrag und keinen Karten
   await expect(costs).not.toContainText("Dein Anteil");
   await expect(costs).not.toContainText("deiner Karte");
   await expect(guest.locator("main")).not.toContainText("von deiner Karte abgebucht");
+
+  // auch nicht im Seitenquelltext und im RSC-Payload (Props an Client-Komponenten): kein Betrag, kein Mandatstext, kein Karten-/Fehlerzustand
+  const html = await (await guest.request.get(`/lobby/${matchId}`)).text();
+  const rsc = await (await guest.request.get(`/lobby/${matchId}`, { headers: { RSC: "1" } })).text();
+  for (const body of [html, rsc]) {
+    expect(body).not.toContain("shareCents");
+    expect(body).not.toContain("mandateText");
+    expect(body).not.toContain("Ich erlaube Soccaz");
+    expect(body).not.toContain("Dein Anteil");
+  }
 });
