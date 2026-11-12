@@ -101,7 +101,10 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
       // Ein eingeteilter Nachruecker, dessen Zeile wegen Absage/Schalter AUS geschlossen wurde (match_closed), besetzt den Platz weiter; kein zweiter Kandidat, sonst zwei Spieler auf einem Platz
       if (kids.some((k) => k.resolution === null && k.failureCode === "match_closed")) continue;
       if (kids.some((k) => k.status === "pending")) continue; // ein Nachruecker ist unterwegs: weder Versuch verbrauchen noch einen zweiten starten
-      if (kids.filter((k) => (k.status === "failed" || k.status === "requires_action") && k.failureCode !== "match_closed").length >= MAX_SUBSTITUTE_FAILURES) {
+      // Gescheiterte Nachruecker zaehlen ueber resolution=replaced (setzt failSubstitute immer), NICHT nur ueber den Status: ein gescheiterter Nachruecker, dessen alter PaymentIntent spaeter doch
+      // noch gelingt, hat status=succeeded und failureCode=null, bleibt aber replaced und verbraucht seinen Versuch weiter (sonst sinkt die Zaehlung und ein vierter Kandidat wird abgebucht, Review PR #109).
+      // Offene Zustaende ohne resolution (failed/requires_action) zaehlen wie bisher; match_closed (Absage/Schalter AUS) ist kein Fehlversuch.
+      if (kids.filter((k) => k.failureCode !== "match_closed" && (k.resolution === "replaced" || k.status === "failed" || k.status === "requires_action")).length >= MAX_SUBSTITUTE_FAILURES) {
         out.exhausted.push(slot.id);
         continue;
       }
