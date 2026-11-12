@@ -405,19 +405,20 @@ export async function notifyRegistrationDeadlines(now: Date = new Date()): Promi
   for (const { id } of due) {
     // Ein Fehler bei einem Turnier bricht die übrigen nicht ab; geloggt wird nur die Turnier-ID und die Fehlerart (keine Personendaten)
     try {
-      await db.transaction(async (tx) => {
+      // Der Zähler zählt nur, was die Transaktion wirklich festgeschrieben hat: erst NACH dem Commit addieren (ein Rollback nach dem Eintragen darf ihn nicht erhöhen, Backlog 3)
+      sent += await db.transaction(async (tx) => {
         const t = await lockTournament(tx, id);
-        if (!registrationOpen(t) || !t.registrationDeadline || t.registrationDeadline.getTime() > now.getTime()) return;
+        if (!registrationOpen(t) || !t.registrationDeadline || t.registrationDeadline.getTime() > now.getTime()) return 0;
         const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, id));
-        if (n >= t.maxTeams) return;
+        if (n >= t.maxTeams) return 0;
         const url = `/turniere/${id}`;
         const title = "Anmeldeschluss erreicht";
         const [already] = await tx.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.userId, t.organizerId), eq(notifications.type, "system"), eq(notifications.url, url), eq(notifications.title, title))).limit(1);
-        if (already) return;
+        if (already) return 0;
         const body = n >= MIN_TOURNAMENT_TEAMS
           ? `${t.name}: ${n} von ${t.maxTeams} Teams sind angemeldet. Du kannst mit diesen Teams weitermachen oder das Turnier absagen.`
           : `${t.name}: Nur ${n} von ${t.maxTeams} Teams sind angemeldet. Mit weniger als ${MIN_TOURNAMENT_TEAMS} Teams findet das Turnier nicht statt, du kannst es absagen.`;
-        sent += await notifyUsers([t.organizerId], { type: "system", title, body, url }, tx);
+        return notifyUsers([t.organizerId], { type: "system", title, body, url }, tx);
       });
     } catch (error) {
       console.error("notifyRegistrationDeadlines: Fehler bei Turnier", id, error instanceof Error ? error.name : "Fehler");

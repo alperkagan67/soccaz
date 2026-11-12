@@ -529,7 +529,8 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false,
         .set({ teamId: null })
         .where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId), isNull(matchParticipants.readyAt), eq(matchParticipants.paidCents, 0)));
     }
-    const pool = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNull(matchParticipants.teamId)));
+    // feste Reihenfolge (nach Nutzer-ID): ohne ORDER BY hängt die Zeilenfolge der Datenbank vom Speicherort ab (nach Updates anders), dieselbe Zufallsquelle gäbe dann andere Teams (Backlog 3)
+    const pool = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNull(matchParticipants.teamId))).orderBy(asc(matchParticipants.userId));
     if (pool.length === 0) throw new DomainError("Es wartet niemand auf eine Einteilung.");
     const cap = teamCapacity(match);
     const counts = { [match.homeTeamId]: await teamCount(tx, matchId, match.homeTeamId), [match.awayTeamId]: await teamCount(tx, matchId, match.awayTeamId) };

@@ -34,14 +34,17 @@ import { cleanup, makeTeam, makeUser } from "./helpers";
 afterAll(cleanup);
 
 // Für den Test "ein Fehler bricht die übrigen Turniere nicht ab": Benachrichtigungen für ein bestimmtes Turnier schlagen fehl.
-const forced = vi.hoisted(() => ({ failUrlSuffix: null as string | null }));
+const forced = vi.hoisted(() => ({ failUrlSuffix: null as string | null, failAfterUrlSuffix: null as string | null }));
 vi.mock("@/server/notifications", async (importOriginal) => {
   const orig = await importOriginal<typeof import("@/server/notifications")>();
   return {
     ...orig,
     notifyUsers: async (...args: Parameters<typeof orig.notifyUsers>) => {
       if (forced.failUrlSuffix && args[1].url?.endsWith(forced.failUrlSuffix)) throw new Error("erzwungener Fehler");
-      return orig.notifyUsers(...args);
+      const sentCount = await orig.notifyUsers(...args);
+      // Fehler NACH dem Eintragen (z. B. beim Festschreiben): die Transaktion rollt zurück, der Zähler des Jobs darf nichts davon zählen
+      if (forced.failAfterUrlSuffix && args[1].url?.endsWith(forced.failAfterUrlSuffix)) throw new Error("erzwungener Fehler nach dem Eintragen");
+      return sentCount;
     },
   };
 });
@@ -1051,6 +1054,31 @@ describe("Anmeldeschluss-Job: ein Fehler bricht die übrigen Turniere nicht ab (
     await notifyRegistrationDeadlines();
     expect(await countFor(t1.id)).toBe(1);
     expect(await countFor(t2.id)).toBe(1);
+  });
+});
+
+describe("Anmeldeschluss-Job: der Zähler zählt nur Festgeschriebenes (Backlog 3)", () => {
+  it("scheitert Turnier 1 NACH dem Eintragen (Rollback), liefert der Lauf genau 1 (nur Turnier 2), nicht 2; Turnier 1 hat keine Meldung", async () => {
+    const o = await organizer();
+    const countFor = async (tid: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, o.id), eq(notifications.url, `/turniere/${tid}`), eq(notifications.title, "Anmeldeschluss erreicht")))).length;
+    const t1 = await newTournament(o, { maxTeams: 8 });
+    const t2 = await newTournament(o, { maxTeams: 8 });
+    for (const t of [t1, t2]) for (let i = 0; i < 4; i++) await squad(t.id, 4, true);
+    await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 2 * 3_600_000) }).where(eq(tournaments.id, t1.id));
+    await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 3_600_000) }).where(eq(tournaments.id, t2.id));
+    forced.failAfterUrlSuffix = t1.id;
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await notifyRegistrationDeadlines()).toBe(1); // nur Turnier 2
+      expect(await countFor(t1.id)).toBe(0); // zurückgerollt
+      expect(await countFor(t2.id)).toBe(1);
+      expect(await notifyRegistrationDeadlines()).toBe(0); // zweiter Lauf: Turnier 1 scheitert wieder, Turnier 2 ist schon gemeldet
+    } finally {
+      forced.failAfterUrlSuffix = null;
+      err.mockRestore();
+    }
+    expect(await notifyRegistrationDeadlines()).toBe(1); // jetzt klappt Turnier 1
+    expect(await countFor(t1.id)).toBe(1);
   });
 });
 

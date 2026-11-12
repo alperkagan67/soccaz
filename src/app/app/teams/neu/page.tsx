@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { safeInternalPath } from "@/lib/safe-path";
 import { requireUser } from "@/server/session";
 import { TeamForm } from "./TeamForm";
 
@@ -8,7 +9,7 @@ export default async function NewTeamPage({ searchParams }: PageProps<"/app/team
   const sp = await searchParams;
   // Rücksprungziel (z. B. ins Turnier): nur interne Pfade; die endgültige Prüfung macht createTeamAction
   const raw = typeof sp.next === "string" ? sp.next : "";
-  const next = raw.startsWith("/") && !raw.startsWith("//") && !raw.includes("\\") ? raw : undefined;
+  const next = safeInternalPath(raw, null) ?? undefined; // gemeinsame Regel: auch Tab, Zeilenumbruch und andere Steuerzeichen sind verboten ("/<TAB>/evil" würde zu "//evil")
   const user = await requireUser(next ? `/app/teams/neu?next=${encodeURIComponent(next)}` : "/app/teams/neu");
   return (
     <section className="mx-auto mt-4 max-w-md space-y-4">
