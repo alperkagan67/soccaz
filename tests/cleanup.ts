@@ -30,6 +30,10 @@ export async function cleanupTestData(pool: Pool) {
       "delete from matches where id in (select id from _tm)",
       "delete from venues where name like 'E2E %'",
       "delete from tournaments where organizer_id in (select id from _tu)",
+      // venues.manager_user_id hat keinen Fremdschlüssel: ohne Zurücksetzen bliebe nach dem Löschen der Testnutzer ein Betreiber ohne Nutzer stehen
+      // (Hallen-Anfragen liefen dann in Leere oder scheiterten an der Benachrichtigung). Die Seed-Hallen (seed-venue-*, aus dem Frontend-Seed) sind Testdaten.
+      "update venues set manager_user_id = null where manager_user_id in (select id from _tu)",
+      "delete from venues where osm_id like 'seed-venue-%'",
       "delete from audit_log where actor_id in (select id from _tu)",
       "delete from teams where id in (select id from _tt)",
       "delete from users where id in (select id from _tu)",
