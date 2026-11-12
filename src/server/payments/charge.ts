@@ -15,12 +15,16 @@ import type { Tx } from "../tx";
 import { getPaymentProvider } from "./provider";
 import { notifyChargeProblem } from "./charge-notify";
 import { graceUntil, inGraceWindow } from "@/lib/grace";
+import { failSubstitute } from "./substitute-fail";
 
 export const refundKey = (chargeId: string) => `refund:${chargeId}`;
 
 /** Legt die (einzige, volle) Erstattungszeile einer erfolgreichen Abbuchung an. Idempotent (UNIQUE charge_id). Gesendet wird sie vom Erstattungs-Ablauf (refund.ts). */
-export async function ensureRefundRow(tx: Tx, charge: typeof paymentCharges.$inferSelect, reason: string) {
-  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.userId, amountCents: charge.amountCents, idempotencyKey: refundKey(charge.id), reason }).onConflictDoNothing();
+export async function ensureRefundRow(tx: Tx, charge: typeof paymentCharges.$inferSelect, reason: string, extraPaymentIntentId: string | null = null) {
+  // Standard: die Erstattung des PaymentIntents der Zeile (Schluessel refund:<Abbuchung>). Mit extraPaymentIntentId: ein WEITERER erfolgreicher PaymentIntent derselben Abbuchung
+  // (Doppelabbuchung), eigene Zeile und Schluessel refund:<Abbuchung>:<PaymentIntent>.
+  const key = extraPaymentIntentId ? `${refundKey(charge.id)}:${extraPaymentIntentId}` : refundKey(charge.id);
+  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.userId, amountCents: charge.amountCents, idempotencyKey: key, reason, paymentIntentId: extraPaymentIntentId }).onConflictDoNothing();
 }
 
 export type ChargeOutcome = "succeeded" | "requires_action" | "failed";
@@ -89,12 +93,9 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     // Die Zeile gehört zu einem ANDEREN PaymentIntent. Derselbe PaymentIntent ist kein Fehler: ein paralleles Ereignis hat ihn gerade gebunden
     // (wir haben auf seine Sperre gewartet) und wird normal weiterverarbeitet, sonst ginge ein succeeded verloren (Geld abgebucht, nicht gebucht).
     if (row.paymentIntentId !== null && row.paymentIntentId !== r.paymentIntentId) {
-      // Die Zeile ist schon erfolgreich gebucht, und nun meldet Stripe einen ZWEITEN erfolgreichen PaymentIntent dazu: nicht buchen, aber auffaellig machen (Erstattung: M3f)
-      if (r.outcome === "succeeded" && row.status === "succeeded") {
-        await audit(null, "charge.duplicate_success", "match", row.matchId, { after: { userId: row.userId, paymentIntentId: r.paymentIntentId } }, tx);
-        return { status: "already" };
-      }
-      return ignore("other_payment_intent");
+      // Die Zeile ist schon erfolgreich oder ihr Platz wurde vergeben, und nun meldet Stripe einen weiteren erfolgreichen PaymentIntent: kein Fehler, sondern Geld, das
+      // gebucht UND voll erstattet wird (siehe unten). Jeder andere fremde PaymentIntent wird ignoriert.
+      if (!(r.outcome === "succeeded" && (row.status === "succeeded" || row.resolution === "replaced"))) return ignore("other_payment_intent");
     }
   }
   if (r.metadata.matchId !== null && r.metadata.matchId !== row.matchId) return ignore("metadata_mismatch");
@@ -108,14 +109,33 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     await audit(null, "charge.old_attempt_event", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome } }, tx);
     return { status: "already" };
   }
-  if (row.status === "succeeded") {
-    // Ein ZWEITER erfolgreicher PaymentIntent zur selben Zeile (anderer als der gebuchte): nicht doppelt buchen, aber auffaellig machen (Erstattung: M3f)
-    if (r.outcome === "succeeded") {
-      const [booked] = await tx.select({ id: ledgerEntries.id }).from(ledgerEntries).where(eq(ledgerEntries.idempotencyKey, `charge:${r.paymentIntentId}`));
-      if (!booked) await audit(null, "charge.duplicate_success", "match", row.matchId, { after: { userId: row.userId, paymentIntentId: r.paymentIntentId } }, tx);
+  // Ersetzter Platz (Platz vergeben): Fehlschlaege aendern nichts mehr
+  if (row.resolution === "replaced" && r.outcome !== "succeeded") return { status: "already" };
+  if (r.outcome === "succeeded" && (row.status === "succeeded" || row.resolution === "replaced")) {
+    // SPAETER ERFOLG nach Ersatz oder ZWEITER erfolgreicher PaymentIntent zur selben Zeile (Plan v2 Punkt 4): der Betrag liegt bei uns, also wird er gebucht (Hauptbuch
+    // clearing -> revenue, Schluessel charge:<PI>) UND sofort voll auf die Karte erstattet (revenue -> clearing ueber den Erstattungsablauf) + Admin-Alarm. Nie ein stilles Behalten.
+    const [booked] = await tx.select({ id: ledgerEntries.id }).from(ledgerEntries).where(eq(ledgerEntries.idempotencyKey, `charge:${r.paymentIntentId}`));
+    if (booked) return { status: "already" };
+    await post(tx, {
+      debit: { account: "clearing" },
+      credit: { account: "revenue" },
+      amountCents: row.amountCents,
+      kind: "match_share",
+      matchId: row.matchId,
+      idempotencyKey: `charge:${r.paymentIntentId}`,
+      reason: "Abbuchung Anteil (Karte), spaet eingegangen oder doppelt",
+    });
+    if (row.status !== "succeeded") {
+      // der ersetzte Platz selbst war nie erfolgreich: die Zeile wird mit DIESEM PaymentIntent erfolgreich (und gleich erstattet)
+      await tx.update(paymentCharges).set({ status: "succeeded", failureCode: null, paymentIntentId: r.paymentIntentId, updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
+      await ensureRefundRow(tx, { ...row, status: "succeeded", paymentIntentId: r.paymentIntentId }, "Spät eingegangene Zahlung (Platz vergeben)");
+    } else {
+      await ensureRefundRow(tx, row, "Doppelte Abbuchung", r.paymentIntentId);
     }
-    return { status: "already" };
+    await audit(null, "charge.duplicate_success", "match", row.matchId, { after: { userId: row.userId, paymentIntentId: r.paymentIntentId, replaced: row.resolution === "replaced" } }, tx);
+    return { status: "applied" };
   }
+  if (row.status === "succeeded") return { status: "already" };
   // Rangfolge succeeded > failed > requires_action > pending: ein verspätetes, "schwächeres" Ereignis überschreibt nichts
   if (r.outcome !== "succeeded" && RANK[r.outcome] < RANK[row.status]) return { status: "already" };
   if (r.outcome === "succeeded" && row.paymentIntentId !== r.paymentIntentId) {
@@ -159,6 +179,14 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   if (row.status === r.outcome && row.failureCode === cleanCode(r.failureCode)) return { status: "already" };
   const firstProblem = row.status !== "failed" && row.status !== "requires_action";
   const now = new Date();
+  if (row.slotOf !== null) {
+    // Nachruecker: sofort draussen, kein Fenster, keine Nachricht an Captain oder Dritte (AC-8/AC-20); der Platz geht an den Naechsten
+    const code = cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined");
+    await tx.update(paymentCharges).set({ status: r.outcome, failureCode: code, updatedAt: now }).where(eq(paymentCharges.id, row.id));
+    await audit(null, "charge.failed", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome, code } }, tx);
+    if (row.resolution === null) await failSubstitute(tx, row, code);
+    return { status: "applied" };
+  }
   // Nachzahlfenster (AC-6): beginnt mit dem ERSTEN Fehler und wird danach nicht mehr verschoben; unter 1 h bis zum Anstoss gibt es keins (null)
   const [game] = await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, row.matchId));
   // Nur der erste Versuch setzt das Fenster; ein fehlgeschlagener Wiederholungsversuch (current_attempt > 1) laesst es unveraendert
@@ -225,7 +253,11 @@ export async function bookOpenFees(limit = 50): Promise<number> {
 export async function settleIfComplete(tx: Tx, matchId: string): Promise<boolean> {
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
   if (!match || match.settledAt !== null || !["lobby", "confirmed"].includes(match.status) || match.cancelRequestedAt !== null) return false; // Absage angefordert: nie abrechnen
-  const rows = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
+  // Ersetzte Zeilen (resolution=replaced: Platz vergeben, gescheiterter Nachruecker) zaehlen nicht mit
+  const all = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
+  // Ein vergebener Platz (Ursprungszeile resolution=replaced) muss durch einen ERFOLGREICHEN Nachruecker besetzt sein; ist er noch offen, fehlt ein Anteil und es wird NICHT abgerechnet
+  for (const root of all.filter((r) => r.slotOf === null && r.resolution === "replaced")) if (!all.some((k) => k.slotOf === root.id && k.status === "succeeded" && k.resolution === null)) return false; // ein ERSETZTER Nachruecker (auch mit spaetem Erfolg) besetzt den Platz nicht
+  const rows = all.filter((r) => r.resolution === null);
   if (rows.length === 0 || rows.some((r) => r.status !== "succeeded")) return false;
   const seated = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId)));
   const paid = new Set(rows.map((r) => r.userId));

@@ -281,6 +281,13 @@
       "when": 1794440336021,
       "tag": "0039_volatile_frog_thor",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794445820101,
+      "tag": "0040_yellow_talisman",
+      "breakpoints": true
     }
   ]
 }

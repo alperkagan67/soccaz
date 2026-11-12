@@ -8,6 +8,7 @@ import { audit } from "../audit";
 import { cardPaymentsEnabled } from "../settings";
 import { bookOpenFees } from "./charge";
 import { retryChargesInWindow } from "./charge-retry";
+import { runSubstitutes } from "./substitute";
 import { AFTER_START, runCharges, UNKNOWN_OUTCOME, type RunResult } from "./charge-run";
 
 /** Bucht ein Kartenspiel ab, wenn es Zeit ist (Frist erreicht bzw. Vorlauf unter 48 h und beide Captains bereit). Sonst passiert nichts: kein Netz, keine Zeilen. */
@@ -87,6 +88,15 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
       touched += await retryChargesInWindow({ now });
     } catch (error) {
       console.error("runCardCharges: Wiederabbuchen", error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  // Fensterende: Platz frei und Nachruecker von der Warteliste (M3c-2a), nur bei eingeschaltetem Kartenmodell
+  if (await cardPaymentsEnabled()) {
+    try {
+      const r = await runSubstitutes({ now });
+      touched += r.filled;
+    } catch (error) {
+      console.error("runCardCharges: Nachruecker", error instanceof Error ? error.name : "Fehler");
     }
   }
   try {

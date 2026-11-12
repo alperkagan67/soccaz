@@ -80,7 +80,7 @@ export async function rotateAttempt(c: Candidate, now: Date): Promise<boolean> {
     )
       return false;
     if (!inGraceWindow(row.graceUntil, game.startsAt, now)) return false; // effektives Ende, Altzeilen (null) nie
-    if (NON_CARD_CODES.includes(row.failureCode ?? "")) return false;
+    if (NON_CARD_CODES.includes(row.failureCode ?? "") || row.slotOf !== null || row.resolution !== null) return false;
     const [seat] = await tx
       .select({ cardStatus: matchParticipants.cardStatus })
       .from(matchParticipants)
@@ -145,6 +145,8 @@ function eligibleFilters(now: Date) {
   return [
     inArray(paymentCharges.status, ["failed", "requires_action"]),
     isNotNull(paymentCharges.graceUntil),
+    isNull(paymentCharges.slotOf), // Nachruecker-Zeilen werden nie nachgezahlt (sofort gescheitert)
+    isNull(paymentCharges.resolution), // ersetzte Plaetze nie
     sql`least(${paymentCharges.graceUntil}, ${matches.startsAt} - interval '1 hour') > ${now}`, // effektives Ende: nie nach Anstoss minus 1 h (Punkt 7)
     eq(matchParticipants.cardStatus, "card_ready"),
     inArray(matches.status, ["lobby", "confirmed"]),
@@ -182,10 +184,19 @@ const eligibleFrom = () =>
 export async function inspectKnownAttempts(c: Candidate, now: Date): Promise<"booked" | "skip" | "go"> {
   const [cur] = await eligibleFrom().where(and(...eligibleFilters(now), eq(paymentCharges.id, c.id), eq(paymentCharges.currentAttempt, c.attempt)));
   if (!cur) return "skip";
+  return reconcileKnownIntents(c, cur.currentPi);
+}
+
+/**
+ * Prueft ALLE bekannten PaymentIntents einer Abbuchung (laufender + Historie) per retrieve: succeeded => verbuchen ("booked"); processing => "skip"; offene werden abgebrochen
+ * (nie zwei offene Versuche, und ein ersetzter Platz laesst keinen bestaetigbaren PaymentIntent zurueck); Netzfehler => "skip". Sonst "go". Wird vom Wiederabbuchen UND vom
+ * Freigeben eines Platzes (substitute.ts) benutzt. Netz, nie in einer Transaktion.
+ */
+export async function reconcileKnownIntents(c: Candidate, currentPi: string | null): Promise<"booked" | "skip" | "go"> {
   const provider = await getPaymentProvider();
   try {
     const hist = await db.select({ pi: paymentChargeAttempts.paymentIntentId }).from(paymentChargeAttempts).where(eq(paymentChargeAttempts.chargeId, c.id));
-    const known = [...new Set([cur.currentPi, ...hist.map((h) => h.pi)].filter((x): x is string => typeof x === "string"))];
+    const known = [...new Set([currentPi, ...hist.map((h) => h.pi)].filter((x): x is string => typeof x === "string"))];
     for (const id of known) {
       const f = await provider.retrievePaymentIntent(id);
       if (f === null) continue; // bei Stripe nicht vorhanden

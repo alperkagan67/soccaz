@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, asc, eq, like } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, paymentChargeAttempts, paymentCharges, paymentProfiles, stripeEvents } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentChargeAttempts, paymentCharges, paymentProfiles, paymentRefunds, stripeEvents } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { inGraceWindow } from "@/lib/grace";
 import { bookChargeFee, bookOpenFees } from "@/server/payments/charge";
@@ -415,13 +415,16 @@ describe("Webhook-Zuordnung ueber die Versuche (Backlog 42)", () => {
     expect(entries[0].idempotencyKey).toBe(`charge:${g.piId}`);
   });
 
-  it("ein zweiter erfolgreicher PaymentIntent zur selben Zeile wird nicht doppelt gebucht, aber auditiert (Erstattung: M3f)", async () => {
+  it("ein zweiter erfolgreicher PaymentIntent zur selben Zeile wird gebucht, sofort voll zur Erstattung vorgemerkt (eigene Zeile) und auditiert", async () => {
     const g = await failedGame();
     await send(g, g.piId, "payment_intent.succeeded", null); // alter Versuch gelingt doch noch (Zeile war failed)
     expect((await rowOf(g)).status).toBe("succeeded");
     const second = nid("pi_dup");
     await send(g, second, "payment_intent.succeeded", null);
-    expect(await ledgerOf(g)).toHaveLength(1);
+    expect((await ledgerOf(g)).map((e) => e.idempotencyKey).sort()).toEqual([`charge:${g.piId}`, `charge:${second}`].sort());
+    const refunds = await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, g.row.id));
+    expect(refunds).toHaveLength(1);
+    expect(refunds[0]).toMatchObject({ paymentIntentId: second, amountCents: 800, status: "pending" });
     expect(await auditCount("charge.duplicate_success", g.match.id)).toBe(1);
   });
 

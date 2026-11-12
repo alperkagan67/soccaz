@@ -2,7 +2,7 @@ import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "driz
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
+import { matchParticipants, matches, paymentCharges, teamMembers, teams, users } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { MIN_READY_PER_TEAM, hasFreeSlot, teamCapacity, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import type { Role } from "@/lib/roles";
@@ -380,6 +380,9 @@ const LIST_LOCKED = "Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt:
 
 export function joinLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match, now) => {
+    // Wurde der Platz wegen einer nicht zustande gekommenen Zahlung vergeben (M3c-2), gibt es keinen Wiederbeitritt: neutrale Meldung, kein Grund
+    const [replaced] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId), eq(paymentCharges.resolution, "replaced")));
+    if (replaced) throw new DomainError("Dein Platz wurde vergeben.");
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst.");
     const mine = await tx
