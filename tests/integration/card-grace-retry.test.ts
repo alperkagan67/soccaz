@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentChargeAttempts, paymentCharges, paymentProfiles, paymentRefunds, stripeEvents } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { inGraceWindow } from "@/lib/grace";
+import { bookChargeFee, bookOpenFees } from "@/server/payments/charge";
+import { requestMatchCancel } from "@/server/payments/refund";
 import { inspectKnownAttempts, retryChargesInWindow, rotateAttempt } from "@/server/payments/charge-retry";
 import { runCardCharges } from "@/server/payments/charge-trigger";
 import { FakeProvider } from "@/server/payments/fake";
@@ -533,5 +535,65 @@ describe("Struktur", () => {
     } finally {
       (db as unknown as { transaction: unknown }).transaction = original;
     }
+  });
+});
+
+describe("Review PR #107 (security, mittel): ein ALTER PaymentIntent gewinnt das Rennen", () => {
+  async function twoAttempts(secondOutcome: "requires_action" | "error") {
+    const g = await failedGame();
+    await changeCard(g);
+    provider.setChargeOutcome(g.u.id, secondOutcome);
+    await retryChargesInWindow({ userId: g.u.id });
+    return g;
+  }
+
+  it("Erfolg des alten PI (Webhook): die Zeile zeigt auf den BEZAHLTEN PI, Gebuehr wird gebucht, die Erstattung geht auf diesen PI; der neuere PI steht in der Historie", async () => {
+    const g = await twoAttempts("requires_action");
+    const second = (await rowOf(g)).paymentIntentId!;
+    expect(second).not.toBe(g.piId);
+    await send(g, g.piId, "payment_intent.succeeded", null); // der erste Versuch gelingt doch noch
+    const r = await rowOf(g);
+    expect(r).toMatchObject({ status: "succeeded", paymentIntentId: g.piId });
+    const hist = await attemptsOf(g);
+    expect(hist.map((h) => h.paymentIntentId)).toEqual(expect.arrayContaining([g.piId, second])); // beide Zuordnungen bleiben erhalten
+    expect((await ledgerOf(g)).map((e) => e.idempotencyKey)).toEqual([`charge:${g.piId}`]);
+
+    provider.setFee(g.piId, 30);
+    expect(await bookChargeFee(g.piId)).toBe("booked"); // vorher: "unknown", weil keine Zeile auf diesen PI zeigte
+    expect(await bookOpenFees()).toBe(0);
+    const fees = (await ledgerOf(g)).filter((e) => e.kind === "fee");
+    expect(fees.map((e) => e.idempotencyKey)).toEqual([`fee:${g.piId}`]);
+    expect(provider.calls.filter((c) => c.method === "retrieveChargeFee").map((c) => (c.args as { paymentIntentId: string }).paymentIntentId)).not.toContain(second);
+
+    await requestMatchCancel(null, g.match.id, "Test");
+    const refund = provider.calls.find((c) => c.method === "createRefund");
+    expect((refund!.args as { paymentIntentId: string }).paymentIntentId).toBe(g.piId); // der bezahlte, nicht der neuere
+    // ein spaeter Erfolg des neueren PI wird nicht doppelt gebucht, nur auditiert
+    await send(g, second, "payment_intent.succeeded", null);
+    expect((await ledgerOf(g)).filter((e) => e.kind === "match_share")).toHaveLength(1);
+  });
+
+  it("neuer Versuch noch nicht gesendet (PI leer): Erfolg des alten PI bindet die Zeile an den bezahlten PI", async () => {
+    const g = await twoAttempts("error");
+    expect(await rowOf(g)).toMatchObject({ status: "pending", paymentIntentId: null, currentAttempt: 2 });
+    await send(g, g.piId, "payment_intent.succeeded", null);
+    expect(await rowOf(g)).toMatchObject({ status: "succeeded", paymentIntentId: g.piId });
+    provider.setFee(g.piId, 25);
+    expect(await bookOpenFees()).toBeGreaterThanOrEqual(1);
+    expect((await ledgerOf(g)).filter((e) => e.kind === "fee").map((e) => e.idempotencyKey)).toContain(`fee:${g.piId}`);
+  });
+});
+
+describe("Review PR #107 (niedrig): Begrenzung des Wiederabbuchens im Webhook-Pfad", () => {
+  it("limit: hoechstens so viele Plaetze je Aufruf, der Rest bleibt fuer den naechsten Lauf; budgetMs 0 beginnt nichts", async () => {
+    const gs = [await failedGame(), await failedGame(), await failedGame()];
+    for (const g of gs) await changeCard(g);
+    expect(await retryChargesInWindow({ budgetMs: 0 })).toBe(0);
+    for (const g of gs) expect((await rowOf(g)).status).toBe("failed");
+    const first = await retryChargesInWindow({ limit: 2 });
+    expect(first).toBe(2);
+    const second = await retryChargesInWindow({});
+    expect(second).toBeGreaterThanOrEqual(1);
+    for (const g of gs) expect((await rowOf(g)).currentAttempt).toBe(2);
   });
 });

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { contrast, THEMES } from "@/lib/color";
 
 // AC-14 (Vertrag 007): Orange ist die einzige Akzentfarbe, die alten Neon-Tokens sind aus der Oberfläche entfernt.
-// Ausnahmen (DESIGN.md, Abschnitt "Ausnahmen von AC-14"): --accent-fg, --pc-* (Profilfarben), --card-yellow/--card-red.
+// Ausnahmen (DESIGN.md, Abschnitt "Ausnahmen von AC-14"): --accent-fg, --pc-* (Profilfarben), --card-yellow/--card-red, Status-Töne --ok/--warn/--danger/--info (M2-1, Zustand mit Symbol und Wort).
 // src/server (OG-Bilder, Karten) ist vom Test ausgenommen und steht im Backlog.
 const ROOT = path.resolve(import.meta.dirname, "../../src");
 const OLD = ["green", "green-dark", "green-soft", "lime", "cyan", "sky", "violet", "pink", "coral", "yellow", "red"];
