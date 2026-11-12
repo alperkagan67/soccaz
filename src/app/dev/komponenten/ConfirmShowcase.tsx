@@ -36,6 +36,19 @@ export function ConfirmShowcase() {
           onConfirmAction={done("Preis steht fest")}
         />
         <ConfirmDialog
+          trigger={{ label: "Anteil übernehmen" }}
+          title="Anteil von Alex übernehmen?"
+          body="Du wirst zur Frist zusätzlich belastet, nicht sofort."
+          consequence="Dein Anteil 6,00 € und der Anteil von Alex 6,00 €, zusammen 12,00 €."
+          confirmLabel="Anteil übernehmen"
+          consent={{ label: "Ich stimme zu, dass Soccaz zur Frist zusätzlich den Anteil von Alex von meiner Karte abbucht. (Entwurf, Rechtstext durch Anwalt)" }}
+          onConfirmAction={async ({ consent }) => {
+            await wait();
+            setResult(`Anteil übernommen (Zustimmung: ${consent ? "ja" : "nein"})`);
+            return { ok: true };
+          }}
+        />
+        <ConfirmDialog
           danger
           trigger={{ label: "Konto löschen" }}
           title="Konto löschen?"
