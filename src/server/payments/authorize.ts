@@ -58,6 +58,25 @@ function openFrom(r: Row, matchId: string, now: Date): OpenRow | null {
 }
 
 /**
+ * Rate-Limit je Nutzer und Stunde, ATOMAR (Backlog 88): Zaehlen und Eintragen laufen in EINER Transaktion unter einer Sperre auf den Nutzer
+ * (pg_advisory_xact_lock), sonst koennten parallele Anfragen alle denselben Zaehlerstand lesen und die Grenze ueberschreiten.
+ * Der Versuch zaehlt VOR dem Netzaufruf (auch abgelehnte Anfragen): sonst koennte ein Nutzer mit unpassendem Stripe-Stand ungebremst paymentIntents.retrieve ausloesen.
+ * Ohne Secret, ohne PaymentIntent-ID. Das Netz wird NICHT in dieser Transaktion aufgerufen (sie endet vor dem Aufruf).
+ */
+async function countAttempt(userId: string, matchId: string, attempt: number, now: Date): Promise<void> {
+  const since = new Date(now.getTime() - 3_600_000);
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"authorize:" + userId}, 0))`);
+    const [recent] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(auditLog)
+      .where(and(eq(auditLog.actorId, userId), eq(auditLog.action, "charge.authorization_attempt"), gt(auditLog.at, since)));
+    if ((recent?.n ?? 0) >= AUTHORIZE_LIMIT_PER_HOUR) throw new DomainError("Zu viele Versuche. Bitte warte etwas und versuche es später noch einmal.");
+    await audit(userId, "charge.authorization_attempt", "match", matchId, { after: { attempt } }, tx);
+  });
+}
+
+/**
  * Liefert dem Betroffenen das clientSecret seines offenen Versuchs. NUR der Nutzer selbst (die Zeile gehoert ihm), nie Captain/Admin/Dritte. Pruefungen: Kartenmodell AN, Spiel offen,
  * Zeile requires_action mit authentication_required, Fenster laeuft, laufender Versuch; bei Stripe: der PaymentIntent ist NOCH requires_action und Betrag, EUR und Kunde passen
  * (sonst kein Secret). Legt nie einen PaymentIntent an. Rate-Limit je Nutzer und Stunde.
@@ -68,14 +87,7 @@ export async function getAuthorizationSecret(userId: string, matchId: string, no
   const row = await openRow(userId, matchId, now);
   if (!row || !row.paymentIntentId) throw new DomainError(NOT_AVAILABLE);
 
-  const since = new Date(now.getTime() - 3_600_000);
-  const [recent] = await db
-    .select({ n: sql<number>`count(*)::int` })
-    .from(auditLog)
-    .where(and(eq(auditLog.actorId, userId), eq(auditLog.action, "charge.authorization_attempt"), gt(auditLog.at, since)));
-  if ((recent?.n ?? 0) >= AUTHORIZE_LIMIT_PER_HOUR) throw new DomainError("Zu viele Versuche. Bitte warte etwas und versuche es später noch einmal.");
-  // Der Versuch zaehlt VOR dem Netzaufruf (auch abgelehnte Anfragen): sonst koennte ein Nutzer mit unpassendem Stripe-Stand ungebremst paymentIntents.retrieve ausloesen. Ohne Secret, ohne PaymentIntent-ID.
-  await audit(userId, "charge.authorization_attempt", "match", matchId, { after: { attempt: row.currentAttempt } });
+  await countAttempt(userId, matchId, row.currentAttempt, now);
 
   const [profile] = await db.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
   if (!profile) throw new DomainError(NOT_AVAILABLE);

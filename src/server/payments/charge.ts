@@ -16,6 +16,7 @@ import { getPaymentProvider } from "./provider";
 import { notifyChargeProblem } from "./charge-notify";
 import { graceUntil, inGraceWindow } from "@/lib/grace";
 import { failSubstitute } from "./substitute-fail";
+import { refundVoidedByDispute } from "./dispute";
 
 export const refundKey = (chargeId: string) => `refund:${chargeId}`;
 
@@ -24,7 +25,9 @@ export async function ensureRefundRow(tx: Tx, charge: typeof paymentCharges.$inf
   // Standard: die Erstattung des PaymentIntents der Zeile (Schluessel refund:<Abbuchung>). Mit extraPaymentIntentId: ein WEITERER erfolgreicher PaymentIntent derselben Abbuchung
   // (Doppelabbuchung), eigene Zeile und Schluessel refund:<Abbuchung>:<PaymentIntent>.
   const key = extraPaymentIntentId ? `${refundKey(charge.id)}:${extraPaymentIntentId}` : refundKey(charge.id);
-  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.payerUserId ?? charge.userId, amountCents: charge.amountCents, idempotencyKey: key, reason, paymentIntentId: extraPaymentIntentId }).onConflictDoNothing();
+  // Zahlungsstreit (M4a): hat die Zahlung einen offenen oder verlorenen Streit, entfaellt die Erstattung (cancelled_dispute), die Absage bleibt unblockiert
+  const voided = await refundVoidedByDispute(tx, charge, extraPaymentIntentId);
+  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.payerUserId ?? charge.userId, amountCents: charge.amountCents, idempotencyKey: key, reason, paymentIntentId: extraPaymentIntentId, status: voided ? "cancelled_dispute" : "pending" }).onConflictDoNothing();
 }
 
 export type ChargeOutcome = "succeeded" | "requires_action" | "failed";

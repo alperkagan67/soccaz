@@ -411,7 +411,7 @@ export const paymentRefunds = pgTable(
     matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     amountCents: integer("amount_cents").notNull(),
-    status: text("status").$type<"pending" | "succeeded" | "failed">().notNull().default("pending"),
+    status: text("status").$type<"pending" | "succeeded" | "failed" | "cancelled_dispute">().notNull().default("pending"), // cancelled_dispute (M4a): Streit verloren, bevor die Erstattung gesendet wurde: nichts mehr zu erstatten
     refundId: text("refund_id").unique(),
     idempotencyKey: text("idempotency_key").notNull().unique(),
     reason: text("reason"),
@@ -426,6 +426,97 @@ export const paymentRefunds = pgTable(
     // eine Erstattung je Abbuchung UND PaymentIntent: der PaymentIntent der Zeile (payment_intent_id NULL) oder ein weiterer erfolgreicher (spaeter Erfolg / Doppelabbuchung, M3c-2b)
     uniqueIndex("payment_refunds_charge_idx").on(t.chargeId, sql`coalesce(${t.paymentIntentId}, '')`),
     check("payment_refunds_amount_positive", sql`${t.amountCents} > 0`),
-    check("payment_refunds_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed')`),
+    check("payment_refunds_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed', 'cancelled_dispute')`),
+  ],
+);
+
+/**
+ * Zahlungsstreit (Dispute) zu einer Kartenabbuchung (Vertrag 012, M4a, AC-11). Eine Zeile je Stripe-Streit (dispute_id eindeutig). charge_id, match_id und payer_user_id sind NULL, wenn der
+ * PaymentIntent unbekannt ist (das Geld ist trotzdem weg: Alarm). Der Streit trifft den ZAHLER (payer_user_id), nicht den Platz. status bewusst OHNE CHECK: unbekannte Stripe-Werte werden
+ * tolerant gespeichert (Alarm), nie als Fehler im Webhook abgelehnt. NO ACTION: Zahlungsnachweise bleiben erhalten.
+ */
+export const paymentDisputes = pgTable(
+  "payment_disputes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    disputeId: text("dispute_id").notNull().unique(),
+    chargeId: uuid("charge_id").references(() => paymentCharges.id),
+    paymentIntentId: text("payment_intent_id"),
+    matchId: uuid("match_id").references(() => matches.id),
+    payerUserId: uuid("payer_user_id").references(() => users.id),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull(),
+    reason: text("reason").notNull().default("unknown"),
+    status: text("status").notNull(),
+    evidenceDueBy: timestamp("evidence_due_by", { withTimezone: true }),
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    // Entprellung der Admin-Alarme: je Streit und Grund hoechstens EINE Nachricht
+    alertedReasons: text("alerted_reasons").array().notNull().default(sql`'{}'::text[]`),
+    // Streit verloren, obwohl die Erstattung schon gesendet war: Soccaz hat zweimal gezahlt (Folgen: Produkt-/Rechtsfrage)
+    refundConflict: boolean("refund_conflict").notNull().default(false),
+    doubleLossCents: integer("double_loss_cents").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("payment_disputes_payer_idx").on(t.payerUserId),
+    index("payment_disputes_status_idx").on(t.status),
+    index("payment_disputes_pi_idx").on(t.paymentIntentId),
+    check("payment_disputes_amount_positive", sql`${t.amountCents} > 0`),
+  ],
+);
+
+/**
+ * Eine Balance-Transaction eines Streits (Abzug oder Rueckbuchung), gebucht genau einmal (Schluessel dispute:<dp>:bt:<txn>, Gebuehr :fee). status: booked, parked (Rueckbuchung wartet auf ihren
+ * Abzug), rejected (Betragspruefung, endgueltig, nie neu bewertet). Die Gebuehr wird unabhaengig vom Status gebucht (eigener Schluessel :fee).
+ */
+export const paymentDisputeEntries = pgTable(
+  "payment_dispute_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    disputeRowId: uuid("dispute_row_id").notNull().references(() => paymentDisputes.id),
+    balanceTransactionId: text("balance_transaction_id").notNull().unique(),
+    kind: text("kind").$type<"withdrawal" | "reversal">().notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    feeCents: integer("fee_cents").notNull().default(0),
+    status: text("status").$type<"booked" | "parked" | "rejected">().notNull(),
+    rejectReason: text("reject_reason"),
+    bookedAt: timestamp("booked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("payment_dispute_entries_dispute_idx").on(t.disputeRowId),
+    check("payment_dispute_entries_kind_check", sql`${t.kind} in ('withdrawal', 'reversal')`),
+    check("payment_dispute_entries_status_check", sql`${t.status} in ('booked', 'parked', 'rejected')`),
+    check("payment_dispute_entries_amount_positive", sql`${t.amountCents} > 0`),
+    check("payment_dispute_entries_fee_nonneg", sql`${t.feeCents} >= 0`),
+  ],
+);
+
+/**
+ * Loeschauftrag fuer den Stripe-Kunden eines geloeschten Kontos (Vertrag 012, M4b, AC-16). Wird in DERSELBEN Transaktion wie die Anonymisierung angelegt; dort verschwinden payment_profiles und das Mandat
+ * (payment_setup_intents), die Kunden-ID steht danach NUR noch hier. Ein Job ruft Stripe auf (Netz, nie in einer Transaktion) und setzt die Kunden-ID nach Erfolg auf NULL.
+ * status: pending (wartet), claimed (ein Lauf arbeitet, bis claimed_until), done, failed (nach zu vielen Versuchen: Admin-Alarm, manuell klaeren). NO ACTION: der Nachweis bleibt erhalten.
+ */
+export const paymentErasureTasks = pgTable(
+  "payment_erasure_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    stripeCustomerId: text("stripe_customer_id"),
+    status: text("status").$type<"pending" | "claimed" | "done" | "failed">().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextTryAt: timestamp("next_try_at", { withTimezone: true }).notNull().defaultNow(),
+    claimedUntil: timestamp("claimed_until", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("payment_erasure_tasks_user_idx").on(t.userId),
+    index("payment_erasure_tasks_due_idx").on(t.status, t.nextTryAt),
+    check("payment_erasure_tasks_status_check", sql`${t.status} in ('pending', 'claimed', 'done', 'failed')`),
+    check("payment_erasure_tasks_attempts_nonneg", sql`${t.attempts} >= 0`),
   ],
 );

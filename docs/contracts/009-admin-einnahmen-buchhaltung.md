@@ -1,13 +1,13 @@
 # 009 – Admin-Bereich, Einnahmemodell und Buchhaltung
 Status: Freigegeben (2026-11-11)
-Version: 3 (v3 2026-11-12: Entscheide t9 zu Admin-Absage ohne Oberfläche und Alarm-Empfängern, AC-18; v2 2026-11-11: durch Vertrag 012: Provision inklusive Zahlungsabwicklung, 10 % Startwert ohne Untergrenze, Stripe-Gebühren und Warnung im Admin, Erstattung auf die Karte; davor v1)
+Version: 4 (Klarstellung 2026-11-12, Review R-T199: Finanzseite, Export, Belege, Rabattcodes und Hallenpreise (Preisregeln) gehören ausdrücklich zu Admin 1; v4 2026-11-12: Entscheid t9: Admin 1 (`owner`) bezeichnet technisch ein Konto mit `role = 'admin'` UND `is_owner = true`, es gibt genau ein solches Konto, Admin 2 ist `role = 'admin'` mit `is_owner = false`; die Teilrollen `moderator`, `finance`, `booking` entfallen mit M1; v3 2026-11-12: Entscheide t9 zu Admin-Absage ohne Oberfläche und Alarm-Empfängern, AC-18; v2 2026-11-11: durch Vertrag 012: Provision inklusive Zahlungsabwicklung, 10 % Startwert ohne Untergrenze, Stripe-Gebühren und Warnung im Admin, Erstattung auf die Karte; davor v1)
 
 ## Ziel
 Soccaz ist Vermittler. Spieler zahlen per Karte (Stripe, Vertrag 012) den Hallenpreis geteilt durch die Spielerzahl (aufgerundet), ohne Gebühr für Spieler. Soccaz verdient über eine Provision der Halle (Prozent pro Buchung und/oder 10er-Bonus), die nur Admin 1 pro Halle einstellt. Die Provision ist "Provision inklusive Zahlungsabwicklung": Soccaz trägt die Stripe-Gebühren aus der Provision. Der Admin-Bereich zeigt je Halle und je Spiel Provision, Stripe-Gebühren und Rest und warnt bei einer Halle im Minus. Der Admin-Bereich bekommt zwei Rollen (Admin 1 Betreiber, Admin 2 Mitarbeiter), ein unveränderbares Beweisprotokoll für Hallenanfragen, ein Eingriffsprotokoll und eine Buchhaltung (doppelte Buchung, lückenlose Rechnungsnummern, Kalendermodus, DATEV-Export, KI-geprüfte Belege, Sicherung), die nur Admin 1 sieht.
 
 ## Nutzer und Rollen
-- Admin 1 (Seitenbetreiber, Rolle `owner`, genau einer): alles; ernennt/entfernt Admin 2; Buchhaltung, Belege, Provisionen, Einstellungen, Absage und Erstattung.
-- Admin 2 (Rolle `admin`, Mitarbeiter): Spiele, Lobbys, Turniere, Nutzer/Support (inkl. Sperren), Moderation, Buchungen. Schlägt Absagen mit Begründung vor. Keine Buchhaltung, Provisionen, Einstellungen, Rollenverwaltung.
+- Admin 1 (Seitenbetreiber, kurz `owner`; technisch das eine Konto mit `role = 'admin'` UND `users.is_owner = true`, die Datenbank erlaubt höchstens eines): alles; ernennt/entfernt Admin 2; Buchhaltung (Finanzseite, Export, Belege), Rabattcodes, Hallenpreise (Preisregeln), Provisionen, Einstellungen, Absage und Erstattung.
+- Admin 2 (`role = 'admin'` mit `is_owner = false`, Mitarbeiter): Spiele, Lobbys, Turniere, Nutzer/Support (inkl. Sperren), Moderation, Buchungen. Schlägt Absagen mit Begründung vor. Keine Buchhaltung (Finanzseite, Export, Belege), Rabattcodes, Hallenpreise (Preisregeln), Provisionen, Einstellungen, Rollenverwaltung.
 - Hallen-Betreiber, Spieler, Gast: nicht betroffen (Hallen-Dashboard: Vertrag 011).
 - Anmeldung für alle per Google; Admins sehen im Header einen Link zum Admin-Bereich; Rollen werden serverseitig geprüft. Der Dev-Login bleibt außerhalb der Produktion.
 
@@ -26,7 +26,7 @@ Soccaz ist Vermittler. Spieler zahlen per Karte (Stripe, Vertrag 012) den Hallen
 - Später/Idee: sichtbare Servicegebühr nur für Extras (Firmenpaket); kein Treueprogramm, keine Rabatte, keine Promo-Codes, keine bezahlten Platzierungen.
 
 ## Annahmen (Orchestrator-Vorschlag)
-- Rollenmigration: bestehende `moderator`, `finance`, `booking` werden zu `admin` bzw. `player` nach Absprache mit Admin 1; kein Nutzer behält stillschweigend mehr Rechte.
+- Rollenmigration: Die Teilrollen `moderator`, `finance`, `booking` entfallen mit M1 (Entscheid t9, v4). Wann und auf welchem Weg die vorhandenen Konten zu `admin` bzw. `player` werden, ist offen (Plan `docs/design/009-m1-plan.md`, Fragen P1/P3); kein Nutzer behält stillschweigend mehr Rechte.
 - Provision wird beim Buchen (Frist/Sofortbuchung aus 008, nach der Abbuchung) als Hauptbuch-Buchung "Provision" festgehalten und in der Monatsrechnung ausgewiesen; Erstattung/Absage storniert sie per Gegenbuchung. Stripe-Gebühren je Abbuchung werden als eigene Hauptbuch-Buchung (Aufwand) erfasst; bei Erstattung bleibt die Stripe-Gebühr bei Soccaz (Annahme aus 012, mit Stripe prüfen).
 - Rechnungsnummer aus Zähler-Tabelle mit Zeilensperre (lückenlos auch bei Abbruch), getrennt von Beleg-Nummern `SOC-JJJJ`.
 - Kalendermodus: Tagesmarkierung und Zeiträume täglich/wöchentlich/monatlich/jährlich, Auswertung und Rechnung als PDF, DATEV-Export als CSV (Buchungsstapel).
@@ -43,7 +43,7 @@ Soccaz ist Vermittler. Spieler zahlen per Karte (Stripe, Vertrag 012) den Hallen
 | ID | Gegeben | Wenn | Dann | Check |
 |---|---|---|---|---|
 | AC-1 | Nutzer mit Rolle admin (Admin 2) | Ruft Finanzen, Provisionen, Einstellungen, Rollen oder Buchhaltung auf (Seite und Server-Aktion) | Abgelehnt (403) | tests/integration/admin-rollen.test.ts |
-| AC-2 | Admin 1 | Ernennt/entfernt Admin 2; Admin 2 versucht es | Admin 1 erfolgreich, protokolliert; Admin 2 abgelehnt; es gibt nie zwei `owner` | tests/integration/admin-rollen.test.ts |
+| AC-2 | Admin 1 | Ernennt/entfernt Admin 2; Admin 2 versucht es | Admin 1 erfolgreich, protokolliert; Admin 2 abgelehnt; es gibt nie zwei Konten mit `is_owner` (Datenbank erzwingt es) | tests/integration/admin-rollen.test.ts |
 | AC-3 | Halle mit Provision p % und 10er-Bonus | Spiel wird gebucht | Hauptbuch: Provision = p % der Hallenmiete; ausgeglichen; Erstattung storniert per Gegenbuchung | tests/integration/provision.test.ts |
 | AC-4 | 10 gebuchte Spiele in einer Halle (verschiedene Teams) | 10. Spiel gebucht | Zähler 10, Anzeige "10er-Bonus fällig", Bonus = fester Hallenpreis, Zähler läuft rollierend weiter; abgesagte zählen nicht | tests/integration/provision.test.ts |
 | AC-5 | Nur Admin 1 | Stellt Provision/Bonus einer Halle ein | Gespeichert und protokolliert; Admin 2 abgelehnt | tests/integration/provision.test.ts |
@@ -59,7 +59,7 @@ Soccaz ist Vermittler. Spieler zahlen per Karte (Stripe, Vertrag 012) den Hallen
 | AC-15 | Übersicht Admin | Aufruf | Kennzahlen: Provisionsumsatz, Anzahl Buchungen, Auslastung pro Halle; pro Halle Spiele mit Datum/Preis und Zähler; je Halle und je Spiel Provision, Stripe-Gebühren und Rest; Warnung, wenn die Provision die echten Stripe-Gebühren (Karte, 0,25 € je Spieler, Auszahlung) nicht deckt oder eine Halle im Minus ist | tests/e2e/admin.spec.ts |
 | AC-16 | Spieler mit Konto | DSGVO-Export/Löschung | Export vollständig; Löschung anonymisiert, Buchungsdaten bleiben ohne Personenbezug | tests/integration/account.test.ts |
 | AC-17 | Sicherung | Täglicher Lauf | Verschlüsseltes externes Ziel, Restore-Test dokumentiert | docs/BETRIEB.md, scripts/restore-test.sh |
-| AC-18 | Admin-Alarm (Zahlungsstreit, Doppelerfolge, Aufgaben) | Wird ausgelöst, sobald die Rolle `owner` existiert (nach M1) | Nur Admin 1 (`owner`) bekommt ihn, nie Admin 2 und kein anderer Nutzer mit Rolle `admin`; bis M1 (die Rolle `owner` gibt es noch nicht) geht er an alle nicht gesperrten Nutzer mit Rolle `admin` (derzeit identisch mit Admin 1) | tests/integration/admin-alarm-empfaenger.test.ts |
+| AC-18 | Admin-Alarm (Zahlungsstreit, Doppelerfolge, Aufgaben) | Wird ausgelöst, sobald ein Konto mit `is_owner` existiert (nach M1) | Nur Admin 1 (`owner`) bekommt ihn, nie Admin 2 und kein anderer Nutzer mit Rolle `admin`; bis M1 (das Feld `is_owner` gibt es noch nicht) geht er an alle nicht gesperrten Nutzer mit Rolle `admin` (derzeit identisch mit Admin 1) | tests/integration/admin-alarm-empfaenger.test.ts |
 
 ## Meilensteine (seriell, Schema-Änderungen nie parallel)
 - M1: Rollen (owner/admin), Rechteprüfung, Eingriffsprotokoll, Absagevorschlag mit Oberfläche (Admin 2 schlägt vor, Admin 1 sagt ab und erstattet, Pflicht-Begründung, Eingriffsprotokoll) (AC-1, 2, 8, 9, 18); die Oberfläche wird nicht vor der Grundlage 013 M2 und der Admin-Oberfläche 013 M7 gebaut
@@ -73,7 +73,7 @@ Soccaz ist Vermittler. Spieler zahlen per Karte (Stripe, Vertrag 012) den Hallen
 `src/db/schema*.ts` (Rollen, Provision, Zähler, Beweisprotokoll, Rechnungen, Belege, Einstellungen/Schlüssel), `src/lib/roles.ts`, `src/server/session.ts`, `src/server/admin*.ts`, `src/server/ledger.ts`, `src/server/receipts.ts`, `src/server/veto.ts`, `src/server/booking.ts`, `src/app/admin/*`, `src/app/api` (PDF, Export), Header-Link, `scripts/backup-loop.sh`, `docs/BETRIEB.md`. Migrationen additiv, jeweils GO-LIVE-AUDIT.
 
 ## Risiken und Randfälle
-- Rollenmigration: niemand verliert/behält unbeabsichtigt Rechte; genau ein `owner`.
+- Rollenmigration: niemand verliert/behält unbeabsichtigt Rechte; genau ein Konto mit `is_owner`.
 - Rechnungsnummern lückenlos: Postgres-Sequenzen sind es nicht; Zähler-Tabelle mit Sperre.
 - Provision bei Absage/Erstattung/Abbuchung korrekt stornieren; Rundung auf Cent. Stripe-Gebühr bei Erstattung bleibt hängen (Halle im Minus möglich, Warnung).
 - KI-Fehler: nie ungeprüft buchen; Prompt-Injection in Belegtext darf nichts auslösen; Kosten begrenzen (Größen-/Anzahllimit).
@@ -93,6 +93,8 @@ Security-Review Pflicht (Auth, Rollen, Zahlungen, Schlüssel). Keine Schlüssel/
 - Rechnungen: PDF im Admin und automatisch per Mail an die Halle (Mailadresse der Halle im Hallen-Datensatz, Versand protokolliert, Wiederholung bei Fehler).
 
 ## Entscheide t9 (2026-11-12)
+- Admin 1 (`owner`) = Konto mit `role = 'admin'` UND `users.is_owner = true`; genau ein solches Konto; Admin 2 = `role = 'admin'` mit `is_owner = false`. Wo ein Akzeptanzkriterium (z. B. AC-18) von der Rolle `admin` im Gegensatz zu `owner` spricht, ist Admin 2 gemeint. Umsetzung und Gründe: `docs/design/009-m1-plan.md` (Abschnitte 3.1 und 5).
+- Die Teilrollen `moderator`, `finance`, `booking` entfallen mit M1.
 - Die Admin-Absage ohne Oberfläche reicht vor dem Go-live NICHT. Absagevorschlag (Admin 2), Absage mit Erstattung (Admin 1), Pflicht-Begründung und Eingriffsprotokoll mit Oberfläche gehören zu M1 und sind Go-live-MUSS (`docs/loop/GO-LIVE-AUDIT.md`, G20-012). Der E2E zu AC-10 im M4-Plan (Absage durch Admin 1 mit Erstattung) bleibt bis dahin `fixme`; der Server-Test deckt die Funktion.
 - Alarm-Empfänger: bis M1 (die Rolle `owner` gibt es noch nicht) an alle nicht gesperrten Nutzer mit Rolle `admin` (derzeit identisch mit Admin 1), danach NUR an `owner` (Admin 1). Nachweis: AC-18 mit Test in M1.
 
