@@ -1,6 +1,7 @@
 // Legt zwei Demo-Teams mit je 5 Spielern an, damit man Matchmaking und Veto von Hand ausprobieren kann (nur lokal).
 // Anmeldung im Browser über den Dev-Login mit  demo-a@soccav2.local  bzw.  demo-b@soccav2.local  (beliebiger Name).
 // Aufruf: node --env-file=.env.local scripts/seed-demo.mjs        Aufräumen: node --env-file=.env.local scripts/seed-demo.mjs --clean
+// Braucht zur Laufzeit `tsx` (devDependency, lädt scripts/lib/seed-guard.ts): nach `npm ci`, nicht mit `npm ci --omit=dev` (z. B. nicht im Produktions-Image).
 import pg from "pg";
 import { tsImport } from "tsx/esm/api";
 
