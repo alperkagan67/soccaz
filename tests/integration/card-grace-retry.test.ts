@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentChargeAttempts, paymentCharges, paymentProfiles, stripeEvents } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { inGraceWindow } from "@/lib/grace";
-import { retryChargesInWindow, rotateAttempt } from "@/server/payments/charge-retry";
+import { inspectKnownAttempts, retryChargesInWindow, rotateAttempt } from "@/server/payments/charge-retry";
+import { runCardCharges } from "@/server/payments/charge-trigger";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { handleStripeWebhook } from "@/server/payments/webhook";
@@ -256,6 +257,78 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
     expect((createCalls().at(-1)!.args as { idempotencyKey: string }).idempotencyKey).toBe(`${g.base}:3`);
     expect((await attemptsOf(g)).map((a) => a.attemptNo)).toEqual([1, 2]);
     expect((await rowOf(g)).status).toBe("succeeded");
+  });
+});
+
+describe("Ausloeser: der Job card-charges holt das Wiederabbuchen nach (Review-Fix 1)", () => {
+  it("Platz ist card_ready, der Webhook-Pfad hat nichts getan: runCardCharges bucht im Fenster neu ab", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    expect((await rowOf(g)).status).toBe("failed"); // noch nichts passiert
+    await runCardCharges(new Date());
+    expect((createCalls().map((c) => (c.args as { idempotencyKey: string }).idempotencyKey))).toContain(`${g.base}:2`);
+    expect(await rowOf(g)).toMatchObject({ status: "succeeded", currentAttempt: 2 });
+  });
+
+  it("Fehlschlag im Webhook-Pfad (Abbrechen scheitert): die Runde wird ausgelassen und der Job holt sie spaeter nach", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId });
+    provider.setCancelOutcome(g.piId, "error");
+    expect(await retryChargesInWindow({ userId: g.u.id })).toBe(0); // so verhaelt sich der Webhook-Pfad
+    expect(await rowOf(g)).toMatchObject({ status: "failed", currentAttempt: 1 });
+    provider.setCancelOutcome(g.piId, "canceled");
+    await runCardCharges(new Date());
+    expect(await rowOf(g)).toMatchObject({ status: "succeeded", currentAttempt: 2 });
+  });
+
+  it("der Job fasst Spiele nicht an, wenn das Kartenmodell AUS ist", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    await setSetting(null, "card_payments_enabled", false);
+    await runCardCharges(new Date());
+    expect(createCalls()).toHaveLength(0);
+    expect((await rowOf(g)).status).toBe("failed");
+  });
+});
+
+describe("Altzeilen und veraltete Kandidaten werden nie angefasst (Review-Fix 2/3/4)", () => {
+  it("Altzeile (grace_until NULL), Platz card_ready: KEIN retrieve, KEIN cancel, KEIN Versuch (erste Schicht allein)", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    await db.update(paymentCharges).set({ graceUntil: null }).where(eq(paymentCharges.id, g.row.id));
+    provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId });
+    provider.calls.length = 0;
+    expect(await retryChargesInWindow({ userId: g.u.id })).toBe(0);
+    expect(provider.calls.filter((c) => ["retrievePaymentIntent", "cancelPaymentIntent", "createPaymentIntent", "findPaymentIntents"].includes(c.method))).toHaveLength(0);
+    expect(await rowOf(g)).toMatchObject({ status: "failed", currentAttempt: 1 });
+  });
+
+  it("veralteter Kandidat (Versuch 2 laeuft inzwischen, 3-D-Secure offen): der PI von Versuch 2 wird NICHT abgebrochen", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    provider.setChargeOutcome(g.u.id, "requires_action");
+    await retryChargesInWindow({ userId: g.u.id }); // Versuch 2 laeuft und braucht die Freigabe der Bank
+    const live = await rowOf(g);
+    expect(live).toMatchObject({ status: "requires_action", currentAttempt: 2 });
+    await changeCard(g); // der Platz ist (erneut) card_ready: nur die Versuchsnummer schuetzt hier noch
+    provider.calls.length = 0;
+
+    const verdict = await inspectKnownAttempts({ id: g.row.id, matchId: g.match.id, userId: g.u.id, attempt: 1, amountCents: 800 }, new Date()); // alte Kandidatenliste
+    expect(verdict).toBe("skip");
+    expect(provider.calls.filter((c) => c.method === "cancelPaymentIntent")).toHaveLength(0);
+    expect(await rowOf(g)).toMatchObject({ status: "requires_action", currentAttempt: 2, paymentIntentId: live.paymentIntentId });
+  });
+
+  it("Fenster zwischen Auswahl und Abbrechen abgelaufen: der offene alte PaymentIntent wird NICHT abgebrochen", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    provider.setIntentStatus(g.piId, "requires_action", { customerId: g.customerId });
+    await db.update(paymentCharges).set({ graceUntil: new Date(Date.now() - 1000) }).where(eq(paymentCharges.id, g.row.id));
+    provider.calls.length = 0;
+    const verdict = await inspectKnownAttempts({ id: g.row.id, matchId: g.match.id, userId: g.u.id, attempt: 1, amountCents: 800 }, new Date());
+    expect(verdict).toBe("skip");
+    expect(provider.calls.filter((c) => c.method === "cancelPaymentIntent")).toHaveLength(0);
   });
 });
 
