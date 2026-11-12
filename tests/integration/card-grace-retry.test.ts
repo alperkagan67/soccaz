@@ -245,7 +245,7 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
   it("Flake CI 43188949490: haelt eine ANDERE Transaktion die Zeile gerade nach der Drehung (SKIP LOCKED ueberspringt sie), wird der neue Versuch trotzdem im selben Aufruf gesendet", async () => {
     const g = await failedGame();
     await changeCard(g);
-    // Simulation: unmittelbar nach dem Commit der Drehung (rotateAttempt liefert true) sperrt eine fremde Transaktion die Zeile fuer 300 ms
+    // Simulation: unmittelbar nach dem Commit der Drehung (rotateAttempt liefert true) sperrt eine fremde Transaktion die Zeile fuer 450 ms (laenger als die ersten beiden Wartezeiten 100 + 200 ms, kuerzer als alle drei 600 ms: 3 Wiederholungen noetig)
     const original = db.transaction.bind(db);
     let holder: Promise<unknown> | null = null;
     (db as unknown as { transaction: unknown }).transaction = (async (fn: never, cfg: never) => {
@@ -256,7 +256,7 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
         holder = original(async (tx) => {
           await tx.select().from(paymentCharges).where(eq(paymentCharges.id, g.row.id)).for("update");
           locked();
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 450));
         });
         await ready;
       }
@@ -273,6 +273,50 @@ describe("AC-7: Wiederabbuchen im Fenster nach 'Karte aendern'", () => {
     expect(await rowOf(g)).toMatchObject({ status: "succeeded", currentAttempt: 2 });
     expect(await attemptsOf(g)).toHaveLength(1);
     expect(await ledgerOf(g)).toHaveLength(1);
+  });
+
+  it("R-T192: zwei Zeilen im selben Spiel, eine wird gesendet, die andere ist gesperrt: die gesperrte wird im selben Aufruf nachgeholt (Entscheidung nur ueber den Zustand)", async () => {
+    const g = await failedGame();
+    await changeCard(g);
+    // zweiter Spieler im selben Spiel mit eigener fehlgeschlagener Abbuchung und neuer Karte
+    const u2 = await addPlayer(g.match.id, g.home.id, "gt2");
+    const customer2 = nid("cus_gt2");
+    await db.insert(paymentProfiles).values({ userId: u2.id, stripeCustomerId: customer2, paymentMethodId: nid("pm_new2") });
+    const pi2 = nid("pi_gt2");
+    const [row2] = await db.insert(paymentCharges).values({ matchId: g.match.id, userId: u2.id, amountCents: 800, idempotencyKey: "charge:" + g.match.id + ":" + u2.id, paymentIntentId: pi2 }).returning();
+    await db.update(matchParticipants).set({ cardStatus: "charge_pending" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, u2.id)));
+    await send({ match: g.match, u: u2, customerId: customer2 }, pi2, "payment_intent.payment_failed", "card_declined");
+    await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, u2.id)));
+
+    // Simulation: nach der ZWEITEN Drehung (beide Zeilen stehen auf pending) sperrt eine fremde Transaktion die Zeile des zweiten Spielers fuer 450 ms
+    const original = db.transaction.bind(db);
+    let rotations = 0;
+    let holder: Promise<unknown> | null = null;
+    (db as unknown as { transaction: unknown }).transaction = (async (fn: never, cfg: never) => {
+      const res = await (original as (f: never, c: never) => Promise<unknown>)(fn, cfg);
+      if (res === true && ++rotations === 2 && holder === null) {
+        let locked!: () => void;
+        const ready = new Promise<void>((r) => (locked = r));
+        holder = original(async (tx) => {
+          await tx.select().from(paymentCharges).where(eq(paymentCharges.id, row2.id)).for("update");
+          locked();
+          await new Promise((r) => setTimeout(r, 450));
+        });
+        await ready;
+      }
+      return res;
+    }) as never;
+    try {
+      expect(await retryChargesInWindow({ matchId: g.match.id })).toBe(2);
+    } finally {
+      (db as unknown as { transaction: unknown }).transaction = original;
+      await holder;
+    }
+    expect(holder).not.toBeNull(); // die Simulation hat gegriffen
+    const rows = await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.status === "succeeded" && r.currentAttempt === 2)).toBe(true); // BEIDE gesendet, auch die zuerst gesperrte
+    expect(createCalls()).toHaveLength(2);
   });
 
   it("scheitert auch der neue Versuch, bleibt das Fenster das alte; ein weiterer Versuch nach der naechsten Karte bekommt Schluessel :3", async () => {

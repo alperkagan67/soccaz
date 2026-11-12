@@ -282,8 +282,9 @@ export async function retryChargesInWindow(opts: { userId?: string; matchId?: st
     // pending-Versuch uebrig, kurz warten und hoechstens noch dreimal versuchen (Gesamtwartezeit unter 1 Sekunde).
     for (let attempt = 0; attempt <= SEND_RETRIES; attempt++) {
       try {
-        const res = await runCharges(matchId, now);
-        if (res.attempted > 0 || !(await hasUnsentPending(matchId))) break;
+        await runCharges(matchId, now);
+        // Entschieden wird NUR ueber den Zustand: ein Lauf kann eine Zeile senden und eine andere (gesperrte) ueberspringen; `attempted > 0` waere dafuer kein Beweis
+        if (!(await hasUnsentPending(matchId))) break;
       } catch (error) {
         console.error("retryChargesInWindow: Senden fehlgeschlagen", matchId, error instanceof Error ? error.name : "Fehler");
         break;
