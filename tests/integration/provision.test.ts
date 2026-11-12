@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentProfiles } from "@/db/schema";
 import { ledgerEntries, matchCommissions, venues } from "@/db/schema-finance";
 import { bookCommission, reverseCommission, setVenueCommission } from "@/server/commission";
-import { trialBalance } from "@/server/ledger";
+import { post, trialBalance } from "@/server/ledger";
 import { runCharges } from "@/server/payments/charge-run";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
@@ -454,5 +454,21 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     await setVenueCommission(owner.id, unset.id, { percent: 0, bonusEnabled: false, reason: "bewusst 0" });
     c = await codes();
     expect(c).not.toContain(`commission-unset:${unset.id}`);
+  });
+
+  it("Mischspiel (Entscheid t9 A): Provision auf der vollen Miete, nur ein Teil kam per Karte; die Gebühren der Kartenzahler übersteigen die kleine Provision -> Alarm 'Halle im Minus', Hauptbuch bleibt ausgeglichen", async () => {
+    const v = await venue({ percent: "1" }); // 1 % von 8000 = 80
+    const m = await commissionMatch(v.id, 8000);
+    // Hälfte der Miete kam per Karte (venue_payable), die andere Hälfte per Guthaben (revenue, nicht Teil der Verbindlichkeit)
+    await db.transaction(async (tx) => {
+      await post(tx, { debit: { account: "clearing" }, credit: { account: "venue_payable" }, amountCents: 4000, kind: "match_share", matchId: m.id, idempotencyKey: nid("charge:mix") });
+      await post(tx, { debit: { account: "fees" }, credit: { account: "clearing" }, amountCents: 150, kind: "fee", matchId: m.id, idempotencyKey: nid("fee:mix") });
+      await bookCommission(tx, m);
+    });
+    const e = await entries(m.id);
+    expect(e.filter((x) => x.kind === "commission")).toMatchObject([{ amountCents: 80 }]); // Basis bleibt die volle Miete
+    expect((await trialBalance()).balanced).toBe(true);
+    const alerts = await getAlerts();
+    expect(alerts.some((a) => a.code === `venue-minus:${v.id}`)).toBe(true);
   });
 });
