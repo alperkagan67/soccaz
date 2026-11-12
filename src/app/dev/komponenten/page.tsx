@@ -8,7 +8,9 @@ import { PageShell } from "@/components/ui/PageShell";
 import { SkipLink } from "@/components/ui/SkipLink";
 import { StateMessage } from "@/components/ui/StateMessage";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { ConfirmShowcase } from "./ConfirmShowcase";
 import { Counter } from "./Counter";
+import { FormShowcase } from "./FormShowcase";
 
 export const metadata: Metadata = { title: "Komponenten (Entwicklung)", robots: { index: false } };
 
@@ -90,6 +92,8 @@ export default function KomponentenPage() {
             <h2 id="tas" className="text-lg font-semibold">Tastatur</h2>
             <Counter />
           </section>
+          <FormShowcase />
+          <ConfirmShowcase />
         </PageShell>
       </div>
     </div>
