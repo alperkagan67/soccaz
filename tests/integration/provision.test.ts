@@ -456,19 +456,59 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     expect(c).not.toContain(`commission-unset:${unset.id}`);
   });
 
-  it("Mischspiel (Entscheid t9 A): Provision auf der vollen Miete, nur ein Teil kam per Karte; die Gebühren der Kartenzahler übersteigen die kleine Provision -> Alarm 'Halle im Minus', Hauptbuch bleibt ausgeglichen", async () => {
-    const v = await venue({ percent: "1" }); // 1 % von 8000 = 80
-    const m = await commissionMatch(v.id, 8000);
-    // Hälfte der Miete kam per Karte (venue_payable), die andere Hälfte per Guthaben (revenue, nicht Teil der Verbindlichkeit)
+  it("Mischspiel (ein Spieler zahlt per Guthaben, die anderen per Karte): das Spiel wird NIE abgerechnet, also keine Provision und kein Bonus; der Guthaben-Anteil bleibt auf revenue, die Kartenanteile auf venue_payable", async () => {
+    const v = await venue({ bonus: true });
+    const g = await game(v.id);
+    const walletPayer = g.adminB;
+    // dieser Spieler hat per Guthaben bezahlt (wallet -> revenue) und hat keine Karte
+    await db.update(matchParticipants).set({ cardStatus: "none" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, walletPayer.id)));
     await db.transaction(async (tx) => {
-      await post(tx, { debit: { account: "clearing" }, credit: { account: "venue_payable" }, amountCents: 4000, kind: "match_share", matchId: m.id, idempotencyKey: nid("charge:mix") });
-      await post(tx, { debit: { account: "fees" }, credit: { account: "clearing" }, amountCents: 150, kind: "fee", matchId: m.id, idempotencyKey: nid("fee:mix") });
-      await bookCommission(tx, m);
+      await creditWallet(tx, walletPayer.id, { from: "bank", amountCents: 3000, kind: "adjustment", idempotencyKey: nid("fund") });
+      await post(tx, { debit: { account: "wallet", userId: walletPayer.id }, credit: { account: "revenue" }, amountCents: 1000, kind: "match_share", matchId: g.match.id, idempotencyKey: nid("walletshare") });
     });
-    const e = await entries(m.id);
-    expect(e.filter((x) => x.kind === "commission")).toMatchObject([{ amountCents: 80 }]); // Basis bleibt die volle Miete
+    await runCharges(g.match.id);
+    const [m] = await db.select().from(matches).where(eq(matches.id, g.match.id));
+    expect(m.settledAt).toBeNull();
+    const e = await entries(g.match.id);
+    expect(e.some((x) => x.kind === "commission" || x.kind === "commission_bonus")).toBe(false);
+    expect(await db.select().from(matchCommissions).where(eq(matchCommissions.matchId, g.match.id))).toHaveLength(0);
+    expect(e.filter((x) => x.creditAccount === "venue_payable").every((x) => x.kind === "match_share")).toBe(true);
+    expect(e.filter((x) => x.creditAccount === "revenue")).toHaveLength(1);
     expect((await trialBalance()).balanced).toBe(true);
-    const alerts = await getAlerts();
-    expect(alerts.some((a) => a.code === `venue-minus:${v.id}`)).toBe(true);
+  });
+
+  it("Review A: die Erstattung geht auf das Konto der ORIGINAL-Abbuchung zurück, auch wenn sich Halle/Miete danach ändern", async () => {
+    const v = await venue();
+    // Abbuchung auf venue_payable, danach fehlt die Halle: Erstattung weiter aus venue_payable
+    const g1 = await game(v.id);
+    await runCharges(g1.match.id);
+    await db.update(matches).set({ venueId: null, settledAt: null }).where(eq(matches.id, g1.match.id));
+    await adminCancelMatch(g1.admin.id, g1.match.id, "Test");
+    const r1 = (await entries(g1.match.id)).filter((x) => x.kind === "refund");
+    expect(r1.length).toBeGreaterThan(0);
+    expect(r1.every((x) => x.debitAccount === "venue_payable")).toBe(true);
+    // Abbuchung auf revenue (keine Halle), danach wird eine Halle gesetzt: Erstattung weiter aus revenue
+    const g2 = await game(v.id);
+    await db.update(matches).set({ venueId: null }).where(eq(matches.id, g2.match.id));
+    await runCharges(g2.match.id);
+    await db.update(matches).set({ venueId: v.id }).where(eq(matches.id, g2.match.id));
+    await adminCancelMatch(g2.admin.id, g2.match.id, "Test");
+    const r2 = (await entries(g2.match.id)).filter((x) => x.kind === "refund");
+    expect(r2.length).toBeGreaterThan(0);
+    expect(r2.every((x) => x.debitAccount === "revenue")).toBe(true);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Review B: die Provision hängt am Konto der tatsächlichen Abbuchung: lag der Anteil auf revenue, wird auch nach späterem Setzen der Halle keine Provision gebucht", async () => {
+    const v = await venue({ bonus: true });
+    const g = await game(v.id);
+    await db.update(matches).set({ venueId: null }).where(eq(matches.id, g.match.id));
+    await runCharges(g.match.id); // alles auf revenue, Spiel abgerechnet, keine Provision
+    await db.update(matches).set({ venueId: v.id }).where(eq(matches.id, g.match.id));
+    const [m] = await db.select().from(matches).where(eq(matches.id, g.match.id));
+    expect(await db.transaction((tx) => bookCommission(tx, m))).toEqual({ booked: false });
+    const e = await entries(g.match.id);
+    expect(e.some((x) => x.kind === "commission" || x.kind === "commission_bonus" || x.creditAccount === "venue_payable")).toBe(false);
+    expect(await db.select().from(matchCommissions).where(eq(matchCommissions.matchId, g.match.id))).toHaveLength(0);
   });
 });

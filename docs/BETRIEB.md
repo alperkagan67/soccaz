@@ -157,3 +157,12 @@ Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert�
 **Rückgängig (Rollback):** Code auf den vorherigen Stand zurück; Admin 1 lässt sich ohne Datenverlust abgeben (`is_owner = false`). Die Spalte `is_owner` und der Teilindex `users_one_owner` bleiben ungenutzt stehen (Datenbankänderungen sind nur vorwärts, vorher sichern).
 
 **Prüfung der Migration** (lokal, Wegwerf-Datenbanken, löscht sie danach): `node --env-file=.env.local scripts/migrate-check.mjs` (frische Datenbank mit allen Migrationen in einem Lauf und bestehende Datenbank mit Daten).
+
+## Provision, Rechnungen und Buchungsmodell (Vertrag 009 M2)
+**Wartungsausnahme:** Die Tabellen `match_commissions`, `invoices`, `invoice_lines` und die Spalte `matches.ledger_model` sind gegen Änderungen gesperrt (Trigger). Nur für Wartung (z. B. ein Test, der ein Altspiel nachbaut) gilt innerhalb EINER Transaktion `set local socaz.ledger_maintenance = 'on'`. Im Betrieb nicht verwenden; jede Nutzung gehört in die Go-Live-Prüfliste.
+
+**Migration 0046 wurde vor dem Merge geändert (Spaltenvorgabe `commission_percent` = 0, Trigger für `ledger_model`):** Entwickler-Datenbanken, die die ALTE 0046 schon angewendet haben, überspringen die geänderte Datei still. Solche Datenbanken (Worker-DBs `soccaz_w1` bis `soccaz_w4`) neu anlegen (`node scripts/worktree.mjs`). Produktiv betroffen ist nichts, weil 0046 dort nie lief. Nach dem Neuerzeugen als 0048: Journal, Snapshot und `scripts/migrate-check.mjs` neu prüfen.
+
+**Rechnungsnummer:** `RE-JJJJ-NNNNNN`, das Jahr ist das Jahr des Abrechnungszeitraums, nicht des Ausstellungsdatums. Ob das steuerlich so richtig ist, ist offen (Frage S2 an den Steuerberater).
+
+**Tests im Provisionsmodell:** `npm run test:integration:commission` lässt die Kartensuiten (`card-*`) mit `TEST_LEDGER_MODEL=commission` laufen (jedes Testspiel bekommt eine Halle, die Abbuchung geht auf `venue_payable`). Gebraucht wird die lokale Datenbank wie bei `npm run test:integration`. Der CI-Lauf dazu ist ein Vorschlag (`docs/loop/VORSCHLAG-CI-LEDGER-MATRIX.md`).

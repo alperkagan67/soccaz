@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
 import { ledgerEntries, matchCommissions, venues } from "@/db/schema-finance";
@@ -86,6 +86,14 @@ export async function countedGames(tx: Pick<typeof db, "select">, venueId: strin
  */
 export async function bookCommission(tx: Tx, match: MatchRow): Promise<{ booked: boolean }> {
   if (!commissionEligible(match)) return { booked: false }; // Altspiel, Halle unbekannt oder ohne Hallenmiete: keine Provision
+  // Maßgeblich ist das Konto der TATSÄCHLICHEN Abbuchung (nicht der Stand von Halle/Miete am Spielende): alle Anteile müssen auf venue_payable liegen, sonst gibt es nichts zu verrechnen
+  const credits = await tx
+    .select({ account: ledgerEntries.creditAccount, n: sql<number>`count(*)::int` })
+    .from(ledgerEntries)
+    .where(and(eq(ledgerEntries.matchId, match.id), eq(ledgerEntries.kind, "match_share"), inArray(ledgerEntries.creditAccount, ["venue_payable", "revenue"])))
+    .groupBy(ledgerEntries.creditAccount);
+  const onRevenue = credits.find((c) => c.account === "revenue")?.n ?? 0;
+  if (onRevenue > 0) return { booked: false };
   const [venue] = await tx.select().from(venues).where(eq(venues.id, match.venueId)).for("update"); // Hallensperre vor dem Zählen (Rennen um den 10. Platz)
   if (!venue) return { booked: false };
   const [existing] = await tx.select({ id: matchCommissions.id }).from(matchCommissions).where(eq(matchCommissions.matchId, match.id));
