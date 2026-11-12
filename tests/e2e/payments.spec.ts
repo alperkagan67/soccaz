@@ -70,6 +70,10 @@ test("Guthaben: der Rückweg nach der Zahlung führt nie auf eine fremde Adresse
   // Gegenprobe: ein interner Pfad wird verlinkt
   await page.goto(`/app/guthaben?zahlung=${await seed("/app/teams")}&status=ok`);
   await expect(backLink).toHaveAttribute("href", "/app/teams");
+  // ungültiges gespeichertes Ziel, aber gültiges ?zurueck: der Altwert verdeckt das gültige Ziel nicht (Fallback, Backlog 3 / R-T174)
+  await page.goto(`/app/guthaben?zahlung=${await seed("//evil.example")}&status=ok&zurueck=${encodeURIComponent("/app/teams")}`);
+  await expect(backLink).toHaveAttribute("href", "/app/teams");
+  await expect(page.locator('a[href*="evil"]')).toHaveCount(0);
 });
 
 test("Aufladen mit Test-Anbieter, Rabattcode, Verlauf und PDF-Beleg", async ({ page, browser }) => {

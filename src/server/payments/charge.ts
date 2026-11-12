@@ -139,7 +139,19 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   if (row.status === "succeeded") return { status: "already" };
   // Rangfolge succeeded > failed > requires_action > pending: ein verspätetes, "schwächeres" Ereignis überschreibt nichts
   if (r.outcome !== "succeeded" && RANK[r.outcome] < RANK[row.status]) return { status: "already" };
-  if (row.paymentIntentId === null && !oldAttempt) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
+  if (r.outcome === "succeeded" && row.paymentIntentId !== r.paymentIntentId) {
+    // Der BEZAHLTE PaymentIntent ist nicht der gebundene (ein ALTER Versuch gewinnt das Rennen, oder die Zeile ist schon auf einen neueren Versuch gedreht): die Zeile muss auf den
+    // bezahlten zeigen, sonst findet die Gebuehrenbuchung (bookChargeFee/bookOpenFees) die Zeile nicht, bucht die Gebuehr eines unbezahlten PaymentIntents, und die Erstattung nimmt den
+    // falschen PaymentIntent. Der bisher gebundene PaymentIntent des laufenden Versuchs wandert in die Historie (spaetere Ereignisse zu ihm werden weiter zugeordnet).
+    if (row.paymentIntentId !== null) {
+      await tx
+        .insert(paymentChargeAttempts)
+        .values({ chargeId: row.id, attemptNo: row.currentAttempt, idempotencyKey: row.idempotencyKey, paymentIntentId: row.paymentIntentId, status: row.status, failureCode: row.failureCode, attemptStartedAt: row.attemptStartedAt })
+        .onConflictDoNothing();
+    }
+    await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
+    row = { ...row, paymentIntentId: r.paymentIntentId };
+  } else if (row.paymentIntentId === null && !oldAttempt) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
 
   if (r.outcome === "succeeded") {
     await post(tx, {
