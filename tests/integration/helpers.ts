@@ -14,14 +14,16 @@ function getPool() {
   return pool;
 }
 
-export async function makeUser(tag = "u", role: "player" | "admin" | "finance" | "booking" | "moderator" = "player") {
+export async function makeUser(tag = "u", role: "player" | "admin" | "owner" | "finance" | "booking" | "moderator" = "player") {
   seq += 1;
+  // "owner" = Admin 1: role admin plus is_owner. Es gibt höchstens einen je Datenbank (Teilindex); cleanup() löscht alle @test.local-Nutzer, danach ist der Platz wieder frei.
   const [u] = await db
     .insert(users)
     .values({
       email: `${tag}${seq}-${run}@test.local`,
       name: `${tag} ${seq}`,
-      role,
+      role: role === "owner" ? "admin" : role,
+      isOwner: role === "owner",
       city: "Essen",
       position: "Flexibel",
       onboardedAt: new Date(),

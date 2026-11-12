@@ -132,3 +132,21 @@ Die Einzelheiten stehen oben; hier die Reihenfolge für Worker-Worktrees. Nur Na
 ## Hallen-Buchung
 
 Sobald ein bezahltes Spiel bestätigt ist, entsteht im Admin-Bereich unter **Buchungen** ein Auftrag. Es gibt noch keinen automatischen Buchungs-Agenten: Die Halle wird per Telefon, Mail oder Webseite gebucht und im Auftrag eingetragen. Für einen späteren Agenten gibt es die Schnittstelle `src/server/booking-agent.ts`.
+
+## Admin 1 festlegen (Vertrag 009 M1, nur Betreiber)
+Admin 1 (Seitenbetreiber) ist das eine Konto mit `users.role = 'admin'` UND `users.is_owner = true`; die Datenbank erlaubt höchstens eines. Es entsteht nie von selbst: Die Migration setzt niemanden, das macht dieser Schritt.
+
+**Reihenfolge beim Einspielen:** 1. Migration (`docker compose run --rm app node scripts/migrate.mjs` bzw. der übliche Update-Ablauf) → 2. neuen Code ausrollen (alle Plattform-Prüfungen kennen Admin 1, E1b) → 3. Admin 1 festlegen → 4. erst danach Alarme nur an Admin 1 (E2). Vor Schritt 3 verhält sich alles wie bisher, weil Admin 1 weiter die Rolle `admin` trägt.
+
+**Festlegen** (Konto muss sich einmal angemeldet haben; Datenbank aus `DATABASE_URL` der Umgebung):
+```
+node scripts/set-owner.mjs <email>          # Trockenlauf: zeigt nur Host, Port und Datenbankname
+node scripts/set-owner.mjs <email> --yes    # führt aus
+```
+Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert“), bricht ab, wenn ein ANDERES Konto schon Admin 1 ist, das Konto fehlt oder gesperrt ist, und schreibt einen Protokolleintrag `user.owner_set` ohne Akteur. Es zeigt nie Benutzer oder Passwort der Datenbank.
+
+**Ein anderes Konto soll Admin 1 werden (Übergabe):** zuerst das alte Konto freigeben (`update users set is_owner = false where email = '<alt>'`), dann das Skript für das neue Konto. Ohne Admin 1 gehen die Alarme ab E2 nicht an Dritte (nur Server-Log), deshalb die Lücke kurz halten.
+
+**Rückgängig (Rollback):** Code auf den vorherigen Stand zurück; Admin 1 lässt sich ohne Datenverlust abgeben (`is_owner = false`). Die Spalte `is_owner` und der Teilindex `users_one_owner` bleiben ungenutzt stehen (Datenbankänderungen sind nur vorwärts, vorher sichern).
+
+**Prüfung der Migration** (lokal, Wegwerf-Datenbanken, löscht sie danach): `node --env-file=.env.local scripts/migrate-check.mjs` (frische Datenbank mit allen Migrationen in einem Lauf und bestehende Datenbank mit Daten).
