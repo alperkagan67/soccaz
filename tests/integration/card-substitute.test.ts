@@ -149,11 +149,12 @@ describe("Scheitern des Nachrueckers (je Platz hoechstens 3, sofort gezaehlt)", 
     for (const w of g.waiters) provider.setChargeOutcome(w.id, "declined");
     const results = [];
     for (let i = 0; i < 5; i++) results.push(await runSubstitutes({ matchId: g.match.id }));
+    // nach der Erschoepfung wird das Spiel automatisch abgesagt (M3c-2b): spaetere Laeufe tun nichts mehr
     const kids = await children(g);
     expect(kids).toHaveLength(3);
     expect(kids.every((k) => k.status === "failed" && k.resolution === "replaced")).toBe(true);
     expect(kids.map((k) => k.userId)).toEqual([g.waiters[0].id, g.waiters[1].id, g.waiters[2].id]);
-    expect(results.at(-1)!.exhausted).toContain(g.rootRow.id);
+    expect(results.flatMap((x) => x.exhausted)).toContain(g.rootRow.id);
     // die Gescheiterten sind wieder nicht eingeteilt, die Uebrigen unberuehrt
     for (const w of g.waiters.slice(0, 3)) expect((await seatOf(g, w.id)).teamId).toBeNull();
     expect((await seatOf(g, g.waiters[3].id)).teamId).toBeNull();
@@ -180,16 +181,15 @@ describe("Scheitern des Nachrueckers (je Platz hoechstens 3, sofort gezaehlt)", 
     expect(createCalls()).toHaveLength(3);
   });
 
-  it("gescheiterte Nachruecker, die ihre Karte wieder bereit machen, werden fuer DENSELBEN Platz nicht noch einmal gewaehlt (sie haben schon eine Abbuchungszeile)", async () => {
-    const g = await slotGame({ waitlist: 2 });
-    for (const w of g.waiters) provider.setChargeOutcome(w.id, "declined");
-    await runSubstitutes({ matchId: g.match.id });
-    expect(await children(g)).toHaveLength(2);
-    for (const w of g.waiters) await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, w.id)));
-    provider.calls.length = 0;
+  it("ein frueher gescheiterter Nachruecker, der seine Karte wieder bereit macht, wird fuer DENSELBEN Platz nicht noch einmal gewaehlt (er hat schon eine Abbuchungszeile)", async () => {
+    const g = await slotGame({ waitlist: 1 });
+    // Zustand nach einem Fehlschlag: Platz frei (replaced), Nachruecker-Zeile gescheitert, der Spieler hat seine Karte wieder bereit gemacht
+    await db.update(paymentCharges).set({ resolution: "replaced", slotTeamId: g.home.id }).where(eq(paymentCharges.id, g.rootRow.id));
+    await db.delete(matchParticipants).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.root.id)));
+    await db.insert(paymentCharges).values({ matchId: g.match.id, userId: g.waiters[0].id, amountCents: 800, status: "failed", failureCode: "card_declined", resolution: "replaced", slotOf: g.rootRow.id, idempotencyKey: `charge:${g.match.id}:${g.waiters[0].id}` });
     const res = await runSubstitutes({ matchId: g.match.id });
     expect(res.exhausted).toContain(g.rootRow.id); // niemand mehr uebrig
-    expect(await children(g)).toHaveLength(2);
+    expect(await children(g)).toHaveLength(1);
     expect(createCalls()).toHaveLength(0);
   });
 

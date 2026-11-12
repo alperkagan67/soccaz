@@ -6,7 +6,7 @@
 //     Die Zaehlung wird aus den Zeilen abgeleitet und nur unter der Spielsperre gelesen (Spiel -> Zeilen).
 //  3  Senden: normaler Weg (runCharges: Beanspruchen mit Lease, Senden ausserhalb jeder Transaktion, Verbuchen ueber applyChargeInTx).
 // Ohne Kandidaten oder nach 3 Fehlschlaegen bleibt der Platz offen und wird als "erschoepft" gemeldet (die automatische Absage ist M3c-2b).
-import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges } from "@/db/schema";
 import { effectiveGraceEnd, isCardProblemCode } from "@/lib/grace";
@@ -15,13 +15,47 @@ import { audit } from "../audit";
 import { teamName } from "../names";
 import { notifyUsers, teamAdminIds } from "../notifications";
 import { cardModeActive } from "../wallet";
+import { reconcileKnownIntents } from "./charge-retry";
 import { chargeKey, runCharges } from "./charge-run";
+import { requestMatchCancel } from "./refund";
 
 export const MAX_SUBSTITUTE_FAILURES = 3;
+export const CANCEL_REASON = "Zur Frist ist die Zahlung nicht für alle Plätze zustande gekommen, und es fand sich kein Nachrücker. Alle bekommen ihren Anteil zurück.";
 
 export type SubstituteResult = { released: number; filled: number; exhausted: string[] };
 
-async function processMatch(matchId: string, now: Date): Promise<SubstituteResult> {
+/**
+ * Netz-Phase VOR dem Freigeben (Review R-T158): Ein Platz darf erst vergeben werden, wenn bei Stripe kein bestaetigbarer PaymentIntent seiner Zeile mehr offen ist, sonst
+ * koennte ein spaeterer Erfolg doppelt zahlen lassen. Je abgelaufener Ursprungszeile werden die bekannten PaymentIntents per retrieve geprueft: succeeded => verbucht (die Zeile ist
+ * dann bezahlt, kein Ersatz); processing => nicht ersetzen (Runde auslassen); offene werden abgebrochen. Ebenso werden die PaymentIntents ersetzter Nachruecker mit
+ * requires_action abgebrochen. Liefert die Zeilen, die freigegeben werden duerfen. Netz, nie in einer Transaktion.
+ */
+async function prepareReleases(matchId: string, now: Date): Promise<Set<string>> {
+  const allowed = new Set<string>();
+  const roots = await db
+    .select({ row: paymentCharges, startsAt: matches.startsAt })
+    .from(paymentCharges)
+    .innerJoin(matches, eq(matches.id, paymentCharges.matchId))
+    .where(and(eq(paymentCharges.matchId, matchId), isNull(paymentCharges.slotOf), isNull(paymentCharges.resolution), inArray(paymentCharges.status, ["failed", "requires_action"]), sql`${paymentCharges.graceUntil} is not null`));
+  for (const { row, startsAt } of roots) {
+    if (!isCardProblemCode(row.failureCode)) continue;
+    const end = effectiveGraceEnd(row.graceUntil, startsAt);
+    if (end === null || end.getTime() > now.getTime()) continue;
+    const verdict = await reconcileKnownIntents({ id: row.id, matchId, userId: row.userId, attempt: row.currentAttempt, amountCents: row.amountCents }, row.paymentIntentId);
+    if (verdict !== "go") continue;
+    if (row.status === "requires_action") await db.update(paymentCharges).set({ status: "failed", updatedAt: now }).where(and(eq(paymentCharges.id, row.id), eq(paymentCharges.status, "requires_action"))); // der PaymentIntent ist abgebrochen
+    allowed.add(row.id);
+  }
+  // gescheiterte Nachruecker mit offenem PaymentIntent (requires_action): abbrechen, damit er nicht spaeter bestaetigt wird
+  const kids = await db.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), isNotNull(paymentCharges.slotOf), eq(paymentCharges.resolution, "replaced"), eq(paymentCharges.status, "requires_action")));
+  for (const k of kids) {
+    const verdict = await reconcileKnownIntents({ id: k.id, matchId, userId: k.userId, attempt: k.currentAttempt, amountCents: k.amountCents }, k.paymentIntentId);
+    if (verdict === "go") await db.update(paymentCharges).set({ status: "failed", updatedAt: now }).where(and(eq(paymentCharges.id, k.id), eq(paymentCharges.status, "requires_action")));
+  }
+  return allowed;
+}
+
+async function processMatch(matchId: string, now: Date, allowed: Set<string>): Promise<SubstituteResult> {
   return db.transaction(async (tx) => {
     const out: SubstituteResult = { released: 0, filled: 0, exhausted: [] };
     // Sperrreihenfolge: Spiel -> Abbuchungszeilen (sortiert) -> Teilnehmerzeilen
@@ -36,6 +70,7 @@ async function processMatch(matchId: string, now: Date): Promise<SubstituteResul
       if (r.resolution !== null || !["failed", "requires_action"].includes(r.status) || r.graceUntil === null || !isCardProblemCode(r.failureCode)) continue;
       const end = effectiveGraceEnd(r.graceUntil, game.startsAt);
       if (end === null || end.getTime() > now.getTime()) continue;
+      if (!allowed.has(r.id)) continue; // der offene PaymentIntent konnte noch nicht geklaert/abgebrochen werden: naechste Runde
       const [seat] = await tx.select({ teamId: matchParticipants.teamId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, r.userId))).for("update");
       const slotTeamId = seat?.teamId ?? game.homeTeamId;
       await tx.delete(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, r.userId)));
@@ -62,7 +97,7 @@ async function processMatch(matchId: string, now: Date): Promise<SubstituteResul
       const kids = await tx.select().from(paymentCharges).where(eq(paymentCharges.slotOf, slot.id));
       if (kids.some((k) => k.status === "succeeded")) continue; // Platz besetzt
       if (kids.some((k) => k.status === "pending")) continue; // ein Nachruecker ist unterwegs: weder Versuch verbrauchen noch einen zweiten starten
-      if (kids.filter((k) => k.status === "failed" || k.status === "requires_action").length >= MAX_SUBSTITUTE_FAILURES) {
+      if (kids.filter((k) => (k.status === "failed" || k.status === "requires_action") && k.failureCode !== "match_closed").length >= MAX_SUBSTITUTE_FAILURES) {
         out.exhausted.push(slot.id);
         continue;
       }
@@ -123,7 +158,8 @@ export async function runSubstitutes(opts: { matchId?: string; now?: Date } = {}
     try {
       const exhausted = new Set<string>();
       for (let pass = 0; pass <= MAX_SUBSTITUTE_FAILURES; pass++) {
-        const r = await processMatch(matchId, now);
+        const allowed = await prepareReleases(matchId, now);
+        const r = await processMatch(matchId, now, allowed);
         total.released += r.released;
         total.filled += r.filled;
         r.exhausted.forEach((e) => exhausted.add(e));
@@ -132,6 +168,9 @@ export async function runSubstitutes(opts: { matchId?: string; now?: Date } = {}
         // ist der neue Nachruecker sofort gescheitert, kommt im naechsten Durchgang der Naechste; sonst ist der Platz besetzt oder offen (pending)
       }
       for (const e of exhausted) if (!total.exhausted.includes(e)) total.exhausted.push(e);
+      // AC-9: kein Nachruecker fuer einen Platz (Warteliste leer oder 3 Fehlschlaege) => das Spiel wird AUTOMATISCH abgesagt: System-Absage ohne Akteur und ohne Rollenpruefung,
+      // alle bereits Abgebuchten werden ueber den Ablauf aus M3a voll auf die Karte erstattet. Der Text nennt weder Namen noch den Fehlschlag einer einzelnen Abbuchung (AC-20).
+      if (exhausted.size > 0) await requestMatchCancel(null, matchId, CANCEL_REASON, now);
     } catch (error) {
       console.error("runSubstitutes: Fehler bei Spiel", matchId, error instanceof Error ? error.name : "Fehler");
     }

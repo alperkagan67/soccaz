@@ -333,7 +333,7 @@ export const paymentCharges = pgTable(
     // Solche Zeilen zaehlen weder fuer die Abrechnung noch fuer die Erstattung der Absage.
     resolution: text("resolution").$type<"replaced">(),
     // Nachruecker-Zeile: zeigt auf die Ursprungszeile des ersetzten Spielers (der "Platz"). Je Platz hoechstens EINE aktive und hoechstens 3 gescheiterte Nachruecker-Zeilen.
-    slotOf: uuid("slot_of").references((): AnyPgColumn => paymentCharges.id, { onDelete: "cascade" }),
+    slotOf: uuid("slot_of").references((): AnyPgColumn => paymentCharges.id), // NO ACTION: Zahlungsnachweise bleiben erhalten; ein Loeschen des Spiels (cascade ueber match_id) entfernt Nachruecker- und Ursprungszeilen in EINER Anweisung
     // Auf der Ursprungszeile: das Team des entfernten Spielers (dorthin kommt der Nachruecker), weil seine Teilnahmezeile geloescht wird
     slotTeamId: uuid("slot_team_id").references(() => teams.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -398,7 +398,8 @@ export const paymentRefunds = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("payment_refunds_charge_idx").on(t.chargeId),
+    // eine Erstattung je Abbuchung UND PaymentIntent: der PaymentIntent der Zeile (payment_intent_id NULL) oder ein weiterer erfolgreicher (spaeter Erfolg / Doppelabbuchung, M3c-2b)
+    uniqueIndex("payment_refunds_charge_idx").on(t.chargeId, sql`coalesce(${t.paymentIntentId}, '')`),
     check("payment_refunds_amount_positive", sql`${t.amountCents} > 0`),
     check("payment_refunds_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed')`),
   ],

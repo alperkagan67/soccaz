@@ -153,6 +153,11 @@ async function claimNext(matchId: string, now: Date): Promise<Claimed | null> {
 async function failRow(tx: Tx, rowId: string, matchId: string, userId: string, code: string) {
   // Ein Problem des Spielers (keine Karte, Schluessel geaendert) beginnt wie ein abgelehnter Versuch das Nachzahlfenster und benachrichtigt; "match_closed" ist kein Problem des Spielers
   const [kid] = await tx.select({ slotOf: paymentCharges.slotOf, resolution: paymentCharges.resolution }).from(paymentCharges).where(eq(paymentCharges.id, rowId));
+  if (kid?.slotOf && code === "match_closed") {
+    // Absage oder Schalter AUS ist KEIN Fehlversuch des Nachrueckers: Zeile schliessen, nicht ersetzen, keine Nachricht
+    await tx.update(paymentCharges).set({ status: "failed", failureCode: code, updatedAt: new Date() }).where(and(eq(paymentCharges.id, rowId), eq(paymentCharges.status, "pending")));
+    return;
+  }
   if (kid?.slotOf) {
     // Nachruecker (kein Fenster, keine Nachricht an Dritte): sofort draussen, der Naechste ist dran
     await tx.update(paymentCharges).set({ status: "failed", failureCode: code, updatedAt: new Date() }).where(and(eq(paymentCharges.id, rowId), eq(paymentCharges.status, "pending")));

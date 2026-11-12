@@ -184,10 +184,19 @@ const eligibleFrom = () =>
 export async function inspectKnownAttempts(c: Candidate, now: Date): Promise<"booked" | "skip" | "go"> {
   const [cur] = await eligibleFrom().where(and(...eligibleFilters(now), eq(paymentCharges.id, c.id), eq(paymentCharges.currentAttempt, c.attempt)));
   if (!cur) return "skip";
+  return reconcileKnownIntents(c, cur.currentPi);
+}
+
+/**
+ * Prueft ALLE bekannten PaymentIntents einer Abbuchung (laufender + Historie) per retrieve: succeeded => verbuchen ("booked"); processing => "skip"; offene werden abgebrochen
+ * (nie zwei offene Versuche, und ein ersetzter Platz laesst keinen bestaetigbaren PaymentIntent zurueck); Netzfehler => "skip". Sonst "go". Wird vom Wiederabbuchen UND vom
+ * Freigeben eines Platzes (substitute.ts) benutzt. Netz, nie in einer Transaktion.
+ */
+export async function reconcileKnownIntents(c: Candidate, currentPi: string | null): Promise<"booked" | "skip" | "go"> {
   const provider = await getPaymentProvider();
   try {
     const hist = await db.select({ pi: paymentChargeAttempts.paymentIntentId }).from(paymentChargeAttempts).where(eq(paymentChargeAttempts.chargeId, c.id));
-    const known = [...new Set([cur.currentPi, ...hist.map((h) => h.pi)].filter((x): x is string => typeof x === "string"))];
+    const known = [...new Set([currentPi, ...hist.map((h) => h.pi)].filter((x): x is string => typeof x === "string"))];
     for (const id of known) {
       const f = await provider.retrievePaymentIntent(id);
       if (f === null) continue; // bei Stripe nicht vorhanden

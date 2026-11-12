@@ -1,5 +1,5 @@
 {
-  "id": "16021b4c-c6af-42ac-911c-35b9a6d92fbc",
+  "id": "d90dc3da-8fbd-4e7f-9ec4-57f836897cf2",
   "prevId": "15d934d2-4155-4442-ae37-a11970129926",
   "version": "7",
   "dialect": "postgresql",
@@ -1517,7 +1517,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         },
         "payment_charges_slot_team_id_teams_id_fk": {
@@ -1768,6 +1768,12 @@
               "expression": "charge_id",
               "isExpression": false,
               "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "coalesce(\"payment_intent_id\", '')",
+              "asc": true,
+              "isExpression": true,
               "nulls": "last"
             }
           ],
