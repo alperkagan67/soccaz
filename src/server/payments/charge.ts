@@ -124,7 +124,7 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     if (booked) return { status: "already" };
     await post(tx, {
       debit: { account: "clearing" },
-      credit: { account: await shareAccountFor(tx, row.matchId) },
+      credit: { account: await shareAccountFor(tx, matchIdOf(row)) },
       amountCents: row.amountCents,
       kind: "match_share",
       matchId: row.matchId,
@@ -161,7 +161,7 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
   if (r.outcome === "succeeded") {
     await post(tx, {
       debit: { account: "clearing" },
-      credit: { account: await shareAccountFor(tx, row.matchId) }, // Altspiel revenue, neues Modell venue_payable (Verbindlichkeit Halle), Vertrag 009 M2
+      credit: { account: await shareAccountFor(tx, matchIdOf(row)) }, // Altspiel revenue, neues Modell venue_payable (Verbindlichkeit Halle), Vertrag 009 M2
       amountCents: row.amountCents,
       kind: "match_share",
       matchId: row.matchId,

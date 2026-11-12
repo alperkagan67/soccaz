@@ -91,7 +91,7 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   if (r.outcome === "succeeded") {
     if (!r.refundId) return ignore("missing_refund_id");
     await post(tx, {
-      debit: { account: await chargeAccountFor(tx, row.matchId, row.paymentIntentId ?? charge.paymentIntentId) }, // dorthin zurück, wo die Abbuchung gelandet ist (revenue oder venue_payable)
+      debit: { account: await chargeAccountFor(tx, matchIdOf(row), row.paymentIntentId ?? charge.paymentIntentId) }, // dorthin zurück, wo die Abbuchung gelandet ist (revenue oder venue_payable)
       credit: { account: "clearing" },
       amountCents: row.amountCents,
       kind: "refund",
