@@ -132,7 +132,8 @@ export async function toggleVenueAction(venueId: string, active: boolean, _prev:
 }
 
 export async function setVenueManagerAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
-  return guarded("booking", "/admin/hallen", async (actor) => {
+  // Hallenbetreiber zuordnen/entziehen: nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht die Zuordnung nur
+  return guarded("owner", "/admin/hallen", async (actor) => {
     await setVenueManager(actor, venueId, String(fd.get("email") ?? ""));
   });
 }
