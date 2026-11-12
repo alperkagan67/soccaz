@@ -14,6 +14,11 @@ export type StateMessageProps = {
   reason: string;
   /** Pflicht: ohne nächsten Schritt gibt es keinen Zustand (Vertrag 013 AC-7). */
   action: StateAction;
+  /**
+   * Die Handlung ist die eine Hauptaktion der Seite (Orange). Standard: nein, weil `PageHeader` schon eine hat
+   * und `primary` höchstens einmal je Seite vorkommt. Nur setzen, wenn die Meldung die Seite allein trägt.
+   */
+  primary?: boolean;
 };
 
 // Symbol und Rahmenfarbe je Art; das Wort steht im Titel, die Farbe kommt nur dazu
@@ -28,10 +33,10 @@ const KIND: Record<StateKind, { icon: string; tone: string }> = {
  * Leer-, Fehler-, Beendet- und Gesperrt-Zustand: Titel, ein Satz Grund und genau eine nächste Handlung.
  * `error` ist ein `role="alert"`, die anderen Arten ein `role="status"`.
  */
-export function StateMessage({ kind, title, reason, action }: StateMessageProps) {
+export function StateMessage({ kind, title, reason, action, primary = false }: StateMessageProps) {
   const k = KIND[kind];
   return (
-    <section role={kind === "error" ? "alert" : "status"} data-kind={kind} className={`card space-y-3 border-2 ${k.tone}`}>
+    <section role={kind === "error" ? "alert" : "status"} data-kind={kind} className={`space-y-3 rounded-[var(--radius)] border-2 bg-panel p-4 ${k.tone}`}>
       <div className="flex items-start gap-3">
         <span aria-hidden="true" className="mt-0.5 inline-flex w-5 justify-center text-lg font-bold">
           {k.icon}
@@ -42,9 +47,9 @@ export function StateMessage({ kind, title, reason, action }: StateMessageProps)
         </div>
       </div>
       {"href" in action ? (
-        <LinkButton variant="primary" href={action.href}>{action.label}</LinkButton>
+        <LinkButton variant={primary ? "primary" : "secondary"} href={action.href}>{action.label}</LinkButton>
       ) : (
-        <Button variant="primary" onClick={action.onClick}>{action.label}</Button>
+        <Button variant={primary ? "primary" : "secondary"} onClick={action.onClick}>{action.label}</Button>
       )}
     </section>
   );

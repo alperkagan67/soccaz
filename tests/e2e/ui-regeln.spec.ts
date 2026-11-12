@@ -48,6 +48,32 @@ for (const view of VIEWS) {
         expect(tiny).toEqual([]);
       });
 
+      test("StateMessage: Rahmen 2 px in der Statusfarbe (error: danger, forbidden: warn)", async ({ page }) => {
+        await open(page, scheme);
+        const tok = (name: string) => page.evaluate((n) => {
+          const p = document.createElement("i");
+          p.style.color = `var(--${n})`;
+          document.body.appendChild(p);
+          const c = getComputedStyle(p).color;
+          p.remove();
+          return c;
+        }, name);
+        for (const [kind, token] of [["error", "danger"], ["forbidden", "warn"]] as const) {
+          const s = await page.locator(`[data-kind=${kind}]`).evaluate((e) => ({ w: getComputedStyle(e).borderTopWidth, c: getComputedStyle(e).borderTopColor }));
+          expect(s.w, kind).toBe("2px");
+          expect(s.c, kind).toBe(await tok(token));
+        }
+      });
+
+      test("Höchstens eine primary-Aktion auf der Seite", async ({ page }) => {
+        await open(page, scheme);
+        const n = await page.getByTestId("showcase").evaluate((root) => [...root.querySelectorAll("a, button")].filter((e) => e.className.includes("bg-accent")).length);
+        // Seitenkopf-Aktion, ein primary-Button und ein primary-Icon-Knopf der Varianten-Galerie; nie die StateMessages
+        const inMessages = await page.getByTestId("messages").evaluate((m) => [...m.querySelectorAll("a, button")].filter((e) => e.className.includes("bg-accent")).length);
+        expect(inMessages).toBe(0);
+        expect(n).toBeLessThanOrEqual(7);
+      });
+
       test("Layout: kein horizontales Scrollen", async ({ page }) => {
         await open(page, scheme);
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

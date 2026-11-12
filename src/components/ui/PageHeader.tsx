@@ -26,7 +26,7 @@ function ActionButton({ action }: { action: PageAction }) {
 /**
  * Seitenkopf: Titel (h1), Stand-Block, genau eine Hauptaktion.
  * Handy (unter 640 px): die Aktion steht als feste Leiste unten, über der BottomNav und der Safe-Area; ein Platzhalter
- * hält den Inhalt frei. Ab 640 px steht sie rechts im Kopf. Die Aktion wird nur einmal gerendert.
+ * wird vom `PageShell` unten freigehalten (er erkennt `data-page-action`). Ab 640 px steht sie rechts im Kopf. Die Aktion wird nur einmal gerendert.
  */
 export function PageHeader({ title, stand, action, meta }: PageHeaderProps) {
   return (
@@ -40,11 +40,11 @@ export function PageHeader({ title, stand, action, meta }: PageHeaderProps) {
           <>
             <div
               data-testid="page-action"
+              data-page-action=""
               className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-20 border-t border-line bg-bg px-4 py-3 sm:static sm:z-auto sm:shrink-0 sm:border-0 sm:bg-transparent sm:p-0 [&>*]:w-full sm:[&>*]:w-auto"
             >
               <ActionButton action={action} />
             </div>
-            <div aria-hidden="true" className="h-16 sm:hidden" />
           </>
         ) : null}
       </div>

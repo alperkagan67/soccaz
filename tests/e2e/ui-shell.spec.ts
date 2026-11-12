@@ -76,6 +76,21 @@ test.describe("Handy 390 px", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 
+  test("Seitenende bleibt frei: der letzte Inhalt liegt nach dem Scrollen über der Aktionsleiste", async ({ page }) => {
+    await open(page);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const bar = (await page.getByTestId("page-action").boundingBox())!;
+    const last = (await page.getByTestId("counter-value").boundingBox())!;
+    expect(last.y + last.height).toBeLessThanOrEqual(bar.y + 0.5);
+  });
+
+  test("Oben entsteht keine Lücke mehr: der Stand-Block folgt direkt auf den Titel", async ({ page }) => {
+    await open(page);
+    const h1 = (await page.locator("h1").boundingBox())!;
+    const stand = (await page.getByTestId("page-stand").boundingBox())!;
+    expect(stand.y - (h1.y + h1.height)).toBeLessThan(60);
+  });
+
   test("Seitenleiste steht unter dem Inhalt", async ({ page }) => {
     await open(page);
     const aside = (await page.getByTestId("showcase-aside").boundingBox())!;

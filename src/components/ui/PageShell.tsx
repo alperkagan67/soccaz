@@ -15,7 +15,7 @@ const WIDTH: Record<PageWidth, string> = {
  */
 export function PageShell({ width = "std", aside, children }: { width?: PageWidth; aside?: ReactNode; children: ReactNode }) {
   return (
-    <div className={`mx-auto w-full min-w-0 ${WIDTH[width]} ${aside ? "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6" : ""}`}>
+    <div className={`mx-auto w-full min-w-0 ${WIDTH[width]} max-sm:has-[[data-page-action]]:pb-24 ${aside ? "lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6" : ""}`}>
       <div className="min-w-0 space-y-4">{children}</div>
       {aside ? <aside className="mt-4 min-w-0 space-y-4 lg:mt-0">{aside}</aside> : null}
     </div>

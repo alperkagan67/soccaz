@@ -48,7 +48,8 @@ describe("PageTitle / PageHeader (M2-2b)", () => {
     expect(m).toContain("fixed");
     expect(m).toContain("safe-area-inset-bottom");
     expect(m).toContain("sm:static");
-    expect(m).toMatch(/aria-hidden="true" class="h-16 sm:hidden"/);
+    expect(m).toContain("data-page-action");
+    expect(m).not.toContain("h-16"); // kein Platzhalter-Block mehr oben: der Platz unten kommt vom PageShell
   });
 
   it("Aktion als Formular-Absenden oder Handler", () => {
@@ -75,6 +76,10 @@ describe("PageShell (M2-2b)", () => {
     expect(html(el(PageShell, { width: "full" }, "x"))).toContain("max-w-[var(--w-full)]");
     expect(html(el(PageShell, null, "x"))).toContain("max-w-[var(--w-std)]"); // Standard
     expect(html(el(PageShell, null, "x"))).not.toContain("<main");
+  });
+
+  it("hält unten Platz frei, wenn eine Aktionsleiste im Inhalt steht (nur Handy)", () => {
+    expect(html(el(PageShell, null, "x"))).toContain("max-sm:has-[[data-page-action]]:pb-24");
   });
 
   it("Seitenleiste: nur mit aside, ab lg zweispaltig", () => {

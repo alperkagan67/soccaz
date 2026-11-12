@@ -33,6 +33,22 @@ describe("StateMessage (M2-2c)", () => {
     }
   });
 
+  it("Rahmen und Fläche stehen direkt am Element, nicht über .card (das schlüge border-2 und die Statusfarbe)", () => {
+    for (const kind of ["empty", "error", "ended", "forbidden"] as const) {
+      const m = html(el(StateMessage, { kind, ...base }));
+      expect(m, kind).not.toMatch(/class="[^"]*\bcard\b/);
+      expect(m).toContain("border-2");
+    }
+    expect(html(el(StateMessage, { kind: "error", ...base }))).toContain("border-danger");
+    expect(html(el(StateMessage, { kind: "forbidden", ...base }))).toContain("border-warn");
+  });
+
+  it("Handlung ist standardmäßig secondary; primary nur auf Wunsch (höchstens einmal je Seite)", () => {
+    expect(html(el(StateMessage, { kind: "empty", ...base }))).not.toContain("bg-accent");
+    expect(html(el(StateMessage, { kind: "error", ...base, action: { label: "Neu laden", onClick: () => {} } }))).not.toContain("bg-accent");
+    expect(html(el(StateMessage, { kind: "empty", ...base, primary: true }))).toContain("bg-accent text-accent-ink");
+  });
+
   it("Symbol und Wort, nicht nur Farbe", () => {
     const m = html(el(StateMessage, { kind: "error", ...base }));
     expect(m).toContain('aria-hidden="true"');
