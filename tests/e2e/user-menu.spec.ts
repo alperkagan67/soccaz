@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { closeContexts, newUser } from "./helpers";
+import { closeContexts, newUser, run } from "./helpers";
+import { query } from "./helpers-db";
 
 // M2-4a: Konto-Menü (natives Popover) in der Kopfleiste: Tastatur, Fokus, Schließen, Größen. Test-IDs und Rollen wie in basics.spec.ts (Konto-Menü).
 
@@ -19,7 +20,8 @@ async function loggedIn(page: Page, key: string, scheme: "dark" | "light" = "dar
 const button = (page: Page) => page.getByTestId("user-menu-button");
 const menu = (page: Page) => page.getByTestId("user-menu");
 const activeName = (page: Page) => page.evaluate(() => (document.activeElement as HTMLElement | null)?.textContent?.trim() ?? "");
-const ITEMS = ["Mein Profil", "Mein Bereich", "Guthaben", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"];
+// Reihenfolge im Menü: Konto-Gruppe (Benachrichtigungen zuerst), Trenner, Hilfe (und Admin), Trenner, Abmelden
+const ITEMS = ["Benachrichtigungen", "Mein Profil", "Mein Bereich", "Guthaben", "Konto und Einstellungen", "Hilfe", "Abmelden"];
 
 test.describe("Konto-Menü: Tastatur und Fokus", () => {
   test("Enter öffnet, Fokus liegt auf dem ersten Eintrag, aria-expanded und Popover im Top-Layer", async ({ page }) => {
@@ -31,7 +33,7 @@ test.describe("Konto-Menü: Tastatur und Fokus", () => {
     await page.keyboard.press("Enter");
     await expect(menu(page)).toBeVisible();
     await expect(button(page)).toHaveAttribute("aria-expanded", "true");
-    expect(await activeName(page)).toContain("Mein Profil");
+    expect(await activeName(page)).toContain("Benachrichtigungen");
     // natives Popover: im Top-Layer, nicht nur ein positioniertes div
     const popoverOpen = await page.evaluate(() => document.querySelector("[popover]:popover-open") !== null);
     expect(popoverOpen).toBe(true);
@@ -51,19 +53,19 @@ test.describe("Konto-Menü: Tastatur und Fokus", () => {
     await page.keyboard.press("Enter");
     await expect(menu(page).getByRole("menuitem").first()).toBeFocused(); // erst wenn das Menü gerendert und fokussiert ist
     await page.keyboard.press("ArrowDown");
-    expect(await activeName(page)).toContain("Mein Bereich");
+    expect(await activeName(page)).toContain("Mein Profil");
     await page.keyboard.press("ArrowDown");
-    expect(await activeName(page)).toContain("Guthaben");
-    await page.keyboard.press("ArrowUp");
     expect(await activeName(page)).toContain("Mein Bereich");
+    await page.keyboard.press("ArrowUp");
+    expect(await activeName(page)).toContain("Mein Profil");
     await page.keyboard.press("End");
     expect(await activeName(page)).toContain("Abmelden");
     await page.keyboard.press("ArrowDown"); // vom letzten zum ersten
-    expect(await activeName(page)).toContain("Mein Profil");
+    expect(await activeName(page)).toContain("Benachrichtigungen");
     await page.keyboard.press("ArrowUp"); // vom ersten zum letzten
     expect(await activeName(page)).toContain("Abmelden");
     await page.keyboard.press("Home");
-    expect(await activeName(page)).toContain("Mein Profil");
+    expect(await activeName(page)).toContain("Benachrichtigungen");
   });
 
   test("Escape schließt, der Fokus kehrt zum Knopf zurück", async ({ page }) => {
@@ -89,15 +91,32 @@ test.describe("Konto-Menü: Tastatur und Fokus", () => {
     await expect(menu(page)).toHaveCount(0);
   });
 
-  test("Tab schließt das Menü, der Fokus bleibt auf der Seite und nicht im Menü", async ({ page }) => {
+  test("Tab schließt das Menü und der Fokus geht zum NÄCHSTEN Element nach dem Knopf, Umschalt+Tab zum Element davor", async ({ page }) => {
     await loggedIn(page, "um6");
+    // erwartete Nachbarn: die tabbaren Elemente der Seite in DOM-Reihenfolge, vom Knopf aus gesehen
+    const sel = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+    const neighbours = await page.evaluate((s) => {
+      const list = [...document.querySelectorAll<HTMLElement>(s)].filter((e) => e.getClientRects().length > 0 && !e.closest("[popover]"));
+      const i = list.findIndex((e) => e.getAttribute("data-testid") === "user-menu-button");
+      const name = (e: HTMLElement | undefined) => (e ? (e.getAttribute("aria-label") ?? e.getAttribute("href") ?? e.textContent ?? "").trim() : "");
+      return { prev: name(list[i - 1]), next: name(list[i + 1]) };
+    }, sel);
+    expect(neighbours.next).not.toBe("");
+    const now = () => page.evaluate(() => { const e = document.activeElement as HTMLElement; return (e.getAttribute("aria-label") ?? e.getAttribute("href") ?? e.textContent ?? "").trim(); });
+
     await button(page).focus();
     await page.keyboard.press("Enter");
     await expect(menu(page)).toBeVisible();
     await page.keyboard.press("Tab");
     await expect(menu(page)).toHaveCount(0);
-    const inMenu = await page.evaluate(() => !!document.activeElement?.closest("[popover]"));
-    expect(inMenu).toBe(false);
+    expect(await now()).toBe(neighbours.next);
+
+    await button(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(menu(page)).toBeVisible();
+    await page.keyboard.press("Shift+Tab");
+    await expect(menu(page)).toHaveCount(0);
+    expect(await now()).toBe(neighbours.prev);
   });
 
   test("Auswahl eines Eintrags navigiert und schließt das Menü", async ({ page }) => {
@@ -170,5 +189,127 @@ test.describe("Konto-Menü: Größen und Lage", () => {
     const m = (await menu(page).boundingBox())!;
     // das Popover (mit Innenabstand) endet rechts auf Höhe des Knopfs
     expect(Math.abs(m.x + m.width + 8 - (b.x + b.width))).toBeLessThanOrEqual(10);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Critique A/B (M2-4a): Hydration, niedrige Fenster, Struktur (ARIA), Zähler, Auslöser, Gruppen, Rand.
+// ---------------------------------------------------------------------------------------------------------------------
+const hydrated = (page: Page) => page.waitForFunction(() => Object.keys(document.querySelector("[data-testid=user-menu-button]") ?? {}).some((k) => k.startsWith("__reactProps")));
+
+test.describe("Konto-Menü: Critique-Punkte", () => {
+  test("B-01 vor der Hydration (Skripte blockiert) öffnet der native Knopf ein Popover MIT Einträgen, nicht ein leeres", async ({ page }) => {
+    await newUser(page, "um11");
+    await page.route("**/_next/static/**/*.js", (r) => r.abort()); // die Seite bleibt beim Server-HTML stehen
+    await page.goto("/suche");
+    await button(page).click(); // nativer popovertarget-Knopf, React ist nicht aktiv
+    await expect(page.getByRole("menuitem", { name: "Abmelden" })).toBeVisible();
+    await expect(page.getByRole("menuitem")).toHaveCount(ITEMS.length);
+  });
+
+  test("B-01 nach der Hydration ist das Menü wieder nur im offenen Zustand im DOM und aria-expanded stimmt", async ({ page }) => {
+    await loggedIn(page, "um12");
+    await expect(menu(page)).toHaveCount(0);
+    await expect(button(page)).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("B-02 niedriges Fenster (844 x 390, Querformat): das Menü scrollt innen, Abmelden ist erreichbar und klickbar", async ({ page }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+    await loggedIn(page, "um13");
+    await button(page).click();
+    const pop = page.locator("[popover]:popover-open");
+    const box = (await pop.boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(390); // nichts ragt aus dem Bild
+    expect(await pop.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true); // und scrollt innen
+    await expect(menu(page).getByRole("menuitem").first()).toBeFocused();
+    await page.keyboard.press("End");
+    const out = menu(page).getByRole("menuitem", { name: "Abmelden" });
+    await expect(out).toBeFocused();
+    await expect(out).toBeInViewport();
+    await out.click();
+    await expect(page.getByRole("link", { name: "Anmelden" }).first()).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("B-05 gültige Menü-Struktur: Name als Titel außerhalb, im Menü nur Einträge und Trenner, Menü trägt den Namen", async ({ page }) => {
+    await loggedIn(page, "um14");
+    await button(page).click();
+    await expect(menu(page)).toBeVisible();
+    const bad = await page.evaluate(() => {
+      const menuEl = document.querySelector("[role=menu]")!;
+      const out: string[] = [];
+      for (const c of menuEl.children) {
+        const role = c.getAttribute("role");
+        if (!["menuitem", "separator", "none"].includes(role ?? "")) out.push(`Kind ${c.tagName} mit Rolle ${role}`);
+      }
+      return out;
+    });
+    expect(bad).toEqual([]);
+    const name = (await menu(page).getByTestId("user-menu-name").textContent())!.trim();
+    await expect(page.getByRole("menu", { name })).toBeVisible();
+    expect(await page.locator("[role=menu] [data-testid=user-menu-name]").count()).toBe(0); // Titel nicht im Menü
+    expect(await page.locator("[role=menu] > [role=separator]").count()).toBe(2);
+    await expect(menu(page)).toMatchAriaSnapshot(`- menuitem "Benachrichtigungen"`);
+  });
+
+  test("B-06 Ungelesen-Zähler: Schrift ≥ 14 px, Zahl nur zur Zierde, vorgelesen als N ungelesen", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await newUser(page, "um15");
+    const email = `um15-${run}@test.local`;
+    for (const title of ["Test", "Test 2"]) await query("insert into notifications (user_id, type, title, body) select id, 'system', $2, 'Test' from users where email = $1", [email, title]);
+    await page.goto("/suche");
+    await page.waitForLoadState("networkidle");
+    await hydrated(page);
+    await button(page).click();
+    const item = menu(page).getByRole("menuitem", { name: /Benachrichtigungen/ });
+    await expect(item).toContainText("2");
+    await expect(item).toHaveAccessibleName(/Benachrichtigungen\s+2 ungelesen/);
+    const badge = item.locator("[aria-hidden=true]");
+    expect(await badge.evaluate((e) => parseFloat(getComputedStyle(e).fontSize))).toBeGreaterThanOrEqual(14);
+  });
+
+  test("Auslöser: Chevron, sichtbarer Offen-Zustand (Hintergrund ändert sich), Name mit Konto-Label", async ({ page }) => {
+    await loggedIn(page, "um16");
+    await expect(button(page)).toHaveAttribute("aria-label", /^Konto: /);
+    expect(await button(page).locator("svg").count()).toBe(1);
+    await page.mouse.move(5, 400); // kein Hover auf dem Knopf: der Offen-Zustand muss allein aus aria-expanded kommen
+    const closed = await button(page).evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, rot: getComputedStyle(e.querySelector("svg")!).rotate }));
+    await button(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(menu(page)).toBeVisible();
+    await expect.poll(() => button(page).evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe(closed.bg);
+    await expect.poll(() => button(page).evaluate((e) => getComputedStyle(e.querySelector("svg")!).rotate)).not.toBe(closed.rot);
+  });
+
+  for (const scheme of ["dark", "light"] as const) {
+    test(`Rand und Schatten des Menüs: Rand in --rim, Schatten vorhanden (${scheme})`, async ({ page }) => {
+      await loggedIn(page, `um17${scheme[0]}`, scheme);
+      await button(page).click();
+      const pop = page.locator("[popover]:popover-open");
+      const rim = await page.evaluate(() => {
+        const p = document.createElement("i");
+        p.style.color = "var(--rim)";
+        document.body.appendChild(p);
+        const c = getComputedStyle(p).color;
+        p.remove();
+        return c;
+      });
+      const s = await pop.evaluate((e) => ({ color: getComputedStyle(e).borderTopColor, shadow: getComputedStyle(e).boxShadow }));
+      expect(s.color).toBe(rim);
+      expect(s.shadow).not.toBe("none");
+    });
+  }
+
+  test("Admin: Eintrag Admin in der zweiten Gruppe (nach Hilfe, vor Abmelden)", async ({ page }) => {
+    await loggedIn(page, "um18");
+    await query("update users set role = 'admin' where email = $1", [`um18-${run}@test.local`]);
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await hydrated(page);
+    await button(page).click();
+    await expect(menu(page)).toBeVisible();
+    const names = (await menu(page).getByRole("menuitem").allTextContents()).map((n) => n.replace(/\s+/g, " ").trim());
+    expect(names.at(-1)).toBe("Abmelden");
+    expect(names.at(-2)).toBe("Admin");
+    expect(names.at(-3)).toBe("Hilfe");
   });
 });

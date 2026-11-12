@@ -60,7 +60,7 @@ export async function Header() {
                 balanceText={formatEuro(balance)}
                 unread={unread}
                 showAdmin={can(user.role, "dashboard")}
-                labels={{ profile: t("menu.profile"), area: t("menu.area"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help") }}
+                labels={{ profile: t("menu.profile"), area: t("menu.area"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help"), account: t("menu.account"), unread: t("menu.unread") }}
                 signOutAction={async () => {
                   "use server";
                   await signOut({ redirectTo: "/" });

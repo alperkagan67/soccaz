@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { UserMenu, UserMenuContent, type UserMenuProps } from "@/components/UserMenu";
 
 // M2-4a: Struktur des Konto-Menüs als statisches Markup (vitest läuft ohne DOM; Tastatur, Fokus und Schließen: tests/e2e/user-menu.spec.ts).
-const labels = { profile: "Mein Profil", area: "Mein Bereich", wallet: "Guthaben", settings: "Konto und Einstellungen", notifications: "Benachrichtigungen", admin: "Admin", signOut: "Abmelden", help: "Hilfe" };
+const labels = { profile: "Mein Profil", area: "Mein Bereich", wallet: "Guthaben", settings: "Konto und Einstellungen", notifications: "Benachrichtigungen", admin: "Admin", signOut: "Abmelden", help: "Hilfe", account: "Konto", unread: "ungelesen" };
 const base: UserMenuProps = { name: "Alex Beispiel", userId: "u-1", avatarUrl: null, balanceText: "12,00 €", unread: 0, showAdmin: false, labels, signOutAction: async () => {} };
 const menu = (p: Partial<UserMenuProps> = {}) => renderToStaticMarkup(createElement(UserMenu, { ...base, ...p }));
 const content = (p: Partial<UserMenuProps> = {}) => renderToStaticMarkup(createElement(UserMenuContent, { ...base, ...p }));
@@ -21,17 +21,32 @@ describe("UserMenu (M2-4a)", () => {
     expect(m).toContain('data-testid="user-menu-button"');
   });
 
-  it("geschlossen: kein Menü im DOM (keine versteckten Einträge, keine toten Tab-Stopps)", () => {
+  it("vor der Hydration (und ohne Skript) steht der Inhalt im Popover: der native Knopf öffnet nichts Leeres (B-01)", () => {
     const m = menu();
-    expect(m).not.toContain('role="menu"');
-    expect(m).not.toContain("menuitem");
-    expect(m).not.toContain('data-testid="user-menu"');
+    expect(m).toContain('role="menu"');
+    expect((m.match(/role="menuitem"/g) ?? []).length).toBe(7);
   });
 
-  it("Knopf mindestens 44 px hoch (Tippziel), kein altes btn-ghost mit 36 px", () => {
+  it("ohne Popover-Unterstützung bleibt das Popover verborgen (B-04)", () => {
+    expect(menu()).toContain("not-supports-[selector(:popover-open)]:hidden");
+  });
+
+  it("niedrige Fenster: Popover scrollt innen (B-02); Rand in --rim und kräftiger Schatten (Punkt 10)", () => {
+    const m = menu();
+    expect(m).toContain("overflow-y-auto");
+    expect(m).not.toContain("overflow-visible");
+    expect(m).toContain("border-rim");
+    expect(m).toContain("shadow-2xl");
+  });
+
+  it("Knopf mindestens 44 px hoch (Tippziel), kein altes btn-ghost mit 36 px; Name mit Konto-Label und Chevron", () => {
     const m = menu();
     expect(m).toContain("min-h-[var(--tap)]");
     expect(m).not.toContain("!min-h-9");
+    expect(m).toContain('aria-label="Konto: Alex"');
+    expect(m).toMatch(/<svg[^>]*aria-hidden/);
+    expect(m).toContain("group-aria-expanded:rotate-180");
+    expect(m).toContain("aria-expanded:bg-panel2");
   });
 
   it("Anzeige: Initiale ohne Bild, Bild mit leerem alt wenn vorhanden; Vorname gekürzt", () => {
@@ -43,25 +58,36 @@ describe("UserMenu (M2-4a)", () => {
 });
 
 describe("UserMenuContent (M2-4a)", () => {
-  it("Rolle menu mit Namen, Test-IDs unverändert, jeder Eintrag ist ein menuitem mit mindestens 44 px", () => {
+  it("Test-IDs unverändert, Name steht als Titel AUSSERHALB von role=menu, das Menü trägt den Namen (B-05)", () => {
     const c = content();
-    expect(c).toContain('role="menu"');
-    expect(c).toContain('aria-label="Alex Beispiel"');
     expect(c).toContain('data-testid="user-menu"');
-    expect(c).toContain('data-testid="user-menu-name"');
-    const items = c.match(/role="menuitem"/g) ?? [];
-    expect(items).toHaveLength(7); // Profil, Bereich, Guthaben, Benachrichtigungen, Einstellungen, Hilfe, Abmelden
+    const title = /<p id="([^"]+)"[^>]*data-testid="user-menu-name"/.exec(c);
+    expect(title).toBeTruthy();
+    expect(c).toContain(`<div role="menu" aria-labelledby="${title![1]}"`);
+    expect(c.indexOf('data-testid="user-menu-name"')).toBeLessThan(c.indexOf('role="menu"'));
+  });
+
+  it("im Menü nur Einträge und Trenner: kein <p>, Formular als none, zwei Trenner (Gruppen)", () => {
+    const c = content();
+    const inner = c.slice(c.indexOf('role="menu"'));
+    expect(inner).not.toContain("<p ");
+    expect(inner).toContain('<form role="none"');
+    expect((inner.match(/role="separator"/g) ?? []).length).toBe(2);
+    expect((inner.match(/role="menuitem"/g) ?? []).length).toBe(7);
     expect((c.match(/min-h-\[var\(--tap\)\]/g) ?? []).length).toBe(7);
+  });
+
+  it("Reihenfolge: Benachrichtigungen zuerst, dann Konto, Trenner, Hilfe, Admin, Trenner, Abmelden (Punkt 9)", () => {
+    const c = content({ showAdmin: true });
+    const marks = ["/app/benachrichtigungen", "/spieler/u-1", 'href="/app"', "/app/guthaben", "/app/einstellungen", 'role="separator"', "/hilfe", 'href="/admin"', "Abmelden"];
+    const at = marks.map((s) => c.indexOf(s));
+    for (let i = 1; i < at.length; i++) expect(at[i], `Schritt ${i}: ${marks[i]}`).toBeGreaterThan(at[i - 1]);
+    expect(c.lastIndexOf('role="separator"')).toBeGreaterThan(c.indexOf('href="/admin"')); // zweiter Trenner vor Abmelden
   });
 
   it("Ziele und Beschriftungen (Beschriftungen kommen von der Seite)", () => {
     const c = content({ labels: { ...labels, profile: "Profil X" } });
-    expect(c).toContain('href="/spieler/u-1"');
-    expect(c).toContain('href="/app"');
-    expect(c).toContain('href="/app/guthaben"');
-    expect(c).toContain('href="/app/benachrichtigungen"');
-    expect(c).toContain('href="/app/einstellungen"');
-    expect(c).toContain('href="/hilfe"');
+    for (const href of ["/spieler/u-1", "/app", "/app/guthaben", "/app/benachrichtigungen", "/app/einstellungen", "/hilfe"]) expect(c).toContain(`href="${href}"`);
     expect(c).toContain("Profil X");
     expect(c).toContain("12,00 €"); // Guthaben bleibt bis 012 M5 (Option B)
   });
@@ -72,14 +98,19 @@ describe("UserMenuContent (M2-4a)", () => {
     expect((content({ showAdmin: true }).match(/role="menuitem"/g) ?? []).length).toBe(8);
   });
 
-  it("ungelesene Benachrichtigungen: Zahl nur wenn > 0, ab 10 als 9+", () => {
+  it("Ungelesen-Zähler: nur wenn > 0, ab 10 als 9+, text-sm (≥ 14 px), Zahl aria-hidden und zusätzlich als Text N ungelesen (B-06)", () => {
     expect(content()).not.toContain("rounded-full bg-accent");
-    expect(content({ unread: 3 })).toContain(">3</span>");
-    expect(content({ unread: 12 })).toContain(">9+</span>");
+    expect(content()).not.toContain("sr-only");
+    const c = content({ unread: 3 });
+    expect(c).toMatch(/aria-hidden="true"[^>]*text-sm[^>]*>3</);
+    expect(c).toMatch(/class="sr-only">\s*3 ungelesen/);
+    expect(c).not.toContain("text-xs");
+    const many = content({ unread: 12 });
+    expect(many).toMatch(/>9\+</);
+    expect(many).toMatch(/12 ungelesen/); // vorgelesen wird die genaue Zahl
   });
 
   it("Abmelden ist ein Absenden-Knopf im Formular (funktioniert auch ohne Skript), Rolle menuitem", () => {
-    const c = content();
-    expect(c).toMatch(/<form[^>]*>\s*<button role="menuitem" type="submit"/);
+    expect(content()).toMatch(/<form[^>]*role="none"[^>]*><button role="menuitem" type="submit"/);
   });
 });

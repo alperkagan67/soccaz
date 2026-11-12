@@ -137,6 +137,9 @@ Vier Zustandsfarben, je Dunkel und Hell, jeweils mit `-ink` (Schrift auf voller 
 - **Noch nicht angewendet:** `:focus-visible` und `.field:focus` in `globals.css` nutzen vorerst weiter `--accent`, weil M2-1 keine Darstellung ändert. Die Umstellung auf `--focus` kommt in M2b/M3 (zusammen mit den Impeccable-Belegen, 013 AC-15).
 - Kein Element entfernt den Fokusring ohne gleichwertigen Ersatz.
 
+- **Konto-Menü, Auslöser (bewusster Wechsel, AC-15):** Der Auslöser nutzt `buttonClasses("secondary", "sm")` statt `btn btn-ghost !min-h-9` (36 px): mit Rahmen, 44 px Tippziel, Chevron und Offen-Zustand über `aria-expanded`. Die Darstellung der Kopfleiste ändert sich dadurch sichtbar (Bilder vorher/nachher im PR).
+- **Popover-API (Konto-Menü, M2-4a):** `UserMenu` nutzt `popover` und `popovertarget`. Mindestversionen: Chrome/Edge 114, Safari 17, Firefox 125 (Stand 2026-11). Ältere Browser bekommen das Menü nicht (es bleibt verborgen, `not-supports-[selector(:popover-open)]:hidden`); die Navigation bleibt über die Leiste unten und die Fußzeile erreichbar.
+
 ## Abstände, Touch und Breiten
 
 - 4er-Raster: `--space-1..8` = 4, 8, 12, 16, 24, 32, 48, 64 px.
