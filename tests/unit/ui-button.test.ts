@@ -117,7 +117,8 @@ describe("IconButton (M2-2a)", () => {
   });
 });
 
-describe("Showcase /dev/komponenten", () => {
+// der erste Import der Showcase zieht alle Komponenten nach: unter Last laenger als die 5 s Standard
+describe("Showcase /dev/komponenten", { timeout: 30_000 }, () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();
