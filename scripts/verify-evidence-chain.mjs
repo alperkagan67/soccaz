@@ -9,5 +9,6 @@ if (!file) {
   process.exit(2);
 }
 const r = verifyNdjson(readFileSync(file, "utf8"), { headHash: head, count: count === undefined ? undefined : Number(count) });
+if (head === undefined && count === undefined) console.warn("WARNUNG: ohne externen Kopf-Hash und ohne Anzahl ist das KEIN Beweis gegen das Kuerzen der Kette (nur die innere Verkettung wird geprueft).");
 console.log(r.ok ? `Kette gueltig: ${r.count} Eintraege, Kopf-Hash ${r.headHash || "(leer)"}` : `ABWEICHUNG ab Nr. ${r.firstBadSeq} (${r.reason}); Eintraege: ${r.count}`);
 process.exit(r.ok ? 0 : 1);

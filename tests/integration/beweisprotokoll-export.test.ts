@@ -5,6 +5,7 @@ import { bookingEvidence, bookingEvidenceCounter, evidenceActor, venues } from "
 import { verifyNdjson } from "../../scripts/lib/evidence-chain.mjs";
 import { GET as chainExport } from "@/app/api/beweis/kette/route";
 import { GET as evidencePdf } from "@/app/api/beweis/[matchId]/route";
+import { clearEvidenceReportCache } from "@/server/evidence";
 import { listEvidenceMatches, loadMatchEvidence } from "@/server/evidence-export";
 import { recordEvidence } from "@/server/evidence-write";
 import { cleanup, makeMatch, makeUser } from "./helpers";
@@ -35,6 +36,7 @@ async function resetChain() {
 beforeEach(async () => {
   await cleanup();
   await resetChain();
+  clearEvidenceReportCache(); // der Bericht wird höchstens alle 60 s neu berechnet: jeder Test startet frisch
   currentUserId = "";
 });
 afterAll(async () => {

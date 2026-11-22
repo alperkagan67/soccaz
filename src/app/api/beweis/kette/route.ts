@@ -1,5 +1,5 @@
 import { canUser } from "@/lib/roles";
-import { exportEvidenceChain } from "@/server/evidence-export";
+import { exportEvidenceChainStream } from "@/server/evidence-export";
 import { getCurrentUser } from "@/server/session";
 
 /**
@@ -8,8 +8,7 @@ import { getCurrentUser } from "@/server/session";
 export async function GET() {
   const user = await getCurrentUser();
   if (!user || !canUser(user, "owner")) return new Response("Nicht gefunden", { status: 404, headers: { "Cache-Control": "private, no-store" } });
-  const body = await exportEvidenceChain();
-  return new Response(body, {
+  return new Response(exportEvidenceChainStream(), {
     headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Content-Disposition": 'attachment; filename="beweiskette.ndjson"', "Cache-Control": "private, no-store" },
   });
 }

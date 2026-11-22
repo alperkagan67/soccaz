@@ -71,3 +71,23 @@ export async function evidenceReport(exec: Exec = db): Promise<EvidenceReport> {
   const missing = await reconcileEvidence(exec);
   return { chain, orphans, missing, ok: chain.ok && orphans.matchIds.length === 0 && orphans.venueIds.length === 0 && missing.length === 0 };
 }
+
+export type CachedEvidenceReport = EvidenceReport & { checkedAt: Date };
+let cache: { at: number; report: CachedEvidenceReport } | null = null;
+const REPORT_TTL_MS = 60_000;
+
+/**
+ * Gesamtbericht, höchstens alle 60 Sekunden neu berechnet (Review R-T225a): evidenceReport() prüft die GESAMTE Kette und gleicht ab (O(n)); jeder PDF-/Seitenabruf würde sonst bei wachsender
+ * Kette teurer. Der Prüfzeitpunkt (checkedAt) steht im Ergebnis und im PDF. Der Tagesjob evidence-head rechnet immer frisch.
+ */
+export async function cachedEvidenceReport(now: number = Date.now(), exec: Exec = db): Promise<CachedEvidenceReport> {
+  if (cache && now - cache.at < REPORT_TTL_MS) return cache.report;
+  const report = { ...(await evidenceReport(exec)), checkedAt: new Date(now) };
+  cache = { at: now, report };
+  return report;
+}
+
+/** Cache leeren (Tests). */
+export function clearEvidenceReportCache(): void {
+  cache = null;
+}

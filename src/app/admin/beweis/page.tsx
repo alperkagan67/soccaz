@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { formatDateTime } from "@/lib/time";
-import { evidenceReport } from "@/server/evidence";
+import { cachedEvidenceReport } from "@/server/evidence";
 import { listEvidenceMatches } from "@/server/evidence-export";
 import { requirePermission } from "@/server/session";
 
@@ -14,7 +14,7 @@ const EXPORT_URL = "/api/beweis/kette"; // Dateidownload (Route-Handler), kein S
  */
 export default async function EvidencePage() {
   await requirePermission("owner", "/admin/beweis");
-  const report = await evidenceReport();
+  const report = await cachedEvidenceReport(); // höchstens alle 60 s neu berechnet (Prüfstand mit Zeitpunkt)
   const rows = await listEvidenceMatches();
   return (
     <section className="space-y-4">
@@ -31,6 +31,7 @@ export default async function EvidencePage() {
         <p data-testid="evidence-status">
           {report.ok ? "Kette gültig, keine Abweichung." : `Abweichung: ${report.chain.ok ? "" : `Kette ungültig ab Nr. ${report.chain.firstBadSeq} (${report.chain.reason}). `}${report.orphans.matchIds.length + report.orphans.venueIds.length ? `${report.orphans.matchIds.length} verwaiste Spiele, ${report.orphans.venueIds.length} verwaiste Hallen. ` : ""}${report.missing.length ? `${report.missing.length} Anfragen/Aufträge ohne Eintrag.` : ""}`}
         </p>
+        <p className="text-sm text-muted" data-testid="evidence-checked-at">Prüfstand vom {formatDateTime(report.checkedAt)} (wird höchstens einmal pro Minute neu berechnet; der Tagesjob rechnet immer frisch).</p>
         <p className="text-sm text-muted">Maßgeblich ist die extern abgelegte Kopie des Kopf-Hashs (täglicher Job, Benachrichtigung); die Datenbank allein ist kein Beweis gegen eine Änderung durch Administratoren.</p>
         <a className="btn btn-ghost !min-h-9 !px-3 text-sm" href={EXPORT_URL} download>Gesamtketten-Export (NDJSON)</a>
       </div>

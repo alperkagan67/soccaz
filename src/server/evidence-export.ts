@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { evidenceReport, type EvidenceReport } from "./evidence";
+import { cachedEvidenceReport, type CachedEvidenceReport } from "./evidence";
 
 // Beweisprotokoll, Lesen und Export (Vertrag 009 M3c, Plan 3.6 und 12 e): Einträge eines Spiels für das PDF, Gesamtketten-Export für die externe Prüfung, Übersicht für Admin 1.
 // ENTWURF (ohne Datenbank-Lauf geschrieben): nur Admin 1 darf diese Funktionen über Routen/Seiten erreichen; hier steht keine Berechtigungsprüfung.
@@ -19,7 +19,7 @@ export type EvidenceEntryView = {
   hash: string;
 };
 
-export type MatchEvidence = { matchId: string; number: number | null; entries: EvidenceEntryView[]; report: EvidenceReport };
+export type MatchEvidence = { matchId: string; number: number | null; entries: EvidenceEntryView[]; report: CachedEvidenceReport };
 
 /** Einträge eines Spiels in Reihenfolge der seq, mit Hallenname und (nur für Admin 1) dem Namen des Betreibers. Unbekannte oder ungültige Spiel-ID: null. */
 export async function loadMatchEvidence(matchId: string, exec: Exec = db): Promise<MatchEvidence | null> {
@@ -39,7 +39,7 @@ export async function loadMatchEvidence(matchId: string, exec: Exec = db): Promi
     matchId,
     number: rows[0].number,
     entries: rows.map((r) => ({ seq: r.seq, at: new Date(r.at), kind: r.kind, round: r.round, reason: r.reason, venueName: r.venue_name, actorName: r.actor_name, hash: r.hash })),
-    report: await evidenceReport(),
+    report: await cachedEvidenceReport(), // höchstens alle 60 s neu (O(n)), Prüfzeitpunkt im Ergebnis
   };
 }
 
@@ -58,30 +58,65 @@ export async function listEvidenceMatches(limit = 100, exec: Exec = db): Promise
   return rows.map((r) => ({ matchId: r.match_id, number: r.number, entries: r.n, lastAt: new Date(r.last_at) }));
 }
 
+type ChainRow = {
+  seq: number;
+  at_text: string;
+  kind: string;
+  match_id: string;
+  venue_id: string | null;
+  job_id: string | null;
+  round: number;
+  reason: string | null;
+  actor_commitment: string;
+  prev_hash: string;
+  hash: string;
+};
+
+const chainLine = (r: ChainRow) =>
+  JSON.stringify({ seq: r.seq, at: r.at_text, kind: r.kind, matchId: r.match_id, venueId: r.venue_id, jobId: r.job_id, round: r.round, reason: r.reason ?? "", actorCommitment: r.actor_commitment, prevHash: r.prev_hash, hash: r.hash });
+
 /**
- * Gesamtketten-Export (NDJSON, eine Zeile je Eintrag) für die externe Prüfung (Plan 12 e): nur die Felder, die in den Hash eingehen, ohne Personenfelder. Zusammen mit dem extern abgelegten
- * Kopf-Hash lässt sich die Kette außerhalb der Datenbank nachrechnen (SHA-256 über die längenpräfixierte Kodierung, siehe evidence_hash in der Migration).
+ * Gesamtketten-Export (NDJSON, eine Zeile je Eintrag) für die externe Prüfung (Plan 12 e), als Generator in Batches (Schlüsselmengen-Cursor über seq, Review R-T225a): nie die ganze Kette im Speicher.
+ * Nur die Felder, die in den Hash eingehen, ohne Personenfelder. Die Kette wird nur angehängt: auch bei gleichzeitigen Einträgen bleibt jede Teilfolge ab seq 1 eine gültige Kette.
  */
+export async function* exportEvidenceChainLines(batch = 1000, exec: Exec = db): AsyncGenerator<string> {
+  let last = 0;
+  for (;;) {
+    const rows = rowsOf<ChainRow>(
+      await exec.execute(sql`
+        select seq, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text, kind, match_id, venue_id, job_id, round, reason, actor_commitment, prev_hash, hash
+        from booking_evidence where seq > ${last} order by seq limit ${batch}`),
+    );
+    for (const r of rows) yield chainLine(r);
+    if (rows.length < batch) return;
+    last = rows[rows.length - 1].seq;
+  }
+}
+
+/** Als Byte-Stream für die Antwort der Route (Zeilen mit Zeilenumbruch getrennt). */
+export function exportEvidenceChainStream(batch = 1000, exec: Exec = db): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  const it = exportEvidenceChainLines(batch, exec);
+  let first = true;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { value, done } = await it.next();
+      if (done) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(enc.encode((first ? "" : "\n") + value));
+      first = false;
+    },
+    async cancel() {
+      await it.return(undefined);
+    },
+  });
+}
+
+/** Gesamter Export als Text (Tests, kleine Ketten); die Route streamt. */
 export async function exportEvidenceChain(exec: Exec = db): Promise<string> {
-  const rows = rowsOf<{
-    seq: number;
-    at: Date | string;
-    kind: string;
-    match_id: string;
-    venue_id: string | null;
-    job_id: string | null;
-    round: number;
-    reason: string | null;
-    actor_commitment: string;
-    prev_hash: string;
-    hash: string;
-    at_text: string;
-  }>(
-    await exec.execute(sql`
-      select seq, at, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text, kind, match_id, venue_id, job_id, round, reason, actor_commitment, prev_hash, hash
-      from booking_evidence order by seq`),
-  );
-  return rows
-    .map((r) => JSON.stringify({ seq: r.seq, at: r.at_text, kind: r.kind, matchId: r.match_id, venueId: r.venue_id, jobId: r.job_id, round: r.round, reason: r.reason ?? "", actorCommitment: r.actor_commitment, prevHash: r.prev_hash, hash: r.hash }))
-    .join("\n");
+  const lines: string[] = [];
+  for await (const l of exportEvidenceChainLines(1000, exec)) lines.push(l);
+  return lines.join("\n");
 }
