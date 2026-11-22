@@ -3,12 +3,12 @@ import { db } from "@/db";
 import { receipts } from "@/db/schema-finance";
 import type { Tx } from "./tx";
 
-type Kind = "topup" | "match";
+type Kind = "topup" | "match" | "tournament";
 
 /** Stellt einen Beleg mit fortlaufender Nummer (SOC-JJJJ-000001) aus. Pro Zahlung bzw. Spiel und Person nur einer. */
 export async function issueReceipt(
   tx: Tx,
-  r: { userId: string; kind: Kind; amountCents: number; paymentId?: string | null; matchId?: string | null },
+  r: { userId: string; kind: Kind; amountCents: number; paymentId?: string | null; matchId?: string | null; tournamentId?: string | null },
 ) {
   const [existing] = await tx
     .select()
@@ -16,7 +16,7 @@ export async function issueReceipt(
     .where(
       r.kind === "topup" && r.paymentId
         ? and(eq(receipts.kind, "topup"), eq(receipts.paymentId, r.paymentId))
-        : and(eq(receipts.kind, r.kind), eq(receipts.userId, r.userId), r.matchId ? eq(receipts.matchId, r.matchId) : sql`true`),
+        : and(eq(receipts.kind, r.kind), eq(receipts.userId, r.userId), r.matchId ? eq(receipts.matchId, r.matchId) : sql`true`, r.tournamentId ? eq(receipts.tournamentId, r.tournamentId) : sql`true`),
     );
   if (existing) return existing;
 
@@ -25,7 +25,7 @@ export async function issueReceipt(
   const number = `SOC-${new Date().getUTCFullYear()}-${String(n).padStart(6, "0")}`;
   const [row] = await tx
     .insert(receipts)
-    .values({ number, userId: r.userId, kind: r.kind, amountCents: r.amountCents, paymentId: r.paymentId ?? null, matchId: r.matchId ?? null })
+    .values({ number, userId: r.userId, kind: r.kind, amountCents: r.amountCents, paymentId: r.paymentId ?? null, matchId: r.matchId ?? null, tournamentId: r.tournamentId ?? null })
     .returning();
   return row;
 }

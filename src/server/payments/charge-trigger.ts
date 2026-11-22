@@ -8,6 +8,7 @@ import { audit } from "../audit";
 import { cardPaymentsEnabled } from "../settings";
 import { bookOpenFees } from "./charge";
 import { runErasureTasks } from "./erasure";
+import { runTournamentChargesDue } from "./tournament-charge";
 import { retryChargesInWindow } from "./charge-retry";
 import { runSubstitutes } from "./substitute";
 import { AFTER_START, runCharges, UNKNOWN_OUTCOME, type RunResult } from "./charge-run";
@@ -81,6 +82,14 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
       } catch (error) {
         console.error("runCardCharges: Fehler bei Spiel", c.id, error instanceof Error ? error.name : "Fehler");
       }
+    }
+  }
+  // Turniere im Kartenmodell (012 M5-4): Abbuchung zur Frist bzw. sofort, und Nachholen offener Zeilen
+  if (await cardPaymentsEnabled()) {
+    try {
+      touched += (await runTournamentChargesDue(now)).turniere;
+    } catch (error) {
+      console.error("runCardCharges: Fehler bei Turnieren", error instanceof Error ? error.name : "Fehler");
     }
   }
   // Nachzahlen im Fenster (M3c-1): holt nach, was der Webhook-Pfad nicht geschafft hat (Stripe-Fehler, Abbruch). Nur bei eingeschaltetem Kartenmodell.

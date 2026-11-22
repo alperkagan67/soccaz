@@ -29,10 +29,10 @@ export async function tournamentCardMode(tx: Pick<Tx, "select">, tournamentId: s
   return !paid;
 }
 
-type Seat = CoverSeat & { hasCard: boolean };
+export type Seat = CoverSeat & { hasCard: boolean };
 
 /** Die Plaetze des Turniers als Plaetze im Sinne von validCoversOf: "card_ready" = Profil mit Zahlungsmittel, sonst "none". */
-async function seatsOf(tx: Pick<Tx, "select">, tournamentId: string, lock = false): Promise<Seat[]> {
+export async function seatsOf(tx: Pick<Tx, "select">, tournamentId: string, lock = false): Promise<Seat[]> {
   const q = tx
     .select({ userId: tournamentPlayers.userId, teamId: tournamentPlayers.teamId, coveredByUserId: tournamentPlayers.coveredByUserId, pm: paymentProfiles.paymentMethodId })
     .from(tournamentPlayers)

@@ -32,12 +32,12 @@ export interface PaymentProvider {
    * eine zweite Belastung bei Wiederholung. Abgelehnte oder authentifizierungspflichtige Karten liefern ein Ergebnis mit id und Status, keinen Fehler;
    * ein Fehler (Netz, Stripe) bedeutet "Ergebnis unbekannt".
    */
-  createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult>;
+  createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string } }): Promise<ChargeResult>;
   /**
    * Erstattet eine Abbuchung auf die Karte (voller gezahlter Betrag, EUR). Der idempotencyKey (je Abbuchungszeile) verhindert eine zweite Erstattung bei Wiederholung.
    * Eine von Stripe abgelehnte Erstattung (z. B. charge_disputed) ist ein Ergebnis mit status failed; ein Fehler (Netz, Stripe) bedeutet "Ergebnis unbekannt".
    */
-  createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult>;
+  createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string; chargeId: string } }): Promise<RefundResult>;
   /**
    * Sucht PaymentIntents zu Spiel und Nutzer (Metadaten). Für Abbuchungen mit unbekanntem Ausgang: gibt es bei Stripe einen PaymentIntent, den wir nicht kennen?
    * Die Suche von Stripe ist verzögert konsistent: eine leere Antwort beweist nur etwas, wenn der Versuch schon eine Weile zurückliegt.
