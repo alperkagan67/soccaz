@@ -1,4 +1,5 @@
 import { and, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { revokeAccessOfUser } from "./venue-access";
 import { db } from "@/db";
 import { matchParticipants, matches, notifications, paymentCharges, paymentDisputes, paymentErasureTasks, paymentProfiles, paymentRefunds, paymentSetupIntents, teamMembers, teams, users } from "@/db/schema";
 import { ledgerEntries, payments, receipts } from "@/db/schema-finance";
@@ -225,6 +226,7 @@ export async function deleteAccount(userId: string) {
     // Plätze in Spielen mit Abbuchungszeilen (z. B. abgesagt, abgerechnet) bleiben unberührt: Bereit gehört zum Nachweis der Abbuchung
     await tx.update(matchParticipants).set({ readyAt: null }).where(and(eq(matchParticipants.userId, userId), sql`not exists (select 1 from payment_charges c where c.match_id = ${matchParticipants.matchId})`));
 
+    await revokeAccessOfUser(tx, userId); // Betreiber-Zugänge und Einladungen entziehen (011 M1), vor der Anonymisierung
     await tx
       .update(users)
       .set({

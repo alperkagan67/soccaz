@@ -134,6 +134,10 @@ export async function runSeed(pool: Pool): Promise<SeedCounts> {
         [v.name, v.city, v.partner, v.osm, v.manager ? uid[v.manager] : null],
       );
       vid[v.osm] = r.id;
+      if (v.manager) {
+        // 011 M1: der Zugang liegt in venue_access (aktiv); idempotent, ein offener oder aktiver Zugang je Halle
+        await q("insert into venue_access (venue_id, user_id, status, assigned_at) select $1, $2, 'active', now() where not exists (select 1 from venue_access where venue_id = $1 and status <> 'revoked')", [r.id, uid[v.manager]]);
+      }
     }
 
     // Zahlungsprofile (nur Anzeigedaten, erfundene Stripe-IDs, kein Stripe-Aufruf)
