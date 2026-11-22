@@ -172,7 +172,7 @@ DECLARE
   k text := CASE WHEN TG_OP = 'DELETE' THEN OLD.key ELSE NEW.key END;
   v text;
 BEGIN
-  IF k NOT LIKE 'evidence\_%' THEN
+  IF k NOT IN ('evidence_enforcement', 'evidence_clock_source', 'evidence_reason_retention_days', 'evidence_cutover_at', 'evidence_tournament_cutover_at') THEN
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
   END IF;
@@ -453,7 +453,7 @@ BEGIN
     v_decided := transaction_timestamp();
   END IF;
   PERFORM evidence_emit('match', NEW.match_id, NULL, NEW.venue_id, NULL, k,
-    CASE WHEN k IN ('request_sent', 'unmanaged') THEN 'open' ELSE 'current' END,
+    CASE WHEN TG_OP = 'INSERT' AND k IN ('request_sent', 'unmanaged') THEN 'open' ELSE 'current' END, -- nur INSERT-Ereignisse eroeffnen eine Runde (Plan 14.4)
     CASE WHEN k IN ('accepted', 'declined') THEN NEW.answered_by ELSE NULL END,
     v_code, v_text,
     CASE WHEN k IN ('accepted', 'declined', 'expired') THEN NEW.reply_deadline ELSE NULL END, v_decided,

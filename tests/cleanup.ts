@@ -44,7 +44,7 @@ export async function cleanupTestData(pool: Pool) {
       // Nebenwirkung in Entwicklungs-Datenbanken: der Tagesjob evidence-head meldet danach einmal "frueherer Kopf-Hash nicht mehr in der Kette" (erwartet, nur Testdaten).
       "delete from booking_evidence where match_id in (select id from _tm) or tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",
       `do $$
-       declare r record; prev text := ''; i integer := 0; h text;
+       declare r booking_evidence%rowtype; prev text := ''; i integer := 0; h text;
        begin
          if current_database() = 'soccav2' then return; end if; -- Haupt-Entwicklungsdatenbank: nie neu verketten
          for r in select * from booking_evidence order by seq loop

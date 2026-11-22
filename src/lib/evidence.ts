@@ -7,6 +7,7 @@ export const EVIDENCE_KINDS = [
   "accepted", // Halle bestätigt (frei)
   "declined", // Halle lehnt ab (belegt), Begründung ab 011 M2
   "expired", // Frist abgelaufen ohne Antwort
+  "late_attempt", // Antwortversuch nach Fristende (Nachlieferung 009 M3)
   "job_open", // Buchungsauftrag angelegt
   "job_booked",
   "job_confirmed",
