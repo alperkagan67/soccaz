@@ -78,7 +78,8 @@ describe("Backlog 141: eingefrorene Turniere (Schalter AUS)", () => {
   it("Text ohne Personendaten und ohne Turniername; nie an andere als Admin 1", async () => {
     const { t, due, org } = await fixture();
     await notifyFrozenTournaments(new Date(due.getTime() + 7 * H));
-    const note = (await db.select().from(notifications).where(and(eq(notifications.userId, owner.id), eq(notifications.title, "Turnier eingefroren"))))[0];
+    const note = (await db.select().from(notifications).where(and(eq(notifications.userId, owner.id), eq(notifications.title, "Turnier eingefroren"), eq(notifications.url, `/turniere/${t.id}`))))[0];
+    expect(note).toBeDefined(); // genau die Mitteilung zu DIESEM Turnier (Positivkontrolle)
     expect(note.body).not.toContain(t.name);
     expect(note.body).not.toMatch(/@/);
     expect(await notes(org.id)).toBe(0);
