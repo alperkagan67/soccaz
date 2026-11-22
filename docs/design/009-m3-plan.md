@@ -612,3 +612,17 @@ Stand 2026-11-22, Verfasser worker-2.
 **16h.4 Testregel „`confirmed` setzt `answered_at`“.** Neben „`declined` durch den Betreiber setzt `answered_at`“ gilt: **jeder Pfad, der `confirmed` setzt, setzt `answered_at`**; **Test** (Matrix aller Schreibpfade in `src/`, Grep + Integration: `answerHallRequest` und alle weiteren Setzer). Das `WHEN (OLD.status = 'pending' AND NEW.status IN ('confirmed','declined'))` der Sofort-Trigger gilt für **`match_hall_requests`**; **Job-Pfade (`booking_jobs`, 011 M1 Entzug setzt `unmanaged`) laufen über `evidence_job_event`, nicht über diesen Trigger** (Test: Entzug erzeugt keinen Antwort-Eintrag und löst die Pflichtprüfung nicht aus).
 
 **16h.5 Verweise (machen w3/w1 nach diesem Hash).** In **011 M2 v9** und **012 Plan 19 v6**: Absatz „**Feldliste v2 final = 16g.2 (+16h.1); Schalter = 16g.1; Einschalten = Admin-1-Aktion (16h.3)**“; in **011 M2a** die Schritte: **(1) Sitzungswerte (nur Code/Grund), (2) DB-Zeit strikt `>` in `veto.ts`, (3) `evidence_clock_source = 'db'`, (4) Admin 1 schaltet den Schalter an**.
+
+### 17. Messung der Kettenprüfung (Backlog 165) und Aufbewahrung des Klartexts (G26-009)
+Stand 2026-11-22, Verfasser worker-2. **Messung** (`node scripts/measure-evidence-verify.mjs 100000`, Wegwerf-Datenbank mit Prozess-ID, PostgreSQL 18.0, 100 000 Zeilen, davon 10 % mit Klartext und passendem Commitment und 5 % Betreff Turnier, Tabelle 42 MB, Aufbau 99 s):
+
+| Variante | Durchlauf 1 (ms) | Durchlauf 2 (ms) |
+|---|---|---|
+| heute: alle Zeilen zum Client, MIT Commitment-Join | 2216 | 2867 |
+| alle Zeilen zum Client, OHNE Commitment-Join | 2112 | 2915 |
+| Aggregat (eine Zeile), MIT Commitment-Join | 2480 | 3153 |
+| Aggregat (eine Zeile), OHNE Commitment-Join | 3057 | 2914 |
+
+**Entscheid (t2s):** Aggregat nicht bauen (kein Gewinn: die Rechenzeit der Hash-Funktion je Zeile dominiert), Backlog 165 geschlossen; Backlog 166 (inkrementelle Prüfung ab dem letzten geprüften Kopf-Hash plus vollständige Prüfung wöchentlich und vor Go-live, Auslöser ab etwa 100 000 Zeilen). 1 000 000 Zeilen wurden nicht gemessen (Ergebnis bei 100 000 eindeutig; linear ca. 25 bis 30 s).
+
+**Aufbewahrung des Klartexts:** `sweepReasonText` im Tagesjob `evidence-head` löscht NUR Zeilen von `booking_evidence_reason_text`, deren Eintrag (`booking_evidence.at`) älter ist als `evidence_reason_retention_days` Tage; Standard 0 = aus; ungültige Werte (Text, negativ, Dezimal, über 36 500) = aus; idempotent; Anzahl in `audit_log` (`evidence.retention`) und in der Benachrichtigung an Admin 1. **Die Dauer ist Rechtsfrage R3: kein Agent setzt einen Wert.** Tests: `tests/integration/beweisprotokoll-aufbewahrung.test.ts`; Mutationen 36 bis 39 im Mutationsskript.

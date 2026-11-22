@@ -29,13 +29,43 @@ export async function clearOrphanActors(): Promise<number> {
 }
 type Last = { count: number; headHash: string; at: string };
 
+/** Obergrenze der Aufbewahrungsdauer in Tagen (100 Jahre): Werte darueber gelten als ungueltig (Schutz gegen Tippfehler, nicht gegen Rechtsfragen). */
+const RETENTION_MAX_DAYS = 36_500;
+
+/** Liest evidence_reason_retention_days: ganze Zahl 1 bis RETENTION_MAX_DAYS = aktiv; 0, fehlend, ungueltig, negativ = aus (null). */
+export async function retentionDays(): Promise<number | null> {
+  const raw = await getSetting<unknown>("evidence_reason_retention_days", 0);
+  const text = String(raw ?? "").trim();
+  if (!/^[0-9]{1,5}$/.test(text)) return null;
+  const n = Number(text);
+  return n >= 1 && n <= RETENTION_MAX_DAYS ? n : null;
+}
+
+/**
+ * Aufbewahrung des Begruendungs-Klartexts (G26-009, NUR der Mechanismus; die Dauer ist Rechtsfrage R3, Standard 0 = aus): loescht AUSSCHLIESSLICH Zeilen von booking_evidence_reason_text, deren Eintrag
+ * (booking_evidence.at = COMMIT-Zeit) aelter ist als evidence_reason_retention_days Tage. Commitment, Hash, evidence_actor und Kette bleiben unberuehrt (fehlender Klartext = nicht pruefbar, gueltig).
+ * Idempotent: ein zweiter Lauf loescht nichts. Gibt Dauer und Anzahl zurueck; bei "aus" (days = null) passiert nichts. Backups, WAL und Logs erreicht das Loeschen nicht (Frage R3).
+ */
+export async function sweepReasonText(now: Date = new Date()): Promise<{ days: number | null; deleted: number }> {
+  const days = await retentionDays();
+  if (days === null) return { days, deleted: 0 };
+  const cutoff = new Date(now.getTime() - days * 86_400_000);
+  const r = await db.execute(sql`
+    delete from booking_evidence_reason_text rt using booking_evidence e
+    where e.id = rt.evidence_id and e.at < ${cutoff.toISOString()}::timestamptz`);
+  const deleted = (r as unknown as { rowCount?: number }).rowCount ?? 0;
+  if (deleted > 0) await audit(null, "evidence.retention", "evidence", "reason_text", { after: { days, deleted, cutoff: cutoff.toISOString() } });
+  return { days, deleted };
+}
+
 /**
  * Tagesjob (Plan 14.3): Kopf-Hash und Anzahl der Beweiskette ausgeben, die Kette prüfen, Verwaiste und fehlende Einträge melden. Ausgabe = Benachrichtigung an Admin 1 (bis der Anwalt den
  * Ablageort außerhalb der Datenbank festlegt, Frage R3) und Eintrag im Eingriffsprotokoll. Alarm, wenn die Kette ungültig ist, die Anzahl KLEINER ist als beim letzten Lauf oder der frühere
  * Kopf-Hash nicht mehr in der Kette liegt. Der "letzte Lauf" liegt in derselben Datenbank: maßgeblich ist die externe Kopie (Benachrichtigung/Ablage), nicht dieser Wert.
  */
-export async function runEvidenceHead(now: Date = new Date()): Promise<{ ok: boolean; count: number; headHash: string; alarms: string[]; actorsCleared: number }> {
+export async function runEvidenceHead(now: Date = new Date()): Promise<{ ok: boolean; count: number; headHash: string; alarms: string[]; actorsCleared: number; retention: { days: number | null; deleted: number } }> {
   const actorsCleared = await clearOrphanActors();
+  const retention = await sweepReasonText(now);
   const report = await evidenceReport();
   const last = await getSetting<Last | null>(LAST_KEY, null);
   const alarms: string[] = [];
@@ -56,10 +86,10 @@ export async function runEvidenceHead(now: Date = new Date()): Promise<{ ok: boo
     await notifyUsers(owners, {
       type: "admin.task",
       title: alarms.length ? "Beweisprotokoll: Abweichung" : "Beweisprotokoll: Tagesstand",
-      body: `${report.chain.count} Einträge, Kopf-Hash ${report.chain.headHash || "(leer)"}${alarms.length ? ` Alarm: ${alarms.join("; ")}.` : ""}${enforcementNote}`,
+      body: `${report.chain.count} Einträge, Kopf-Hash ${report.chain.headHash || "(leer)"}${alarms.length ? ` Alarm: ${alarms.join("; ")}.` : ""}${enforcementNote}${retention.deleted ? ` Aufbewahrung: ${retention.deleted} Begründungstexte nach ${retention.days} Tagen gelöscht.` : ""}`,
       url: "/admin",
     });
   }
   await setSetting(null, LAST_KEY, { count: report.chain.count, headHash: report.chain.headHash, at: now.toISOString() } satisfies Last);
-  return { ok: alarms.length === 0, count: report.chain.count, headHash: report.chain.headHash, alarms, actorsCleared };
+  return { ok: alarms.length === 0, count: report.chain.count, headHash: report.chain.headHash, alarms, actorsCleared, retention };
 }

@@ -14,6 +14,7 @@ const PFX = "soc" + "az."; // Präfix der Sitzungswerte nicht als Literal (maint
 const TEXT_DELETE = "    await tx.execute(sql`delete from booking_evidence_reason_text where evidence_id in (select evidence_id from evidence_actor where user_id = ${userId})`);\n";
 const ACTOR_UPDATE = "    await tx.update(evidenceActor).set({ userId: null, name: null, email: null }).where(eq(evidenceActor.userId, userId));\n";
 const cut = (s, part) => s.split(part).join("");
+const AUF = "tests/integration/beweisprotokoll-aufbewahrung.test.ts";
 const NL = "tests/integration/beweisprotokoll-nachlieferung.test.ts";
 const HAKEN = "tests/integration/beweisprotokoll-haken.test.ts";
 const BASE = "tests/integration/beweisprotokoll.test.ts";
@@ -79,6 +80,10 @@ const MUTATIONS = [
     tests: [NL],
   },
   { name: "Pruefer ohne Commitment-Pruefung", file: "src/server/evidence.ts", transform: (s) => s.replace("when rt.evidence_id is not null and", "when false and"), tests: [NL] },
+  { name: "Aufbewahrung: Stichtag umgedreht (loescht junge Eintraege)", file: "src/server/evidence-head.ts", transform: (s) => s.replace("e.at < ${cutoff.toISOString()}", "e.at > ${cutoff.toISOString()}"), tests: [AUF] },
+  { name: "Aufbewahrung loescht auch evidence_actor", file: "src/server/evidence-head.ts", transform: (s) => s.replace("  const deleted = (r as", "  await db.execute(sql`delete from evidence_actor where true`);\n  const deleted = (r as"), tests: [AUF] },
+  { name: "Aufbewahrung: D = 0 loescht trotzdem", file: "src/server/evidence-head.ts", transform: (s) => s.replace("if (days === null) return { days, deleted: 0 };", "if (days === null) { await db.execute(sql`delete from booking_evidence_reason_text`); return { days, deleted: 0 }; }"), tests: [AUF] },
+  { name: "Aufbewahrung: ungueltige Werte (Dezimal) gelten als aktiv", file: "src/server/evidence-head.ts", transform: (s) => s.replace("if (!/^[0-9]{1,5}$/.test(text)) return null;", "if (!/^[0-9.]{1,5}$/.test(text)) return null;"), tests: [AUF] },
 ];
 
 const only = process.argv.slice(2).map(Number).filter(Boolean);
