@@ -19,6 +19,8 @@ const rows = async <T = Row>(q: ReturnType<typeof sql>): Promise<T[]> => {
 };
 
 afterAll(async () => {
+  await db.execute(sql`delete from venue_access where venue_id in (select id from venues where name like 'E2E Hallenort2 %')`);
+  await db.delete(venues).where(sql`${venues.name} like 'E2E Hallenort2 %'`);
   await cleanup();
 });
 beforeEach(async () => {
@@ -36,16 +38,17 @@ async function resetSettings() {
 
 /** Zwei Teams in "Hallenort2", zwei Hallen mit Betreiber, eine ohne; der Termin steht in 5 Tagen, die Hallen sind angefragt (Runde 1). */
 async function duel() {
+  const city = `Hallenort2-${Math.random().toString(36).slice(2, 8)}`; // eigene Stadt je Spiel: der Pool ist begrenzt, Hallen früherer Tests dürfen nicht mitspielen
   const a = await makeUser("ha");
   const b = await makeUser("hb");
   const manager = await makeUser("hm");
   const other = await makeUser("ho"); // zweites Konto ohne Zugang
   const ta = await makeTeam(a.id, "Antwort A");
   const tb = await makeTeam(b.id, "Antwort B");
-  await db.update(teams).set({ city: "Hallenort2" }).where(inArray(teams.id, [ta.id, tb.id]));
+  await db.update(teams).set({ city }).where(inArray(teams.id, [ta.id, tb.id]));
   const vs = await db
     .insert(venues)
-    .values([1, 2, 3].map((i) => ({ name: `E2E Hallenort2 ${i} ${manager.id.slice(0, 6)}`, city: "Hallenort2", isPartner: i < 3 })))
+    .values([1, 2, 3].map((i) => ({ name: `E2E Hallenort2 ${i} ${manager.id.slice(0, 6)}`, city, isPartner: i < 3 })))
     .returning();
   await grantVenueAccess(vs[0].id, manager.id);
   await grantVenueAccess(vs[1].id, manager.id);
@@ -54,7 +57,7 @@ async function duel() {
   await proposeOption(a.id, id, { startsAt: new Date(Date.now() + 5 * 86_400_000) });
   const [opt] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, id));
   await voteOption(b.id, id, opt.id);
-  return { a, b, manager, other, id, v: vs };
+  return { a, b, manager, other, id, v: vs, city };
 }
 
 const evidenceOf = (matchId: string, venueId: string) =>
@@ -74,7 +77,7 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
     expect(acc.reason_code).toBe("");
     expect(acc.reason).toBeNull();
     expect(acc.deadline_at).not.toBeNull();
-    expect(acc.decided_at!.getTime()).toBeLessThanOrEqual(acc.deadline_at!.getTime());
+    expect(new Date(acc.decided_at as unknown as string).getTime()).toBeLessThanOrEqual(new Date(acc.deadline_at as unknown as string).getTime());
     const actors = await rows<{ user_id: string }>(sql`select a.user_id from evidence_actor a join booking_evidence e on e.id = a.evidence_id where e.match_id = ${d.id} and e.kind = 'accepted'`);
     expect(actors.map((x) => x.user_id)).toContain(d.manager.id);
   });
@@ -161,7 +164,7 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
     await db.update(matches).set({ startsAt: start5h }).where(eq(matches.id, d.id));
     await db.transaction(async (tx) => {
       const [m] = await tx.select().from(matches).where(eq(matches.id, d.id));
-      await startHallCheck(tx, m, "Hallenort2", new Date());
+      await startHallCheck(tx, m, d.city, new Date());
     });
     const [m5] = await db.select().from(matches).where(eq(matches.id, d.id));
     expect(m5.vetoTurnDeadline!.getTime()).toBeLessThanOrEqual(start5h.getTime() - 3_600_000 + 1000);
@@ -170,7 +173,7 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
     await db.update(matches).set({ startsAt: new Date(Date.now() + 40 * 60_000), vetoStatus: "halls", status: "lobby" }).where(eq(matches.id, d.id));
     await db.transaction(async (tx) => {
       const [m] = await tx.select().from(matches).where(eq(matches.id, d.id));
-      await startHallCheck(tx, m, "Hallenort2", new Date());
+      await startHallCheck(tx, m, d.city, new Date());
     });
     const reqs = await db.select().from(matchHallRequests).where(eq(matchHallRequests.matchId, d.id));
     expect(reqs.filter((r) => r.status === "pending")).toHaveLength(0);
