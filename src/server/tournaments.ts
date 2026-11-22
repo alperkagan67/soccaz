@@ -20,6 +20,8 @@ import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
 import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
+import { notifyHolderOnFix } from "./tournament-holders";
+import { venueAccessHolderIds } from "./venue-access-rules";
 import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled } from "./settings";
@@ -359,7 +361,6 @@ async function maybeFixPrice(tx: Tx, t: T) {
     const frozen = await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
     // Entscheid t2q A: Zugangsinhaber der Halle erfahren beim Fixieren, dass eine Zusage gefragt ist (entprellt, im Savepoint; dynamischer Import gegen den Importkreis)
     if (frozen.accessRequired) {
-      const { notifyHolderOnFix } = await import("./tournament-confirm");
       await notifyHolderOnFix(tx, { id: t.id, name: fresh.name, venueId: fresh.venueId, startsAt: fresh.startsAt, priceRound: fresh.priceRound + 1 }, await chargeDueAt(tx, fresh));
     }
   }
@@ -670,6 +671,16 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
     ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${refundedCards > 0 ? "Bereits abgebuchte Anteile werden auf die Karte erstattet." : "Es wurde nichts von deiner Karte abgebucht."}`
     : `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${players.some((p) => p.paidCents > 0) ? "Dein Eintritt wurde vollständig erstattet." : "Es wurde nichts bezahlt."}`;
   await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), ...payerIds, t.organizerId])], { type: "system", title: "Turnier abgesagt", body, url: `/turniere/${tournamentId}` }, tx);
+  // Entscheid t2q (Plan 19.14): wurde das Turnier ohne Zusage der Halle abgesagt, erfahren die Zugangsinhaber der Halle es (ohne Namen Dritter; Savepoint, ein Fehler kippt die Absage nie)
+  if (t.venueId && !t.venueConfirmedAt && t.venueAccessRequiredSnapshot === true) {
+    try {
+      await tx.transaction(async (sp) => {
+        await notifyUsers(await venueAccessHolderIds(t.venueId!, sp), { type: "system", title: "Turnier abgesagt", body: `${t.name} wurde abgesagt, weil die Zusage der Halle fehlte oder das Turnier nicht zustande kam.`, url: "/halle" }, sp);
+      });
+    } catch {
+      /* Zugabe */
+    }
+  }
   const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
   const gameIds = games.map((g) => g.matchId!).filter(Boolean);
   if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
