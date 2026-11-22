@@ -11,7 +11,7 @@ describe("Zusage der Halle: Rueckset bei geaenderten Bedingungen", () => {
   it("keine UPDATE-Anweisung auf tournaments setzt startsAt, durationMin, totalCents oder hourlyCents (ausser mit dem Helfer)", () => {
     const offenders = files.filter((f) => {
       const text = readFileSync(f, "utf8");
-      const writes = /update\(tournaments\)\s*\.set\(\{[^}]*\b(startsAt|durationMin|totalCents|hourlyCents)\b/s.test(text);
+      const writes = /update\(tournaments\)\s*\.set\(\{[^}]*\b(startsAt|durationMin|totalCents|hourlyCents)\b/.test(text);
       return writes && !text.includes("resetVenueConfirmationIfTermsChanged");
     });
     expect(offenders).toEqual([]);
