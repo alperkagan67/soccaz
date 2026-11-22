@@ -7,6 +7,8 @@
 import { and, eq, gt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matches, paymentCharges, paymentProfiles } from "@/db/schema";
+import { tournaments } from "@/db/schema-league";
+import { tournamentCardMode } from "../tournament-card";
 import { effectiveGraceEnd, graceText } from "@/lib/grace";
 import { audit } from "../audit";
 import { cardPaymentsEnabled } from "../settings";
@@ -126,4 +128,64 @@ export async function listOpenAuthorizations(userId: string, now: Date = new Dat
     if (!out.some((o) => o.matchId === rowMatchId)) out.push({ matchId: rowMatchId, until: graceText(end, now) });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Turnier (M5-5): dieselbe Freigabe fuer eine Turnier-Zeile. Gleiche Regeln, gleiche neutralen Fehler; die Zeile gehoert dem Zahler (eigene oder uebernommene), das Fenster ist das
+// effektive Nachzahlfenster (frueher von grace_until und Start minus 1 Stunde), das Turnier muss in der Zahlungsphase und im Kartenmodell sein.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+type TRow = OpenRow & { tournamentId: string };
+
+async function openTournamentRow(userId: string, tournamentId: string, now: Date): Promise<TRow | null> {
+  const rows = await db
+    .select({
+      id: paymentCharges.id,
+      amountCents: paymentCharges.amountCents,
+      paymentIntentId: paymentCharges.paymentIntentId,
+      currentAttempt: paymentCharges.currentAttempt,
+      graceUntil: paymentCharges.graceUntil,
+      status: paymentCharges.status,
+      failureCode: paymentCharges.failureCode,
+      startsAt: tournaments.startsAt,
+      tStatus: tournaments.status,
+      settledAt: tournaments.settledAt,
+      bracketAt: tournaments.bracketGeneratedAt,
+    })
+    .from(paymentCharges)
+    .innerJoin(tournaments, eq(tournaments.id, paymentCharges.tournamentId))
+    .where(and(eq(paymentCharges.tournamentId, tournamentId), sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${userId}`))
+    .orderBy(paymentCharges.createdAt, paymentCharges.id);
+  for (const r of rows) {
+    if (r.status !== "requires_action" || r.failureCode !== "authentication_required" || !r.paymentIntentId || !r.startsAt) continue;
+    if (r.tStatus !== "payment" || r.settledAt !== null || r.bracketAt !== null || r.startsAt.getTime() <= now.getTime()) continue;
+    const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
+    if (end === null || end.getTime() <= now.getTime()) continue;
+    return { id: r.id, amountCents: r.amountCents, paymentIntentId: r.paymentIntentId, currentAttempt: r.currentAttempt, graceUntil: r.graceUntil, startsAt: r.startsAt, matchId: "", tournamentId };
+  }
+  return null;
+}
+
+/** Fuer die Seite: hat der Nutzer in diesem Turnier eine offene Freigabe? (nur eigene Zeilen) */
+export async function hasOpenTournamentAuthorization(userId: string, tournamentId: string, now: Date = new Date()): Promise<boolean> {
+  if (!UUID.test(tournamentId)) return false;
+  return (await openTournamentRow(userId, tournamentId, now)) !== null;
+}
+
+export async function getTournamentAuthorizationSecret(userId: string, tournamentId: string, now: Date = new Date()): Promise<{ clientSecret: string }> {
+  if (typeof tournamentId !== "string" || !UUID.test(tournamentId)) throw new DomainError(NOT_AVAILABLE);
+  if (!(await cardPaymentsEnabled()) || !(await tournamentCardMode(db, tournamentId))) throw new DomainError(NOT_AVAILABLE);
+  const row = await openTournamentRow(userId, tournamentId, now);
+  if (!row) throw new DomainError(NOT_AVAILABLE);
+  await countAttempt(userId, tournamentId, row.currentAttempt, now);
+  const [profile] = await db.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
+  if (!profile) throw new DomainError(NOT_AVAILABLE);
+  const found = await (await getPaymentProvider()).retrievePaymentIntentSecret(row.paymentIntentId!);
+  if (!found) throw new DomainError(NOT_AVAILABLE);
+  const { intent, clientSecret } = found;
+  if (intent.status !== "requires_action" || intent.amountCents !== row.amountCents || intent.currency?.toLowerCase() !== "eur" || intent.customerId !== profile.stripeCustomerId) throw new DomainError(NOT_AVAILABLE);
+  const again = await openTournamentRow(userId, tournamentId, new Date());
+  if (!again || again.id !== row.id || again.currentAttempt !== row.currentAttempt || again.paymentIntentId !== row.paymentIntentId) throw new DomainError(NOT_AVAILABLE);
+  await audit(userId, "charge.authorization_requested", "tournament", tournamentId, { after: { attempt: row.currentAttempt } });
+  return { clientSecret };
 }

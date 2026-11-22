@@ -29,10 +29,10 @@ export async function tournamentCardMode(tx: Pick<Tx, "select">, tournamentId: s
   return !paid;
 }
 
-type Seat = CoverSeat & { hasCard: boolean };
+export type Seat = CoverSeat & { hasCard: boolean };
 
 /** Die Plaetze des Turniers als Plaetze im Sinne von validCoversOf: "card_ready" = Profil mit Zahlungsmittel, sonst "none". */
-async function seatsOf(tx: Pick<Tx, "select">, tournamentId: string, lock = false): Promise<Seat[]> {
+export async function seatsOf(tx: Pick<Tx, "select">, tournamentId: string, lock = false): Promise<Seat[]> {
   const q = tx
     .select({ userId: tournamentPlayers.userId, teamId: tournamentPlayers.teamId, coveredByUserId: tournamentPlayers.coveredByUserId, pm: paymentProfiles.paymentMethodId })
     .from(tournamentPlayers)
@@ -40,6 +40,21 @@ async function seatsOf(tx: Pick<Tx, "select">, tournamentId: string, lock = fals
     .where(eq(tournamentPlayers.tournamentId, tournamentId));
   const rows = await (lock ? q.for("update", { of: tournamentPlayers }) : q);
   return rows.map((r) => ({ userId: r.userId, teamId: r.teamId, coveredByUserId: r.coveredByUserId, cardStatus: r.pm ? "card_ready" : "none", hasCard: Boolean(r.pm) }));
+}
+
+/** Spieler ohne eigene Karte UND ohne gueltigen Uebernehmer (validCoversOf): fuer die Erinnerung vor der Frist. */
+export async function tournamentMissingCards(tx: Pick<Tx, "select">, tournamentId: string): Promise<{ userId: string; teamId: string | null }[]> {
+  const seats = await seatsOf(tx, tournamentId);
+  const valid = validCoversOf(seats, true);
+  return seats.filter((s) => !s.hasCard && !valid.has(s.userId)).map((s) => ({ userId: s.userId, teamId: s.teamId }));
+}
+
+/** Hat in JEDEM Team jeder Spieler eine Karte oder einen gueltigen Uebernehmer (validCoversOf)? Fuer die Frist: ohne vollstaendige Karten kann nicht abgebucht werden. */
+export async function tournamentAllCardsReady(tx: Pick<Tx, "select">, tournamentId: string): Promise<boolean> {
+  const seats = await seatsOf(tx, tournamentId);
+  if (seats.length === 0) return false;
+  const valid = validCoversOf(seats, true);
+  return seats.every((s) => s.hasCard || valid.has(s.userId));
 }
 
 /** Hat jeder Spieler des Teams eine Karte oder einen gueltigen Uebernehmer? Ein leeres Team ist nicht bereit. */

@@ -24,7 +24,7 @@ import { matches, users } from "./schema";
 // ---------------------------------------------------------------------------------------------
 
 export const ledgerAccount = pgEnum("ledger_account", ["wallet", "clearing", "bank", "revenue", "venue_cost", "fees", "promo", "chargeback", "tournament", "venue_payable", "commission"]);
-export const ledgerKind = pgEnum("ledger_kind", ["topup", "fee", "promo_credit", "match_share", "refund", "venue_cost", "adjustment", "chargeback", "tournament_entry", "tournament_refund", "tournament_payout", "tournament_commission", "commission", "commission_bonus"]);
+export const ledgerKind = pgEnum("ledger_kind", ["topup", "fee", "promo_credit", "match_share", "refund", "venue_cost", "adjustment", "chargeback", "tournament_entry", "tournament_refund", "tournament_payout", "tournament_commission", "commission", "commission_bonus", "tournament_share"]);
 export const paymentProvider = pgEnum("payment_provider", ["dev", "stripe"]);
 export const paymentStatus = pgEnum("payment_status", ["pending", "succeeded", "failed", "canceled"]);
 export const bookingStatus = pgEnum("booking_status", ["open", "in_progress", "booked", "unavailable", "confirmed", "withdrawn", "done"]);
@@ -295,9 +295,11 @@ export const receipts = pgTable("receipts", {
   id: uuid("id").primaryKey().defaultRandom(),
   number: text("number").notNull().unique(),
   userId: uuid("user_id").notNull().references(() => users.id),
-  kind: text("kind").notNull(), // topup | match
+  kind: text("kind").notNull(), // topup | match | tournament
   paymentId: uuid("payment_id").references(() => payments.id),
   matchId: uuid("match_id").references(() => matches.id),
+  // M5-4: Beleg zu einem Turnier (kind = tournament); der Fremdschluessel (NO ACTION) steht in der Migration (schema-league importiert aus schema, nicht umgekehrt)
+  tournamentId: uuid("tournament_id"),
   amountCents: integer("amount_cents").notNull(),
   issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
 });

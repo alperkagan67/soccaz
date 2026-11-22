@@ -17,7 +17,7 @@ export async function cleanupTestData(pool: Pool) {
     );
     const statements = [
       "update settings set updated_by = null where updated_by in (select id from _tu)",
-      "delete from receipts where user_id in (select id from _tu) or match_id in (select id from _tm)",
+      "delete from receipts where user_id in (select id from _tu) or match_id in (select id from _tm) or tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",
       "delete from promo_redemptions where user_id in (select id from _tu)",
       "delete from expenses where match_id in (select id from _tm) or created_by in (select id from _tu)",
       "delete from ledger_entries where tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",

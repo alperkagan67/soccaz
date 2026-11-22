@@ -8,6 +8,8 @@ import { audit } from "../audit";
 import { cardPaymentsEnabled } from "../settings";
 import { bookOpenFees } from "./charge";
 import { runErasureTasks } from "./erasure";
+import { retryTournamentChargesInWindow, runTournamentChargesDue } from "./tournament-charge";
+import { cancelTournamentsAfterWindow, notifyMissingCardReminders } from "../tournaments";
 import { retryChargesInWindow } from "./charge-retry";
 import { runSubstitutes } from "./substitute";
 import { AFTER_START, runCharges, UNKNOWN_OUTCOME, type RunResult } from "./charge-run";
@@ -81,6 +83,17 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
       } catch (error) {
         console.error("runCardCharges: Fehler bei Spiel", c.id, error instanceof Error ? error.name : "Fehler");
       }
+    }
+  }
+  // Turniere im Kartenmodell (012 M5-4): Abbuchung zur Frist bzw. sofort, und Nachholen offener Zeilen
+  if (await cardPaymentsEnabled()) {
+    try {
+      touched += (await runTournamentChargesDue(now)).turniere;
+      touched += await retryTournamentChargesInWindow({ now }); // neue Karte im Nachzahlfenster: erneut abbuchen (M5-5)
+      touched += await cancelTournamentsAfterWindow(now); // Alles-oder-nichts: abgelaufenes Nachzahlfenster -> Absage + Erstattung (M5-5)
+      touched += await notifyMissingCardReminders(now); // Vorwarnung 24 h und 6 h vor der Frist: Karte fehlt (M5-5)
+    } catch (error) {
+      console.error("runCardCharges: Fehler bei Turnieren", error instanceof Error ? error.name : "Fehler");
     }
   }
   // Nachzahlen im Fenster (M3c-1): holt nach, was der Webhook-Pfad nicht geschafft hat (Stripe-Fehler, Abbruch). Nur bei eingeschaltetem Kartenmodell.

@@ -38,7 +38,7 @@ export class StripeProvider implements PaymentProvider {
     return { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null };
   }
 
-  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult> {
+  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string } }): Promise<ChargeResult> {
     try {
       const pi = await this.stripe().paymentIntents.create(
         { amount: input.amountCents, currency: "eur", customer: input.customerId, payment_method: input.paymentMethodId, off_session: true, confirm: true, metadata: input.metadata },
@@ -60,7 +60,7 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
-  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult> {
+  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string; chargeId: string } }): Promise<RefundResult> {
     try {
       const r = await this.stripe().refunds.create(
         { payment_intent: input.paymentIntentId, amount: input.amountCents, metadata: input.metadata },

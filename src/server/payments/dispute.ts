@@ -8,6 +8,7 @@
 // Sperrreihenfolge: Spiel -> Abbuchungszeile -> payment_refunds-Zeilen -> payment_disputes-Zeile (der Streit trifft den Zahler; die Nutzerzeile wird hier nie gesperrt).
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { matches, paymentChargeAttempts, paymentCharges, paymentDisputeEntries, paymentDisputes, paymentRefunds } from "@/db/schema";
+import { tournaments } from "@/db/schema-league";
 import { audit } from "../audit";
 import { post } from "../ledger";
 import { notifyUsers, platformAdminIds } from "../notifications";
@@ -58,7 +59,11 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
     return (lock ? await q2.for("update") : await q2)[0];
   };
   const probe = await findCharge(false);
-  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update"); // Spiel zuerst
+  // Sperrreihenfolge: Spiel ODER Turnier zuerst (scopeOf), dann die Abbuchungszeile, dann die Erstattungen, der Streit zuletzt
+  if (probe) {
+    if (probe.tournamentId !== null) await tx.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, probe.tournamentId)).for("update");
+    else await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update");
+  }
   const charge = probe ? await findCharge(true) : undefined; // dann die Abbuchungszeile
   const refunds = charge ? await tx.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, charge.id)).orderBy(asc(paymentRefunds.id)).for("update") : []; // dann die Erstattungszeilen
 
@@ -70,6 +75,7 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
       chargeId: charge?.id ?? null,
       paymentIntentId: d.paymentIntentId,
       matchId: charge?.matchId ?? null,
+      tournamentId: charge?.tournamentId ?? null,
       payerUserId: charge ? (charge.payerUserId ?? charge.userId) : null,
       amountCents: d.amountCents,
       currency: d.currency ?? "unknown",
@@ -91,7 +97,7 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
   // 3. Status und Zuordnung nachziehen
   if (!isNew) {
     const patch: Partial<typeof paymentDisputes.$inferInsert> = { updatedAt: new Date() };
-    if (!row.chargeId && charge) Object.assign(patch, { chargeId: charge.id, matchId: charge.matchId, payerUserId: charge.payerUserId ?? charge.userId });
+    if (!row.chargeId && charge) Object.assign(patch, { chargeId: charge.id, matchId: charge.matchId, tournamentId: charge.tournamentId, payerUserId: charge.payerUserId ?? charge.userId });
     const stale = eventAt !== null && row.lastEventAt !== null && eventAt.getTime() < row.lastEventAt.getTime();
     const terminalChange = disputeRank(row.status) === 3 && d.status !== row.status;
     if (!stale && !terminalChange && disputeRank(d.status) >= disputeRank(row.status)) {
@@ -121,6 +127,7 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
         amountCents: Math.abs(bt.feeCents),
         kind: "fee",
         matchId: row.matchId,
+        tournamentId: row.tournamentId,
         idempotencyKey: `dispute:${d.disputeId}:bt:${bt.id}:fee`,
         reason: bt.feeCents > 0 ? "Stripe-Gebühr Zahlungsstreit" : "Stripe-Gebühr Zahlungsstreit zurückerstattet",
       });
@@ -166,6 +173,7 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
       amountCents: e.amountCents,
       kind: "chargeback",
       matchId: row.matchId,
+      tournamentId: row.tournamentId,
       idempotencyKey: `dispute:${d.disputeId}:bt:${e.balanceTransactionId}`,
       reason: "Zahlungsstreit: Abzug durch Stripe",
     });
@@ -183,6 +191,7 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
         amountCents: e.amountCents,
         kind: "chargeback",
         matchId: row.matchId,
+        tournamentId: row.tournamentId,
         idempotencyKey: `dispute:${d.disputeId}:bt:${e.balanceTransactionId}`,
         reason: "Zahlungsstreit: Rückbuchung durch Stripe",
       });
@@ -208,9 +217,9 @@ export async function applyDisputeInTx(tx: Tx, d: DisputeReport, eventAt: Date |
     // alle anderen Zahlungen werden normal erstattet. Gewonnen: eine schon beendete Erstattung bleibt beendet (Hinweis an Admin 1).
     if ((isDisputeOpen(row.status) || row.status === "lost") && unsent.length > 0) {
       await tx.update(paymentRefunds).set({ status: "cancelled_dispute", updatedAt: new Date() }).where(inArray(paymentRefunds.id, unsent.map((r) => r.id)));
-      await audit(null, "refund.cancelled_dispute", "match", matchIdOf(charge), { after: { refunds: unsent.length } }, tx);
+      await audit(null, "refund.cancelled_dispute", charge.tournamentId !== null ? "tournament" : "match", charge.tournamentId ?? matchIdOf(charge), { after: { refunds: unsent.length } }, tx);
       want("refund_blocked");
-      result.cancelCheckMatchId = matchIdOf(charge); // eine angeforderte Absage kann jetzt abgeschlossen werden
+      if (charge.tournamentId === null) result.cancelCheckMatchId = matchIdOf(charge); // eine angeforderte Absage kann jetzt abgeschlossen werden (nur Spiele; Turnier-Absage: M5-5)
     }
     if (row.status === "won" && refunds.some((r) => r.status === "cancelled_dispute")) want("won_after_cancel");
     const sentRefunds = refunds.filter((r) => r.status !== "cancelled_dispute" && r.status !== "failed" && sent(r));

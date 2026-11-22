@@ -18,6 +18,7 @@ import { notifyChargeProblem } from "./charge-notify";
 import { graceUntil, inGraceWindow } from "@/lib/grace";
 import { failSubstitute } from "./substitute-fail";
 import { refundVoidedByDispute } from "./dispute";
+import { applyTournamentCharge } from "./tournament-charge";
 import { matchIdOf } from "./charge-context";
 
 export const refundKey = (chargeId: string) => `refund:${chargeId}`;
@@ -29,7 +30,7 @@ export async function ensureRefundRow(tx: Tx, charge: typeof paymentCharges.$inf
   const key = extraPaymentIntentId ? `${refundKey(charge.id)}:${extraPaymentIntentId}` : refundKey(charge.id);
   // Zahlungsstreit (M4a): hat die Zahlung einen offenen oder verlorenen Streit, entfaellt die Erstattung (cancelled_dispute), die Absage bleibt unblockiert
   const voided = await refundVoidedByDispute(tx, charge, extraPaymentIntentId);
-  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.payerUserId ?? charge.userId, amountCents: charge.amountCents, idempotencyKey: key, reason, paymentIntentId: extraPaymentIntentId, status: voided ? "cancelled_dispute" : "pending" }).onConflictDoNothing();
+  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, tournamentId: charge.tournamentId, userId: charge.payerUserId ?? charge.userId, amountCents: charge.amountCents, idempotencyKey: key, reason, paymentIntentId: extraPaymentIntentId, status: voided ? "cancelled_dispute" : "pending" }).onConflictDoNothing();
 }
 
 export type ChargeOutcome = "succeeded" | "requires_action" | "failed";
@@ -41,7 +42,7 @@ export type ChargeReport = {
   amountCents: number | null;
   currency: string | null;
   customerId: string | null;
-  metadata: { matchId: string | null; userId: string | null };
+  metadata: { matchId: string | null; tournamentId?: string | null; userId: string | null };
   failureCode: string | null;
 };
 
@@ -84,7 +85,9 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     return (lock ? await q.for("update") : await q)[0];
   };
   const probe = (await byPi(false)) ?? (await byHistory(false)) ?? (await byMeta(false));
-  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update");
+  // Turnier-Zeile (oder Metadaten eines Turniers ohne Treffer): eigener Zweig, gleiche Regeln (tournament-charge.ts); die Spiel-Pfade fassen sie nie an
+  if ((probe && probe.tournamentId !== null) || (!probe && r.metadata.tournamentId)) return applyTournamentCharge(tx, r);
+  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update"); // Spiel zuerst
   let row: typeof paymentCharges.$inferSelect | undefined = await byPi(true);
   let oldAttempt = false;
   if (!row) {
@@ -234,6 +237,7 @@ export async function bookChargeFee(paymentIntentId: string): Promise<"booked" |
         amountCents: fee,
         kind: "fee",
         matchId: fresh.matchId,
+        tournamentId: fresh.tournamentId, // Turnier-Abbuchung: die Gebuehr gehoert zum Turnier (Auswertung)
         idempotencyKey: `fee:${paymentIntentId}`,
         reason: "Stripe-Gebühr (echt)",
       });
