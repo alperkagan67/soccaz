@@ -184,8 +184,17 @@ export async function notifyHallConfirmReminders(now: Date = new Date()): Promis
         const captains = await tx.select({ captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
         const recipients = [...new Set([t.organizerId, ...captains.map((x) => x.captainId)])].filter((x): x is string => Boolean(x));
         await notifyUsers(recipients, { type: "system", title: "Halle hat noch nicht zugesagt", body: hallReminderText(t.name, stage), url: `/turniere/${t.id}` }, tx);
-        const holders = NOTIFY_ACCESS_HOLDERS && t.venueId ? await accessHolderIdsOf(t.venueId, tx) : [];
-        await notifyUsers(holders, { type: "system", title: "Zusage der Halle fehlt", body: holderText(t.name, t.startsAt, due, stage), url: "/halle" }, tx);
+        if (NOTIFY_ACCESS_HOLDERS && t.venueId) {
+          // Savepoint (R-T247 c): ein Fehler bei den Zugangsinhabern darf weder die Erinnerung an den Veranstalter noch den Marker kippen
+          try {
+            await tx.transaction(async (sp) => {
+              const holders = await accessHolderIdsOf(t.venueId!, sp);
+              await notifyUsers(holders, { type: "system", title: "Zusage der Halle fehlt", body: holderText(t.name, t.startsAt, due, stage), url: "/halle" }, sp);
+            });
+          } catch {
+            /* Zugabe */
+          }
+        }
         await audit(null, action, "tournament", t.id, { after: { recipients: recipients.length } }, tx);
         sent += 1;
       });
