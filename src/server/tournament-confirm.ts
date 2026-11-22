@@ -38,6 +38,7 @@ export function hallReminderText(tournamentName: string, hours: number): string 
 }
 
 const NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht zusagen.";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Zusage der Halle (Aktion des Betreibers, im Namen der Halle). Eine Transaktion, Reihenfolge: Turnier (gesperrt) -> Zugang (nur gelesen). Pruefungen: Status payment, kein Bracket, nicht
@@ -46,7 +47,11 @@ const NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht zusagen.";
  */
 export async function confirmTournamentVenue(userId: string, tournamentId: string, opts: { now?: Date } = {}): Promise<{ confirmed: boolean }> {
   return db.transaction(async (tx) => {
-    // Turniersperre zuerst; ein unbekanntes Turnier (lockTournament wirft) bekommt dieselbe neutrale Meldung wie jeder andere Mangel
+    // N1 (Security): keine Zeilensperre fremder Turniere und kein Roh-Fehler bei ungueltiger ID: erst die ID-Form, dann die Berechtigung (OHNE Sperre gelesen), erst danach die Turniersperre.
+    if (typeof tournamentId !== "string" || !UUID.test(tournamentId)) throw new DomainError(NOT_POSSIBLE);
+    const [pre] = await tx.select({ venueId: tournaments.venueId }).from(tournaments).where(eq(tournaments.id, tournamentId));
+    if (!pre?.venueId || !(await hasVenueAccess(pre.venueId, userId, tx))) throw new DomainError(NOT_POSSIBLE);
+    // Turniersperre; ein unbekanntes Turnier (lockTournament wirft) bekommt dieselbe neutrale Meldung wie jeder andere Mangel
     let t: Awaited<ReturnType<typeof lockTournament>>;
     try {
       t = await lockTournament(tx, tournamentId);
@@ -97,9 +102,10 @@ export type HallConfirmation = { tournamentId: string; name: string; venueName: 
  * Turniere, die der Betreiber zusagen kann (Entscheid F1/F3): eigene Hallen, Status payment, eingefrorene Halle mit Snapshot "Zugang noetig", Zusage fehlt, Frist nicht vorbei. NAMENFREI:
  * Turniername, Termin, Dauer, Teamzahl, Hallenmiete; nie Spieler, Teams oder Veranstalter.
  */
-export async function listTournamentConfirmations(userId: string, now: Date = new Date()): Promise<HallConfirmation[]> {
+export async function listTournamentConfirmations(userId: string, nowOverride?: Date): Promise<HallConfirmation[]> {
   const mine = await venueIdsOf(userId);
   if (mine.length === 0) return [];
+  const now = nowOverride ?? (await dbNow(db)); // Datenbankuhr (R-T255 N5)
   const rows = await db
     .select({
       id: tournaments.id,
@@ -110,17 +116,21 @@ export async function listTournamentConfirmations(userId: string, now: Date = ne
       totalCents: tournaments.totalCents,
       createdAt: tournaments.createdAt,
       registrationDeadline: tournaments.registrationDeadline,
+      venueId: tournaments.venueId,
+      snapshot: tournaments.venueAccessRequiredSnapshot,
       teams: sql<number>`(select count(*)::int from tournament_teams x where x.tournament_id = ${tournaments.id})`,
     })
     .from(tournaments)
     .innerJoin(venues, eq(venues.id, tournaments.venueId))
-    .where(and(inArray(tournaments.venueId, mine), eq(tournaments.status, "payment"), eq(tournaments.venueAccessRequiredSnapshot, true), isNull(tournaments.venueConfirmedAt), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt)))
+    .where(and(inArray(tournaments.venueId, mine), eq(tournaments.status, "payment"), isNotNull(tournaments.venueAccessRequiredSnapshot), isNull(tournaments.venueConfirmedAt), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt)))
     .orderBy(asc(tournaments.startsAt));
   const out: HallConfirmation[] = [];
   for (const r of rows) {
     // die Frist rechnet je Turnier (sie liest den Zeitpunkt der Preisfestlegung); die Zahl der Turniere je Halle ist klein
     const due = await chargeDueAt(db, { startsAt: r.startsAt, createdAt: r.createdAt, registrationDeadline: r.registrationDeadline, id: r.id });
     if (due && now.getTime() >= due.getTime()) continue;
+    // dieselbe Regel wie Abbuchungspruefung und Zusage (zusageRequired): auch ein Turnier mit Live-Pflicht (Zugang ohne Einloesen entstanden, N2) steht in der Liste
+    if (!(await zusageRequired(db, { id: r.id, venueId: r.venueId, venueAccessRequiredSnapshot: r.snapshot, venueConfirmedAt: null }, due))) continue;
     out.push({ tournamentId: r.id, name: r.name, venueName: r.venueName, startsAt: r.startsAt, durationMin: r.durationMin ?? 0, teams: Number(r.teams), rentCents: r.totalCents, due });
   }
   return out;
@@ -136,15 +146,16 @@ export async function notifyHallConfirmReminders(now: Date = new Date()): Promis
   const candidates = await db
     .select({ id: tournaments.id })
     .from(tournaments)
-    .where(and(eq(tournaments.status, "payment"), isNull(tournaments.bracketGeneratedAt), isNull(tournaments.settledAt), eq(tournaments.venueAccessRequiredSnapshot, true), isNull(tournaments.venueConfirmedAt), isNotNull(tournaments.startsAt)));
+    .where(and(eq(tournaments.status, "payment"), isNull(tournaments.bracketGeneratedAt), isNull(tournaments.settledAt), isNotNull(tournaments.venueAccessRequiredSnapshot), isNull(tournaments.venueConfirmedAt), isNotNull(tournaments.startsAt)));
   let sent = 0;
   for (const c of candidates) {
     try {
       await db.transaction(async (tx) => {
         const t = await lockTournament(tx, c.id);
-        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || t.venueAccessRequiredSnapshot !== true || t.venueConfirmedAt) return;
+        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || t.venueAccessRequiredSnapshot === null || t.venueConfirmedAt) return;
         const due = await chargeDueAt(tx, t);
         if (!due) return;
+        if (!(await zusageRequired(tx, t, due))) return; // dieselbe Regel (N2): Snapshot true ODER Live-Pflicht
         const stage = currentReminderStage(now, due);
         if (stage === undefined) return;
         const action = `tournament.hall_reminder.${stage}`;

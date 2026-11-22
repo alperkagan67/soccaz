@@ -232,3 +232,26 @@ describe("M5-7b R-T251: arm ueberspringt Turniere ohne bekannte Frist", () => {
     expect((await rowOf(t.id)).venueAccessRequiredSnapshot).toBe(false);
   });
 });
+
+// ---- R-T255: N1 (ID und Berechtigung vor der Sperre), N2 (Liste und Erinnerung auf zusageRequired) ----
+import { listTournamentConfirmations, notifyHallConfirmReminders } from "@/server/tournament-confirm";
+
+describe("M5-7b R-T255", () => {
+  it("N1: ungueltige ID und fremde Halle bekommen die neutrale Meldung (kein Roh-Postgres-Fehler)", async () => {
+    const { v, t } = await fixture({ snapshot: true });
+    const op = await grantAccess(v.id);
+    const other = await grantAccess((await fixture()).v.id); // aktiver Zugang, aber zu einer ANDEREN Halle
+    for (const id of ["kein-uuid", "", "00000000-0000-4000-8000-000000000000"]) await expect(confirmTournamentVenue(op.id, id)).rejects.toThrow(/lässt sich gerade nicht zusagen/);
+    await expect(confirmTournamentVenue(other.id, t.id)).rejects.toThrow(/lässt sich gerade nicht zusagen/);
+  });
+
+  it("N2: Live-Pflicht ohne Einloesen (Zugang entstand anders): das Turnier steht in der Liste und die Erinnerung geht raus", async () => {
+    const { v, t, org } = await fixture(); // Snapshot false
+    const op = await grantAccess(v.id); // Zugang ohne redeemVenueInvites: arm lief nicht
+    expect((await rowOf(t.id)).venueAccessRequiredSnapshot).toBe(false);
+    expect((await listTournamentConfirmations(op.id)).map((x) => x.tournamentId)).toContain(t.id);
+    const due = await db.transaction(async (tx) => chargeDueAt(tx, await rowOf(t.id)));
+    expect(await notifyHallConfirmReminders(new Date(due!.getTime() - 3 * 3_600_000))).toBeGreaterThanOrEqual(1);
+    expect((await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Halle hat noch nicht zugesagt")))).length).toBe(1);
+  });
+});
