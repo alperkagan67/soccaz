@@ -29,3 +29,13 @@ export function cleanReason(input: string | null | undefined): string {
 /** Anfrage-Arten: je Spiel, Halle und Runde höchstens ein Eintrag (partieller UNIQUE-Index, Existenzprüfung unter der Zählersperre). Die job_*-Arten sind nicht eindeutig (Plan 12 a). */
 export const REQUEST_KINDS: readonly EvidenceKind[] = ["request_sent", "unmanaged", "accepted", "declined", "expired"];
 export const isRequestKind = (k: EvidenceKind) => REQUEST_KINDS.includes(k);
+
+/**
+ * Text für das PDF (Standardschrift Helvetica kennt nur Latin-1/WinAnsi): Steuer-, Richtungs- und Zero-Width-Zeichen entfernen (wie cleanReason), alles außerhalb von Latin-1 und der gängigen
+ * WinAnsi-Zeichen (€, „“”, –, —, …) durch "?" ersetzen (ein Zeichen je Codepunkt, auch Emoji). Der Renderer stört sich dann an keinem Zeichen.
+ */
+export function pdfSafe(input: string | null | undefined): string {
+  return Array.from(cleanReason(input))
+    .map((ch) => (/[\u0000-\u00FF\u20AC\u201E\u201C\u201D\u2013\u2014\u2026\n]/.test(ch) ? ch : "?"))
+    .join("");
+}

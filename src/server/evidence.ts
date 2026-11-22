@@ -71,3 +71,34 @@ export async function evidenceReport(exec: Exec = db): Promise<EvidenceReport> {
   const missing = await reconcileEvidence(exec);
   return { chain, orphans, missing, ok: chain.ok && orphans.matchIds.length === 0 && orphans.venueIds.length === 0 && missing.length === 0 };
 }
+
+export type CachedEvidenceReport = EvidenceReport & { checkedAt: Date };
+let cache: { at: number; report: CachedEvidenceReport } | null = null;
+let inflight: Promise<CachedEvidenceReport> | null = null;
+const REPORT_TTL_MS = 60_000;
+
+/**
+ * Gesamtbericht, höchstens alle 60 Sekunden neu berechnet (Review R-T225a): evidenceReport() prüft die GESAMTE Kette und gleicht ab (O(n)); jeder PDF-/Seitenabruf würde sonst bei wachsender
+ * Kette teurer. Läuft gerade eine Berechnung, teilen sich alle gleichzeitigen Abrufe dasselbe Versprechen (kein Ansturm nach Ablauf des Zwischenspeichers, Security-Hinweis R-T226). Der
+ * Prüfzeitpunkt (checkedAt) steht im Ergebnis und im PDF. Der Tagesjob evidence-head rechnet immer frisch.
+ */
+export async function cachedEvidenceReport(now: number = Date.now(), exec: Exec = db): Promise<CachedEvidenceReport> {
+  if (cache && now - cache.at < REPORT_TTL_MS) return cache.report;
+  if (inflight) return inflight;
+  inflight = (async () => {
+    try {
+      const report = { ...(await evidenceReport(exec)), checkedAt: new Date(now) };
+      cache = { at: now, report };
+      return report;
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
+}
+
+/** NUR FÜR TESTS: leert Zwischenspeicher UND das laufende Versprechen (eine gerade laufende Berechnung wird dadurch nicht abgebrochen, ihr Ergebnis landet aber nicht mehr im Zwischenspeicher). */
+export function clearEvidenceReportCache(): void {
+  cache = null;
+  inflight = null;
+}

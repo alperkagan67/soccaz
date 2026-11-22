@@ -26,6 +26,7 @@ const ALLOWED: Record<Permission, Who[]> = {
 // Soll je Admin-Seite (Pfad unter src/app/admin) und je Server-Aktion mit Wächter
 const PAGES: Record<string, Permission> = {
   "page.tsx": "dashboard",
+  "beweis/page.tsx": "owner", // 009 M3c: Beweisprotokoll, nur Admin 1
   "buchungen/page.tsx": "booking",
   "codes/page.tsx": "finance",
   "einstellungen/page.tsx": "owner",
