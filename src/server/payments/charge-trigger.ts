@@ -10,7 +10,7 @@ import { bookOpenFees } from "./charge";
 import { runErasureTasks } from "./erasure";
 import { retryTournamentChargesInWindow, runTournamentChargesDue } from "./tournament-charge";
 import { notifyHallConfirmReminders } from "../tournament-confirm";
-import { cancelTournamentsAfterWindow, notifyMissingCardReminders } from "../tournaments";
+import { cancelTournamentsAfterWindow, notifyFrozenTournaments, notifyMissingCardReminders } from "../tournaments";
 import { retryChargesInWindow } from "./charge-retry";
 import { runSubstitutes } from "./substitute";
 import { AFTER_START, runCharges, UNKNOWN_OUTCOME, type RunResult } from "./charge-run";
@@ -96,6 +96,14 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
       touched += await notifyMissingCardReminders(now); // Vorwarnung 24 h und 6 h vor der Frist: Karte fehlt (M5-5)
     } catch (error) {
       console.error("runCardCharges: Fehler bei Turnieren", error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  // Eingefrorene Turniere bei Schalter AUS: Mitteilung an Admin 1 ab 6 h, dann alle 12 h (Backlog 141); keine automatische Absage
+  if (!(await cardPaymentsEnabled())) {
+    try {
+      touched += await notifyFrozenTournaments(now);
+    } catch (error) {
+      console.error("runCardCharges: eingefrorene Turniere", error instanceof Error ? error.name : "Fehler");
     }
   }
   // Nachzahlen im Fenster (M3c-1): holt nach, was der Webhook-Pfad nicht geschafft hat (Stripe-Fehler, Abbruch). Nur bei eingeschaltetem Kartenmodell.
