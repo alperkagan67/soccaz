@@ -255,3 +255,30 @@ describe("M5-7b R-T255", () => {
     expect((await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Halle hat noch nicht zugesagt")))).length).toBe(1);
   });
 });
+
+describe("M5-7b R-T257: Berechtigung VOR der Turniersperre", () => {
+  it("ein Fremder wartet nie auf die Zeilensperre eines Turniers (sofortige neutrale Meldung)", async () => {
+    const { t } = await fixture({ snapshot: true });
+    const stranger = await makeUser("str");
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    let locked: () => void = () => {};
+    const lockedP = new Promise<void>((r) => (locked = r));
+    const holder = db.transaction(async (tx) => {
+      await tx.execute(sql`select id from tournaments where id = ${t.id} for update`);
+      locked();
+      await held;
+    });
+    await lockedP;
+    try {
+      const outcome = await Promise.race([
+        confirmTournamentVenue(stranger.id, t.id).then(() => "ok", (e: Error) => (/lässt sich gerade nicht zusagen/.test(e.message) ? "neutral" : "anders: " + e.message)),
+        new Promise<string>((r) => setTimeout(() => r("blockiert"), 4000)),
+      ]);
+      expect(outcome).toBe("neutral");
+    } finally {
+      release();
+      await holder;
+    }
+  });
+});

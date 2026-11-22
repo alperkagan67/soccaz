@@ -142,7 +142,8 @@ export const rentText = (c: number | null) => (c === null ? "" : formatEuro(c));
  * Erinnerung an den Veranstalter und die Captains, solange die Halle nicht zugesagt hat: 24 h und 6 h vor der Frist, je Stufe einmal je Turnier (Audit-Marker unter der Turniersperre), ohne
  * Namen Dritter; nur Turniere im Kartenmodell mit Snapshot "Zugang noetig" und fehlender Zusage. Gibt die Zahl der benachrichtigten Turniere zurueck. Wie notifyMissingCardReminders.
  */
-export async function notifyHallConfirmReminders(now: Date = new Date()): Promise<number> {
+export async function notifyHallConfirmReminders(nowOverride?: Date): Promise<number> {
+  const now = nowOverride ?? (await dbNow(db)); // Datenbankuhr fuer die Stufen (R-T257 1); nur Tests geben die Zeit vor
   const candidates = await db
     .select({ id: tournaments.id })
     .from(tournaments)
