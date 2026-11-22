@@ -120,4 +120,25 @@ describe("Aufbewahrung des Klartexts", () => {
     expect(res.retention).toMatchObject({ deleted: 0, skipped: true });
     expect(await textCount()).toBe(2); // Beweis bleibt erhalten
   });
+
+  it("Gleichheitsfall at = cutoff: der Klartext bleibt (strikt älter als der Stichtag, nicht gleich)", async () => {
+    await twoEntries();
+    // Zeit des ersten Eintrags auf volle Millisekunden legen (JS-Date kennt keine Mikrosekunden); die Kettenpruefung ist hier nicht Gegenstand
+    await maintenance((tx) => tx.execute(sql`update booking_evidence set at = date_trunc('milliseconds', at) where seq = 1`));
+    const first = new Date(rows<{ at: Date }>(await db.execute(sql`select at from booking_evidence where seq = 1`))[0].at);
+    await setRetention("30");
+    expect((await sweepReasonText(nowFor(first, 30))).deleted).toBe(0); // cutoff == at: nicht gelöscht
+    expect((await sweepReasonText(nowFor(new Date(first.getTime() + 1), 30))).deleted).toBe(1); // eine Millisekunde später: gelöscht
+  });
+
+  it("Batch: höchstens 'batch' Texte je Lauf, more = true meldet den Rest; spätere Läufe räumen weiter auf", async () => {
+    await twoEntries();
+    await setRetention("1");
+    const far = new Date(Date.now() + 5 * 86_400_000);
+    expect(await sweepReasonText(far, 1)).toMatchObject({ deleted: 1, more: true });
+    expect(await textCount()).toBe(1);
+    expect(await sweepReasonText(far, 1)).toMatchObject({ deleted: 1, more: true }); // genau am Limit: 'more' ist vorsichtig true
+    expect(await sweepReasonText(far, 1)).toMatchObject({ deleted: 0, more: false });
+    expect(await textCount()).toBe(0);
+  });
 });

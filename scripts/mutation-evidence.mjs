@@ -87,6 +87,8 @@ const MUTATIONS = [
   { name: "Aufbewahrung: D = 0 loescht trotzdem", file: "src/server/evidence-head.ts", transform: (s) => s.replace("    const raw = String(", "    await db.execute(sql`delete from booking_evidence_reason_text`);" + String.fromCharCode(10) + "    const raw = String("), tests: [AUF] },
   { name: "Aufbewahrung: Obergrenze 36500 fehlt (36501 gilt als aktiv)", file: "src/server/evidence-head.ts", transform: (s) => s.replace("n >= 1 && n <= RETENTION_MAX_DAYS", "n >= 1"), tests: [AUF] },
   { name: "Aufbewahrung loescht auch bei ungueltiger Kette (Pruefung nicht vorgeschaltet)", file: "src/server/evidence-head.ts", transform: (s) => s.replace(CHAIN_OK, CHAIN_TRUE), tests: [AUF] },
+  { name: "Aufbewahrung: Stichtag inklusiv (<= statt <)", file: "src/server/evidence-head.ts", transform: (s) => s.replace("e.at < " + String.fromCharCode(36) + "{cutoff", "e.at <= " + String.fromCharCode(36) + "{cutoff"), tests: [AUF] },
+  { name: "Aufbewahrung: Batch-Limit entfernt", file: "src/server/evidence-head.ts", transform: (s) => s.replace(" order by e.seq limit " + String.fromCharCode(36) + "{batch}", ""), tests: [AUF] },
 ];
 
 const only = process.argv.slice(2).map(Number).filter(Boolean);

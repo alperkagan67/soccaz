@@ -14,6 +14,7 @@ const LAST_KEY = "evidence_head_last";
  * anonymisiert ist (E-Mail geloescht-<id>@geloescht.invalid). Zeile und Hash bleiben, die Kette bleibt gueltig. Gibt die Anzahl geleerter Zeilen zurueck.
  */
 export async function clearOrphanActors(): Promise<number> {
+  // Hinweis (R-T256): dieses Loeschen von Klartext zu anonymisierten Actor-Zeilen (Kontoloeschung) laeuft BEWUSST VOR der Kettenpruefung und ist von der Aufbewahrung unabhaengig; nur die Aufbewahrung nach Frist wartet auf eine gueltige Kette.
   // Plan 16g.6: Klartext der Begruendungen zuerst (Eintraege, deren Actor-Zeile anonymisiert ist oder deren Konto nicht mehr existiert), dann die Actor-Zeilen; Turnier-Bestaetiger ohne Konto loesen
   await db.execute(sql`
     delete from booking_evidence_reason_text rt using evidence_actor ea
@@ -48,7 +49,7 @@ export async function retentionDays(): Promise<number | null> {
  * (booking_evidence.at = COMMIT-Zeit) aelter ist als evidence_reason_retention_days Tage. Commitment, Hash, evidence_actor und Kette bleiben unberuehrt (fehlender Klartext = nicht pruefbar, gueltig).
  * Idempotent: ein zweiter Lauf loescht nichts. Gibt Dauer und Anzahl zurueck; bei "aus" (days = null) passiert nichts. Backups, WAL und Logs erreicht das Loeschen nicht (Frage R3).
  */
-export async function sweepReasonText(now?: Date): Promise<{ days: number | null; deleted: number; invalid: boolean; more: boolean }> {
+export async function sweepReasonText(now?: Date, batch: number = RETENTION_BATCH): Promise<{ days: number | null; deleted: number; invalid: boolean; more: boolean }> {
   const days = await retentionDays();
   if (days === null) {
     // Hinweis statt stillem Nichtstun: ein Wert ungleich 0, der nicht gilt (Text, negativ, Dezimal, ueber 36 500), loescht nichts
@@ -61,10 +62,10 @@ export async function sweepReasonText(now?: Date): Promise<{ days: number | null
     delete from booking_evidence_reason_text
     where evidence_id in (
       select rt.evidence_id from booking_evidence_reason_text rt join booking_evidence e on e.id = rt.evidence_id
-      where e.at < ${cutoff.toISOString()}::timestamptz order by e.seq limit ${RETENTION_BATCH})`);
+      where e.at < ${cutoff.toISOString()}::timestamptz order by e.seq limit ${batch})`);
   const deleted = (r as unknown as { rowCount?: number }).rowCount ?? 0;
   if (deleted > 0) await audit(null, "evidence.retention", "evidence", "reason_text", { after: { days, deleted, cutoff: cutoff.toISOString() } });
-  return { days, deleted, invalid: false, more: deleted >= RETENTION_BATCH };
+  return { days, deleted, invalid: false, more: deleted >= batch };
 }
 
 /**
