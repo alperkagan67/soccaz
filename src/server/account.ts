@@ -3,6 +3,7 @@ import { revokeAccessOfUser } from "./venue-access";
 import { db } from "@/db";
 import { matchParticipants, matches, notifications, paymentCharges, paymentDisputes, paymentErasureTasks, paymentProfiles, paymentRefunds, paymentSetupIntents, teamMembers, teams, users } from "@/db/schema";
 import { evidenceActor, ledgerEntries, payments, receipts } from "@/db/schema-finance";
+import { tournamentPlayers } from "@/db/schema-league";
 import { comments, media } from "@/db/schema-content";
 import { mvpVotes, playerStats, userBadges, userReliability } from "@/db/schema-community";
 import { CITIES } from "@/lib/validation";
@@ -57,23 +58,27 @@ export async function exportCardData(userId: string) {
     .from(paymentProfiles)
     .where(eq(paymentProfiles.userId, userId));
   const mandates = await db
-    .select({ at: paymentSetupIntents.mandateAcceptedAt, text: paymentSetupIntents.mandateText, matchId: paymentSetupIntents.matchId, status: paymentSetupIntents.status })
+    .select({ at: paymentSetupIntents.mandateAcceptedAt, text: paymentSetupIntents.mandateText, matchId: paymentSetupIntents.matchId, tournamentId: paymentSetupIntents.tournamentId, status: paymentSetupIntents.status })
     .from(paymentSetupIntents)
     .where(eq(paymentSetupIntents.userId, userId));
   const charges = await db
-    .select({ matchId: paymentCharges.matchId, amountCents: paymentCharges.amountCents, status: paymentCharges.status, createdAt: paymentCharges.createdAt, paymentIntentId: paymentCharges.paymentIntentId, seat: paymentCharges.userId, payer: paymentCharges.payerUserId })
+    .select({ matchId: paymentCharges.matchId, tournamentId: paymentCharges.tournamentId, amountCents: paymentCharges.amountCents, status: paymentCharges.status, createdAt: paymentCharges.createdAt, paymentIntentId: paymentCharges.paymentIntentId, seat: paymentCharges.userId, payer: paymentCharges.payerUserId })
     .from(paymentCharges)
     .where(or(eq(paymentCharges.userId, userId), eq(paymentCharges.payerUserId, userId)));
   const refunds = await db
-    .select({ matchId: paymentRefunds.matchId, amountCents: paymentRefunds.amountCents, status: paymentRefunds.status, reason: paymentRefunds.reason, createdAt: paymentRefunds.createdAt })
+    .select({ matchId: paymentRefunds.matchId, tournamentId: paymentRefunds.tournamentId, amountCents: paymentRefunds.amountCents, status: paymentRefunds.status, reason: paymentRefunds.reason, createdAt: paymentRefunds.createdAt })
     .from(paymentRefunds)
     .where(eq(paymentRefunds.userId, userId));
   const covers = await db
     .select({ matchId: matchParticipants.matchId, mandate: matchParticipants.coverMandateText, acceptedAt: matchParticipants.coverAcceptedAt })
     .from(matchParticipants)
     .where(eq(matchParticipants.coveredByUserId, userId));
+  const tournamentCovers = await db
+    .select({ tournamentId: tournamentPlayers.tournamentId, mandate: tournamentPlayers.coverMandateText, acceptedAt: tournamentPlayers.coverAcceptedAt })
+    .from(tournamentPlayers)
+    .where(eq(tournamentPlayers.coveredByUserId, userId));
   const disputes = await db
-    .select({ disputeId: paymentDisputes.disputeId, matchId: paymentDisputes.matchId, amountCents: paymentDisputes.amountCents, status: paymentDisputes.status, reason: paymentDisputes.reason, createdAt: paymentDisputes.createdAt })
+    .select({ disputeId: paymentDisputes.disputeId, matchId: paymentDisputes.matchId, tournamentId: paymentDisputes.tournamentId, amountCents: paymentDisputes.amountCents, status: paymentDisputes.status, reason: paymentDisputes.reason, createdAt: paymentDisputes.createdAt })
     .from(paymentDisputes)
     .where(eq(paymentDisputes.payerUserId, userId));
   return {
@@ -83,6 +88,7 @@ export async function exportCardData(userId: string) {
     mandates,
     charges: charges.map((c) => ({
       matchId: c.matchId,
+      tournamentId: c.tournamentId,
       amountCents: c.amountCents,
       status: c.status,
       createdAt: c.createdAt,
@@ -91,7 +97,7 @@ export async function exportCardData(userId: string) {
       role: c.payer === userId ? "payer_for_other" : c.payer ? "seat_covered_by_other" : "own",
     })),
     refunds,
-    coversGiven: covers,
+    coversGiven: [...covers.map((c) => ({ ...c, tournamentId: null as string | null })), ...tournamentCovers.map((c) => ({ matchId: null as string | null, ...c }))],
     disputes,
   };
 }

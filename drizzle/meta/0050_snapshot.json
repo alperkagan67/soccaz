@@ -1,5 +1,5 @@
 {
-  "id": "c0754238-20aa-4d3e-b5f0-557703126197",
+  "id": "aeb263bc-c77c-4866-b225-57605f65a90c",
   "prevId": "9abb9c91-d838-49c0-b965-c84129dfd53c",
   "version": "7",
   "dialect": "postgresql",
@@ -3228,260 +3228,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.booking_evidence": {
-      "name": "booking_evidence",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "match_id": {
-          "name": "match_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "venue_id": {
-          "name": "venue_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "round": {
-          "name": "round",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "job_id": {
-          "name": "job_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "at": {
-          "name": "at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "actor_commitment": {
-          "name": "actor_commitment",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "prev_hash": {
-          "name": "prev_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "hash": {
-          "name": "hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        },
-        "tx_id": {
-          "name": "tx_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "txid_current()"
-        },
-        "match_prev_hash": {
-          "name": "match_prev_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "booking_evidence_seq_idx": {
-          "name": "booking_evidence_seq_idx",
-          "columns": [
-            {
-              "expression": "seq",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "booking_evidence_request_idx": {
-          "name": "booking_evidence_request_idx",
-          "columns": [
-            {
-              "expression": "match_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "venue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "round",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"booking_evidence\".\"kind\" in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "booking_evidence_match_idx": {
-          "name": "booking_evidence_match_idx",
-          "columns": [
-            {
-              "expression": "match_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "seq",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "booking_evidence_venue_idx": {
-          "name": "booking_evidence_venue_idx",
-          "columns": [
-            {
-              "expression": "venue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "booking_evidence_job_idx": {
-          "name": "booking_evidence_job_idx",
-          "columns": [
-            {
-              "expression": "job_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "booking_evidence_kind_check": {
-          "name": "booking_evidence_kind_check",
-          "value": "\"booking_evidence\".\"kind\" in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done')"
-        },
-        "booking_evidence_reason_len": {
-          "name": "booking_evidence_reason_len",
-          "value": "\"booking_evidence\".\"reason\" is null or char_length(\"booking_evidence\".\"reason\") <= 300"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.booking_evidence_counter": {
-      "name": "booking_evidence_counter",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "default": 1
-        },
-        "last_seq": {
-          "name": "last_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "last_hash": {
-          "name": "last_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "''"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "booking_evidence_counter_single": {
-          "name": "booking_evidence_counter_single",
-          "value": "\"booking_evidence_counter\".\"id\" = 1"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.booking_jobs": {
       "name": "booking_jobs",
       "schema": "",
@@ -3598,63 +3344,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.evidence_actor": {
-      "name": "evidence_actor",
-      "schema": "",
-      "columns": {
-        "evidence_id": {
-          "name": "evidence_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "salt": {
-          "name": "salt",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "evidence_actor_evidence_id_booking_evidence_id_fk": {
-          "name": "evidence_actor_evidence_id_booking_evidence_id_fk",
-          "tableFrom": "evidence_actor",
-          "tableTo": "booking_evidence",
-          "columnsFrom": [
-            "evidence_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -7842,6 +7531,30 @@
         "venue_text": {
           "name": "venue_text",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "venue_id": {
+          "name": "venue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "venue_confirmed_at": {
+          "name": "venue_confirmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "venue_access_required_snapshot": {
+          "name": "venue_access_required_snapshot",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "commission_percent_snapshot": {
+          "name": "commission_percent_snapshot",
+          "type": "numeric(5, 2)",
           "primaryKey": false,
           "notNull": false
         },
