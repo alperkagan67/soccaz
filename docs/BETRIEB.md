@@ -158,3 +158,8 @@ Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert�
 **Rückgängig (Rollback):** Code auf den vorherigen Stand zurück; Admin 1 lässt sich ohne Datenverlust abgeben (`is_owner = false`). Die Spalte `is_owner` und der Teilindex `users_one_owner` bleiben ungenutzt stehen (Datenbankänderungen sind nur vorwärts, vorher sichern).
 
 **Prüfung der Migration** (lokal, Wegwerf-Datenbanken, löscht sie danach): `node --env-file=.env.local scripts/migrate-check.mjs` (frische Datenbank mit allen Migrationen in einem Lauf und bestehende Datenbank mit Daten).
+
+### Beweisprotokoll: Löschen von Hallen und Sperrreihenfolge (009 M3)
+- **Hallen löschen:** Es gibt keinen Schutz gegen das Löschen einer Halle, zu der Beweisprotokoll-Einträge existieren (nur Spiele sind geschützt: Trigger auf `matches`). Die App löscht nie Hallen (nur aktiv/inaktiv). Wird eine Halle manuell gelöscht, meldet der Tagesjob `evidence-head` die verwaisten Einträge als **Alarm** an Admin 1 (die Kette bleibt gültig). Hallen daher nicht löschen, sondern deaktivieren.
+- **Sperrregel für die Anwendung:** `users`-Zeilen **nach** einem Spiel nur mit `FOR NO KEY UPDATE` sperren, nie mit `FOR UPDATE` (Fremdschlüssel auf `users` nehmen `FOR KEY SHARE`; sonst Zyklus, siehe Plan 009 M3, 15.9). Reihenfolge: Spiel → Nutzer.
+- **Beweisprotokoll-Einträge entstehen per Datenbank-Trigger beim COMMIT** (nicht in der Anwendung); Wartungsausnahme und Rollenmodell: Abschnitt „Wartungsausnahme der Datenbank-Trigger“.
