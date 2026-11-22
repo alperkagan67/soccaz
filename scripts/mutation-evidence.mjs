@@ -36,12 +36,31 @@ const MUTATIONS = [
   { name: "UPDATE-Ereignis oeffnet eine neue Runde", fn: "evidence_hall_event", from: "CASE WHEN TG_OP = 'INSERT' AND k IN ('request_sent', 'unmanaged') THEN 'open' ELSE 'current' END,", to: "CASE WHEN k IN ('request_sent', 'unmanaged') THEN 'open' ELSE 'current' END,", tests: [HAKEN] },
   { name: "evidence_clean_reason entfernt keine Zero-Width-Zeichen", fn: "evidence_clean_reason", from: "\\u200B-\\u200F", to: "", tests: [NL, BASE] },
   { name: "Settings-Guard lehnt direkte Aenderung nicht ab", fn: "evidence_settings_guard", from: `AND coalesce(current_setting('${PFX}evidence_setting_write', true), '') <> 'on' THEN`, to: "AND false THEN", tests: [NL] },
-  { name: "Einstellungsschutz prueft nur NEW.key (Umbenennen eines geschuetzten Schluessels moeglich)", fn: "evidence_settings_guard", from: "k text := CASE WHEN TG_OP = 'INSERT' THEN NEW.key ELSE OLD.key END;", to: "k text := CASE WHEN TG_OP = 'DELETE' THEN OLD.key ELSE NEW.key END;", tests: [NL] },
+  { name: "Einstellungsschutz prueft nur OLD.key (Umbenennen eines freien Schluessels in einen geschuetzten moeglich)", fn: "evidence_settings_guard", from: "     AND (TG_OP <> 'UPDATE' OR NEW.key NOT IN ('evidence_enforcement', 'evidence_clock_source', 'evidence_reason_retention_days', 'evidence_cutover_at', 'evidence_tournament_cutover_at')) THEN", to: "     THEN", tests: [NL] },
   { name: "Frist wird im Sofort-Trigger nicht gelesen (Frist NULL)", fn: "evidence_hall_before", from: "SELECT veto_turn_deadline INTO NEW.reply_deadline FROM matches WHERE id = NEW.match_id;", to: "NEW.reply_deadline := NULL;", tests: [NL] },
   {
     name: "Turnier-Trigger ohne WHEN (feuert bei jedem UPDATE)",
     apply: ["DROP TRIGGER IF EXISTS tournaments_evidence_upd ON tournaments", "CREATE CONSTRAINT TRIGGER tournaments_evidence_upd AFTER UPDATE ON tournaments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION evidence_tournament_event()"],
     restore: ["DROP TRIGGER IF EXISTS tournaments_evidence_upd ON tournaments", "CREATE CONSTRAINT TRIGGER tournaments_evidence_upd AFTER UPDATE ON tournaments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD.venue_confirmed_at IS NULL AND NEW.venue_confirmed_at IS NOT NULL) EXECUTE FUNCTION evidence_tournament_event()"],
+    tests: [NL],
+  },
+  { name: "evidence_hash2 ohne subject im Hash", fn: "evidence_hash2", from: "    coalesce(p_subject, ''),\n", to: "", tests: [NL] },
+  { name: "evidence_hash2 ohne tournament_id im Hash", fn: "evidence_hash2", from: "    coalesce(p_tournament_id::text, ''),\n", to: "", tests: [NL] },
+  { name: "evidence_hash2 ohne reason_commitment im Hash", fn: "evidence_hash2", from: "    coalesce(p_reason_commitment, ''),\n", to: "", tests: [NL] },
+  { name: "Commitment ohne Salz", fn: "evidence_write", from: "sha256(convert_to(v_rsalt || ':' || v_reason, 'UTF8'))", to: "sha256(convert_to(':' || v_reason, 'UTF8'))", tests: [NL] },
+  { name: "Sitzungswert-Schluessel ohne Betreff-Praefix", fn: "evidence_session_key", from: "md5('m:' || p_match::text", to: "md5(p_match::text", tests: [NL] },
+  { name: "zu lange Begruendung wird nicht abgelehnt", fn: "evidence_check_reason", from: "IF v_text <> '' AND char_length(v_text) NOT BETWEEN 3 AND 200 THEN", to: "IF false THEN", tests: [NL] },
+  { name: "hash_version ignoriert (immer Version 1)", fn: "evidence_hash_of", from: "  IF e.hash_version = 1 THEN", to: "  IF true THEN", tests: [NL] },
+  {
+    name: "XOR-CHECK (Spiel/Turnier) entfernt",
+    apply: ["ALTER TABLE booking_evidence DROP CONSTRAINT booking_evidence_subject_xor"],
+    restore: ["ALTER TABLE booking_evidence ADD CONSTRAINT booking_evidence_subject_xor CHECK ((subject = 'match' and match_id is not null and tournament_id is null) or (subject = 'tournament' and tournament_id is not null and match_id is null))"],
+    tests: [NL],
+  },
+  {
+    name: "CHECK enforced nur bei Antwort-Arten entfernt",
+    apply: ["ALTER TABLE booking_evidence DROP CONSTRAINT booking_evidence_enforced_check"],
+    restore: ["ALTER TABLE booking_evidence ADD CONSTRAINT booking_evidence_enforced_check CHECK (enforced is null or (subject = 'match' and kind in ('accepted', 'declined', 'expired', 'late_attempt')))"],
     tests: [NL],
   },
 ];
@@ -57,6 +76,7 @@ const stmtOf = (fn) => {
 };
 const runTests = (files) => spawnSync("npx", ["vitest", "run", "--config", "vitest.integration.config.mts", ...files, "--testTimeout=60000"], { encoding: "utf8", shell: true, timeout: 280_000 });
 
+// Hinweis: bei hartem Abbruch (Prozess beendet, Strg+C) kann eine Mutation stehen bleiben: dann die Worker-Datenbank neu anlegen (node scripts/worktree.mjs) oder die Funktion aus der Migration per CREATE OR REPLACE nachziehen.
 const report = [];
 try {
   for (const [i, m] of MUTATIONS.entries()) {

@@ -130,6 +130,14 @@ try {
   check(st.find((s) => s.key === "evidence_enforcement")?.v === "off", "Schalter evidence_enforcement = off");
   const dup = await q2("select proname from pg_proc where proname like 'evidence%' group by proname having count(*) > 1");
   check(dup.length === 0, "genau eine Funktion je Name");
+  // Triggerliste (Plan 16h, Review R-T246 C7): aufgeschobene Trigger DEFERRABLE INITIALLY DEFERRED, WHEN-Klauseln, Reset-/Guard-/Sofort-Trigger vorhanden
+  const trg = await q2("select tgname, tgdeferrable, tginitdeferred, pg_get_triggerdef(oid) as def from pg_trigger where not tgisinternal and tgname in ('tournaments_evidence_ins','tournaments_evidence_upd','match_hall_requests_evidence_ins','match_hall_requests_evidence_upd','booking_jobs_evidence_ins','booking_jobs_evidence_upd','match_hall_requests_evidence_before','tournaments_reset_confirmation','tournaments_forbid_delete_with_evidence','matches_forbid_delete_with_evidence','settings_evidence_guard','booking_evidence_before_insert','booking_evidence_append_only')");
+  const by = Object.fromEntries(trg.map((r) => [r.tgname, r]));
+  check(trg.length === 13, `alle 13 Beweisprotokoll-Trigger vorhanden (${trg.length})`);
+  check(["tournaments_evidence_ins", "tournaments_evidence_upd", "match_hall_requests_evidence_ins", "match_hall_requests_evidence_upd", "booking_jobs_evidence_ins", "booking_jobs_evidence_upd"].every((n) => by[n]?.tgdeferrable && by[n]?.tginitdeferred), "aufgeschobene Trigger sind DEFERRABLE INITIALLY DEFERRED");
+  check(/WHEN (+(?old.venue_confirmed_at IS NULL)? AND (new.venue_confirmed_at IS NOT NULL)/i.test(by.tournaments_evidence_upd?.def ?? "") && !/OF venue_confirmed_at/i.test(by.tournaments_evidence_upd?.def ?? ""), "Turnier-Trigger: WHEN NULL -> Wert, ohne 'OF'-Spalte");
+  check(/WHEN/i.test(by.match_hall_requests_evidence_upd?.def ?? "") && /BEFORE INSERT OR UPDATE/i.test(by.match_hall_requests_evidence_before?.def ?? ""), "Anfrage-Trigger: WHEN auf Statuswechsel, Sofort-Trigger BEFORE INSERT OR UPDATE");
+  // Abgleich je Quelle (Review R-T246): Zeile ohne Eintrag unter der Wartungsausnahme -> gemeldet (Spiel), Auftrag, Turnier
   const ev = await q2("select count(*)::int n from evidence_reconcile()");
   check(ev[0].n >= 0, "evidence_reconcile() laeuft");
   await db2.end();

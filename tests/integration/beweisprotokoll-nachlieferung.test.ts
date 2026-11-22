@@ -348,6 +348,17 @@ describe("Hash Version 2, Bereinigung, Einschränkungen (Plan 16d.6, 16e.4, 16f.
     expect((await verifyEvidenceChain()).ok).toBe(true);
   });
 
+  it("CHECKs: XOR Spiel/Turnier, enforced nur bei Antwort-Arten, zu lange/kurze Begründung wird abgelehnt statt gekürzt", async () => {
+    const m = await makeMatch({ hoursAhead: 72 });
+    const v = "11111111-1111-4111-8111-111111111111";
+    expect(await code(db.insert(bookingEvidence).values({ matchId: m.match.id, tournamentId: v, kind: "request_sent" }))).toBe("23514"); // XOR
+    expect(await code(db.insert(bookingEvidence).values({ matchId: null, subject: "tournament", tournamentId: v, kind: "request_sent", decidedAt: new Date() }))).toBe("23514"); // Turnier nur accepted
+    expect(await code(db.insert(bookingEvidence).values({ matchId: m.match.id, kind: "request_sent", enforced: true }))).toBe("23514"); // enforced nur bei Antwort-Arten
+    expect(await code(db.execute(sql`select evidence_check_reason('belegt', repeat('x', 201), true)`))).toBe("EV002");
+    expect(await code(db.execute(sql`select evidence_check_reason('belegt', 'ab', true)`))).toBe("EV002");
+    expect(await code(db.execute(sql`select evidence_check_reason('belegt', repeat('x', 200), true)`))).toBeNull();
+  });
+
   it("evidence_hash_of: unbekannte Version und Version 1 ohne match_id sind Fehler (kein stilles Zurückfallen)", async () => {
     const v = "11111111-1111-4111-8111-111111111111";
     expect(await msgOf(db.execute(sql`select evidence_hash_of(jsonb_populate_record(null::booking_evidence, jsonb_build_object('id', ${v}::text, 'hash_version', 3, 'seq', 1, 'match_id', ${v}::text, 'kind', 'request_sent')))`))).toMatch(/unbekannte hash_version/);
@@ -378,6 +389,16 @@ describe("Review R-T243 (w4): Einstellungsschutz, expired ohne Frist, Turnier-Id
     expect(await code(db.execute(sql`update settings set key = 'evidence_enforcement' where key = 'evidence_clock_source'`))).not.toBeNull();
     expect(await code(db.execute(sql`delete from settings where key = 'evidence_enforcement'`))).not.toBeNull();
     expect(await code(db.execute(sql`insert into settings (key, value) values ('evidence_cutover_at', to_jsonb('2000-01-01T00:00:00Z'::text)) on conflict (key) do update set value = excluded.value`))).not.toBeNull();
+    // Umbenennen EINES FREIEN Schluessels in einen geschuetzten (dessen Zeile fehlt): NEW.key-Pruefung
+    const saved = rows<{ value: unknown }>(await db.execute(sql`select value from settings where key = 'evidence_tournament_cutover_at'`))[0].value;
+    await maintenance((tx) => tx.execute(sql`delete from settings where key = 'evidence_tournament_cutover_at'`));
+    try {
+      await db.execute(sql`insert into settings (key, value) values ('evidence_tmp_frei', to_jsonb('x'::text))`);
+      expect(await code(db.execute(sql`update settings set key = 'evidence_tournament_cutover_at' where key = 'evidence_tmp_frei'`))).not.toBeNull();
+    } finally {
+      await db.execute(sql`delete from settings where key = 'evidence_tmp_frei'`);
+      await maintenance((tx) => tx.execute(sql`insert into settings (key, value) values ('evidence_tournament_cutover_at', ${JSON.stringify(saved)}::jsonb) on conflict (key) do nothing`));
+    }
     await db.execute(sql`insert into settings (key, value) values ('evidence_head_test_frei', to_jsonb('x'::text)) on conflict (key) do update set value = excluded.value`);
     await db.execute(sql`delete from settings where key = 'evidence_head_test_frei'`);
   });
