@@ -111,6 +111,7 @@ export async function reverseEntry(tx: Tx, entryId: string, opts: { reason: stri
     amountCents: orig.amountCents,
     kind: "adjustment",
     matchId: orig.matchId,
+    tournamentId: orig.tournamentId, // M5-5: die Gegenbuchung gehoert zum selben Turnier (Summe 0 je tournament_id)
     paymentId: orig.paymentId,
     reversesEntryId: orig.id,
     reason: opts.reason,

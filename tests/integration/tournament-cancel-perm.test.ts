@@ -17,7 +17,9 @@ import { cleanup, makeTeam, makeUser } from "./helpers";
 
 let provider: FakeProvider;
 let hall = "";
+let owner: { id: string };
 beforeAll(async () => {
+  owner = await makeUser("adm1", "owner"); // Admin 1: es gibt hoechstens einen je Datenbank
   const [v] = await db.insert(venues).values({ name: `E2E Halle TCP ${Date.now()}`, city: "Essen", isPartner: true, active: true }).returning();
   hall = v.id;
 });
@@ -87,7 +89,6 @@ async function netOf(tid: string, account: "venue_payable" | "commission") {
 describe("M5-5: Absage-Berechtigung nach der ersten Abbuchung", () => {
   it("Veranstalter und Admin 2 werden abgelehnt (kein Erstattungslauf), Admin 2 hinterlaesst einen Vorschlag; Admin 1 sagt ab: Erstattungszeile je Abbuchung an den Zahler", async () => {
     const { o, admin2, t } = await booked();
-    const owner = await makeUser("adm1", "owner");
     await expect(cancelTournament(o.id, t.id)).rejects.toThrow(/nur Admin 1/);
     await expect(cancelTournament(admin2.id, t.id)).rejects.toThrow(/nur Admin 1/);
     expect((await tOf(t.id)).status).not.toBe("cancelled");
@@ -110,14 +111,13 @@ describe("M5-5: Absage-Berechtigung nach der ersten Abbuchung", () => {
   it("Summe 0 je tournament_id: nach Absage, Versand und Verbuchung ist venue_payable und commission netto 0 (Provisions-Storno ueber cancelTournamentTx), zweiter Absage-Versuch erstattet nicht doppelt", async () => {
     const { t } = await booked();
     expect(await netOf(t.id, "commission")).toBeLessThan(0); // Provision gebucht (Ertrag), Netto Haben
-    const owner = await makeUser("adm1", "owner");
     await cancelTournament(owner.id, t.id);
     await expect(cancelTournament(owner.id, t.id)).rejects.toThrow(/schon beendet oder abgesagt/);
     await runTournamentRefunds(new Date());
     await runTournamentRefunds(new Date()); // zweiter Lauf: nichts doppelt
     const refunds = await refundsOf(t.id);
     expect(refunds.every((r) => r.status === "succeeded")).toBe(true);
-    expect(provider.calls.filter((c) => c.method === "createRefund")).toHaveLength(16);
+    expect(provider.calls.filter((c) => c.method === "createRefund" && (c.args as { metadata: { tournamentId?: string } }).metadata.tournamentId === t.id)).toHaveLength(16);
     expect(await netOf(t.id, "venue_payable")).toBe(0);
     expect(await netOf(t.id, "commission")).toBe(0);
   });
@@ -129,12 +129,12 @@ describe("M5-5: Absage-Berechtigung nach der ersten Abbuchung", () => {
     await runTournamentCharges(t.id, DUE);
     const row = (await rowsOf(t.id)).find((x) => x.userId === victim.id)!;
     await db.update(paymentCharges).set({ graceUntil: new Date(Date.now() - 3_600_000) }).where(eq(paymentCharges.id, row.id));
-    await Promise.all([cancelTournamentsAfterWindow(DUE), cancelTournamentsAfterWindow(DUE), closeTournamentsAtDeadline(new Date(T0 + 4.9 * DAY))]);
+    await Promise.all([cancelTournamentsAfterWindow(), cancelTournamentsAfterWindow(), closeTournamentsAtDeadline(new Date(T0 + 4.9 * DAY))]);
     await Promise.all([runTournamentRefunds(new Date()), runTournamentRefunds(new Date())]);
     const refunds = await refundsOf(t.id);
     expect(refunds).toHaveLength(15);
     expect(new Set(refunds.map((r) => r.chargeId)).size).toBe(15);
-    expect(provider.calls.filter((c) => c.method === "createRefund")).toHaveLength(15);
+    expect(provider.calls.filter((c) => c.method === "createRefund" && (c.args as { metadata: { tournamentId?: string } }).metadata.tournamentId === t.id)).toHaveLength(15);
   });
 });
 
@@ -148,7 +148,7 @@ describe("M5-5: Schalter AUS zur Frist (Plan 17.2)", () => {
     await db.update(paymentCharges).set({ graceUntil: new Date(Date.now() - 3_600_000) }).where(eq(paymentCharges.id, row.id));
     await setSetting(null, "card_payments_enabled", false);
     try {
-      expect(await cancelTournamentsAfterWindow(DUE)).toBe(0);
+      expect(await cancelTournamentsAfterWindow()).toBe(0);
       expect(await closeTournamentsAtDeadline(new Date(T0 + 4.9 * DAY))).toBe(0);
     } finally {
       await setSetting(null, "card_payments_enabled", true);
@@ -156,7 +156,7 @@ describe("M5-5: Schalter AUS zur Frist (Plan 17.2)", () => {
     expect((await tOf(t.id)).status).toBe("payment");
     expect(await refundsOf(t.id)).toHaveLength(0);
     // wieder EIN: die Pruefung laeuft weiter (Fenster ist abgelaufen -> Absage wie gehabt)
-    expect(await cancelTournamentsAfterWindow(DUE)).toBeGreaterThanOrEqual(1);
+    expect(await cancelTournamentsAfterWindow()).toBeGreaterThanOrEqual(1);
   });
 
   it("Turnier ohne Zeilen, alle bereit, Schalter AUS zur Frist: bleibt payment; nach dem Wiedereinschalten bucht der Lauf ab", async () => {
@@ -177,7 +177,6 @@ describe("M5-5: Schalter AUS zur Frist (Plan 17.2)", () => {
 describe("M5-5: Konto loeschen bei abgesagtem Turnier mit offener Erstattung", () => {
   it("eine noch nicht gesendete Erstattung blockiert die Loeschung nicht; die Erstattungszeile bleibt (Zahler-ID anonymisiert, Kunde geloescht)", async () => {
     const { t, squads } = await booked();
-    const owner = await makeUser("adm1", "owner");
     await cancelTournament(owner.id, t.id);
     const member = squads[3].players[2];
     const [before] = await db.select().from(paymentRefunds).where(and(eq(paymentRefunds.tournamentId, t.id), eq(paymentRefunds.userId, member.id)));

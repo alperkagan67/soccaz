@@ -88,11 +88,11 @@ describe("M5-5: Wiederholen im Nachzahlfenster (Turnier)", () => {
   it("neue Karte im Fenster: ein neuer Versuch (Schluessel :2, Historie), Erfolg -> alle bezahlt -> gebucht, Bracket; ohne neue Karte kein Versuch", async () => {
     const { t, victim, row } = await oneDeclined();
     expect(row.status).toBe("failed");
-    expect(await retryTournamentChargesInWindow({ now: DUE })).toBe(0); // keine neue Karte: kein Dauerbeschuss
+    expect(await retryTournamentChargesInWindow()).toBe(0); // keine neue Karte: kein Dauerbeschuss
     expect(piCalls(t.id)).toHaveLength(16);
     provider.setChargeOutcome(victim.id, "succeeded");
     await newCard(victim.id);
-    expect(await retryTournamentChargesInWindow({ userId: victim.id, now: DUE })).toBe(1);
+    expect(await retryTournamentChargesInWindow({ userId: victim.id })).toBe(1);
     const after = (await rowsOf(t.id)).find((x) => x.id === row.id)!;
     expect(after).toMatchObject({ status: "succeeded", currentAttempt: 2 });
     expect(after.idempotencyKey).toBe(`charge:t:${t.id}:${victim.id}:${(await tOf(t.id)).priceRound}:2`);
@@ -104,14 +104,14 @@ describe("M5-5: Wiederholen im Nachzahlfenster (Turnier)", () => {
     expect(st.status).toBe("running");
     expect(piCalls(t.id)).toHaveLength(17); // genau ein weiterer Aufruf
     expect((await trialBalance()).balanced).toBe(true);
-    expect(await retryTournamentChargesInWindow({ now: DUE })).toBe(0); // zweiter Lauf: nichts
+    expect(await retryTournamentChargesInWindow()).toBe(0); // zweiter Lauf: nichts
   });
 
   it("nach Ablauf des Fensters kein Versuch mehr (auch mit neuer Karte)", async () => {
     const { victim, row } = await oneDeclined();
     await db.update(paymentCharges).set({ graceUntil: new Date(Date.now() - 3_600_000) }).where(eq(paymentCharges.id, row.id));
     await newCard(victim.id);
-    expect(await retryTournamentChargesInWindow({ userId: victim.id, now: DUE })).toBe(0);
+    expect(await retryTournamentChargesInWindow({ userId: victim.id })).toBe(0);
   });
 
   it("ein ALTER Versuch zahlt nach der Drehung trotzdem: wird gebucht (Historie), der neue Versuch ist dann ein Duplikat und wird voll erstattet; Fehlschlag des alten Versuchs aendert nichts", async () => {
@@ -120,7 +120,7 @@ describe("M5-5: Wiederholen im Nachzahlfenster (Turnier)", () => {
     const profileOld = (await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, victim.id)))[0];
     provider.setChargeOutcome(victim.id, "processing"); // der neue Versuch bleibt offen
     await newCard(victim.id);
-    expect(await retryTournamentChargesInWindow({ userId: victim.id, now: DUE })).toBe(1);
+    expect(await retryTournamentChargesInWindow({ userId: victim.id })).toBe(1);
     const mid = (await rowsOf(t.id)).find((x) => x.id === row.id)!;
     expect(mid).toMatchObject({ status: "pending", currentAttempt: 2 });
     const newPi = mid.paymentIntentId!;

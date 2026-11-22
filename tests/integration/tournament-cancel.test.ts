@@ -83,15 +83,15 @@ const rowsOf = (tid: string) => db.select().from(paymentCharges).where(eq(paymen
 const refundsOf = (tid: string) => db.select().from(paymentRefunds).where(eq(paymentRefunds.tournamentId, tid));
 const tOf = async (tid: string) => (await db.select().from(tournaments).where(eq(tournaments.id, tid)))[0];
 const expire = (rowId: string) => db.update(paymentCharges).set({ graceUntil: new Date(Date.now() - 3_600_000) }).where(eq(paymentCharges.id, rowId));
-const refundCalls = () => provider.calls.filter((c) => c.method === "createRefund");
+const refundCalls = (tid: string) => provider.calls.filter((c) => c.method === "createRefund" && (c.args as { metadata: { tournamentId?: string } }).metadata.tournamentId === tid);
 
 describe("M5-5: Absage bei abgelaufenem Nachzahlfenster", () => {
   it("innerhalb des Fensters wird nichts abgesagt; nach Ablauf: Turnier abgesagt, je erfolgreicher Abbuchung EINE Erstattungszeile an den Zahler, die gescheiterte Zeile bleibt, Benachrichtigung mit Kartentext", async () => {
     const { t, row, squads } = await failedTournament();
-    expect(await cancelTournamentsAfterWindow(DUE)).toBe(0); // Fenster laeuft noch (grace_until in der Zukunft)
+    expect(await cancelTournamentsAfterWindow()).toBe(0); // Fenster laeuft noch (grace_until in der Zukunft)
     expect((await tOf(t.id)).status).toBe("payment");
     await expire(row.id);
-    expect(await cancelTournamentsAfterWindow(DUE)).toBeGreaterThanOrEqual(1);
+    expect(await cancelTournamentsAfterWindow()).toBeGreaterThanOrEqual(1);
     expect((await tOf(t.id)).status).toBe("cancelled");
     const refunds = await refundsOf(t.id);
     expect(refunds).toHaveLength(15);
@@ -102,7 +102,7 @@ describe("M5-5: Absage bei abgelaufenem Nachzahlfenster", () => {
     expect(n.body).toContain("Bereits abgebuchte Anteile werden auf die Karte erstattet");
     expect(n.body).not.toContain("Eintritt");
     // zweiter Lauf: nichts doppelt
-    expect(await cancelTournamentsAfterWindow(DUE)).toBe(0);
+    expect(await cancelTournamentsAfterWindow()).toBe(0);
     expect(await refundsOf(t.id)).toHaveLength(15);
   });
 
@@ -112,7 +112,7 @@ describe("M5-5: Absage bei abgelaufenem Nachzahlfenster", () => {
     const e = provider.signEvent({ id: nid("evt_tcx"), type: "payment_intent.succeeded", object: { id: row.paymentIntentId, amount: row.amountCents, currency: "eur", customer: profile.stripeCustomerId, metadata: { tournamentId: t.id, userId: row.userId } } });
     await handleStripeWebhook(e.rawBody, e.signature);
     await expire(row.id);
-    expect(await cancelTournamentsAfterWindow(DUE)).toBe(0);
+    expect(await cancelTournamentsAfterWindow()).toBe(0);
     expect((await tOf(t.id)).status).toBe("running"); // gebucht, Bracket
   });
 
@@ -120,7 +120,7 @@ describe("M5-5: Absage bei abgelaufenem Nachzahlfenster", () => {
     const { t, row } = await failedTournament("12.50");
     // die Provision wird erst bei "gebucht" gebucht: hier ist das Turnier nicht gebucht -> noch keine Provision; Storno bucht dann nichts
     await expire(row.id);
-    await cancelTournamentsAfterWindow(DUE);
+    await cancelTournamentsAfterWindow();
     expect((await db.select().from(ledgerEntries).where(eq(ledgerEntries.idempotencyKey, `commission-reversal:t:${t.id}`))).length).toBe(0);
     expect((await trialBalance()).balanced).toBe(true);
   });
@@ -130,9 +130,9 @@ describe("M5-5: Versand und Verbuchung der Turnier-Erstattungen", () => {
   it("der Job sendet je Zeile genau eine Erstattung (Metadaten tournamentId, nie matchId), verbucht venue_payable -> clearing (Art refund), Hauptbuch ausgeglichen; zweiter Lauf sendet nichts", async () => {
     const { t, row } = await failedTournament();
     await expire(row.id);
-    await cancelTournamentsAfterWindow(DUE);
+    await cancelTournamentsAfterWindow();
     await runTournamentRefunds(DUE);
-    const calls = refundCalls();
+    const calls = refundCalls(t.id);
     expect(calls).toHaveLength(15);
     for (const c of calls) {
       const m = (c.args as { metadata: Record<string, unknown> }).metadata;
@@ -146,14 +146,14 @@ describe("M5-5: Versand und Verbuchung der Turnier-Erstattungen", () => {
     expect(led.every((e) => e.debitAccount === "venue_payable" && e.creditAccount === "clearing" && e.amountCents === 1000)).toBe(true);
     expect((await trialBalance()).balanced).toBe(true);
     await runTournamentRefunds(DUE);
-    expect(refundCalls()).toHaveLength(15);
+    expect(refundCalls(t.id)).toHaveLength(15);
   });
 
   it("Erstattung 'pending' bei Stripe: spaeter meldet der Webhook succeeded, dann wird einmal gebucht; falsche Metadaten (matchId) oder Betraege werden ignoriert", async () => {
     const { t, row, squads } = await failedTournament();
     for (const s of squads) for (const p of s.players) provider.setRefundOutcome(p.id, "pending");
     await expire(row.id);
-    await cancelTournamentsAfterWindow(DUE);
+    await cancelTournamentsAfterWindow();
     await runTournamentRefunds(DUE);
     const refunds = await refundsOf(t.id);
     expect(refunds.every((r) => r.status === "pending" && r.refundId !== null)).toBe(true);
@@ -177,14 +177,14 @@ describe("M5-5: Versand und Verbuchung der Turnier-Erstattungen", () => {
     const { t, row, squads } = await failedTournament();
     provider.setRefundOutcome(squads[0].players[1].id, "failed");
     await expire(row.id);
-    await cancelTournamentsAfterWindow(DUE);
+    await cancelTournamentsAfterWindow();
     await runTournamentRefunds(DUE);
     const failed = (await refundsOf(t.id)).filter((r) => r.status === "failed");
     expect(failed).toHaveLength(1);
     expect(failed[0].failureCode).toBe("refund_failed");
-    const before = refundCalls().length;
+    const before = refundCalls(t.id).length;
     await runTournamentRefunds(DUE);
-    expect(refundCalls().length).toBe(before);
+    expect(refundCalls(t.id).length).toBe(before);
     expect((await getRefundAlerts()).failedRefunds.map((x) => x.id)).toContain(failed[0].id);
     expect(await db.select().from(auditLog).where(and(eq(auditLog.action, "refund.failed"), eq(auditLog.entityId, t.id)))).toHaveLength(1);
   });

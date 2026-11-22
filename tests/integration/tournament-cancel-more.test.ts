@@ -114,7 +114,7 @@ describe("M5-5: weitere Faelle der Absage", () => {
     const covered = rows.find((x) => x.userId === a.id)!;
     expect(covered.payerUserId).toBe(b.id);
     await expire(rows.find((x) => x.userId === victim.id)!.id);
-    await cancelTournamentsAfterWindow(DUE);
+    await cancelTournamentsAfterWindow();
     expect((await refundsOf(t.id)).find((r) => r.chargeId === covered.id)!.userId).toBe(b.id);
   });
 
@@ -128,7 +128,7 @@ describe("M5-5: weitere Faelle der Absage", () => {
     const profile = (await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, victim.id)))[0];
     await expire(row.id);
     const e = provider.signEvent({ id: nid("evt_tcy"), type: "payment_intent.succeeded", object: { id: row.paymentIntentId, amount: row.amountCents, currency: "eur", customer: profile.stripeCustomerId, metadata: { tournamentId: t.id, userId: victim.id } } });
-    await Promise.all([cancelTournamentsAfterWindow(DUE), handleStripeWebhook(e.rawBody, e.signature)]);
+    await Promise.all([cancelTournamentsAfterWindow(), handleStripeWebhook(e.rawBody, e.signature)]);
     const st = await tOf(t.id);
     const refunds = await refundsOf(t.id);
     if (st.status === "cancelled") expect(refunds.length).toBe(16); // 15 + die spaete Zahlung
@@ -153,7 +153,7 @@ describe("M5-5: weitere Faelle der Absage", () => {
     const slowRow = (await rowsOf(t.id)).find((x) => x.userId === slow.id)!;
     expect(slowRow.status).toBe("pending");
     await expire(failRow.id);
-    await cancelTournamentsAfterWindow(DUE);
+    await cancelTournamentsAfterWindow();
     expect(await refundsOf(t.id)).toHaveLength(14); // die offene Zeile hat nichts bezahlt
     await runTournamentRefunds(DUE);
     expect(provider.calls.filter((c) => c.method === "cancelPaymentIntent" && (c.args as { paymentIntentId: string }).paymentIntentId === slowRow.paymentIntentId)).toHaveLength(1);
