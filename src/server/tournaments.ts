@@ -20,7 +20,9 @@ import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
 import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
-import { assertVenueFixable, freezeVenueTerms, hallZusageOk, isPartnerVenue, venueRejectionText } from "./tournament-venue";
+import { notifyHolderOnFix } from "./tournament-holders";
+import { venueAccessHolderIds } from "./venue-access-rules";
+import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled } from "./settings";
 
@@ -92,7 +94,7 @@ export async function createTournament(userId: string, input: TournamentInput) {
   let venueId: string | null = null;
   let venueLabel: string | null = null;
   if (input.venueId) {
-    if (!(await isPartnerVenue(db, input.venueId))) throw new DomainError(await venueRejectionText(db, input.venueId));
+    if (!(await isPartnerVenue(db, input.venueId))) throw new DomainError("Bitte wähle eine Partnerhalle.");
     venueId = input.venueId;
     const [v] = await db.select({ name: venues.name, address: venues.address }).from(venues).where(eq(venues.id, venueId));
     venueLabel = [v?.name, v?.address].filter(Boolean).join(", ") || null;
@@ -354,9 +356,14 @@ async function maybeFixPrice(tx: Tx, t: T) {
   // Kartenmodell: ohne Partnerhalle wird der Preis nicht fixiert (die Abbuchung geht an die Halle, Provision und Zusage haengen an ihr)
   const cardMode = await tournamentCardMode(tx, t.id);
   if (cardMode && !fresh.venueId) throw new DomainError("Für dieses Turnier ist noch keine Partnerhalle gewählt. Der Veranstalter muss zuerst eine Halle wählen.");
-  if (cardMode && fresh.venueId) await assertVenueFixable(tx, fresh.venueId); // M5-7a: Halle mit Zugang und ohne Online-Zusage (M5-7b) wird nicht fixiert, vor jeder Aenderung
   await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
-  if (cardMode && fresh.venueId) await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
+  if (cardMode && fresh.venueId) {
+    const frozen = await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
+    // Entscheid t2q A: Zugangsinhaber der Halle erfahren beim Fixieren, dass eine Zusage gefragt ist (entprellt, im Savepoint; dynamischer Import gegen den Importkreis)
+    if (frozen.accessRequired) {
+      await notifyHolderOnFix(tx, { id: t.id, name: fresh.name, venueId: fresh.venueId, startsAt: fresh.startsAt, priceRound: fresh.priceRound + 1 }, await chargeDueAt(tx, fresh));
+    }
+  }
   await audit(null, "tournament.price", "tournament", t.id, { after: { share, players: everyone.length } }, tx);
   await notifyUsers(
     [...new Set(everyone.map((p) => p.userId))],
@@ -664,6 +671,16 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
     ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${refundedCards > 0 ? "Bereits abgebuchte Anteile werden auf die Karte erstattet." : "Es wurde nichts von deiner Karte abgebucht."}`
     : `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${players.some((p) => p.paidCents > 0) ? "Dein Eintritt wurde vollständig erstattet." : "Es wurde nichts bezahlt."}`;
   await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), ...payerIds, t.organizerId])], { type: "system", title: "Turnier abgesagt", body, url: `/turniere/${tournamentId}` }, tx);
+  // Entscheid t2q (Plan 19.14): wurde das Turnier ohne Zusage der Halle abgesagt, erfahren die Zugangsinhaber der Halle es (ohne Namen Dritter; Savepoint, ein Fehler kippt die Absage nie)
+  if (t.venueId && !t.venueConfirmedAt && t.venueAccessRequiredSnapshot === true) {
+    try {
+      await tx.transaction(async (sp) => {
+        await notifyUsers(await venueAccessHolderIds(t.venueId!, sp), { type: "system", title: "Turnier abgesagt", body: `${t.name} wurde abgesagt, weil die Zusage der Halle fehlte oder das Turnier nicht zustande kam.`, url: "/halle" }, sp);
+      });
+    } catch {
+      /* Zugabe */
+    }
+  }
   const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
   const gameIds = games.map((g) => g.matchId!).filter(Boolean);
   if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
@@ -742,7 +759,7 @@ export async function cancelTournamentsAfterWindow(now: Date = new Date()): Prom
 }
 
 /** Zeitpunkt der Abbuchung bzw. der Frist (Vorlauf ab 48 Stunden: Start minus 48 h mit Karenz; kuerzer: Start minus 1 Stunde). null = Altturnier ohne neue Fristregel. */
-async function chargeDueAt(tx: Pick<typeof db, "select">, t: T): Promise<Date | null> {
+export async function chargeDueAt(tx: Pick<typeof db, "select">, t: Pick<T, "id" | "startsAt" | "createdAt" | "registrationDeadline">): Promise<Date | null> {
   if (!t.startsAt) return null;
   const long = hasLongLead(t.startsAt, t.createdAt);
   if (!long) return abortDeadline(t.startsAt);
@@ -802,7 +819,7 @@ async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
     return paid.length === 0;
   }
   if (row) return true;
-  if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !hallZusageOk(t)) return false;
+  if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !(await hallZusageOkLive(tx, t, await chargeDueAt(tx, t)))) return false;
   const entries = await tx.select({ ready: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
   if (!(entries.length === t.maxTeams && entries.every((e) => e.ready !== null))) return false;
   // M5-5 (haengt ohne Zeilen): fehlen zur Frist Karten (z. B. nach "Bereit" entfernt), ist das Turnier NICHT abbuchbar und faellt aus (nichts abgebucht), statt still zu haengen

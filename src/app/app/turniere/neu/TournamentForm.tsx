@@ -5,7 +5,7 @@ import { useFormAction } from "@/components/useFormAction";
 import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
 
-export function TournamentForm({ min, defaultCity, standardHourly, commission, partnerVenues }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number; partnerVenues: { id: string; label: string; unavailable?: boolean }[] | null }) {
+export function TournamentForm({ min, defaultCity, standardHourly, commission, partnerVenues }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number; partnerVenues: { id: string; label: string }[] | null }) {
   const { state, pending, onSubmit } = useFormAction(createTournamentAction);
   const fe = state?.fieldErrors ?? {};
   return (
@@ -35,10 +35,10 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
           <select id="venueId" name="venueId" className="field" defaultValue="">
             <option value="">Halle wählen</option>
             {partnerVenues.map((v) => (
-              <option key={v.id} value={v.id} disabled={v.unavailable}>{v.label}{v.unavailable ? " (Halle noch ohne Online-Zusage)" : ""}</option>
+              <option key={v.id} value={v.id}>{v.label}</option>
             ))}
           </select>
-          <p className="text-xs text-muted">Pflicht, sobald das Turnier etwas kostet. Der Anteil geht an die Halle.</p>
+          <p className="text-xs text-muted">Pflicht, sobald das Turnier etwas kostet. Der Anteil geht an die Halle. Der Turniername ist für die Halle sichtbar.</p>
           <FieldError message={fe.venueId} />
         </div>
       )}
