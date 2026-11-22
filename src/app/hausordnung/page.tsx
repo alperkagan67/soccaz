@@ -20,7 +20,7 @@ export default function HausordnungPage() {
       </section>
       <section className="space-y-1">
         <h2>Folgen</h2>
-        <p>Verwarnung, Entfernen von Inhalten, zeitweise oder dauerhafte Sperre. Bei einer Sperre werden offenes Guthaben und Reservierungen ordnungsgemäß abgewickelt.</p>
+        <p>Verwarnung, Entfernen von Inhalten, zeitweise oder dauerhafte Sperre. Bei einer Sperre werden offene Zahlungen und Reservierungen ordnungsgemäß abgewickelt.</p>
       </section>
     </LegalPage>
   );

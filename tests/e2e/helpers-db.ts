@@ -102,6 +102,18 @@ export async function seedPaidPlayer(matchId: string, teamId: string, tag: strin
   return userId;
 }
 
+/**
+ * Setzt den Anteil eines BESTEHENDEN Teilnehmers wie payShare als bezahlt (paid_cents, paid_at, Abbuchung vom Guthaben im Hauptbuch). Das Guthaben muss vorher da sein (fundWallet).
+ * Ersatz für den Klick auf "<Betrag> bezahlen": den Knopf gibt es seit 012 M6a nicht mehr (Vertrag 013 AC-14); die Server-Logik (payShare) prüfen die Integrationstests.
+ */
+export async function seedShare(matchId: string, userId: string, cents: number) {
+  await testDb().query("update match_participants set paid_cents = $3, paid_at = now() where match_id = $1 and user_id = $2", [matchId, userId, cents]);
+  await testDb().query(
+    "insert into ledger_entries (debit_account, debit_user_id, credit_account, amount_cents, kind, match_id, idempotency_key, reason) values ('wallet', $1, 'revenue', $2, 'match_share', $3, $4, 'E2E Anteil (ersetzt Bezahlen-Knopf)')",
+    [userId, cents, matchId, `e2e-share:${randomUUID()}`],
+  );
+}
+
 export async function seedPromo(code: string, kind: "percent" | "fixed", value: number, extra: { budgetCents?: number } = {}) {
   await testDb().query("insert into promo_codes (code, kind, value, budget_cents, note) values ($1, $2, $3, $4, 'e2e')", [code, kind, value, extra.budgetCents ?? null]);
 }

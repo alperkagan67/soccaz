@@ -10,16 +10,12 @@ import { Challenges } from "@/components/Challenges";
 import { myChallenges } from "@/server/requests";
 import { listMyTeams } from "@/server/teams";
 import { requireUser } from "@/server/session";
-import { walletBalance } from "@/server/ledger";
-import { paymentsEnabled } from "@/server/settings";
-import { formatEuro } from "@/lib/money";
-import { db } from "@/db";
 
 export const metadata: Metadata = { title: "Mein Bereich" };
 
 export default async function DashboardPage() {
   const user = await requireUser("/app");
-  const [myTeams, games, payOn, balance, challenges] = await Promise.all([listMyTeams(user.id), myMatches(user.id), paymentsEnabled(), walletBalance(db, user.id), myChallenges(user.id)]);
+  const [myTeams, games, challenges] = await Promise.all([listMyTeams(user.id), myMatches(user.id), myChallenges(user.id)]);
   const now = new Date();
 
   return (
@@ -49,14 +45,6 @@ export default async function DashboardPage() {
       )}
 
       <GameModes signedIn />
-
-      <Link href="/app/guthaben" className="card flex items-center justify-between hover:border-accent" data-testid="wallet-card">
-        <span>
-          <span className="block text-muted">Guthaben</span>
-          <span className="block text-xs text-muted">{payOn ? "Aufladen, Verlauf und Belege" : "Zahlungen sind noch nicht aktiv, Spiele sind kostenlos"}</span>
-        </span>
-        <span className="font-heading text-xl font-bold tabular-nums">{formatEuro(balance)}</span>
-      </Link>
 
       <nav aria-label="Schnellzugriff" className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
         <Link href="/matchmaking" className="card text-center hover:border-accent">Lobby aufmachen</Link>
