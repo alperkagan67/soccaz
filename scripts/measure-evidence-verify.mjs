@@ -21,7 +21,7 @@ const check = () => {
   if (Date.now() > deadline) throw new Error("Zeitlimit (15 Minuten) erreicht");
 };
 
-// Pruefanweisung wie src/server/evidence.ts (verifyEvidenceChain); WITH_RT steuert den Commitment-Join
+// MESSKOPIE der Pruefanweisung aus src/server/evidence.ts (verifyEvidenceChain), NICHT gepflegt und nicht im Kopie-Test (nur fuer die Messung, Stand Nachlieferung 0054); withRt steuert den Commitment-Join
 const inner = (withRt) => `
   select e.seq, e.hash, c.last_seq::int as counter_seq, c.last_hash as counter_hash,
     case

@@ -5,7 +5,7 @@ import { bookingEvidence, bookingEvidenceCounter, evidenceActor } from "@/db/sch
 import { verifyEvidenceChain } from "@/server/evidence";
 import { retentionDays, runEvidenceHead, sweepReasonText } from "@/server/evidence-head";
 import { recordEvidence } from "@/server/evidence-write";
-import { cleanup, makeMatch } from "./helpers";
+import { cleanup, makeMatch, makeUser } from "./helpers";
 
 // Aufbewahrung des Begruendungs-Klartexts (G26-009, nur der Mechanismus; Standard 0 = aus, die Dauer ist Rechtsfrage R3). Die Kette ist EINE globale Reihe: jeder Test setzt sie zurueck (nur Test-Datenbank).
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -42,7 +42,8 @@ const counts = async () => rows<{ e: number; a: number }>(await db.execute(sql`s
 /** Zwei Eintraege mit Klartext, der zweite spaeter (50 ms): die Schwelle liegt dazwischen. */
 async function twoEntries() {
   const m = await makeMatch({ hoursAhead: 72 });
-  await db.transaction((tx) => recordEvidence(tx, { matchId: m.match.id, venueId: null, round: 1, kind: "declined", reason: "Halle belegt am Samstag", reasonCode: "belegt" }));
+  const op = await makeUser("aufop");
+  await db.transaction((tx) => recordEvidence(tx, { matchId: m.match.id, venueId: null, round: 1, kind: "declined", reason: "Halle belegt am Samstag", reasonCode: "belegt", actor: { userId: op.id, name: op.name, email: op.email } }));
   await new Promise((r) => setTimeout(r, 60));
   await db.transaction((tx) => recordEvidence(tx, { matchId: m.match.id, venueId: null, round: 2, kind: "declined", reason: "Wartungsarbeiten", reasonCode: "wartung" }));
   const [a, b] = rows<{ at: Date }>(await db.execute(sql`select at from booking_evidence order by seq`));
@@ -55,7 +56,7 @@ describe("Aufbewahrung des Klartexts", () => {
   it("Standard 0 = aus: nichts wird gelöscht, auch bei sehr spätem Zeitpunkt", async () => {
     await twoEntries();
     expect(await retentionDays()).toBeNull();
-    expect(await sweepReasonText(new Date(Date.now() + 10 * 365 * 86_400_000))).toEqual({ days: null, deleted: 0 });
+    expect(await sweepReasonText(new Date(Date.now() + 10 * 365 * 86_400_000))).toEqual({ days: null, deleted: 0, invalid: false, more: false });
     expect(await textCount()).toBe(2);
   });
 
@@ -65,7 +66,7 @@ describe("Aufbewahrung des Klartexts", () => {
     const before = await counts();
     const auditBefore = rows<{ n: number }>(await db.execute(sql`select count(*)::int as n from audit_log where action = 'evidence.retention'`))[0].n;
     const r = await sweepReasonText(nowFor(cutoff, 30));
-    expect(r).toEqual({ days: 30, deleted: 1 });
+    expect(r).toEqual({ days: 30, deleted: 1, invalid: false, more: false });
     expect(await textCount()).toBe(1);
     expect(await counts()).toEqual(before);
     expect((await verifyEvidenceChain()).ok).toBe(true);
@@ -78,7 +79,7 @@ describe("Aufbewahrung des Klartexts", () => {
 
   it("ungültige Werte (Text, negativ, zu groß, Dezimal) = aus: nichts wird gelöscht", async () => {
     const { cutoff } = await twoEntries();
-    for (const v of ["abc", "-5", "99999999", "7.5", "", " "]) {
+    for (const v of ["abc", "-5", "99999999", "36501", "7.5", "", " "]) {
       await setRetention(v).catch(() => null); // der Einstellungsschutz lehnt manche Werte schon ab
       expect(await retentionDays(), v).toBeNull();
       expect((await sweepReasonText(nowFor(cutoff, 3650))).deleted, v).toBe(0);
@@ -90,8 +91,33 @@ describe("Aufbewahrung des Klartexts", () => {
     await twoEntries();
     await setRetention("1");
     const res = await runEvidenceHead(new Date(Date.now() + 2 * 86_400_000));
-    expect(res.retention).toEqual({ days: 1, deleted: 2 });
+    expect(res.retention).toMatchObject({ days: 1, deleted: 2, invalid: false });
     expect(await textCount()).toBe(0);
     expect((await verifyEvidenceChain()).ok).toBe(true);
+  });
+
+  it("Randwert genau am Stichtag (at = cutoff) wird NICHT gelöscht (strikt älter); ein ungültiger Wert ungleich 0 wird gemeldet; ohne Parameter gilt die Datenbankuhr", async () => {
+    await twoEntries();
+    const first = rows<{ at: Date }>(await db.execute(sql`select at from booking_evidence order by seq limit 1`))[0].at;
+    await setRetention("30");
+    const atMs = new Date(first).getTime();
+    expect((await sweepReasonText(nowFor(new Date(atMs - 1), 30))).deleted).toBe(0); // Stichtag knapp VOR dem Eintrag: nichts
+    await setRetention("36501");
+    expect(await sweepReasonText()).toEqual({ days: null, deleted: 0, invalid: true, more: false });
+    await setRetention("30");
+    expect((await sweepReasonText()).deleted).toBe(0); // Datenbankuhr: Eintraege sind jung
+    expect(await textCount()).toBe(2);
+  });
+
+  it("manipulierter Klartext (älter als D): der Tagesjob meldet die ungültige Kette VOR dem Löschen und löscht nichts (R-T253)", async () => {
+    const { cutoff } = await twoEntries();
+    await setRetention("30");
+    await db.execute(sql`update booking_evidence_reason_text set reason = 'nachtraeglich veraendert' where evidence_id = (select id from booking_evidence order by seq limit 1)`);
+    const res = await runEvidenceHead(nowFor(cutoff, 30));
+    expect(res.ok).toBe(false);
+    expect(res.alarms.join(" ")).toMatch(/Kette ungültig/);
+    expect(res.alarms.join(" ")).toMatch(/Aufbewahrung ausgesetzt/);
+    expect(res.retention).toMatchObject({ deleted: 0, skipped: true });
+    expect(await textCount()).toBe(2); // Beweis bleibt erhalten
   });
 });
