@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { createAuthorizationAction, createTournamentAuthorizationAction } from "@/server/payments/authorize-actions";
-import { fakeAuthorizeAction } from "@/server/payments/fake-card-actions";
+import { fakeAuthorizeAction, fakeAuthorizeTournamentAction } from "@/server/payments/fake-card-actions";
 
 let stripePromise: Promise<Stripe | null> | null = null;
 /** Der öffentliche Schlüssel kommt nur aus NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (nie im Code). */
@@ -38,7 +38,7 @@ export function AuthorizeButton({ matchId, target, fake }: ({ matchId: string; t
     setBusy(true);
     setError(undefined);
     try {
-      const r = await fakeAuthorizeAction(matchId ?? "", outcome);
+      const r = tournamentId ? await fakeAuthorizeTournamentAction(tournamentId, outcome) : await fakeAuthorizeAction(matchId ?? "", outcome);
       if (r.error) setError(r.error);
       else refreshSoon();
     } catch {
@@ -74,7 +74,7 @@ export function AuthorizeButton({ matchId, target, fake }: ({ matchId: string; t
 
   return (
     <div className="space-y-2" data-testid="authorize">
-      {fake && !tournamentId ? (
+      {fake ? (
         <>
           <button className="btn btn-primary w-full" disabled={busy} onClick={() => startFake("ok")} data-testid="authorize-fake">
             {busy ? "Bitte warten…" : "Zahlung freigeben (Test)"}

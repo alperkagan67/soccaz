@@ -120,7 +120,9 @@ describe("Profil, Export und Konto löschen", () => {
   it("Löschen ist blockiert bei Guthaben, offenem Spiel und letztem Team-Admin", async () => {
     const rich = await makeUser("rich");
     await db.transaction((tx) => creditWallet(tx, rich.id, { from: "bank", amountCents: 500, kind: "adjustment", idempotencyKey: `acct-${rich.id}` }));
-    await expect(deleteAccount(rich.id)).rejects.toThrow(/Guthaben/);
+    // 012 M6a: Wortlaut ohne "Guthaben" (kein Begriff mehr in der Oberfläche), weiterhin blockiert bei Saldo > 0, mit Hinweis auf den Support
+    await expect(deleteAccount(rich.id)).rejects.toThrow(/Restbetrag/);
+    await expect(deleteAccount(rich.id)).rejects.toThrow(/Support/);
 
     const m = await makeMatch({ hoursAhead: 72 });
     const p = await addPlayer(m.match.id, m.home.id, "offen");

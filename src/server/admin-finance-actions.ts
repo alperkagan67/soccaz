@@ -7,7 +7,6 @@ import { recordExpense, updateBookingJob, type BookingPatch, type BookingStatus 
 import { setVenueCommission } from "./commission";
 import { parseVatMode } from "@/lib/invoice";
 import { manualRefund } from "./finance";
-import { createPromo, setPromoActive } from "./promo";
 import { requirePermission } from "./session";
 import { setSetting } from "./settings";
 import { DomainError } from "./teams";
@@ -35,41 +34,6 @@ const date = (fd: FormData, key: string) => {
   const v = text(fd, key);
   return v ? new Date(v) : null;
 };
-
-// --- Rabattcodes (Finanzen) ---
-
-export async function createPromoAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
-  const kind = text(fd, "kind") === "fixed" ? "fixed" : "percent";
-  const rawValue = kind === "fixed" ? euro(fd, "value") : Number(text(fd, "value"));
-  if (rawValue === null || !Number.isFinite(rawValue)) return { error: "Bitte einen gültigen Wert eingeben." };
-  const budget = optional(fd, "budget");
-  const maxBonus = optional(fd, "maxBonus");
-  const minTopup = optional(fd, "minTopup");
-  const budgetCents = budget ? parseEuro(budget) : null;
-  const maxBonusCents = maxBonus ? parseEuro(maxBonus) : null;
-  const minTopupCents = minTopup ? parseEuro(minTopup) : 0;
-  if ((budget && budgetCents === null) || (maxBonus && maxBonusCents === null) || (minTopup && minTopupCents === null)) return { error: "Beträge bitte als Euro angeben, z. B. 25,00." };
-
-  return guarded("finance", "/admin/codes", (actor) =>
-    createPromo(actor, {
-      code: text(fd, "code"),
-      kind,
-      value: rawValue,
-      budgetCents,
-      maxBonusCents,
-      minTopupCents: minTopupCents ?? 0,
-      validFrom: date(fd, "validFrom"),
-      validUntil: date(fd, "validUntil"),
-      newUsersOnly: fd.get("newUsersOnly") === "on",
-      maxPerUser: Number(text(fd, "maxPerUser")) || 1,
-      note: optional(fd, "note"),
-    }).then(() => undefined),
-  );
-}
-
-export async function setPromoActiveAction(id: string, active: boolean) {
-  return guarded("finance", "/admin/codes", (actor) => setPromoActive(actor, id, active));
-}
 
 // --- Ausgaben und Erstattungen (Finanzen) ---
 

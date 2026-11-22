@@ -63,8 +63,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const v = view.viewer ?? { id: "", platformAdmin: false, membershipTeamId: null, adminOf: [] as string[], participant: null, canManage: false, canJoin: false, teamFull: false, canJoinAsSubstitute: false };
   if (match.kind === "tournament") redirect(`/spiele/${match.id}`); // Turnierspiele haben keine eigene Lobby: Ergebnis auf der Spielseite, Überblick im Turnier
   const confirmed = match.status === "confirmed";
-  // Kartenmodell (Vertrag 012): Schalter card_payments_enabled, Standard AUS = bisheriges Guthaben-Verhalten
-  const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Guthabenmodell
+  // Kartenmodell (Vertrag 012): Schalter card_payments_enabled, Standard AUS = Spiele ohne Kartenpflicht
+  const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Altmodell
   // Sichtbarkeit je Betrachter wird HIER auf dem Server entschieden (Vertrag 012, AC-12/AC-20): Gäste sehen keinen Status je Person, Mitspieler nur die neutrale
   // rote Ampel ohne Grund, nur der Betroffene und der Captain/Veranstalter den echten Status. Der Rohstatus erreicht die Seite nie.
   // "Gast" für Namen = nicht angemeldet; "Gast" für den Zahlstatus je Person = keine Teilnahme (siehe audienceFor in card-visibility.ts)
@@ -153,9 +153,6 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const assignTargets = teamsView
     .filter((t) => canAdminTeam(t.id) && hasFreeSlot(t.count, capacity))
     .map((t) => ({ teamId: t.id, name: t.name }));
-
-  // Privatspiel: Wer schon etwas gezahlt hat, aber weniger als den (neu gerechneten) Anteil, muss die Differenz nachzahlen
-  const owes = Boolean(!cardOn && isPrivate && payments.enabled && payments.priceCents && payments.priceCents > 0 && payments.finalShareCents === null && v.participant?.teamId && v.participant.paid && (payments.myDueCents ?? 0) > 0);
 
   let inviteUrl: string | null = null;
   // Dieselbe Regel wie auf dem Server (canManageInvite): Team-Admin des Heim-Teams oder Plattform-Admin, nicht jeder Admin des Gast-Teams
@@ -306,38 +303,6 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <p>Dieses Spiel ist <strong>kostenlos</strong>. Es wird nichts bezahlt und nichts reserviert.</p>
         </section>
       )}
-      {!cardOn && payments.enabled && payments.priceCents !== null && payments.priceCents > 0 && (
-        <section className="card space-y-1 text-sm" aria-label="Kosten">
-          <h2 className="font-semibold">Kosten</h2>
-          <p>
-            Halle {match.durationMin} Minuten: <strong>{formatEuro(payments.priceCents)}</strong>, geteilt durch alle zahlenden Spieler.
-          </p>
-          {match.kind === "private" ? (
-            <p className="text-muted">
-              Dein Anteil: <strong className="text-ink">{formatEuro(payments.reservationCents ?? 0)}</strong> (Miete geteilt durch die eingeteilten Spieler).
-              {payments.finalShareCents === null
-                ? " Ändert sich die Spielerzahl, ändert sich der Anteil. Mit dem Bestätigen beider Captains steht er fest."
-                : " Der Anteil steht fest."}
-            </p>
-          ) : payments.settled && payments.finalShareCents ? (
-            <p className="text-muted">Abgerechnet: <strong className="text-ink">{formatEuro(payments.finalShareCents)}</strong> pro Spieler.</p>
-          ) : (
-            <p className="text-muted">
-              Dein Anteil liegt zwischen {formatEuro(payments.lowestShareCents ?? 0)} (12 Spieler) und {formatEuro(payments.reservationCents ?? 0)} (nur {payments.minPaid} Spieler).
-              Beim Bereitmachen wird der höchste Betrag reserviert, die Differenz kommt bei der Abrechnung zurück.
-            </p>
-          )}
-        </section>
-      )}
-
-      {owes && (
-        <section className="card space-y-1 text-sm" aria-label="Anteil geändert" data-testid="due-hint">
-          <p>
-            Anteil jetzt <strong>{formatEuro(payments.reservationCents ?? 0)}</strong>, noch <strong>{formatEuro(payments.myDueCents ?? 0)}</strong> zu zahlen.
-          </p>
-          <p className="text-muted">Die Spielerzahl hat sich geändert. Du hast schon {formatEuro((payments.reservationCents ?? 0) - (payments.myDueCents ?? 0))} bezahlt; zahle jetzt die Differenz nach.</p>
-        </section>
-      )}
 
       {active && open && mode === "participant" && (
         <section className="card space-y-2" data-testid="ready-later">
@@ -353,8 +318,6 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
           card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard, failure: myFailure } : null}
-          pay={!cardOn && payments.enabled && payments.reservationCents !== null ? { reserveCents: owes ? (payments.myDueCents ?? 0) : payments.reservationCents, balanceCents: payments.balanceCents ?? 0, paid: Boolean(v.participant?.paid) && !owes, backTo: `/lobby/${match.id}` } : null}
-          teamPaid={{ paid: participants.filter((p) => p.teamId === v.participant?.teamId && p.paid).length, total: participants.filter((p) => p.teamId === v.participant?.teamId).length }}
         />
       )}
 

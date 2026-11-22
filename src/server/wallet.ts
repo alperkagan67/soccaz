@@ -293,7 +293,7 @@ export async function recalcShares(tx: Tx, match: MatchRow, actorId: string | nu
 async function refundPaid(tx: Tx, match: MatchRow, userId: string, paidCents: number, reason: string, key: string, actorId: string | null) {
   if (paidCents <= 0) return;
   await creditWallet(tx, userId, { from: "revenue", amountCents: paidCents, kind: "refund", matchId: match.id, idempotencyKey: key, reason, actorId });
-  await notifyUsers([userId], { type: "payment", title: "Erstattung", body: `${formatEuro(paidCents)} wurden deinem Guthaben gutgeschrieben (${reason}).`, url: "/app/guthaben" }, tx);
+  await notifyUsers([userId], { type: "payment", title: "Erstattung", body: `${formatEuro(paidCents)} wurden dir erstattet (${reason}).`, url: "/app" }, tx);
 }
 
 /** Wird aufgerufen, wenn jemand die Lobby verlässt oder entfernt wird. Vor dem Anstoß minus 24 Stunden gibt es alles zurück, danach nur gegen Ersatz. */
@@ -324,7 +324,7 @@ export async function onParticipantLeaves(tx: Tx, match: MatchRow, userId: strin
   await audit(opts.actorId, "wallet.refund_pending", "match", match.id, { after: { userId, amountCents: p.paidCents } }, tx);
   await notifyUsers(
     [userId],
-    { type: "payment", title: waitForSubstitute ? "Austritt nach Festlegung des Preises" : "Abmeldung kurz vor dem Spiel", body: `Dein Anteil von ${formatEuro(p.paidCents)} wird erstattet, sobald ein Ersatzspieler bezahlt hat.`, url: "/app/guthaben" },
+    { type: "payment", title: waitForSubstitute ? "Austritt nach Festlegung des Preises" : "Abmeldung kurz vor dem Spiel", body: `Dein Anteil von ${formatEuro(p.paidCents)} wird erstattet, sobald ein Ersatzspieler bezahlt hat.`, url: "/app" },
     tx,
   );
 }
@@ -335,7 +335,7 @@ export async function settlePendingRefunds(tx: Tx, match: MatchRow) {
   if (!first) return;
   await creditWallet(tx, first.userId, { from: "revenue", amountCents: first.amountCents, kind: "refund", matchId: match.id, idempotencyKey: `pending:${match.id}:${first.userId}:${first.createdAt.getTime()}`, reason: "Ersatzspieler hat bezahlt" });
   await tx.delete(pendingRefunds).where(and(eq(pendingRefunds.matchId, match.id), eq(pendingRefunds.userId, first.userId)));
-  await notifyUsers([first.userId], { type: "payment", title: "Erstattung", body: `Ein Ersatz hat bezahlt: ${formatEuro(first.amountCents)} sind wieder in deinem Guthaben.`, url: "/app/guthaben" }, tx);
+  await notifyUsers([first.userId], { type: "payment", title: "Erstattung", body: `Ein Ersatz hat bezahlt: ${formatEuro(first.amountCents)} wurden dir erstattet.`, url: "/app" }, tx);
 }
 
 /** Absage des ganzen Spiels: alle bekommen alles zurück, auch wer kurz vorher ausgestiegen war. */
@@ -351,7 +351,7 @@ export async function refundOnCancel(tx: Tx, match: MatchRow, actorId: string | 
   const pending = await tx.select().from(pendingRefunds).where(eq(pendingRefunds.matchId, match.id));
   for (const r of pending) {
     await creditWallet(tx, r.userId, { from: "revenue", amountCents: r.amountCents, kind: "refund", matchId: match.id, idempotencyKey: `cancel-pending:${match.id}:${r.userId}`, reason: "Spiel abgesagt", actorId });
-    await notifyUsers([r.userId], { type: "payment", title: "Erstattung", body: `${formatEuro(r.amountCents)} wurden erstattet: Das Spiel wurde abgesagt.`, url: "/app/guthaben" }, tx);
+    await notifyUsers([r.userId], { type: "payment", title: "Erstattung", body: `${formatEuro(r.amountCents)} wurden erstattet: Das Spiel wurde abgesagt.`, url: "/app" }, tx);
   }
   if (pending.length) await tx.delete(pendingRefunds).where(eq(pendingRefunds.matchId, match.id));
 }
@@ -385,7 +385,7 @@ export async function settleMatch(tx: Tx, match: MatchRow): Promise<boolean> {
     await issueReceipt(tx, { userId: p.userId, kind: "match", matchId: m.id, amountCents: Math.min(p.paidCents, final) });
     await notifyUsers(
       [p.userId],
-      { type: "payment", title: "Abrechnung", body: `${home} gegen ${away}: dein Anteil beträgt ${formatEuro(final)}${diff > 0 ? `, ${formatEuro(diff)} gehen zurück aufs Guthaben` : ""}.`, url: `/lobby/${m.id}` },
+      { type: "payment", title: "Abrechnung", body: `${home} gegen ${away}: dein Anteil beträgt ${formatEuro(final)}${diff > 0 ? `, ${formatEuro(diff)} werden dir erstattet` : ""}.`, url: `/lobby/${m.id}` },
       tx,
     );
   }
