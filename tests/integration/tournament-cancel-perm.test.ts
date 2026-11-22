@@ -193,7 +193,7 @@ describe("M5-5: Konto loeschen bei abgesagtem Turnier mit offener Erstattung", (
 });
 
 describe("M5-5: Zahlungsstreit VOR der Erstattung (Turnierzweig)", () => {
-  it("ist die Abbuchung im Streit, wird ihre Erstattung nie gesendet (bleibt pending, nicht doppelt erstattet); die uebrigen 15 gehen raus; Hauptbuch ausgeglichen", async () => {
+  it("ist die Abbuchung im Streit, wird ihre Erstattung nie gesendet (Zeile cancelled_dispute); die uebrigen 15 gehen raus; Hauptbuch ausgeglichen", async () => {
     const { t, squads } = await booked();
     const victim = squads[2].players[1];
     const row = (await rowsOf(t.id)).find((x) => x.userId === victim.id)!;
@@ -207,7 +207,8 @@ describe("M5-5: Zahlungsstreit VOR der Erstattung (Turnierzweig)", () => {
     expect(sent).toHaveLength(15);
     expect(sent.some((c) => (c.args as { metadata: { userId?: string } }).metadata.userId === victim.id)).toBe(false);
     const mine = (await refundsOf(t.id)).find((r) => r.chargeId === row.id);
-    expect(mine && mine.status !== "succeeded" && mine.refundId === null).toBe(true);
+    // bei offenem Streit legt ensureRefundRow die Zeile schon als cancelled_dispute an: nie gesendet, nie doppelt erstattet
+    expect(mine).toMatchObject({ status: "cancelled_dispute", refundId: null });
     expect((await trialBalance()).balanced).toBe(true);
   });
 });

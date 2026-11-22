@@ -70,6 +70,11 @@ export async function getRefundAlerts(now: Date = new Date()) {
   const tournamentLatePayments = (
     await db.select({ id: auditLog.entityId }).from(auditLog).where(and(eq(auditLog.action, "refund.auto"), eq(auditLog.entity, "tournament"), sql`${auditLog.at} > ${new Date(now.getTime() - 30 * 24 * 3_600_000)}`))
   );
+  // offene Zahlungsversuche eines ABGESAGTEN Turniers, die der Job seit ueber einer Stunde nicht beenden konnte (Stripe nicht erreichbar, Zahlung laeuft noch)
+  const tournamentOpenIntents = (
+    await db.execute<{ id: string }>(sql`select distinct c.tournament_id as id from payment_charges c join tournaments t on t.id = c.tournament_id
+      where t.status = 'cancelled' and c.status in ('pending', 'requires_action') and c.payment_intent_id is not null and c.updated_at <= ${new Date(now.getTime() - 3_600_000)}`)
+  ).rows;
   const tournamentWaitsForCards = (await cardPaymentsEnabled())
     ? (
         await db.execute<{ id: string }>(sql`select t.id from tournaments t
@@ -81,7 +86,7 @@ export async function getRefundAlerts(now: Date = new Date()) {
             and (select max(x.paid_ready_at) from tournament_teams x where x.tournament_id = t.id) <= ${new Date(now.getTime() - 10 * 60_000)}`)
       ).rows
     : [];
-  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards, tournamentLatePayments };
+  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards, tournamentLatePayments, tournamentOpenIntents };
 }
 
 export type Period = { from: Date; to: Date };
@@ -341,7 +346,7 @@ export type Alert = { code: string; severity: "high" | "medium"; title: string; 
  * keine Personendaten). Alles, was ein Automat NICHT loest und Geld oder einen haengenden Ablauf betrifft: Doppelabbuchung, fehlgeschlagene/ungeklaerte Erstattung, haengende Absage,
  * ungeklaerte Abbuchung, Schluesselkonflikt, Altzeile ohne Fenster.
  */
-export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments">>): Alert[] {
+export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents">>): Alert[] {
   const out: Alert[] = [];
   const add = (code: string, n: number, title: string, detail: string) => {
     if (n > 0) out.push({ code, severity: "high", title: `${title} (${n})`, detail });
@@ -355,6 +360,7 @@ export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlert
   add("card:tournament-refund-open", ra.tournamentRefundsOpen?.length ?? 0, "Turnier-Erstattung offen", "Eine Erstattung zu einem Turnier liegt seit ueber 30 Minuten unversendet (Job, Stripe oder Konto pruefen). Bitte klaeren oder manuell erstatten.");
   add("card:tournament-charge-stuck", ra.tournamentChargeStuck?.length ?? 0, "Turnier haengt nach gescheiterter Abbuchung", "Bei einem Turnier ist eine Abbuchung gescheitert und das Nachzahlfenster abgelaufen. Das Turnier ist weder gebucht noch abgesagt. Bitte entscheiden (Absage mit Erstattung).");
   add("card:tournament-waits-for-cards", ra.tournamentWaitsForCards?.length ?? 0, "Turnier wartet auf Karten", "Alle Teams sind bereit und die Frist ist erreicht, aber es gibt keine Abbuchung (Karte fehlt, Halle oder Zusage fehlt). Das Turnier haengt in der Zahlungsphase.");
+  add("card:tournament-open-intent", ra.tournamentOpenIntents?.length ?? 0, "Offene Zahlung bei abgesagtem Turnier", "Bei einem abgesagten Turnier ist ein Zahlungsversuch seit ueber einer Stunde offen und konnte nicht abgebrochen werden (Stripe pruefen, ggf. manuell abbrechen oder erstatten).");
   add("card:tournament-late-payment", ra.tournamentLatePayments?.length ?? 0, "Spaete Zahlung nach Turnier-Absage", "Eine Abbuchung eines abgesagten Turniers ist doch noch gelungen und wurde sofort voll erstattet (letzte 30 Tage). Bitte pruefen, ob die Erstattung durch ist.");
   add("card:legacy-failed", ra.legacyFailed.length, "Altzeile ohne Nachzahlfenster", "Eine fehlgeschlagene Abbuchung aus der Zeit vor dem Nachzahlfenster wird nicht automatisch bearbeitet.");
   return out;

@@ -620,8 +620,15 @@ export async function cancelTournament(userId: string, tournamentId: string) {
     if (await hasTournamentChargeRows(tx, tournamentId)) {
       const [u] = await tx.select({ role: users.role, isOwner: users.isOwner }).from(users).where(eq(users.id, userId));
       if (!isOwner(u)) {
-        // Vorschlagsweg (009 AC-9): die Absage wird NICHT ausgefuehrt (keine Erstattung), aber als Vorschlag gespeichert; Admin 1 sieht ihn im Eingriffsprotokoll und entscheidet
-        await audit(userId, "tournament.cancel_proposal", "tournament", tournamentId, { after: { status: t.status } }, tx);
+        // Vorschlagsweg (009 AC-9): die Absage wird NICHT ausgefuehrt (keine Erstattung), aber als Vorschlag gespeichert; Admin 1 bekommt eine Mitteilung und entscheidet. Nur fuer offene Turniere; je Person und Turnier
+        // einmal (Wiederholungen schreiben nichts mehr)
+        if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
+        const [dup] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, "tournament.cancel_proposal"), eq(auditLog.entityId, tournamentId), eq(auditLog.actorId, userId))).limit(1);
+        if (!dup) {
+          await audit(userId, "tournament.cancel_proposal", "tournament", tournamentId, { after: { status: t.status } }, tx);
+          const owners = await tx.select({ id: users.id }).from(users).where(eq(users.isOwner, true));
+          await notifyUsers(owners.map((x) => x.id), { type: "system", title: "Absagevorschlag", body: `Zu ${t.name} liegt ein Absagevorschlag vor. Nach der ersten Abbuchung kannst nur du das Turnier absagen.`, url: `/turniere/${t.id}` }, tx);
+        }
         return true;
       }
     }
