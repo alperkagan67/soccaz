@@ -2,6 +2,8 @@
 // (tests/unit/script-db-guards.test.ts). Nur lokale Datenbank (127.0.0.1/localhost, im CI-Container der Dienst "postgres"), KEIN Leerraum/Steuerzeichen/Backslash, KEINE Query und KEIN Fragment
 // (pg übernimmt ?host=/?hostaddr= aus der URL und verbindet dann woanders), und die Gegenprobe mit pg-connection-string (Mehrfachhost, %2C, Socket-Pfade, abweichende Userinfo-Auslegung).
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+// pg-connection-string ist KEINE direkte Abhaengigkeit, sondern kommt transitiv ueber pg (wie schon in tests/integration/db-guard.ts); eine direkte Abhaengigkeit waere eine Aenderung an package.json/Lockfile (Vorschlag im PR-Text, nur der Nutzer).
 import { parse as parsePgUrl } from "pg-connection-string";
 
 /**
@@ -48,7 +50,11 @@ export function assertWorkerDatabase(url, script, env = process.env) {
   if (!/^soccaz_w[1-4]$/.test(db)) throw new Error(`${script}: nur Worker-Datenbank soccaz_w1 bis soccaz_w4 erlaubt`);
 }
 
-/** Laedt .env.local, wenn die Datei da ist (nicht ueberschreibend; in CI gibt es sie nicht). */
+/**
+ * Laedt die .env.local des Repo-/Worktree-Wurzelverzeichnisses (Pfad relativ zu DIESER Datei, nicht zum Arbeitsverzeichnis), wenn sie da ist (nicht ueberschreibend; in CI gibt es sie nicht).
+ * Die Skripte selbst verwenden weitere relative Pfade (drizzle/, tests/): immer aus dem Wurzelverzeichnis starten.
+ */
 export function loadLocalEnv() {
-  if (existsSync(".env.local")) process.loadEnvFile(".env.local");
+  const file = fileURLToPath(new URL("../../.env.local", import.meta.url));
+  if (existsSync(file)) process.loadEnvFile(file);
 }
