@@ -8,7 +8,8 @@ import { audit } from "../audit";
 import { cardPaymentsEnabled } from "../settings";
 import { bookOpenFees } from "./charge";
 import { runErasureTasks } from "./erasure";
-import { runTournamentChargesDue } from "./tournament-charge";
+import { retryTournamentChargesInWindow, runTournamentChargesDue } from "./tournament-charge";
+import { cancelTournamentsAfterWindow, notifyMissingCardReminders } from "../tournaments";
 import { retryChargesInWindow } from "./charge-retry";
 import { runSubstitutes } from "./substitute";
 import { AFTER_START, runCharges, UNKNOWN_OUTCOME, type RunResult } from "./charge-run";
@@ -88,6 +89,9 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
   if (await cardPaymentsEnabled()) {
     try {
       touched += (await runTournamentChargesDue(now)).turniere;
+      touched += await retryTournamentChargesInWindow({ now }); // neue Karte im Nachzahlfenster: erneut abbuchen (M5-5)
+      touched += await cancelTournamentsAfterWindow(now); // Alles-oder-nichts: abgelaufenes Nachzahlfenster -> Absage + Erstattung (M5-5)
+      touched += await notifyMissingCardReminders(now); // Vorwarnung 24 h und 6 h vor der Frist: Karte fehlt (M5-5)
     } catch (error) {
       console.error("runCardCharges: Fehler bei Turnieren", error instanceof Error ? error.name : "Fehler");
     }

@@ -21,6 +21,7 @@ import { UNKNOWN_OUTCOME } from "./charge-run";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 import { OPEN_DISPUTE_STATUSES } from "./dispute";
 import { matchIdOf } from "./charge-context";
+import { applyTournamentRefund, runTournamentRefunds } from "./tournament-refund";
 
 /** Eine beanspruchte Erstattungszeile gilt so lange als "in Arbeit". */
 export const REFUND_LEASE_MS = 60_000;
@@ -39,7 +40,7 @@ export type RefundReport = {
   amountCents: number | null;
   currency: string | null;
   paymentIntentId: string | null;
-  metadata: { matchId: string | null; userId: string | null; chargeId: string | null };
+  metadata: { matchId: string | null; tournamentId?: string | null; userId: string | null; chargeId: string | null };
   failureCode: string | null;
 };
 
@@ -75,6 +76,7 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   };
   const probe = await find(false);
   if (!probe) return ignore("unknown_refund");
+  if (probe.tournamentId !== null) return applyTournamentRefund(tx, r); // Turnier-Zeile: eigener Zweig (tournament-refund.ts), gleiche Regeln
   await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update"); // Spiel zuerst
   const row = await find(true);
   if (!row) return ignore("unknown_refund");
@@ -166,6 +168,12 @@ export async function runRefunds(now: Date = new Date()): Promise<number> {
     } catch (error) {
       console.error("runRefunds: Fehler bei Erstattungen", r.id, error instanceof Error ? error.name : "Fehler");
     }
+  }
+  // Turniere (M5-5): offene Erstattungen abgesagter Turniere senden
+  try {
+    await runTournamentRefunds(now);
+  } catch (error) {
+    console.error("runRefunds: Fehler bei Turnier-Erstattungen", error instanceof Error ? error.name : "Fehler");
   }
   return done;
 }

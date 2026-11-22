@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matchResults, matches, notifications, paymentCharges, teamMembers, teams, users } from "@/db/schema";
@@ -16,8 +16,10 @@ import { notifyUsers, teamAdminIds } from "./notifications";
 import { getSetting } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
-import { isPlatformAdmin, type Role } from "@/lib/roles";
-import { clearTournamentCovers, getTournamentCardDisplays, tournamentCardMode, tournamentTeamCardsReady } from "./tournament-card";
+import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
+import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
+import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
+import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
 import { freezeVenueTerms, hallZusageOk, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled } from "./settings";
@@ -611,30 +613,62 @@ async function settle(tx: Tx, t: T) {
 
 /** Absagen: Alle bezahlten Eintritte gehen vollständig aufs Guthaben der Spieler zurück. Nur möglich, solange noch kein Spiel gespielt ist. */
 export async function cancelTournament(userId: string, tournamentId: string) {
-  await db.transaction(async (tx) => {
+  const proposed = await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann absagen.");
+    // Kartenmodell (AC-21): nach der ersten Abbuchung sagt nur Admin 1 ab (Rolle owner); der Veranstalter und Admin 2 nur davor. Die automatische Absage (Job) ist ausgenommen.
+    if (await hasTournamentChargeRows(tx, tournamentId)) {
+      const [u] = await tx.select({ role: users.role, isOwner: users.isOwner }).from(users).where(eq(users.id, userId));
+      if (!isOwner(u)) {
+        // Vorschlagsweg (009 AC-9): die Absage wird NICHT ausgefuehrt (keine Erstattung), aber als Vorschlag gespeichert; Admin 1 bekommt eine Mitteilung und entscheidet. Nur fuer offene Turniere; je Person und Turnier
+        // einmal (Wiederholungen schreiben nichts mehr)
+        if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
+        const [dup] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, "tournament.cancel_proposal"), eq(auditLog.entityId, tournamentId), eq(auditLog.actorId, userId))).limit(1);
+        if (!dup) {
+          await audit(userId, "tournament.cancel_proposal", "tournament", tournamentId, { after: { status: t.status } }, tx);
+          const owners = await tx.select({ id: users.id }).from(users).where(eq(users.isOwner, true));
+          await notifyUsers(owners.map((x) => x.id), { type: "system", title: "Absagevorschlag", body: `Zu ${t.name} liegt ein Absagevorschlag vor. Nach der ersten Abbuchung kannst nur du das Turnier absagen.`, url: `/turniere/${t.id}` }, tx);
+        }
+        return true;
+      }
+    }
     await cancelTournamentTx(tx, t, userId);
+    return false;
   });
+  if (proposed) throw new DomainError("Nach der ersten Abbuchung kann nur Admin 1 das Turnier absagen. Dein Absagevorschlag ist gespeichert.");
 }
 
 /** Sagt ein Turnier unter der Turniersperre ab und erstattet alle Eintritte (feste Schlüssel, genau einmal). `actorId` null = Job. */
-async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, body?: string) {
+async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: (card: boolean) => string) {
   const tournamentId = t.id;
   if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
   const played = await tx.select({ id: tournamentMatches.id }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.scoreA))).limit(1);
   if (played.length > 0) throw new DomainError("Es gibt schon Ergebnisse. Bitte wende dich an die Plattform.");
   const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
-  for (const p of players) {
-    await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
+  // Kartenmodell (M5-5): Erstattungszeilen fuer alle erfolgreichen Abbuchungen, Provisions-Storno im selben Schritt; sonst (Altmodell) Erstattung aufs Guthaben
+  const card = (await hasTournamentChargeRows(tx, tournamentId)) || (await tournamentCardMode(tx, tournamentId));
+  let refundedCards = 0;
+  const payerIds: string[] = [];
+  if (card) {
+    const r = await prepareCardCancel(tx, t, new Date());
+    refundedCards = r.refunded;
+    payerIds.push(...r.payerIds);
+  } else {
+    for (const p of players) {
+      await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
+    }
   }
-  await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), t.organizerId])], { type: "system", title: "Turnier abgesagt", body: body ?? `${t.name} findet nicht statt. Dein Eintritt wurde vollständig erstattet.`, url: `/turniere/${tournamentId}` }, tx);
+  const reason = cause ? cause(card) : null;
+  const body = card
+    ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${refundedCards > 0 ? "Bereits abgebuchte Anteile werden auf die Karte erstattet." : "Es wurde nichts von deiner Karte abgebucht."}`
+    : `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${players.some((p) => p.paidCents > 0) ? "Dein Eintritt wurde vollständig erstattet." : "Es wurde nichts bezahlt."}`;
+  await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), ...payerIds, t.organizerId])], { type: "system", title: "Turnier abgesagt", body, url: `/turniere/${tournamentId}` }, tx);
   const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
   const gameIds = games.map((g) => g.matchId!).filter(Boolean);
   if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
   await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
   await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));
-  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length, byJob: actorId === null } }, tx);
+  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: card ? refundedCards : players.filter((p) => p.paidCents > 0).length, card, byJob: actorId === null } }, tx);
 }
 
 /**
@@ -665,7 +699,7 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
         if (!locked || locked.due.getTime() > now.getTime()) return;
         // Kartenmodell (M5-4): ist abgebucht oder die Abbuchung angelaufen/faellig (alle Teams bereit, Zusage da), faellt das Turnier hier NICHT aus; Fehlschlaege behandelt die Abbuchung (M5-5)
         if (await chargeUnderway(tx, t)) return;
-        await cancelTournamentTx(tx, t, null, `${t.name} findet nicht statt: Zur Frist (${locked.long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, bezahlt und bereit. Dein Eintritt wurde vollständig erstattet.`);
+        await cancelTournamentTx(tx, t, null, (card) => `Zur Frist (${locked.long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, ${card ? "mit Karte" : "bezahlt"} und bereit.`);
         cancelled += 1;
       });
     } catch (error) {
@@ -675,14 +709,103 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
   return cancelled;
 }
 
+/**
+ * Alles-oder-nichts (Vertrag 012, Z3): ist bei einem Turnier im Kartenmodell eine Abbuchung gescheitert und das Nachzahlfenster dieser Zeile abgelaufen (effektives Ende: das fruehere von
+ * grace_until und Start minus 1 Stunde), wird das Turnier abgesagt; alle erfolgreichen Abbuchungen werden erstattet, die Provision storniert (cancelTournamentTx). Nur Kartenprobleme zaehlen
+ * (keine technischen Codes). Je Turnier eine eigene Transaktion unter der Turniersperre, Bedingung wird dort neu geprueft (die Zeile kann inzwischen erfolgreich nachgezahlt sein). Idempotent.
+ */
+export async function cancelTournamentsAfterWindow(now: Date = new Date()): Promise<number> {
+  if (!(await cardPaymentsEnabled())) return 0; // Schalter AUS: nicht wegen Fenster absagen (Plan 17.2); nach dem Wiedereinschalten laeuft die Pruefung weiter
+  const NON_CARD = NON_CARD_CODES;
+  const expired = (tx: Pick<Tx, "execute">, id: string | null) =>
+    tx.execute(sql`select distinct t.id from tournaments t join payment_charges c on c.tournament_id = t.id
+      where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null ${id ? sql`and t.id = ${id}` : sql``}
+        and c.status in ('failed', 'requires_action') and c.grace_until is not null and c.failure_code is not null and c.failure_code not in (${sql.join(NON_CARD.map((c) => sql`${c}`), sql`, `)})
+        and least(c.grace_until, t.starts_at - interval '1 hour') <= ${now}`);
+  const candidates = (await expired(db, null)).rows as { id: string }[];
+  let cancelled = 0;
+  for (const c of candidates) {
+    try {
+      await db.transaction(async (tx) => {
+        const t = await lockTournament(tx, c.id);
+        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt) return;
+        if ((await expired(tx, c.id)).rows.length === 0) return; // inzwischen nachgezahlt oder anderer Stand
+        await cancelTournamentTx(tx, t, null, () => "Eine Abbuchung ist nicht gelungen und das Nachzahlfenster ist abgelaufen.");
+        cancelled += 1;
+      });
+    } catch (error) {
+      console.error("cancelTournamentsAfterWindow: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return cancelled;
+}
+
+/** Zeitpunkt der Abbuchung bzw. der Frist (Vorlauf ab 48 Stunden: Start minus 48 h mit Karenz; kuerzer: Start minus 1 Stunde). null = Altturnier ohne neue Fristregel. */
+async function chargeDueAt(tx: Pick<typeof db, "select">, t: T): Promise<Date | null> {
+  if (!t.startsAt) return null;
+  const long = hasLongLead(t.startsAt, t.createdAt);
+  if (!long) return abortDeadline(t.startsAt);
+  if (!t.registrationDeadline || t.registrationDeadline.getTime() > fixDeadline(t.startsAt).getTime()) return null;
+  return dueWithGrace(fixDeadline(t.startsAt), await tournamentPayOpenAt(tx, t), t.startsAt, t.createdAt);
+}
+
+/** Erinnerungsstufen vor der Frist (Entscheid t2q): 24 h und 6 h vorher, je Stufe einmal je Turnier. */
+const CARD_REMINDER_STAGES = [24, 6] as const;
+
+/**
+ * Vorwarnung "Karte fehlt: ohne sie faellt das Turnier aus" (Entscheid t2q zu B7: zur Frist faellt ein Turnier mit fehlender Karte sofort aus, nichts abgebucht). Je Stufe (24 h, 6 h vor der Frist)
+ * genau einmal je Turnier (Audit-Eintrag unter der Turniersperre), nur an die Betroffenen und den Captain ihres Teams, ohne Namen Dritter; nie an den Veranstalter. Nur im Kartenmodell,
+ * nur in der Zahlungsphase vor der Frist. Gibt die Zahl der benachrichtigten Turniere zurueck.
+ */
+export async function notifyMissingCardReminders(now: Date = new Date()): Promise<number> {
+  const candidates = await db.select().from(tournaments).where(and(eq(tournaments.status, "payment"), isNull(tournaments.bracketGeneratedAt), isNull(tournaments.settledAt), isNotNull(tournaments.startsAt)));
+  let sent = 0;
+  for (const c of candidates) {
+    try {
+      await db.transaction(async (tx) => {
+        const t = await lockTournament(tx, c.id);
+        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || !(await tournamentCardMode(tx, t.id))) return;
+        const due = await chargeDueAt(tx, t);
+        if (!due || now.getTime() >= due.getTime()) return;
+        const stage = CARD_REMINDER_STAGES.find((h) => now.getTime() >= due.getTime() - h * 3_600_000 && !(CARD_REMINDER_STAGES.some((g) => g < h && now.getTime() >= due.getTime() - g * 3_600_000)));
+        if (stage === undefined) return;
+        const missing = await tournamentMissingCards(tx, t.id);
+        if (missing.length === 0) return;
+        const [done] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, `tournament.card_reminder.${stage}`), eq(auditLog.entityId, t.id))).limit(1);
+        if (done) return;
+        const captains = await tx.select({ teamId: tournamentTeams.teamId, captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+        const captainOf = (teamId: string | null) => captains.find((x) => x.teamId === teamId)?.captainId ?? null;
+        const players = [...new Set(missing.map((m) => m.userId))];
+        const capIds = [...new Set(missing.map((m) => captainOf(m.teamId)).filter((x): x is string => Boolean(x)))].filter((x) => !players.includes(x));
+        const url = `/turniere/${t.id}`;
+        await notifyUsers(players, { type: "payment", title: "Karte fehlt", body: `${t.name}: Du hast noch keine Karte hinterlegt. Ohne Karte fällt das Turnier aus. Die Frist ist in etwa ${stage} Stunden.`, url }, tx);
+        await notifyUsers(capIds, { type: "payment", title: "Karte fehlt", body: `${t.name}: In deinem Team fehlt noch eine Karte. Ohne sie fällt das Turnier aus. Die Frist ist in etwa ${stage} Stunden.`, url }, tx);
+        await audit(null, `tournament.card_reminder.${stage}`, "tournament", t.id, { after: { players: players.length, captains: capIds.length } }, tx);
+        sent += 1;
+      });
+    } catch (error) {
+      console.error("notifyMissingCardReminders: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return sent;
+}
+
 /** Kartenmodell: laeuft die Abbuchung oder ist sie faellig (Zeilen vorhanden, oder alle Teams bereit und die Zusage der Halle erfuellt)? Dann wird das Turnier nicht wegen der Frist abgesagt. Unter der Turniersperre. */
 async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
-  if (!(await tournamentCardMode(tx, t.id))) return false;
   const [row] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)).limit(1);
+  if (!(await tournamentCardMode(tx, t.id))) {
+    // Schalter AUS (Plan 17.2): Kartenfluss mit Zeilen oder eingefrorenem Zugangs-Snapshot wird NICHT wegen der Frist abgesagt (die Abschaltung ist keine Schuld der Spieler); bucht nach, sobald der Schalter wieder EIN ist
+    if (row) return true;
+    if (t.venueAccessRequiredSnapshot === null || (await cardPaymentsEnabled())) return false;
+    const paid = await tx.select({ id: tournamentPlayers.userId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), gt(tournamentPlayers.paidCents, 0))).limit(1);
+    return paid.length === 0;
+  }
   if (row) return true;
   if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !hallZusageOk(t)) return false;
   const entries = await tx.select({ ready: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
-  return entries.length === t.maxTeams && entries.every((e) => e.ready !== null);
+  if (!(entries.length === t.maxTeams && entries.every((e) => e.ready !== null))) return false;
+  // M5-5 (haengt ohne Zeilen): fehlen zur Frist Karten (z. B. nach "Bereit" entfernt), ist das Turnier NICHT abbuchbar und faellt aus (nichts abgebucht), statt still zu haengen
+  return tournamentAllCardsReady(tx, t.id);
 }
 
 /** Fälligkeit der Frist eines Turniers (null = Altturnier oder ohne Start: der Job fasst es nicht an). */

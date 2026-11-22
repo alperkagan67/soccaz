@@ -11,7 +11,7 @@ import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runTournamentCharges, runTournamentChargesDue, triggerTournamentChargesInBackground } from "@/server/payments/tournament-charge";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { setSetting } from "@/server/settings";
-import { createTournament, joinAsPlayer, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
+import { cancelTournament, closeTournamentsAtDeadline, createTournament, joinAsPlayer, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 // Fuer den Test "Phase A schluckt keine Fehler": lockTournament schlaegt auf Wunsch mit einem unerwarteten Fehler fehl.
@@ -336,6 +336,28 @@ describe("M5-4: Beanspruchung und Fehlerbehandlung", () => {
     const ids = async (at: Date) => (await getRefundAlerts(at)).tournamentWaitsForCards.map((x) => x.id);
     expect(await ids(new Date())).not.toContain(t.id); // gerade erst bereit: noch kein Alarm
     expect(await ids(new Date(Date.now() + 15 * 60_000))).toContain(t.id);
+  });
+
+  it("M5-5 (Zwischenstand): Absage VOR der Abbuchung im Kartenmodell (Veranstalter): keine Zeilen, Text sagt \"nichts abgebucht\"; NACH der ersten Abbuchung darf der Veranstalter nicht mehr absagen (nur Admin 1)", async () => {
+    const a = await ready();
+    await cancelTournament(a.o.id, a.t.id);
+    expect((await tOf(a.t.id)).status).toBe("cancelled");
+    const text = (await db.select().from(notifications).where(and(eq(notifications.userId, a.squads[0].captain.id), eq(notifications.title, "Turnier abgesagt"))))[0];
+    expect(text.body).toContain("nichts von deiner Karte abgebucht");
+    expect(text.body).not.toContain("Eintritt");
+
+    const b = await ready();
+    await runTournamentCharges(b.t.id, DUE);
+    await expect(cancelTournament(b.o.id, b.t.id)).rejects.toThrow(/Admin 1/);
+    expect((await tOf(b.t.id)).status).toBe("running");
+  });
+
+  it("M5-5 (Zwischenstand): haengt ohne Zeilen -> zur Frist fehlen Karten: das Turnier faellt aus (nichts abgebucht), statt still zu haengen", async () => {
+    const { t, squads } = await ready();
+    await db.update(paymentProfiles).set({ paymentMethodId: null }).where(eq(paymentProfiles.userId, squads[2].players[1].id));
+    await closeTournamentsAtDeadline(new Date(T0 + 4 * DAY));
+    expect((await tOf(t.id)).status).toBe("cancelled");
+    expect((await rowsOf(t.id)).length).toBe(0);
   });
 });
 
