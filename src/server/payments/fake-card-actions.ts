@@ -9,7 +9,7 @@ import { DomainError } from "../teams";
 import { assertNoFakeInProduction, getPaymentProvider } from "./provider";
 import { cardModeActive } from "../wallet";
 import { fakeCardAllowed } from "./mode";
-import { fakeAuthorizeCore } from "./fake-authorize";
+import { fakeAuthorizeCore, fakeAuthorizeTournamentCore } from "./fake-authorize";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -55,6 +55,21 @@ export async function fakeAuthorizeAction(matchId: string, outcome: "ok" | "fail
   const user = await requireUser("/app");
   const r = await fakeAuthorizeCore(user.id, matchId, outcome);
   if (!r.error) revalidatePath(`/lobby/${matchId}`);
+  return r;
+}
+
+/**
+ * NUR TESTS und CI: Freigabe (3-D-Secure) einer TURNIER-Zeile ohne Stripe (012-Rest PR B, Backlog 143). Gleiche Sperren wie fakeAuthorizeAction; der Nutzer kommt aus der Sitzung; die Zahlung laeuft
+ * als signiertes Fake-Ereignis durch handleStripeWebhook, nie direkt.
+ */
+export async function fakeAuthorizeTournamentAction(tournamentId: string, outcome: "ok" | "fail"): Promise<{ error?: string }> {
+  assertNoFakeInProduction();
+  if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
+  const provider = await getPaymentProvider();
+  if (provider.name !== "fake") return { error: "Nicht verfügbar." };
+  const user = await requireUser("/app");
+  const r = await fakeAuthorizeTournamentCore(user.id, typeof tournamentId === "string" ? tournamentId : "", outcome);
+  if (!r.error) revalidatePath(`/turniere/${tournamentId}`);
   return r;
 }
 
