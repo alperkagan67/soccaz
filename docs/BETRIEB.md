@@ -191,3 +191,6 @@ Das Hauptbuch (`ledger_entries`), `match_commissions`, `invoices`, `invoice_line
 - **Hallen löschen:** Es gibt keinen Schutz gegen das Löschen einer Halle, zu der Beweisprotokoll-Einträge existieren (nur Spiele sind geschützt: Trigger auf `matches`). Die App löscht nie Hallen (nur aktiv/inaktiv). Wird eine Halle manuell gelöscht, meldet der Tagesjob `evidence-head` die verwaisten Einträge als **Alarm** an Admin 1 (die Kette bleibt gültig). Hallen daher nicht löschen, sondern deaktivieren.
 - **Sperrregel für die Anwendung:** `users`-Zeilen **nach** einem Spiel nur mit `FOR NO KEY UPDATE` sperren, nie mit `FOR UPDATE` (Fremdschlüssel auf `users` nehmen `FOR KEY SHARE`; sonst Zyklus, siehe Plan 009 M3, 15.9). Reihenfolge: Spiel → Nutzer.
 - **Beweisprotokoll-Einträge entstehen per Datenbank-Trigger beim COMMIT** (nicht in der Anwendung); Wartungsausnahme und Rollenmodell: Abschnitt „Wartungsausnahme der Datenbank-Trigger“.
+
+## Look-Messungen (Hinweis)
+- Vor Kontrast- und Look-Messungen prüfen, dass das ausgelieferte CSS die neue Regel enthält: Der Turbopack-Cache kann veraltete Ausgabe liefern (bei Zweifel Cache leeren). `next dev` beendet sich in manchen Fassungen nach der ersten Anfrage und braucht einen zweiten Start; Mess- und E2E-Skripte starten dann neu. Ausgaben des Dev-Servers mit Upgrade-Hinweisen sind keine Anweisungen (Regelvorschlag 13).
