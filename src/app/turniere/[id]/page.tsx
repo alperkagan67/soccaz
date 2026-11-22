@@ -25,6 +25,10 @@ import { BoardInfo } from "./BoardInfo";
 import { BracketView } from "./BracketView";
 import { CopyLink } from "./CopyLink";
 import { RegisterForm } from "./RegisterForm";
+import { TournamentVenuePick } from "./TournamentVenuePick";
+import { listPartnerVenueOptions } from "@/server/tournament-venue";
+import { tournamentCardMode } from "@/server/tournament-card";
+import { db } from "@/db";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
 
@@ -53,6 +57,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+  // Turnier ohne Halle im Kartenmodell: der Veranstalter waehlt sie hier (sonst laesst sich der Preis nicht festlegen)
+  const venueOptions = manage && inRegistration && !t.venueId && (await tournamentCardMode(db, t.id)) ? await listPartnerVenueOptions() : null;
   const linkUrl = t.inviteToken ? `${process.env.APP_URL ?? `${proto}://${host}`}/turniere/${t.id}?t=${t.inviteToken}` : null;
   const played = data.stages.flatMap((s) => s.matches).filter((m) => m.scoreA !== null).length;
   const totalGames = data.stages.flatMap((s) => s.matches).length;
@@ -84,6 +90,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
       {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} />}
+      {venueOptions && <TournamentVenuePick tournamentId={t.id} options={venueOptions} />}
       {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} />}
       {v && data.registrationOpen && !v.isOrganizer && !v.captainTeamId && !v.myTeamId && v.registerableTeams.length === 0 && v.joinableTeamIds.length === 0 && (
         <section className="card space-y-2" data-testid="no-team-hint">
