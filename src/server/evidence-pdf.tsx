@@ -64,7 +64,7 @@ export function evidencePdfModel(data: MatchEvidence): EvidencePdfModel {
     summary: {
       count: `Einträge insgesamt: ${report.chain.count}`,
       headHash: report.chain.headHash || "(leer)",
-      result: `Ergebnis: ${report.chain.ok ? "Kette gültig" : `Kette UNGÜLTIG ab Nr. ${report.chain.firstBadSeq ?? "?"} (${report.chain.reason ?? "unbekannt"})`}`,
+      result: `Ergebnis: ${report.chain.ok ? "Kette gültig" : `Kette UNGÜLTIG ab Nr. ${report.chain.firstBadSeq ?? "?"} (${pdfSafe(report.chain.reason ?? "unbekannt")})`}`,
       checkedAt: `Prüfstand vom ${utc(report.checkedAt)} (höchstens einmal pro Minute neu berechnet; der Tagesjob rechnet täglich frisch)`,
     },
     warnings,

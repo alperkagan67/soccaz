@@ -74,20 +74,31 @@ export async function evidenceReport(exec: Exec = db): Promise<EvidenceReport> {
 
 export type CachedEvidenceReport = EvidenceReport & { checkedAt: Date };
 let cache: { at: number; report: CachedEvidenceReport } | null = null;
+let inflight: Promise<CachedEvidenceReport> | null = null;
 const REPORT_TTL_MS = 60_000;
 
 /**
  * Gesamtbericht, höchstens alle 60 Sekunden neu berechnet (Review R-T225a): evidenceReport() prüft die GESAMTE Kette und gleicht ab (O(n)); jeder PDF-/Seitenabruf würde sonst bei wachsender
- * Kette teurer. Der Prüfzeitpunkt (checkedAt) steht im Ergebnis und im PDF. Der Tagesjob evidence-head rechnet immer frisch.
+ * Kette teurer. Läuft gerade eine Berechnung, teilen sich alle gleichzeitigen Abrufe dasselbe Versprechen (kein Ansturm nach Ablauf des Zwischenspeichers, Security-Hinweis R-T226). Der
+ * Prüfzeitpunkt (checkedAt) steht im Ergebnis und im PDF. Der Tagesjob evidence-head rechnet immer frisch.
  */
 export async function cachedEvidenceReport(now: number = Date.now(), exec: Exec = db): Promise<CachedEvidenceReport> {
   if (cache && now - cache.at < REPORT_TTL_MS) return cache.report;
-  const report = { ...(await evidenceReport(exec)), checkedAt: new Date(now) };
-  cache = { at: now, report };
-  return report;
+  if (inflight) return inflight;
+  inflight = (async () => {
+    try {
+      const report = { ...(await evidenceReport(exec)), checkedAt: new Date(now) };
+      cache = { at: now, report };
+      return report;
+    } finally {
+      inflight = null;
+    }
+  })();
+  return inflight;
 }
 
 /** Cache leeren (Tests). */
 export function clearEvidenceReportCache(): void {
   cache = null;
+  inflight = null;
 }

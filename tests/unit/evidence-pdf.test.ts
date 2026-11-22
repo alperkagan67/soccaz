@@ -49,6 +49,7 @@ describe("evidencePdfModel", () => {
       data({}, { ok: false, chain: { ok: false, count: 3, headHash: "b".repeat(64), firstBadSeq: 2, reason: "hash" }, orphans: { matchIds: ["x"], venueIds: [] }, missing: [{ source: "hall", matchId: "m", venueId: "v", jobId: null, status: "pending" }] }),
     );
     expect(bad.summary.result).toBe("Ergebnis: Kette UNGÜLTIG ab Nr. 2 (hash)");
+    expect(evidencePdfModel(data({}, { ok: false, chain: { ok: false, count: 3, headHash: "b".repeat(64), firstBadSeq: 2, reason: "ha​sh" } })).summary.result).toBe("Ergebnis: Kette UNGÜLTIG ab Nr. 2 (hash)"); // auch der Grund läuft durch pdfSafe
     expect(bad.warnings).toHaveLength(2);
   });
   it("ohne Betreiber und ohne Begründung entfallen die Zeilen; unbekannte Art erscheint bereinigt", () => {
