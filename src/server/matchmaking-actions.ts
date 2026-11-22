@@ -14,6 +14,7 @@ import { requireUser } from "./session";
 import { answerHallRequest, banHall } from "./veto";
 import { acceptChallenge, challengeTeam, declineChallenge } from "./challenges";
 import { DomainError } from "./teams";
+import { validateDecline } from "@/lib/hall-decline";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -142,6 +143,20 @@ export async function declineChallengeAction(matchId: string): Promise<ActionSta
 export async function answerHallAction(matchId: string, venueId: string, accept: boolean): Promise<ActionState> {
   const user = await requireUser("/halle");
   const result = await guarded(() => answerHallRequest(user.id, matchId, venueId, accept));
+  revalidatePath("/halle");
+  revalidatePath(`/lobby/${matchId}`);
+  return result;
+}
+
+/**
+ * Hallenbetreiber lehnt mit Grund ab (011 M2b). ZWISCHENSTAND bis zur Nachlieferung 009 M3 (Migration 0054): Grund und Anmerkung werden **geprüft** (erste Stufe, Fehler am Feld),
+ * aber noch **nicht gespeichert** und die Runde wird noch nicht mitgeschickt; die Anbindung (Sitzungswert je Zeile, Runde, Fristgrenze, `late`) folgt mit M2a-2 (Plan 011 M2, 3.2/3.3).
+ */
+export async function declineHallAction(matchId: string, venueId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const user = await requireUser("/halle");
+  const check = validateDecline({ code: String(formData.get("reasonCode") ?? ""), text: String(formData.get("reason") ?? "") });
+  if (!check.ok) return { error: Object.values(check.fieldErrors)[0], fieldErrors: check.fieldErrors };
+  const result = await guarded(() => answerHallRequest(user.id, matchId, venueId, false));
   revalidatePath("/halle");
   revalidatePath(`/lobby/${matchId}`);
   return result;
