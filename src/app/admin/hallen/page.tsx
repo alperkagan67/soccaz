@@ -130,6 +130,9 @@ export default async function VenuesPage() {
                 {canCommission && (
                   <ActionForm action={setVenueCommissionAction.bind(null, v.id)} submit="Provision übernehmen" className="space-y-2" keepOnSuccess>
                     <p className="text-sm font-semibold">Provision dieser Halle</p>
+                    {v.isPartner && Number(v.commissionPercent) === 0 && (
+                      <p className="text-xs text-muted" role="status" data-testid="commission-zero-warning">Satz 0: Für diese Partnerhalle fällt keine Provision an (auch nicht bei Turnieren im Kartenmodell). Bitte prüfen, ob das gewollt ist.</p>
+                    )}
                     <div className="grid gap-2 sm:grid-cols-3">
                       <div>
                         <label className="label" htmlFor={`prov-${v.id}`}>Satz in Prozent der Hallenmiete</label>
