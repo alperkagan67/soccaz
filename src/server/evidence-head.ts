@@ -47,7 +47,7 @@ export async function runEvidenceHead(now: Date = new Date()): Promise<{ ok: boo
     const [still] = (await db.execute(sql`select 1 as ok from booking_evidence where hash = ${last.headHash} and seq = ${last.count}`)).rows as { ok: number }[];
     if (!still) alarms.push("der frühere Kopf-Hash liegt nicht mehr in der Kette");
   }
-  // Plan 16g.1: Durchsetzung AUS (oder Uhrenquelle nicht db) = Hinweis in JEDEM Lauf, bis Admin 1 sie einschaltet (hart vor Go-live); kein Kettenalarm, daher nicht in alarms
+  // Plan 16g.1: Durchsetzung AUS = Hinweis (die Uhrenquelle prüft nicht der Job, sondern evidence_set_setting beim Einschalten) in JEDEM Lauf, bis Admin 1 sie einschaltet (hart vor Go-live); kein Kettenalarm, daher nicht in alarms
   const enforcement = await getSetting<string>("evidence_enforcement", "on");
   const enforcementNote = enforcement === "off" ? " HINWEIS: Durchsetzung (Frist, Pflichtbegründung) ist AUS; Go-live nur mit 'on'." : "";
   await audit(null, "evidence.head", "evidence", "chain", { after: { count: report.chain.count, headHash: report.chain.headHash, alarms: alarms.length, actorsCleared, enforcement } });
