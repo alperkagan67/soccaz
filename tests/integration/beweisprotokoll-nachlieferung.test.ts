@@ -73,6 +73,15 @@ const answer = (s: { matchId: string; venue: { id: string }; op: { id: string } 
 async function md5(tx: Tx, s: { matchId: string; venue: { id: string } }): Promise<string> {
   return rows<{ k: string }>(await tx.execute(sql`select md5('m:' || ${s.matchId}::text || ':' || ${s.venue.id}::text) as k`))[0].k;
 }
+const msgOf = async (p: Promise<unknown>) => {
+  try {
+    await p;
+    return "";
+  } catch (e) {
+    const err = e as { message?: string; cause?: { message?: string } };
+    return err.cause?.message ?? err.message ?? "?";
+  }
+};
 const code = async (p: Promise<unknown>) => {
   try {
     await p;
@@ -170,7 +179,7 @@ describe("evidence_late_attempt (Plan 16b.4, 16e.1)", () => {
     expect(l.decidedAt!.getTime()).toBeGreaterThan(l.deadlineAt!.getTime());
     expect(l.actorCommitment).toMatch(/^[0-9a-f]{64}$/);
     const early = await setup({ deadlineOffsetMs: 3_600_000 });
-    expect(await code(late(early, early.op.id))).not.toBeNull(); // Frist nicht abgelaufen
+    expect(await msgOf(late(early, early.op.id))).toMatch(/noch nicht abgelaufen/); // Frist nicht abgelaufen (Fehlertext, nicht ein Folge-CHECK)
   });
 
   it("nach dem Ablaufjob (declined ohne answered_at) bleibt der Versuch zulässig; eine vom Betreiber beantwortete Zeile nicht", async () => {
@@ -260,7 +269,7 @@ describe("Einstellungen und Schalter (Plan 16g.1/16g.5)", () => {
   it("direkte Änderung der evidence_*-Einstellungen wird abgelehnt; evidence_set_setting braucht einen Akteur, schreibt audit_log; 'on' erst bei clock_source = db", async () => {
     const admin = await makeUser("nladmin", "owner");
     expect(await code(db.execute(sql`update settings set value = to_jsonb('on'::text) where key = 'evidence_enforcement'`))).not.toBeNull();
-    expect(await code(db.execute(sql`select evidence_set_setting('evidence_enforcement', 'on', null, 'x')`))).not.toBeNull();
+    expect(await msgOf(db.execute(sql`select evidence_set_setting('evidence_reason_retention_days', '5', null, 'x')`))).toMatch(/Akteur/);
     expect(await code(db.execute(sql`select evidence_set_setting('evidence_enforcement', 'on', ${admin.id}::uuid, 'zu frueh')`))).not.toBeNull(); // clock_source = js
     await db.execute(sql`select evidence_set_setting('evidence_clock_source', 'db', ${admin.id}::uuid, 'M2a umgestellt')`);
     await db.execute(sql`select evidence_set_setting('evidence_enforcement', 'on', ${admin.id}::uuid, 'Go-live')`);
@@ -327,8 +336,14 @@ describe("Hash Version 2, Bereinigung, Einschränkungen (Plan 16d.6, 16e.4, 16f.
     expect((await verifyEvidenceChain()).ok).toBe(true);
   });
 
+  it("evidence_hash_of: unbekannte Version und Version 1 ohne match_id sind Fehler (kein stilles Zurückfallen)", async () => {
+    const v = "11111111-1111-4111-8111-111111111111";
+    expect(await msgOf(db.execute(sql`select evidence_hash_of(jsonb_populate_record(null::booking_evidence, jsonb_build_object('id', ${v}::text, 'hash_version', 3, 'seq', 1, 'match_id', ${v}::text, 'kind', 'request_sent')))`))).toMatch(/unbekannte hash_version/);
+    expect(await msgOf(db.execute(sql`select evidence_hash_of(jsonb_populate_record(null::booking_evidence, jsonb_build_object('id', ${v}::text, 'hash_version', 1, 'seq', 1, 'kind', 'request_sent')))`))).toMatch(/verlangt match_id/);
+  });
+
   it("evidence_clean_reason = cleanReason (Gleichhaltung: Steuer-/Bidi-/Zero-Width-Zeichen, Leerraum, Emoji, Zeilenumbrüche)", async () => {
-    const inputs = ["  Halle belegt  ", "a\u0001b\u0007c", "Hal​le‏ ﻿belegt⁠", "x\n\n\n\ny", "a \t\t b", "Emoji 😀🏟 ok", "‮umgekehrt‬", "   \n  ", "Zeile1\nZeile2"];
+    const inputs = ["  Halle belegt  ", "a\u0001b\u0007c", "Hal​le‏ ﻿belegt⁠", "x\n\n\n\ny", "a \t\t b", "Emoji 😀🏟 ok", "‮umgekehrt‬", "   \n  ", "Zeile1\nZeile2", "a\r\nb", "\u00A0 nbsp \u00A0", "\tTab\tmitte\t", "x".repeat(250), "😀".repeat(5), "\u2028x\u2029"];
     for (const i of inputs) {
       const sqlOut = rows<{ r: string }>(await db.execute(sql`select evidence_clean_reason(${i}) as r`))[0].r;
       expect(sqlOut, JSON.stringify(i)).toBe(cleanReason(i));
@@ -342,5 +357,60 @@ describe("Hash Version 2, Bereinigung, Einschränkungen (Plan 16d.6, 16e.4, 16f.
       const onCounter = (f.prosrc.match(/booking_evidence_counter[^;]*for\s+update/gi) ?? []).length;
       expect(locks.length, f.proname).toBe(onCounter);
     }
+  });
+});
+
+describe("Review R-T243 (w4): Einstellungsschutz, expired ohne Frist, Turnier-Idempotenz, Frist-Lesepfade", () => {
+  it("evidence-Einstellungen: Umbenennen, Löschen und Ändern ohne Marker werden abgelehnt (OLD.key UND NEW.key); fremde Schlüssel bleiben frei", async () => {
+    expect(await code(db.execute(sql`update settings set key = 'evidence_frei' where key = 'evidence_enforcement'`))).not.toBeNull();
+    expect(await code(db.execute(sql`update settings set key = 'evidence_enforcement' where key = 'evidence_clock_source'`))).not.toBeNull();
+    expect(await code(db.execute(sql`delete from settings where key = 'evidence_enforcement'`))).not.toBeNull();
+    expect(await code(db.execute(sql`insert into settings (key, value) values ('evidence_cutover_at', to_jsonb('2000-01-01T00:00:00Z'::text)) on conflict (key) do update set value = excluded.value`))).not.toBeNull();
+    await db.execute(sql`insert into settings (key, value) values ('evidence_head_test_frei', to_jsonb('x'::text)) on conflict (key) do update set value = excluded.value`);
+    await db.execute(sql`delete from settings where key = 'evidence_head_test_frei'`);
+  });
+
+  it("expired mit fehlender Frist (reply_deadline NULL): Eintrag mit deadline_at NULL, kein Fehler (auch bei ON)", async () => {
+    await enforceOn();
+    const s = await setup();
+    await db.update(matches).set({ vetoTurnDeadline: null }).where(eq(matches.id, s.matchId));
+    await answer(s, "declined", { answeredAt: false });
+    const x = (await ev(s.matchId)).find((e) => e.kind === "expired")!;
+    expect(x.deadlineAt).toBeNull();
+    expect(x.enforced).toBe(true);
+  });
+
+  it("Turnier-Idempotenz nur über das WHEN: eine spätere Änderung von venue_confirmed_at (Wert -> anderer Wert) erzeugt keinen zweiten Eintrag; Zusage, Rücknahme, Zusage = zwei Einträge (gewollt)", async () => {
+    const s = await setup();
+    const org = await makeUser("nlorg3");
+    const [t] = await db.insert(tournaments).values({ organizerId: org.id, name: "NL Idem", city: "E2E-NL", startsOn: "2027-02-01", format: "knockout", maxTeams: 4, venueId: s.venue.id }).returning();
+    const count = async () => (await db.select().from(bookingEvidence).where(eq(bookingEvidence.tournamentId, t.id))).length;
+    await db.execute(sql`update tournaments set venue_confirmed_at = now() where id = ${t.id}`);
+    await db.execute(sql`update tournaments set venue_confirmed_at = now() + interval '1 minute' where id = ${t.id}`);
+    await db.execute(sql`update tournaments set name = 'NL Idem 2' where id = ${t.id}`);
+    expect(await count()).toBe(1);
+    await db.execute(sql`update tournaments set venue_confirmed_at = null where id = ${t.id}`);
+    await db.execute(sql`update tournaments set venue_confirmed_at = now() where id = ${t.id}`);
+    expect(await count()).toBe(2);
+  });
+
+  it("Frist-Lesepfade: answerHallRequest-Muster (Zeile unter dem FOR UPDATE des Spiels) und Ablauf VOR dem Zurücksetzen von matches halten die Frist fest; ein späteres Zurücksetzen ändert den Eintrag nicht", async () => {
+    await enforceOn();
+    const s = await setup({ deadlineOffsetMs: 3_600_000 });
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select id from matches where id = ${s.matchId} for update`);
+      await tx.execute(sql`update match_hall_requests set status = 'confirmed', answered_at = now(), answered_by = ${s.op.id} where match_id = ${s.matchId} and venue_id = ${s.venue.id}`);
+      await tx.execute(sql`update matches set veto_turn_deadline = null where id = ${s.matchId}`); // settleHallCheck setzt die Frist danach zurück
+    });
+    const a = (await ev(s.matchId)).find((e) => e.kind === "accepted")!;
+    expect(a.deadlineAt!.getTime()).toBe(s.deadline.getTime());
+    const s2 = await setup({ deadlineOffsetMs: -60_000 });
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select id from matches where id = ${s2.matchId} for update`);
+      await tx.execute(sql`update match_hall_requests set status = 'declined' where match_id = ${s2.matchId} and venue_id = ${s2.venue.id}`); // Ablauf (ohne answered_at)
+      await tx.execute(sql`update matches set veto_turn_deadline = null where id = ${s2.matchId}`);
+    });
+    const x = (await ev(s2.matchId)).find((e) => e.kind === "expired")!;
+    expect(x.deadlineAt!.getTime()).toBe(s2.deadline.getTime());
   });
 });

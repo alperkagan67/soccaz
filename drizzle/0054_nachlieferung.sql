@@ -169,10 +169,11 @@ INSERT INTO settings (key, value) VALUES ('evidence_tournament_cutover_at', to_j
 -- Grenze: kein Schutz gegen jeden mit SQL-Zugriff (G25-009), Verteidigung in der Tiefe.
 CREATE OR REPLACE FUNCTION evidence_settings_guard() RETURNS trigger AS $$
 DECLARE
-  k text := CASE WHEN TG_OP = 'DELETE' THEN OLD.key ELSE NEW.key END;
+  k text := CASE WHEN TG_OP = 'INSERT' THEN NEW.key ELSE OLD.key END;
   v text;
 BEGIN
-  IF k NOT IN ('evidence_enforcement', 'evidence_clock_source', 'evidence_reason_retention_days', 'evidence_cutover_at', 'evidence_tournament_cutover_at') THEN
+  IF k NOT IN ('evidence_enforcement', 'evidence_clock_source', 'evidence_reason_retention_days', 'evidence_cutover_at', 'evidence_tournament_cutover_at')
+     AND (TG_OP <> 'UPDATE' OR NEW.key NOT IN ('evidence_enforcement', 'evidence_clock_source', 'evidence_reason_retention_days', 'evidence_cutover_at', 'evidence_tournament_cutover_at')) THEN
     IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
     RETURN NEW;
   END IF;
@@ -228,10 +229,10 @@ CREATE OR REPLACE FUNCTION evidence_clean_reason(p text) RETURNS text AS $$
   SELECT regexp_replace(
     regexp_replace(
       regexp_replace(
-        regexp_replace(coalesce(p, ''), '[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F​-‏  ‪-‮⁠-⁤⁦-⁩﻿]', '', 'g'),
+        regexp_replace(coalesce(p, ''), '[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]', '', 'g'),
         '[ \t]+', ' ', 'g'),
       '\n{3,}', E'\n\n', 'g'),
-    '^\s+|\s+$', '', 'g')
+    '^[\u0009\u000A\u000B\u000C\u000D\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+|[\u0009\u000A\u000B\u000C\u000D\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+$', '', 'g')
 $$ LANGUAGE sql IMMUTABLE;
 --> statement-breakpoint
 -- Prueft Code und Text (Plan 16b.2): Code aus der Liste; Text leer oder 3 bis 200 Zeichen; 'sonstiges' verlangt Text. Gibt den bereinigten Text zurueck. Fehlertext ohne Freitext.

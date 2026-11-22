@@ -35,6 +35,14 @@ const MUTATIONS = [
   { name: "UPDATE-Ereignis oeffnet eine neue Runde", fn: "evidence_hall_event", from: "CASE WHEN TG_OP = 'INSERT' AND k IN ('request_sent', 'unmanaged') THEN 'open' ELSE 'current' END,", to: "CASE WHEN k IN ('request_sent', 'unmanaged') THEN 'open' ELSE 'current' END,", tests: [HAKEN] },
   { name: "evidence_clean_reason entfernt keine Zero-Width-Zeichen", fn: "evidence_clean_reason", from: "\\u200B-\\u200F", to: "", tests: [NL, BASE] },
   { name: "Settings-Guard lehnt direkte Aenderung nicht ab", fn: "evidence_settings_guard", from: "AND coalesce(current_setting('socaz.evidence_setting_write', true), '') <> 'on' THEN", to: "AND false THEN", tests: [NL] },
+  { name: "Einstellungsschutz prueft nur NEW.key (Umbenennen eines geschuetzten Schluessels moeglich)", fn: "evidence_settings_guard", from: "k text := CASE WHEN TG_OP = 'INSERT' THEN NEW.key ELSE OLD.key END;", to: "k text := CASE WHEN TG_OP = 'DELETE' THEN OLD.key ELSE NEW.key END;", tests: [NL] },
+  { name: "Frist wird im Sofort-Trigger nicht gelesen (Frist NULL)", fn: "evidence_hall_before", from: "SELECT veto_turn_deadline INTO NEW.reply_deadline FROM matches WHERE id = NEW.match_id;", to: "NEW.reply_deadline := NULL;", tests: [NL] },
+  {
+    name: "Turnier-Trigger ohne WHEN (feuert bei jedem UPDATE)",
+    apply: ["DROP TRIGGER IF EXISTS tournaments_evidence_upd ON tournaments", "CREATE CONSTRAINT TRIGGER tournaments_evidence_upd AFTER UPDATE ON tournaments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION evidence_tournament_event()"],
+    restore: ["DROP TRIGGER IF EXISTS tournaments_evidence_upd ON tournaments", "CREATE CONSTRAINT TRIGGER tournaments_evidence_upd AFTER UPDATE ON tournaments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD.venue_confirmed_at IS NULL AND NEW.venue_confirmed_at IS NOT NULL) EXECUTE FUNCTION evidence_tournament_event()"],
+    tests: [NL],
+  },
 ];
 
 const only = process.argv.slice(2).map(Number).filter(Boolean);
@@ -52,18 +60,21 @@ const report = [];
 try {
   for (const [i, m] of MUTATIONS.entries()) {
     if (only.length && !only.includes(i + 1)) continue;
-    const orig = stmtOf(m.fn);
-    if (orig.split(m.from).length !== 2) throw new Error(`Mutation ${i + 1}: Muster nicht genau einmal in ${m.fn}`);
-    const mutated = orig.replace(m.from, () => m.to);
+    const custom = Array.isArray(m.apply);
+    const orig = custom ? "" : stmtOf(m.fn);
+    if (!custom && orig.split(m.from).length !== 2) throw new Error(`Mutation ${i + 1}: Muster nicht genau einmal in ${m.fn}`);
+    const mutated = custom ? "" : orig.replace(m.from, () => m.to);
     try {
-      await client.query(mutated);
+      if (custom) for (const s of m.apply) await client.query(s);
+      else await client.query(mutated);
       const r = runTests(m.tests);
       const red = r.status !== 0;
       const failed = ((r.stdout ?? "") + (r.stderr ?? "")).match(/Tests\s+(\d+) failed/);
       report.push({ nr: i + 1, name: m.name, rot: red, failed: failed ? Number(failed[1]) : 0 });
       console.log(`${red ? "ROT (gut)" : "GRUEN (Luecke!)"}  #${i + 1} ${m.name}${failed ? ` (${failed[1]} Tests rot)` : ""}`);
     } finally {
-      await client.query(orig); // Original wiederherstellen
+      if (custom) for (const s of m.restore) await client.query(s);
+      else await client.query(orig); // Original wiederherstellen
     }
   }
 } finally {
