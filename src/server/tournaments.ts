@@ -742,7 +742,7 @@ export async function cancelTournamentsAfterWindow(now: Date = new Date()): Prom
 }
 
 /** Zeitpunkt der Abbuchung bzw. der Frist (Vorlauf ab 48 Stunden: Start minus 48 h mit Karenz; kuerzer: Start minus 1 Stunde). null = Altturnier ohne neue Fristregel. */
-async function chargeDueAt(tx: Pick<typeof db, "select">, t: T): Promise<Date | null> {
+export async function chargeDueAt(tx: Pick<typeof db, "select">, t: Pick<T, "id" | "startsAt" | "createdAt" | "registrationDeadline">): Promise<Date | null> {
   if (!t.startsAt) return null;
   const long = hasLongLead(t.startsAt, t.createdAt);
   if (!long) return abortDeadline(t.startsAt);

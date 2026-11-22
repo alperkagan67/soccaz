@@ -1,7 +1,7 @@
 // Turnier und Halle (Vertrag 012, M5-1): Partnerhalle (Pflicht im Kartenmodell), Zusage der Halle (Schnittstelle mit Attrappe) und der Provisions-Snapshot.
 // M5-7a: Zugang und Provisionssatz kommen jetzt aus den echten Quellen (011 M1: venue-access-rules.ts, 009 M2: venues.commission_percent). Die Zusage der Halle fuer Turniere (M5-7b) fehlt noch:
 // bis dahin sind im Kartenmodell nur Hallen OHNE Betreiber-Zugang waehlbar, und das Fixieren wird bei einer Halle mit Zugang verweigert (assertVenueFixable).
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { venues } from "@/db/schema-finance";
 import { tournaments } from "@/db/schema-league";
@@ -101,6 +101,24 @@ export async function freezeVenueTerms(tx: Tx, tournamentId: string, venueId: st
 }
 
 
+
+/** Die Bedingungen, unter denen die Halle zugesagt hat (Entscheid t2q F7): Halle, Termin, Dauer, Hallenmiete. Aendert sich eine davon, gilt die Zusage nicht mehr. */
+export type VenueTerms = { venueId: string | null; startsAt: Date | null; durationMin: number | null; totalCents: number | null };
+
+export function venueTermsChanged(a: VenueTerms, b: VenueTerms): boolean {
+  return a.venueId !== b.venueId || (a.startsAt?.getTime() ?? null) !== (b.startsAt?.getTime() ?? null) || a.durationMin !== b.durationMin || a.totalCents !== b.totalCents;
+}
+
+/**
+ * Setzt die Zusage der Halle zurueck, wenn sich Halle, Termin, Dauer oder Hallenmiete geaendert haben (F7). In der Transaktion des Aufrufers unter der Turniersperre. Es gibt heute keinen Weg,
+ * Termin, Dauer oder Miete eines angelegten Turniers zu aendern; jeder kuenftige Weg MUSS diesen Helfer rufen (Strukturtest: tests/unit/venue-terms-reset.test.ts). TODO(0054): venue_confirmed_by mit leeren.
+ * Gibt zurueck, ob eine Zusage zurueckgesetzt wurde.
+ */
+export async function resetVenueConfirmationIfTermsChanged(tx: Tx, tournamentId: string, before: VenueTerms, after: VenueTerms): Promise<boolean> {
+  if (!venueTermsChanged(before, after)) return false;
+  const reset = await tx.update(tournaments).set({ venueConfirmedAt: null }).where(and(eq(tournaments.id, tournamentId), isNotNull(tournaments.venueConfirmedAt))).returning({ id: tournaments.id });
+  return reset.length > 0;
+}
 
 /** Der Veranstalter (oder ein Plattform-Admin) waehlt die Partnerhalle, solange der Kader offen ist (der Preis steht noch nicht fest). */
 export async function setTournamentVenue(userId: string, isPlatformAdmin: boolean, tournamentId: string, venueId: string): Promise<void> {
