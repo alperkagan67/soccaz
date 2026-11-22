@@ -19,6 +19,9 @@ import {
   setRosterCompleteAction,
   withdrawTeamAction,
 } from "@/server/tournament-actions";
+import { DEFAULT_LOCALE, translate } from "@/lib/i18n";
+import { fakeCardAllowed } from "@/server/payments/mode";
+import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { getCurrentUser } from "@/server/session";
 import { getTournament } from "@/server/tournaments";
 import { BoardInfo } from "./BoardInfo";
@@ -29,6 +32,7 @@ import { TournamentVenuePick } from "./TournamentVenuePick";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { tournamentCardMode } from "@/server/tournament-card";
 import { db } from "@/db";
+import { TournamentCard } from "./TournamentCard";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
 
@@ -105,8 +109,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
           <ol className="list-decimal space-y-0.5 pl-5 text-muted">
             <li className={inRegistration ? "text-ink" : ""}>Alle Teams füllen ihren Kader. Der Captain meldet: „Team ist vollzählig“.</li>
             <li className={inPayment ? "text-ink" : ""}>Sobald alle Teams vollzählig sind, wird der Preis pro Spieler automatisch berechnet: Hallenkosten geteilt durch alle Spieler.</li>
-            <li className={inPayment ? "text-ink" : ""}>Jeder Spieler bezahlt genau diesen Betrag (oder der Captain für ihn). Die Ampel wird grün.</li>
-            <li className={t.status === "running" ? "text-ink" : ""}>Haben alle bezahlt, erscheint das Bracket.</li>
+            <li className={inPayment ? "text-ink" : ""}>{data.cardMode ? "Jeder Spieler hinterlegt eine Karte (oder ein Mitspieler übernimmt seinen Anteil). Die Ampel wird grün. Bezahlt wird jetzt nichts." : "Jeder Spieler bezahlt genau diesen Betrag (oder der Captain für ihn). Die Ampel wird grün."}</li>
+            <li className={t.status === "running" ? "text-ink" : ""}>{data.cardMode ? "Zur Frist wird der Anteil von der Karte abgebucht. Sind alle abgebucht, erscheint das Bracket." : "Haben alle bezahlt, erscheint das Bracket."}</li>
           </ol>
           <p>
             Hallenkosten: <strong>{formatEuro(pricing.totalCents ?? 0)}</strong>
@@ -191,11 +195,13 @@ export default async function TournamentPage({ params, searchParams }: PageProps
 
       <section className="space-y-3" data-testid="tournament-lobby">
         <h2 className="text-lg font-semibold">Turnier-Lobby ({teams.length} von {t.maxTeams} Teams)</h2>
-        {(inRegistration || inPayment) && (
+        {/* Kartenmodell: Gaeste und Spieler ohne Bezug zum Turnier sehen nur die Anzahl und den Status (Entscheid t9) */}
+        {data.cardMode && !(v?.isOrganizer || v?.myTeamId) && <p className="text-sm text-muted" data-testid="teams-count">Teams angemeldet: {teams.length} · {STATUS[t.status]}</p>}
+        {(inRegistration || inPayment) && !(data.cardMode && !(v?.isOrganizer || v?.myTeamId)) && (
           <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" data-testid="tournament-legend">
             <span className="flex items-center gap-1.5"><PlayerLight light="red" /> im Kader</span>
-            <span className="flex items-center gap-1.5"><PlayerLight light="orange" /> Team vollzählig{free ? "" : ", noch nicht bezahlt"}</span>
-            <span className="flex items-center gap-1.5"><PlayerLight light="green" /> bezahlt</span>
+            <span className="flex items-center gap-1.5"><PlayerLight light="orange" /> Team vollzählig{free ? "" : data.cardMode ? ", noch keine Karte" : ", noch nicht bezahlt"}</span>
+            <span className="flex items-center gap-1.5"><PlayerLight light="green" /> {data.cardMode ? "Karte hinterlegt" : "bezahlt"}</span>
           </p>
         )}
         {teams.length === 0 ? (
@@ -211,19 +217,20 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                     <h3 className="font-semibold"><Link href={`/teams/${team.slug}`} className="hover:text-accent-fg">{team.name}</Link></h3>
                     <span className={`text-xs font-semibold ${team.ready ? "text-accent-fg" : "text-muted"}`}>{inPayment && team.paidReady ? "✓ Bereit" : team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
                   </div>
-                  <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{priceFixed && !free ? ` · ${paid} bezahlt` : ""}</p>
+                  <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{priceFixed && !free && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>
                   {mine && inPayment && !free && team.dueCents > 0 && (
                     <div className="space-y-1 rounded-lg border border-line p-2" data-testid="captain-pay-box">
                       <ActionButton action={payForTeamAction.bind(null, t.id, undefined)} label={`Als Captain für alle offenen Spieler bezahlen (${formatEuro(team.dueCents)})`} className="btn btn-primary w-full" />
                       <p className="text-xs text-muted">Oder jeder Spieler zahlt für sich, oder du zahlst unten für einzelne Spieler.</p>
                     </div>
                   )}
-                  {mine && inPayment && team.dueCents === 0 && team.players.length > 0 && !team.paidReady && (
+                  {mine && inPayment && team.dueCents === 0 && team.cardMissing === 0 && team.players.length > 0 && !team.paidReady && (
                     <div className="space-y-1" data-testid="paid-ready-box">
                       <ActionButton action={setPaidReadyAction.bind(null, t.id)} label="Bereit" className="btn btn-primary w-full" />
-                      <p className="text-xs text-muted">Euer Team hat komplett bezahlt. Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind.</p>
+                      <p className="text-xs text-muted">{data.cardMode ? "Alle in eurem Team haben eine Karte hinterlegt. Drücke Bereit; abgebucht wird erst zur Frist." : "Euer Team hat komplett bezahlt. Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind."}</p>
                     </div>
                   )}
+                  {data.cardMode && team.cardsComplete !== null && <p className="text-xs text-muted" data-testid="team-cards-state">{team.cardsComplete ? "Karten komplett" : "Karten unvollständig"}</p>}
                   <ul className="space-y-1.5 text-sm">
                     {team.players.map((p) => (
                       <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="tournament-player" data-paid={p.paid}>
@@ -234,8 +241,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                           {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                         </span>
                         <span className="flex items-center gap-2">
-                          <PlayerLight light={lightOf(team.ready, p.paid || (free && inPayment))} />
-                          {inPayment && (mine || (v?.myTeamId === team.teamId && p.userId !== user?.id)) && !free && !p.paid && <ActionButton action={payForTeamAction.bind(null, t.id, p.userId)} label="Ich zahle für ihn" className="btn btn-ghost !min-h-8 !px-2 text-xs" />}
+                          {team.showLights && <PlayerLight light={lightOf(team.ready, p.paid || (free && inPayment))} />}
+                          {inPayment && !data.cardMode && (mine || (v?.myTeamId === team.teamId && p.userId !== user?.id)) && !free && !p.paid && <ActionButton action={payForTeamAction.bind(null, t.id, p.userId)} label="Ich zahle für ihn" className="btn btn-ghost !min-h-8 !px-2 text-xs" />}
                           {inRegistration && !p.isCaptain && (mine || manage) && <ActionButton action={leavePlayerAction.bind(null, t.id, p.userId)} label="Entfernen" confirm="Spieler aus dem Kader nehmen?" />}
                         </span>
                       </li>
@@ -271,17 +278,29 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             {teams.filter((x) => x.ready).length} von {t.maxTeams} Teams haben „vollzählig“ gemeldet.{allLocked ? "" : " Sobald alle Plätze belegt und alle Teams vollzählig sind, steht der Preis fest."}
           </p>
         )}
-        {v && v.myTeamId && inPayment && !free && !v.iPaid && (
+        {data.cardMode && v && v.myTeamId && (inRegistration || inPayment) && (
+          <TournamentCard
+            tournamentId={t.id}
+            hasOwnCard={v.hasOwnCard}
+            mandateText={MANDATE_TEXT}
+            coverMandateText={translate(DEFAULT_LOCALE, "cover.mandate.v1.entwurf")}
+            fake={fakeCardAllowed()}
+            teammates={(teams.find((x) => x.teamId === v.myTeamId)?.players ?? []).filter((p) => p.userId !== user?.id).map((p) => ({ userId: p.userId, name: p.name, hasCard: p.paid && !p.covered, covered: p.covered }))}
+            coveringName={v.coveringUserId ? (teams.find((x) => x.teamId === v.myTeamId)?.players.find((p) => p.userId === v.coveringUserId)?.name ?? null) : null}
+            canCover={v.hasOwnCard}
+          />
+        )}
+        {v && v.myTeamId && inPayment && !free && !data.cardMode && !v.iPaid && (
           <section className="card space-y-2" data-testid="pay-entry">
             <p className="text-sm">Dein Anteil: <strong>{formatEuro(v.myDueCents)}</strong> (Hallenkosten {formatEuro(pricing.totalCents ?? 0)} durch {pricing.players} Spieler). Du kannst selbst zahlen, oder dein Captain zahlt für dich. Bei Absage bekommst du alles zurück.</p>
             <ActionButton action={payEntryAction.bind(null, t.id)} label={`${formatEuro(v.myDueCents)} Anteil bezahlen`} className="btn btn-primary w-full" />
           </section>
         )}
-        {v && v.myTeamId && inPayment && !free && v.iPaid && <p className="text-sm text-accent-fg" data-testid="paid-note">Dein Anteil ist bezahlt.</p>}
+        {v && v.myTeamId && inPayment && !free && !data.cardMode && v.iPaid && <p className="text-sm text-accent-fg" data-testid="paid-note">Dein Anteil ist bezahlt.</p>}
       </section>
 
       {!data.bracketVisible && (inRegistration || inPayment) && (
-        <p className="card text-sm text-muted" data-testid="bracket-hidden">Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat.</p>
+        <p className="card text-sm text-muted" data-testid="bracket-hidden">{data.cardMode ? "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler eine Karte hinterlegt haben, jeder Captain „Bereit“ gedrückt hat und der Anteil zur Frist abgebucht ist." : "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat."}</p>
       )}
     </div>
   );
