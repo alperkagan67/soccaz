@@ -46,7 +46,7 @@ test("Admin 1 sieht das Beweisprotokoll (Kopf-Hash, Anzahl, Prüfstand, Export-L
     expect(await axeViolations(page), `axe /admin/beweis (${scheme})`).toEqual([]);
   }
   const nav = page.getByRole("navigation", { name: "Admin-Bereich" });
-  await expect(nav.getByRole("link", { name: "Beweisprotokoll" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Beweise", exact: true })).toBeVisible();
 });
 
 test("Admin 1 lädt den Gesamtketten-Export (NDJSON, private, no-store); eine unbekannte Spiel-ID antwortet 404", async ({ browser }) => {
@@ -60,7 +60,7 @@ test("Admin 1 lädt den Gesamtketten-Export (NDJSON, private, no-store); eine un
 
 test("Admin 2 sieht die Seite nicht (Weiterleitung nach /app, kein Navigationseintrag) und bekommt für beide Routen 404", async ({ browser }) => {
   const page = await login(browser, "bw3", false, "/admin");
-  await expect(page.getByRole("navigation", { name: "Admin-Bereich" }).getByRole("link", { name: "Beweisprotokoll" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Admin-Bereich" }).getByRole("link", { name: "Beweise", exact: true })).toHaveCount(0);
   await page.goto("/admin/beweis");
   await expect(page).toHaveURL(/\/app$/);
   for (const url of ["/api/beweis/kette", "/api/beweis/00000000-0000-4000-8000-000000000000", "/api/beweis/kein-uuid"]) {
