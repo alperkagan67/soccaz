@@ -52,7 +52,7 @@ export function TournamentCard({
       {needsAuthorization && (
         <div className="space-y-2" data-testid="tournament-authorize">
           <p className="text-sm">Die Bank braucht deine Freigabe der Zahlung. Ohne Freigabe fällt das Turnier aus.</p>
-          <AuthorizeButton target={{ tournamentId }} fake={false} />
+          <AuthorizeButton target={{ tournamentId }} fake={fake} />
         </div>
       )}
       {canCover && red.length > 0 && !coveringName && (
