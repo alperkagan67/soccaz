@@ -8,7 +8,9 @@ CREATE TABLE "booking_evidence_reason_text" (
 ALTER TABLE "booking_evidence" DROP CONSTRAINT "booking_evidence_kind_check";--> statement-breakpoint
 DROP INDEX "booking_evidence_request_idx";--> statement-breakpoint
 ALTER TABLE "booking_evidence" ALTER COLUMN "match_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "booking_evidence" ADD COLUMN "hash_version" smallint DEFAULT 1 NOT NULL; -- Altzeilen (0052) = Version 1; der Spaltenstandard wird danach auf 2 gesetzt (Plan 16f.5)--> statement-breakpoint
+-- Altzeilen (0052) = Version 1; der Spaltenstandard wird danach auf 2 gesetzt (Plan 16f.5)
+--> statement-breakpoint
+ALTER TABLE "booking_evidence" ADD COLUMN "hash_version" smallint DEFAULT 1 NOT NULL;--> statement-breakpoint
 ALTER TABLE "booking_evidence" ADD COLUMN "subject" text DEFAULT 'match' NOT NULL;--> statement-breakpoint
 ALTER TABLE "booking_evidence" ADD COLUMN "tournament_id" uuid;--> statement-breakpoint
 ALTER TABLE "booking_evidence" ADD COLUMN "reason_code" text DEFAULT '' NOT NULL;--> statement-breakpoint
@@ -34,6 +36,9 @@ ALTER TABLE "booking_evidence" ADD CONSTRAINT "booking_evidence_reason_code_chec
 ALTER TABLE "booking_evidence" ADD CONSTRAINT "booking_evidence_match_deadline_check" CHECK ("booking_evidence"."hash_version" <> 2 or "booking_evidence"."subject" <> 'match' or "booking_evidence"."kind" not in ('accepted', 'declined') or "booking_evidence"."enforced" is not true or ("booking_evidence"."deadline_at" is not null and "booking_evidence"."decided_at" is not null and "booking_evidence"."decided_at" <= "booking_evidence"."deadline_at" and ("booking_evidence"."kind" <> 'declined' or "booking_evidence"."reason_code" <> '')));--> statement-breakpoint
 ALTER TABLE "booking_evidence" ADD CONSTRAINT "booking_evidence_tournament_deadline_check" CHECK ("booking_evidence"."subject" <> 'tournament' or ("booking_evidence"."decided_at" is not null and "booking_evidence"."deadline_at" is null));--> statement-breakpoint
 ALTER TABLE "booking_evidence" ADD CONSTRAINT "booking_evidence_late_check" CHECK ("booking_evidence"."kind" <> 'late_attempt' or ("booking_evidence"."deadline_at" is not null and "booking_evidence"."decided_at" is not null and "booking_evidence"."decided_at" > "booking_evidence"."deadline_at"));--> statement-breakpoint
+ALTER TABLE "booking_evidence" ADD CONSTRAINT "booking_evidence_enforced_check" CHECK ("booking_evidence"."enforced" is null or ("booking_evidence"."subject" = 'match' and "booking_evidence"."kind" in ('accepted', 'declined', 'expired', 'late_attempt')));--> statement-breakpoint
+ALTER TABLE "booking_evidence" ADD CONSTRAINT "booking_evidence_tournament_statement_check" CHECK ("booking_evidence"."subject" <> 'tournament' or "booking_evidence"."statement_at" = "booking_evidence"."decided_at");--> statement-breakpoint
+ALTER TABLE "booking_evidence_reason_text" ADD CONSTRAINT "booking_evidence_reason_text_salt" CHECK (char_length("booking_evidence_reason_text"."salt") > 0);--> statement-breakpoint
 ALTER TABLE "booking_evidence" ADD CONSTRAINT "booking_evidence_kind_check" CHECK ("booking_evidence"."kind" in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'late_attempt', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done'));--> statement-breakpoint
 -- Altdaten bereinigen (Plan 16f.2), BEVOR die CHECKs und die Trigger auf tournaments angelegt werden; Anzahl wird protokolliert (NOTICE der Migration)
 DO $$
@@ -43,6 +48,7 @@ BEGIN
   UPDATE tournaments SET venue_confirmed_at = NULL WHERE venue_confirmed_at IS NOT NULL AND venue_id IS NULL;
   SELECT count(*) INTO n_b FROM tournaments WHERE venue_confirmed_by IS NOT NULL AND venue_confirmed_at IS NULL;
   UPDATE tournaments SET venue_confirmed_by = NULL WHERE venue_confirmed_by IS NOT NULL AND venue_confirmed_at IS NULL;
+  INSERT INTO audit_log (actor_id, action, entity, entity_id, after) VALUES (NULL, 'migration_0054_tournament_cleanup', 'tournaments', '0054', jsonb_build_object('confirmed_without_venue_reset', n_a, 'confirmed_by_cleaned', n_b));
   RAISE NOTICE 'Migration 0054: % Turniere ohne Halle: Zusage zurueckgesetzt; % Turniere: venue_confirmed_by bereinigt', n_a, n_b;
 END $$;--> statement-breakpoint
 ALTER TABLE "tournaments" ADD CONSTRAINT "tournaments_confirmed_needs_venue" CHECK ("tournaments"."venue_confirmed_at" is null or "tournaments"."venue_id" is not null) NOT VALID;--> statement-breakpoint

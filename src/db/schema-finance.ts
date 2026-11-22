@@ -386,6 +386,8 @@ export const bookingEvidence = pgTable(
       sql`${t.hashVersion} <> 2 or ${t.subject} <> 'match' or ${t.kind} not in ('accepted', 'declined') or ${t.enforced} is not true or (${t.deadlineAt} is not null and ${t.decidedAt} is not null and ${t.decidedAt} <= ${t.deadlineAt} and (${t.kind} <> 'declined' or ${t.reasonCode} <> ''))`,
     ),
     check("booking_evidence_tournament_deadline_check", sql`${t.subject} <> 'tournament' or (${t.decidedAt} is not null and ${t.deadlineAt} is null)`),
+    check("booking_evidence_enforced_check", sql`${t.enforced} is null or (${t.subject} = 'match' and ${t.kind} in ('accepted', 'declined', 'expired', 'late_attempt'))`), // Plan 16h.1: Schalterstand nur bei Antwort/Ablauf/Antwortversuch
+    check("booking_evidence_tournament_statement_check", sql`${t.subject} <> 'tournament' or ${t.statementAt} = ${t.decidedAt}`), // Plan 16h.1 (c): Turnier: Anweisungszeit = Entscheidungszeit
     check("booking_evidence_late_check", sql`${t.kind} <> 'late_attempt' or (${t.deadlineAt} is not null and ${t.decidedAt} is not null and ${t.decidedAt} > ${t.deadlineAt})`),
   ],
 );
@@ -425,5 +427,5 @@ export const bookingEvidenceReasonText = pgTable(
     reason: text("reason").notNull(),
     salt: text("salt").notNull(),
   },
-  (t) => [check("booking_evidence_reason_text_len", sql`char_length(${t.reason}) between 3 and 200`)],
+  (t) => [check("booking_evidence_reason_text_len", sql`char_length(${t.reason}) between 3 and 200`), check("booking_evidence_reason_text_salt", sql`char_length(${t.salt}) > 0`)],
 );

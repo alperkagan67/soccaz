@@ -37,8 +37,9 @@ const VERIFY_SQL = `
     case
       when e.seq is null then null
       when e.seq <> row_number() over (order by e.seq) then 'seq-luecke'
-      when e.prev_hash <> coalesce(lag(e.hash) over (order by e.seq), '') then 'prev_hash'
-      when e.hash <> evidence_hash(e.seq, e.match_id, e.venue_id, e.round, e.job_id, e.kind, e.reason, e.at, e.actor_commitment, e.prev_hash) then 'hash'
+      when e.prev_hash is distinct from coalesce(lag(e.hash) over (order by e.seq), '') then 'prev_hash'
+      when e.hash_version not in (1, 2) or (e.hash_version = 1 and e.match_id is null) then 'hash'
+      when e.hash is distinct from evidence_hash_of(e) then 'hash'
       else null
     end as bad
   from booking_evidence_counter c left join booking_evidence e on true where c.id = 1 order by e.seq`;

@@ -45,7 +45,7 @@ export type EvidencePdfModel = {
 export function evidencePdfModel(data: MatchEvidence): EvidencePdfModel {
   const { report } = data;
   const warnings: string[] = [];
-  if (report.orphans.matchIds.length + report.orphans.venueIds.length > 0) warnings.push(`Hinweis: verwaiste Verweise in der Kette (${report.orphans.matchIds.length} Spiele, ${report.orphans.venueIds.length} Hallen).`);
+  if (report.orphans.matchIds.length + report.orphans.venueIds.length + report.orphans.tournamentIds.length > 0) warnings.push(`Hinweis: verwaiste Verweise in der Kette (${report.orphans.matchIds.length} Spiele, ${report.orphans.venueIds.length} Hallen, ${report.orphans.tournamentIds.length} Turniere).`);
   if (report.missing.length > 0) warnings.push(`Hinweis: ${report.missing.length} Anfragen oder Aufträge ohne Protokolleintrag.`);
   return {
     title: `Beweisprotokoll Spiel ${data.number ?? "ohne Nummer"}`,

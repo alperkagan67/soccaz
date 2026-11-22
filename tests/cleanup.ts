@@ -42,15 +42,16 @@ export async function cleanupTestData(pool: Pool) {
       // Das Loeschen mitten aus der globalen Kette erzeugt eine seq-Luecke und bricht prev_hash: darum wird die Kette danach NEU NUMMERIERT und neu verkettet (nur in dieser Test-/Entwicklungs-
       // Datenbank, nie produktiv und nie die Haupt-DB (Schutz: NODE_ENV, dbUrlAllowed, current_database()); verifyEvidenceChain bleibt in den Folgetests gueltig).
       // Nebenwirkung in Entwicklungs-Datenbanken: der Tagesjob evidence-head meldet danach einmal "frueherer Kopf-Hash nicht mehr in der Kette" (erwartet, nur Testdaten).
-      "delete from booking_evidence where match_id in (select id from _tm)",
+      "delete from booking_evidence where match_id in (select id from _tm) or tournament_id in (select id from tournaments where organizer_id in (select id from _tu))",
       `do $$
        declare r record; prev text := ''; i integer := 0; h text;
        begin
          if current_database() = 'soccav2' then return; end if; -- Haupt-Entwicklungsdatenbank: nie neu verketten
          for r in select * from booking_evidence order by seq loop
            i := i + 1;
-           h := evidence_hash(i, r.match_id, r.venue_id, r.round, r.job_id, r.kind, r.reason, r.at, r.actor_commitment, prev);
-           update booking_evidence set seq = i, prev_hash = prev, hash = h where id = r.id;  -- aufsteigend: neue seq <= alte seq, kein Konflikt mit dem Unique-Index
+           update booking_evidence set seq = i, prev_hash = prev where id = r.id returning * into r;  -- aufsteigend: neue seq <= alte seq, kein Konflikt mit dem Unique-Index
+           h := evidence_hash_of(r); -- Version 1 oder 2 (Plan 16f.6)
+           update booking_evidence set hash = h where id = r.id;
            prev := h;
          end loop;
          update booking_evidence_counter set last_seq = i, last_hash = prev where id = 1;

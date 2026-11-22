@@ -33,7 +33,7 @@ export async function runEvidenceHead(now: Date = new Date()): Promise<{ ok: boo
   const last = await getSetting<Last | null>(LAST_KEY, null);
   const alarms: string[] = [];
   if (!report.chain.ok) alarms.push(`Kette ungültig ab seq ${report.chain.firstBadSeq} (${report.chain.reason})`);
-  if (report.orphans.matchIds.length || report.orphans.venueIds.length) alarms.push(`verwaiste Verweise: ${report.orphans.matchIds.length} Spiele, ${report.orphans.venueIds.length} Hallen`);
+  if (report.orphans.matchIds.length || report.orphans.venueIds.length || report.orphans.tournamentIds.length) alarms.push(`verwaiste Verweise: ${report.orphans.matchIds.length} Spiele, ${report.orphans.venueIds.length} Hallen, ${report.orphans.tournamentIds.length} Turniere`);
   if (report.missing.length) alarms.push(`${report.missing.length} Anfragen/Aufträge ohne Protokolleintrag`);
   if (last && report.chain.count < last.count) alarms.push(`Anzahl kleiner als beim letzten Lauf (${report.chain.count} statt ${last.count})`);
   if (last && last.count > 0) {

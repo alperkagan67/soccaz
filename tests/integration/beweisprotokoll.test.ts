@@ -350,12 +350,12 @@ describe("Guard statt Fremdschlüssel, Verwaiste, Abgleich (Plan 14.1/14.2/14.3)
   it("Verwaiste: ein Eintrag zu einem (per Wartungsausnahme) gelöschten Spiel/Halle wird gemeldet, die Kette bleibt gültig", async () => {
     const { matchId, venueId } = await setup();
     await rec(matchId, venueId, "request_sent");
-    expect(await findOrphans()).toEqual({ matchIds: [], venueIds: [] });
+    expect(await findOrphans()).toEqual({ matchIds: [], venueIds: [], tournamentIds: [] });
     await maintenance(async (tx) => {
       await tx.execute(sql`delete from matches where id = ${matchId}`);
       await tx.execute(sql`delete from venues where id = ${venueId}`);
     });
-    expect(await findOrphans()).toEqual({ matchIds: [matchId], venueIds: [venueId] });
+    expect(await findOrphans()).toEqual({ matchIds: [matchId], venueIds: [venueId], tournamentIds: [] });
     expect((await verifyEvidenceChain()).ok).toBe(true);
     expect((await evidenceReport()).ok).toBe(false);
   });

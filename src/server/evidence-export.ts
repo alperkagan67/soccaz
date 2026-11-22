@@ -62,7 +62,16 @@ type ChainRow = {
   seq: number;
   at_text: string;
   kind: string;
-  match_id: string;
+  match_id: string | null;
+  hash_version: number;
+  subject: string;
+  tournament_id: string | null;
+  reason_code: string;
+  reason_commitment: string;
+  deadline_at_text: string | null;
+  decided_at_text: string | null;
+  statement_at_text: string | null;
+  enforced: boolean | null;
   venue_id: string | null;
   job_id: string | null;
   round: number;
@@ -73,7 +82,7 @@ type ChainRow = {
 };
 
 const chainLine = (r: ChainRow) =>
-  JSON.stringify({ seq: r.seq, at: r.at_text, kind: r.kind, matchId: r.match_id, venueId: r.venue_id, jobId: r.job_id, round: r.round, reason: r.reason ?? "", actorCommitment: r.actor_commitment, prevHash: r.prev_hash, hash: r.hash });
+  JSON.stringify({ hashVersion: r.hash_version, subject: r.subject, seq: r.seq, at: r.at_text, kind: r.kind, matchId: r.match_id, tournamentId: r.tournament_id, reasonCode: r.reason_code, reasonCommitment: r.reason_commitment, deadlineAt: r.deadline_at_text, decidedAt: r.decided_at_text, statementAt: r.statement_at_text, enforced: r.enforced, venueId: r.venue_id, jobId: r.job_id, round: r.round, reason: r.reason ?? "", actorCommitment: r.actor_commitment, prevHash: r.prev_hash, hash: r.hash });
 
 /**
  * Gesamtketten-Export (NDJSON, eine Zeile je Eintrag) für die externe Prüfung (Plan 12 e), als Generator in Batches (Schlüsselmengen-Cursor über seq, Review R-T225a): nie die ganze Kette im Speicher.
@@ -84,7 +93,9 @@ export async function* exportEvidenceChainLines(batch = 1000, exec: Exec = db): 
   for (;;) {
     const rows = rowsOf<ChainRow>(
       await exec.execute(sql`
-        select seq, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text, kind, match_id, venue_id, job_id, round, reason, actor_commitment, prev_hash, hash
+        select seq, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text, kind, match_id, hash_version, subject, tournament_id, reason_code, reason_commitment,
+          to_char(deadline_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as deadline_at_text, to_char(decided_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as decided_at_text,
+          to_char(statement_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as statement_at_text, enforced, venue_id, job_id, round, reason, actor_commitment, prev_hash, hash
         from booking_evidence where seq > ${last} order by seq limit ${batch}`),
     );
     for (const r of rows) yield chainLine(r);

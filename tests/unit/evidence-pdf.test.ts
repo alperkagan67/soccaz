@@ -10,7 +10,7 @@ function data(over: Partial<MatchEvidence["entries"][number]> = {}, report: Part
     matchId: "11111111-1111-4111-8111-111111111111",
     number: 7,
     entries: [{ seq: 1, at: T0, kind: "declined", round: 1, reason: "Halle belegt, Training", venueName: "Sporthalle Süd", actorName: "Max Müller", hash: "a".repeat(64), ...over }],
-    report: { ok: true, chain: { ok: true, count: 1, headHash: "a".repeat(64), firstBadSeq: null, reason: null }, orphans: { matchIds: [], venueIds: [] }, missing: [], checkedAt: T0, ...report },
+    report: { ok: true, chain: { ok: true, count: 1, headHash: "a".repeat(64), firstBadSeq: null, reason: null }, orphans: { matchIds: [], venueIds: [], tournamentIds: [] }, missing: [], checkedAt: T0, ...report },
   };
 }
 
@@ -46,7 +46,7 @@ describe("evidencePdfModel", () => {
     expect(ok.summary.checkedAt).toContain("Prüfstand vom 2026-11-22 10:00:00.123 UTC");
     expect(ok.notice).toContain("extern abgelegten Kopf-Hash");
     const bad = evidencePdfModel(
-      data({}, { ok: false, chain: { ok: false, count: 3, headHash: "b".repeat(64), firstBadSeq: 2, reason: "hash" }, orphans: { matchIds: ["x"], venueIds: [] }, missing: [{ source: "hall", matchId: "m", venueId: "v", jobId: null, status: "pending" }] }),
+      data({}, { ok: false, chain: { ok: false, count: 3, headHash: "b".repeat(64), firstBadSeq: 2, reason: "hash" }, orphans: { matchIds: ["x"], venueIds: [], tournamentIds: [] }, missing: [{ source: "hall", subject: "match", tournamentId: null, matchId: "m", venueId: "v", jobId: null, status: "pending" }] }),
     );
     expect(bad.summary.result).toBe("Ergebnis: Kette UNGÜLTIG ab Nr. 2 (hash)");
     expect(evidencePdfModel(data({}, { ok: false, chain: { ok: false, count: 3, headHash: "b".repeat(64), firstBadSeq: 2, reason: "ha​sh" } })).summary.result).toBe("Ergebnis: Kette UNGÜLTIG ab Nr. 2 (hash)"); // auch der Grund läuft durch pdfSafe

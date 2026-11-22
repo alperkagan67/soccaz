@@ -3585,6 +3585,14 @@
           "name": "booking_evidence_tournament_deadline_check",
           "value": "\"booking_evidence\".\"subject\" <> 'tournament' or (\"booking_evidence\".\"decided_at\" is not null and \"booking_evidence\".\"deadline_at\" is null)"
         },
+        "booking_evidence_enforced_check": {
+          "name": "booking_evidence_enforced_check",
+          "value": "\"booking_evidence\".\"enforced\" is null or (\"booking_evidence\".\"subject\" = 'match' and \"booking_evidence\".\"kind\" in ('accepted', 'declined', 'expired', 'late_attempt'))"
+        },
+        "booking_evidence_tournament_statement_check": {
+          "name": "booking_evidence_tournament_statement_check",
+          "value": "\"booking_evidence\".\"subject\" <> 'tournament' or \"booking_evidence\".\"statement_at\" = \"booking_evidence\".\"decided_at\""
+        },
         "booking_evidence_late_check": {
           "name": "booking_evidence_late_check",
           "value": "\"booking_evidence\".\"kind\" <> 'late_attempt' or (\"booking_evidence\".\"deadline_at\" is not null and \"booking_evidence\".\"decided_at\" is not null and \"booking_evidence\".\"decided_at\" > \"booking_evidence\".\"deadline_at\")"
@@ -3677,6 +3685,10 @@
         "booking_evidence_reason_text_len": {
           "name": "booking_evidence_reason_text_len",
           "value": "char_length(\"booking_evidence_reason_text\".\"reason\") between 3 and 200"
+        },
+        "booking_evidence_reason_text_salt": {
+          "name": "booking_evidence_reason_text_salt",
+          "value": "char_length(\"booking_evidence_reason_text\".\"salt\") > 0"
         }
       },
       "isRLSEnabled": false
