@@ -85,7 +85,7 @@ async function netOf(tid: string, account: "venue_payable" | "commission") {
 
 
 async function setRow(tid: string, patch: Partial<typeof paymentCharges.$inferInsert>) {
-  const row = (await rowsOf(tid))[0];
+  const row = (await rowsOf(tid)).sort((a, b) => a.id.localeCompare(b.id))[0]; // immer dieselbe Zeile
   await db.update(paymentCharges).set(patch).where(eq(paymentCharges.id, row.id));
 }
 const hasAlarm = async (tid: string) => (await (await import("@/server/finance")).getRefundAlerts(new Date())).tournamentOpenIntents.some((r) => r.id === tid);
@@ -113,14 +113,14 @@ describe("M5-5: Absagevorschlag von Admin 2", () => {
     const { o, admin2, t } = await booked();
     const count = async (uid: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, uid), eq(notifications.title, "Absagevorschlag")))).length;
     const before = await count(owner.id);
-    await expect(cancelTournament(admin2.id, t.id)).rejects.toThrow(/Vorschlag ist gespeichert/);
+    await expect(cancelTournament(admin2.id, t.id)).rejects.toThrow(/Absagevorschlag ist gespeichert/);
     expect(await count(owner.id)).toBe(before + 1);
-    await expect(cancelTournament(admin2.id, t.id)).rejects.toThrow(/Vorschlag ist gespeichert/); // Wiederholung
+    await expect(cancelTournament(admin2.id, t.id)).rejects.toThrow(/Absagevorschlag ist gespeichert/); // Wiederholung
     expect(await count(owner.id)).toBe(before + 1); // keine zweite Mitteilung
     const entries = await db.select().from(auditLog).where(and(eq(auditLog.action, "tournament.cancel_proposal"), eq(auditLog.entityId, t.id), eq(auditLog.actorId, admin2.id)));
     expect(entries).toHaveLength(1);
     // eine zweite Person (Veranstalter) schlaegt ebenfalls vor: eigene Mitteilung (bewusst: je Person eine)
-    await expect(cancelTournament(o.id, t.id)).rejects.toThrow(/Vorschlag ist gespeichert/);
+    await expect(cancelTournament(o.id, t.id)).rejects.toThrow(/Absagevorschlag ist gespeichert/);
     expect(await count(owner.id)).toBe(before + 2);
     // abgesagt: abgelehnt, kein neuer Eintrag
     await cancelTournament(owner.id, t.id);
