@@ -351,6 +351,13 @@
       "when": 1794504486638,
       "tag": "0049_venue_access",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795356923468,
+      "tag": "0050_cheerful_gamma_corps",
+      "breakpoints": true
     }
   ]
 }

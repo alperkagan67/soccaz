@@ -16,6 +16,10 @@ import { notifyUsers, teamAdminIds } from "./notifications";
 import { getSetting } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
+import { tournamentCardMode } from "./tournament-card";
+import { freezeVenueTerms, isPartnerVenue } from "./tournament-venue";
+import { venues } from "@/db/schema-finance";
+import { cardPaymentsEnabled } from "./settings";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
 export const MIN_TOURNAMENT_TEAMS = 4;
@@ -39,6 +43,8 @@ export type TournamentInput = {
   name: string;
   city: string;
   venueText?: string;
+  /** Partnerhalle (012 M5-1): Pflicht im Kartenmodell, wenn das Turnier etwas kostet. */
+  venueId?: string;
   startsAt: Date;
   registrationDeadline: Date;
   maxTeams: number;
@@ -79,6 +85,17 @@ export async function createTournament(userId: string, input: TournamentInput) {
   }
   if (!Number.isInteger(hourly) || hourly < 0 || hourly > 100_000) throw new DomainError("Der Hallenpreis liegt zwischen 0 und 1.000 Euro pro Stunde.");
   const totalCents = tournamentTotalCents(hourly, input.durationMin);
+  // Partnerhalle (012 M5-1): im Kartenmodell Pflicht, sobald das Turnier etwas kostet; eine gewaehlte Halle muss immer eine aktive Partnerhalle sein
+  let venueId: string | null = null;
+  let venueLabel: string | null = null;
+  if (input.venueId) {
+    if (!(await isPartnerVenue(db, input.venueId))) throw new DomainError("Bitte wähle eine Partnerhalle.");
+    venueId = input.venueId;
+    const [v] = await db.select({ name: venues.name, address: venues.address }).from(venues).where(eq(venues.id, venueId));
+    venueLabel = [v?.name, v?.address].filter(Boolean).join(", ") || null;
+  } else if (totalCents > 0 && (await cardPaymentsEnabled())) {
+    throw new DomainError("Bitte wähle eine Partnerhalle.");
+  }
   const matchMinutes = input.matchMinutes ?? 15;
   if (!Number.isInteger(matchMinutes) || matchMinutes < 5 || matchMinutes > 90) throw new DomainError("Eine Spielzeit dauert 5 bis 90 Minuten.");
   const [row] = await db
@@ -87,7 +104,8 @@ export async function createTournament(userId: string, input: TournamentInput) {
       organizerId: userId,
       name,
       city: input.city,
-      venueText: input.venueText?.trim().slice(0, 120) || null,
+      venueText: input.venueText?.trim().slice(0, 120) || venueLabel?.slice(0, 120) || null,
+      venueId,
       startsOn: toBerlinInputValue(input.startsAt).slice(0, 10),
       startsAt: input.startsAt,
       registrationDeadline: input.registrationDeadline,
@@ -318,7 +336,11 @@ async function maybeFixPrice(tx: Tx, t: T) {
   if (!entries.every((e) => e.readyAt)) return;
   const everyone = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
   const share = fresh.totalCents !== null ? finalSharePerPlayer(fresh.totalCents, everyone.length) : fresh.entryFeeCents;
+  // Kartenmodell: ohne Partnerhalle wird der Preis nicht fixiert (die Abbuchung geht an die Halle, Provision und Zusage haengen an ihr)
+  const cardMode = await tournamentCardMode(tx, t.id);
+  if (cardMode && !fresh.venueId) throw new DomainError("Für dieses Turnier ist noch keine Partnerhalle gewählt. Der Veranstalter muss zuerst eine Halle wählen.");
   await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
+  if (cardMode && fresh.venueId) await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
   await audit(null, "tournament.price", "tournament", t.id, { after: { share, players: everyone.length } }, tx);
   await notifyUsers(
     [...new Set(everyone.map((p) => p.userId))],
@@ -343,7 +365,8 @@ export async function reopenRosters(userId: string, tournamentId: string) {
       await tx.update(tournamentPlayers).set({ paidCents: 0, paidAt: null, paidBy: null }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
     }
     await tx.update(tournamentTeams).set({ readyAt: null, paidReadyAt: null }).where(eq(tournamentTeams.tournamentId, tournamentId));
-    await tx.update(tournaments).set({ status: "registration", finalShareCents: null }).where(eq(tournaments.id, tournamentId));
+    // beim Wiederoeffnen werden Zugangs- und Provisions-Snapshot verworfen; sie werden beim naechsten Fixieren neu eingefroren. Die Zusage der Halle bleibt (sie gilt fuer die Halle, nicht fuer den Preis).
+    await tx.update(tournaments).set({ status: "registration", finalShareCents: null, venueAccessRequiredSnapshot: null, commissionPercentSnapshot: null }).where(eq(tournaments.id, tournamentId));
     await notifyUsers([...new Set(players.map((p) => p.userId)), ...new Set(players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])))], { type: "system", title: "Kader wieder offen", body: `${t.name}: Der Veranstalter hat die Kader wieder geöffnet. Bereits gezahlte Anteile wurden erstattet, der Preis wird neu berechnet.`, url: `/turniere/${tournamentId}` }, tx);
     await audit(userId, "tournament.reopen", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length } }, tx);
   });

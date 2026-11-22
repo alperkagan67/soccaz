@@ -8,6 +8,8 @@ import { parseBerlinLocal } from "@/lib/time";
 import { InsufficientFunds } from "./ledger";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
+import { setTournamentVenue } from "./tournament-venue";
+import { isPlatformAdmin } from "@/lib/roles";
 import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, payForTeam, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
@@ -38,6 +40,7 @@ export async function createTournamentAction(_prev: ActionState, f: FormData): P
       name: str(f, "name"),
       city: str(f, "city"),
       venueText: str(f, "venueText"),
+      venueId: str(f, "venueId") || undefined,
       startsAt,
       registrationDeadline: deadline,
       maxTeams: Number(str(f, "maxTeams")),
@@ -69,6 +72,14 @@ export async function joinAsPlayerAction(tournamentId: string, teamId: string): 
 export async function leavePlayerAction(tournamentId: string, targetUserId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => leavePlayer(uid, tournamentId, targetUserId));
 }
+/** Partnerhalle waehlen (Veranstalter, solange der Kader offen ist). */
+export async function setTournamentVenueAction(tournamentId: string, venueId: string): Promise<ActionState> {
+  const user = await requireUser(`/turniere/${tournamentId}`);
+  const result = await guarded(() => setTournamentVenue(user.id, isPlatformAdmin(user), tournamentId, String(venueId)));
+  revalidatePath(`/turniere/${tournamentId}`);
+  return result;
+}
+
 export async function payEntryAction(tournamentId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => payEntry(uid, tournamentId));
 }

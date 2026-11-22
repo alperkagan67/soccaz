@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { matches, teams, users } from "./schema";
 
 // ---------------------------------------------------------------------------------------------
@@ -86,6 +86,12 @@ export const tournaments = pgTable(
     name: text("name").notNull(),
     city: text("city").notNull(),
     venueText: text("venue_text"),
+    // 012 M5-1: Partnerhalle des Turniers (Pflicht im Kartenmodell). Fremdschluessel auf venues (NO ACTION) steht in der Migration, weil schema-finance aus diesem Modul nicht importiert werden soll.
+    venueId: uuid("venue_id"),
+    venueConfirmedAt: timestamp("venue_confirmed_at", { withTimezone: true }), // Zusage der Halle (011): gesetzt durch die Zusage
+    // beim Fixieren des Preises eingefroren (spaetere Aenderungen wirken nicht auf ein laufendes Turnier): braucht die Halle einen Zugang (Zusage Pflicht), und der Provisionssatz in Prozent
+    venueAccessRequiredSnapshot: boolean("venue_access_required_snapshot"),
+    commissionPercentSnapshot: numeric("commission_percent_snapshot", { precision: 5, scale: 2 }),
     startsOn: date("starts_on").notNull(),
     format: text("format").$type<TournamentFormat>().notNull(),
     maxTeams: integer("max_teams").notNull(),
