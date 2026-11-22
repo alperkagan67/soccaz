@@ -98,7 +98,7 @@ describe("M5-2b: kein Teamspiel-Pfad schreibt tournament_id", () => {
   it("im Zahlungsmodul kommt tournamentId/tournament_id nur in den Turnier-Dateien, im Kontext-Helfer und in charge.ts (Zweig + Erstattungszeile) vor; Teamspiel-Dateien nie", () => {
     const dir = "src/server/payments";
     const hits = readdirSync(dir).filter((f) => /tournament_?id/i.test(readFileSync(join(dir, f), "utf8")));
-    expect(hits.sort()).toEqual(["authorize-actions.ts", "authorize.ts", "charge-context.ts", "charge.ts", "dispute.ts", "fake.ts", "provider.ts", "refund.ts", "stripe.ts", "tournament-cancel.ts", "tournament-charge.ts", "tournament-refund.ts", "webhook.ts"]); // fake/provider/stripe: nur der Typ der Metadaten; M5-5: authorize*.ts (Turnier-Freigabe, liest nur), refund.ts (Metadaten-Typ + Verteilung an tournament-refund.ts), tournament-cancel.ts/tournament-refund.ts (Turnier-Dateien)
+    expect(hits.sort()).toEqual(["authorize-actions.ts", "authorize.ts", "charge-context.ts", "charge.ts", "dispute.ts", "fake-authorize.ts", "fake-card-actions.ts", "fake.ts", "provider.ts", "refund.ts", "stripe.ts", "tournament-cancel.ts", "tournament-charge.ts", "tournament-refund.ts", "webhook.ts"]); // fake/provider/stripe: nur der Typ der Metadaten; fake-authorize.ts und fake-card-actions.ts (012-Rest PR B, AC-5): Fake-Freigabe fuer Turnierzeilen, nur Test-/CI-Pfad (assertNoFakeInProduction) ueber handleStripeWebhook, Metadaten tournamentId statt matchId; M5-5: authorize*.ts (Turnier-Freigabe, liest nur), refund.ts (Metadaten-Typ + Verteilung an tournament-refund.ts), tournament-cancel.ts/tournament-refund.ts (Turnier-Dateien)
     expect(readFileSync(join(dir, "charge-context.ts"), "utf8")).not.toMatch(/\.(insert|update|set|delete)\(/);
   });
 

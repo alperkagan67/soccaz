@@ -28,7 +28,6 @@ const PAGES: Record<string, Permission> = {
   "page.tsx": "dashboard",
   "beweis/page.tsx": "owner", // 009 M3c: Beweisprotokoll, nur Admin 1
   "buchungen/page.tsx": "booking",
-  "codes/page.tsx": "finance",
   "einstellungen/page.tsx": "owner",
   "finanzen/page.tsx": "finance",
   "finanzen/ausgaben/page.tsx": "finance",
@@ -76,9 +75,9 @@ describe("Server-Aktionen mit Wächter", () => {
   it("Einstellungen speichern: nur Admin 1", () => {
     expect(src("admin-finance-actions.ts")).toContain('guarded("owner", "/admin/einstellungen"');
   });
-  it("Finanz-Aktionen (Codes, Erstattung, Preisregeln): finance", () => {
+  it("Finanz-Aktionen (Erstattung, Preisregeln; Rabattcodes entfallen mit 012 M6a): finance", () => {
     const finance = src("admin-finance-actions.ts").match(/guarded\("finance"/g) ?? [];
-    expect(finance.length).toBeGreaterThanOrEqual(5);
+    expect(finance.length).toBeGreaterThanOrEqual(3); // vorher 5, davon 2 Rabattcode-Aktionen (entfernt mit 012 M6a)
   });
   it("Hallenbetreiber zuordnen: nur Admin 1 (Vertrag 011 AC-7), Admin 2 sieht nur die Anzeige", () => {
     expect(src("admin-finance-actions.ts")).toMatch(/export async function setVenueManagerAction[\s\S]{0,400}guarded\("owner", "\/admin\/hallen"/);

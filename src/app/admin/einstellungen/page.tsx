@@ -21,7 +21,7 @@ export default async function SettingsAdminPage() {
           <span>
             <span className="block font-semibold">Zahlungen einschalten</span>
             <span className="block text-sm text-muted">
-              Aus: Spiele sind kostenlos. An: Wer bereit sein will, zahlt seinen Anteil aus dem Guthaben.
+              Aus: Spiele sind kostenlos. An: Der Anteil wird zur Frist abgerechnet.
               Das Umschalten wirkt nur für neue Reservierungen. Schon bezahlte Spiele bleiben unverändert.
             </span>
           </span>
