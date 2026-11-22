@@ -293,7 +293,7 @@ describe("M5-4: Alarme fuer Turniere (Admin-Finanzseite)", () => {
     await db.update(paymentCharges).set({ graceUntil: new Date(Date.now() - 3_600_000) }).where(eq(paymentCharges.id, row.id)); // Fenster abgelaufen
     // eine Erstattungszeile des Turniers (so entsteht sie bei einem zweiten erfolgreichen PaymentIntent)
     const ok = (await rowsOf(t.id)).find((x) => x.status === "succeeded")!;
-    await db.insert(paymentRefunds).values({ chargeId: ok.id, tournamentId: t.id, userId: ok.userId, amountCents: ok.amountCents, idempotencyKey: `tc-alarm:${t.id}` });
+    await db.insert(paymentRefunds).values({ chargeId: ok.id, tournamentId: t.id, userId: ok.userId, amountCents: ok.amountCents, idempotencyKey: `tc-alarm:${t.id}`, createdAt: new Date(Date.now() - 3_600_000) }); // seit ueber 30 Minuten unversendet
     const alerts = await getRefundAlerts();
     expect(alerts.tournamentChargeStuck.map((x) => x.id)).toContain(t.id);
     expect(alerts.tournamentRefundsOpen.length).toBeGreaterThanOrEqual(1);

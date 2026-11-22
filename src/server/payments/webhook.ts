@@ -50,7 +50,7 @@ function toRefundReport(event: ProviderEvent): RefundReport | null {
     amountCents: typeof event.object.amount === "number" && Number.isInteger(event.object.amount) ? event.object.amount : null,
     currency: str(event.object.currency),
     paymentIntentId: str(event.object.payment_intent),
-    metadata: { matchId: str(meta.matchId), userId: str(meta.userId), chargeId: str(meta.chargeId) },
+    metadata: { matchId: str(meta.matchId), tournamentId: str(meta.tournamentId), userId: str(meta.userId), chargeId: str(meta.chargeId) },
     failureCode: str(event.object.failure_reason),
   };
 }
