@@ -520,3 +520,67 @@ Code: Branch `feat/m5-5-pr` (Stand 1858f0b, auf M5-4). Integrationslauf gegen ec
 - **Löschung bei offener Turnier-Erstattung (zu 17.7/Entscheid 6):** Im Code blockiert eine **noch nicht gesendete** Turnier-Erstattung die Kontolöschung **nicht** (gesperrt wird nur bei bereits an Stripe gesendeten Zeilen, `attempt_started_at`). Das ist bewusst gewählt, aber **nicht entschieden**: die Erstattung läuft über die PaymentIntent-ID, nicht über den Kunden; ob Stripe sie nach dem Löschen des Stripe-Kunden (`payment_erasure_tasks`) noch annimmt, ist im Stripe-Testmodus **nicht belegt** (PL-M5-5-3, R-M5-5-2). Bis zur Klärung ist der Entscheid „Löschung geht, Erstattung bleibt offen und der Alarm `card:tournament-refund-open` meldet sie“ ein **Vorschlag**.
 - **Backlog (aus Q2):** Ein bei Schalter AUS eingefrorenes Turnier hat keine Dauerbegrenzung und keinen eigenen Alarm; vorgeschlagen: Alarm nach X Stunden Einfrierung und Entscheidung durch Admin 1.
 - **Neu im Code:** Alarm `card:tournament-open-intent` (offene Zahlung bei abgesagtem Turnier, älter als 1 Stunde); Absagevorschlag von Admin 2 nur für offene Turniere, einmal je Person und Turnier, Mitteilung an Admin 1.
+
+## 19. Nachtrag M5-6/M5-7: Attrappen ersetzen (G24-012). Analyse und Plan (Stand 2026-11-22; nur Doku, keine Entscheidung durch den Plan)
+Code-Stand: `origin/main` 7e19c88 (011 M1 mit Migration 0049, 009 M2 mit `venues.commission_percent`, 009 M3, M5-1, M5-3, M5-4a mit 0053). M5-5 ist als PR #147 offen und wird hier nicht angefasst; Abschnitt 18 beschreibt seinen Stand.
+
+### 19.1 Was die Attrappen heute tun und wer sie aufruft
+| Attrappe (`src/server/tournament-venue.ts`) | Heute | Aufrufer |
+|---|---|---|
+| `venueHasAccess(venueId)` | immer `false` | nur `freezeVenueTerms` (beim Fixieren des Preises, `tournaments.ts` um Zeile 356, nur Kartenmodell mit Halle) |
+| `venueCommissionPercent(venueId)` | immer `0` | nur `freezeVenueTerms`; der Satz wird als `commission_percent_snapshot` eingefroren und von der Provisionsbuchung (`tournament-charge.ts` um Zeile 368) benutzt; NULL zählt dort als 0 |
+| `hallZusageOk(t)` | `snapshot !== true \|\| venueConfirmedAt !== null` (NULL = Zusage nicht nötig = **fail-open**) | `eligibility` in `tournament-charge.ts` (Zeilen 58 und 59: ein NULL-Snapshot wird **vorher** als `not_fixed` abgewiesen) und `chargeUnderway` in `tournaments.ts` (um Zeile 683, ebenfalls erst nach der NULL-Prüfung) |
+- `venue_confirmed_at` wird **nirgends gesetzt**, nur beim Hallenwechsel auf NULL (`setTournamentVenue`). Es gibt keine Betreiber-Aktion „Turnier bestätigen“.
+- Das Fixieren verweigert im Kartenmodell ein Turnier ohne Halle (um Zeile 354). Der Snapshot ist nach dem Fixieren also nie NULL; NULL kann nur bei Altbestand oder Handeingriff auftreten. Phase A der Abbuchung und `chargeUnderway` sind schon fail-closed (NULL → nicht abbuchbar). **Offen** ist die Signatur von `hallZusageOk` selbst (NULL → `true`), die einen späteren Aufrufer ohne Vorprüfung durchrutschen ließe (R-T207b, G24-012).
+
+### 19.2 Echte Quellen auf `main`
+- **Zugang (011 M1):** `src/server/venue-access-rules.ts` ist die **eine** Quelle: `hasVenueAccess(venueId, userId)` (je Konto), `accessHolders()` (Halle → Konto) und `venueIdsOf`. „Aktiv“ heißt: Zeile `status = 'active'`, Konto nicht gesperrt (`banned_at` NULL) und **kein Admin** (`role <> 'admin'`, Entscheid t9 P4). Für „Halle hat Zugang“ (ohne Konto) fehlt eine Funktion je Halle; sie wird **dort** ergänzt (`venueHasActiveAccess(venueId, exec)`, dieselbe Bedingung wie `accessHolders`), nie eine zweite Auslegung in `tournament-venue.ts`.
+- **Provisionssatz (009 M2):** `venues.commission_percent` (`numeric(5,2) NOT NULL DEFAULT 0`, CHECK 0 bis 100); Lesehilfe `percentFromDb` (`src/lib/commission.ts`). Altbestand steht auf 0; der Standardsatz 10 gilt nur im Anlagepfad `src/server/venues.ts` (um Zeile 52, `defaultCommissionPercent()`), nicht als Spaltenstandard. Hallen aus anderen Wegen (Import-Skripte, Seeds, E2E-Anlage) behalten 0, bis der Admin sie setzt.
+- **Zusage (011):** gibt es für **Teamspiele** (`answerHallRequest`, `match_hall_requests`, Beweisprotokoll 009 M3). Für Turniere gibt es **nichts**; der Plan 011 M2 führt „Turnier-Zusage“ ausdrücklich als „nein, 012 M5-7“. Das Beweisprotokoll hängt an `match_id`; ob ein Turnier dort eintragen kann, ist eine Schemafrage (19.8, PL-M57-2).
+
+### 19.3 Zerlegung
+**M5-7a: baubar jetzt, ohne 011 M2 und ohne Migration (Zugang, Satz, fail-closed, Vertragstest):**
+1. `venueHasAccess(venueId)` ruft die neue Einquellen-Funktion `venueHasActiveAccess` in `venue-access-rules.ts`.
+2. `venueCommissionPercent(venueId)` liest `venues.commission_percent` (`percentFromDb`); unbekannte Halle oder ungültiger Wert → Fehler, nie stilles 0.
+3. `freezeVenueTerms` friert beides weiter beim Fixieren ein (Reihenfolge unverändert: Turniersperre, dann Lesen).
+4. `hallZusageOk` wird **fail-closed**: Snapshot `null` → `false` (Signatur bleibt `boolean | null`, damit die Aufrufer nicht brechen; die Attrappen-Anmerkung im Kommentar entfällt).
+5. Vertragstest „Attrappe = Echtlogik“ (T-8, 19.6).
+6. G24-012 im GO-LIVE-AUDIT schließen, sobald auch M5-7b (oder die Übergangsregel 19.4) steht.
+
+**M5-7b: braucht eine Entscheidung und hängt an 011 M2/M4 (Zusage setzen):** Wer setzt `venue_confirmed_at`? Ein Betreiber mit Zugang bestätigt in `/halle` eine Turnier-Anfrage. „Ablehnen“, die 12-Stunden-Antwortfrist, die Wiederholung bei Hallenwechsel und der Eintrag im Beweisprotokoll sind genau der Teil von 011 M2/M4, der für Teamspiele noch fehlt.
+- **Ohne 011 M2 baubar (kleiner Kern):** Aktion `confirmTournamentVenue(userId, tournamentId)` (Zugang mit `hasVenueAccess` prüfen, Turnier unter Sperre, nur Status `payment` und nur die eingefrorene Halle, setzt `venue_confirmed_at`, Audit, Mitteilung an den Veranstalter, idempotent) mit einer schlichten Liste in `/halle`.
+- **Nicht ohne 011 M2 baubar:** Beweisprotokoll-Eintrag, Antwortfrist 12 h mit automatischem „abgelehnt“, „Ablehnen“ mit Rückfall auf eine andere Halle, Rundenlogik.
+- Empfehlung des Plans: M5-7b erst nach 011 M2, damit die Zusage nicht zweimal gebaut wird (**FRAGE-PRODUKT P-M57-1**).
+
+**M5-6 (Rest laut Plan Abschnitt 12, ohne Bezug zu den Attrappen):** Texte nach `begriffe.md`, `settle` und Auszahlung entfernen, Doku, Altturniere zurücksetzen, E2E. Berührungspunkt: die Texte „Die Halle hat noch nicht zugesagt“ und „wartet auf Zusage der Halle“ gehören zu M5-7b.
+
+### 19.4 Übergangsregel, solange M5-7b fehlt (Risiko bei M5-7a allein)
+Sobald `venueHasAccess` echt ist, bekommt jedes Turnier in einer **Halle mit Zugang** den Snapshot `true`. Ohne Zusage ist es dann **nie abbuchbar** (`no_zusage`), und `closeTournamentsAtDeadline` sagt es zur Frist ab. M5-7a allein macht Hallen mit Zugang für Turniere also **unbuchbar**.
+- Vorschlag (**FRAGE-PRODUKT P-M57-2**): bis M5-7b die Auswahl im Kartenmodell auf Hallen **ohne** Zugang einschränken (`listPartnerVenueOptions` und `isPartnerVenue`, dieselbe Bedingung an beiden Stellen, mit Hinweis „Hallen mit Betreiber-Zugang folgen“), oder M5-7a und M5-7b zusammen ausliefern.
+- Wird der Zugang **nach** dem Fixieren erteilt, gilt weiter der eingefrorene Snapshot (`false`, keine Zusage nötig); wird er entzogen, bleibt `true` und die Zusage bleibt Pflicht (**FRAGE-PRODUKT P-M57-3**: gewollt?).
+
+### 19.5 Dateiliste (M5-7a, per Grep zu bestätigen)
+`src/server/venue-access-rules.ts` (neue Funktion), `src/server/tournament-venue.ts` (Attrappen ersetzen, `hallZusageOk` fail-closed, ggf. Hallenliste ohne Zugang), `src/server/tournaments.ts` (nur Kommentar, keine Logikänderung), `src/server/payments/tournament-charge.ts` (nur falls die NULL-Prüfung zusammengelegt wird), `tests/unit/hall-zusage.test.ts` (der NULL-Fall dreht sich), `tests/integration/tournament-venue.test.ts` (Erwartung `commission_percent_snapshot` je Halle, Zugang je Halle), neu `tests/integration/tournament-venue-contract.test.ts`, `docs/loop/GO-LIVE-AUDIT.md` (G24-012), `docs/BETRIEB.md` (Provisionssatz je Halle, Altbestand 0). **Keine Migration** in M5-7a. M5-7b zusätzlich: eine Datei für die Zusage-Aktion, `src/app/halle/*`, gegebenenfalls eine Migration für das Beweisprotokoll (PL-M57-2).
+
+### 19.6 Tests und Mutationen
+- **Vertragstest T-8 gegen die Echtlogik:** Matrix je Halle: Zugang aktiv / eingeladen / entzogen / Konto gesperrt / Konto ist Admin × `venue_confirmed_at` gesetzt oder NULL → Snapshot und `hallZusageOk`. „Attrappe = Echtlogik“ heißt: dieselbe Tabelle gilt für die Funktion (Unit) und für den Weg vom Fixieren bis `eligibility` (Integration: Turnier ohne Zusage wird nicht abgebucht, mit Zusage gebucht, NULL-Snapshot nie).
+- **Satz je Halle:** Halle mit 0, 10 und 12,5 % → Snapshot `0.00`, `10.00`, `12.50`; eine spätere Änderung des Satzes ändert das fixierte Turnier nicht; Hallenwechsel vor dem Fixieren nimmt den neuen Satz; Wieder-Öffnen setzt den Snapshot auf NULL (besteht schon).
+- **Fail-closed:** `hallZusageOk` mit Snapshot NULL ist `false`; ein per Hand auf NULL gesetztes Turnier in `payment` wird weder abgebucht noch als „abbuchbar“ gewertet (`chargeUnderway`), der Alarm `card:tournament-waits-for-cards` bleibt.
+- **Mutationen (müssen rot werden):** `venueHasActiveAccess` ohne `banned_at`-Bedingung; ohne `role <> 'admin'`; ohne `status = 'active'`; `venueCommissionPercent` liefert 0 statt der Spalte; Snapshot wird beim Hallenwechsel nicht neu gelesen; `hallZusageOk` NULL → `true`; Zugang wird live gelesen statt eingefroren.
+- **Grep-Beleg:** `grep -rn "venueHasAccess\|venueCommissionPercent\|hallZusageOk" src` ohne Treffer außerhalb der Dateiliste; keine zweite Auslegung von „Zugang“ außerhalb `venue-access-rules.ts`.
+
+### 19.7 Backlog 117 bis 123 (Pflichtliste M5, Stand `main` 7e19c88 und PR #147)
+| Nr. | Stand | Rest für M5-7 |
+|---|---|---|
+| 117 `ensureRefundRow` beachtet `scopeOf` | im Code durch M5-4/M5-5 (Turnier- und Spielzeilen getrennt, `tournamentId` oder `matchId` je Zeile); per Grep zu belegen | nur Beleg |
+| 118 Webhook: `scopeOf`-Zweige, unbekannter Bereich = Alarm | Turnier-Zweige für Abbuchung, Erstattung und Streit vorhanden; ein unbekannter Bereich endet in `ignored` mit Audit, aber **ohne eigenen Alarm** | **offen:** Alarm oder Zählung (PL-M57-3) |
+| 119 Alarmliste: Link auf das Turnier statt ins Leere | Alarme nennen die Turnier-ID; ein **Link** in der Oberfläche ist nicht belegt | prüfen und bauen (kleiner UI-Teil, M5-6) |
+| 120 `deleteAccount` sperrt das Turnier, räumt `covered_by` auf | M5-5 (PR #147) | nach dem Merge schließen |
+| 121 `validCoversOf` bei der Abbuchung | M5-4 | Beleg |
+| 122 Indizes für die neuen Abfragen | `payment_charges_tournament_user_idx` besteht; **fehlt:** `payment_refunds(tournament_id, status)` (Erstattungsjob, Alarm) und `payment_charges(tournament_id, status)` (Fensterjob, Alarme) | **Migration 0054** (klein, mit `EXPLAIN`-Beleg), serielle Nummer abstimmen |
+| 123 Seeds und `tests/cleanup.ts` | `cleanup.ts` räumt seit M5-5 auch Belege; Seeds (`scripts/seed-*.mts`) für Turnierzahlungszeilen nicht belegt | Beleg, ggf. kleine Änderung |
+
+### 19.8 Fragen (nur Fragen, keine Entscheidungen)
+**FRAGE-PRODUKT:** **P-M57-1** M5-7b erst nach 011 M2/M4 (Zusage nur einmal bauen) oder jetzt der kleine Kern (`confirmTournamentVenue` mit schlichter Liste in `/halle`, ohne Beweisprotokoll und Antwortfrist)? **P-M57-2** Bis M5-7b: Hallenauswahl im Kartenmodell auf Hallen ohne Zugang einschränken, oder M5-7a und M5-7b gemeinsam ausliefern? **P-M57-3** Zugang nach dem Fixieren erteilt oder entzogen: bleibt der eingefrorene Snapshot maßgeblich (Plan: ja)? **P-M57-4** Hallen aus Import, Seeds und E2E haben Satz 0: Mindestsatz oder Warnung im Admin, bevor das Kartenmodell für sie läuft?
+**FRAGE-PLAN (Reviewer):** **PL-M57-1** `venueHasActiveAccess` in `venue-access-rules.ts` (empfohlen, eine Quelle) oder darf `tournament-venue.ts` `accessHolders()` filtern? **PL-M57-2** Kann das Beweisprotokoll (`booking_evidence`) Turniere aufnehmen, oder braucht M5-7b eine Schema-Änderung (Spalte `tournament_id`, Migration nach 0054)? **PL-M57-3** Alarm für „unbekannter Bereich“ im Webhook (Backlog 118): eigener Alarm oder Zählung im Audit?
+**FRAGE-RECHT (beantwortet kein Agent):** **R-M57-1** Aufbewahrung des Zusage-Nachweises einer Halle zu einem Turnier (Beweisprotokoll, Löschfristen), wenn die Zusage später Grundlage einer Erstattung ist.
