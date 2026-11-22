@@ -3,8 +3,7 @@ import { closeContexts, createTeam, newUser, run } from "./helpers";
 import { query, userIdByEmail } from "./helpers-db";
 
 // 011 M2b: /halle Ablehnen-Formular, Tastatur, Tippflächen, Fristanzeige, Namenfreiheit. Braucht die Datenbank (Lauf frei) und ist im Zwischenstand NICHT gelaufen.
-// ZWISCHENSTAND: Solange HALL_DECLINE_WIRED = false ist, meldet das Formular nach gültiger Eingabe „Ablehnen mit Grund folgt“ und schreibt nichts (R-T238).
-// Mit der Anbindung (M2a-2) ersetzt der Test „speichert den Grund“ den Test „ohne Anbindung ändert nichts“ (Backlog 156/157/158).
+// Angebunden (M2a-2): die Ablehnung speichert Kategorie und Anmerkung im Beweisprotokoll (Datenbank-Trigger beim COMMIT).
 test.setTimeout(150_000);
 
 const hall = (n: string) => `E2E Formularhalle ${n} ${run}`;
@@ -43,7 +42,7 @@ async function setup(browser: Browser, n: string, deadline = "now() + interval '
 
 const inquiryOf = (boss: Page, n: string) => boss.getByTestId("inquiry").filter({ hasText: hall(n) });
 
-test("Ablehnen-Formular: Fehler am Feld, Fokus auf die Radiogruppe, sonstiges braucht Text (Browser), zu kurzer Text (Aktion), ohne Anbindung ändert nichts", async ({ browser }) => {
+test("Ablehnen-Formular: Fehler am Feld, Fokus auf die Radiogruppe, sonstiges braucht Text (Browser), zu kurzer Text (Aktion), Grund wird gespeichert", async ({ browser }) => {
   const { boss, matchId, venueId } = await setup(browser, "1");
   await boss.goto("/halle");
   const inquiry = inquiryOf(boss, "1");
@@ -68,12 +67,16 @@ test("Ablehnen-Formular: Fehler am Feld, Fokus auf die Radiogruppe, sonstiges br
   await expect(inquiry.getByLabel(/Anmerkung/)).toHaveAttribute("aria-invalid", "true");
   await expect(inquiry.getByLabel(/Anmerkung/)).toBeFocused();
 
-  // gültige Eingabe, aber ohne Anbindung: Meldung, nichts geschrieben (R-T238)
-  await inquiry.getByLabel(/Anmerkung/).fill("Platz gesperrt");
+  // gültige Eingabe: die Ablehnung wird gespeichert, mit Kategorie und bereinigter Anmerkung im Beweisprotokoll (Anmerkung nur in der Nebentabelle)
+  await inquiry.getByLabel(/Anmerkung/).fill("  Platz   gesperrt ");
   await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
-  await expect(inquiry.getByRole("alert").filter({ hasText: "Ablehnen mit Grund folgt" })).toBeVisible();
+  await expect(inquiryOf(boss, "1")).toHaveCount(0);
   const [row] = await query<{ status: string }>("select status from match_hall_requests where match_id = $1 and venue_id = $2", [matchId, venueId]);
-  expect(row.status).toBe("pending");
+  expect(row.status).toBe("declined");
+  const [ev] = await query<{ reason_code: string; reason: string | null; hash_version: number }>("select reason_code, reason, hash_version from booking_evidence where match_id = $1 and venue_id = $2 and kind = 'declined'", [matchId, venueId]);
+  expect(ev).toMatchObject({ reason_code: "sonstiges", reason: null, hash_version: 2 });
+  const [txt] = await query<{ reason: string }>("select t.reason from booking_evidence_reason_text t join booking_evidence e on e.id = t.evidence_id where e.match_id = $1 and e.venue_id = $2 and e.kind = 'declined'", [matchId, venueId]);
+  expect(txt.reason).toBe("Platz gesperrt");
 });
 
 test("Tastatur und Tippflächen: Aufklappen, Radiogruppe, mindestens 44 px", async ({ browser }) => {
@@ -191,7 +194,7 @@ for (const scheme of ["dark", "light"] as const) {
   });
 }
 
-test("Namenfrei auch nach Fehlern und Meldung: Text, Attribute und Links ohne Spielernamen und Lobby-Link", async ({ browser }) => {
+test("Namenfrei auch nach Fehlern: Text, Attribute und Links ohne Spielernamen und Lobby-Link", async ({ browser }) => {
   const { boss, matchId } = await setup(browser, "7");
   await boss.goto("/halle");
   const inquiry = inquiryOf(boss, "7");
@@ -199,11 +202,23 @@ test("Namenfrei auch nach Fehlern und Meldung: Text, Attribute und Links ohne Sp
   await inquiry.getByText("Halle ist belegt (Grund angeben)").click();
   await inquiry.getByRole("button", { name: "Ablehnung senden" }).click(); // Fehler am Feld
   await inquiry.getByRole("radio", { name: "Veranstaltung" }).check();
-  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click(); // ohne Anbindung: Meldung „Ablehnen mit Grund folgt“
-  await expect(inquiry.getByRole("alert").filter({ hasText: "Ablehnen mit Grund folgt" })).toBeVisible();
   const text = await boss.locator("body").innerText();
   expect(text).not.toContain("Spieler hfa7");
   expect(text).not.toContain("Spieler hfb7");
   expect(await boss.locator('a[href*="/lobby/"]').count()).toBe(0);
   expect(await boss.content()).not.toContain(`/lobby/${matchId}`);
+});
+
+test("Antwort nach Fristende: neutraler Text, Zeile bleibt, genau ein late_attempt", async ({ browser }) => {
+  const { boss, matchId, venueId } = await setup(browser, "8", "now() + interval '20 seconds'");
+  await boss.goto("/halle");
+  const inquiry = inquiryOf(boss, "8");
+  await boss.waitForLoadState("networkidle");
+  await query("update matches set veto_turn_deadline = now() - interval '1 minute' where id = $1", [matchId]); // die Seite zeigt noch den Stand beim Laden
+  await inquiry.getByRole("button", { name: "Halle ist frei" }).click();
+  await expect(boss.getByRole("alert").filter({ hasText: "Die Antwortfrist ist abgelaufen" })).toBeVisible();
+  const [row] = await query<{ status: string }>("select status from match_hall_requests where match_id = $1 and venue_id = $2", [matchId, venueId]);
+  expect(row.status).toBe("pending");
+  const [n] = await query<{ n: string }>("select count(*)::text as n from booking_evidence where match_id = $1 and venue_id = $2 and kind = 'late_attempt'", [matchId, venueId]);
+  expect(n.n).toBe("1");
 });
