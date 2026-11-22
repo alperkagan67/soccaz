@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { matches, teamMembers } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { matchHallRequests, matchOptions, matchVetoHalls } from "@/db/schema-matchmaking";
+import { EVIDENCE_CLOCK } from "@/lib/evidence-clock";
 import { hallReplyDeadline } from "@/lib/hall-deadline";
 import { validateDecline, type DeclineCode } from "@/lib/hall-decline";
 import { buildPool, VETO_TURN_MS, type PoolVenue } from "@/lib/veto";
@@ -18,6 +19,9 @@ import type { Tx } from "./tx";
 
 type MatchRow = typeof matches.$inferSelect;
 const rowsOf = <T>(r: unknown): T[] => ((r as { rows?: T[] }).rows ?? (r as T[]));
+
+/** Marker (Quelltext-Test): Hallen-Fristen werden mit der Datenbankzeit entschieden, nie mit der JavaScript-Uhr. */
+export const HALL_CLOCK_SOURCE = EVIDENCE_CLOCK;
 
 export const HALL_REPLY_MS = 12 * 3_600_000; // so lange hat ein Hallenbetreiber Zeit zu antworten
 
@@ -47,11 +51,17 @@ export async function startHallCheck(tx: Tx, match: MatchRow, city: string, now:
   await settleHallCheck(tx, (await tx.select().from(matches).where(eq(matches.id, match.id)))[0], now);
 }
 
+async function hallExpiredInDb(tx: Tx, matchId: string): Promise<boolean> {
+  const res = await tx.execute(sql`select (veto_turn_deadline is null or transaction_timestamp() > veto_turn_deadline) as expired from matches where id = ${matchId}`);
+  return Boolean(rowsOf<{ expired: boolean }>(res)[0]?.expired);
+}
+
 /** Sind alle Hallen-Antworten da (oder ist die Frist um), geht es weiter: Veto, direkte Wahl oder neuer Termin. */
 export async function settleHallCheck(tx: Tx, match: MatchRow, now: Date): Promise<void> {
   if (match.vetoStatus !== "halls") return;
   let reqs = await tx.select().from(matchHallRequests).where(eq(matchHallRequests.matchId, match.id)).orderBy(asc(matchHallRequests.position));
-  const expired = Boolean(match.vetoTurnDeadline && match.vetoTurnDeadline <= now);
+  // Ablauf mit der DATENBANKZEIT dieser Transaktion, strikt (genau am Fristende noch nicht abgelaufen; Plan 16f.3/16g.5). Ohne Frist bei offenen Anfragen: sofort abschließen (kein hängendes „halls“).
+  const expired = await hallExpiredInDb(tx, match.id);
   if (reqs.some((r) => r.status === "pending") && !expired) return;
   if (expired) {
     await tx.update(matchHallRequests).set({ status: "declined" }).where(and(eq(matchHallRequests.matchId, match.id), eq(matchHallRequests.status, "pending")));
@@ -98,10 +108,13 @@ export async function answerHallRequest(userId: string, matchId: string, venueId
   if (decline && !decline.ok) throw new DomainError(Object.values(decline.fieldErrors)[0]);
   const result = await db.transaction(async (tx): Promise<HallAnswerResult> => {
     const [m] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
-    if (!m || m.vetoStatus !== "halls" || m.status !== "lobby") throw new DomainError("Diese Anfrage ist nicht mehr offen.");
+    if (!m || m.status !== "lobby") throw new DomainError("Diese Anfrage ist nicht mehr offen.");
     // Zugang in der Transaktion prüfen (Snapshot-Lesen nach der Spielsperre, Sperrreihenfolge unverändert; ein Entzug wirkt, sobald er vor dem Lesen committet)
     if (!(await hasVenueAccess(venueId, userId, tx))) throw new DomainError("Diese Halle gehört nicht zu deinem Konto.");
     const [r] = await tx.select().from(matchHallRequests).where(and(eq(matchHallRequests.matchId, matchId), eq(matchHallRequests.venueId, venueId)));
+    // Der Ablauf-Job war schneller: Zeile „declined“ ohne Antwortzeit (= abgelaufen) → zu spät (wird als late_attempt festgehalten), nicht „schon beantwortet“
+    if (r && r.status === "declined" && !r.answeredAt) return { status: "late" };
+    if (m.vetoStatus !== "halls") throw new DomainError("Diese Anfrage ist nicht mehr offen.");
     if (!r || r.status !== "pending") throw new DomainError("Diese Anfrage ist schon beantwortet.");
     // veraltete Seite (neue Runde durch neuen Termin): nichts ändern
     if (opts.round !== undefined && opts.round !== null && opts.round !== (await currentRoundOf(tx, matchId))) {
@@ -114,7 +127,7 @@ export async function answerHallRequest(userId: string, matchId: string, venueId
       // Sitzungswerte je Zeile (Namen baut die Datenbank: evidence_session_key), gelten bis zum Transaktionsende; der Trigger liest sie
       await tx.execute(sql`select set_config(evidence_session_key('evidence_reason_code', ${matchId}::uuid, ${venueId}::uuid), ${decline.code}, true), set_config(evidence_session_key('evidence_reason', ${matchId}::uuid, ${venueId}::uuid), ${decline.text}, true)`);
     }
-    await tx.update(matchHallRequests).set({ status: accept ? "confirmed" : "declined", answeredBy: userId, answeredAt: new Date() }).where(and(eq(matchHallRequests.matchId, matchId), eq(matchHallRequests.venueId, venueId)));
+    await tx.update(matchHallRequests).set({ status: accept ? "confirmed" : "declined", answeredBy: userId, answeredAt: new Date() /* nur Marker „beantwortet“, die Beweiszeit ist decided_at (Datenbankzeit) */ }).where(and(eq(matchHallRequests.matchId, matchId), eq(matchHallRequests.venueId, venueId)));
     await audit(userId, accept ? "hall.confirm" : "hall.decline", "match", matchId, { after: { venueId } }, tx); // nie mit Freitext
     await settleHallCheck(tx, m, new Date());
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);
@@ -244,7 +257,7 @@ export async function banHall(userId: string, matchId: string, venueId: string) 
 
 /** Job: Läuft die Zeit eines Teams ab, bannt das System für dieses Team eine zufällige Halle. */
 export async function advanceVetos(now: Date = new Date()): Promise<number> {
-  const waiting = await db.select({ id: matches.id }).from(matches).where(and(eq(matches.vetoStatus, "halls"), eq(matches.status, "lobby"), lt(matches.vetoTurnDeadline, now)));
+  const waiting = await db.select({ id: matches.id }).from(matches).where(and(eq(matches.vetoStatus, "halls"), eq(matches.status, "lobby"), sql`${matches.vetoTurnDeadline} < now()`)); // Datenbankzeit, strikt
   for (const { id } of waiting) {
     await db.transaction(async (tx) => {
       const [m] = await tx.select().from(matches).where(eq(matches.id, id)).for("update");

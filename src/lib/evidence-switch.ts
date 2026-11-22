@@ -12,6 +12,7 @@ export const SWITCH_TEXTS = {
   needClock: "Zuerst die Uhrenquelle auf die Datenbank stellen. Erst dann kann die Beweispflicht eingeschaltet werden.",
   alreadyDb: "Die Uhrenquelle steht schon auf Datenbank.",
   alreadyOn: "Die Beweispflicht ist schon eingeschaltet.",
+  clockNotReady: "Die Anwendung prüft Fristen noch nicht mit der Datenbankzeit. Die Uhrenquelle kann noch nicht umgestellt werden.",
   unknown: "Diese Einstellung gibt es nicht.",
   technical: "Das hat nicht geklappt. Bitte versuche es noch einmal.",
 } as const;

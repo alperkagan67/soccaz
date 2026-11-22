@@ -148,6 +148,22 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
     expect((await evidenceOf(d2.id, d2.v[0].id)).filter((e) => e.kind === "late_attempt")).toHaveLength(0);
   });
 
+  it("Ablauf-Job war schneller: Antwort danach = late (nicht „schon beantwortet“), genau ein late_attempt; Zeitreise über die Datenbankfrist", async () => {
+    const d = await duel();
+    await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() - 60_000) }).where(eq(matches.id, d.id));
+    // Fristablauf entscheidet die Datenbank: ein JS-Zeitpunkt in der Zukunft darf nichts ablaufen lassen, ein verstrichenes DB-Datum schon
+    await advanceVetos(new Date(Date.now() - 10 * 86_400_000));
+    expect((await evidenceOf(d.id, d.v[0].id)).some((e) => e.kind === "expired")).toBe(true);
+    expect(await answerHallRequest(d.manager.id, d.id, d.v[0].id, true)).toEqual({ status: "late" });
+    expect((await evidenceOf(d.id, d.v[0].id)).filter((e) => e.kind === "late_attempt")).toHaveLength(1);
+  });
+
+  it("JS-Uhr zählt nicht: ein später Zeitpunkt lässt eine offene Frist nicht ablaufen", async () => {
+    const d = await duel();
+    await advanceVetos(new Date(Date.now() + 30 * 86_400_000));
+    expect(await statusOf(d.id, d.v[0].id)).toBe("pending");
+  });
+
   it("veraltete Seite: Aktion der alten Runde wird abgelehnt, die Anfrage bleibt pending; mit der aktuellen Runde geht es", async () => {
     const d = await duel();
     const round = await currentRoundOf(db, d.id);
@@ -178,6 +194,9 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
     const reqs = await db.select().from(matchHallRequests).where(eq(matchHallRequests.matchId, d.id));
     expect(reqs.filter((r) => r.status === "pending")).toHaveLength(0);
     expect(reqs.some((r) => r.venueId === d.v[0].id || r.venueId === d.v[1].id)).toBe(false);
+    // kein hängendes „halls“ ohne Frist: der Ablauf ging sofort weiter (Veto, direkte Wahl oder neuer Termin)
+    const [after] = await db.select().from(matches).where(eq(matches.id, d.id));
+    expect(after.vetoStatus === "halls" && after.vetoTurnDeadline === null).toBe(false);
   });
 
   it("Beweispflicht an (Datenbank-Ebene, App-Prüfung umgangen): Ablehnung ohne Grund und Antwort nach Fristende werden vom Trigger abgelehnt; Antwort mit Grund geht", async () => {

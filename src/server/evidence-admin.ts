@@ -2,6 +2,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { settings } from "@/db/schema-finance";
+import { EVIDENCE_CLOCK } from "@/lib/evidence-clock";
 import { SWITCH_TEXTS, normalizeState, planSwitch } from "@/lib/evidence-switch";
 import { pgCodeOf } from "@/lib/hall-answer-errors";
 import { isOwner } from "@/lib/roles";
@@ -33,6 +34,8 @@ export async function getEvidenceSwitchState(): Promise<EvidenceSwitchState> {
 export async function switchEvidence(actorId: string, step: unknown, reason: string | null | undefined): Promise<void> {
   const [actor] = await db.select({ role: users.role, isOwner: users.isOwner, bannedAt: users.bannedAt }).from(users).where(eq(users.id, actorId));
   if (!actor || actor.bannedAt || !isOwner(actor)) throw new DomainError("Nur Admin 1 darf die Beweispflicht ändern.");
+  // Laufzeitprüfung: die Uhrenquelle darf nur auf Datenbank gestellt werden, wenn die Anwendung Hallen-Fristen wirklich mit der Datenbankzeit entscheidet (Marker, Quelltext-Test)
+  if (step === "clock_db" && (EVIDENCE_CLOCK as string) !== "db") throw new DomainError(SWITCH_TEXTS.clockNotReady);
   const plan = planSwitch(step, await readRaw(), reason);
   if (plan.kind === "invalid") throw new DomainError(plan.error);
   try {

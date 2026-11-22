@@ -72,7 +72,8 @@ describe("Hallen-Anfrage nach dem Termin", () => {
   it("keine Antwort bis zur Frist zählt als belegt", async () => {
     const d = await agreedDuel();
     expect(await advanceVetos()).toBe(0);
-    await advanceVetos(new Date(Date.now() + 13 * 3_600_000));
+    await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() - 60_000) }).where(eq(matches.id, d.id)); // Frist in der Datenbank verstrichen (Datenbankzeit entscheidet)
+    await advanceVetos();
     const reqs = await db.select().from(matchHallRequests).where(eq(matchHallRequests.matchId, d.id));
     expect(reqs.filter((r) => r.status === "declined" && d.rows.some((v) => v.id === r.venueId)).map((r) => r.venueId).sort()).toEqual([d.rows[0].id, d.rows[1].id].sort());
     expect((await db.select().from(matches).where(eq(matches.id, d.id)))[0].vetoStatus).toBe("running");

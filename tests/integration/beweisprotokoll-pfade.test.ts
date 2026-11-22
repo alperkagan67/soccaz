@@ -85,7 +85,8 @@ describe("Hallenprüfung über die echten Funktionen", () => {
     const s = await setup();
     await db.transaction((tx) => startHallCheck(tx, s.match, s.city));
     const m = await reload(s.match.id);
-    await db.transaction((tx) => settleHallCheck(tx, m, new Date(Date.now() + 13 * 3_600_000))); // nach HALL_REPLY_MS (12 h)
+    await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() - 60_000) }).where(eq(matches.id, m.id)); // Frist verstrichen (Datenbankzeit entscheidet, nicht der übergebene Zeitpunkt)
+    await db.transaction((tx) => settleHallCheck(tx, m, new Date()));
     const rows = await mine(s.match.id, [s.managed.id]);
     expect(rows.map((r) => r.kind)).toEqual(["request_sent", "expired"]);
     expect(rows.find((r) => r.kind === "expired")!.actorCommitment).toBe("");
