@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { formatDateTime } from "@/lib/time";
 import { cachedEvidenceReport } from "@/server/evidence";
 import { listEvidenceMatches } from "@/server/evidence-export";
+import { getEvidenceSwitchState } from "@/server/evidence-admin";
+import { switchEvidenceAction } from "@/server/evidence-admin-actions";
 import { requirePermission } from "@/server/session";
+import { EvidenceSwitchForm } from "./EvidenceSwitchForm";
 
 export const metadata: Metadata = { title: "Admin: Beweisprotokoll" };
 
@@ -16,6 +19,7 @@ export default async function EvidencePage() {
   await requirePermission("owner", "/admin/beweis");
   const report = await cachedEvidenceReport(); // höchstens alle 60 s neu berechnet (Prüfstand mit Zeitpunkt)
   const rows = await listEvidenceMatches();
+  const sw = await getEvidenceSwitchState();
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">Beweisprotokoll</h1>
@@ -34,6 +38,31 @@ export default async function EvidencePage() {
         <p className="text-sm text-muted" data-testid="evidence-checked-at">Prüfstand vom {formatDateTime(report.checkedAt)} (wird höchstens einmal pro Minute neu berechnet; der Tagesjob rechnet immer frisch).</p>
         <p className="text-sm text-muted">Maßgeblich ist die extern abgelegte Kopie des Kopf-Hashs (täglicher Job, Benachrichtigung); die Datenbank allein ist kein Beweis gegen eine Änderung durch Administratoren.</p>
         <a className="btn btn-ghost !min-h-9 !px-3 text-sm" href={EXPORT_URL} download>Gesamtketten-Export (NDJSON)</a>
+      </div>
+
+      <div className="card space-y-3" data-testid="evidence-switch">
+        <h2 className="text-lg font-semibold">Beweispflicht</h2>
+        <p data-testid="evidence-switch-state">
+          Uhrenquelle: <strong>{sw.clockDb ? "Datenbank" : "Anwendung (noch nicht umgestellt)"}</strong> · Beweispflicht: <strong>{sw.enforcementOn ? "eingeschaltet" : "ausgeschaltet"}</strong>
+          {sw.changedAt ? <span className="text-sm text-muted"> · letzte Änderung {formatDateTime(sw.changedAt)}</span> : null}
+        </p>
+        {!sw.clockDb && (
+          <div data-testid="switch-clock" className="space-y-2">
+            <p className="text-sm text-muted">Schritt 1: Erst wenn die Anwendung Fristen mit der Datenbankzeit prüft, darf die Uhrenquelle umgestellt werden.</p>
+            <EvidenceSwitchForm action={switchEvidenceAction.bind(null, "clock_db")} step="clock_db" label="Uhrenquelle auf Datenbank stellen" />
+          </div>
+        )}
+        {sw.clockDb && !sw.enforcementOn && (
+          <div data-testid="switch-enforcement" className="space-y-2">
+            <p className="text-sm text-muted">Schritt 2: Danach lehnt die Datenbank Ablehnungen ohne Grund und Antworten nach der Frist ab. Ausschalten geht nur als Wartungsfall.</p>
+            <EvidenceSwitchForm action={switchEvidenceAction.bind(null, "enforcement_on")} step="enforcement_on" label="Beweispflicht einschalten" />
+          </div>
+        )}
+        {sw.clockDb && sw.enforcementOn && (
+          <p className="text-sm text-muted" data-testid="switch-done">
+            Die Beweispflicht ist eingeschaltet.
+          </p>
+        )}
       </div>
 
       {rows.length === 0 ? (
