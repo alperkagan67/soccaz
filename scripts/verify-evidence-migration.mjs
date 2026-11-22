@@ -135,7 +135,8 @@ try {
   const by = Object.fromEntries(trg.map((r) => [r.tgname, r]));
   check(trg.length === 13, `alle 13 Beweisprotokoll-Trigger vorhanden (${trg.length})`);
   check(["tournaments_evidence_ins", "tournaments_evidence_upd", "match_hall_requests_evidence_ins", "match_hall_requests_evidence_upd", "booking_jobs_evidence_ins", "booking_jobs_evidence_upd"].every((n) => by[n]?.tgdeferrable && by[n]?.tginitdeferred), "aufgeschobene Trigger sind DEFERRABLE INITIALLY DEFERRED");
-  check(/WHEN (+(?old.venue_confirmed_at IS NULL)? AND (new.venue_confirmed_at IS NOT NULL)/i.test(by.tournaments_evidence_upd?.def ?? "") && !/OF venue_confirmed_at/i.test(by.tournaments_evidence_upd?.def ?? ""), "Turnier-Trigger: WHEN NULL -> Wert, ohne 'OF'-Spalte");
+  const tdef = (by.tournaments_evidence_upd?.def ?? "").toLowerCase();
+  check(tdef.includes("old.venue_confirmed_at is null") && tdef.includes("new.venue_confirmed_at is not null") && tdef.includes(" when ") && !tdef.includes("of venue_confirmed_at"), "Turnier-Trigger: WHEN NULL -> Wert, ohne 'OF'-Spalte");
   check(/WHEN/i.test(by.match_hall_requests_evidence_upd?.def ?? "") && /BEFORE INSERT OR UPDATE/i.test(by.match_hall_requests_evidence_before?.def ?? ""), "Anfrage-Trigger: WHEN auf Statuswechsel, Sofort-Trigger BEFORE INSERT OR UPDATE");
   // Abgleich je Quelle (Review R-T246): Zeile ohne Eintrag unter der Wartungsausnahme -> gemeldet (Spiel), Auftrag, Turnier
   const ev = await q2("select count(*)::int n from evidence_reconcile()");
