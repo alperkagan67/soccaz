@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { settings } from "@/db/schema-finance";
 import { audit } from "./audit";
+import { DomainError } from "./teams";
 
 type Exec = Pick<typeof db, "select">;
 
@@ -14,7 +15,7 @@ export async function getSetting<T>(key: string, fallback: T, exec: Exec = db): 
 export const PROTECTED_EVIDENCE_SETTINGS = ["evidence_enforcement", "evidence_clock_source", "evidence_reason_retention_days", "evidence_cutover_at", "evidence_tournament_cutover_at"] as const;
 
 export async function setSetting(actorId: string | null, key: string, value: unknown) {
-  if ((PROTECTED_EVIDENCE_SETTINGS as readonly string[]).includes(key)) throw new Error(`Einstellung ${key} wird nur ueber evidence_set_setting geaendert (Beweisprotokoll).`);
+  if ((PROTECTED_EVIDENCE_SETTINGS as readonly string[]).includes(key)) throw new DomainError(`Einstellung ${key} wird nur ueber evidence_set_setting geaendert (Beweisprotokoll).`);
   const before = await getSetting<unknown>(key, null);
   await db
     .insert(settings)

@@ -2,7 +2,7 @@
 // Integrationstests und verlangt, dass sie ROT werden. Danach wird die Originalfunktion wiederhergestellt (auch bei Abbruch). NUR gegen eine Worker-/Testdatenbank (nie soccav2); nie parallel zu anderen
 // Integrationslaeufen (gemeinsame DB). Aufruf: node scripts/mutation-evidence.mjs [Nummer ...]   (DATABASE_URL aus .env.local, wird nicht ausgegeben)
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import pg from "pg";
 
 process.loadEnvFile(".env.local");
@@ -11,6 +11,9 @@ const dbName = url.pathname.slice(1);
 if (!["localhost", "127.0.0.1"].includes(url.hostname) || dbName === "soccav2" || !/^soccaz_w\d$/.test(dbName)) throw new Error("nur Worker-Datenbank soccaz_w1..w4");
 
 const PFX = "soc" + "az."; // Präfix der Sitzungswerte nicht als Literal (maintenance-guard-Test)
+const TEXT_DELETE = "    await tx.execute(sql`delete from booking_evidence_reason_text where evidence_id in (select evidence_id from evidence_actor where user_id = ${userId})`);\n";
+const ACTOR_UPDATE = "    await tx.update(evidenceActor).set({ userId: null, name: null, email: null }).where(eq(evidenceActor.userId, userId));\n";
+const cut = (s, part) => s.split(part).join("");
 const NL = "tests/integration/beweisprotokoll-nachlieferung.test.ts";
 const HAKEN = "tests/integration/beweisprotokoll-haken.test.ts";
 const BASE = "tests/integration/beweisprotokoll.test.ts";
@@ -63,6 +66,19 @@ const MUTATIONS = [
     restore: ["ALTER TABLE booking_evidence ADD CONSTRAINT booking_evidence_enforced_check CHECK (enforced is null or (subject = 'match' and kind in ('accepted', 'declined', 'expired', 'late_attempt')))"],
     tests: [NL],
   },
+  {
+    name: "deleteAccount loescht den Klartext nicht",
+    file: "src/server/account.ts",
+    transform: (s) => cut(s, TEXT_DELETE),
+    tests: [NL],
+  },
+  {
+    name: "deleteAccount leert evidence_actor VOR dem Klartext-Delete (Reihenfolge vertauscht)",
+    file: "src/server/account.ts",
+    transform: (s) => (s.includes(TEXT_DELETE) && s.includes(ACTOR_UPDATE) ? cut(s, TEXT_DELETE).replace(ACTOR_UPDATE, ACTOR_UPDATE + TEXT_DELETE) : s),
+    tests: [NL],
+  },
+  { name: "Pruefer ohne Commitment-Pruefung", file: "src/server/evidence.ts", transform: (s) => s.replace("when rt.evidence_id is not null and", "when false and"), tests: [NL] },
 ];
 
 const only = process.argv.slice(2).map(Number).filter(Boolean);
@@ -81,6 +97,21 @@ const report = [];
 try {
   for (const [i, m] of MUTATIONS.entries()) {
     if (only.length && !only.includes(i + 1)) continue;
+    if (m.file) {
+      const orig = readFileSync(m.file, "utf8");
+      const mutated = m.transform(orig);
+      if (mutated === orig) throw new Error(`Mutation ${i + 1}: transform aendert nichts`);
+      try {
+        writeFileSync(m.file, mutated);
+        const r = runTests(m.tests);
+        const red = r.status !== 0;
+        report.push({ nr: i + 1, name: m.name, rot: red, failed: 0 });
+        console.log(`${red ? "ROT (gut)" : "GRUEN (Luecke!)"}  #${i + 1} ${m.name}`);
+      } finally {
+        writeFileSync(m.file, orig); // Quelldatei wiederherstellen
+      }
+      continue;
+    }
     const custom = Array.isArray(m.apply);
     const orig = custom ? "" : stmtOf(m.fn);
     if (!custom && orig.split(m.from).length !== 2) throw new Error(`Mutation ${i + 1}: Muster nicht genau einmal in ${m.fn}`);

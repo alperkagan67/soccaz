@@ -7,6 +7,7 @@ import { bookingEvidence, bookingEvidenceCounter, evidenceActor, venueAccess, ve
 import { cleanReason } from "@/lib/evidence";
 import { reconcileEvidence, verifyEvidenceChain } from "@/server/evidence";
 import { clearOrphanActors } from "@/server/evidence-head";
+import { deleteAccount } from "@/server/account";
 import { evidenceHash2 } from "../../scripts/lib/evidence-chain.mjs";
 import { cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -305,6 +306,15 @@ describe("Hash Version 2, Bereinigung, Einschränkungen (Plan 16d.6, 16e.4, 16f.
     }
   });
 
+  it("von Hand berechnete Vektoren (siehe tests/unit/evidence-golden.test.ts): SQL evidence_hash2 = Literale", async () => {
+    const V = "11111111-1111-4111-8111-111111111111";
+    const W = "22222222-2222-4222-8222-222222222222";
+    const a = rows<{ h: string }>(await db.execute(sql`select evidence_hash2('match', 1, ${V}::uuid, null, null, 1, null, 'request_sent', '', '', '2027-03-04T05:06:07.123456Z'::timestamptz, '', '', null, null, null, null) as h`))[0].h;
+    expect(a).toBe("50ac0329705410f3d0be48753f5c9cba796543d6cd0320217957882a09907d1e");
+    const b = rows<{ h: string }>(await db.execute(sql`select evidence_hash2('tournament', 7, null, ${V}::uuid, ${W}::uuid, 1, null, 'accepted', '', '', '2027-03-04T05:06:07.123456Z'::timestamptz, 'cd', '', null, '2027-03-04T05:06:07.000001Z'::timestamptz, '2027-03-04T05:06:07.000001Z'::timestamptz, null) as h`))[0].h;
+    expect(b).toBe("8ef46ae7c1af66303493da120dca794525b2323f1f37c7e20936d096dd9c7fec");
+  });
+
   it("Golden-Fixture Version 2: SQL evidence_hash2 = feste Literale je Quelle", async () => {
     const gold = JSON.parse((await import("node:fs")).readFileSync("tests/fixtures/evidence-golden-v2.json", "utf8")).rows as Record<string, never>[];
     for (const c of gold) {
@@ -466,6 +476,22 @@ describe("Commitment-Prüfung und Löschpfade (Plan 16f.7, 16g.6)", () => {
     expect((await verifyEvidenceChain()).ok).toBe(true);
     await db.execute(sql`delete from booking_evidence_reason_text where evidence_id = ${id}`);
     expect((await verifyEvidenceChain()).ok).toBe(true); // Klartext gelöscht: Kette gültig
+  });
+
+  it("deleteAccount des Betreibers: Klartext seiner Einträge weg (VOR evidence_actor), evidence_actor geleert, venue_confirmed_by der Turniere NULL, Zusage bleibt, Kette gültig", async () => {
+    const { s, id } = await declinedWithText();
+    const org = await makeUser("nlorg9");
+    const [t] = await db.insert(tournaments).values({ organizerId: org.id, name: "NL Del", city: "E2E-NL", startsOn: "2027-03-01", format: "knockout", maxTeams: 4, venueId: s.venue.id }).returning();
+    await db.execute(sql`update tournaments set venue_confirmed_at = now(), venue_confirmed_by = ${s.op.id} where id = ${t.id}`);
+    expect(rows<{ n: number }>(await db.execute(sql`select count(*)::int as n from booking_evidence_reason_text where evidence_id = ${id}`))[0].n).toBe(1);
+    await deleteAccount(s.op.id);
+    expect(rows<{ n: number }>(await db.execute(sql`select count(*)::int as n from booking_evidence_reason_text where evidence_id = ${id}`))[0].n).toBe(0);
+    const [actor] = await db.select().from(evidenceActor).where(eq(evidenceActor.evidenceId, id));
+    expect(actor).toMatchObject({ userId: null, name: null, email: null });
+    const tr = (await db.select().from(tournaments).where(eq(tournaments.id, t.id)))[0];
+    expect(tr.venueConfirmedBy).toBeNull();
+    expect(tr.venueConfirmedAt).not.toBeNull();
+    expect((await verifyEvidenceChain()).ok).toBe(true);
   });
 
   it("Tagesjob: Klartext zu anonymisierter Actor-Zeile wird gelöscht, Kette bleibt gültig; Turnier-Bestätiger ohne Konto wird gelöst", async () => {
