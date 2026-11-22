@@ -2,7 +2,7 @@
 
 import { requireUser } from "../session";
 import { DomainError } from "../teams";
-import { getAuthorizationSecret } from "./authorize";
+import { getAuthorizationSecret, getTournamentAuthorizationSecret } from "./authorize";
 
 export type AuthorizationState = { ok: true; clientSecret: string } | { ok: false; error: string };
 
@@ -15,6 +15,18 @@ export async function createAuthorizationAction(matchId: string): Promise<Author
   const user = await requireUser("/app");
   try {
     const r = await getAuthorizationSecret(user.id, typeof matchId === "string" ? matchId : "");
+    return { ok: true, clientSecret: r.clientSecret };
+  } catch (error) {
+    if (error instanceof DomainError) return { ok: false, error: error.message };
+    throw error;
+  }
+}
+
+/** Wie createAuthorizationAction, fuer eine Turnier-Zeile (M5-5): nur der Nutzer selbst, Secret nur in dieser Antwort, neutrale Fehler. */
+export async function createTournamentAuthorizationAction(tournamentId: string): Promise<AuthorizationState> {
+  const user = await requireUser("/app");
+  try {
+    const r = await getTournamentAuthorizationSecret(user.id, typeof tournamentId === "string" ? tournamentId : "");
     return { ok: true, clientSecret: r.clientSecret };
   } catch (error) {
     if (error instanceof DomainError) return { ok: false, error: error.message };

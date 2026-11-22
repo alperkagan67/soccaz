@@ -28,6 +28,7 @@ import { BoardInfo } from "./BoardInfo";
 import { BracketView } from "./BracketView";
 import { CopyLink } from "./CopyLink";
 import { RegisterForm } from "./RegisterForm";
+import { hasOpenTournamentAuthorization } from "@/server/payments/authorize";
 import { TournamentVenuePick } from "./TournamentVenuePick";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { TournamentCard } from "./TournamentCard";
@@ -286,6 +287,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             teammates={(teams.find((x) => x.teamId === v.myTeamId)?.players ?? []).filter((p) => p.userId !== user?.id).map((p) => ({ userId: p.userId, name: p.name, hasCard: p.paid && !p.covered, covered: p.covered }))}
             coveringName={v.coveringUserId ? (teams.find((x) => x.teamId === v.myTeamId)?.players.find((p) => p.userId === v.coveringUserId)?.name ?? null) : null}
             canCover={v.hasOwnCard}
+            needsAuthorization={Boolean(user) && inPayment && (await hasOpenTournamentAuthorization(user!.id, t.id))}
           />
         )}
         {v && v.myTeamId && inPayment && !free && !data.cardMode && !v.iPaid && (

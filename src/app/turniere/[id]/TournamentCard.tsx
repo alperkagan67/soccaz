@@ -3,6 +3,7 @@
 // Turnier im Kartenmodell (Vertrag 012, M5-3): eigene Karte hinterlegen und "Anteil übernehmen" im eigenen Team. Es wird nichts bezahlt; abgebucht wird zur Frist (M5-4).
 // Der Übernehmer kommt immer aus der Sitzung (Server-Aktion), nie vom Client; die Zustimmung erzwingt der Server noch einmal.
 import { useState, useTransition } from "react";
+import { AuthorizeButton } from "@/app/lobby/[id]/AuthorizeButton";
 import { CardForm } from "@/app/lobby/[id]/CardForm";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -22,6 +23,7 @@ export function TournamentCard({
   teammates,
   coveringName,
   canCover,
+  needsAuthorization = false,
 }: {
   tournamentId: string;
   hasOwnCard: boolean;
@@ -31,6 +33,7 @@ export function TournamentCard({
   teammates: TeamSeat[];
   coveringName: string | null;
   canCover: boolean;
+  needsAuthorization?: boolean;
 }) {
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
@@ -45,6 +48,12 @@ export function TournamentCard({
         </div>
       ) : (
         <CardForm mandateText={mandateText} fake={fake} onFake={fakeTournamentCardAction} />
+      )}
+      {needsAuthorization && (
+        <div className="space-y-2" data-testid="tournament-authorize">
+          <p className="text-sm">Deine Bank verlangt eine Freigabe (3-D-Secure) für deinen Anteil. Bitte gib die Zahlung frei, sonst fällt das Turnier aus.</p>
+          <AuthorizeButton matchId="" tournamentId={tournamentId} fake={false} />
+        </div>
       )}
       {canCover && red.length > 0 && !coveringName && (
         <div className="space-y-2" data-testid="tournament-cover-list">

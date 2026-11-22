@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
-import { createAuthorizationAction } from "@/server/payments/authorize-actions";
+import { createAuthorizationAction, createTournamentAuthorizationAction } from "@/server/payments/authorize-actions";
 import { fakeAuthorizeAction } from "@/server/payments/fake-card-actions";
 
 let stripePromise: Promise<Stripe | null> | null = null;
@@ -20,7 +20,7 @@ function getStripe(): Promise<Stripe | null> | null {
  * Stripe.js (handleNextAction) schliesst die Pruefung ab. Das Ergebnis im Browser bucht NICHTS: gebucht wird allein ueber den Webhook; die Seite laedt danach neu. Das Secret
  * liegt nur im Speicher dieser Funktion (kein State, kein Log, keine URL). Mit `fake` (nur Tests) gibt es stattdessen zwei Knoepfe, die ein Fake-Webhook-Ereignis ausloesen.
  */
-export function AuthorizeButton({ matchId, fake }: { matchId: string; fake: boolean }) {
+export function AuthorizeButton({ matchId, fake, tournamentId }: { matchId: string; fake: boolean; tournamentId?: string }) {
   const router = useRouter();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -56,7 +56,7 @@ export function AuthorizeButton({ matchId, fake }: { matchId: string; fake: bool
         setError("Die Kartenzahlung ist gerade nicht verfügbar.");
         return;
       }
-      const res = await createAuthorizationAction(matchId);
+      const res = tournamentId ? await createTournamentAuthorizationAction(tournamentId) : await createAuthorizationAction(matchId);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -73,7 +73,7 @@ export function AuthorizeButton({ matchId, fake }: { matchId: string; fake: bool
 
   return (
     <div className="space-y-2" data-testid="authorize">
-      {fake ? (
+      {fake && !tournamentId ? (
         <>
           <button className="btn btn-primary w-full" disabled={busy} onClick={() => startFake("ok")} data-testid="authorize-fake">
             {busy ? "Bitte warten…" : "Zahlung freigeben (Test)"}
