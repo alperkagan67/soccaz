@@ -9,6 +9,9 @@ import { proposeOption, voteOption } from "@/server/scheduling";
 import { advanceVetos, answerHallRequest, pendingHallInquiries } from "@/server/veto";
 import { cleanup, grantVenueAccess, makeTeam, makeUser } from "./helpers";
 
+// 011 M2: Ablehnen braucht eine Kategorie (Vertrag 011 AC-3); die Tests prüfen weiter ihre bisherigen Aussagen, mit gültiger Eingabe
+const REASON = { reasonCode: "belegt", reason: "" } as const;
+
 afterAll(async () => {
   await db.execute(sql`delete from venue_access where venue_id in (select id from venues where name like 'E2E Hallenort%')`); // 011 M1: Zugang vor der Halle (Fremdschlüssel restrict)
   await db.delete(venues).where(sql`${venues.name} like 'E2E Hallenort%'`);
@@ -53,9 +56,9 @@ describe("Hallen-Anfrage nach dem Termin", () => {
     // nur der eigene Betreiber darf antworten
     await expect(answerHallRequest(d.a.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht zu deinem Konto/);
     await answerHallRequest(d.manager.id, d.id, d.rows[0].id, true);
-    await expect(answerHallRequest(d.manager.id, d.id, d.rows[0].id, false)).rejects.toThrow(/schon beantwortet/);
+    await expect(answerHallRequest(d.manager.id, d.id, d.rows[0].id, false, REASON)).rejects.toThrow(/schon beantwortet/);
     expect((await db.select().from(matches).where(eq(matches.id, d.id)))[0].vetoStatus).toBe("halls"); // eine Antwort fehlt noch
-    await answerHallRequest(d.manager.id, d.id, d.rows[1].id, false); // belegt
+    await answerHallRequest(d.manager.id, d.id, d.rows[1].id, false, REASON); // belegt
 
     const [after] = await db.select().from(matches).where(eq(matches.id, d.id));
     expect(after.vetoStatus).toBe("running");
@@ -82,8 +85,8 @@ describe("Hallen-Anfrage nach dem Termin", () => {
     try {
       await db.update(venues).set({ active: false }).where(inArray(venues.id, [...others, d.rows[2].id]));
       const m2 = await agreedDuelAgain(d);
-      await answerHallRequest(d.manager.id, m2, d.rows[0].id, false);
-      await answerHallRequest(d.manager.id, m2, d.rows[1].id, false);
+      await answerHallRequest(d.manager.id, m2, d.rows[0].id, false, REASON);
+      await answerHallRequest(d.manager.id, m2, d.rows[1].id, false, REASON);
       const [m] = await db.select().from(matches).where(eq(matches.id, m2));
       expect(m).toMatchObject({ vetoStatus: "none", schedulingOpen: true });
       expect(await db.select().from(matchOptions).where(eq(matchOptions.matchId, m2))).toHaveLength(0);

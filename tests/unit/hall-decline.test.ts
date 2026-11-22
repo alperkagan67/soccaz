@@ -71,21 +71,23 @@ describe("replyWindow (gespeicherte Frist, Restzeit nur beim Laden)", () => {
   });
 });
 
-// R-T238: Solange die Anbindung fehlt, darf die Ablehnung NICHT still ohne Speichern laufen.
+// R-T238: Weiche. Mit der Anbindung (M2a-2) steht sie auf true; ohne Anbindung (explizit false) darf die Ablehnung NICHT still ohne Speichern laufen.
 describe("planDecline (Feature-Weiche)", () => {
-  it("Weiche ist im Zwischenstand aus", () => {
-    expect(HALL_DECLINE_WIRED).toBe(false);
+  it("Weiche ist mit der Anbindung an", () => {
+    expect(HALL_DECLINE_WIRED).toBe(true);
   });
-  it("ohne Anbindung: gültige Eingabe führt NICHT zur Ablehnung, sondern zur Meldung „Ablehnen mit Grund folgt“", () => {
-    expect(planDecline({ code: "belegt", text: "" })).toEqual({ kind: "not-wired", error: DECLINE_NOT_WIRED_MESSAGE });
+  it("ohne Anbindung (wired = false): gültige Eingabe führt NICHT zur Ablehnung, sondern zur Meldung „Ablehnen mit Grund folgt“", () => {
+    expect(planDecline({ code: "belegt", text: "" }, false)).toEqual({ kind: "not-wired", error: DECLINE_NOT_WIRED_MESSAGE });
     expect(DECLINE_NOT_WIRED_MESSAGE).toContain("Ablehnen mit Grund folgt");
   });
-  it("ohne Anbindung: Eingabefehler werden weiter am Feld gezeigt", () => {
-    const p = planDecline({ code: "", text: "" });
-    expect(p.kind).toBe("invalid");
-    if (p.kind === "invalid") expect(p.fieldErrors.reasonCode).toBe(DECLINE_MESSAGES.codeMissing);
+  it("Eingabefehler werden immer am Feld gezeigt", () => {
+    for (const wired of [true, false]) {
+      const p = planDecline({ code: "", text: "" }, wired);
+      expect(p.kind).toBe("invalid");
+      if (p.kind === "invalid") expect(p.fieldErrors.reasonCode).toBe(DECLINE_MESSAGES.codeMissing);
+    }
   });
-  it("mit Anbindung (nur im Test): gültige Eingabe geht mit Grund und Text weiter", () => {
-    expect(planDecline({ code: "sonstiges", text: " Platz gesperrt " }, true)).toEqual({ kind: "go", code: "sonstiges", text: "Platz gesperrt" });
+  it("mit Anbindung: gültige Eingabe geht mit Grund und Text weiter", () => {
+    expect(planDecline({ code: "sonstiges", text: " Platz gesperrt " })).toEqual({ kind: "go", code: "sonstiges", text: "Platz gesperrt" });
   });
 });

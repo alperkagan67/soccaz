@@ -4,8 +4,11 @@ import { db } from "@/db";
 import { matches, teamMembers } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { matchHallRequests, matchOptions, matchVetoHalls } from "@/db/schema-matchmaking";
+import { hallReplyDeadline } from "@/lib/hall-deadline";
+import { validateDecline, type DeclineCode } from "@/lib/hall-decline";
 import { buildPool, VETO_TURN_MS, type PoolVenue } from "@/lib/veto";
 import { audit } from "./audit";
+import { currentRoundOf, currentRoundsOf } from "./evidence";
 import { teamName } from "./names";
 import { notifyUsers, teamAdminIds } from "./notifications";
 import { priceFor } from "./pricing";
@@ -14,6 +17,7 @@ import { accessHolders, hasVenueAccess, venueIdsOf } from "./venue-access-rules"
 import type { Tx } from "./tx";
 
 type MatchRow = typeof matches.$inferSelect;
+const rowsOf = <T>(r: unknown): T[] => ((r as { rows?: T[] }).rows ?? (r as T[]));
 
 export const HALL_REPLY_MS = 12 * 3_600_000; // so lange hat ein Hallenbetreiber Zeit zu antworten
 
@@ -26,13 +30,17 @@ export async function startHallCheck(tx: Tx, match: MatchRow, city: string, now:
     .select({ id: venues.id, name: venues.name, city: venues.city, lat: venues.lat, lng: venues.lng, partner: venues.isPartner, verified: venues.verified })
     .from(venues)
     .where(eq(venues.active, true));
-  const holders = await accessHolders(tx); // Halle mit Zugang (venue_access) muss antworten, ohne Zugang bleibt sie „unmanaged"
-  const pool = buildPool(rows as PoolVenue[], city);
+  const holdersAll = await accessHolders(tx); // Halle mit Zugang (venue_access) muss antworten, ohne Zugang bleibt sie „unmanaged"
+  // Frist = min(12 h, Anstoß − 1 h), nie nach dem Anstoß (Entscheid t2q P9). null = Vorlauf höchstens 1 Stunde: kein Antwortfenster, Hallen MIT Zugang bekommen keine Anfrage und fallen aus dem Pool (P11),
+  // Hallen ohne Zugang bleiben (unmanaged); bleibt kein Kandidat, gilt der Weg „keine Halle frei, neuer Termin“.
+  const replyDeadline = hallReplyDeadline(match.startsAt, now);
+  const holders = replyDeadline ? holdersAll : new Map<string, string>();
+  const pool = buildPool(rows as PoolVenue[], city).filter((v) => replyDeadline || !holdersAll.has(v.id));
   await tx.delete(matchHallRequests).where(eq(matchHallRequests.matchId, match.id));
   if (pool.length) {
     await tx.insert(matchHallRequests).values(pool.map((v, position) => ({ matchId: match.id, venueId: v.id, position, status: holders.has(v.id) ? ("pending" as const) : ("unmanaged" as const) })));
   }
-  await tx.update(matches).set({ vetoStatus: "halls", vetoTurnTeamId: null, vetoTurnDeadline: new Date(now.getTime() + HALL_REPLY_MS) }).where(eq(matches.id, match.id));
+  await tx.update(matches).set({ vetoStatus: "halls", vetoTurnTeamId: null, vetoTurnDeadline: replyDeadline }).where(eq(matches.id, match.id));
   const when = match.startsAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const managers = new Set(rows.filter((r) => pool.some((p) => p.id === r.id) && holders.has(r.id)).map((r) => holders.get(r.id)!));
   await notifyUsers([...managers], { type: "hall.request", title: "Neue Spielanfrage für eure Halle", body: `${when} Uhr, ${match.durationMin} Minuten. Bitte bestätigt, ob die Halle frei ist.`, url: "/halle" }, tx);
@@ -73,23 +81,65 @@ export async function settleHallCheck(tx: Tx, match: MatchRow, now: Date): Promi
   await notifyTurn(tx, match.id, first, "Die Hallen haben bestätigt. Münzwurf: Ihr beginnt. Bannt Hallen, die ihr nicht spielen wollt.");
 }
 
-/** Hallenbetreiber bestätigt oder lehnt ab (die Halle ist zu dem Termin belegt). */
-export async function answerHallRequest(userId: string, matchId: string, venueId: string, accept: boolean) {
-  await db.transaction(async (tx) => {
+export type HallAnswerResult = { status: "answered" } | { status: "late" };
+/** Begründung der Ablehnung (Plan 011 M2): Kategorie Pflicht, Anmerkung optional 3 bis 200 (bei „sonstiges“ Pflicht); Runde = die Runde der Anfrage, die der Betreiber gesehen hat. */
+export type HallAnswerOpts = { reasonCode?: DeclineCode | string | null; reason?: string | null; round?: number | null };
+
+/**
+ * Hallenbetreiber bestätigt oder lehnt ab (die Halle ist zu dem Termin belegt). 011 M2a-2 (Plan 011 M2, 3.1 bis 3.3):
+ * - Ablehnung nur mit Kategorie (Eingabeprüfung der App VOR jedem Schreiben; die Datenbank prüft bei eingeschalteter Beweispflicht zusätzlich).
+ * - Runde: stimmt `opts.round` nicht mit der aktuellen Runde überein, ist die Seite veraltet (nichts geändert).
+ * - Frist in SQL mit der Datenbankzeit (transaction_timestamp(), strikt: genau am Fristende noch zulässig). Nach Ablauf KEIN Wurf (ein Wurf würde zurückrollen), sondern `{ status: "late" }`;
+ *   der Versuch wird danach in einer EIGENEN kurzen Transaktion im Beweisprotokoll festgehalten (evidence_late_attempt), nie mitten in der Hauptransaktion.
+ * Sperrreihenfolge unverändert: Spiel (FOR UPDATE), Zugang ohne Sperre, Anfragezeile. Der Beweiseintrag entsteht per Datenbank-Trigger beim COMMIT.
+ */
+export async function answerHallRequest(userId: string, matchId: string, venueId: string, accept: boolean, opts: HallAnswerOpts = {}): Promise<HallAnswerResult> {
+  const decline = accept ? null : validateDecline({ code: opts.reasonCode ?? "", text: opts.reason ?? "" });
+  if (decline && !decline.ok) throw new DomainError(Object.values(decline.fieldErrors)[0]);
+  const result = await db.transaction(async (tx): Promise<HallAnswerResult> => {
     const [m] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
     if (!m || m.vetoStatus !== "halls" || m.status !== "lobby") throw new DomainError("Diese Anfrage ist nicht mehr offen.");
     // Zugang in der Transaktion prüfen (Snapshot-Lesen nach der Spielsperre, Sperrreihenfolge unverändert; ein Entzug wirkt, sobald er vor dem Lesen committet)
     if (!(await hasVenueAccess(venueId, userId, tx))) throw new DomainError("Diese Halle gehört nicht zu deinem Konto.");
     const [r] = await tx.select().from(matchHallRequests).where(and(eq(matchHallRequests.matchId, matchId), eq(matchHallRequests.venueId, venueId)));
     if (!r || r.status !== "pending") throw new DomainError("Diese Anfrage ist schon beantwortet.");
+    // veraltete Seite (neue Runde durch neuen Termin): nichts ändern
+    if (opts.round !== undefined && opts.round !== null && opts.round !== (await currentRoundOf(tx, matchId))) {
+      throw new DomainError("Diese Anfrage hat sich geändert, zum Beispiel durch einen neuen Termin. Bitte lade die Seite neu.");
+    }
+    // Fristgrenze mit der Datenbankzeit derselben Transaktion (Plan 3.2): strikt überschritten = zu spät, genau am Fristende noch zulässig
+    const late = await tx.execute(sql`select (veto_turn_deadline is not null and transaction_timestamp() > veto_turn_deadline) as late from matches where id = ${matchId}`);
+    if (rowsOf<{ late: boolean }>(late)[0]?.late) return { status: "late" };
+    if (decline && decline.ok) {
+      // Sitzungswerte je Zeile (Namen baut die Datenbank: evidence_session_key), gelten bis zum Transaktionsende; der Trigger liest sie
+      await tx.execute(sql`select set_config(evidence_session_key('evidence_reason_code', ${matchId}::uuid, ${venueId}::uuid), ${decline.code}, true), set_config(evidence_session_key('evidence_reason', ${matchId}::uuid, ${venueId}::uuid), ${decline.text}, true)`);
+    }
     await tx.update(matchHallRequests).set({ status: accept ? "confirmed" : "declined", answeredBy: userId, answeredAt: new Date() }).where(and(eq(matchHallRequests.matchId, matchId), eq(matchHallRequests.venueId, venueId)));
-    await audit(userId, accept ? "hall.confirm" : "hall.decline", "match", matchId, { after: { venueId } }, tx);
+    await audit(userId, accept ? "hall.confirm" : "hall.decline", "match", matchId, { after: { venueId } }, tx); // nie mit Freitext
     await settleHallCheck(tx, m, new Date());
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);
+    return { status: "answered" };
   });
+  if (result.status === "late") await recordLateAttempt(userId, matchId, venueId);
+  return result;
 }
 
-export type HallInquiry = { matchId: string; number: number | null; venueId: string; venueName: string; startsAt: Date; durationMin: number; home: string; away: string; deadline: Date | null; /** Spielerzahl (keine Namen: Vertrag 011 AC-5, Entscheid P8) */ players: number };
+/**
+ * Antwortversuch nach Fristende im Beweisprotokoll festhalten (Art late_attempt, höchstens einer je Spiel, Halle und Runde). EIGENE kurze Transaktion, nie in der Antwort-Transaktion:
+ * sie hält den globalen Zähler nur Millisekunden. Die Datenbankfunktion prüft Zugang, Fristablauf und die offene Anfrage selbst; Fehler (kein Zugang, Altspiel ohne Protokoll) ändern die Antwort „zu spät“ nicht.
+ */
+export async function recordLateAttempt(userId: string, matchId: string, venueId: string): Promise<boolean> {
+  if (!(await hasVenueAccess(venueId, userId))) return false; // erste Stufe: kein Versuch ohne Zugang
+  try {
+    const res = await db.transaction((tx) => tx.execute(sql`select evidence_late_attempt(${matchId}::uuid, ${venueId}::uuid, ${userId}::uuid) as ok`));
+    return Boolean(rowsOf<{ ok: boolean }>(res)[0]?.ok);
+  } catch (error) {
+    console.error("recordLateAttempt:", (error as { code?: string }).code ?? "Fehler"); // nie die Datenbankmeldung ausgeben
+    return false;
+  }
+}
+
+export type HallInquiry = { matchId: string; number: number | null; venueId: string; venueName: string; startsAt: Date; durationMin: number; home: string; away: string; deadline: Date | null; /** Runde der Anfrage (Plan 011 M2, 3.1): die Aktion schickt sie mit, eine veraltete Seite wird abgelehnt */ round: number; /** Spielerzahl (keine Namen: Vertrag 011 AC-5, Entscheid P8) */ players: number };
 
 /** Offene Anfragen für die Hallen eines Betreibers. */
 export async function pendingHallInquiries(userId: string): Promise<HallInquiry[]> {
@@ -102,8 +152,9 @@ export async function pendingHallInquiries(userId: string): Promise<HallInquiry[
     .innerJoin(matches, and(eq(matches.id, matchHallRequests.matchId), eq(matches.vetoStatus, "halls"), eq(matches.status, "lobby")))
     .where(eq(matchHallRequests.status, "pending"))
     .orderBy(asc(matches.startsAt));
+  const rounds = await currentRoundsOf(db, rows.map((r) => r.matchId));
   const out: HallInquiry[] = [];
-  for (const r of rows) out.push({ matchId: r.matchId, number: r.number, venueId: r.venueId, venueName: r.venueName, startsAt: r.startsAt, durationMin: r.durationMin, deadline: r.deadline, players: r.players, home: await teamName(db, r.homeId), away: await teamName(db, r.awayId) });
+  for (const r of rows) out.push({ round: rounds.get(r.matchId) ?? 0, matchId: r.matchId, number: r.number, venueId: r.venueId, venueName: r.venueName, startsAt: r.startsAt, durationMin: r.durationMin, deadline: r.deadline, players: r.players, home: await teamName(db, r.homeId), away: await teamName(db, r.awayId) });
   return out;
 }
 

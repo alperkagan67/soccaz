@@ -47,10 +47,9 @@ export function validateDecline(input: { code?: string | null; text?: string | n
 }
 
 /**
- * Feature-Weiche (R-T238): Solange die Anbindung an den Server fehlt (Begründung speichern, Runde, Fristgrenze: Plan 011 M2, M2a-2 nach der Nachlieferung 009 M3),
- * darf die Oberfläche **nicht ablehnen**: eine Ablehnung mit Pflichtfeld, die still ohne Speichern läuft, wäre eine Ablehnung ohne Beweis-Grund. Erst mit der Anbindung wird die Weiche auf true gesetzt.
+ * Feature-Weiche (R-T238): Wäre die Anbindung an den Server nicht da (Begründung speichern, Runde, Fristgrenze: Plan 011 M2, M2a-2), dürfte die Oberfläche **nicht ablehnen**: eine Ablehnung mit Pflichtfeld, die still ohne Speichern läuft, wäre eine Ablehnung ohne Beweis-Grund. Mit der Anbindung (M2a-2, Nachlieferung 009 M3 auf main) steht die Weiche auf true.
  */
-export const HALL_DECLINE_WIRED = false;
+export const HALL_DECLINE_WIRED = true;
 export const DECLINE_NOT_WIRED_MESSAGE = "Ablehnen mit Grund folgt. Bitte versuche es später noch einmal.";
 
 export type DeclinePlan =
