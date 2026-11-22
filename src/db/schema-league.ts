@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { matches, teams, users } from "./schema";
 
 // ---------------------------------------------------------------------------------------------
@@ -86,6 +86,14 @@ export const tournaments = pgTable(
     name: text("name").notNull(),
     city: text("city").notNull(),
     venueText: text("venue_text"),
+    // 012 M5-1: Partnerhalle des Turniers (Pflicht im Kartenmodell). Fremdschluessel auf venues (NO ACTION) steht in der Migration, weil schema-finance aus diesem Modul nicht importiert werden soll.
+    venueId: uuid("venue_id"),
+    venueConfirmedAt: timestamp("venue_confirmed_at", { withTimezone: true }), // Zusage der Halle (011): gesetzt durch die Zusage
+    // 009 M3 Nachlieferung (Plan 16d.7): Betreiber, der die Zusage gegeben hat (uuid ohne Fremdschluessel wie evidence_actor.user_id; bei Kontoloeschung NULL)
+    venueConfirmedBy: uuid("venue_confirmed_by"),
+    // beim Fixieren des Preises eingefroren (spaetere Aenderungen wirken nicht auf ein laufendes Turnier): braucht die Halle einen Zugang (Zusage Pflicht), und der Provisionssatz in Prozent
+    venueAccessRequiredSnapshot: boolean("venue_access_required_snapshot"),
+    commissionPercentSnapshot: numeric("commission_percent_snapshot", { precision: 5, scale: 2 }),
     startsOn: date("starts_on").notNull(),
     format: text("format").$type<TournamentFormat>().notNull(),
     maxTeams: integer("max_teams").notNull(),
@@ -107,7 +115,13 @@ export const tournaments = pgTable(
     settledAt: timestamp("settled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [check("tournaments_fee_nonneg", sql`${t.entryFeeCents} >= 0`), check("tournaments_teams_range", sql`${t.maxTeams} between 2 and 32`), index("tournaments_status_idx").on(t.status, t.startsOn)],
+  (t) => [
+    check("tournaments_fee_nonneg", sql`${t.entryFeeCents} >= 0`),
+    check("tournaments_teams_range", sql`${t.maxTeams} between 2 and 32`),
+    check("tournaments_confirmed_needs_venue", sql`${t.venueConfirmedAt} is null or ${t.venueId} is not null`), // Migration: NOT VALID, bereinigt, dann VALIDATE (Plan 16f.2)
+    check("tournaments_confirmed_by_needs_confirmed", sql`${t.venueConfirmedBy} is null or ${t.venueConfirmedAt} is not null`),
+    index("tournaments_status_idx").on(t.status, t.startsOn),
+  ],
 );
 
 export const tournamentTeams = pgTable(
@@ -136,8 +150,18 @@ export const tournamentPlayers = pgTable(
     paidAt: timestamp("paid_at", { withTimezone: true }),
     paidBy: uuid("paid_by").references(() => users.id, { onDelete: "set null" }), // wer gezahlt hat (der Spieler selbst oder der Captain): dorthin gehen Erstattungen
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    // M5-3 "Anteil uebernehmen" im Turnier (nur im eigenen Team): wie match_participants. NO ACTION (kein SET NULL), sonst verletzte ein stilles Nullsetzen cover_consent.
+    coveredByUserId: uuid("covered_by_user_id").references(() => users.id),
+    coverMandateText: text("cover_mandate_text"),
+    coverAcceptedAt: timestamp("cover_accepted_at", { withTimezone: true }),
   },
-  (t) => [primaryKey({ columns: [t.tournamentId, t.userId] }), index("tournament_players_team_idx").on(t.tournamentId, t.teamId)],
+  (t) => [
+    primaryKey({ columns: [t.tournamentId, t.userId] }),
+    index("tournament_players_team_idx").on(t.tournamentId, t.teamId),
+    check("tournament_players_cover_not_self", sql`${t.coveredByUserId} is null or ${t.coveredByUserId} <> ${t.userId}`),
+    check("tournament_players_cover_consent", sql`(${t.coveredByUserId} is null) = (${t.coverAcceptedAt} is null) and (${t.coveredByUserId} is null) = (${t.coverMandateText} is null)`),
+    uniqueIndex("tournament_players_cover_payer_idx").on(t.tournamentId, t.coveredByUserId).where(sql`${t.coveredByUserId} is not null`),
+  ],
 );
 
 /** Ein Spiel im Turnier. Teams sind leer, solange sie noch nicht feststehen (K.-o.-Runden). */

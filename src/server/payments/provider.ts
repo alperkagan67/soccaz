@@ -3,7 +3,8 @@
 // ausschließlich in Stripe Elements im Browser ein (M1b), hier laufen nur Stripe-IDs.
 import { DomainError } from "../teams";
 
-export type ProviderEvent = { id: string; type: string; object: Record<string, unknown> };
+/** created = Zeitpunkt des Ereignisses bei Stripe (Unix-Sekunden), fuer die Reihenfolge von Streit-Ereignissen */
+export type ProviderEvent = { id: string; type: string; object: Record<string, unknown>; created?: number };
 export type CardDisplay = { id: string; brand: string | null; last4: string | null };
 
 export type ChargeStatus = "succeeded" | "requires_action" | "processing" | "failed";
@@ -24,22 +25,41 @@ export interface PaymentProvider {
   /** Nur Anzeigedaten (Marke, letzte vier Ziffern). */
   retrievePaymentMethod(id: string): Promise<CardDisplay>;
   detachPaymentMethod(id: string): Promise<void>;
+  /** Loescht den Kunden samt Zahlungsmitteln bei Stripe (DSGVO, M4b). Idempotent: gibt es den Kunden nicht (mehr), ist das Erfolg. Netzfehler werfen. Stripe behaelt Transaktionsdaten nach eigenen Pflichten. */
+  deleteCustomer(customerId: string): Promise<void>;
   /**
    * Bucht einen Betrag mit dem gespeicherten Zahlungsmittel ab (off_session, sofort bestätigt, EUR). Der idempotencyKey (je Spieler und Spiel) verhindert
    * eine zweite Belastung bei Wiederholung. Abgelehnte oder authentifizierungspflichtige Karten liefern ein Ergebnis mit id und Status, keinen Fehler;
    * ein Fehler (Netz, Stripe) bedeutet "Ergebnis unbekannt".
    */
-  createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult>;
+  createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string } }): Promise<ChargeResult>;
   /**
    * Erstattet eine Abbuchung auf die Karte (voller gezahlter Betrag, EUR). Der idempotencyKey (je Abbuchungszeile) verhindert eine zweite Erstattung bei Wiederholung.
    * Eine von Stripe abgelehnte Erstattung (z. B. charge_disputed) ist ein Ergebnis mit status failed; ein Fehler (Netz, Stripe) bedeutet "Ergebnis unbekannt".
    */
-  createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult>;
+  createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string; chargeId: string } }): Promise<RefundResult>;
   /**
    * Sucht PaymentIntents zu Spiel und Nutzer (Metadaten). Für Abbuchungen mit unbekanntem Ausgang: gibt es bei Stripe einen PaymentIntent, den wir nicht kennen?
    * Die Suche von Stripe ist verzögert konsistent: eine leere Antwort beweist nur etwas, wenn der Versuch schon eine Weile zurückliegt.
    */
   findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]>;
+  /**
+   * Bricht einen offenen PaymentIntent ab (vor einem neuen Versuch im Nachzahlfenster: nie zwei offene Versuche). Ist er schon abgebrochen: canceled.
+   * Hat er in der Zwischenzeit geklappt: succeeded (dann wird verbucht statt neu gesendet). Netzfehler werfen.
+   */
+  cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }>;
+  /**
+   * Liest einen BEKANNTEN PaymentIntent (konsistent, anders als die Suche). null = bei Stripe nicht vorhanden. Fuer den Neuversuch im Nachzahlfenster:
+   * die Suche ist verzoegert konsistent und bleibt unbekannten Ausgaengen (unknown_outcome) vorbehalten.
+   */
+  retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null>;
+  /** Zahlungsstreit samt Balance-Transactions (M4a); null, wenn es ihn nicht gibt. Netzaufruf, nie in einer Transaktion. Das Ergebnis ist ungepruefte Eingabe (siehe dispute-parse.ts). */
+  retrieveDispute(disputeId: string): Promise<Record<string, unknown> | null>;
+  /**
+   * Liest einen BEKANNTEN PaymentIntent samt clientSecret (nur fuer die 3-D-Secure-Freigabe des Betroffenen, M3c-1c). Das Secret geht nie in Logs, Audit, URLs oder Seiten-Props,
+   * nur als Ergebnis der Server-Aktion an den Betroffenen. null = bei Stripe nicht vorhanden.
+   */
+  retrievePaymentIntentSecret(paymentIntentId: string): Promise<{ intent: FoundIntent; clientSecret: string } | null>;
   /** Echte Stripe-Gebühr der Zahlung in Cent (aus der balance_transaction), oder null, wenn noch nicht verfügbar. Nie geschätzt. */
   retrieveChargeFee(paymentIntentId: string): Promise<number | null>;
   /** Ist das Zahlungsmittel bei Stripe noch nutzbar: existiert, gehört noch zu diesem Kunden (nicht gelöst) und ist nicht abgelaufen? */

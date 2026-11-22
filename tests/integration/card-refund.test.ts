@@ -13,7 +13,7 @@ import { PaymentIdempotencyError, setPaymentProviderForTests } from "@/server/pa
 import { adminCancelMatch, progressCancel, REFUND_LEASE_MS, requestMatchCancel, runRefunds, SEARCH_MIN_AGE_MS } from "@/server/payments/refund";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { setSetting } from "@/server/settings";
-import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch, SHARE_ACCOUNT } from "./helpers";
 
 let provider: FakeProvider;
 beforeAll(async () => {
@@ -84,7 +84,7 @@ describe("Absage mit Erstattung auf die Karte", () => {
     }
     const entries = await refundEntries(g);
     expect(entries).toHaveLength(g.n);
-    expect(entries.every((e) => e.debitAccount === "revenue" && e.creditAccount === "clearing")).toBe(true);
+    expect(entries.every((e) => e.debitAccount === SHARE_ACCOUNT && e.creditAccount === "clearing")).toBe(true);
     expect(entries.reduce((s, e) => s + e.amountCents, 0)).toBe(charges.reduce((s, c) => s + c.amountCents, 0));
     // die Stripe-Gebühr bleibt gebucht (Soccaz trägt sie), es wird nichts zurückgebucht
     expect((await ledgerOf(g)).filter((e) => e.kind === "fee")).toHaveLength(before.filter((e) => e.kind === "fee").length);

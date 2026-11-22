@@ -28,6 +28,32 @@ Der Nutzer hat G1 für diesen Vertrag erteilt, mit diesen Bedingungen und Entsch
 - Ligen, Profitag und Stadt-Challenge sind ZURÜCKGESTELLT und AUSGEBLENDET (nicht verlinken, Stadt-Challenge auf `/rangliste` ausblenden), aber NICHT GELÖSCHT (die Firmenliga aus 014 kann darauf aufbauen).
 - Degradiertes oder Blockiertes (Klassifizierer, Impeccable, Playwright) geht sofort als `NEEDS-USER`, spätestens nach 15 Minuten.
 
+### Sichtbarkeitsmatrix Rolle × Datenfeld (Produktfrage 3, vom Nutzer bestätigt; Eintrag 2026-11-12)
+Eine Regel für Lobby, Spielsuche und Kader. Zwei Begriffe von „Gast“ (Entscheid t9): Für Namen, Elo und Position heißt Gast „nicht angemeldet“; für den Zahlstatus je Person heißt Gast „keine Teilnahme am Spiel“. Stand der Tabelle: **Soll**; wo die Zelle auf `origin/main` (114ddcc) noch nicht gilt, steht „Soll ab M2b“ (Code auf `feat/m2b-look`, noch nicht gemergt). Die Entscheidung fällt auf dem Server; der Browser bekommt nie den Rohstatus oder den Fehlercode. Code: `src/lib/card-visibility.ts` (`audienceFor`, `canSeeAnyStatus`), `src/app/lobby/[id]/page.tsx`.
+
+| Datenfeld | Gast (nicht angemeldet) | Angemeldet, keine Teilnahme | Mitspieler | Betroffener (der eigene Platz) | Captain/Veranstalter/Admin des Teams, Plattform-Admin |
+|---|---|---|---|---|---|
+| Plätze und Bereitschaft als Zahlen („3 von 6 Plätzen“, „2 von 4 bereit“) | ja | ja | ja | ja | ja |
+| Initialen statt Name | ja (nur das) | nein, Namen | nein, Namen | nein, Namen | nein, Namen |
+| Name, Elo, Position je Person | nein | ja | ja | ja | ja |
+| Team-Elo und Team-Spielstärke (nicht pro Person; `lobby/[id]/page.tsx:410`, Kopfzeile der Teamkarte) | ja | ja | ja | ja | ja |
+| Kartenstatus je Person | nichts | nichts | nur neutral: „Zahlung ausstehend“ (deckt „fehlgeschlagen“ und „keine Karte“ ab) oder „gedeckt“ bzw. „Karte hinterlegt“; nie der Grund | echter Status; bei gültiger Übernahme `card_ready` mit „gedeckt“ (`card-visibility.ts:22`) | echter Status (Captain sieht bei Übernahme den echten Status) |
+| Fehlerzustand „Abbuchung fehlgeschlagen“ mit Grund und Weg „Karte ändern“ | nein | nein | nein (nur „Zahlung ausstehend“) | ja | ja (je betroffene Person mit Grund) |
+| Bereit-Badge je Person (**Soll ab M2b**: „Bereit“, „Noch nicht bereit“; „Bereit, Zahlung offen“ nur wo der echte Status sichtbar ist). Stand main: im Kartenmodus nur die Ampel `CardLight` aus `cardDisplays` (für Gast und Nichtteilnehmer `null`); der Altmodus zeigt über `canSeeLights` die `PlayerLight` mit „Bereit“ / „Bereit und bezahlt“ | nein | nein | ja (ohne „Zahlung offen“) | ja | ja |
+| Ampel-Legende | nein | nein | ja | ja | ja |
+| Eintrag „Abbuchung fehlgeschlagen“ in der Legende (**Soll ab M2b**; auf main zeigt `CardLightLegend` immer dieselben `CARD_LEGEND`-Einträge) | nein | nein | nein | ja, wenn der eigene Platz betroffen ist | ja, wenn es einen betroffenen Platz gibt |
+
+Regeln dazu:
+- Soll ab M2b: Der Bereit-Badge hängt an `canSeeLights` (`canSeeAnyStatus`): angemeldet und (Teilnahme oder Plattform-Admin oder Admin eines der Teams). Gäste und Fremde sehen ihn nie. Ist-Stand main: `canSeeLights` schaltet nur die `PlayerLight` des Altmodus; im Kartenmodus entscheidet allein `cardDisplays` (für Gast und Nichtteilnehmer `null`).
+- Kartenstatus: Dritte sehen nie den Grund; bei „gedeckt“ ist die Folge, dass Dritte erkennen, dass der Platz keine eigene Karte hatte, bewusst angenommen (`begriffe.md` Entscheid 11).
+- Soll ab M2b: Die Legende nennt „Abbuchung fehlgeschlagen“ nur, wenn der Betrachter diesen Zustand an einer Zeile sehen darf.
+- Prüfung: Tests je Rolle auf Seite und Live-Kanal (SSE) und RSC-Nutzlast, nicht nur auf das sichtbare HTML (012 AC-12/AC-20).
+
+### Entscheide zu AC-5-Konflikten (Auftrag t1d, 2026-11-12)
+AC-5 („Keine URL und keine Test-ID geändert, alle bisherigen E2E grün“) gilt weiter; Texte, die ein bestehender Test per Namen bindet, ändern sich deshalb nur zusammen mit dem Test. Daraus folgt für M2b:
+- „Ja, mein Team ist komplett: Spiel bestätigen“ (`payments.spec.ts:284,286`, `privatspiel.spec.ts:395`, `uebersicht.spec.ts:41,46`), „Karte ändern“ (`karte-privatsphaere.spec.ts:229`, `card-fail-notify.test.ts:70`) und „Anmelden und beitreten“ (`team-invite.spec.ts:33`) bleiben bis M3 unverändert. Die Wortwahl-Umstellung geschieht zusammen mit den Tests in M3.
+- Das Duplikat „Lobby aufmachen“ im Schnellzugriff von `/app` entfällt mit `AppNav` (M3); bis dahin bleibt es, weil `basics.spec.ts:38-39` es für neue Nutzer prüft (Backlog 76).
+
 ## Annahmen (Orchestrator-Vorschlag)
 - `DESIGN.md` wird in M2 komplett auf Richtung E umgeschrieben (Frontmatter, Tokens, Beispiele); der Ist-Stand-Teil entfällt.
 - Teststrategie: bestehende `data-testid` und URLs bleiben; neue Elemente bekommen Test-IDs nach vorhandenem Muster.
@@ -96,3 +122,87 @@ Keine neuen Daten. Neue Abhängigkeiten (falls Radix, ADR 0002): security-review
 
 ## End-to-End-Nachweis
 `tests/e2e/` Gesamtstrecke je Rolle (Gast: Suche und Lobby ansehen; Spieler: beitreten, Karte hinterlegen; Captain: bereit, Termin; Admin: Spiel ansehen) auf 390 px und 1280 px, grün, mit Screenshots im PR; Pilot-Test nach M3 als Gate.
+
+
+---
+
+## Änderung Version 3 (Entwurf)
+
+> **Status: Entwurf Version 3, wartet auf G1 (Nutzer).** Version 2 (G1 2026-11-11) bleibt **gültig**, bis der Nutzer diese Änderung freigibt. Dieser Abschnitt ergänzt Version 2 und löscht oder überschreibt nichts davor; widersprechende Stellen oben gelten erst nach G1 als ersetzt.
+
+Status: ENTWURF, wartet auf G1 (Nutzer). Basis: Version 2 (G1 2026-11-11). Anlass: Look-Abnahme M2b vom 2026-11-22, Punkt 1 = NEIN.
+Version: 3 (Entwurf)
+
+### 1. Entscheidungen des Nutzers (2026-11-22, Look-Abnahme M2b)
+- Richtung E „Trikot“ ist als Look **abgelehnt** („zu schlicht, nicht benutzerfreundlich genug“). Neue Richtung **F „Spielerkarte“**, inspiriert von EA FC Ultimate Team, aber **eigene Gestaltung ohne Nachbau von EA-Designs oder -Marken**.
+- **Zweites Vorbild (Nachtrag 2026-11-22): die App Vero** für die Anmutung: dunkel, elegant, hochwertig, wie ein soziales Netzwerk für Fußballfans; **eigene Gestaltung, kein Nachbau**. Gemeint ist der **Look** (ruhig, großzügig, Inhalt vor Rahmen), **nicht** neue soziale Funktionen (Feed, Folgen, Beiträge sind Nicht-Ziel, eigener Vertrag falls gewünscht).
+- Jeder Spieler hat eine **Spielerkarte** mit **Wertung (aus der Elo)** und **Position**; **Teamkarten in den Trikotfarben**.
+- **Dunkle Grundfläche mit Leucht-Effekten**, **Animationen** (Karten-Aufdecken bei Ergebnissen, Aufstieg), insgesamt hochwertig und modern. **Effekte dürfen am Handy nicht ruckeln.**
+- **Pflicht:** alle wichtigen Abläufe **Schritt für Schritt mit „Weiter“-Knopf**; zuerst das **Hallen-Onboarding** (Adresse, Anzahl Plätze, Preise für 60 und 90 Minuten, am Ende Mitglied).
+- Punkte 2 bis 8 der Abnahme: 2 so lassen (ruhiger zweiter „Anmelden“-Knopf am Seitenende), 3 Rand ruhiger Knöpfe stärker, 4 test-gebundene Texte dürfen geändert werden (Tests werden angepasst), 5 Hero-Standbild statt Video bis zur Lizenzklärung, 6 Kopfleisten-Betrag und `/app/guthaben` vorerst stehen lassen, **aber vor dem Pilot-Test ist kein Guthaben mehr sichtbar** (AC-14 bleibt hart), 7 umbrechende Kader-Zeilen am Handy beheben, 8 **Kontrastmessung vor M3 ist Pflicht.**
+
+### 2. Was bleibt, was sich ändert
+- **Bleibt (Version 2):** Ziel, Rollen, URLs und Test-IDs fest (AC-5), `AppNav` nach 007, Sichtbarkeitsmatrix, ADR 0002 (nativ, kein shadcn/Radix), Barrierefreiheit (AC-3, AC-4, AC-10), Impeccable-Pflicht (AC-6, AC-15), Pilot-Test nach M3 (AC-8), Guthaben weg vor dem Pilot (AC-14), keine neue Datenbank.
+- **Bleibt als Technik-Grundlage** aus M2/M2b: Basisbausteine (`Button`, `PageShell`, `StateMessage`, `StatusBadge`, `ConfirmDialog`, `Form`), `format.ts`, Begriffsverzeichnis, `UserMenu`, Lint- und UI-Regeltests. Der Look-Branch `feat/m2b-look` wird **nicht** gemergt; brauchbare Teile (Struktur, Texte, Tests, Kader-Fix) werden in M2c übernommen.
+- **Ändert sich:** `DESIGN.md` wird auf Richtung F umgeschrieben (Tokens, Kartenform, Glow, Bewegung, Schriften), die Seitenköpfe/Karten-Bausteine bekommen den neuen Look, und es kommt ein Baustein für **Schritt-für-Schritt-Abläufe** hinzu. Richtung E gilt nur noch dort, wo F sie nicht ersetzt (Status-Tokens, Navigationsstruktur).
+
+### 3. Design-Festlegungen Richtung F (Orchestrator, innerhalb der Nutzerrahmen)
+1. **Grundfläche** dunkel (Anthrazit/Tiefblau), Hellmodus bleibt nach Systemeinstellung (007) als ruhige Variante derselben Karten (kein Glow auf hell, dafür Rand und Schatten).
+2. **Spielerkarte** (`PlayerCard`): Wertung 0 bis 99 groß, Position (Kürzel + Wort), Name (nur angemeldete Nutzer), Teamfarbe als Akzent, Stufe der Karte (eigene Stufennamen, siehe 4). Gäste sehen eine **neutrale Karte** (Initialen und Zahlen, **keine Wertung, kein Name**), entsprechend der Sichtbarkeitsmatrix. **Keine Fotos** und keine Uploads.
+3. **Teamkarte** (`TeamCard`): Trikotfarben des Teams (`teams`-Farbe aus 007), Wappen-Platzhalter aus Initialen, Teamwertung (Durchschnitt der Mitglieder-Wertungen, nur Zahl).
+4. **Wertung aus Elo:** reine Anzeigefunktion `ratingFromElo(elo) -> 0..99`, monoton, deterministisch, in `src/lib/` mit Tabellentest; Neuling (Elo 1000) = Startwertung. **Stufen** (eigene Namen, nicht „Bronze/Silber/Gold/Special“ aus dem Vorbild): Kreide, Rasen, Flutlicht, Pokal, Legende; Schwellen in `DESIGN.md`. **Keine neuen Daten:** Aufstieg erkennt die Stufe aus dem vorhandenen Elo-Verlauf.
+5. **Bewegung:** (a) **Karten-Aufdecken** nach bestätigtem Ergebnis (Elo-Änderung sichtbar: alte Wertung → neue, Pfeil), (b) **Aufstieg** bei Stufenwechsel (einmalig, pro Aufstieg nur einmal gezeigt, Merker im Browser, kein Serverzustand), (c) Kartenaufbau/Hover/Fokus dezent. Jede Animation endet im selben Zustand wie die statische Darstellung (die Information steht immer auch als Text da).
+6. **Anmutung „soziales Netzwerk“ (Vorbild Vero):** ruhige, großzügige Flächen, Inhalte (Karten, Spiele, Ergebnisse) stehen vor Rahmen und Menüs, wenige Linien und Kästen, Typografie trägt die Hierarchie, höchstens zwei Akzentfarben je Ansicht (Teamfarbe, Leuchtfarbe), keine Werbe- oder Banner-Optik. Fan-Gefühl entsteht durch Karten, Teamfarben und Ergebnisse, nicht durch neue Funktionen.
+7. **Eigenständigkeit gegenüber den Vorbildern (EA FC Ultimate Team und Vero):** eigene Kartensilhouette (nicht die FUT-Form), eigene Schrift/Farbwelt/Stufennamen/Begriffe, **keine** EA-/FIFA-/FC-/FUT- und Vero-Namen, -Logos, -Schriften, -Kartenvorlagen oder -Screenshots im Repo oder auf der Oberfläche. Eine Markenprüfung ist ein Punkt für den Anwalt (GO-LIVE-AUDIT, Rechtsliste), blockiert aber den Look-Bau nicht.
+
+### 4. Schritt-für-Schritt-Abläufe (Baustein `Assistent`)
+- **Baustein:** `Assistent` (Stepper): Fortschrittsanzeige („Schritt 2 von 5“), **Weiter** und **Zurück**, ein Gedanke pro Schritt, Pflichtfelder je Schritt geprüft, **Fehler am Feld**, **Entwurf bleibt erhalten** (Browser-Sitzung; Neuladen verliert nichts), am Ende **Zusammenfassung** und eine Abschluss-Handlung. Schritte laufen **auf derselben URL** (Zustand oder `?schritt=`), **keine neuen Seiten/URLs** (AC-5). Tastatur: Enter = Weiter, Fokus springt auf die Überschrift des Schritts, `aria-current="step"`.
+- **Reihenfolge der Umsetzung:**
+  1. **Hallen-Onboarding (zuerst):** (1) Name und **Adresse**, (2) **Anzahl Plätze**, (3) **Preise für 60 und 90 Minuten** je Platz (bestehende Preislogik, Mindest-/Höchstwerte wie im Server geprüft), (4) Zusammenfassung, (5) **Abschluss: Mitglied werden** (Bedingungen bestätigen, Halle ist angelegt und der Betreiber-Zugang aktiv; Provisionssatz laut 012 sichtbar). Ausgangslage und Server-Aktionen: bestehende Halle-anlegen-/011-Wege, keine neue Geldlogik.
+  2. Spieler-Onboarding (Willkommen: Stadt, Position, Geburtsdatum, Zustimmung).
+  3. Spiel/Privatspiel anlegen, Team anlegen, Turnier anlegen.
+  4. Karte hinterlegen (012) und Ergebnis eintragen/bestätigen.
+- Weitere Abläufe (Konto löschen mit Rückfrage u. a.) folgen mit ihren Seitengruppen (M4 bis M7).
+
+### 5. Neue und geänderte Akzeptanzkriterien (Checkliste, jeweils prüfbar)
+| ID | Gegeben | Wenn | Dann | Check |
+|---|---|---|---|---|
+| AC-16 | `DESIGN.md` (Richtung F) | Review | Tokens (Farben, Glow, Stufen, Bewegung, Schriften) stehen in `DESIGN.md`, alle Farben/Radien/Dauern kommen aus Tokens (keine Hartwerte in Komponenten); E-Reste entfernt | Lint-/Token-Test, Review |
+| AC-17 | `PlayerCard`, Gast / Spieler / Captain | Seite zeigt Karten | Gast: keine Wertung, kein Name (Initialen, Zahlen); angemeldet: Name, Wertung, Position; Hallenbetreiber: **namenfrei**; kein Datenfeld außerhalb der Sichtbarkeitsmatrix im HTML/RSC | Test über HTML/RSC je Rolle, `canSee` |
+| AC-18 | `ratingFromElo` | Elo 0 bis 3000 | Ergebnis 0 bis 99, monoton, Startwert bei Elo 1000 dokumentiert; Stufenwechsel an den Schwellen aus `DESIGN.md` | `tests/unit/rating.test.ts` (Tabelle + Grenzwerte) |
+| AC-19 | `TeamCard` | Team mit Farbe | Trikotfarben als Akzent; Text-/Zeichenkontrast auf der Farbfläche besteht (4,5:1 / 3:1) auch bei hellen Teamfarben (automatische Textfarbe) | Kontrasttest über Farbpalette der Teamfarben |
+| AC-20 | Ergebnis wird bestätigt | Spieler öffnet das Spiel | Karten-Aufdecken zeigt alte und neue Wertung und die Änderung; **derselbe Inhalt als Text** (ohne Animation les- und prüfbar); bei Aufstieg einmalige Aufstiegs-Animation, danach nicht mehr | E2E mit Seed (Ergebnis, Aufstieg), Screenshot vorher/nachher + Video |
+| AC-21 | **Leistung Handy** | Playwright mit 4-fach CPU-Drosselung, Emulation 390 px | Während jeder Animation: keine Long Tasks über 50 ms, Layout-Verschiebung (CLS) 0, mindestens 55 fps im Mittel (Trace-Auswertung), Interaktion nach Tippen unter 200 ms; höchstens **6 gleichzeitig animierte Karten** | `tests/e2e/performance-animation.spec.ts` (CI-Artefakt: Trace) |
+| AC-22 | Animation und Glow | Lint-/Stilregel | Animiert werden nur `transform` und `opacity`; kein Animieren von `width/height/top/left/margin/box-shadow/filter`; Glow als statische Fläche (Verlauf/Pseudo-Element), nur Deckkraft animiert; `will-change` nur während der Animation; **keine Animationsbibliothek ohne ADR 0003** (Standard: CSS/Web Animations) | Stylelint-/Test-Regel, Review |
+| AC-23 | Reduced Motion, Datensparmodus | `prefers-reduced-motion: reduce` | Aufdecken und Aufstieg ersetzt durch Ein-/Ausblenden unter 150 ms ohne Bewegung; alle Informationen bleiben | E2E mit emulierter Einstellung |
+| AC-24 | **Echtes Gerät** | Nutzer prüft auf seinem Handy (Server oder Vorschau) | Karten, Aufdecken und Aufstieg laufen flüssig; Ergebnis im Abnahmeprotokoll des Nutzers (Gate M2c) | Nutzer-Abnahme (NEEDS-USER) |
+| AC-25 | `Assistent` | Hallen-Onboarding durchlaufen | 5 Schritte mit Weiter/Zurück; Pflichtprüfung je Schritt; Entwurf übersteht Neuladen; Abschluss legt Halle und aktiven Betreiber-Zugang an; Tastatur komplett; Fehler am Feld; keine neue URL | `tests/e2e/halle-onboarding.spec.ts` (390 und 1280 px), a11y-Test |
+| AC-26 | Weitere Abläufe aus Abschnitt 4 | je Etappe | wie AC-25 mit eigener Spec; jeder neue Ablauf hat Test-ID je Schritt und Knopf | je Spec |
+| AC-27 | Kontrast | **vor M3** | Messprotokoll für **alle** neuen Flächen: Text auf Glow/Verlauf/Teamfarben, Karten, Kopf-/Fußzeile, Lobby, `/app`, angemeldete Rollen, hell und dunkel, 390 und 1280 px (WCAG 4,5:1 Text, 3:1 Zeichen und Fokusring) | Messskript + Protokoll im PR, alle bestanden |
+| AC-28 | Abnahme-Punkte 3, 5, 7 | PR M2c | Rand ruhiger Knöpfe stärker (Kontrast ≥ 3:1 zum Umfeld), Hero zeigt das Standbild (Video nur nach Lizenz), Kader-Zeilen brechen am Handy nicht um | Screenshots 390 px, Test auf Zeilenhöhe |
+| AC-29 | Eigenständigkeit | Review/Prüfskript | Kein Fremdmaterial (Logos, Schriften, Namen, Screenshots, Icon-Sätze aus der Vorbildliste: EA FC/FUT, Vero) im Repo; Schriften mit Lizenznachweis in `DESIGN.md`; Stufennamen und Kartenform eigen | Skript-Suche + Review |
+| AC-30 | Anmutung (Vorbild Vero, eigene Gestaltung) | Review jeder umgebauten Seite (Start, `/app`, Lobby, Karten) | (a) Abstände nur aus der Token-Skala, Mindestabstand zwischen Blöcken 16 px (Handy) / 24 px (Desktop); (b) höchstens **eine** Hauptaktion und **zwei** Akzentfarben je Ansicht; (c) keine doppelten Rahmen (Karte in Karte); (d) die erste Ansicht auf 390 px zeigt Inhalt und Hauptaktion ohne Scrollen; (e) höchstens 4 Schriftgrößen je Ansicht; (f) keine Werbe-/Banner-Optik; (g) der Nutzer bestätigt die Anmutung in der Look-Abnahme 2 | Stilregel-Test (Token/Zählung), Screenshot-Review, Nutzer-Abnahme |
+| AC-14 (bestätigt) | Vor dem Pilot-Test | Ein Spieler nutzt die Plattform | Kein Guthaben sichtbar (Kopfleiste, Konto, `/app/guthaben`, Texte); dafür liegt **012 M6a/M6b vor dem Pilot-Test** | Test über alle Rollen |
+
+### 6. Meilensteine (Änderung)
+- **M2c (neu), 8 bis 12 Task-Tage:** `DESIGN.md` Richtung F, Tokens und Schriften, `PlayerCard`/`TeamCard`, `ratingFromElo`, Bewegungsbausteine mit Leistungstest (AC-16 bis AC-24, AC-28 bis AC-30), `Assistent`-Baustein; Start, `/app` und Lobby im neuen Look. **Gate M2c = Look-Abnahme 2** durch den Nutzer: Bilder (390/1280, hell/dunkel), **Videos der Animationen**, Live-Server, **Prüfung auf seinem Handy (AC-24)**.
+- **M2d (neu), 3 bis 4 Task-Tage:** Hallen-Onboarding Schritt für Schritt (AC-25), danach Spieler-Onboarding.
+- **Dann M3** wie Version 2 (Navigation und Einstieg), **vorher AC-27 (Kontrastmessung) bestanden**; danach Pilot-Test (AC-8) **ohne Guthaben (AC-14)**.
+- Aufwand gesamt Version 3: etwa **47 bis 64 Task-Tage** (Version 2: 36 bis 48, plus M2c/M2d, minus Teile aus M2b). Reihenfolge parallel laufender Arbeiten (011, 012, 009, 010) bleibt, deren Oberflächen entstehen auf der neuen Grundlage M2c.
+- Der Look-Branch `feat/m2b-look` wird nicht gemergt (Aufwand 1 bis 1,5 Tage entfällt); der Umbau startet nach G1 für diese Änderung.
+
+### 7. Risiken
+- **Leistung am Handy** ist das Hauptrisiko: harte Messkriterien (AC-21/22), Karten-Anzahl begrenzt, Effekte auf Kartenansichten nur dort, wo sie Nutzen haben; lange Listen (Rangliste, Spielersuche) zeigen einfache Zeilen statt Vollkarten.
+- **Markenrecht/Ähnlichkeit** zu den Vorbildern (EA FC, Vero): eigenes Design (AC-29), Anwaltsprüfung (Rechtsliste).
+- **Erwartung „soziales Netzwerk“:** Der Look weckt Erwartungen an Feed und Folgen; die gibt es in 013 nicht (Nicht-Ziel), das wird in der Abnahme klar benannt.
+- **Datenschutz:** Karten zeigen Namen und Wertung nur angemeldeten Nutzern (AC-17); Aufstiegs-Merker nur im Browser.
+- **Aufwand/Zeit:** M2c ist der größte neue Block; Pilot-Test verschiebt sich entsprechend.
+- **Lesbarkeit auf Glow:** AC-27 vor M3 ist Pflicht.
+
+### 8. Annahmen, die du mit Ja/Nein bestätigen kannst
+1. „Am Ende Mitglied“ im Hallen-Onboarding = Abschluss-Schritt **„Mitglied werden“** (Bedingungen bestätigen, Halle angelegt, Betreiber-Zugang aktiv).
+2. Stufennamen **Kreide, Rasen, Flutlicht, Pokal, Legende** (eigene Namen).
+3. Keine Fotos/Uploads auf Karten (Initialen und Teamfarbe).
+4. Gäste sehen neutrale Karten ohne Wertung.
+5. Hell-Variante bleibt (ruhig, ohne Glow).
+6. Vero ist Vorbild nur für den **Look**; soziale Funktionen (Feed, Folgen) sind **nicht** Teil von 013.

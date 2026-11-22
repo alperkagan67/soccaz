@@ -45,6 +45,19 @@ export class FakeProvider implements PaymentProvider {
     this.detached.add(id);
   }
 
+  /** Test-Hilfe (M4b): Ausgang von deleteCustomer je Kunde (Standard: ok); "error" wirft einen Netzfehler. Geloeschte Kunden stehen in deletedCustomers. */
+  readonly deletedCustomers = new Set<string>();
+  private readonly deleteOutcome = new Map<string, "ok" | "error">();
+  setDeleteCustomerOutcome(customerId: string | "*", outcome: "ok" | "error") {
+    this.deleteOutcome.set(customerId, outcome);
+  }
+  async deleteCustomer(customerId: string): Promise<void> {
+    this.probe("deleteCustomer");
+    this.calls.push({ method: "deleteCustomer", args: { customerId } });
+    if ((this.deleteOutcome.get(customerId) ?? this.deleteOutcome.get("*")) === "error") throw new Error("Netz weg");
+    this.deletedCustomers.add(customerId); // zweiter Aufruf fuer denselben Kunden: weiter Erfolg (idempotent)
+  }
+
   /** Test-Hilfe: macht dieses Zahlungsmittel unbrauchbar (abgelaufen, gelöst) oder wieder nutzbar. */
   setUsable(id: string, usable: boolean) {
     if (usable) this.unusable.delete(id);
@@ -68,16 +81,30 @@ export class FakeProvider implements PaymentProvider {
     if (this.inTransaction?.()) this.violations.push(method);
   }
 
-  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult> {
+  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string } }): Promise<ChargeResult> {
     this.probe("createPaymentIntent");
-    this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
+    this.calls.push({ method: "createPaymentIntent", args: { amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata, customerId: input.customerId } });
     const outcome = this.outcomes.get(input.metadata.userId) ?? "succeeded";
     if (outcome === "error") throw new Error("Netz weg");
     if (outcome === "idempotency_mismatch") throw new PaymentIdempotencyError();
     const id = `pi_fake_${short(input.idempotencyKey)}`; // gleicher Schlüssel, gleicher PaymentIntent (wie bei Stripe)
-    if (outcome === "succeeded") return { id, status: "succeeded", failureCode: null };
-    if (outcome === "processing") return { id, status: "processing", failureCode: null };
-    if (outcome === "requires_action") return { id, status: "requires_action", failureCode: "authentication_required" };
+    // Der Fake merkt sich den Zustand, den "Stripe" jetzt haette (fuer retrievePaymentIntent); setIntentStatus ueberschreibt ihn in Tests
+    const remember = (status: FoundIntent["status"], failureCode: string | null) => {
+      this.intents.set(id, { id, status, amountCents: input.amountCents, currency: "eur", customerId: input.customerId, failureCode });
+    };
+    if (outcome === "succeeded") {
+      remember("succeeded", null);
+      return { id, status: "succeeded", failureCode: null };
+    }
+    if (outcome === "processing") {
+      remember("processing", null);
+      return { id, status: "processing", failureCode: null };
+    }
+    if (outcome === "requires_action") {
+      remember("requires_action", "authentication_required");
+      return { id, status: "requires_action", failureCode: "authentication_required" };
+    }
+    remember("failed", "card_declined");
     return { id, status: "failed", failureCode: "card_declined" };
   }
 
@@ -87,7 +114,7 @@ export class FakeProvider implements PaymentProvider {
     this.refundOutcomes.set(userId, outcome);
   }
 
-  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult> {
+  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string; chargeId: string } }): Promise<RefundResult> {
     this.probe("createRefund");
     this.calls.push({ method: "createRefund", args: { paymentIntentId: input.paymentIntentId, amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
     const outcome = this.refundOutcomes.get(input.metadata.userId) ?? "succeeded";
@@ -103,6 +130,51 @@ export class FakeProvider implements PaymentProvider {
   private readonly found = new Map<string, FoundIntent[]>();
   setFound(matchId: string, userId: string, list: FoundIntent[]) {
     this.found.set(`${matchId}:${userId}`, list);
+  }
+
+  /** Test-Hilfe: Zustand eines PaymentIntents bei "Stripe" (retrieve). Von uns angelegte PaymentIntents kennt der Fake mit dem Ausgang der Anlage; unbekannte IDs liefern null. */
+  private readonly intents = new Map<string, FoundIntent>();
+  setIntentStatus(id: string, status: FoundIntent["status"], extra: Partial<FoundIntent> = {}) {
+    this.intents.set(id, { id, status, amountCents: 800, currency: "eur", customerId: null, failureCode: null, ...extra });
+  }
+
+  /** Test-Hilfe: das Fake-Secret eines PaymentIntents ist 'pi_..._secret_fake'; Zustand wie bei retrievePaymentIntent. */
+  async retrievePaymentIntentSecret(paymentIntentId: string): Promise<{ intent: FoundIntent; clientSecret: string } | null> {
+    this.probe("retrievePaymentIntentSecret");
+    this.calls.push({ method: "retrievePaymentIntentSecret", args: { paymentIntentId } });
+    const intent = this.intents.get(paymentIntentId);
+    return intent ? { intent, clientSecret: `${paymentIntentId}_secret_fake` } : null;
+  }
+
+  /** Test-Hilfe (M4a): ein Streit-Objekt, das retrieveDispute liefert (wie bei Stripe samt Balance-Transactions). */
+  private readonly disputes = new Map<string, Record<string, unknown>>();
+  setDispute(dispute: Record<string, unknown> & { id: string }) {
+    this.disputes.set(dispute.id, dispute);
+  }
+  async retrieveDispute(disputeId: string): Promise<Record<string, unknown> | null> {
+    this.probe("retrieveDispute");
+    this.calls.push({ method: "retrieveDispute", args: { disputeId } });
+    return this.disputes.get(disputeId) ?? null;
+  }
+
+  async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {
+    this.probe("retrievePaymentIntent");
+    this.calls.push({ method: "retrievePaymentIntent", args: { paymentIntentId } });
+    return this.intents.get(paymentIntentId) ?? null;
+  }
+
+  /** Test-Hilfe: Ergebnis von cancelPaymentIntent je PaymentIntent (Standard: canceled); "error" wirft einen Netzfehler. */
+  private readonly cancelOutcome = new Map<string, "canceled" | "succeeded" | "other" | "error">();
+  setCancelOutcome(paymentIntentId: string, outcome: "canceled" | "succeeded" | "other" | "error") {
+    this.cancelOutcome.set(paymentIntentId, outcome);
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }> {
+    this.probe("cancelPaymentIntent");
+    this.calls.push({ method: "cancelPaymentIntent", args: { paymentIntentId } });
+    const outcome = this.cancelOutcome.get(paymentIntentId) ?? "canceled";
+    if (outcome === "error") throw new Error("Netzfehler (Test)");
+    return { status: outcome };
   }
 
   async findPaymentIntents(input: { matchId: string; userId: string }): Promise<FoundIntent[]> {
@@ -128,19 +200,19 @@ export class FakeProvider implements PaymentProvider {
 
   constructWebhookEvent(rawBody: string, signature: string | null): ProviderEvent {
     if (!verifyStripeSignature(rawBody, signature, this.webhookSecret)) throw new WebhookSignatureError();
-    let e: { id?: unknown; type?: unknown; data?: { object?: unknown } };
+    let e: { id?: unknown; type?: unknown; created?: unknown; data?: { object?: unknown } };
     try {
       e = JSON.parse(rawBody);
     } catch {
       throw new WebhookSignatureError();
     }
     if (typeof e.id !== "string" || typeof e.type !== "string") throw new WebhookSignatureError();
-    return { id: e.id, type: e.type, object: (e.data?.object ?? {}) as Record<string, unknown> };
+    return { id: e.id, type: e.type, object: (e.data?.object ?? {}) as Record<string, unknown>, created: typeof e.created === "number" ? e.created : undefined };
   }
 
   /** Test-Hilfe: ein signiertes Ereignis (roher Body und Header) wie von Stripe. */
-  signEvent(event: { id: string; type: string; object: Record<string, unknown> }, timestamp?: number) {
-    const rawBody = JSON.stringify({ id: event.id, type: event.type, data: { object: event.object } });
+  signEvent(event: { id: string; type: string; object: Record<string, unknown>; created?: number }, timestamp?: number) {
+    const rawBody = JSON.stringify({ id: event.id, type: event.type, created: event.created, data: { object: event.object } });
     return { rawBody, signature: signStripePayload(rawBody, this.webhookSecret, timestamp) };
   }
 }

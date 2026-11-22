@@ -55,6 +55,10 @@ export async function createCardSetup(userId: string, input: { matchId?: string;
     await tx.execute(sql`set local lock_timeout = '2s'`); // Sicherheitsnetz
     const [lock] = (await tx.execute(sql`select pg_try_advisory_xact_lock(hashtextextended(${"card-setup:" + userId}, 0)) as ok`)).rows as { ok: boolean }[];
     if (!lock.ok) throw new DomainError(BUSY_MESSAGE);
+    // Nach dem Lock NOCH EINMAL pruefen (Review M4b-1, Fund 3): eine Kontoloeschung (hält denselben Lock) kann zwischen dem Lesen oben und hier fertig geworden sein; dann waere der Nutzer
+    // anonymisiert und gesperrt, und ein neuer Stripe-Kunde mit der alten E-Mail waere ein Datenschutzfehler.
+    const [still] = await tx.select({ bannedAt: users.bannedAt }).from(users).where(eq(users.id, userId));
+    if (!still || still.bannedAt) throw new DomainError("Nutzer nicht gefunden.");
     const [recent] = await tx
       .select({ n: count() })
       .from(paymentSetupIntents)

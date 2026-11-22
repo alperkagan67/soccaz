@@ -16,7 +16,7 @@ export type CardView = {
 };
 
 /** "open" = neutrale Anzeige für Dritte (keine Karte ODER Abbuchung offen), siehe card-visibility.ts: nie ein Grund, nie das Wort "fehlgeschlagen". */
-export type CardViewStatus = CardStatus | "open";
+export type CardViewStatus = CardStatus | "open" | "covered";
 
 export function cardView(status: CardViewStatus): CardView {
   switch (status) {
@@ -28,6 +28,9 @@ export function cardView(status: CardViewStatus): CardView {
     case "failed":
       // nur für den Betroffenen und den Captain/Veranstalter (siehe card-visibility.ts)
       return { tone: "red", glyph: "!", filled: false, label: "Abbuchung fehlgeschlagen", hasCard: false };
+    case "covered":
+      // Anteil von einem Mitspieler übernommen (012 M3c-3b, Entscheid t9: Variante b): Ring mit Haken (nicht gefüllt wie "Karte hinterlegt"), Wort "Gedeckt", ohne Namen
+      return { tone: "green", glyph: "✓", filled: false, label: "Gedeckt", hasCard: true };
     case "open":
       // neutrale Anzeige für Dritte: keine Karte ODER Abbuchung offen, nie ein Grund
       return { tone: "red", glyph: "!", filled: false, label: "Zahlung ausstehend", hasCard: false };
@@ -39,4 +42,4 @@ export function cardView(status: CardViewStatus): CardView {
 }
 
 /** Alle Status in Anzeigereihenfolge der Legende. */
-export const CARD_LEGEND: CardViewStatus[] = ["card_ready", "none", "charge_pending", "open"]; // "failed" steht nie in der Legende: das Wort sehen nur Betroffene und Captain an ihrer Zeile
+export const CARD_LEGEND: CardViewStatus[] = ["card_ready", "covered", "none", "charge_pending", "open"]; // "failed" steht nie in der Legende: das Wort sehen nur Betroffene und Captain an ihrer Zeile

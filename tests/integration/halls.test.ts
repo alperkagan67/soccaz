@@ -6,11 +6,14 @@ import { venues } from "@/db/schema-finance";
 import { matchHallRequests, matchOptions, matchVetoHalls } from "@/db/schema-matchmaking";
 import { acceptChallenge, challengeTeam } from "@/server/challenges";
 import { proposeOption, voteOption } from "@/server/scheduling";
-import { advanceVetos, answerHallRequest, pendingHallInquiries } from "@/server/veto";
-import { setVenueManager } from "@/server/venues";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { advanceVetos, pendingHallInquiries } from "@/server/veto";
+import { cleanup, grantVenueAccess, makeTeam, makeUser, answerHall } from "./helpers";
+
+// 011 M2: Ablehnen braucht eine Kategorie (Vertrag 011 AC-3); die Tests prüfen weiter ihre bisherigen Aussagen, mit gültiger Eingabe
+const REASON = { reasonCode: "belegt", reason: "" } as const;
 
 afterAll(async () => {
+  await db.execute(sql`delete from venue_access where venue_id in (select id from venues where name like 'E2E Hallenort%')`); // 011 M1: Zugang vor der Halle (Fremdschlüssel restrict)
   await db.delete(venues).where(sql`${venues.name} like 'E2E Hallenort%'`);
   await cleanup();
 });
@@ -27,8 +30,8 @@ async function agreedDuel() {
     .insert(venues)
     .values([1, 2, 3].map((i) => ({ name: `E2E Hallenort ${i} ${manager.id.slice(0, 6)}`, city: "Hallenort", isPartner: i < 3 })))
     .returning();
-  await setVenueManager(a.id, rows[0].id, manager.email);
-  await setVenueManager(a.id, rows[1].id, manager.email);
+  await grantVenueAccess(rows[0].id, manager.id);
+  await grantVenueAccess(rows[1].id, manager.id);
   const id = await challengeTeam(a.id, ta.id, tb.id);
   await acceptChallenge(b.id, id);
   await proposeOption(a.id, id, { startsAt: new Date(Date.now() + 5 * 86_400_000) });
@@ -51,11 +54,11 @@ describe("Hallen-Anfrage nach dem Termin", () => {
     expect(await pendingHallInquiries(d.a.id)).toHaveLength(0);
 
     // nur der eigene Betreiber darf antworten
-    await expect(answerHallRequest(d.a.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht zu deinem Konto/);
-    await answerHallRequest(d.manager.id, d.id, d.rows[0].id, true);
-    await expect(answerHallRequest(d.manager.id, d.id, d.rows[0].id, false)).rejects.toThrow(/schon beantwortet/);
+    await expect(answerHall(d.a.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht zu deinem Konto/);
+    await answerHall(d.manager.id, d.id, d.rows[0].id, true);
+    await expect(answerHall(d.manager.id, d.id, d.rows[0].id, false, REASON)).rejects.toThrow(/schon beantwortet/);
     expect((await db.select().from(matches).where(eq(matches.id, d.id)))[0].vetoStatus).toBe("halls"); // eine Antwort fehlt noch
-    await answerHallRequest(d.manager.id, d.id, d.rows[1].id, false); // belegt
+    await answerHall(d.manager.id, d.id, d.rows[1].id, false, REASON); // belegt
 
     const [after] = await db.select().from(matches).where(eq(matches.id, d.id));
     expect(after.vetoStatus).toBe("running");
@@ -63,13 +66,14 @@ describe("Hallen-Anfrage nach dem Termin", () => {
     expect(pool.some((h) => h.venueId === d.rows[0].id)).toBe(true);
     expect(pool.some((h) => h.venueId === d.rows[1].id)).toBe(false); // belegte Halle steht nicht im Veto
     expect(pool.some((h) => h.venueId === d.rows[2].id)).toBe(true); // Halle ohne Konto bleibt im Rennen
-    await expect(answerHallRequest(d.manager.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht mehr offen/);
+    await expect(answerHall(d.manager.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht mehr offen/);
   });
 
   it("keine Antwort bis zur Frist zählt als belegt", async () => {
     const d = await agreedDuel();
     expect(await advanceVetos()).toBe(0);
-    await advanceVetos(new Date(Date.now() + 13 * 3_600_000));
+    await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() - 60_000) }).where(eq(matches.id, d.id)); // Frist in der Datenbank verstrichen (Datenbankzeit entscheidet)
+    await advanceVetos();
     const reqs = await db.select().from(matchHallRequests).where(eq(matchHallRequests.matchId, d.id));
     expect(reqs.filter((r) => r.status === "declined" && d.rows.some((v) => v.id === r.venueId)).map((r) => r.venueId).sort()).toEqual([d.rows[0].id, d.rows[1].id].sort());
     expect((await db.select().from(matches).where(eq(matches.id, d.id)))[0].vetoStatus).toBe("running");
@@ -82,8 +86,8 @@ describe("Hallen-Anfrage nach dem Termin", () => {
     try {
       await db.update(venues).set({ active: false }).where(inArray(venues.id, [...others, d.rows[2].id]));
       const m2 = await agreedDuelAgain(d);
-      await answerHallRequest(d.manager.id, m2, d.rows[0].id, false);
-      await answerHallRequest(d.manager.id, m2, d.rows[1].id, false);
+      await answerHall(d.manager.id, m2, d.rows[0].id, false, REASON);
+      await answerHall(d.manager.id, m2, d.rows[1].id, false, REASON);
       const [m] = await db.select().from(matches).where(eq(matches.id, m2));
       expect(m).toMatchObject({ vetoStatus: "none", schedulingOpen: true });
       expect(await db.select().from(matchOptions).where(eq(matchOptions.matchId, m2))).toHaveLength(0);

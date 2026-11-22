@@ -16,6 +16,7 @@ import {
 } from "@/server/actions";
 import { countdownText } from "@/lib/lobby-rules";
 import { formatEuro } from "@/lib/money";
+import { AuthorizeButton } from "./AuthorizeButton";
 import { CardForm } from "./CardForm";
 
 type Result = { error?: string; needsTopupCents?: number } | undefined;
@@ -59,7 +60,7 @@ type MyActionsProps = {
   /** Wie viele Spieler des eigenen Teams haben schon bezahlt? Bereit geht erst, wenn alle bezahlt haben. */
   teamPaid?: { paid: number; total: number };
   /** Nur im Kartenmodell (Schalter card_payments_enabled EIN): Karte statt Guthaben, Vertrag 012. */
-  card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; stored: { brand: string | null; last4: string } | null; failure?: { text: string } | null } | null;
+  card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; stored: { brand: string | null; last4: string } | null; failure?: { text: string; until: string | null; expired: boolean; authorize?: boolean } | null } | null;
 };
 
 export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid, card }: MyActionsProps) {
@@ -76,8 +77,21 @@ export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid, card }
                 <div className="space-y-3 rounded-lg border border-line p-3" role="alert" data-testid="charge-failed">
                   <p className="font-semibold">Abbuchung fehlgeschlagen</p>
                   <p className="text-sm" data-testid="charge-failed-reason">{card.failure.text}</p>
-                  <p className="text-sm text-muted">Ändere deine Karte, damit die Zahlung klappt.</p>
-                  <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change />
+                  {card.failure.expired ? (
+                    <p className="text-sm text-muted" data-testid="charge-failed-expired">Das Zeitfenster ist abgelaufen. Dein Platz wird neu vergeben.</p>
+                  ) : (
+                    <>
+                      {card.failure.authorize && (
+                        <div className="space-y-2" data-testid="authorize-section">
+                          <p className="text-sm">Deine Bank braucht eine Freigabe der Zahlung. Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p>
+                          <AuthorizeButton matchId={matchId} fake={card.fake} />
+                          <p className="text-xs text-muted">Oder ändere deine Karte:</p>
+                        </div>
+                      )}
+                      {!card.failure.authorize && <p className="text-sm text-muted">Ändere deine Karte, damit die Zahlung klappt.{card.failure.until ? ` Du hast ${card.failure.until} Zeit.` : ""}</p>}
+                      <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change />
+                    </>
+                  )}
                 </div>
               )}
               {card && !card.ready && !card.failure && (

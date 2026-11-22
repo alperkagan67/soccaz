@@ -1,15 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
+import { UNMATCHED_THRESHOLD, unmatchedAlertData } from "./payments/unmatched";
+import { frozenStage, frozenTournaments } from "./tournaments";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matches, paymentCharges, paymentRefunds, users } from "@/db/schema";
+import { auditLog, matches, paymentCharges, paymentRefunds, users } from "@/db/schema";
 import { expenses, ledgerEntries } from "@/db/schema-finance";
 import { euroForCsv, toCsv } from "@/lib/csv";
 import { formatEuro } from "@/lib/money";
 import { audit } from "./audit";
 import { creditWallet, totalWalletLiability, trialBalance } from "./ledger";
 import { notifyUsers } from "./notifications";
-import { paymentsEnabled } from "./settings";
+import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
 import { DomainError } from "./teams";
 
 type Row = Record<string, unknown>;
@@ -40,7 +42,56 @@ export async function getRefundAlerts(now: Date = new Date()) {
         sql`(${paymentCharges.failureCode} in ('unknown_outcome', 'after_start') or (${paymentCharges.paymentIntentId} is null and ${paymentCharges.attemptStartedAt} is not null and exists (select 1 from matches m where m.id = ${paymentCharges.matchId} and m.cancel_requested_at is not null)))`,
       ),
     );
-  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges };
+  // M3c-1: technische Zustaende, die KEIN Nachzahlfenster haben und kein Automat anfasst (Admin entscheidet): Schluesselkonflikt bei Stripe, Altzeilen (vor
+  // Migration 0039 fehlgeschlagen, ohne Fenster) und ein zweiter erfolgreicher PaymentIntent zur selben Zeile (Doppelabbuchung: manuell erstatten)
+  const idempotencyMismatches = await db
+    .select({ id: paymentCharges.id, matchId: paymentCharges.matchId })
+    .from(paymentCharges)
+    .where(and(eq(paymentCharges.status, "failed"), eq(paymentCharges.failureCode, "idempotency_mismatch")));
+  const legacyFailed = await db
+    .select({ id: paymentCharges.id, matchId: paymentCharges.matchId, code: paymentCharges.failureCode })
+    .from(paymentCharges)
+    .where(and(inArray(paymentCharges.status, ["failed", "requires_action"]), isNull(paymentCharges.graceUntil), isNull(paymentCharges.slotOf), isNull(paymentCharges.resolution), sql`(${paymentCharges.failureCode} is null or ${paymentCharges.failureCode} not in ('idempotency_mismatch', 'match_closed', 'tournament_closed', 'tournament_cancelled', 'match_cancelled', 'after_start', 'unknown_outcome'))`));
+  const duplicateSuccesses = await db
+    .select({ matchId: auditLog.entityId, at: auditLog.at })
+    .from(auditLog)
+    .where(and(eq(auditLog.action, "charge.duplicate_success"), sql`${auditLog.at} > ${new Date(now.getTime() - 30 * 24 * 3_600_000)}`));
+  // Turnier auf Karte (012 M5-4): Erstattungen eines Turniers (match_id leer) werden vom Spiel-Ablauf nicht gesendet (kommt mit M5-5): offen = Alarm. Ausserdem haengt ein Turnier, wenn eine
+  // Abbuchung gescheitert und das Nachzahlfenster abgelaufen ist, ohne dass jemand reagiert (Absage bei Fensterablauf: M5-5).
+  const tournamentRefundsOpen = await db
+    .select({ id: paymentRefunds.id })
+    .from(paymentRefunds)
+    .where(and(isNotNull(paymentRefunds.tournamentId), eq(paymentRefunds.status, "pending"), isNull(paymentRefunds.refundId), sql`${paymentRefunds.createdAt} <= ${new Date(now.getTime() - 30 * 60_000)}`)); // der Versand laeuft im Job (M5-5); Alarm erst, wenn eine Erstattung 30 Minuten unversendet liegt
+  const tournamentChargeStuck = (
+    await db.execute<{ id: string }>(sql`select distinct c.tournament_id as id from payment_charges c join tournaments t on t.id = c.tournament_id
+      where c.tournament_id is not null and c.status in ('failed', 'requires_action') and t.status = 'payment' and coalesce(c.failure_code, '') not in ('tournament_closed', 'tournament_cancelled') and (c.grace_until is null or c.grace_until <= ${now})`)
+  ).rows;
+  // Zweite stille Haengerlage (Delta-Review): Zahlungsphase, ALLE Teams bereit, die Frist ist erreicht, aber es gibt keine Abbuchungszeilen (z. B. Karte nach "Bereit" entfernt, Zusage/Halle fehlt).
+  // Nur im Kartenmodell (Schalter EIN, kein Guthaben im Turnier, nicht kostenlos): sonst waeren Guthabenturniere falsch positiv.
+  // spaete Zahlung nach Absage (Plan T-9): eine Abbuchung eines abgesagten Turniers ist doch noch gelungen (sofort voll erstattet, Audit refund.auto): sichtbar machen
+  const tournamentLatePayments = (
+    await db.select({ id: auditLog.entityId }).from(auditLog).where(and(eq(auditLog.action, "refund.auto"), eq(auditLog.entity, "tournament"), sql`${auditLog.at} > ${new Date(now.getTime() - 30 * 24 * 3_600_000)}`))
+  );
+  // offene Zahlungsversuche eines ABGESAGTEN Turniers, die der Job seit ueber einer Stunde nicht beenden konnte (Stripe nicht erreichbar, Zahlung laeuft noch)
+  const tournamentOpenIntents = (
+    await db.execute<{ id: string }>(sql`select distinct c.tournament_id as id from payment_charges c join tournaments t on t.id = c.tournament_id
+      where t.status = 'cancelled' and c.status in ('pending', 'requires_action') and c.payment_intent_id is not null and c.updated_at <= ${new Date(now.getTime() - 3_600_000)}`)
+  ).rows;
+  // eingefrorene Turniere bei Schalter AUS (Backlog 141): ab 6 h nach dem Zeitpunkt, an dem der Job sonst gehandelt haette; verschwindet bei Schalter AN oder Absage
+  const tournamentFrozen = (await frozenTournaments(db, now)).filter((f) => frozenStage(now, f.since) !== undefined);
+  const unmatched = await unmatchedAlertData(db, now); // Backlog 118: erfolgreiche Zahlung ohne Zuordnung sofort, andere unbekannte Ereignisse erst ab der Schwelle
+  const tournamentWaitsForCards = (await cardPaymentsEnabled())
+    ? (
+        await db.execute<{ id: string }>(sql`select t.id from tournaments t
+          where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null and t.starts_at > ${now} and t.starts_at - interval '48 hours' <= ${now}
+            and coalesce(t.total_cents, 1) > 0 and coalesce(t.final_share_cents, 1) > 0
+            and not exists (select 1 from payment_charges c where c.tournament_id = t.id)
+            and not exists (select 1 from tournament_players p where p.tournament_id = t.id and p.paid_cents > 0)
+            and (select count(*) from tournament_teams x where x.tournament_id = t.id and x.paid_ready_at is not null) = t.max_teams
+            and (select max(x.paid_ready_at) from tournament_teams x where x.tournament_id = t.id) <= ${new Date(now.getTime() - 10 * 60_000)}`)
+      ).rows
+    : [];
+  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards, tournamentLatePayments, tournamentOpenIntents, unmatched, tournamentFrozen };
 }
 
 export type Period = { from: Date; to: Date };
@@ -71,7 +122,7 @@ export async function overview(period: Period) {
   }>(
     await db.execute(sql`
       select
-        (coalesce(sum(case when credit_account = 'revenue' then amount_cents else 0 end), 0) - coalesce(sum(case when debit_account = 'revenue' then amount_cents else 0 end), 0))::int as revenue,
+        (coalesce(sum(case when credit_account in ('revenue', 'commission') then amount_cents else 0 end), 0) - coalesce(sum(case when debit_account in ('revenue', 'commission') then amount_cents else 0 end), 0))::int as revenue,
         (coalesce(sum(case when debit_account = 'venue_cost' then amount_cents else 0 end), 0) - coalesce(sum(case when credit_account = 'venue_cost' then amount_cents else 0 end), 0))::int as venue_cost,
         (coalesce(sum(case when debit_account = 'fees' then amount_cents else 0 end), 0) - coalesce(sum(case when credit_account = 'fees' then amount_cents else 0 end), 0))::int as fees,
         (coalesce(sum(case when debit_account = 'promo' then amount_cents else 0 end), 0) - coalesce(sum(case when credit_account = 'promo' then amount_cents else 0 end), 0))::int as promo,
@@ -117,7 +168,7 @@ export async function listMatchFinance(period: Period): Promise<MatchFinanceRow[
     await db.execute(sql`
       select m.id, m.starts_at, m.status, h.name as home, a.name as away, m.price_cents, m.final_share_cents,
         (select count(*)::int from match_participants p where p.match_id = m.id and p.paid_cents > 0) as payers,
-        (select coalesce(sum(case when l.credit_account = 'revenue' then l.amount_cents else 0 end) - sum(case when l.debit_account = 'revenue' then l.amount_cents else 0 end), 0)::int from ledger_entries l where l.match_id = m.id) as revenue,
+        (select coalesce(sum(case when l.credit_account in ('revenue', 'commission') then l.amount_cents else 0 end) - sum(case when l.debit_account in ('revenue', 'commission') then l.amount_cents else 0 end), 0)::int from ledger_entries l where l.match_id = m.id) as revenue,
         (select coalesce(sum(case when l.debit_account = 'venue_cost' then l.amount_cents else 0 end) - sum(case when l.credit_account = 'venue_cost' then l.amount_cents else 0 end), 0)::int from ledger_entries l where l.match_id = m.id) as cost
       from matches m
       join teams h on h.id = m.home_team_id
@@ -139,6 +190,28 @@ export async function listMatchFinance(period: Period): Promise<MatchFinanceRow[
     costCents: r.cost,
     marginCents: r.revenue - r.cost,
   }));
+}
+
+export type VenueCommissionRow = { venueId: string; name: string; commissionCents: number; feesCents: number; restCents: number; minus: boolean };
+
+/**
+ * Provision, Zahlungsgebühren und Rest je Halle im Zeitraum (Vertrag 009 M2, AC-15), nur Spiele im Provisionsmodell. Provision = Konto commission netto (Stornos und Bonus eingerechnet),
+ * Gebühren = Konto fees der Spiele dieser Halle. Eine Halle im Minus (Rest unter 0) wird markiert: der Admin warnt, statt zu begrenzen.
+ */
+export async function venueCommissionOverview(period: Period): Promise<VenueCommissionRow[]> {
+  await connection();
+  const rows = rowsOf<{ id: string; name: string; commission: number; fees: number }>(
+    await db.execute(sql`
+      select v.id, v.name,
+        coalesce((select sum(case when l.credit_account = 'commission' then l.amount_cents else 0 end) - sum(case when l.debit_account = 'commission' then l.amount_cents else 0 end)
+                  from ledger_entries l join matches m on m.id = l.match_id where m.venue_id = v.id and l.at >= ${period.from} and l.at < ${period.to}), 0)::int as commission,
+        coalesce((select sum(case when l.debit_account = 'fees' then l.amount_cents else 0 end) - sum(case when l.credit_account = 'fees' then l.amount_cents else 0 end)
+                  from ledger_entries l join matches m on m.id = l.match_id where m.venue_id = v.id and m.ledger_model = 'commission' and l.at >= ${period.from} and l.at < ${period.to}), 0)::int as fees
+      from venues v
+      where exists (select 1 from matches m join ledger_entries l on l.match_id = m.id where m.venue_id = v.id and m.ledger_model = 'commission')
+      order by v.name`),
+  );
+  return rows.map((r) => ({ venueId: r.id, name: r.name, commissionCents: r.commission, feesCents: r.fees, restCents: r.commission - r.fees, minus: r.commission - r.fees < 0 }));
 }
 
 export type PlayerFinanceRow = { userId: string; name: string; email: string; paidCents: number; refundedCents: number; netCents: number; pendingRefundCents: number; inLobby: boolean; hasPaidNow: boolean };
@@ -273,6 +346,34 @@ export async function exportLedgerCsv(period: Period): Promise<string> {
 
 export type Alert = { code: string; severity: "high" | "medium"; title: string; detail: string; href?: string };
 
+/**
+ * Kartenzahlungen (Vertrag 012, Review PR #107): die Alarmliste getRefundAlerts war nirgends sichtbar. Hier wird sie in Alarme fuer die Finanzseite uebersetzt (nur Anzahl und Spiel-IDs,
+ * keine Personendaten). Alles, was ein Automat NICHT loest und Geld oder einen haengenden Ablauf betrifft: Doppelabbuchung, fehlgeschlagene/ungeklaerte Erstattung, haengende Absage,
+ * ungeklaerte Abbuchung, Schluesselkonflikt, Altzeile ohne Fenster.
+ */
+export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched" | "tournamentFrozen"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched" | "tournamentFrozen">>): Alert[] {
+  const out: Alert[] = [];
+  const add = (code: string, n: number, title: string, detail: string) => {
+    if (n > 0) out.push({ code, severity: "high", title: `${title} (${n})`, detail });
+  };
+  add("card:duplicate-success", ra.duplicateSuccesses.length, "Doppelte Abbuchung", "Zu einer Zahlung ging ein zweiter erfolgreicher PaymentIntent ein (letzte 30 Tage). Bitte pruefen, ob die Erstattung durch ist (Stripe-Dashboard).");
+  add("card:failed-refunds", ra.failedRefunds.length, "Erstattung fehlgeschlagen", "Eine Erstattung auf die Karte ist gescheitert und muss manuell geklaert werden.");
+  add("card:unknown-refunds", ra.unknownRefunds.length, "Erstattung mit unbekanntem Ausgang", "Der Ausgang einer Erstattung ist bei Stripe unklar.");
+  add("card:stuck-cancels", ra.stuckCancels.length, "Absage haengt", "Eine angeforderte Absage ist seit Stunden nicht abgeschlossen.");
+  add("card:uncleared-charges", ra.unclearedCharges.length, "Abbuchung ungeklaert", "Eine Abbuchung hat keinen bekannten Ausgang (unknown_outcome, nach dem Anstoss, Stripe-Suche ohne Treffer).");
+  add("card:idempotency-mismatch", ra.idempotencyMismatches.length, "Abbuchung mit Schluesselkonflikt", "Ein Versuch ist am Idempotenzschluessel gescheitert und wird von keinem Automaten angefasst.");
+  add("card:tournament-refund-open", ra.tournamentRefundsOpen?.length ?? 0, "Turnier-Erstattung offen", "Eine Erstattung zu einem Turnier liegt seit ueber 30 Minuten unversendet (Job, Stripe oder Konto pruefen). Bitte klaeren oder manuell erstatten.");
+  add("card:tournament-charge-stuck", ra.tournamentChargeStuck?.length ?? 0, "Turnier haengt nach gescheiterter Abbuchung", "Bei einem Turnier ist eine Abbuchung gescheitert und das Nachzahlfenster abgelaufen. Das Turnier ist weder gebucht noch abgesagt. Bitte entscheiden (Absage mit Erstattung).");
+  add("card:tournament-waits-for-cards", ra.tournamentWaitsForCards?.length ?? 0, "Turnier wartet auf Karten", "Alle Teams sind bereit und die Frist ist erreicht, aber es gibt keine Abbuchung (Karte fehlt, Halle oder Zusage fehlt). Das Turnier haengt in der Zahlungsphase.");
+  add("card:unmatched-success", ra.unmatched?.succeeded.length ?? 0, "Zahlung ohne Buchung", "Eine erfolgreiche Stripe-Zahlung konnte keiner Abbuchung zugeordnet werden (echtes Geld ohne Buchung, letzte 30 Tage). Bitte im Stripe-Dashboard pruefen und gegebenenfalls erstatten.");
+  add("card:unmatched-events", (ra.unmatched?.others24h ?? 0) > UNMATCHED_THRESHOLD ? ra.unmatched!.others24h : 0, "Viele unbekannte Zahlungsereignisse", "In den letzten 24 Stunden gab es mehr als " + UNMATCHED_THRESHOLD + " Zahlungsereignisse ohne Zuordnung. Bitte Webhook und Stripe-Konto pruefen.");
+  add("card:tournament-frozen", ra.tournamentFrozen?.length ?? 0, "Turnier eingefroren (Kartenmodell aus)", "Ein Turnier waere bei eingeschaltetem Kartenmodell abgebucht oder abgesagt worden und bleibt seit ueber 6 Stunden stehen. Bitte entscheiden: Schalter einschalten oder das Turnier absagen (keine automatische Absage).");
+  add("card:tournament-open-intent", ra.tournamentOpenIntents?.length ?? 0, "Offene Zahlung bei abgesagtem Turnier", "Bei einem abgesagten Turnier ist ein Zahlungsversuch seit ueber einer Stunde offen und konnte nicht abgebrochen werden (Stripe pruefen, ggf. manuell abbrechen oder erstatten).");
+  add("card:tournament-late-payment", ra.tournamentLatePayments?.length ?? 0, "Spaete Zahlung nach Turnier-Absage", "Eine Abbuchung eines abgesagten Turniers ist doch noch gelungen und wurde sofort voll erstattet (letzte 30 Tage). Bitte pruefen, ob die Erstattung durch ist.");
+  add("card:legacy-failed", ra.legacyFailed.length, "Altzeile ohne Nachzahlfenster", "Eine fehlgeschlagene Abbuchung aus der Zeit vor dem Nachzahlfenster wird nicht automatisch bearbeitet.");
+  return out;
+}
+
 export async function getAlerts(): Promise<Alert[]> {
   await connection();
   const alerts: Alert[] = [];
@@ -293,6 +394,20 @@ export async function getAlerts(): Promise<Alert[]> {
       group by u.id, u.name having count(*) >= 3 order by n desc limit 10`),
   );
   for (const f of frequent) alerts.push({ code: `refunds:${f.user_id}`, severity: "medium", title: `Viele Erstattungen: ${f.name}`, detail: `${f.n} Erstattungen in 30 Tagen.`, href: "/admin/nutzer" });
+
+  for (const h of await venueCommissionOverview({ from: new Date(now.getTime() - 60 * 86_400_000), to: new Date(now.getTime() + 86_400_000) })) {
+    if (h.minus) alerts.push({ code: `venue-minus:${h.venueId}`, severity: "medium", title: `Halle im Minus: ${h.name}`, detail: `Provision ${formatEuro(h.commissionCents)} reicht nicht für die Zahlungsgebühren ${formatEuro(h.feesCents)} (Rest ${formatEuro(h.restCents)}).` });
+  }
+
+  // Partnerhallen mit Satz 0, der nie bewusst gesetzt wurde (kein Protokolleintrag venue.commission): keine stille Provision auf Altbestand (Entscheid t9), aber sichtbar
+  const unset = rowsOf<{ id: string; name: string }>(
+    await db.execute(sql`
+      select v.id, v.name from venues v
+      where v.is_partner and v.active and v.commission_percent = 0
+        and not exists (select 1 from audit_log a where a.action = 'venue.commission' and a.entity = 'venue' and a.entity_id = v.id::text)
+      order by v.name limit 20`),
+  );
+  for (const h of unset) alerts.push({ code: `commission-unset:${h.id}`, severity: "medium", title: `Provision nicht gesetzt: ${h.name}`, detail: "Partnerhalle mit Satz 0 %, der nie eingestellt wurde. Satz unter Hallen eintragen (nur Admin 1).", href: "/admin/hallen" });
 
   const negative = rowsOf<{ name: string; balance: number; user_id: string }>(
     await db.execute(sql`
@@ -331,6 +446,7 @@ export async function getAlerts(): Promise<Alert[]> {
     );
     for (const m of noJob) alerts.push({ code: `unbooked-hall:${m.id}`, severity: "high", title: `Halle noch nicht gebucht: ${m.home} gegen ${m.away}`, detail: "Das Spiel findet in weniger als 48 Stunden statt.", href: "/admin/buchungen" });
   }
+  alerts.push(...cardAlertsFrom(await getRefundAlerts()));
   return alerts;
 }
 

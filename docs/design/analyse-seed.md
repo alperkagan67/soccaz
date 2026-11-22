@@ -9,9 +9,9 @@ npx tsx --env-file=.env.local scripts/seed-frontend.mts
 ```
 
 - Nach `npm run db:migrate` (alle Migrationen müssen angewendet sein).
-- Zweiter Aufruf ist erlaubt und ändert keine Zahlen: Nutzer, Teams und Hallen werden per Upsert gehalten (IDs bleiben stabil, Dev-Login-Sitzungen bleiben gültig); Spiele, Teilnehmer, Abbuchungszeilen, Einladungen, Turniere und Hallenbewertungen werden gelöscht und neu angelegt.
+- Zweiter Aufruf ist erlaubt und ändert keine Zahlen: Nutzer, Teams und Hallen werden per Upsert gehalten (IDs bleiben stabil, Dev-Login-Sitzungen bleiben gültig); Spiele, Teilnehmer, Abbuchungszeilen, Einladungen, Turniere, Hallenbewertungen, Spielsuchen, Warteschlangen-Einträge und Benachrichtigungen der Seed-Nutzer werden gelöscht und neu angelegt (Spielsuchen und Warteschlange mit festen IDs, siehe unten).
 - Zeiten sind relativ zum Lauf (Spiele z. B. in 1 bis 6 Tagen, vergangene Spiele 7 bis 21 Tage zurück). Vor einer Analyse neu aufrufen, damit nichts „abgelaufen“ ist, was es nicht sein soll.
-- Ausgabe: Anzahl je Datensatztyp (Beleg gegen `soccaz_w3`: 26 Nutzer, 6 Teams, 3 Hallen, 12 Bewertungen, 9 Spiele, 4 Turniere).
+- Ausgabe: Anzahl je Datensatztyp (Beleg gegen `soccaz_w3`: 26 Nutzer, 6 Teams, 3 Hallen, 12 Bewertungen, 9 Spiele, 4 Turniere; seit dem Nachtrag zusätzlich 5 Spielsuchen, 4 Warteschlangen-Einträge mit 3 Beitritten, 11 Benachrichtigungen davon 6 ungelesen).
 
 ## Grenzen (hart)
 
@@ -75,6 +75,42 @@ Hinweis: Die Rolle „Admin 1 (`owner`)“ aus Vertrag 009 gibt es im Schema noc
 | Hallenbetreiber | `seed-halle@test.local` | Halle-Dashboard (011) |
 | Admin | `seed-admin@test.local` | Admin-Bereich (`/admin`) |
 | Veranstalter | `seed-veranstalter@test.local` | Turnier-Verwaltung |
+
+## Nachtrag: Spielsuchen, offene Lobbys, Benachrichtigungen
+
+Feste IDs (stabil über alle Läufe, Quelle `SEED_REQUEST_IDS` und `SEED_QUEUE_IDS` in `scripts/lib/seed-frontend-data.ts`). Die Zustände wurden mit der Seitenlogik abgeglichen (`getRequest`, `getOpenLobby`).
+
+| Zustand | URL | Datensatz |
+|---|---|---|
+| Spielsuche offen | `/suche/5eed0000-0000-4000-8000-000000000101` | Seed Blau, in 5 Tagen, Stärke 3, mit Hinweis |
+| Spielsuche abgelaufen | `/suche/5eed0000-0000-4000-8000-000000000102` | Seed Gelb, Termin gestern, Status `expired` |
+| Spielsuche angenommen | `/suche/5eed0000-0000-4000-8000-000000000103` | Seed Rot, Status `matched`, am bestätigten Spiel (in 3 Tagen) verknüpft |
+| Spielsuche zurückgezogen | `/suche/5eed0000-0000-4000-8000-000000000104` | Seed Grün, Status `cancelled` |
+| Herausforderung | `/suche/5eed0000-0000-4000-8000-000000000105` | Seed Rot fordert Seed Gelb heraus, offen, ohne Lobby (kein Umleiten) |
+| Offene Lobby wartend | `/lobby/offen/5eed0000-0000-4000-8000-000000000201` | Seed Gelb, 3 von 5 beigetreten (Captain, Spieler 13 und 14), zwei Zeitfenster |
+| Offene Lobby abgelaufen | `/lobby/offen/5eed0000-0000-4000-8000-000000000202` | Seed Blau, Status `expired` |
+| Offene Lobby angenommen | `/lobby/offen/5eed0000-0000-4000-8000-000000000203` | Seed Rot, Status `matched`, leitet auf das Spiel um |
+| Offene Lobby zurückgezogen | `/lobby/offen/5eed0000-0000-4000-8000-000000000204` | Seed Grün, Status `cancelled` |
+
+Sichtweisen: Wartende Lobby als Gelb-Mitglied (`seed-captain-gelb`, `seed-spieler-13`; Teamsicht mit Namen) und als Fremder oder Gast (nur Anzahl).
+
+Benachrichtigungen (11, davon 6 ungelesen), Arten aus `notification-types`:
+
+| Nutzer | Art | Zustand |
+|---|---|---|
+| `seed-captain-gruen` | `payment` "Abbuchung fehlgeschlagen" | ungelesen |
+| `seed-spieler-09` | `payment` "Zahlung ausstehend" | ungelesen |
+| `seed-captain-rot` | `match.cancelled` "Spiel abgesagt" | ungelesen |
+| `seed-spieler-01` | `match.cancelled` "Spiel abgesagt" | gelesen |
+| `seed-captain-gelb` | `request.challenge` "Dein Team wurde herausgefordert" | ungelesen |
+| `seed-captain-rot` | `request.accepted` | gelesen |
+| `seed-spieler-01` | `match.reminder` | ungelesen |
+| `seed-spieler-02` | `match.reminder` | gelesen |
+| `seed-spieler-13` | `lobby.joined` | ungelesen |
+| `seed-captain-gelb` | `team.joined` (Einladung angenommen) | gelesen |
+| `seed-spieler-17` | `system` | gelesen |
+
+Bewusst weggelassen: Guthaben-Verlauf (Hauptbuch-Einträge). Das Hauptbuch ist per Trigger unveränderlich (`ledger_entries_immutable`), ein Seed könnte es nicht idempotent neu anlegen, und das Altmodell (Guthaben, Aufladen) wird laut Vertrag 012 und der Analyse entfernt (Abschnitt "MUSS WEG" in `analyse-frontend-x.md`). Für `/app/guthaben` bleibt "Noch keine Buchungen" der Zustand der Analyse.
 
 ## Zurücksetzen
 

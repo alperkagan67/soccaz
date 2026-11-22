@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, devLogin, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
-import { query, seedUserRole } from "./helpers-db";
+import { query, seedAdmin } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -62,7 +62,7 @@ test("Kommentare: schreiben, melden, automatisch ausblenden, Moderation stellt w
   await expect(reporter.getByText(`Tolles Team ${run}`)).toHaveCount(0);
 
   // Moderation
-  await seedUserRole("kmmod", "moderator");
+  await seedAdmin("kmmod"); // Moderation hat jetzt nur noch die Rolle admin (Teilrolle moderator entfällt, Vertrag 009 v4)
   const mod = await (await browser.newContext()).newPage();
   await devLogin(mod, `kmmod-${run}@test.local`, "Moderator");
   await expect(mod).toHaveURL(/\/app$/);

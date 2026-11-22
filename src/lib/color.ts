@@ -28,6 +28,13 @@ export const THEMES = {
   light: { bg: "#dde5e0", fl: "#f1f5f2", fl2: "#e3eae5", ink: "#12201a", muted: "#4a5a51", rim: "#12201a", line: "#b3c2b9", o: "#c2410c", oi: "#ffffff" },
 } as const;
 
+/** Status-Töne je Thema (M2-1): fg = Schrift/Strich auf Grund und Fläche, ink = Schrift auf voller Fläche, soft = Tönung (Deckkraft 0,10). Muss mit globals.css übereinstimmen (Test). */
+export const STATUS = {
+  dark: { ink: "#0b1118", focus: "#9ecbff", fg: { ok: "#4ade80", warn: "#facc15", danger: "#ff8a8a", info: "#6cb2ff" } },
+  light: { ink: "#ffffff", focus: "#1a44bd", fg: { ok: "#0f5f2c", warn: "#704800", danger: "#a51d12", info: "#1a44bd" } },
+} as const;
+export const STATUS_SOFT_ALPHA = 0.1;
+
 function channel(v: number): number {
   const c = v / 255;
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;

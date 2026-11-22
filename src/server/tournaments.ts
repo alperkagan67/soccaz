@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matchResults, matches, notifications, teamMembers, teams, users } from "@/db/schema";
+import { auditLog, matchParticipants, matchResults, matches, notifications, paymentCharges, teamMembers, teams, users } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLead } from "@/lib/deadlines";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
@@ -16,6 +16,15 @@ import { notifyUsers, teamAdminIds } from "./notifications";
 import { getSetting } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
+import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
+import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
+import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
+import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
+import { notifyHolderOnFix } from "./tournament-holders";
+import { venueAccessHolderIds } from "./venue-access-rules";
+import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
+import { venues } from "@/db/schema-finance";
+import { cardPaymentsEnabled } from "./settings";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
 export const MIN_TOURNAMENT_TEAMS = 4;
@@ -39,6 +48,8 @@ export type TournamentInput = {
   name: string;
   city: string;
   venueText?: string;
+  /** Partnerhalle (012 M5-1): Pflicht im Kartenmodell, wenn das Turnier etwas kostet. */
+  venueId?: string;
   startsAt: Date;
   registrationDeadline: Date;
   maxTeams: number;
@@ -79,6 +90,17 @@ export async function createTournament(userId: string, input: TournamentInput) {
   }
   if (!Number.isInteger(hourly) || hourly < 0 || hourly > 100_000) throw new DomainError("Der Hallenpreis liegt zwischen 0 und 1.000 Euro pro Stunde.");
   const totalCents = tournamentTotalCents(hourly, input.durationMin);
+  // Partnerhalle (012 M5-1): im Kartenmodell Pflicht, sobald das Turnier etwas kostet; eine gewaehlte Halle muss immer eine aktive Partnerhalle sein
+  let venueId: string | null = null;
+  let venueLabel: string | null = null;
+  if (input.venueId) {
+    if (!(await isPartnerVenue(db, input.venueId))) throw new DomainError("Bitte wähle eine Partnerhalle.");
+    venueId = input.venueId;
+    const [v] = await db.select({ name: venues.name, address: venues.address }).from(venues).where(eq(venues.id, venueId));
+    venueLabel = [v?.name, v?.address].filter(Boolean).join(", ") || null;
+  } else if (totalCents > 0 && (await cardPaymentsEnabled())) {
+    throw new DomainError("Bitte wähle eine Partnerhalle.");
+  }
   const matchMinutes = input.matchMinutes ?? 15;
   if (!Number.isInteger(matchMinutes) || matchMinutes < 5 || matchMinutes > 90) throw new DomainError("Eine Spielzeit dauert 5 bis 90 Minuten.");
   const [row] = await db
@@ -87,7 +109,8 @@ export async function createTournament(userId: string, input: TournamentInput) {
       organizerId: userId,
       name,
       city: input.city,
-      venueText: input.venueText?.trim().slice(0, 120) || null,
+      venueText: input.venueText?.trim().slice(0, 120) || venueLabel?.slice(0, 120) || null,
+      venueId,
       startsOn: toBerlinInputValue(input.startsAt).slice(0, 10),
       startsAt: input.startsAt,
       registrationDeadline: input.registrationDeadline,
@@ -108,7 +131,7 @@ export async function createTournament(userId: string, input: TournamentInput) {
 
 type T = typeof tournaments.$inferSelect;
 
-async function lockTournament(tx: Tx, id: string): Promise<T> {
+export async function lockTournament(tx: Tx, id: string): Promise<T> {
   const [t] = await tx.select().from(tournaments).where(eq(tournaments.id, id)).for("update");
   if (!t) throw new DomainError("Turnier nicht gefunden.");
   return t;
@@ -197,6 +220,7 @@ export async function leavePlayer(actorId: string, tournamentId: string, targetU
     const allowed = actorId === targetUserId || entry?.captainId === actorId || (await canManage(tx, actorId, t));
     if (!allowed) throw new DomainError("Dazu fehlt dir die Berechtigung.");
     await tx.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, targetUserId)));
+    await clearTournamentCovers(tx, tournamentId, targetUserId); // eine Uebernahme endet mit dem Platz (Einwilligung gilt nur fuer diese Konstellation)
     await refundPlayer(tx, t, p, "Rückerstattung Eintritt");
     await unlockTeam(tx, tournamentId, p.teamId);
     await audit(actorId, "tournament.leave", "tournament", tournamentId, { after: { userId: targetUserId } }, tx);
@@ -208,6 +232,7 @@ export async function payEntry(userId: string, tournamentId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
+    if (await tournamentCardMode(tx, tournamentId)) throw new DomainError("Im Kartenmodell wird dein Anteil zur Frist von deiner Karte abgebucht. Hinterlege deine Karte.");
     const [p] = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId))).for("update");
     if (!p) throw new DomainError("Du bist nicht im Turnier-Kader.");
     const share = shareOf(t);
@@ -231,6 +256,7 @@ export async function payForTeam(userId: string, tournamentId: string, targetUse
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
+    if (await tournamentCardMode(tx, tournamentId)) throw new DomainError("Im Kartenmodell wird dein Anteil zur Frist von deiner Karte abgebucht. Hinterlege deine Karte.");
     const [captainEntry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
     let teamId = captainEntry?.teamId;
     if (!captainEntry) {
@@ -276,6 +302,15 @@ export async function setPaidReady(userId: string, tournamentId: string) {
     if (!paymentOpen(t)) throw new DomainError("Bereit geht erst in der Zahlungsphase, bevor das Bracket steht.");
     const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
     if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann Bereit drücken.");
+    if (await tournamentCardMode(tx, tournamentId)) {
+      // Kartenmodell (012 M5-3): "Bereit" heisst "Karte hinterlegt" (eigene Karte oder gueltiger Uebernehmer im Team); nichts wird bezahlt. Das Bracket entsteht erst nach der Abbuchung (M5-4).
+      if (!(await tournamentTeamCardsReady(tx, tournamentId, entry.teamId))) throw new DomainError("Bereit geht erst, wenn alle Spieler deines Teams eine Karte hinterlegt haben.");
+      if (!entry.paidReadyAt) {
+        await tx.update(tournamentTeams).set({ paidReadyAt: new Date() }).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, entry.teamId)));
+        await audit(userId, "tournament.paidready", "tournament", tournamentId, { after: { teamId: entry.teamId, card: true } }, tx);
+      }
+      return;
+    }
     const share = shareOf(t);
     const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, entry.teamId))).for("update");
     if (players.length === 0 || !players.every((p) => share === 0 || p.paidCents >= share)) throw new DomainError("Bereit geht erst, wenn alle Spieler deines Teams bezahlt haben.");
@@ -318,7 +353,17 @@ async function maybeFixPrice(tx: Tx, t: T) {
   if (!entries.every((e) => e.readyAt)) return;
   const everyone = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
   const share = fresh.totalCents !== null ? finalSharePerPlayer(fresh.totalCents, everyone.length) : fresh.entryFeeCents;
+  // Kartenmodell: ohne Partnerhalle wird der Preis nicht fixiert (die Abbuchung geht an die Halle, Provision und Zusage haengen an ihr)
+  const cardMode = await tournamentCardMode(tx, t.id);
+  if (cardMode && !fresh.venueId) throw new DomainError("Für dieses Turnier ist noch keine Partnerhalle gewählt. Der Veranstalter muss zuerst eine Halle wählen.");
   await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
+  if (cardMode && fresh.venueId) {
+    const frozen = await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
+    // Entscheid t2q A: Zugangsinhaber der Halle erfahren beim Fixieren, dass eine Zusage gefragt ist (entprellt, im Savepoint; dynamischer Import gegen den Importkreis)
+    if (frozen.accessRequired) {
+      await notifyHolderOnFix(tx, { id: t.id, name: fresh.name, venueId: fresh.venueId, startsAt: fresh.startsAt, priceRound: fresh.priceRound + 1 }, await chargeDueAt(tx, fresh));
+    }
+  }
   await audit(null, "tournament.price", "tournament", t.id, { after: { share, players: everyone.length } }, tx);
   await notifyUsers(
     [...new Set(everyone.map((p) => p.userId))],
@@ -343,7 +388,8 @@ export async function reopenRosters(userId: string, tournamentId: string) {
       await tx.update(tournamentPlayers).set({ paidCents: 0, paidAt: null, paidBy: null }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
     }
     await tx.update(tournamentTeams).set({ readyAt: null, paidReadyAt: null }).where(eq(tournamentTeams.tournamentId, tournamentId));
-    await tx.update(tournaments).set({ status: "registration", finalShareCents: null }).where(eq(tournaments.id, tournamentId));
+    // beim Wiederoeffnen werden Zugangs- und Provisions-Snapshot verworfen; sie werden beim naechsten Fixieren neu eingefroren. Die Zusage der Halle bleibt (sie gilt fuer die Halle, nicht fuer den Preis).
+    await tx.update(tournaments).set({ status: "registration", finalShareCents: null, venueAccessRequiredSnapshot: null, commissionPercentSnapshot: null }).where(eq(tournaments.id, tournamentId));
     await notifyUsers([...new Set(players.map((p) => p.userId)), ...new Set(players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])))], { type: "system", title: "Kader wieder offen", body: `${t.name}: Der Veranstalter hat die Kader wieder geöffnet. Bereits gezahlte Anteile wurden erstattet, der Preis wird neu berechnet.`, url: `/turniere/${tournamentId}` }, tx);
     await audit(userId, "tournament.reopen", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length } }, tx);
   });
@@ -405,19 +451,20 @@ export async function notifyRegistrationDeadlines(now: Date = new Date()): Promi
   for (const { id } of due) {
     // Ein Fehler bei einem Turnier bricht die übrigen nicht ab; geloggt wird nur die Turnier-ID und die Fehlerart (keine Personendaten)
     try {
-      await db.transaction(async (tx) => {
+      // Der Zähler zählt nur, was die Transaktion wirklich festgeschrieben hat: erst NACH dem Commit addieren (ein Rollback nach dem Eintragen darf ihn nicht erhöhen, Backlog 3)
+      sent += await db.transaction(async (tx) => {
         const t = await lockTournament(tx, id);
-        if (!registrationOpen(t) || !t.registrationDeadline || t.registrationDeadline.getTime() > now.getTime()) return;
+        if (!registrationOpen(t) || !t.registrationDeadline || t.registrationDeadline.getTime() > now.getTime()) return 0;
         const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, id));
-        if (n >= t.maxTeams) return;
+        if (n >= t.maxTeams) return 0;
         const url = `/turniere/${id}`;
         const title = "Anmeldeschluss erreicht";
         const [already] = await tx.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.userId, t.organizerId), eq(notifications.type, "system"), eq(notifications.url, url), eq(notifications.title, title))).limit(1);
-        if (already) return;
+        if (already) return 0;
         const body = n >= MIN_TOURNAMENT_TEAMS
           ? `${t.name}: ${n} von ${t.maxTeams} Teams sind angemeldet. Du kannst mit diesen Teams weitermachen oder das Turnier absagen.`
           : `${t.name}: Nur ${n} von ${t.maxTeams} Teams sind angemeldet. Mit weniger als ${MIN_TOURNAMENT_TEAMS} Teams findet das Turnier nicht statt, du kannst es absagen.`;
-        sent += await notifyUsers([t.organizerId], { type: "system", title, body, url }, tx);
+        return notifyUsers([t.organizerId], { type: "system", title, body, url }, tx);
       });
     } catch (error) {
       console.error("notifyRegistrationDeadlines: Fehler bei Turnier", id, error instanceof Error ? error.name : "Fehler");
@@ -450,14 +497,16 @@ export function setDrawRandom(random: (() => number) | null) {
  * Erzeugt das K.-o.-Bracket genau einmal, sobald der Preis feststeht, alle Spieler bezahlt haben und jedes Team nach der Zahlung "Bereit" gedrückt hat (`paid_ready_at`).
  * Läuft unter der Turniersperre und setzt `bracket_generated_at`, damit eine zweite Auslösung nichts mehr tut.
  */
-async function maybeGenerateBracket(tx: Tx, t: T) {
+export async function maybeGenerateBracket(tx: Tx, t: T) {
   const [fresh] = await tx.select().from(tournaments).where(eq(tournaments.id, t.id));
   if (!fresh || fresh.status !== "payment" || fresh.bracketGeneratedAt) return;
   const entries = await tx.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).orderBy(asc(tournamentTeams.registeredAt));
   if (entries.length !== fresh.maxTeams || entries.length < MIN_TOURNAMENT_TEAMS) return;
   const share = shareOf(fresh);
   const everyone = await tx.select({ paid: tournamentPlayers.paidCents }).from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
-  if (!everyone.every((p) => share === 0 || p.paid >= share)) return;
+  // Kartenmodell (M5-4): "gebucht" = settled_at ist gesetzt (alle Abbuchungen erfolgreich); dann zaehlt nicht paid_cents (bleibt 0). Altmodell: settled_at wird erst beim Ende gesetzt.
+  const booked = fresh.settledAt !== null;
+  if (!booked && !everyone.every((p) => share === 0 || p.paid >= share)) return;
   if (!entries.every((e) => e.readyAt && e.paidReadyAt)) return; // alle Teams: Kader vollzählig und nach voller Zahlung bereit
 
   await tx.update(tournaments).set({ status: "running", bracketGeneratedAt: new Date() }).where(eq(tournaments.id, t.id));
@@ -560,6 +609,8 @@ async function finishTournament(tx: Tx, t: T, winnerId: string) {
 
 /** Zahlt den Veranstalter aus (Eintritte abzüglich Provision) und verbucht die Provision als Umsatz. Genau einmal pro Turnier. */
 async function settle(tx: Tx, t: T) {
+  const [cur] = await tx.select({ settledAt: tournaments.settledAt }).from(tournaments).where(eq(tournaments.id, t.id));
+  if (cur?.settledAt) return; // Kartenmodell: schon bei der Abbuchung gebucht (settled_at), es gibt keine Veranstalter-Auszahlung; Altmodell: genau einmal
   const [{ total }] = await tx.select({ total: sql<number>`coalesce(sum(${tournamentPlayers.paidCents}), 0)`.mapWith(Number) }).from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
   const { commission, payout } = splitEntryFees(total, await commissionPercent(tx));
   if (payout > 0) await creditWallet(tx, t.organizerId, { from: "tournament", amountCents: payout, kind: "tournament_payout", tournamentId: t.id, idempotencyKey: `tournament-payout:${t.id}`, reason: `Auszahlung Eintritte ${t.name}` });
@@ -570,30 +621,72 @@ async function settle(tx: Tx, t: T) {
 
 /** Absagen: Alle bezahlten Eintritte gehen vollständig aufs Guthaben der Spieler zurück. Nur möglich, solange noch kein Spiel gespielt ist. */
 export async function cancelTournament(userId: string, tournamentId: string) {
-  await db.transaction(async (tx) => {
+  const proposed = await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann absagen.");
+    // Kartenmodell (AC-21): nach der ersten Abbuchung sagt nur Admin 1 ab (Rolle owner); der Veranstalter und Admin 2 nur davor. Die automatische Absage (Job) ist ausgenommen.
+    if (await hasTournamentChargeRows(tx, tournamentId)) {
+      const [u] = await tx.select({ role: users.role, isOwner: users.isOwner }).from(users).where(eq(users.id, userId));
+      if (!isOwner(u)) {
+        // Vorschlagsweg (009 AC-9): die Absage wird NICHT ausgefuehrt (keine Erstattung), aber als Vorschlag gespeichert; Admin 1 bekommt eine Mitteilung und entscheidet. Nur fuer offene Turniere; je Person und Turnier
+        // einmal (Wiederholungen schreiben nichts mehr)
+        if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
+        const [dup] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, "tournament.cancel_proposal"), eq(auditLog.entityId, tournamentId), eq(auditLog.actorId, userId))).limit(1);
+        if (!dup) {
+          await audit(userId, "tournament.cancel_proposal", "tournament", tournamentId, { after: { status: t.status } }, tx);
+          const owners = await tx.select({ id: users.id }).from(users).where(eq(users.isOwner, true));
+          await notifyUsers(owners.map((x) => x.id), { type: "system", title: "Absagevorschlag", body: `Zu ${t.name} liegt ein Absagevorschlag vor. Nach der ersten Abbuchung kannst nur du das Turnier absagen.`, url: `/turniere/${t.id}` }, tx);
+        }
+        return true;
+      }
+    }
     await cancelTournamentTx(tx, t, userId);
+    return false;
   });
+  if (proposed) throw new DomainError("Nach der ersten Abbuchung kann nur Admin 1 das Turnier absagen. Dein Absagevorschlag ist gespeichert.");
 }
 
 /** Sagt ein Turnier unter der Turniersperre ab und erstattet alle Eintritte (feste Schlüssel, genau einmal). `actorId` null = Job. */
-async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, body?: string) {
+async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: (card: boolean) => string) {
   const tournamentId = t.id;
   if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
   const played = await tx.select({ id: tournamentMatches.id }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.scoreA))).limit(1);
   if (played.length > 0) throw new DomainError("Es gibt schon Ergebnisse. Bitte wende dich an die Plattform.");
   const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
-  for (const p of players) {
-    await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
+  // Kartenmodell (M5-5): Erstattungszeilen fuer alle erfolgreichen Abbuchungen, Provisions-Storno im selben Schritt; sonst (Altmodell) Erstattung aufs Guthaben
+  const card = (await hasTournamentChargeRows(tx, tournamentId)) || (await tournamentCardMode(tx, tournamentId));
+  let refundedCards = 0;
+  const payerIds: string[] = [];
+  if (card) {
+    const r = await prepareCardCancel(tx, t, new Date());
+    refundedCards = r.refunded;
+    payerIds.push(...r.payerIds);
+  } else {
+    for (const p of players) {
+      await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
+    }
   }
-  await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), t.organizerId])], { type: "system", title: "Turnier abgesagt", body: body ?? `${t.name} findet nicht statt. Dein Eintritt wurde vollständig erstattet.`, url: `/turniere/${tournamentId}` }, tx);
+  const reason = cause ? cause(card) : null;
+  const body = card
+    ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${refundedCards > 0 ? "Bereits abgebuchte Anteile werden auf die Karte erstattet." : "Es wurde nichts von deiner Karte abgebucht."}`
+    : `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${players.some((p) => p.paidCents > 0) ? "Dein Eintritt wurde vollständig erstattet." : "Es wurde nichts bezahlt."}`;
+  await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), ...payerIds, t.organizerId])], { type: "system", title: "Turnier abgesagt", body, url: `/turniere/${tournamentId}` }, tx);
+  // Entscheid t2q (Plan 19.14): wurde das Turnier ohne Zusage der Halle abgesagt, erfahren die Zugangsinhaber der Halle es (ohne Namen Dritter; Savepoint, ein Fehler kippt die Absage nie)
+  if (t.venueId && !t.venueConfirmedAt && t.venueAccessRequiredSnapshot === true) {
+    try {
+      await tx.transaction(async (sp) => {
+        await notifyUsers(await venueAccessHolderIds(t.venueId!, sp), { type: "system", title: "Turnier abgesagt", body: `${t.name} wurde abgesagt, weil die Zusage der Halle fehlte oder das Turnier nicht zustande kam.`, url: "/halle" }, sp);
+      });
+    } catch {
+      /* Zugabe */
+    }
+  }
   const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
   const gameIds = games.map((g) => g.matchId!).filter(Boolean);
   if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
   await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
   await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));
-  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length, byJob: actorId === null } }, tx);
+  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: card ? refundedCards : players.filter((p) => p.paidCents > 0).length, card, byJob: actorId === null } }, tx);
 }
 
 /**
@@ -622,7 +715,9 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
         if ((t.status !== "registration" && t.status !== "payment") || t.bracketGeneratedAt || !t.startsAt || t.startsAt.getTime() <= now.getTime()) return;
         const locked = await dueOf(tx, t);
         if (!locked || locked.due.getTime() > now.getTime()) return;
-        await cancelTournamentTx(tx, t, null, `${t.name} findet nicht statt: Zur Frist (${locked.long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, bezahlt und bereit. Dein Eintritt wurde vollständig erstattet.`);
+        // Kartenmodell (M5-4): ist abgebucht oder die Abbuchung angelaufen/faellig (alle Teams bereit, Zusage da), faellt das Turnier hier NICHT aus; Fehlschlaege behandelt die Abbuchung (M5-5)
+        if (await chargeUnderway(tx, t)) return;
+        await cancelTournamentTx(tx, t, null, (card) => `Zur Frist (${locked.long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, ${card ? "mit Karte" : "bezahlt"} und bereit.`);
         cancelled += 1;
       });
     } catch (error) {
@@ -630,6 +725,105 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
     }
   }
   return cancelled;
+}
+
+/**
+ * Alles-oder-nichts (Vertrag 012, Z3): ist bei einem Turnier im Kartenmodell eine Abbuchung gescheitert und das Nachzahlfenster dieser Zeile abgelaufen (effektives Ende: das fruehere von
+ * grace_until und Start minus 1 Stunde), wird das Turnier abgesagt; alle erfolgreichen Abbuchungen werden erstattet, die Provision storniert (cancelTournamentTx). Nur Kartenprobleme zaehlen
+ * (keine technischen Codes). Je Turnier eine eigene Transaktion unter der Turniersperre, Bedingung wird dort neu geprueft (die Zeile kann inzwischen erfolgreich nachgezahlt sein). Idempotent.
+ */
+export async function cancelTournamentsAfterWindow(now: Date = new Date()): Promise<number> {
+  if (!(await cardPaymentsEnabled())) return 0; // Schalter AUS: nicht wegen Fenster absagen (Plan 17.2); nach dem Wiedereinschalten laeuft die Pruefung weiter
+  const NON_CARD = NON_CARD_CODES;
+  const expired = (tx: Pick<Tx, "execute">, id: string | null) =>
+    tx.execute(sql`select distinct t.id from tournaments t join payment_charges c on c.tournament_id = t.id
+      where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null ${id ? sql`and t.id = ${id}` : sql``}
+        and c.status in ('failed', 'requires_action') and c.grace_until is not null and c.failure_code is not null and c.failure_code not in (${sql.join(NON_CARD.map((c) => sql`${c}`), sql`, `)})
+        and least(c.grace_until, t.starts_at - interval '1 hour') <= ${now}`);
+  const candidates = (await expired(db, null)).rows as { id: string }[];
+  let cancelled = 0;
+  for (const c of candidates) {
+    try {
+      await db.transaction(async (tx) => {
+        const t = await lockTournament(tx, c.id);
+        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt) return;
+        if ((await expired(tx, c.id)).rows.length === 0) return; // inzwischen nachgezahlt oder anderer Stand
+        await cancelTournamentTx(tx, t, null, () => "Eine Abbuchung ist nicht gelungen und das Nachzahlfenster ist abgelaufen.");
+        cancelled += 1;
+      });
+    } catch (error) {
+      console.error("cancelTournamentsAfterWindow: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return cancelled;
+}
+
+/** Zeitpunkt der Abbuchung bzw. der Frist (Vorlauf ab 48 Stunden: Start minus 48 h mit Karenz; kuerzer: Start minus 1 Stunde). null = Altturnier ohne neue Fristregel. */
+export async function chargeDueAt(tx: Pick<typeof db, "select">, t: Pick<T, "id" | "startsAt" | "createdAt" | "registrationDeadline">): Promise<Date | null> {
+  if (!t.startsAt) return null;
+  const long = hasLongLead(t.startsAt, t.createdAt);
+  if (!long) return abortDeadline(t.startsAt);
+  if (!t.registrationDeadline || t.registrationDeadline.getTime() > fixDeadline(t.startsAt).getTime()) return null;
+  return dueWithGrace(fixDeadline(t.startsAt), await tournamentPayOpenAt(tx, t), t.startsAt, t.createdAt);
+}
+
+/** Erinnerungsstufen vor der Frist (Entscheid t2q): 24 h und 6 h vorher, je Stufe einmal je Turnier. */
+const CARD_REMINDER_STAGES = [24, 6] as const;
+
+/**
+ * Vorwarnung "Karte fehlt: ohne sie faellt das Turnier aus" (Entscheid t2q zu B7: zur Frist faellt ein Turnier mit fehlender Karte sofort aus, nichts abgebucht). Je Stufe (24 h, 6 h vor der Frist)
+ * genau einmal je Turnier (Audit-Eintrag unter der Turniersperre), nur an die Betroffenen und den Captain ihres Teams, ohne Namen Dritter; nie an den Veranstalter. Nur im Kartenmodell,
+ * nur in der Zahlungsphase vor der Frist. Gibt die Zahl der benachrichtigten Turniere zurueck.
+ */
+export async function notifyMissingCardReminders(now: Date = new Date()): Promise<number> {
+  const candidates = await db.select().from(tournaments).where(and(eq(tournaments.status, "payment"), isNull(tournaments.bracketGeneratedAt), isNull(tournaments.settledAt), isNotNull(tournaments.startsAt)));
+  let sent = 0;
+  for (const c of candidates) {
+    try {
+      await db.transaction(async (tx) => {
+        const t = await lockTournament(tx, c.id);
+        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || !(await tournamentCardMode(tx, t.id))) return;
+        const due = await chargeDueAt(tx, t);
+        if (!due || now.getTime() >= due.getTime()) return;
+        const stage = CARD_REMINDER_STAGES.find((h) => now.getTime() >= due.getTime() - h * 3_600_000 && !(CARD_REMINDER_STAGES.some((g) => g < h && now.getTime() >= due.getTime() - g * 3_600_000)));
+        if (stage === undefined) return;
+        const missing = await tournamentMissingCards(tx, t.id);
+        if (missing.length === 0) return;
+        const [done] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, `tournament.card_reminder.${stage}`), eq(auditLog.entityId, t.id))).limit(1);
+        if (done) return;
+        const captains = await tx.select({ teamId: tournamentTeams.teamId, captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+        const captainOf = (teamId: string | null) => captains.find((x) => x.teamId === teamId)?.captainId ?? null;
+        const players = [...new Set(missing.map((m) => m.userId))];
+        const capIds = [...new Set(missing.map((m) => captainOf(m.teamId)).filter((x): x is string => Boolean(x)))].filter((x) => !players.includes(x));
+        const url = `/turniere/${t.id}`;
+        await notifyUsers(players, { type: "payment", title: "Karte fehlt", body: `${t.name}: Du hast noch keine Karte hinterlegt. Ohne Karte fällt das Turnier aus. Die Frist ist in etwa ${stage} Stunden.`, url }, tx);
+        await notifyUsers(capIds, { type: "payment", title: "Karte fehlt", body: `${t.name}: In deinem Team fehlt noch eine Karte. Ohne sie fällt das Turnier aus. Die Frist ist in etwa ${stage} Stunden.`, url }, tx);
+        await audit(null, `tournament.card_reminder.${stage}`, "tournament", t.id, { after: { players: players.length, captains: capIds.length } }, tx);
+        sent += 1;
+      });
+    } catch (error) {
+      console.error("notifyMissingCardReminders: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return sent;
+}
+
+/** Kartenmodell: laeuft die Abbuchung oder ist sie faellig (Zeilen vorhanden, oder alle Teams bereit und die Zusage der Halle erfuellt)? Dann wird das Turnier nicht wegen der Frist abgesagt. Unter der Turniersperre. */
+async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
+  const [row] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)).limit(1);
+  if (!(await tournamentCardMode(tx, t.id))) {
+    // Schalter AUS (Plan 17.2): Kartenfluss mit Zeilen oder eingefrorenem Zugangs-Snapshot wird NICHT wegen der Frist abgesagt (die Abschaltung ist keine Schuld der Spieler); bucht nach, sobald der Schalter wieder EIN ist
+    if (row) return true;
+    if (t.venueAccessRequiredSnapshot === null || (await cardPaymentsEnabled())) return false;
+    const paid = await tx.select({ id: tournamentPlayers.userId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), gt(tournamentPlayers.paidCents, 0))).limit(1);
+    return paid.length === 0;
+  }
+  if (row) return true;
+  if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !(await hallZusageOkLive(tx, t, await chargeDueAt(tx, t)))) return false;
+  const entries = await tx.select({ ready: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+  if (!(entries.length === t.maxTeams && entries.every((e) => e.ready !== null))) return false;
+  // M5-5 (haengt ohne Zeilen): fehlen zur Frist Karten (z. B. nach "Bereit" entfernt), ist das Turnier NICHT abbuchbar und faellt aus (nichts abgebucht), statt still zu haengen
+  return tournamentAllCardsReady(tx, t.id);
 }
 
 /** Fälligkeit der Frist eines Turniers (null = Altturnier oder ohne Start: der Job fasst es nicht an). */
@@ -642,7 +836,7 @@ async function dueOf(exec: Pick<typeof db, "select">, t: Pick<T, "id" | "startsA
 }
 
 /** Ab wann kann bezahlt werden? Ab dem (letzten) Festlegen des Preises (Audit "tournament.price"), sonst ab der Anlage. */
-async function tournamentPayOpenAt(exec: Pick<typeof db, "select">, t: Pick<T, "id" | "createdAt">): Promise<Date> {
+export async function tournamentPayOpenAt(exec: Pick<typeof db, "select">, t: Pick<T, "id" | "createdAt">): Promise<Date> {
   const [row] = await exec
     .select({ at: sql<Date | null>`max(${auditLog.at})`.mapWith(auditLog.at) })
     .from(auditLog)
@@ -701,7 +895,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
     .where(eq(tournamentTeams.tournamentId, id))
     .orderBy(asc(tournamentTeams.registeredAt));
   const players = await db
-    .select({ teamId: tournamentPlayers.teamId, userId: users.id, name: sql<string>`coalesce(${users.nickname}, ${users.name})`, paidCents: tournamentPlayers.paidCents, paidBy: tournamentPlayers.paidBy })
+    .select({ teamId: tournamentPlayers.teamId, userId: users.id, name: sql<string>`coalesce(${users.nickname}, ${users.name})`, paidCents: tournamentPlayers.paidCents, paidBy: tournamentPlayers.paidBy, coveredBy: tournamentPlayers.coveredByUserId })
     .from(tournamentPlayers)
     .innerJoin(users, eq(users.id, tournamentPlayers.userId))
     .where(eq(tournamentPlayers.tournamentId, id))
@@ -742,6 +936,11 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
 
   const share = shareOf(t);
   const priceFixed = t.finalShareCents !== null;
+  // Kartenmodell (012 M5-3): Ampel = Karte hinterlegt (oder Anteil uebernommen), nichts wird bezahlt. Der Server entscheidet die Sichtbarkeit je Betrachter (Plan v3, Matrix).
+  const cardMode = (t.status === "registration" || t.status === "payment") && (await tournamentCardMode(db, t.id));
+  const cards = cardMode ? await getTournamentCardDisplays(t.id, { id: viewer?.id ?? null, platformAdmin: isPlatformAdmin(viewer ? { role: viewer.role as Role } : null) }) : null;
+  // gedeckt = Karte hinterlegt ODER Anteil uebernommen; die Captain-Sicht liefert bei Uebernahme {status: "none", covered: true} (Markierung), das zaehlt als gedeckt
+  const cardOk = (userId: string) => cards?.[userId]?.status === "card_ready" || cards?.[userId]?.covered === true;
   const teamViews = await Promise.all(
     entries.map(async (e) => {
       const list = players.filter((p) => p.teamId === e.teamId);
@@ -751,10 +950,15 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
         captainName: spectator ? "–" : (list.find((p) => p.userId === e.captainId)?.name ?? "–"),
         ready: Boolean(e.readyAt), // Team vollzählig gemeldet
         paidReady: !spectator && Boolean(paidReadyAt), // Captain hat nach voller Zahlung "Bereit" gedrückt
-        dueCents: priceFixed && !spectator ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
+        dueCents: !cardMode && priceFixed && !spectator ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
+        cardMissing: cardMode && !spectator && list.some((p) => cards?.[p.userId] !== undefined) ? list.filter((p) => !cardOk(p.userId)).length : 0, // nur im eigenen Team bekannt (sonst 0)
+        // Kartenmodell: Spieler-Ampeln nur, wo der Server sie dem Betrachter zeigt (eigenes Team, Plattform-Admin); sonst nur "Karten komplett/unvollstaendig" je Team
+        showLights: !cardMode || list.some((p) => cards?.[p.userId] !== undefined),
+        // Aggregat "Karten komplett" nur fuer Mitglieder des Teams (sehen ohnehin die Ampeln), den Veranstalter und Plattform-Admins; Gaeste und fremde Spieler sehen es nie (Entscheid t9)
+        cardsComplete: cardMode && isOrganizer && !list.some((p) => cards?.[p.userId] !== undefined) ? await tournamentTeamCardsReady(db, t.id, e.teamId) : null,
         anyPaid: !spectator && list.some((p) => p.paidCents > 0),
         complete: await rosterReady(db, t.id, e.teamId),
-        players: spectator ? [] : list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: priceFixed && (share === 0 || p.paidCents >= share), isCaptain: p.userId === e.captainId })),
+        players: spectator ? [] : list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: cardMode ? cardOk(p.userId) : priceFixed && (share === 0 || p.paidCents >= share), covered: cards?.[p.userId]?.covered === true, isCaptain: p.userId === e.captainId })),
       };
     }),
   );
@@ -775,8 +979,11 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
           isOrganizer,
           captainTeamId: captainOf?.teamId ?? null,
           myTeamId: myPlayer?.teamId ?? null,
-          iPaid: myPlayer ? priceFixed && (share === 0 || myPlayer.paidCents >= share) : false,
-          myDueCents: myPlayer && priceFixed ? Math.max(share - myPlayer.paidCents, 0) : 0,
+          iPaid: myPlayer ? (cardMode ? cardOk(myPlayer.userId) : priceFixed && (share === 0 || myPlayer.paidCents >= share)) : false,
+          myDueCents: myPlayer && priceFixed && !cardMode ? Math.max(share - myPlayer.paidCents, 0) : 0,
+          // Kartenmodell: habe ich selbst eine Karte (nicht nur einen Uebernehmer), und wessen Anteil uebernehme ich (nur der Platz, den der Server aus der Datenbank kennt)
+          hasOwnCard: myPlayer ? cardOk(myPlayer.userId) && cards?.[myPlayer.userId]?.covered !== true : false,
+          coveringUserId: viewer ? (players.find((p) => p.coveredBy === viewer.id && p.teamId === myPlayer?.teamId)?.userId ?? null) : null,
           registerableTeams: canJoin && !captainOf && !myPlayer ? adminTeamRows.filter((x) => !entries.some((e) => e.teamId === x.id)) : [],
           joinableTeamIds: canJoin && !myPlayer ? memberTeams.map((m) => m.teamId).filter((tid) => entries.some((e) => e.teamId === tid)) : [],
         }
@@ -791,6 +998,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
       range: t.totalCents !== null ? shareRange(t.totalCents, t.maxTeams, MIN_PLAYERS_PER_TEAM, MAX_PER_TEAM) : null,
       commissionPercent: await commissionPercent(),
     },
+    cardMode,
     registrationOpen: open,
     deadlinePassed: deadlinePassed(t),
     bracketVisible,
@@ -812,4 +1020,84 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
     tables: legacyTables.map((tb) => ({ ...tb, rows: tb.rows.map((r) => ({ ...r, name: nameOf.get(r.teamId) ?? "?", slug: entries.find((e) => e.teamId === r.teamId)?.slug ?? "" })) })),
     winner: t.winnerTeamId ? (nameOf.get(t.winnerTeamId) ?? null) : null,
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Eingefrorene Turniere bei Schalter AUS (Backlog 141, Entscheid t2q Plan-OK 012-Rest): Frist- und Fensterjob sagen bei ausgeschaltetem Kartenmodell NICHT ab (Notabschaltung ist keine Schuld der
+// Spieler). Solche Turniere bleiben in payment. Damit sie nicht unbemerkt haengen: Alarm an Admin 1 ab 6 Stunden nach dem Zeitpunkt, an dem sonst gehandelt worden waere, danach alle 12 Stunden erneut,
+// bis das Turnier geloest ist (Schalter AN oder abgesagt). KEINE automatische Absage: Admin 1 entscheidet (Absage ueber die Admin-Oberflaeche).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+export const FROZEN_FIRST_HOURS = 6;
+export const FROZEN_REPEAT_HOURS = 12;
+
+/** Stufe der Erinnerung: 0 ab 6 h nach `since`, dann je 12 h eine weitere; undefined = noch nicht faellig. Rein rechnerisch (Unit-Test). */
+export function frozenStage(now: Date, since: Date): number | undefined {
+  const t = now.getTime() - since.getTime() - FROZEN_FIRST_HOURS * 3_600_000;
+  return t < 0 ? undefined : Math.floor(t / (FROZEN_REPEAT_HOURS * 3_600_000));
+}
+
+/** Seit wann haette der Job gehandelt (Frist erreicht oder Nachzahlfenster einer gescheiterten Zeile abgelaufen)? null = noch nicht. Nur Turniere mit Kartenfluss. */
+async function frozenSince(exec: Pick<typeof db, "select" | "execute">, t: T): Promise<Date | null> {
+  const candidates: Date[] = [];
+  const due = await chargeDueAt(exec, t);
+  if (due) candidates.push(due);
+  if (t.startsAt) {
+    const w = await exec.execute(sql`select min(least(c.grace_until, ${t.startsAt}::timestamptz - interval '1 hour')) as ends from payment_charges c
+      where c.tournament_id = ${t.id} and c.status in ('failed', 'requires_action') and c.grace_until is not null and c.failure_code is not null and c.failure_code not in (${sql.join(NON_CARD_CODES.map((x) => sql`${x}`), sql`, `)})`);
+    const ends = (w.rows as { ends: Date | string | null }[])[0]?.ends;
+    if (ends) candidates.push(new Date(ends));
+  }
+  return candidates.length === 0 ? null : new Date(Math.min(...candidates.map((d) => d.getTime())));
+}
+
+/** Eingefrorene Turniere (nur bei Schalter AUS): id und Zeitpunkt, ab dem gehandelt worden waere. Kartenfluss = Snapshot gesetzt oder Abbuchungszeilen. */
+export async function frozenTournaments(exec: Pick<typeof db, "select" | "execute">, now: Date): Promise<{ id: string; since: Date }[]> {
+  if (await cardPaymentsEnabled()) return [];
+  const rows = await exec
+    .select()
+    .from(tournaments)
+    .where(and(eq(tournaments.status, "payment"), isNull(tournaments.bracketGeneratedAt), isNull(tournaments.settledAt), isNotNull(tournaments.startsAt), or(isNotNull(tournaments.venueAccessRequiredSnapshot), sql`exists (select 1 from payment_charges c where c.tournament_id = ${tournaments.id})`)));
+  const out: { id: string; since: Date }[] = [];
+  for (const t of rows) {
+    const since = await frozenSince(exec, t);
+    if (since && now.getTime() >= since.getTime()) out.push({ id: t.id, since });
+  }
+  return out;
+}
+
+/**
+ * Mitteilung an Admin 1 (Owner) zu eingefrorenen Turnieren: ab 6 h, dann alle 12 h, je Stufe einmal je Turnier (Audit-Marker unter der Turniersperre). OHNE Personendaten und ohne Turniername.
+ * In einem Savepoint (ein Fehler kippt den Job nicht). Gibt die Zahl der benachrichtigten Turniere zurueck.
+ */
+export async function notifyFrozenTournaments(now: Date = new Date(), opts: { candidates?: { id: string; since: Date }[] } = {}): Promise<number> {
+  const frozen = opts.candidates ?? (await frozenTournaments(db, now)); // opts.candidates nur fuer Tests (veraltete Liste)
+  let sent = 0;
+  for (const f of frozen) {
+    try {
+      await db.transaction(async (tx) => {
+        const t = await lockTournament(tx, f.id);
+        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || (await cardPaymentsEnabled())) return; // inzwischen geloest
+        // Frist/Fenster UNTER der Sperre neu rechnen (R-T269): wurde zwischenzeitlich nachgezahlt oder ist das Turnier nicht mehr eingefroren, keine Mitteilung; die Stufe stammt aus dieser Rechnung
+        const since = await frozenSince(tx, t);
+        if (!since || now.getTime() < since.getTime()) return;
+        const stage = frozenStage(now, since);
+        if (stage === undefined) return;
+        const action = `tournament.frozen_notice.${stage}`;
+        const [done] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, action), eq(auditLog.entityId, t.id))).limit(1);
+        if (done) return;
+        const hours = Math.floor((now.getTime() - since.getTime()) / 3_600_000);
+        // nur Admin 1 und nicht gesperrt (wie evidence-head)
+        const owners = await tx.select({ id: users.id }).from(users).where(and(eq(users.isOwner, true), isNull(users.bannedAt)));
+        // Savepoint nur um die Mitteilung: scheitert sie, wird die Transaktion dieses Turniers zurueckgerollt (kein Marker, naechster Lauf versucht es erneut); die anderen Turniere und der Job laufen weiter (aeusseres try/catch)
+        await tx.transaction(async (sp) => {
+          await notifyUsers(owners.map((o) => o.id), { type: "system", title: "Turnier eingefroren", body: `Ein Turnier ist bei ausgeschaltetem Kartenmodell eingefroren (seit etwa ${hours} Stunden). Bitte entscheiden: Kartenmodell einschalten oder das Turnier absagen.`, url: `/turniere/${t.id}` }, sp);
+        });
+        await audit(null, action, "tournament", t.id, { after: { hours } }, tx);
+        sent += 1;
+      });
+    } catch (error) {
+      console.error("notifyFrozenTournaments: Fehler bei Turnier", f.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return sent;
 }

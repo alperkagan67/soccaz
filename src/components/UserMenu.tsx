@@ -1,97 +1,204 @@
 "use client";
 
+// Konto-Menü der Kopfleiste (Vertrag 013 M2-4a). Natives Popover (`popover` + `popovertarget`): der Browser übernimmt Öffnen/Schließen, Escape, Klick daneben
+// (Light Dismiss) und die Rückgabe des Fokus an den Knopf. Dazu Menü-Tastatur nach APG: Pfeil auf/ab, Pos1/Ende, Tab schließt, Startfokus auf dem ersten Eintrag.
+// Vor der Hydration (und ohne Skript) steht der Inhalt im (versteckten) Popover, damit der native Knopf nichts Leeres öffnet; danach wird er nur noch im offenen
+// Zustand gerendert (kein verstecktes Menü im DOM, keine toten Tab-Stopps; Test-IDs und Rollen wie bisher). Mindestversionen: siehe DESIGN.md (Popover-API).
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { buttonClasses } from "./ui/button-styles";
 
-export type MenuLabels = { profile: string; area: string; wallet: string; settings: string; notifications: string; admin: string; signOut: string; help: string };
+export type MenuLabels = { games: string; profile: string; venue: string; wallet: string; settings: string; notifications: string; admin: string; signOut: string; help: string; account: string; unread: string };
 
-/** Konto-Menü in der Kopfleiste: Profil, Mein Bereich, Guthaben, Einstellungen, Abmelden. Schließt bei Klick daneben und mit Escape. */
-export function UserMenu({
-  name,
-  userId,
-  avatarUrl,
-  balanceText,
-  unread,
-  showAdmin,
-  labels,
-  signOut,
-}: {
+const ITEM = "ui-focus flex min-h-[var(--tap)] w-full items-center rounded-md px-3 text-left text-sm text-ink no-underline hover:bg-panel2";
+const SEPARATOR = "my-1 border-t border-line";
+
+/**
+ * AUSLAUFEND (Vertrag 012, Backlog 63): Der Eintrag "Guthaben" bleibt bis 012 M6a im Konto-Menü sichtbar (Option B) und fällt dann weg.
+ * M6a setzt diese Konstante auf false und löscht danach den markierten Block samt Prop `balanceText` und Label `wallet` (Header.tsx).
+ */
+export const SHOW_WALLET_ITEM_UNTIL_M6A = true;
+
+export type UserMenuProps = {
   name: string;
   userId: string;
   avatarUrl: string | null;
   balanceText: string;
   unread: number;
   showAdmin: boolean;
+  /** Hallenbetreiber (mindestens eine Halle zugewiesen): Eintrag "Meine Halle" */
+  showVenue: boolean;
   labels: MenuLabels;
-  signOut: () => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
+  signOutAction: () => Promise<void>;
+};
 
-  useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onClick);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const item = "block rounded-md px-3 py-2 hover:bg-panel2";
-  const close = () => setOpen(false);
+/** Der Inhalt des Menüs (eigene Komponente, damit er ohne Browser als statisches Markup geprüft werden kann). */
+export function UserMenuContent({ name, userId, balanceText, unread, showAdmin, showVenue, labels, signOutAction, onNavigate }: Omit<UserMenuProps, "avatarUrl"> & { onNavigate?: () => void }) {
+  const titleId = useId();
   return (
-    <div ref={root} className="relative">
-      <button className="btn btn-ghost !min-h-9 !gap-2 !px-3" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)} data-testid="user-menu-button">
-        {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={avatarUrl} alt="" width={22} height={22} className="size-[22px] rounded-full object-cover" />
-        ) : (
-          <span className="grid size-[22px] place-items-center rounded-full bg-accent text-xs font-bold text-accent-ink" aria-hidden>
-            {name.slice(0, 1).toUpperCase()}
-          </span>
+    <div data-testid="user-menu" className="space-y-1">
+      {/* Der Name steht als Titel über dem Menü, nicht darin: in role=menu sind nur Einträge, Gruppen und Trenner erlaubt */}
+      <p id={titleId} className="truncate border-b border-line px-3 pb-2 pt-1 font-semibold" data-testid="user-menu-name">
+        {name}
+      </p>
+      <div role="menu" aria-labelledby={titleId} className="space-y-1">
+        {/* Gruppe 1: wohin der Nutzer meistens will (Textentscheid t9): Meine Spiele, Mein Profil, bei Betreibern Meine Halle, bei Admins Admin */}
+        <Link role="menuitem" href="/app" className={ITEM} onClick={onNavigate}>
+          {labels.games}
+        </Link>
+        <Link role="menuitem" href={`/spieler/${userId}`} className={ITEM} onClick={onNavigate}>
+          {labels.profile}
+        </Link>
+        {showVenue && (
+          <Link role="menuitem" href="/halle" className={ITEM} onClick={onNavigate}>
+            {labels.venue}
+          </Link>
         )}
-        <span className="block max-w-[6rem] truncate">{name.split(" ")[0]}</span>
-      </button>
-      {open && (
-        <div role="menu" className="absolute right-0 top-11 z-30 w-60 space-y-1 rounded-xl border border-line bg-panel p-2 text-sm shadow-xl" data-testid="user-menu">
-          <p className="truncate border-b border-line px-3 pb-2 pt-1 font-semibold" data-testid="user-menu-name">{name}</p>
-          <Link role="menuitem" href={`/spieler/${userId}`} className={item} onClick={close}>
-            {labels.profile}
+        {showAdmin && (
+          <Link role="menuitem" href="/admin" className={ITEM} onClick={onNavigate}>
+            {labels.admin}
           </Link>
-          <Link role="menuitem" href="/app" className={item} onClick={close}>
-            {labels.area}
-          </Link>
-          <Link role="menuitem" href="/app/guthaben" className={`${item} flex justify-between`} onClick={close}>
+        )}
+        <div role="separator" className={SEPARATOR} />
+        {/* Gruppe 2: Benachrichtigungen, Guthaben (auslaufend bis 012 M6a), Konto (Einstellungen mit Karte ändern), Hilfe */}
+        <Link role="menuitem" href="/app/benachrichtigungen" className={`${ITEM} justify-between`} onClick={onNavigate}>
+          <span>{labels.notifications}</span>
+          {unread > 0 && (
+            <>
+              <span aria-hidden="true" className="min-w-6 rounded-full bg-accent px-2 text-center text-sm font-bold text-accent-ink">
+                {unread > 9 ? "9+" : unread}
+              </span>
+              <span className="sr-only">
+                {" "}
+                {unread} {labels.unread}
+              </span>
+            </>
+          )}
+        </Link>
+        {/* AUSLAUFEND bis 012 M6a (siehe SHOW_WALLET_ITEM_UNTIL_M6A): hier nur streichen */}
+        {SHOW_WALLET_ITEM_UNTIL_M6A && (
+          <Link role="menuitem" href="/app/guthaben" className={`${ITEM} justify-between`} onClick={onNavigate}>
             <span>{labels.wallet}</span>
             <span className="tabular-nums text-muted">{balanceText}</span>
           </Link>
-          <Link role="menuitem" href="/app/benachrichtigungen" className={`${item} flex justify-between`} onClick={close}>
-            <span>{labels.notifications}</span>
-            {unread > 0 && <span className="rounded-full bg-accent px-1.5 text-xs font-bold text-accent-ink">{unread > 9 ? "9+" : unread}</span>}
-          </Link>
-          <Link role="menuitem" href="/app/einstellungen" className={item} onClick={close}>
-            {labels.settings}
-          </Link>
-          <Link role="menuitem" href="/hilfe" className={item} onClick={close}>
-            {labels.help}
-          </Link>
-          {showAdmin && (
-            <Link role="menuitem" href="/admin" className={item} onClick={close}>
-              {labels.admin}
-            </Link>
-          )}
-          <form action={signOut} className="border-t border-line pt-1">
-            <button role="menuitem" className={`${item} w-full text-left text-ink`}>
-              {labels.signOut}
-            </button>
-          </form>
-        </div>
-      )}
+        )}
+        <Link role="menuitem" href="/app/einstellungen" className={ITEM} onClick={onNavigate}>
+          {labels.settings}
+        </Link>
+        <Link role="menuitem" href="/hilfe" className={ITEM} onClick={onNavigate}>
+          {labels.help}
+        </Link>
+        <div role="separator" className={SEPARATOR} />
+        {/* Abmelden ist nur das Abmelden vom Konto (Logout, begriffe.md) */}
+        <form action={signOutAction} role="none">
+          <button role="menuitem" type="submit" className={ITEM}>
+            {labels.signOut}
+          </button>
+        </form>
+      </div>
     </div>
+  );
+}
+
+export function UserMenu(props: UserMenuProps) {
+  const { name, avatarUrl, labels } = props;
+  const id = useId();
+  const popoverId = `${id}-menu`;
+  const popover = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Position unter dem Knopf, rechtsbündig (CSS-Anker gibt es noch nicht überall), und so hoch wie der Platz es erlaubt (niedrige Fenster, Zoom).
+  // `beforetoggle` läuft vor dem Anzeigen: kein Springen.
+  useEffect(() => {
+    const el = popover.current;
+    const btn = trigger.current;
+    if (!el || !btn) return;
+    const place = () => {
+      const r = btn.getBoundingClientRect();
+      const doc = document.documentElement; // ohne Bildlaufleiste, anders als window.innerWidth
+      const top = Math.round(r.bottom + 6);
+      el.style.top = `${top}px`;
+      el.style.right = `${Math.max(8, Math.round(doc.clientWidth - r.right))}px`;
+      el.style.maxHeight = `${Math.max(120, doc.clientHeight - top - 8)}px`;
+    };
+    const onBefore = (e: Event) => {
+      if ((e as ToggleEvent).newState === "open") place();
+    };
+    const onToggle = (e: Event) => setOpen((e as ToggleEvent).newState === "open");
+    el.addEventListener("beforetoggle", onBefore);
+    el.addEventListener("toggle", onToggle);
+    window.addEventListener("resize", place);
+    // Wurde das Popover schon vor der Hydration geöffnet (nativer Knopf), den Zustand nachziehen
+    setMounted(true);
+    if (el.matches(":popover-open")) {
+      place();
+      setOpen(true);
+    }
+    return () => {
+      el.removeEventListener("beforetoggle", onBefore);
+      el.removeEventListener("toggle", onToggle);
+      window.removeEventListener("resize", place);
+    };
+  }, []);
+
+  // Startfokus: erster Eintrag (das Menü ist erst jetzt gerendert)
+  useEffect(() => {
+    if (open) popover.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [open]);
+
+  const close = () => popover.current?.hidePopover();
+
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const go = (i: number) => {
+      e.preventDefault();
+      items[(i + items.length) % items.length]?.focus();
+    };
+    if (e.key === "ArrowDown") go(at + 1);
+    else if (e.key === "ArrowUp") go(at < 0 ? items.length - 1 : at - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(items.length - 1);
+    else if (e.key === "Tab") close(); // Menü-Muster: Tab schließt und der Fokus geht vom Knopf aus weiter
+  }
+
+  const first = name.split(" ")[0];
+  return (
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        popoverTarget={popoverId}
+        className={`${buttonClasses("secondary", "sm")} group !gap-2 aria-expanded:bg-panel2`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${labels.account}: ${first}`}
+        data-testid="user-menu-button"
+      >
+        {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={avatarUrl} alt="" width={24} height={24} className="size-6 rounded-full object-cover" />
+        ) : (
+          <span className="grid size-6 place-items-center rounded-full bg-accent text-xs font-bold text-accent-ink" aria-hidden>
+            {name.slice(0, 1).toUpperCase()}
+          </span>
+        )}
+        <span className="block max-w-[6rem] truncate">{first}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 transition-transform motion-reduce:transition-none group-aria-expanded:rotate-180">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      <div
+        ref={popover}
+        id={popoverId}
+        popover="auto"
+        onKeyDown={onKeyDown}
+        className="fixed inset-auto m-0 w-[min(18rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-rim bg-panel p-2 text-sm text-ink shadow-2xl not-supports-[selector(:popover-open)]:hidden"
+      >
+        {(open || !mounted) && <UserMenuContent {...props} onNavigate={close} />}
+      </div>
+    </>
   );
 }

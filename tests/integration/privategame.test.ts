@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { and, eq, isNull, like, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, like, sql } from "drizzle-orm";
 import { shuffle } from "@/lib/tournament";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, teamMembers, teams } from "@/db/schema";
@@ -155,7 +155,7 @@ describe("Teams einteilen", () => {
     for (const make of [() => () => 0, () => () => 0.999999, seq(0.1, 0.8, 0.4, 0.6, 0.3, 0.9, 0.2)]) {
       const rng = make();
       const { organizer, match } = await game(7); // 8 Spieler, alle noch ohne Team
-      const pool = (await db.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), isNull(matchParticipants.teamId)))).map((p) => p.userId);
+      const pool = (await db.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), isNull(matchParticipants.teamId))).orderBy(asc(matchParticipants.userId))).map((p) => p.userId);
       expect(pool).toHaveLength(8);
       const expected = shuffle(pool, make());
       await randomSplit(organizer.id, match.id, false, rng);
@@ -165,6 +165,28 @@ describe("Teams einteilen", () => {
       // abwechselnd: Position 0, 2, 4, 6 der gemischten Reihenfolge nach Heim, 1, 3, 5, 7 nach Gast
       expected.forEach((userId, i) => expect(parts.find((p) => p.userId === userId)!.teamId, `Position ${i}`).toBe(i % 2 === 0 ? match.homeTeamId : match.awayTeamId));
     }
+  });
+
+  it("stabile Reihenfolge: dieselbe Zufallsquelle gibt dieselbe Einteilung, auch wenn die Datenbank die Zeilen nach Updates in anderer Reihenfolge liefert (ORDER BY userId)", async () => {
+    const seq = (...v: number[]) => () => {
+      let i = 0;
+      return () => v[i++ % v.length];
+    };
+    const { organizer, match } = await game(7); // 8 Spieler ohne Team
+    const teamsOf = async () => Object.fromEntries((await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id))).map((p) => [p.userId, p.teamId]));
+    await randomSplit(organizer.id, match.id, false, seq(0.1, 0.8, 0.4, 0.6, 0.3, 0.9, 0.2)());
+    const first = await teamsOf();
+    // Vor jedem weiteren Mischen die Zeilen EINZELN in absteigender userId-Reihenfolge anfassen: jedes UPDATE legt eine neue Zeilenversion an, die Zeilen liegen danach in
+    // umgekehrter Reihenfolge im Speicher. Ohne ORDER BY (und mit einem Seq-Scan) bekäme randomSplit den Pool in dieser Reihenfolge und teilte anders ein.
+    const touchDescending = async () => {
+      for (const userId of Object.keys(first).sort().reverse()) await db.execute(sql`update match_participants set joined_at = joined_at where match_id = ${match.id} and user_id = ${userId}`);
+    };
+    await touchDescending();
+    await randomSplit(organizer.id, match.id, true, seq(0.1, 0.8, 0.4, 0.6, 0.3, 0.9, 0.2)());
+    expect(await teamsOf()).toEqual(first);
+    await touchDescending();
+    await randomSplit(organizer.id, match.id, true, seq(0.1, 0.8, 0.4, 0.6, 0.3, 0.9, 0.2)());
+    expect(await teamsOf()).toEqual(first);
   });
 
   it("12 Spieler: je Team sechs; Teamspiele bleiben bei 5 plus 1 Ersatz", async () => {

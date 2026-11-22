@@ -12,11 +12,13 @@ import {
   users,
 } from "@/db/schema";
 import { emailsFor, isOptionalType, type NotificationType } from "@/lib/notification-types";
+import { safeInternalPath } from "@/lib/safe-path";
 import { sendEmail } from "./providers/email";
 import { sendPush } from "./providers/push";
 
 type Exec = Pick<typeof db, "insert" | "select">;
 
+/** `url`: nur ein interner Pfad (safeInternalPath); alles andere wird beim Speichern verworfen (Backlog 3: Push/E-Mail setzen den Pfad hinter die eigene Adresse, "@evil.example" würde sonst den Host ersetzen). */
 export type NotificationInput = { type: NotificationType; title: string; body: string; url?: string };
 
 // ---------------------------------------------------------------------------------------------
@@ -64,7 +66,7 @@ export async function notifyUsers(userIds: string[], input: NotificationInput, e
   }
   if (targets.length === 0) return 0;
 
-  await exec.insert(notifications).values(targets.map((userId) => ({ userId, type: input.type, title: input.title, body: input.body, url: input.url ?? null })));
+  await exec.insert(notifications).values(targets.map((userId) => ({ userId, type: input.type, title: input.title, body: input.body, url: safeInternalPath(input.url, null) })));
   return targets.length;
 }
 
@@ -150,14 +152,14 @@ export async function deliverPending(limit = 200): Promise<number> {
       const subs = subRows.filter((s) => s.userId === n.userId);
       if (subs.length === 0) await log("push", "skipped", "Kein Gerät registriert.");
       for (const s of subs) {
-        const result = await sendPush({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth }, { title: n.title, body: n.body, url: n.url ?? "/app", tag: n.type });
+        const result = await sendPush({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth }, { title: n.title, body: n.body, url: safeInternalPath(n.url, null) ?? "/app", tag: n.type });
         await log("push", result.status, result.detail);
         if (result.gone) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));
       }
     }
 
     if (emailOn) {
-      const link = absoluteUrl(n.url);
+      const link = absoluteUrl(safeInternalPath(n.url, null));
       const result = await sendEmail({ to: n.email, subject: n.title, text: `${n.body}\n\n${link}\n\nDu kannst Benachrichtigungen unter ${absoluteUrl("/app/einstellungen")} einstellen.` });
       await log("email", result.status, result.detail);
     }

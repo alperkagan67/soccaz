@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches } from "@/db/schema";
+import { matchParticipants, matches, paymentProfiles } from "@/db/schema";
 import { requireUser } from "../session";
 import { DomainError } from "../teams";
 import { assertNoFakeInProduction, getPaymentProvider } from "./provider";
 import { cardModeActive } from "../wallet";
 import { fakeCardAllowed } from "./mode";
+import { fakeAuthorizeCore } from "./fake-authorize";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -40,4 +41,36 @@ export async function fakeCardReadyAction(matchId: string): Promise<{ error?: st
     if (error instanceof DomainError) return { error: error.message };
     throw error;
   }
+}
+
+/**
+ * NUR TESTS und CI: simuliert die Freigabe bei der Bank (3-D-Secure), OHNE Stripe. Die Zahlung wird dabei NICHT direkt gesetzt: es wird ein signiertes Fake-Ereignis
+ * (payment_intent.succeeded bzw. payment_failed) erzeugt und durch handleStripeWebhook geschickt, also derselbe Weg wie in Produktion. Gleiche Sperren wie fakeCardReadyAction.
+ */
+export async function fakeAuthorizeAction(matchId: string, outcome: "ok" | "fail"): Promise<{ error?: string }> {
+  assertNoFakeInProduction();
+  if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
+  const provider = await getPaymentProvider();
+  if (provider.name !== "fake") return { error: "Nicht verfügbar." };
+  const user = await requireUser("/app");
+  const r = await fakeAuthorizeCore(user.id, matchId, outcome);
+  if (!r.error) revalidatePath(`/lobby/${matchId}`);
+  return r;
+}
+
+/**
+ * NUR TESTS und CI (Turnier, 012 M5-3): hinterlegt dem eigenen Konto eine Testkarte (Profil mit Zahlungsmittel), ohne Stripe. Der Kartenstatus im Turnier ist der Stand des Profils.
+ * Gleiche Sperren wie fakeCardReadyAction (PAYMENTS_FAKE=1, nie Produktion, Anbieter muss der FakeProvider sein).
+ */
+export async function fakeTournamentCardAction(): Promise<{ error?: string }> {
+  assertNoFakeInProduction();
+  if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
+  const provider = await getPaymentProvider();
+  if (provider.name !== "fake") return { error: "Nicht verfügbar." };
+  const user = await requireUser("/app");
+  await db
+    .insert(paymentProfiles)
+    .values({ userId: user.id, stripeCustomerId: `cus_fake_${user.id}`, paymentMethodId: `pm_fake_${user.id}`, cardBrand: "visa", cardLast4: "4242", mandateText: "fake", mandateAcceptedAt: new Date() })
+    .onConflictDoUpdate({ target: paymentProfiles.userId, set: { paymentMethodId: `pm_fake_${user.id}`, cardBrand: "visa", cardLast4: "4242", updatedAt: new Date() } });
+  return {};
 }

@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Pager } from "@/components/Pager";
 import { formatDateTime } from "@/lib/time";
-import { ALL_ROLES, ROLE_LABEL } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, ROLE_LABEL, isOwner } from "@/lib/roles";
+import Link from "next/link";
 import { listUsers } from "@/server/admin";
+import { disputeMarks } from "@/server/payments/dispute-admin";
 import { requirePermission } from "@/server/session";
 import { ActionButton } from "@/components/ActionButton";
 import { setOrganizerAction } from "@/server/tournament-actions";
@@ -19,6 +21,7 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
   const banned = one(sp.banned) === "1";
   const page = Number(one(sp.page)) || 1;
   const { rows, hasMore } = await listUsers({ q, role, banned, page });
+  const marks = await disputeMarks(rows.map((u) => u.id)); // Zahlungsstreit: nur Markierung, keine automatische Sperre
 
   return (
     <div className="space-y-4">
@@ -32,7 +35,7 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
           <label className="label" htmlFor="role">Rolle</label>
           <select id="role" name="role" defaultValue={role ?? ""} className="field">
             <option value="">Alle</option>
-            {ALL_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
           </select>
         </div>
         <label className="col-span-2 flex items-center gap-3 text-sm">
@@ -52,10 +55,16 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
                   {u.name}
                   {u.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
                   {u.bannedAt && <span className="ml-2 rounded bg-ink px-1.5 py-0.5 text-xs text-bg">Gesperrt</span>}
+                  {marks.get(u.id)?.open ? (
+                    <Link href="/admin/zahlungsstreit" className="ml-2 rounded border border-ink px-1.5 py-0.5 text-xs" data-testid="dispute-mark-open">Zahlungsstreit offen ({marks.get(u.id)!.open})</Link>
+                  ) : null}
+                  {marks.get(u.id)?.lost ? (
+                    <Link href="/admin/zahlungsstreit?alle=1" className="ml-2 rounded border border-line px-1.5 py-0.5 text-xs text-muted" data-testid="dispute-mark-lost">Zahlungsstreit verloren ({marks.get(u.id)!.lost})</Link>
+                  ) : null}
                 </p>
                 <p className="text-sm text-muted">{u.email} · {u.city ?? "–"} · seit {formatDateTime(u.createdAt)}</p>
               </div>
-              <UserActions userId={u.id} role={u.role} banned={Boolean(u.bannedAt)} pro={u.isVerifiedPro} isSelf={u.id === me.id} />
+              <UserActions userId={u.id} role={u.role} banned={Boolean(u.bannedAt)} pro={u.isVerifiedPro} isSelf={u.id === me.id} canSetRole={isOwner(me) && !u.isOwner} />
               <ActionButton action={setOrganizerAction.bind(null, u.id, !u.isOrganizer)} label={u.isOrganizer ? "Veranstalter-Recht entziehen" : "Als Turnier-Veranstalter freischalten"} />
             </li>
           ))}

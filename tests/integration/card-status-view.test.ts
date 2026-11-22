@@ -61,3 +61,18 @@ describe("getCardDisplays: Sichtbarkeit je Betrachter aus der Datenbank (Fund 4)
     expect(JSON.stringify([opponentCaptain, teammate, guest, outsider])).not.toMatch(/failed|card_declined/);
   });
 });
+
+describe("getCardDisplays: Freigabe offen (M3c-1c)", () => {
+  it("authorize nur bei requires_action + authentication_required im offenen Fenster, nur fuer Betroffenen und Captain; nie fuer Mitspieler", async () => {
+    const g = await game();
+    await setStatus(g.match.id, g.a2.id, "failed");
+    await db.insert(paymentCharges).values({ matchId: g.match.id, userId: g.a2.id, amountCents: 800, status: "requires_action", failureCode: "authentication_required", graceUntil: new Date(Date.now() + 3_600_000), idempotencyKey: `charge:${g.match.id}:${g.a2.id}`, paymentIntentId: "pi_cs_authz" });
+    const as = (viewer: Parameters<typeof audienceFor>[0]) => getCardDisplays(g.match.id, (p) => audienceFor(viewer, p));
+    expect((await as({ userId: g.a2.id, platformAdmin: false, adminOf: [], isParticipant: true }))[g.a2.id]).toMatchObject({ status: "failed", authorize: true });
+    expect((await as({ userId: g.adminA.id, platformAdmin: false, adminOf: [g.home.id], isParticipant: true }))[g.a2.id]).toMatchObject({ authorize: true });
+    expect(JSON.stringify((await as({ userId: g.adminB.id, platformAdmin: false, adminOf: [g.away.id], isParticipant: true }))[g.a2.id])).not.toMatch(/authorize|pi_cs_authz/);
+    // Fenster abgelaufen: kein Flag
+    await db.update(paymentCharges).set({ graceUntil: new Date(Date.now() - 1000) }).where(eq(paymentCharges.userId, g.a2.id));
+    expect((await as({ userId: g.a2.id, platformAdmin: false, adminOf: [], isParticipant: true }))[g.a2.id]).not.toHaveProperty("authorize");
+  });
+});

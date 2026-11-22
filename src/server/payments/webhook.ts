@@ -1,7 +1,35 @@
-import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentProfiles, paymentSetupIntents, stripeEvents } from "@/db/schema";
 import { applyChargeInTx, bookChargeFee, type ChargeReport } from "./charge";
+import { retryChargesInWindow } from "./charge-retry";
+import { retryTournamentChargesInWindow } from "./tournament-charge";
+
+/** Obergrenze fuer das Wiederabbuchen direkt im Webhook-Request (Stripe-Zeitlimit je Aufruf 8 s): hoechstens so viele Plaetze, nach so vielen Millisekunden nichts Neues mehr. */
+export const WEBHOOK_RETRY_LIMIT = 3;
+export const WEBHOOK_RETRY_BUDGET_MS = 12_000;
+
+/**
+ * Nachholen nach "Karte geaendert" mit EINEM gemeinsamen Budget (Backlog 145): erst die Spiele, dann die Turniere mit dem Rest; ist er aufgebraucht, wird der Turnierteil NICHT gerufen (der Job holt ihn nach).
+ * deps und clock nur fuer Tests (Verhaltenstest mit gefaelschter Uhr).
+ */
+export async function runWebhookRetries(
+  userId: string,
+  deps: { games: (o: { userId: string; limit: number; budgetMs: number }) => Promise<unknown>; tournaments: (o: { userId: string; limit: number; budgetMs: number }) => Promise<unknown> } = { games: retryChargesInWindow, tournaments: retryTournamentChargesInWindow },
+  clock: () => number = Date.now,
+): Promise<void> {
+  const deadline = clock() + WEBHOOK_RETRY_BUDGET_MS;
+  await deps.games({ userId, limit: WEBHOOK_RETRY_LIMIT, budgetMs: remainingBudget(deadline, clock()) });
+  const rest = remainingBudget(deadline, clock());
+  if (rest > 0) await deps.tournaments({ userId, limit: WEBHOOK_RETRY_LIMIT, budgetMs: rest });
+}
+
+/** Restbudget bis zur gemeinsamen Frist (Backlog 145): nie negativ. Rein rechnerisch (Unit-Test). */
+export function remainingBudget(deadlineMs: number, nowMs: number): number {
+  return Math.max(0, deadlineMs - nowMs);
+}
+import { applyDisputeInTx } from "./dispute";
+import { parseDispute, type DisputeReport } from "./dispute-parse";
 import { applyRefundInTx, finalizeCancel, type RefundReport } from "./refund";
 import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, type CardDisplay, type ProviderEvent } from "./provider";
 
@@ -9,7 +37,7 @@ import { getPaymentProvider, PaymentsUnavailableError, WebhookSignatureError, ty
 export const MAX_WEBHOOK_BYTES = 256 * 1024;
 
 /** Nur diese Ereignistypen gehören zu diesem Endpunkt; alles andere wird angenommen, aber weder gespeichert noch verarbeitet (keine fremden Event-IDs in stripe_events). */
-export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.") || type.startsWith("payment_intent.") || type === "charge.updated" || type.startsWith("refund.") || type === "charge.refund.updated" || type === "charge.refunded";
+export const isCardEvent = (type: string) => type.startsWith("setup_intent.") || type.startsWith("payment_method.") || type.startsWith("payment_intent.") || type === "charge.updated" || type.startsWith("refund.") || type === "charge.refund.updated" || type.startsWith("charge.dispute.") || type === "charge.refunded";
 
 /** Macht aus einem payment_intent.*-Ereignis eine ungeprüfte Meldung für applyChargeInTx; null, wenn der Typ keine Verbuchung auslöst. */
 function toChargeReport(event: ProviderEvent): ChargeReport | null {
@@ -24,7 +52,7 @@ function toChargeReport(event: ProviderEvent): ChargeReport | null {
     amountCents: typeof event.object.amount === "number" && Number.isInteger(event.object.amount) ? event.object.amount : null,
     currency: str(event.object.currency),
     customerId: str(event.object.customer),
-    metadata: { matchId: str(meta.matchId), userId: str(meta.userId) },
+    metadata: { matchId: str(meta.matchId), tournamentId: str(meta.tournamentId), userId: str(meta.userId) },
     failureCode: str(err.code),
   };
 }
@@ -43,7 +71,7 @@ function toRefundReport(event: ProviderEvent): RefundReport | null {
     amountCents: typeof event.object.amount === "number" && Number.isInteger(event.object.amount) ? event.object.amount : null,
     currency: str(event.object.currency),
     paymentIntentId: str(event.object.payment_intent),
-    metadata: { matchId: str(meta.matchId), userId: str(meta.userId), chargeId: str(meta.chargeId) },
+    metadata: { matchId: str(meta.matchId), tournamentId: str(meta.tournamentId), userId: str(meta.userId), chargeId: str(meta.chargeId) },
     failureCode: str(event.object.failure_reason),
   };
 }
@@ -102,7 +130,23 @@ async function processEvent(event: ProviderEvent) {
   let card: CardDisplay | null = null;
   let oldMethod: string | null = null;
   let cancelCheck: string | null = null; // Erstattung verbucht: danach prüfen, ob die angeforderte Absage jetzt abgeschlossen werden kann
+  let cardUserId: string | null = null; // neue Karte gespeichert: danach im Nachzahlfenster neu abbuchen (Netz, nach der Transaktion)
   let feeFor: string | null = null; // erfolgreiche Abbuchung: die Gebühr wird NACH der Transaktion gebucht (Netzaufruf)
+  // Zahlungsstreit (M4a): fehlt die Liste der Balance-Transactions im Ereignis, oder ist ein Streit "lost" ohne Abzug darin, wird der Streit VOR der Transaktion bei Stripe abgerufen
+  // (Netz, nie unter Sperre). Scheitert der Abruf, wird mit dem Ereignis weitergearbeitet (fehlende Abzuege melden den Alarm "verloren ohne Abzug").
+  let dispute: DisputeReport | null = null;
+  if (event.type.startsWith("charge.dispute.")) {
+    dispute = parseDispute(event.object);
+    if (dispute && (dispute.balanceTransactions === null || (dispute.status === "lost" && !dispute.balanceTransactions.some((b) => b.category === "dispute")))) {
+      try {
+        const full = await (await getPaymentProvider()).retrieveDispute(dispute.disputeId);
+        const parsed = full ? parseDispute(full) : null;
+        if (parsed?.balanceTransactions) dispute = { ...dispute, balanceTransactions: parsed.balanceTransactions };
+      } catch {
+        /* nichts loggen */
+      }
+    }
+  }
   if (event.type === "setup_intent.succeeded") {
     const pmId = str(event.object.payment_method);
     const intentId = str(event.object.id);
@@ -143,15 +187,18 @@ async function processEvent(event: ProviderEvent) {
             .set({ paymentMethodId: card.id, cardBrand: card.brand, cardLast4: card.last4, mandateText: intent.mandateText, mandateAcceptedAt: intent.mandateAcceptedAt, updatedAt: new Date() })
             .where(eq(paymentProfiles.userId, intent.userId));
           await tx.update(paymentSetupIntents).set({ status: "succeeded" }).where(eq(paymentSetupIntents.id, intentId));
-          // Eine neue Karte (auch aus dem Konto, ohne Spiel) macht ALLE Plätze dieses Nutzers wieder bereit, deren Abbuchung fehlgeschlagen ist, in offenen Spielen ohne
-          // angeforderte Absage. Plätze ohne Karte (none) brauchen weiter das Mandat je Platz in der Lobby. Abgebucht wird hier nichts (Wiederabbuchen im Fenster: M3c).
+          // Eine neue Karte (auch aus dem Konto, ohne Spiel) macht ALLE Plätze dieses Nutzers wieder bereit, deren Abbuchung fehlgeschlagen ist UND deren Nachzahlfenster noch
+          // läuft (effektives Ende: min(grace_until, Anstoß − 1 h)), in offenen Spielen ohne angeforderte Absage. Nach dem Fensterende bleibt der Platz failed (die Karte wird
+          // trotzdem gespeichert). Plätze ohne Karte (none) brauchen weiter das Mandat je Platz in der Lobby. Abgebucht wird NACH dieser Transaktion (retryChargesInWindow).
+          cardUserId = intent.userId;
+          const windowOpen = sql`exists (select 1 from payment_charges pc join matches pm on pm.id = pc.match_id where pc.match_id = ${matchParticipants.matchId} and pc.user_id = ${matchParticipants.userId} and pc.grace_until is not null and least(pc.grace_until, pm.starts_at - interval '1 hour') > now())`;
           const openGames = tx.select({ id: matches.id }).from(matches).where(and(inArray(matches.status, ["lobby", "confirmed"]), isNull(matches.cancelRequestedAt)));
           await tx
             .update(matchParticipants)
             .set({ cardStatus: "card_ready" })
-            .where(and(eq(matchParticipants.userId, intent.userId), eq(matchParticipants.cardStatus, "failed"), inArray(matchParticipants.matchId, openGames)));
+            .where(and(eq(matchParticipants.userId, intent.userId), eq(matchParticipants.cardStatus, "failed"), windowOpen, inArray(matchParticipants.matchId, openGames)));
           if (intent.matchId) {
-            await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, intent.matchId), eq(matchParticipants.userId, intent.userId), inArray(matchParticipants.cardStatus, ["none", "failed"]))); // nie aus charge_pending/charged zurücksetzen
+            await tx.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, intent.matchId), eq(matchParticipants.userId, intent.userId), or(eq(matchParticipants.cardStatus, "none"), and(eq(matchParticipants.cardStatus, "failed"), windowOpen)))); // nie aus charge_pending/charged zurücksetzen; failed nur im Fenster
           }
         }
       }
@@ -166,6 +213,11 @@ async function processEvent(event: ProviderEvent) {
       if (report) {
         const res = await applyRefundInTx(tx, report);
         if (res.status === "applied" && res.matchId) cancelCheck = res.matchId;
+      }
+    } else if (event.type.startsWith("charge.dispute.")) {
+      if (dispute) {
+        const res = await applyDisputeInTx(tx, dispute, typeof event.created === "number" ? new Date(event.created * 1000) : null);
+        if (res.cancelCheckMatchId) cancelCheck = res.cancelCheckMatchId;
       }
     } else if (event.type === "charge.updated") {
       feeFor = str(event.object.payment_intent); // die balance_transaction ist jetzt womöglich da; unbekannte PaymentIntents ignoriert bookChargeFee
@@ -187,6 +239,16 @@ async function processEvent(event: ProviderEvent) {
   if (feeFor) {
     try {
       await bookChargeFee(feeFor); // eigener Folgeschritt, idempotent; "nicht verfügbar" holt der Nachholer später nach
+    } catch {
+      /* nichts loggen */
+    }
+  }
+  if (cardUserId) {
+    try {
+      // Bewusste Entscheidung: synchron NACH der Transaktion (der Spieler soll nach 'Karte aendern' sofort abgebucht werden). Das kostet Stripe-Latenz im Webhook-Request
+      // (Zeitlimits der Stripe-Aufrufe: 8 s); Fehler sind isoliert, und der Job card-charges holt alles Ausgelassene nach (siehe docs/BETRIEB.md)
+      // EIN gemeinsames Budget fuer Spiele und Turniere (Backlog 145, runWebhookRetries): der Turnierteil bekommt nur den Rest; ist er aufgebraucht, bleibt er fuer den Job (alle 5 Minuten)
+      await runWebhookRetries(cardUserId); // Turniere: neue Karte im Nachzahlfenster (M5-5), begrenzt: der Rest kommt mit dem Job (alle 5 Minuten)
     } catch {
       /* nichts loggen */
     }

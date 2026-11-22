@@ -12,12 +12,16 @@ import { db } from "@/db";
 import { matches, paymentCharges, paymentProfiles, paymentRefunds, users } from "@/db/schema";
 import { audit } from "../audit";
 import { post } from "../ledger";
+import { chargeAccountFor } from "../commission";
 import { cancelMatchTx } from "../lobby";
 import { DomainError } from "../teams";
 import type { Tx } from "../tx";
 import { applyChargeInTx, bookChargeFee, ensureRefundRow } from "./charge";
 import { UNKNOWN_OUTCOME } from "./charge-run";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
+import { OPEN_DISPUTE_STATUSES } from "./dispute";
+import { matchIdOf } from "./charge-context";
+import { applyTournamentRefund, runTournamentRefunds } from "./tournament-refund";
 
 /** Eine beanspruchte Erstattungszeile gilt so lange als "in Arbeit". */
 export const REFUND_LEASE_MS = 60_000;
@@ -36,7 +40,7 @@ export type RefundReport = {
   amountCents: number | null;
   currency: string | null;
   paymentIntentId: string | null;
-  metadata: { matchId: string | null; userId: string | null; chargeId: string | null };
+  metadata: { matchId: string | null; tournamentId?: string | null; userId: string | null; chargeId: string | null };
   failureCode: string | null;
 };
 
@@ -56,16 +60,24 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
     const byId = r.refundId ? tx.select().from(paymentRefunds).where(eq(paymentRefunds.refundId, r.refundId)) : null;
     const chargeId = r.metadata.chargeId;
     const byMeta = chargeId && UUID.test(chargeId) ? tx.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, chargeId)) : null;
-    for (const q of [byId, byMeta]) {
-      if (!q) continue;
-      const [row] = lock ? await q.for("update") : await q;
+    if (byId) {
+      const [row] = lock ? await byId.for("update") : await byId;
       if (row) return row;
+    }
+    if (byMeta) {
+      // Eine Abbuchung kann mehrere Erstattungen haben (je PaymentIntent): die passende nach dem PaymentIntent waehlen (Standardzeile hat payment_intent_id NULL)
+      const rows = lock ? await byMeta.for("update") : await byMeta;
+      if (r.paymentIntentId !== null) {
+        const exact = rows.find((x) => x.paymentIntentId === r.paymentIntentId) ?? rows.find((x) => x.paymentIntentId === null);
+        if (exact) return exact;
+      } else if (rows[0]) return rows.find((x) => x.paymentIntentId === null) ?? rows[0];
     }
     return undefined;
   };
   const probe = await find(false);
   if (!probe) return ignore("unknown_refund");
-  await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, probe.matchId)).for("update"); // Spiel zuerst
+  if (probe.tournamentId !== null) return applyTournamentRefund(tx, r); // Turnier-Zeile: eigener Zweig (tournament-refund.ts), gleiche Regeln
+  await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update"); // Spiel zuerst
   const row = await find(true);
   if (!row) return ignore("unknown_refund");
   if (r.refundId && row.refundId !== null && row.refundId !== r.refundId) return ignore("other_refund");
@@ -75,13 +87,13 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   if (r.amountCents !== row.amountCents || r.currency?.toLowerCase() !== "eur") return ignore("amount_mismatch");
   const [charge] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, row.chargeId));
   if (!charge || charge.status !== "succeeded") return ignore("charge_not_succeeded");
-  if (r.paymentIntentId !== null && r.paymentIntentId !== charge.paymentIntentId) return ignore("payment_intent_mismatch");
+  if (r.paymentIntentId !== null && r.paymentIntentId !== (row.paymentIntentId ?? charge.paymentIntentId)) return ignore("payment_intent_mismatch");
 
-  if (row.status === "succeeded") return { status: "already", matchId: row.matchId };
+  if (row.status === "succeeded") return { status: "already", matchId: matchIdOf(row) };
   if (r.outcome === "succeeded") {
     if (!r.refundId) return ignore("missing_refund_id");
     await post(tx, {
-      debit: { account: "revenue" },
+      debit: { account: await chargeAccountFor(tx, matchIdOf(row), row.paymentIntentId ?? charge.paymentIntentId) }, // dorthin zurück, wo die Abbuchung gelandet ist (revenue oder venue_payable)
       credit: { account: "clearing" },
       amountCents: row.amountCents,
       kind: "refund",
@@ -90,21 +102,21 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
       reason: "Erstattung Abbuchung auf die Karte",
     });
     await tx.update(paymentRefunds).set({ status: "succeeded", refundId: r.refundId, failureCode: null, updatedAt: new Date() }).where(eq(paymentRefunds.id, row.id));
-    await audit(null, "refund.succeeded", "match", row.matchId, { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
-    return { status: "applied", matchId: row.matchId };
+    await audit(null, "refund.succeeded", "match", matchIdOf(row), { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
+    return { status: "applied", matchId: matchIdOf(row) };
   }
   if (r.outcome === "pending") {
     if (r.refundId && row.refundId === null) await tx.update(paymentRefunds).set({ refundId: r.refundId, updatedAt: new Date() }).where(eq(paymentRefunds.id, row.id));
-    return { status: "applied", matchId: row.matchId };
+    return { status: "applied", matchId: matchIdOf(row) };
   }
   // failed: manuell zu klären (Admin-Alarm). Die Zeile wird nie automatisch erneut gesendet.
-  if (row.status === "failed" && row.failureCode === cleanCode(r.failureCode)) return { status: "already", matchId: row.matchId };
+  if (row.status === "failed" && row.failureCode === cleanCode(r.failureCode)) return { status: "already", matchId: matchIdOf(row) };
   await tx
     .update(paymentRefunds)
     .set({ status: "failed", refundId: row.refundId ?? (r.refundId || null), failureCode: cleanCode(r.failureCode) ?? "refund_failed", updatedAt: new Date() })
     .where(eq(paymentRefunds.id, row.id));
-  await audit(null, "refund.failed", "match", row.matchId, { after: { userId: row.userId, code: cleanCode(r.failureCode) } }, tx);
-  return { status: "applied", matchId: row.matchId };
+  await audit(null, "refund.failed", "match", matchIdOf(row), { after: { userId: row.userId, code: cleanCode(r.failureCode) } }, tx);
+  return { status: "applied", matchId: matchIdOf(row) };
 }
 
 /** Absage anfordern und so weit wie möglich abarbeiten. Die Berechtigung prüft der Aufrufer (Admin 1; nie der Captain nach der ersten Abbuchung). */
@@ -146,7 +158,33 @@ export async function runRefunds(now: Date = new Date()): Promise<number> {
       console.error("runRefunds: Fehler bei Spiel", r.id, error instanceof Error ? error.name : "Fehler");
     }
   }
+  // Einzelne Erstattungen OHNE Absage (spaeter Erfolg eines ersetzten Platzes, Doppelabbuchung; M3c-2b): nur senden (Phase 3), das Spiel bleibt unberuehrt
+  const standalone = await db.execute(sql`
+    select distinct r.match_id as id from payment_refunds r join matches m on m.id = r.match_id
+    where m.cancel_requested_at is null and r.status = 'pending' and r.refund_id is null and r.failure_code is distinct from ${UNKNOWN_OUTCOME}`);
+  for (const r of standalone.rows as { id: string }[]) {
+    try {
+      await sendPendingRefunds(r.id, now);
+    } catch (error) {
+      console.error("runRefunds: Fehler bei Erstattungen", r.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  // Turniere (M5-5): offene Erstattungen abgesagter Turniere senden
+  try {
+    await runTournamentRefunds(now);
+  } catch (error) {
+    console.error("runRefunds: Fehler bei Turnier-Erstattungen", error instanceof Error ? error.name : "Fehler");
+  }
   return done;
+}
+
+/** Sendet die offenen Erstattungen eines Spiels (Phase 3), ohne eine Absage anzufassen. */
+export async function sendPendingRefunds(matchId: string, now: Date = new Date()): Promise<void> {
+  for (let guard = 0; guard < 200; guard++) {
+    const claimed = await claimRefund(matchId, now);
+    if (!claimed) break;
+    await sendRefund(claimed);
+  }
 }
 
 /** Ein Durchlauf der Phasen 1 bis 4 für ein Spiel mit angeforderter Absage. true = das Spiel ist jetzt abgesagt. Idempotent und nachholbar. */
@@ -187,9 +225,10 @@ async function claimRefund(matchId: string, now: Date): Promise<ClaimedRefund | 
   return db.transaction(async (tx) => {
     await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchId)).for("share"); // Spiel vor Zeile
     const rows = await tx.execute(sql`
-      select r.id, r.charge_id, r.match_id, r.user_id, r.amount_cents, r.idempotency_key, r.attempt_started_at, r.updated_at, c.payment_intent_id
+      select r.id, r.charge_id, r.match_id, r.user_id, r.amount_cents, r.idempotency_key, r.attempt_started_at, r.updated_at, coalesce(r.payment_intent_id, c.payment_intent_id) as payment_intent_id
       from payment_refunds r join payment_charges c on c.id = r.charge_id
       where r.match_id = ${matchId} and r.status = 'pending' and r.refund_id is null and r.failure_code is distinct from ${UNKNOWN_OUTCOME}
+        and not exists (select 1 from payment_disputes d where (d.charge_id = r.charge_id or d.payment_intent_id = coalesce(r.payment_intent_id, c.payment_intent_id)) and (d.status in (${sql.join(OPEN_DISPUTE_STATUSES.map((s) => sql`${s}`), sql`, `)}) or d.status not in ('won', 'lost', 'warning_closed', 'prevented')))
       order by r.created_at, r.id
       for update of r skip locked`);
     for (const row of rows.rows as { id: string; charge_id: string; match_id: string; user_id: string; amount_cents: number; idempotency_key: string; attempt_started_at: Date | null; updated_at: Date; payment_intent_id: string | null }[]) {
@@ -235,10 +274,11 @@ async function resolveUnknown(matchId: string, now: Date): Promise<void> {
   if (unknown.length === 0) return;
   const provider = await getPaymentProvider();
   for (const c of unknown) {
-    const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.userId));
+    // Variante B: der Kunde des ZAHLERS (payer_user_id), nicht der des Platzes
+    const [profile] = await db.select().from(paymentProfiles).where(eq(paymentProfiles.userId, c.payerUserId ?? c.userId));
     let found;
     try {
-      found = await provider.findPaymentIntents({ matchId: c.matchId, userId: c.userId });
+      found = await provider.findPaymentIntents({ matchId: matchIdOf(c), userId: c.userId });
     } catch {
       continue; // Stripe nicht erreichbar: der nächste Lauf versucht es erneut
     }
@@ -246,7 +286,7 @@ async function resolveUnknown(matchId: string, now: Date): Promise<void> {
       // leere Antwort: erst nach einiger Zeit aussagekräftig (verzögerte Suche); dann einmal Audit + Alarm, die Zeile bleibt ungelöst
       if (now.getTime() - (c.attemptStartedAt as Date).getTime() < SEARCH_MIN_AGE_MS) continue;
       const [seen] = await db.execute(sql`select 1 from audit_log where entity = 'match' and entity_id = ${c.matchId} and action = 'charge.search_empty' and after ->> 'userId' = ${c.userId} limit 1`).then((r) => r.rows);
-      if (!seen) await audit(null, "charge.search_empty", "match", c.matchId, { after: { userId: c.userId } });
+      if (!seen) await audit(null, "charge.search_empty", "match", matchIdOf(c), { after: { userId: c.userId } });
       continue;
     }
     // Erfolgreiche zuerst: ein Erfolg gewinnt immer
@@ -276,8 +316,9 @@ export async function finalizeCancel(matchId: string): Promise<boolean> {
     const charges = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
     if (charges.some((c) => c.status === "pending")) return false; // unterwegs (processing) oder unbekannt: erst klären
     const refunds = await tx.select().from(paymentRefunds).where(eq(paymentRefunds.matchId, matchId));
-    const refunded = new Set(refunds.filter((r) => r.status === "succeeded").map((r) => r.chargeId));
+    const refunded = new Set(refunds.filter((r) => r.status === "succeeded" || r.status === "cancelled_dispute").map((r) => r.chargeId)); // cancelled_dispute: Streit verloren, nichts mehr zu erstatten (M4a)
     if (charges.some((c) => c.status === "succeeded" && !refunded.has(c.id))) return false;
+    if (refunds.some((r) => r.status !== "succeeded" && r.status !== "cancelled_dispute")) return false; // auch weitere Erstattungen (Doppelabbuchung / spaeter Erfolg) muessen durch sein
     await cancelMatchTx(tx, m, null, m.cancelReason ?? "Das Spiel wurde abgesagt.", { afterRefund: true });
     await audit(null, "match.cancel_completed", "match", matchId, { after: { refunds: refunds.length } }, tx);
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);

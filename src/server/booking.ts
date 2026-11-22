@@ -1,10 +1,11 @@
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { matches, teams, users } from "@/db/schema";
 import { bookingJobs, expenses, priceRules, venues } from "@/db/schema-finance";
 import { audit } from "./audit";
+import { hasChargeRows } from "./wallet";
 import { getAgent } from "./booking-agent";
 import { post } from "./ledger";
 import { teamName } from "./names";
@@ -30,8 +31,9 @@ export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
   return from === to || TRANSITIONS[from].includes(to);
 }
 
+/** Empfänger der Buchungsaufgaben: alle NICHT GESPERRTEN Plattform-Admins (die Teilrolle booking entfällt mit Vertrag 009 M1). */
 async function bookingStaffIds(tx: Pick<typeof db, "select">): Promise<string[]> {
-  const rows = await tx.select({ id: users.id }).from(users).where(inArray(users.role, ["admin", "booking"]));
+  const rows = await tx.select({ id: users.id }).from(users).where(and(inArray(users.role, ["admin"]), isNull(users.bannedAt)));
   return rows.map((r) => r.id);
 }
 
@@ -172,6 +174,10 @@ export async function recordExpense(
       .insert(expenses)
       .values({ matchId: input.matchId ?? null, kind: input.kind, amountCents: input.amountCents, note: input.note ?? null, receiptUrl: input.receiptUrl ?? null, paidOn: input.paidOn ?? new Date().toISOString().slice(0, 10), createdBy: actorId })
       .returning();
+    if (input.matchId && input.kind === "venue") {
+      const [mm] = await tx.select({ model: matches.ledgerModel }).from(matches).where(eq(matches.id, input.matchId));
+      if (mm?.model === "commission" && (await hasChargeRows(tx, input.matchId))) throw new DomainError("Bei Kartenspielen im Provisionsmodell ist die Hallenmiete durchlaufendes Geld (Verbindlichkeit gegenüber der Halle) und wird nicht als Ausgabe gebucht. Die Auszahlung folgt mit Stripe Connect.");
+    }
     const entry = await post(tx, {
       debit: { account: "venue_cost" },
       credit: { account: "bank" },
