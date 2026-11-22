@@ -22,6 +22,10 @@ export function assertSeedAllowed(env: SeedEnv): { host: string; port: string; d
   } catch {
     throw new Error("Abbruch: DATABASE_URL ist keine gültige URL. Es wurde nichts verändert.");
   }
+  // WHATWG-URL entfernt führende/innere Leerzeichen und Steuerzeichen, pg-connection-string nicht (" postgres://…" wird dort als relative URL mit anderem Host gelesen): Guard und Treiber müssten dieselbe Adresse sehen.
+  if (/[\s\u0000-\u001f\u007f]/.test(env.databaseUrl)) {
+    throw new Error("Abbruch: DATABASE_URL enthält Leerzeichen oder Steuerzeichen. Es wurde nichts verändert.");
+  }
   // pg übernimmt Query-Parameter (host, hostaddr, port, database) mit Vorrang vor dem URL-Teil: jede Query und jedes Fragment ist verboten.
   if (env.databaseUrl.includes("?") || env.databaseUrl.includes("#") || url.search !== "" || url.hash !== "") {
     throw new Error("Abbruch: DATABASE_URL darf keine Query-Parameter oder Fragmente enthalten (sie könnten Host, Port oder Datenbank ersetzen). Es wurde nichts verändert.");
