@@ -89,6 +89,8 @@ export const tournaments = pgTable(
     // 012 M5-1: Partnerhalle des Turniers (Pflicht im Kartenmodell). Fremdschluessel auf venues (NO ACTION) steht in der Migration, weil schema-finance aus diesem Modul nicht importiert werden soll.
     venueId: uuid("venue_id"),
     venueConfirmedAt: timestamp("venue_confirmed_at", { withTimezone: true }), // Zusage der Halle (011): gesetzt durch die Zusage
+    // 009 M3 Nachlieferung (Plan 16d.7): Betreiber, der die Zusage gegeben hat (uuid ohne Fremdschluessel wie evidence_actor.user_id; bei Kontoloeschung NULL)
+    venueConfirmedBy: uuid("venue_confirmed_by"),
     // beim Fixieren des Preises eingefroren (spaetere Aenderungen wirken nicht auf ein laufendes Turnier): braucht die Halle einen Zugang (Zusage Pflicht), und der Provisionssatz in Prozent
     venueAccessRequiredSnapshot: boolean("venue_access_required_snapshot"),
     commissionPercentSnapshot: numeric("commission_percent_snapshot", { precision: 5, scale: 2 }),
@@ -113,7 +115,13 @@ export const tournaments = pgTable(
     settledAt: timestamp("settled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [check("tournaments_fee_nonneg", sql`${t.entryFeeCents} >= 0`), check("tournaments_teams_range", sql`${t.maxTeams} between 2 and 32`), index("tournaments_status_idx").on(t.status, t.startsOn)],
+  (t) => [
+    check("tournaments_fee_nonneg", sql`${t.entryFeeCents} >= 0`),
+    check("tournaments_teams_range", sql`${t.maxTeams} between 2 and 32`),
+    check("tournaments_confirmed_needs_venue", sql`${t.venueConfirmedAt} is null or ${t.venueId} is not null`), // Migration: NOT VALID, bereinigt, dann VALIDATE (Plan 16f.2)
+    check("tournaments_confirmed_by_needs_confirmed", sql`${t.venueConfirmedBy} is null or ${t.venueConfirmedAt} is not null`),
+    index("tournaments_status_idx").on(t.status, t.startsOn),
+  ],
 );
 
 export const tournamentTeams = pgTable(
