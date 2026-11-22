@@ -4,12 +4,23 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: monday
+    open-pull-requests-limit: 3
+    # Major-Updates nur nach Plan (Backlog 178 bis 181), nicht als automatischer PR.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       playwright:
         patterns:
           - "@playwright/*"
           - "playwright*"
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
       minor-patch:
         update-types:
           - minor
@@ -18,4 +29,13 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: monday
+    open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+    groups:
+      actions:
+        patterns:
+          - "*"
