@@ -184,6 +184,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/migrate.mjs
+      # G25-009 Etappe D (noch ohne Wirkung auf die Anwendung): Rollen des Rollenmodells anlegen (idempotent, Passwoerter nur aus Umgebungsvariablen, hier keine) und den Eigentumswechsel im TROCKENLAUF
+      # pruefen (Plan wird erzeugt, nichts angewendet). Der Wechsel selbst und die Rechte folgen mit A1/A2 (docs/design/g25-009-db-rollenmodell.md, Code-Plan).
+      - name: Rollen anlegen (G25-009, Etappe D)
+        run: node scripts/db-roles.mjs --apply
+      - name: Eigentumswechsel im Trockenlauf (G25-009, Etappe D)
+        run: node scripts/db-owner.mjs --plan "$RUNNER_TEMP/owner-plan.json"
       - run: npm run test:integration
       # Dieselben Kartensuiten im Provisionsmodell (TEST_LEDGER_MODEL=commission, Skript scripts/test-commission.mjs): der Produktivpfad der Abbuchung (venue_payable) wird mitgeprueft.
       - name: Integrationstests Provisionsmodell
