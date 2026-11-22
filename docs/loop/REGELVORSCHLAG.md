@@ -195,6 +195,14 @@ Vorschlag: Worktrees werden immer mit `node scripts/worktree.mjs create <branch>
 
 Wer ändert: Regel-PR (Nutzer mergt), Abschnitt in `CLAUDE.md` unter „Konventionen“.
 
+## 17. Worktree und Port der Nutzer-Abnahme sind tabu
+
+Anlass: Der Look-Server auf Port 3103 und der Worktree `docs-analyse-frontend-y1` (Branch `feat/m2b-look`) dienen der Abnahme durch den Nutzer; sie wurden für Tests mitgenutzt (Dev-Server, Läufe, Test-Ergebnisordner im Worktree).
+
+Vorschlag: Abnahme-Worktree und -Port werden in `docs/loop/` benannt (eine Zeile je Abnahme, mit Ende nach der Abnahme). Dort gilt: kein Checkout, kein Test, kein Beenden, keine Änderung durch Worker; nur Lesen per `git -C`. Höchstens 2 Dev-Server gleichzeitig; Tests laufen dann nur in der CI.
+
+Wer ändert: Regel-PR (Nutzer mergt), Abschnitt in `CLAUDE.md` unter „Konventionen“.
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.
