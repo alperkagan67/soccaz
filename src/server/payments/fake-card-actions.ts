@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches } from "@/db/schema";
+import { matchParticipants, matches, paymentProfiles } from "@/db/schema";
 import { requireUser } from "../session";
 import { DomainError } from "../teams";
 import { assertNoFakeInProduction, getPaymentProvider } from "./provider";
@@ -56,4 +56,21 @@ export async function fakeAuthorizeAction(matchId: string, outcome: "ok" | "fail
   const r = await fakeAuthorizeCore(user.id, matchId, outcome);
   if (!r.error) revalidatePath(`/lobby/${matchId}`);
   return r;
+}
+
+/**
+ * NUR TESTS und CI (Turnier, 012 M5-3): hinterlegt dem eigenen Konto eine Testkarte (Profil mit Zahlungsmittel), ohne Stripe. Der Kartenstatus im Turnier ist der Stand des Profils.
+ * Gleiche Sperren wie fakeCardReadyAction (PAYMENTS_FAKE=1, nie Produktion, Anbieter muss der FakeProvider sein).
+ */
+export async function fakeTournamentCardAction(): Promise<{ error?: string }> {
+  assertNoFakeInProduction();
+  if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
+  const provider = await getPaymentProvider();
+  if (provider.name !== "fake") return { error: "Nicht verfügbar." };
+  const user = await requireUser("/app");
+  await db
+    .insert(paymentProfiles)
+    .values({ userId: user.id, stripeCustomerId: `cus_fake_${user.id}`, paymentMethodId: `pm_fake_${user.id}`, cardBrand: "visa", cardLast4: "4242", mandateText: "fake", mandateAcceptedAt: new Date() })
+    .onConflictDoUpdate({ target: paymentProfiles.userId, set: { paymentMethodId: `pm_fake_${user.id}`, cardBrand: "visa", cardLast4: "4242", updatedAt: new Date() } });
+  return {};
 }
