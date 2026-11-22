@@ -187,6 +187,14 @@ Aufbau je Kandidat: Wortlaut-Vorschlag, Zieldatei, Begründung, betroffene Rolle
 
 ---
 
+## 16. Worktrees nur über `worktree.mjs create`, nie manuell
+
+Anlass: Ein von Hand mit `git worktree add` angelegter Worktree (009-M3-Nachlieferung) hatte keine `.env.local`; das Kopieren ist per Deny-Regel gesperrt, der Worker war für DB-Läufe blockiert, der Umzug kostete Zeit.
+
+Vorschlag: Worktrees werden immer mit `node scripts/worktree.mjs create <branch> <worker 1..4> [--base <ref>] [--no-seed]` angelegt (legt `.env.local`, Port und Worker-DB sanktioniert an). Entfernt wird mit `git worktree remove` (nicht `worktree.mjs remove`, wenn die Worker-DB erhalten bleiben soll), erst nach Freigabe durch den Worker und nach Prüfung, dass kein Prozess im Ordner läuft.
+
+Wer ändert: Regel-PR (Nutzer mergt), Abschnitt in `CLAUDE.md` unter „Konventionen“.
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.
