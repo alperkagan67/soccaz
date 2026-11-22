@@ -112,7 +112,14 @@ try {
       return null;
     }
   })();
-  if (gold) check(gold.every((g) => evidenceHash(g) === g.hash) && gold.every((g) => after.some((a) => a.hash === g.hash)), "Golden-Fixture Version 1: byte-gleich zu JS und zur migrierten Datenbank");
+  if (gold) {
+    let sqlOk = true;
+    for (const g of gold) {
+      const r = (await q2("select evidence_hash($1,$2::uuid,$3::uuid,$4,$5::uuid,$6,$7,$8::timestamptz,$9,$10) as h", [g.seq, g.matchId, g.venueId, g.round, g.jobId, g.kind, g.reason, g.at, g.actorCommitment, g.prevHash]))[0].h;
+      if (r !== g.hash) sqlOk = false;
+    }
+    check(gold.every((g) => evidenceHash(g) === g.hash) && sqlOk, "Golden-Fixture Version 1 (unter 0053 erzeugt): feste Literale = JS = eingefrorene SQL-Funktion der migrierten Datenbank");
+  }
   const t = await q2("select name, venue_confirmed_at, venue_confirmed_by from tournaments where organizer_id = $1 order by name", [u]);
   check(t.every((r) => r.venue_confirmed_at === null), "Turniere ohne Halle: Zusage zurueckgesetzt");
   const au = await q2("select after from audit_log where action = 'migration_0054_tournament_cleanup'");

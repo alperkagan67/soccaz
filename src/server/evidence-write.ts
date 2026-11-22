@@ -4,7 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { bookingEvidence, bookingEvidenceReasonText, evidenceActor } from "@/db/schema-finance";
-import { cleanReason, isRequestKind, type EvidenceKind } from "@/lib/evidence";
+import { checkReasonText, isRequestKind, type EvidenceKind } from "@/lib/evidence";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Exec = Pick<typeof db, "select" | "execute">;
@@ -46,8 +46,8 @@ export async function recordEvidence(tx: Tx, input: EvidenceInput): Promise<{ cr
     if (existing) return { created: false, seq: null };
   }
   const salt = input.actor ? randomBytes(16).toString("hex") : null;
-  const cleaned = cleanReason(input.reason);
-  const reason = cleaned.length >= 3 && Array.from(cleaned).length <= 200 ? cleaned : "";
+  const checked = checkReasonText(input.reason);
+  const reason = checked.ok ? checked.text : ""; // zu kurz/zu lang: kein Text gespeichert (nur Tests; die App lehnt vorher ab)
   const reasonSalt = reason !== "" ? randomBytes(16).toString("hex") : null;
   const [row] = await tx
     .insert(bookingEvidence)

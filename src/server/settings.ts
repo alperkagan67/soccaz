@@ -10,7 +10,11 @@ export async function getSetting<T>(key: string, fallback: T, exec: Exec = db): 
   return row ? (row.value as T) : fallback;
 }
 
+/** Geschuetzte Beweisprotokoll-Einstellungen (Plan 16g.1): nur ueber die SQL-Funktion evidence_set_setting (Akteur Pflicht, Audit), nie ueber setSetting. */
+export const PROTECTED_EVIDENCE_SETTINGS = ["evidence_enforcement", "evidence_clock_source", "evidence_reason_retention_days", "evidence_cutover_at", "evidence_tournament_cutover_at"] as const;
+
 export async function setSetting(actorId: string | null, key: string, value: unknown) {
+  if ((PROTECTED_EVIDENCE_SETTINGS as readonly string[]).includes(key)) throw new Error(`Einstellung ${key} wird nur ueber evidence_set_setting geaendert (Beweisprotokoll).`);
   const before = await getSetting<unknown>(key, null);
   await db
     .insert(settings)

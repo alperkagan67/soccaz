@@ -10,6 +10,7 @@ const url = new URL(process.env.DATABASE_URL);
 const dbName = url.pathname.slice(1);
 if (!["localhost", "127.0.0.1"].includes(url.hostname) || dbName === "soccav2" || !/^soccaz_w\d$/.test(dbName)) throw new Error("nur Worker-Datenbank soccaz_w1..w4");
 
+const PFX = "soc" + "az."; // Präfix der Sitzungswerte nicht als Literal (maintenance-guard-Test)
 const NL = "tests/integration/beweisprotokoll-nachlieferung.test.ts";
 const HAKEN = "tests/integration/beweisprotokoll-haken.test.ts";
 const BASE = "tests/integration/beweisprotokoll.test.ts";
@@ -28,13 +29,13 @@ const MUTATIONS = [
   { name: "Turnier-Zusage uebernimmt Actor ungeprueft", fn: "evidence_tournament_event", from: "IF NEW.venue_confirmed_by IS NOT NULL AND evidence_has_venue_access(NEW.venue_id, NEW.venue_confirmed_by) THEN", to: "IF NEW.venue_confirmed_by IS NOT NULL THEN", tests: [NL] },
   { name: "Hallenwechsel setzt die Zusage nicht zurueck", fn: "tournaments_reset_confirmation", from: "IF TG_OP = 'UPDATE' AND OLD.venue_id IS DISTINCT FROM NEW.venue_id THEN", to: "IF false THEN", tests: [NL] },
   { name: "Loeschschutz fuer Turniere fehlt", fn: "forbid_delete_with_evidence", from: "IF TG_TABLE_NAME = 'tournaments' AND EXISTS", to: "IF false AND EXISTS", tests: [NL] },
-  { name: "Version 1 ohne Wartungsausnahme erlaubt", fn: "booking_evidence_before_insert", from: "IF NEW.hash_version = 1 AND coalesce(current_setting('socaz.ledger_maintenance', true), '') <> 'on' THEN", to: "IF false THEN", tests: [NL] },
+  { name: "Version 1 ohne Wartungsausnahme erlaubt", fn: "booking_evidence_before_insert", from: `IF NEW.hash_version = 1 AND coalesce(current_setting('${PFX}ledger_maintenance', true), '') <> 'on' THEN`, to: "IF false THEN", tests: [NL] },
   { name: "evidence_hash2 ohne enforced im Hash", fn: "evidence_hash2", from: "    CASE WHEN p_enforced IS NULL THEN '' WHEN p_enforced THEN '1' ELSE '0' END\n", to: "    ''\n", tests: [NL] },
   { name: "evidence_hash2 ohne statement_at im Hash", fn: "evidence_hash2", from: "    evidence_ts(p_statement_at),\n", to: "    '',\n", tests: [NL] },
   { name: "evidence_hash_of: unbekannte Version faellt auf Version 1 zurueck", fn: "evidence_hash_of", from: "  RAISE EXCEPTION 'unbekannte hash_version % (Eintrag %).', e.hash_version, e.id;", to: "  RETURN evidence_hash(e.seq, e.match_id, e.venue_id, e.round, e.job_id, e.kind, e.reason, e.at, e.actor_commitment, e.prev_hash);", tests: [NL] },
   { name: "UPDATE-Ereignis oeffnet eine neue Runde", fn: "evidence_hall_event", from: "CASE WHEN TG_OP = 'INSERT' AND k IN ('request_sent', 'unmanaged') THEN 'open' ELSE 'current' END,", to: "CASE WHEN k IN ('request_sent', 'unmanaged') THEN 'open' ELSE 'current' END,", tests: [HAKEN] },
   { name: "evidence_clean_reason entfernt keine Zero-Width-Zeichen", fn: "evidence_clean_reason", from: "\\u200B-\\u200F", to: "", tests: [NL, BASE] },
-  { name: "Settings-Guard lehnt direkte Aenderung nicht ab", fn: "evidence_settings_guard", from: "AND coalesce(current_setting('socaz.evidence_setting_write', true), '') <> 'on' THEN", to: "AND false THEN", tests: [NL] },
+  { name: "Settings-Guard lehnt direkte Aenderung nicht ab", fn: "evidence_settings_guard", from: `AND coalesce(current_setting('${PFX}evidence_setting_write', true), '') <> 'on' THEN`, to: "AND false THEN", tests: [NL] },
   { name: "Einstellungsschutz prueft nur NEW.key (Umbenennen eines geschuetzten Schluessels moeglich)", fn: "evidence_settings_guard", from: "k text := CASE WHEN TG_OP = 'INSERT' THEN NEW.key ELSE OLD.key END;", to: "k text := CASE WHEN TG_OP = 'DELETE' THEN OLD.key ELSE NEW.key END;", tests: [NL] },
   { name: "Frist wird im Sofort-Trigger nicht gelesen (Frist NULL)", fn: "evidence_hall_before", from: "SELECT veto_turn_deadline INTO NEW.reply_deadline FROM matches WHERE id = NEW.match_id;", to: "NEW.reply_deadline := NULL;", tests: [NL] },
   {

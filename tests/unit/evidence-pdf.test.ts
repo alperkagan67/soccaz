@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanReason, pdfSafe } from "@/lib/evidence";
+import { checkReasonText, cleanReason, pdfSafe } from "@/lib/evidence";
 import { evidencePdfModel } from "@/server/evidence-pdf";
 import type { MatchEvidence } from "@/server/evidence-export";
 
@@ -22,7 +22,12 @@ describe("pdfSafe", () => {
     expect(pdfSafe(null)).toBe("");
     expect(pdfSafe("<b>fett</b> **x** [l](http://x.invalid)")).toBe("<b>fett</b> **x** [l](http://x.invalid)"); // reiner Text, kein Markup im PDF
   });
-  it("baut auf cleanReason auf (Kürzung auf 300 Zeichen)", () => {
+  it("baut auf cleanReason auf (Anzeigegrenze 300 Zeichen; cleanReason selbst kürzt nicht, checkReasonText lehnt zu lange Texte ab)", () => {
+    expect(Array.from(cleanReason("x".repeat(400))).length).toBe(400);
+    expect(checkReasonText("x".repeat(201))).toEqual({ ok: false, error: "zu-lang" });
+    expect(checkReasonText("ab")).toEqual({ ok: false, error: "zu-kurz" });
+    expect(checkReasonText("  abc  ")).toEqual({ ok: true, text: "abc" });
+    expect(checkReasonText("   ")).toEqual({ ok: true, text: "" });
     expect(Array.from(pdfSafe("x".repeat(400))).length).toBe(300);
     expect(pdfSafe("a‏b")).toBe(cleanReason("a‏b"));
   });
