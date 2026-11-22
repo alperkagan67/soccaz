@@ -43,7 +43,7 @@ async function setup(browser: Browser, n: string, deadline = "now() + interval '
 
 const inquiryOf = (boss: Page, n: string) => boss.getByTestId("inquiry").filter({ hasText: hall(n) });
 
-test("Ablehnen-Formular: Fehler am Feld, Fokus auf die Radiogruppe, sonstiges braucht Text, ohne Anbindung ändert nichts", async ({ browser }) => {
+test("Ablehnen-Formular: Fehler am Feld, Fokus auf die Radiogruppe, sonstiges braucht Text (Browser), zu kurzer Text (Aktion), ohne Anbindung ändert nichts", async ({ browser }) => {
   const { boss, matchId, venueId } = await setup(browser, "1");
   await boss.goto("/halle");
   const inquiry = inquiryOf(boss, "1");
@@ -55,8 +55,14 @@ test("Ablehnen-Formular: Fehler am Feld, Fokus auf die Radiogruppe, sonstiges br
   await expect(inquiry.getByTestId("error-reasonCode")).toContainText("Bitte wähle einen Grund.");
   await expect(inquiry.getByRole("radio", { name: "Belegt" })).toBeFocused();
 
-  // „Sonstiges“ ohne Anmerkung: Fehler am Textfeld, Fokus dort
+  // „Sonstiges“ ohne Anmerkung: das Textfeld ist Pflicht (required), der Browser hält das Absenden an und springt auf das Feld (native Prüfung, kein Serveraufruf)
   await inquiry.getByRole("radio", { name: "Sonstiges" }).check();
+  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
+  await expect(inquiry.getByLabel(/Anmerkung/)).toBeFocused();
+  expect(await inquiry.getByLabel(/Anmerkung/).evaluate((el) => (el as HTMLTextAreaElement).validity.valueMissing)).toBe(true);
+
+  // zu kurze Anmerkung (2 Zeichen): die Eingabeprüfung der Aktion meldet den Fehler am Feld (aria-invalid, Fokus)
+  await inquiry.getByLabel(/Anmerkung/).fill("ab");
   await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
   await expect(inquiry.getByTestId("error-reason")).toContainText("3 bis 200 Zeichen");
   await expect(inquiry.getByLabel(/Anmerkung/)).toHaveAttribute("aria-invalid", "true");
