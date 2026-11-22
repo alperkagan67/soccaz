@@ -1,6 +1,6 @@
 # Plan 009 M3 (Entwurf v3): Beweisprotokoll mit PDF, Rest aus M2
 
-Status: Entwurf v3 mit Nachträgen Q1a und R-T210 (Abschnitt 12) (nur Doku, kein Code), Stand 2026-11-12, Verfasser worker-2. v3 arbeitet den Plan-Review R-T208 (10 Punkte) ein und enthält die Entscheide t9 (Abschnitt 0a). Grundlage: Vertrag 009 v4 (AC-7), Plan `docs/design/009-m2-plan.md`, Code nach 009 M2 (PR #134), Plan 011 M1.
+Status: Entwurf v3 mit Nachträgen Q1a, R-T210 (Abschnitt 12) M3b-Design DEFERRABLE (Abschnitt 13) Plan v4 (Abschnitt 14, Review-Auflagen) und Plan v5 (Abschnitt 15, Nachtrag R-T222) (nur Doku, kein Code), Stand 2026-11-12, Verfasser worker-2. v3 arbeitet den Plan-Review R-T208 (10 Punkte) ein und enthält die Entscheide t9 (Abschnitt 0a). Grundlage: Vertrag 009 v4 (AC-7), Plan `docs/design/009-m2-plan.md`, Code nach 009 M2 (PR #134), Plan 011 M1.
 Rechts- und Steuerfragen werden nur gestellt (Anwalt, Steuerberater), nie von Agenten beantwortet.
 
 ## 0a. Entscheide t9 (2026-11-12) und offene Präzisierung
@@ -145,3 +145,162 @@ Trigger (Append-only) entfernt; Zähler ohne `FOR UPDATE`; Hash ohne `prev_hash`
 **d) Hash-Funktion:** Kern-`sha256()` (PostgreSQL 11+, kein pgcrypto).
 **e) Externe Prüfung:** Ein Auszug (PDF je Spiel) führt ohne Nachbarzeilen nicht zum Kopf-Hash. Darum zusätzlich ein **Gesamtketten-Export** (Admin 1, Datei, nur Anfrage-Felder ohne Personenfelder: `seq`, `at`, `kind`, `match_id`, `venue_id`, `round`, `reason`, `actor_commitment`, `hash`) für die externe Prüfung (M3c, Route `/api/beweis/kette`); das PDF sagt ausdrücklich: „prüfbar nur zusammen mit dem Gesamtketten-Export und dem extern abgelegten Kopf-Hash“. Der „letzte Lauf“ des Tagesjobs liegt in derselben Datenbank: **maßgeblich ist die externe Kopie** (Ablageort: Frage Anwalt).
 **f) Zugriff und Salz:** Die Route prüft ausdrücklich `canUser(user, "owner")` (Admin 1) im Handler. Das **Salz je Zeile** liegt in `evidence_actor` (nicht in `booking_evidence`), damit die Anonymisierung den Bezug endgültig löst.
+
+## 13. Nachtrag M3b: Haken DB-seitig per DEFERRABLE-Constraint-Trigger (Entscheid t9/Orchestrator: bevorzugt; Bewertung durch security-reviewer ausstehend)
+Stand 2026-11-22, Verfasser worker-2. Dieser Abschnitt ersetzt für M3b die App-Haken aus 3.5 und 12 (die Tabelle 3.2 und die Arten bleiben). Fallback bei unverhältnismäßigem Aufwand: Abschnitt 13.9.
+
+### 13.1 Idee
+Auf `match_hall_requests` und `booking_jobs` liegen **AFTER-Constraint-Trigger, `DEFERRABLE INITIALLY DEFERRED`, `FOR EACH ROW`**. PostgreSQL führt sie **erst beim COMMIT** der Transaktion aus. Der Trigger schreibt in `booking_evidence` (der M3a-INSERT-Trigger setzt `seq`, `prev_hash`, `hash`, `at`). Folgen:
+- **Jeder** Schreibpfad, auch Seeds, Skripte und künftiger Code, erzeugt den Eintrag in derselben Transaktion; die Anwendung muss nichts aufrufen (kein `recordEvidence` in `veto.ts`/`booking.ts`/`venue-access.ts`/`account.ts`). Ein vergessener Haken ist unmöglich.
+- **Rollback = kein Eintrag, keine `seq`** (die Trigger-Ereignisse einer zurückgerollten (Teil-)Transaktion werden verworfen).
+- **Der Zähler wird erst beim COMMIT gesperrt**, also zuletzt und nur kurz (13.3). `runBookingAgent` (heute ohne Transaktion: je `UPDATE` ein Autocommit) braucht **keinen Umbau**: der Trigger feuert beim Autocommit.
+
+### 13.2 Ereignis → `kind` (die Matrix aus 3.2, jetzt im Trigger)
+Die Funktion bekommt `TG_OP`, `OLD` und `NEW` (die Zeilenstände zum Zeitpunkt des Ereignisses, auch wenn die Zeile später im selben COMMIT erneut geändert wird):
+| Tabelle | Ereignis | `kind` | Actor |
+|---|---|---|---|
+| `match_hall_requests` | INSERT, `status = 'pending'` | `request_sent` | nein |
+| | INSERT, `status = 'unmanaged'` | `unmanaged` | nein |
+| | UPDATE `pending → confirmed` | `accepted` | `NEW.answered_by` |
+| | UPDATE `pending → declined` mit `answered_by` | `declined` | `NEW.answered_by` |
+| | UPDATE `pending → declined` ohne `answered_by` (Frist, `settleHallCheck`) | `expired` | nein |
+| | UPDATE `pending → unmanaged` (Entzug/Konto-Löschung, 011 M1) | `unmanaged` | nein |
+| | alle anderen Wechsel, DELETE | kein Eintrag (DELETE ist „Ergebnis steht in den Einträgen davor“) | |
+| `booking_jobs` | INSERT | `job_open` | nein |
+| | UPDATE `status` geändert nach `booked`, `confirmed`, `unavailable`, `withdrawn`, `done` | `job_booked` …`job_done` | nein |
+| | `in_progress`, reine Notiz-/Nachweis-Updates (Status unverändert) | kein Eintrag | |
+**Unterscheidung `expired`/`declined`:** über `answered_by IS NULL` (die Frist setzt `declined` ohne Antwortenden). Das ist die einzige implizite Regel; ein Test belegt beide Pfade über die echte Anwendung (`settleHallCheck` mit abgelaufener Frist, `answerHallRequest`).
+**Actor:** der Trigger liest Name und E-Mail aus `users` **zum COMMIT-Zeitpunkt** (kein Client-Wert), schreibt `evidence_actor` (Salz aus `gen_random_uuid()`, `actor_commitment` wie in M3a: `sha256(salt || ':' || user_id)`). Ist das Konto bis dahin anonymisiert, stehen die anonymisierten Werte (gewollt).
+**Maßgebliche Wartungsausnahme:** ist `socaz.ledger_maintenance = 'on'` gesetzt (Test-Cleanup, Wartung), schreibt der Trigger **nichts** (sonst erzeugt jedes Aufräumen Einträge).
+
+### 13.3 Sperren und Verklemmungen (der Kern)
+- Heute (App-Haken mitten in der Transaktion) hielte eine Transaktion den globalen Zähler und nähme danach weitere Sperren: Verklemmung mit Pfaden, die erst Zeile/Spiel und dann den Zähler nehmen (Befund worker-4).
+- Mit DEFERRABLE liegt die Zählersperre **am Ende**: Beim COMMIT hat jede Transaktion alle ihre Zeilensperren schon. Eine Verklemmung bräuchte einen Zyklus, in dem der **Zählerinhaber** auf etwas wartet. Der Zählerinhaber führt nur noch die Trigger-INSERTs aus. Er darf dabei **auf nichts warten, was andere halten**.
+- **Befund (neu, Änderung an M3a nötig): die Fremdschlüssel von `booking_evidence` verletzen das.** Ein INSERT mit FK nimmt `FOR KEY SHARE` auf der referenzierten Zeile (`matches`, `venues`). Hält eine andere Transaktion dort `FOR UPDATE` (z. B. 011 M1 `lockVenues` nimmt `venues` `FOR UPDATE`, Spielsperren der Lobby) und will beim COMMIT selbst den Zähler, entsteht der Zyklus: A hält den Zähler und wartet auf `venues` (B), B hält `venues` und wartet auf den Zähler (A). **Darum in M3a ändern:** die Fremdschlüssel `match_id` und `venue_id` von `booking_evidence` **entfallen** (`RESTRICT`-Ersatz: BEFORE-DELETE-Guard-Trigger auf `matches` und `venues`, die das Löschen verweigern, solange Einträge existieren; die Prüfung liest nur, nimmt keine Zeilensperre; Wartungsausnahme gilt). Der Test „Fremdschlüssel RESTRICT“ aus M3a wird zum Guard-Trigger-Test.
+- Weitere Lesezugriffe der Trigger (`users`, `booking_evidence` für die Runde) sind einfache Lesevorgänge ohne Zeilensperren. Damit wartet der Zählerinhaber nur noch auf die **Commit-Sperre selbst** (nie auf Zeilen anderer): ein Zyklus ist ausgeschlossen.
+- **Reihenfolge am Zähler:** wer zuerst den Zähler nimmt, schreibt zuerst; die `seq` spiegelt die Commit-Reihenfolge der Zählersperre, nicht die der Anwendungsschritte (für die Kette unerheblich, Kausalität je Spiel bleibt, weil Wechsel desselben Spiels über die Spielsperre serialisiert sind). Innerhalb einer Transaktion gilt die Ereignisreihenfolge.
+- **Deadlock-Tests:** echte parallele Transaktionen `answerHallRequest` × `advanceVetos` × `updateBookingJob` × Entzug (011 M1) × `bookCommission` (nimmt `venues` `FOR UPDATE`): keine Verklemmung, alle Einträge vorhanden, Kette gültig.
+
+### 13.4 Runde (`round`) im Trigger
+`startHallCheck` legt je Halle im Pool eine Zeile an: je Zeile ein Ereignis, alle gehören zur **selben Runde**. Regel im Trigger: Gibt es im Protokoll bereits einen Eintrag `request_sent`/`unmanaged` desselben Spiels mit **derselben Transaktionsnummer** (`booking_evidence.tx_id = txid_current()`, neue Spalte, nicht im Hash), gilt dessen Runde; sonst `max(round) + 1` über alle Einträge des Spiels. Antwort-Arten (`accepted`, `declined`, `expired`) und `job_*` tragen die aktuelle Runde (`max(round)` des Spiels, 0 wenn keine). Test: zwei Hallenprüfungen desselben Spiels (neuer Termin) → Runden 1 und 2; mehrere `startHallCheck` in einer Transaktion → eine Runde.
+
+### 13.5 Idempotenz
+Das Ereignis entsteht nur bei einer **echten** Änderung (Statuswechsel); ein Doppelaufruf der Anwendung scheitert vorher an den App-Prüfungen (`pending`-Prüfung, `canTransition`). Der Trigger sperrt zuerst den Zähler (`SELECT … FOR UPDATE`), prüft dann die Existenz der Anfrage-Art (partieller UNIQUE-Index) und überspringt bei Treffer ohne `seq` (R-T210). **Kein `ON CONFLICT DO NOTHING`:** der BEFORE-INSERT-Trigger hätte den Zähler dann schon hochgezählt (Lücke).
+
+### 13.6 Volumen und Dauer
+`startHallCheck` erzeugt einen Eintrag je Halle im Pool (aktive Hallen der Stadt, meist `unmanaged`): erwartet höchstens einige Dutzend, in der Spitze einige Hundert. PostgreSQL hält die Trigger-Ereignisse im Speicher der Transaktion und führt sie nacheinander beim COMMIT aus, **während der Zähler gehalten wird**. Jeder Eintrag ist ein INSERT mit Hash (plpgsql, Größenordnung 0,1 bis 0,3 ms): 100 Einträge ≈ 10 bis 30 ms Zählersperre. Andere Commits warten entsprechend. **Messen** in M3b (100/500/1000 Hallen) und Grenze festlegen (z. B. > 50 ms im Test = Befund). Alternative bei Problemen: `unmanaged`-Einträge je Halle zu **einem** Sammeleintrag je Runde bündeln (Plan 3.2 ändern, Entscheid t9).
+
+### 13.7 Test „kein Pfad ohne Eintrag“ (ersetzt den Grep-Test)
+Statt eines Grep-Tests über die Quelltexte (kann Pfade übersehen) prüft ein **Matrix-Test auf SQL-Ebene** jeden (Alt, Neu)-Status der beiden Enums: für jede Kombination wird die Zeile **direkt per SQL** geändert und gezählt, ob der Eintrag laut Tabelle 13.2 entsteht oder bewusst nicht. Damit ist auch jeder künftige Schreibpfad (und jeder neue Status im Enum) abgedeckt: ein neuer Enum-Wert ohne Zeile in der Matrix lässt den Test rot werden (Test liest die Enum-Werte aus der Datenbank). Zusätzlich je ein Test über die **echten Anwendungspfade** (`startHallCheck`, `answerHallRequest`, `settleHallCheck` mit Frist, Entzug/Konto-Löschung, `createBookingJob`, `updateBookingJob`, `withdrawBookingJob`, `runBookingAgent`) und Rollback-Tests (Fehler nach dem Wechsel: kein Eintrag, keine `seq`).
+
+### 13.8 Mutationen (je Mutation ROT erwartet)
+Trigger fehlt je Tabelle; Trigger nicht `DEFERRABLE` (feuert sofort: Deadlock-Test rot); Zähler nicht zuerst gesperrt; `expired`/`declined` vertauscht; Eintrag auch bei Status unverändert; `in_progress` protokolliert; Runde nicht erhöht/pro Zeile erhöht; Actor aus falscher Spalte; Wartungsausnahme ignoriert (Cleanup erzeugt Einträge); FK wieder da (Deadlock-Test rot); Guard-Trigger auf `matches`/`venues` fehlt (Löschen trotz Einträgen); `ON CONFLICT DO NOTHING` statt Existenzprüfung (Lücke).
+
+### 13.9 Aufwand, Risiko, Fallback
+| | DEFERRABLE-Trigger (bevorzugt) | Sammeln am Ende (Fallback) |
+|---|---|---|
+| Anwendungscode | keiner (nur Aufräumen/Anpassen bestehender Tests) | 6 Aufrufstellen (`lobby.ts`, `scheduling.ts`, `veto.ts`, `venue-access.ts`, `booking.ts`, `runBookingAgent` in Transaktion) |
+| Migration | M3a-Migration erweitert (Trigger, `tx_id`, FK entfällt, Guard-Trigger); noch nicht auf main, also keine zweite Migration | keine |
+| Sicherheit „kein Pfad ohne Eintrag“ | **DB-seitig, vollständig** (auch Seeds/Skripte) | nur per Disziplin und Tests |
+| Verklemmung | Zähler nur im COMMIT, FK entfernt (13.3) | Sammeln und Schreiben ganz am Ende, ebenfalls am Zähler zuletzt; Aufrufer-Disziplin |
+| Risiko | plpgsql-Komplexität, schwerer zu debuggen, Fehler erst beim COMMIT sichtbar, Trigger kann vom Tabelleneigentümer deaktiviert werden (gehört in G25-009, DB-Rollenmodell) | vergessener Flush = fehlender Eintrag, mehr Code |
+| Aufwand (Schätzung) | mittel: SQL ≈ 150 Zeilen, Tests ≈ 25, M3a-Änderung klein | mittel bis hoch: 6 Stellen, Umbau `runBookingAgent`, viele Tests |
+**Empfehlung:** DEFERRABLE. **Entscheidungsgrenze für den Fallback:** (1) der security-reviewer findet einen Zyklus oder eine nicht abgedeckte Sperre; (2) die Messung 13.6 zeigt eine Zählersperre über der Grenze auch nach dem Bündeln; (3) `pg_dump`/Wiederherstellung oder Hosting (G25-009) verbietet `DEFERRABLE`-Constraint-Trigger (unwahrscheinlich).
+
+### 13.10 Änderungen an M3a (vor dem Push von M3a, keine neue Migration)
+`booking_evidence`: Fremdschlüssel `match_id`/`venue_id` entfallen; Spalte `tx_id bigint not null default txid_current()`; Guard-Trigger (BEFORE DELETE) auf `matches` und `venues`; die Trigger-Funktionen aus 13.2 mit `DEFERRABLE`-Constraint-Triggern auf den zwei Tabellen. `recordEvidence` bleibt für Tests und Sonderfälle (kein Aufruf in den Fachfunktionen). Die bestehenden M3a-Tests bleiben gültig, der FK-Test wird zum Guard-Trigger-Test.
+
+### 13.11 Offene Punkte (nur gestellt)
+- **Q3 (t9):** Bündeln der `unmanaged`-Einträge je Runde (13.6), falls die Messung es verlangt.
+- **R3 (Anwalt):** unverändert; die Actor-Auflösung zum COMMIT-Zeitpunkt ändert die Personenfelder nicht (weiterhin nur in `evidence_actor`).
+
+## 14. Plan v4: Auflagen aus dem Security-/Design-Review zu Abschnitt 13 (REVIEW-CHANGES, Empfehlung: DEFERRABLE bauen)
+Stand 2026-11-22, Verfasser worker-2. Dieser Abschnitt **ersetzt** in Abschnitt 13 alles, was ihm widerspricht (13.2 Unterscheidung expired/declined, 13.3 Fremdschlüssel, 13.4 Runde, 13.9/13.10 Umfang). Code-Start M3b erst nach Plan-OK (worker-4). Der Fallback „Sammeln am Ende“ ist nicht nötig. M3a ist nicht auf main: der Umbau fließt in die **M3a-Migration** (keine zweite Migration).
+
+### 14.1 Fremdschlüssel: ALLE entfernen, auch `evidence_actor.user_id`
+- `booking_evidence.match_id` und `venue_id` **ohne** Fremdschlüssel (Abschnitt 13.3).
+- **Zusätzlich** `evidence_actor.user_id` **ohne** Fremdschlüssel auf `users`: ein INSERT mit FK nimmt `FOR KEY SHARE` auf `users`; `users` wird oft `FOR UPDATE` gesperrt (`account.ts` Konto-Löschung, `admin.ts` Sperren/Rollen, `finance.ts`, `ledger.ts`) → Zyklus mit dem Zähler beim COMMIT. Die Spalte bleibt als reine UUID (nullable).
+- **Regel in der Konto-Löschung/Anonymisierung** (`account.ts`): `evidence_actor`-Zeilen des Kontos: `user_id`, `name`, `email` auf NULL (die Zeile selbst bleibt, das Salz bleibt oder wird gelöscht: Entscheid R3). Test: nach `deleteAccount` ist der Bezug gelöst, die Kette gültig.
+- **Deadlock-Tests (echte parallele Transaktionen):** `answerHallRequest` × Konto-Löschung/Entzug (011 M1) × `bookCommission` (`venues` `FOR UPDATE`) × Lobby/`updateBookingJob` (`matches` `FOR UPDATE`) × `admin`-Sperren (`users` `FOR UPDATE`): keine Verklemmung, alle Einträge vorhanden, Kette gültig. **Annahme: READ COMMITTED** (Standard der Anwendung); unter SERIALIZABLE/REPEATABLE READ ist der Plan nicht geprüft.
+
+### 14.2 Verwaiste Verweise: Guard ohne Sperre ist eine Restlücke, die der Job meldet
+Der `BEFORE DELETE`-Guard auf `matches`/`venues` liest ohne Zeilensperre und kann ein Rennen (Löschen und Eintragen gleichzeitig) oder die **gleiche Transaktion** (Eintrag zu einem im selben COMMIT gelöschten Spiel) nicht ausschließen. **Bekannte Restlücke** (Spiel-/Hallenlöschung ist ein seltener Admin-/Testpfad). Abhilfe: `verifyEvidenceChain` und der Tagesjob prüfen zusätzlich **verwaiste `match_id`/`venue_id`** (`LEFT JOIN` auf `matches`/`venues`, Treffer ohne Gegenstück = Alarm, nicht Kettenbruch). Test: gelöschtes Spiel (per Wartungsausnahme) → verwaister Eintrag wird gemeldet, Kette bleibt gültig.
+
+### 14.3 Wartungsausnahme eng halten, täglicher Abgleich, Rollen
+- Die Wartungsausnahme (`socaz.ledger_maintenance`) unterdrückt in der Transaktion **alle** Einträge (auch die davor erzeugten Ereignisse derselben Transaktion), weil die Trigger erst beim COMMIT laufen. Darum **nur im Test-Cleanup** (Allowlist, Grep-Test aus M3a); in Betriebsskripten verboten.
+- **Täglicher Abgleich im Job `evidence-head`:** jede `match_hall_requests`-Zeile mit Status `confirmed`, `declined`, `unmanaged` und jeder `booking_jobs`-Auftrag mit Status `booked`, `confirmed`, `unavailable`, `withdrawn`, `done` muss den passenden Protokolleintrag haben (Spiel, Halle, Runde, Art); fehlt einer: **Alarm** an Admin 1. Der Abgleich erkennt unterdrückte oder deaktivierte Trigger nachträglich (er ersetzt nicht den Schutz). Zeilen, die das Spiel inzwischen verlassen haben (gelöschte Anfragezeilen nach `settleHallCheck`), fallen nicht unter den Abgleich (kein Eintrag nötig, siehe 13.2).
+- **GO-LIVE-AUDIT G25-009 wird um eine Auflage ergänzt:** „**App-Rolle ≠ Eigentümer/Migrationsrolle**“. Der Eigentümer einer Tabelle kann `ALTER TABLE … DISABLE TRIGGER` ausführen; läuft die App unter dem Eigentümer, schützt kein Trigger. (Eintrag im Doku-PR, nicht in diesem Plan-Commit.)
+- **Actor-Aussage:** „Actor = **was die App als Antwortenden einträgt**“ (`answered_by` der Anfragezeile), **nicht kryptografisch bewiesen**; die Datenbank kann nicht prüfen, dass die Person wirklich geantwortet hat. Im PDF und in BETRIEB so benennen.
+- **`expired` vs. `declined` nicht an `answered_by IS NULL` hängen** (SET NULL beim Löschen des Kontos, Systemablehnung): Der Trigger unterscheidet nach **`answered_at IS NULL`** (die Frist setzt kein `answered_at`; jede Antwort setzt es zusammen mit `answered_by`; ein späteres `SET NULL` auf `answered_by` ist ein UPDATE ohne Statuswechsel und feuert nichts). Regel + Test: **jeder Pfad, der `declined` setzt, setzt `answered_at` (Antwort) oder gehört ausdrücklich zur Frist**; ein Grep-/Verhaltenstest über `veto.ts`/`venue-access.ts` stellt das sicher. Bleibt die Regel unsicher, kommt ein ausdrücklicher Marker (`answer_kind`) in die M3a-Migration.
+
+### 14.4 Runde: nur INSERT-Ereignisse eröffnen eine neue Runde (ersetzt 13.4)
+- **Nur INSERT-Ereignisse auf `match_hall_requests`** (`request_sent`, `unmanaged` aus INSERT) eröffnen eine neue Runde: gibt es einen solchen Eintrag desselben Spiels mit **derselben Transaktionsnummer** (`tx_id`), gilt dessen Runde, sonst `max(round) + 1`.
+- **UPDATE-Ereignisse** (`accepted`, `declined`, `expired`, `unmanaged` aus UPDATE, d. h. Entzug) und alle `job_*` nehmen **`max(round)` des Spiels** (0, wenn es keinen Eintrag gibt).
+- Test: ein **Entzug nach der Hallenprüfung** ändert die Runde nicht; zwei Hallenprüfungen desselben Spiels → Runden 1 und 2; `pending → unmanaged` (UPDATE) bleibt in der aktuellen Runde.
+
+### 14.5 Nur bei echtem Statuswechsel feuern (sonst serialisiert jedes Notiz-Update den Zähler)
+Getrennte Constraint-Trigger je Ereignis: `AFTER INSERT` und **`AFTER UPDATE … WHEN (OLD.status IS DISTINCT FROM NEW.status)`** (die `WHEN`-Bedingung gilt für Constraint-Trigger; sie verhindert, dass ein Update ohne Statuswechsel überhaupt ein Ereignis einreiht). Zusätzlich in der Funktion **früh `RETURN`, bevor der Zähler gesperrt wird**, wenn die Matrix 13.2 für (Alt, Neu) keinen Eintrag vorsieht (z. B. `in_progress`, `DELETE`). Test: reine Notiz-/Nachweis-Updates an `booking_jobs` und Zeilenänderungen ohne Statuswechsel nehmen den Zähler **nicht** (Zählersperre per `pg_locks`/zweiter Transaktion belegt).
+
+### 14.6 Zeitpunkt, Idempotenz der Aufträge
+- **`at` ist die COMMIT-Zeit** (Ausführung des Triggers), **nicht** die Ereigniszeit; im Plan, in BETRIEB und im **PDF** als „Eintragszeit (beim Abschluss der Buchung)“ benannt. Wo die Anwendung eine Ereigniszeit hat (`answered_at` der Anfragezeile), bleibt sie dort sichtbar.
+- **Rollback/Savepoint** verwirft die eingereihten Ereignisse (Test 13.7: Fehler nach dem Wechsel; Savepoint-Rollback innerhalb der Transaktion).
+- **`job_*`-Idempotenz** nur über den **echten Statuswechsel**; `createBookingJob` nutzt `ON CONFLICT DO NOTHING` (kein neues INSERT-Ereignis bei bestehendem Auftrag). Test: zweiter Aufruf von `createBookingJob` und doppelter `updateBookingJob` erzeugen keinen zweiten Eintrag.
+
+### 14.7 Felder, gelöschte Zeilen, `recordEvidence`, Seiteneffekte
+- Der Trigger setzt **`job_id = NEW.id`** und `match_id`/`venue_id` für `job_*` **selbst** (aus `NEW`).
+- **Spike VOR dem Bau (Pflicht):** Verhalten eines **in derselben Transaktion später gelöschten Datensatzes**: `startHallCheck` löscht die alten Anfragezeilen und legt neue an (`veto.ts`), `settleHallCheck` löscht bei „keine Halle frei“ die eben angelegten Zeilen (`veto.ts:54`). Ob PostgreSQL das eingereihte INSERT-Ereignis einer in derselben Transaktion gelöschten Zeile noch ausführt, wird mit einem 20-Zeilen-Test in einer Wegwerf-Datenbank **geprüft, nicht angenommen**. Erwartung laut Plan 13.2: `request_sent` entsteht auch dann (die Anfrage wurde gestellt). Verhält sich PostgreSQL anders, wird die Matrix angepasst (z. B. Eintrag aus dem `AFTER INSERT`-Trigger sofort statt beim COMMIT, mit erneuter Prüfung der Sperrfolge) und der Plan v5 nachgezogen.
+- **`recordEvidence` (`src/server/evidence.ts`) nur in Tests zulassen:** ESLint-Regel `no-restricted-imports` bzw. Importtest (Grep) in `src/` außer `src/server/evidence.ts` selbst; sonst kehrt der Zyklus (App-Haken mitten in der Transaktion) zurück.
+- **Fail closed:** Ein Fehler im Trigger erscheint als **roher Datenbankfehler beim COMMIT** und macht die ganze Transaktion rückgängig. Darum in `veto.ts`/`booking.ts` **keine Seiteneffekte** (Stripe, Mail, Push, `pg_notify`-Aufrufer, die außerhalb der Transaktion wirken) **vor** dem COMMIT ohne Rücknahme; Benachrichtigungen, die als Zeilen in derselben Transaktion entstehen, sind unkritisch. Test: Trigger-Fehler (Mutation) → die Fachaktion scheitert vollständig, nichts bleibt zurück.
+
+### 14.8 Volumen und Wachstum (zusätzlich zu 13.6)
+Neben der Zählersperre pro COMMIT werden **gemessen:** (a) Wachstum der Kette (Einträge je Hallenprüfung × Spiele pro Tag, Hochrechnung auf 1 Jahr), (b) **Dauer von `verifyEvidenceChain`** bei 100 000 und **1 Mio. Zeilen** (Tagesjob), (c) Dauer des Abgleichs 14.3. Ist die Prüfung bei 1 Mio. Zeilen zu langsam, wird sie **inkrementell** (ab dem zuletzt extern verankerten Kopf-Hash) und die Vollprüfung wöchentlich. **Q3 (`unmanaged` bündeln) wird vor der Messung NICHT entschieden.**
+
+### 14.9 Umfang der M3a-Änderung (in die M3a-Migration, vor dem Push von M3a)
+`booking_evidence`: keine Fremdschlüssel (match/venue), neue Spalte `tx_id` (`bigint not null default txid_current()`, nicht im Hash), optional `answer_kind` (nur wenn 14.3 es verlangt); `evidence_actor`: kein Fremdschlüssel auf `users`; Guard-Trigger (BEFORE DELETE) auf `matches` und `venues`; die Constraint-Trigger und Funktionen aus 13/14 auf `match_hall_requests` und `booking_jobs`; Verwaisten-Prüfung in `verifyEvidenceChain`; Abgleich im Job. M3a-Tests: der FK-Test wird zum Guard-Trigger-Test; `recordEvidence` bleibt (nur Tests). **Reihenfolge:** Plan-OK (worker-4) → Spike 14.7 → M3a-Umbau → M3b-Tests/Mutationen (13.8 erweitert um: Trigger feuert ohne Statuswechsel, Runde durch Entzug geändert, Abgleich meldet fehlenden Eintrag nicht, FK `evidence_actor.user_id` wieder da).
+
+## 15. Plan v5: Nachtrag zum Review R-T222 (REVIEW-OK mit Auflagen)
+Stand 2026-11-22, Verfasser worker-2. Ergänzt Abschnitt 14; Entwurf der SQL des Umbaus: `docs/design/009-m3a-umbau-entwurf.md` (nicht ausgeführt).
+
+### 15.1 Spike: Quellenlage (gelesen, nicht belegt durch Ausführung)
+Die PostgreSQL-Dokumentation sagt nichts dazu, ob ein eingereihtes AFTER-ROW-Ereignis einer in derselben Transaktion gelöschten Zeile noch läuft. Nachgelesen wurde der Quelltext **PostgreSQL `REL_17_STABLE`, `src/backend/commands/trigger.c`** (https://raw.githubusercontent.com/postgres/postgres/REL_17_STABLE/src/backend/commands/trigger.c, Commit-Hash im Text nicht sichtbar; Stand der Datei „Portions Copyright (c) 1996-2024“). Befund (gelesen von einem Hilfsagenten, Zusammenfassungen im Werkzeug teils widersprüchlich, daher nur wörtlich Gelesenes gewertet):
+- **`AfterTriggerExecute()`** holt das Tupel eines AFTER-ROW-Ereignisses mit **`table_tuple_fetch_row_version(..., &(event->ate_ctid1), SnapshotAny, ...)`** (für `ctid2` ebenso); bei Fehlschlag `elog(ERROR, "failed to fetch tuple1 for AFTER trigger")`. `SnapshotAny` nimmt jede physisch vorhandene Tupelversion; die Funktion prüft **nicht**, ob die Zeile inzwischen in derselben Transaktion gelöscht wurde. Kommentar an `AfterTriggerEventData`: `ate_ctid1` = „inserted, deleted, or old updated tuple“. **Folgerung (Quelle, nicht Ausführung):** Das INSERT-Ereignis einer später in derselben Transaktion gelöschten Zeile läuft beim COMMIT **noch**, solange die Tupelversion im Heap liegt. Eine von einer **laufenden** Transaktion gelöschte Version kann nicht von Pruning/VACUUM entfernt werden; das ist **aus `trigger.c` nicht belegt** (liegt im Heap-Code) und bleibt Annahme bis zum Spike.
+- **Savepoint-Rollback:** `AfterTriggerEndSubXact(false)` verwirft die in der Subtransaktion eingereihten Ereignisse („discarding any events queued by the subxact“) und setzt DONE-/IN_PROGRESS-Markierungen zurück. Das stützt die Aussage „Rollback/Savepoint verwirft die Ereignisse“ (14.6).
+- **`WHEN` bei Constraint-Triggern:** `TriggerEnabled()` wertet `tgqual` aus; nach der Zusammenfassung (`AfterTriggerSaveEvent` **nicht wörtlich gelesen**) beim **Einreihen**. Das stützt 14.5 (kein Ereignis, kein Zähler), bleibt aber bis zum Spike unbelegt.
+- Nicht gelesen/unbekannt: Anfang von `AfterTriggerSaveEvent`, `table_tuple_fetch_row_version`, Pruning. **Der 20-Zeilen-Spike bleibt erster Schritt des M3a-Umbaus** (sobald die lokale Datenbank wieder geht, NEEDS-USER): INSERT+DELETE derselben Zeile in einer Transaktion, `WHEN`-Bedingung, Savepoint-Rollback, Zählersperre im Trigger beim COMMIT.
+
+### 15.2 (a) Abgleich vollständig (ergänzt 14.3)
+Der tägliche Abgleich im Job `evidence-head` prüft zusätzlich **`pending` (Eintrag `request_sent`)** und **`booking_jobs` mit `open` (Eintrag `job_open`)**. Damit gilt: jede `match_hall_requests`-Zeile mit Status `pending`, `confirmed`, `declined`, `unmanaged` und jeder Auftrag mit `open`, `booked`, `confirmed`, `unavailable`, `withdrawn`, `done` hat den passenden Eintrag (nur `in_progress` ist ausgenommen). Fehlt einer: Alarm an Admin 1.
+
+### 15.3 (b) Indizes
+`booking_evidence` bekommt Indizes auf **`venue_id`** (Guard auf `venues`, Abgleich, Verwaisten-Prüfung) und **`job_id`** (Abgleich der Aufträge); vorhanden bleiben `seq` (unique), `(match_id, seq)` und der partielle Unique-Index der Anfrage-Arten. Ohne sie wären der Guard und der Abgleich Seq-Scans über die wachsende Kette.
+
+### 15.4 (c) Umgehungswege: Grep-Test und G25-009
+- Der **Grep-Test** (`tests/unit/maintenance-guard.test.ts`) erfasst zusätzlich **`SET CONSTRAINTS ALL IMMEDIATE`**/`SET CONSTRAINTS … IMMEDIATE` (die Anweisung würde die Ereignisse sofort ausführen und die COMMIT-Reihenfolge ändern) in `src/` und `scripts/` (Allowlist leer), außer dem Präfix `socaz.` wie bisher.
+- **GO-LIVE-AUDIT G25-009** wird um zwei Umgehungswege ergänzt: **`session_replication_role = replica`** (Trigger der Tabelle feuern nicht) und **`pg_restore --disable-triggers`** (gehört nur in kontrollierte Wiederherstellung, nie in den Betrieb). Beides setzt Superuser/Eigentümerrechte voraus (siehe Auflage „App-Rolle ≠ Eigentümer/Migrationsrolle“). Der tägliche Abgleich (15.2) fängt eine solche Umgehung **nachträglich** (Eintrag im Doku-PR, nicht in diesem Plan-Commit).
+
+### 15.5 (d) Umfang des M3a-Umbaus (Ergänzung zu 14.9)
+- **`scripts/migrate-check.mjs`** prüft zusätzlich: Constraint-Trigger je Tabelle (`match_hall_requests_evidence_ins/upd`, `booking_jobs_evidence_ins/upd`, `tgdeferrable` und `tginitdeferred` wahr), die Guards auf `matches`/`venues`, die TRUNCATE-Trigger, die neuen Indizes, die Funktionen, **keine** Fremdschlüssel an `booking_evidence` und `evidence_actor.user_id`.
+- **`tests/cleanup.ts`:** `booking_evidence` (und `evidence_actor`) vor `matches`/`venues` löschen, unter der Wartungsausnahme (dann schreiben die Trigger auf den Fachtabellen keine Einträge); danach Zähler zurücksetzen, wenn die Tabelle leer ist.
+- **Worker-Datenbanken neu anlegen** (die M3a-Migration ändert sich vor dem Merge; bereits angewendete Fassungen überspringen sie still).
+- **Journal-`when`** der M3a-Migration **> 1795357125760** (die Migration 0051 auf main): die Migration wird nach den Nummern 0049 bis 0051 einsortiert, die Reihenfolge im Journal entscheidet beim Anwenden (nicht der Dateiname). Beim Neuerzeugen auf 0052 prüfen.
+
+### 15.6 (e) Matrix-Tests müssen COMMITTEN
+Die DEFERRABLE-Trigger feuern erst beim **COMMIT**. Ein Test, der seine Transaktion zurückrollt oder nie abschließt (übliche Muster „in einer Transaktion testen und am Ende zurückrollen“), sieht **keine** Einträge und beweist nichts. Darum: Der **Testhelfer** (`tests/integration/helpers.ts`, `commitEvidence`/`asCommitted`) führt jede geprüfte Änderung in einer **eigenen, committenden Transaktion** aus und liest das Protokoll danach in einer neuen Verbindung; Rollback-Tests dürfen **absichtlich** zurückrollen und müssen **keinen** Eintrag finden. Der Matrix-Test (13.7) benutzt nur diesen Helfer; ein Selbsttest des Helfers (Eintrag nach COMMIT vorhanden, nach ROLLBACK nicht) hält die Regel fest.
+
+### 15.7 Nachtrag (Checkliste w4, Abschn. 9)
+- **Abgleich:** `evidence_reconcile()` berücksichtigt die **Runde** und klammert die Arten je Status (Entwurf F korrigiert).
+- **`confirmed → declined`** (und jeder andere Wechsel, der nicht von `pending` ausgeht) erzeugt **bewusst keinen** Eintrag; der Code kennt solche Wechsel nicht, ein Test hält das fest.
+- **Guard bei Kaskaden:** der Guard auf `matches`/`venues` verweigert auch Löschungen durch Kaskaden, **gewollt**; der Test-Cleanup löscht die Einträge vorher unter der Wartungsausnahme.
+- **Umsetzungsstand:** Code und SQL liegen auf `feat/009-m3a` (lokal, ungetestet gegen die Datenbank): Migration `0050_breezy_zemo` (endgültig 0052), Job `evidence-head`, `recordEvidence` nur in `evidence-write.ts` (ESLint), Konto-Löschungs-Regel, Grep-Test für `SET CONSTRAINTS`/`session_replication_role`, `migrate-check`, Matrix-/Deadlock-Tests.
+
+### 15.8 Nachtrag (statische SQL-Review, t2s)
+- **Cleanup der Testkette:** `tests/cleanup.ts` nummeriert die globale Kette nach dem Löschen der Testeinträge **neu** und verkettet sie neu (nur Test-/Entwicklungs-Datenbank; die Wartungsausnahme erlaubt es); sonst entstünden `seq`-Lücken und ein `prev_hash`-Bruch in Folgetests.
+- **Abgleich:** **Stichtag** (`settings.evidence_cutover_at`, in der Migration gesetzt): nur Zeilen mit `created_at` ab dem Stichtag zählen, der Altbestand hat keine Einträge und bekommt **keinen Backfill**. Eine Zeile `declined` mit `answered_at`, zu der die Runde nur `accepted` kennt (`confirmed → declined` ohne Eintrag), gilt als **erwartet** (ersetzt „bewusst nicht erfasst“ in 15.7).
+- **Konto-Löschung, Race:** `evidence_actor` entsteht erst beim COMMIT. Der Trigger liest nur **existierende, nicht anonymisierte** Konten (`geloescht-<id>@geloescht.invalid` ausgenommen); der Tagesjob **leert zusätzlich** alle `evidence_actor`-Zeilen, deren Konto fehlt oder anonymisiert ist (zweite Anonymisierung).
+- **R3 (Anwalt), ergänzt:** Das **Salz** bleibt nach der Anonymisierung in `evidence_actor` stehen; die Verpflichtung (`actor_commitment`) wäre bei bekannten `user_id`-Kandidaten nachrechenbar. Soll das Salz ebenfalls gelöscht werden (dann ist der Bezug endgültig gelöst)?
+- **Migration:** auf `origin/main` liegt bereits `0050_*`, M5-3 (0051) ist in PR #142: vor dem PR auf main rebasen und die Migration **neu als 0052** erzeugen (prevId = Snapshot 0051, `when` > 1795357125760).
+
+### 15.9 Nachtrag (Datenbank-Läufe, Entscheid Task Manager)
+- **Guard nur auf `matches`, nicht auf `venues`** (ändert 14.1/14.9 und 13.10). Die App löscht **nie** Hallen (kein `DELETE` auf `venues` in `src/` und `scripts/`; Hallen werden nur aktiv/inaktiv geschaltet), viele Tests räumen Hallen per `DELETE` auf, und ein Guard würde 13 Bestandstests ändern (Risiko AC-5). **Restlücke: Hallenlöschung** (manuell per SQL): der Protokolleintrag behält die `venue_id`, **`findOrphans` und der Tagesjob `evidence-head` melden sie als Alarm** (kein Kettenbruch). G25-009 bleibt unverändert.
+- **Sperrregel (Befund aus dem Deadlock-Test, PostgreSQL 40P01):** **`users` nach `matches` nur `FOR NO KEY UPDATE`, nie `FOR UPDATE`.** Die Zeile `match_hall_requests.answered_by` (und weitere Fremdschlüssel auf `users`, z. B. `match_participants`) nimmt `FOR KEY SHARE` auf `users`; wer `users FOR UPDATE` hält und danach ein Spiel braucht, bildet mit einem Spielsperrer, der den Schlüssel-Share auf dieselbe Nutzerzeile braucht, einen Zyklus (unabhängig vom Beweisprotokoll). Reihenfolge der App: **Spiel → Nutzer**, wie `deleteAccount` (`matches` `NO KEY UPDATE`, dann `users`).
+- **Befund bestehender Pfade (nur Befund, kein Umbau):** `admin.ts` `setBanned`/`setRole`/`setProBadge` (`users FOR UPDATE` allein, danach nur `users`/`audit_log`, kein Spiel → **kein Zyklus**, blockiert nur kurz Schlüssel-Share-Einfüger); `ledger.ts` `lockUser` (`FOR UPDATE`, von `debitWallet` unter der Spielsperre aufgerufen → Reihenfolge Spiel → Nutzer eingehalten; Aufladungen ohne Spiel unkritisch); `account.ts` `deleteAccount` (`users FOR UPDATE` **nach** den Spielsperren, Reihenfolge ok); **`finance.ts` `manualRefund`**: `users FOR UPDATE` **vor** dem Ledger-Eintrag mit `match_id` (Schlüssel-Share auf das Spiel) = Reihenfolge **Nutzer → Spiel**, **mögliche Zyklen** mit Pfaden, die erst das Spiel sperren und dann einen Schlüssel-Share auf diesen Nutzer brauchen (Lobby/Beitritt). Eintrag im Backlog; kein Umbau in M3.
