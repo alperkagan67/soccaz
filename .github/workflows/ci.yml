@@ -37,8 +37,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/socaz
       AUTH_SECRET: ci-only-secret-not-used-anywhere-else
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -60,7 +60,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.docs.outputs.docs_only }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
       - name: Nur Doku geändert?
@@ -106,7 +106,7 @@ jobs:
       E2E_BASE_URL: http://127.0.0.1:3100
       STRIPE_WEBHOOK_SECRET: whsec_e2e_lokaler_testschluessel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Playwright-Version pruefen
         run: |
           node -e '
@@ -116,7 +116,7 @@ jobs:
             if (!m || m[1] !== lock) { console.error("Image-Tag " + (m && m[1]) + " != Lockfile " + lock); process.exit(1); }
             console.log("Playwright " + lock + " == Image-Tag");
           '
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -144,7 +144,7 @@ jobs:
           npx playwright test $files
       - name: Berichte sichern
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-fehler-${{ matrix.shard }}
           path: |
@@ -177,8 +177,8 @@ jobs:
       AUTH_SECRET: ci-only-secret-not-used-anywhere-else
       STRIPE_WEBHOOK_SECRET: whsec_e2e_lokaler_testschluessel
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -199,7 +199,7 @@ jobs:
     if: always()
     needs: [changes, e2e-shard, integration]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Ergebnisse pruefen
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
