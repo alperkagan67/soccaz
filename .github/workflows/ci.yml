@@ -42,6 +42,8 @@ jobs:
       - run: npm run typecheck
       - run: npx eslint src tests scripts
       - run: npm test
+      # Jede Browser-Test-Datei muss in genau einem Shard stehen (.github/e2e-shards.json); sonst fiele sie still aus der CI.
+      - run: node scripts/e2e-shards.mjs check
       - run: node scripts/migrate.mjs
       - run: npm run build
 
@@ -64,17 +66,18 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: node scripts/ci-gate.mjs changes
 
-  # Browser-Tests in 4 Teilen. Jeder Teil hat einen eigenen Postgres-Dienst (nichts wird geteilt).
+  # Browser-Tests in 5 Teilen, nach gemessener Laufzeit aufgeteilt (.github/e2e-shards.json, Pruefung: scripts/e2e-shards.mjs, tests/unit/e2e-shards.test.ts).
+  # Jeder Teil hat einen eigenen Postgres-Dienst (nichts wird geteilt). Der Sammelcheck "Browser-Tests" (Job browser-tests) bleibt EIN Check.
   e2e-shard:
-    name: Browser-Tests Teil ${{ matrix.shard }}/4
+    name: Browser-Tests Teil ${{ matrix.shard }}/5
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5]
     # Offizielles Playwright-Image, Version EXAKT wie @playwright/test in package-lock.json
     # (der Schritt "Playwright-Version pruefen" bricht bei Abweichung ab). Digest = Multi-Arch-Index (MCR, abgefragt 2026-11-11 15:14 UTC).
     container:
@@ -126,7 +129,11 @@ jobs:
           done
           cat dev-server.log
           exit 1
-      - run: npx playwright test --shard=${{ matrix.shard }}/4
+      - name: Browser-Tests dieses Teils
+        env:
+          # Auch der Test-Prozess braucht die Variable (die Specs karte-lobby und karte-freigabe pruefen sie und werden sonst uebersprungen); der Entwicklungsserver hat sie schon.
+          PAYMENTS_FAKE: "1"
+        run: npx playwright test $(node scripts/e2e-shards.mjs list ${{ matrix.shard }})
       - name: Berichte sichern
         if: failure()
         uses: actions/upload-artifact@v4
@@ -135,7 +142,7 @@ jobs:
           path: |
             test-results
             dev-server.log
-          retention-days: 7
+          retention-days: 14
 
   integration:
     name: Integrationstests
@@ -170,6 +177,9 @@ jobs:
       - run: npm ci
       - run: node scripts/migrate.mjs
       - run: npm run test:integration
+      # Dieselben Kartensuiten im Provisionsmodell (TEST_LEDGER_MODEL=commission, Skript scripts/test-commission.mjs): der Produktivpfad der Abbuchung (venue_payable) wird mitgeprueft.
+      - name: Integrationstests Provisionsmodell
+        run: npm run test:integration:commission
 
   # Sammelcheck mit dem alten Namen: Das Ruleset "main-schutz" verlangt "Browser-Tests" genau so.
   # Gruen nur, wenn changes, e2e-shard und integration erfolgreich waren ODER (docs_only ist true UND e2e-shard und integration uebersprungen wurden).
