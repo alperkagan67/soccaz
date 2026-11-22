@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { UNMATCHED_THRESHOLD, unmatchedAlertData } from "./payments/unmatched";
+import { frozenStage, frozenTournaments } from "./tournaments";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
@@ -76,6 +77,8 @@ export async function getRefundAlerts(now: Date = new Date()) {
     await db.execute<{ id: string }>(sql`select distinct c.tournament_id as id from payment_charges c join tournaments t on t.id = c.tournament_id
       where t.status = 'cancelled' and c.status in ('pending', 'requires_action') and c.payment_intent_id is not null and c.updated_at <= ${new Date(now.getTime() - 3_600_000)}`)
   ).rows;
+  // eingefrorene Turniere bei Schalter AUS (Backlog 141): ab 6 h nach dem Zeitpunkt, an dem der Job sonst gehandelt haette; verschwindet bei Schalter AN oder Absage
+  const tournamentFrozen = (await frozenTournaments(db, now)).filter((f) => frozenStage(now, f.since) !== undefined);
   const unmatched = await unmatchedAlertData(db, now); // Backlog 118: erfolgreiche Zahlung ohne Zuordnung sofort, andere unbekannte Ereignisse erst ab der Schwelle
   const tournamentWaitsForCards = (await cardPaymentsEnabled())
     ? (
@@ -88,7 +91,7 @@ export async function getRefundAlerts(now: Date = new Date()) {
             and (select max(x.paid_ready_at) from tournament_teams x where x.tournament_id = t.id) <= ${new Date(now.getTime() - 10 * 60_000)}`)
       ).rows
     : [];
-  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards, tournamentLatePayments, tournamentOpenIntents, unmatched };
+  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards, tournamentLatePayments, tournamentOpenIntents, unmatched, tournamentFrozen };
 }
 
 export type Period = { from: Date; to: Date };
@@ -348,7 +351,7 @@ export type Alert = { code: string; severity: "high" | "medium"; title: string; 
  * keine Personendaten). Alles, was ein Automat NICHT loest und Geld oder einen haengenden Ablauf betrifft: Doppelabbuchung, fehlgeschlagene/ungeklaerte Erstattung, haengende Absage,
  * ungeklaerte Abbuchung, Schluesselkonflikt, Altzeile ohne Fenster.
  */
-export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched">>): Alert[] {
+export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched" | "tournamentFrozen"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched" | "tournamentFrozen">>): Alert[] {
   const out: Alert[] = [];
   const add = (code: string, n: number, title: string, detail: string) => {
     if (n > 0) out.push({ code, severity: "high", title: `${title} (${n})`, detail });
@@ -364,6 +367,7 @@ export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlert
   add("card:tournament-waits-for-cards", ra.tournamentWaitsForCards?.length ?? 0, "Turnier wartet auf Karten", "Alle Teams sind bereit und die Frist ist erreicht, aber es gibt keine Abbuchung (Karte fehlt, Halle oder Zusage fehlt). Das Turnier haengt in der Zahlungsphase.");
   add("card:unmatched-success", ra.unmatched?.succeeded.length ?? 0, "Zahlung ohne Buchung", "Eine erfolgreiche Stripe-Zahlung konnte keiner Abbuchung zugeordnet werden (echtes Geld ohne Buchung, letzte 30 Tage). Bitte im Stripe-Dashboard pruefen und gegebenenfalls erstatten.");
   add("card:unmatched-events", (ra.unmatched?.others24h ?? 0) > UNMATCHED_THRESHOLD ? ra.unmatched!.others24h : 0, "Viele unbekannte Zahlungsereignisse", "In den letzten 24 Stunden gab es mehr als " + UNMATCHED_THRESHOLD + " Zahlungsereignisse ohne Zuordnung. Bitte Webhook und Stripe-Konto pruefen.");
+  add("card:tournament-frozen", ra.tournamentFrozen?.length ?? 0, "Turnier eingefroren (Kartenmodell aus)", "Ein Turnier waere bei eingeschaltetem Kartenmodell abgebucht oder abgesagt worden und bleibt seit ueber 6 Stunden stehen. Bitte entscheiden: Schalter einschalten oder das Turnier absagen (keine automatische Absage).");
   add("card:tournament-open-intent", ra.tournamentOpenIntents?.length ?? 0, "Offene Zahlung bei abgesagtem Turnier", "Bei einem abgesagten Turnier ist ein Zahlungsversuch seit ueber einer Stunde offen und konnte nicht abgebrochen werden (Stripe pruefen, ggf. manuell abbrechen oder erstatten).");
   add("card:tournament-late-payment", ra.tournamentLatePayments?.length ?? 0, "Spaete Zahlung nach Turnier-Absage", "Eine Abbuchung eines abgesagten Turniers ist doch noch gelungen und wurde sofort voll erstattet (letzte 30 Tage). Bitte pruefen, ob die Erstattung durch ist.");
   add("card:legacy-failed", ra.legacyFailed.length, "Altzeile ohne Nachzahlfenster", "Eine fehlgeschlagene Abbuchung aus der Zeit vor dem Nachzahlfenster wird nicht automatisch bearbeitet.");
