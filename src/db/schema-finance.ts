@@ -7,6 +7,7 @@ import {
   doublePrecision,
   index,
   integer,
+  smallint,
   jsonb,
   numeric,
   pgEnum,
@@ -332,7 +333,7 @@ export const bookingEvidence = pgTable(
     seq: integer("seq").notNull().default(0),
     // KEINE Fremdschluessel (Plan 14.1): ein INSERT mit FK nimmt FOR KEY SHARE auf matches/venues; die DEFERRABLE-Trigger schreiben beim COMMIT unter der Zaehlersperre, das ergaebe einen Deadlock-Zyklus.
     // Ersatz fuer RESTRICT: BEFORE-DELETE-Guard-Trigger auf matches/venues (Migration); Verwaiste meldet verifyEvidenceChain/Tagesjob.
-    matchId: uuid("match_id").notNull(),
+    matchId: uuid("match_id"), // NULL nur bei Betreff 'tournament' (XOR-CHECK, Nachlieferung 009 M3, Plan 16c.1)
     venueId: uuid("venue_id"),
     round: integer("round").notNull().default(0),
     jobId: uuid("job_id"),
@@ -344,18 +345,50 @@ export const bookingEvidence = pgTable(
     hash: text("hash").notNull().default(""),
     txId: bigint("tx_id", { mode: "number" }).notNull().default(sql`txid_current()`), // Transaktionsnummer: Eintraege einer Hallenpruefung gehoeren zur selben Runde (Plan 14.4); nicht im Hash
     matchPrevHash: text("match_prev_hash"), // Variante Z (Kette je Spiel): nur als Spalte angelegt, nicht ausgewertet (Entscheid t9)
+    // --- Nachlieferung 009 M3 (Migration 0054, Plan 16b bis 16h): Hash-Version 2 ---
+    // Altzeilen (0052) sind Version 1 (eingefrorene Funktion evidence_hash); Spaltenstandard nach der Migration 2, Version 1 nur unter der Wartungsausnahme (16f.5).
+    hashVersion: smallint("hash_version").notNull().default(2),
+    subject: text("subject").notNull().default("match"), // 'match' | 'tournament'
+    tournamentId: uuid("tournament_id"),
+    reasonCode: text("reason_code").notNull().default(""), // belegt | wartung | veranstaltung | sonstiges, leer = keiner (im Hash)
+    reasonCommitment: text("reason_commitment").notNull().default(""), // sha256(salt:text) des Freitexts, Klartext in booking_evidence_reason_text (im Hash)
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }), // Antwortfrist (Spiele), im Hash
+    decidedAt: timestamp("decided_at", { withTimezone: true }), // Entscheidungszeit = transaction_timestamp(), im Hash
+    statementAt: timestamp("statement_at", { withTimezone: true }), // Anweisungszeit (clock_timestamp), im Hash, informativ
+    enforced: boolean("enforced"), // Schalterstand evidence_enforcement bei der Entscheidung; NULL = nicht anwendbar (Hash: '1' | '0' | '')
   },
   (t) => [
     uniqueIndex("booking_evidence_seq_idx").on(t.seq),
-    uniqueIndex("booking_evidence_request_idx").on(t.matchId, t.venueId, t.round, t.kind).where(sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired')`),
+    uniqueIndex("booking_evidence_request_idx").on(t.matchId, t.venueId, t.round, t.kind).where(sql`${t.subject} = 'match' and ${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'late_attempt')`),
+    // Turnier: Einmaligkeit nicht auf 'accepted' beschraenkt, damit spaetere Arten automatisch einmalig sind (Plan 16d.8)
+    uniqueIndex("booking_evidence_tournament_unique_idx").on(t.tournamentId, t.venueId, t.round, t.kind).where(sql`${t.subject} = 'tournament'`),
     index("booking_evidence_match_idx").on(t.matchId, t.seq),
-    index("booking_evidence_venue_idx").on(t.venueId), // Guard auf venues, Abgleich, Verwaisten-Pruefung (sonst Seq-Scans)
+    index("booking_evidence_tournament_idx").on(t.tournamentId, t.seq),
+    index("booking_evidence_venue_idx").on(t.venueId), // Abgleich, Verwaisten-Pruefung (sonst Seq-Scans)
     index("booking_evidence_job_idx").on(t.jobId), // Abgleich der Auftraege
     check(
       "booking_evidence_kind_check",
-      sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done')`,
+      sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'late_attempt', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done')`,
     ),
+    check("booking_evidence_tournament_kind_check", sql`${t.subject} = 'match' or ${t.kind} = 'accepted'`), // spaeter per DROP/ADD erweiterbar (16d.8)
     check("booking_evidence_reason_len", sql`${t.reason} is null or char_length(${t.reason}) <= 300`),
+    check("booking_evidence_subject_xor", sql`(${t.subject} = 'match' and ${t.matchId} is not null and ${t.tournamentId} is null) or (${t.subject} = 'tournament' and ${t.tournamentId} is not null and ${t.matchId} is null)`),
+    check("booking_evidence_hash_version_check", sql`${t.hashVersion} in (1, 2)`),
+    check(
+      "booking_evidence_v1_check",
+      sql`${t.hashVersion} <> 1 or (${t.subject} = 'match' and ${t.matchId} is not null and ${t.reasonCode} = '' and ${t.reasonCommitment} = '' and ${t.deadlineAt} is null and ${t.decidedAt} is null and ${t.statementAt} is null and ${t.enforced} is null and ${t.kind} <> 'late_attempt')`,
+    ),
+    check("booking_evidence_v2_check", sql`${t.hashVersion} <> 2 or ${t.reason} is null`), // Klartext nur in der Nebentabelle
+    check("booking_evidence_reason_code_check", sql`${t.reasonCode} in ('', 'belegt', 'wartung', 'veranstaltung', 'sonstiges')`),
+    // Frist-CHECKs (16e.2/16g.2): nur Version 2; Spiele mit Durchsetzung verlangen Frist und rechtzeitige Antwort, ein declined (Antwort) einen Code; expired: KEIN harter CHECK (Uhr, Befund im Abgleich)
+    check(
+      "booking_evidence_match_deadline_check",
+      sql`${t.hashVersion} <> 2 or ${t.subject} <> 'match' or ${t.kind} not in ('accepted', 'declined') or ${t.enforced} is not true or (${t.deadlineAt} is not null and ${t.decidedAt} is not null and ${t.decidedAt} <= ${t.deadlineAt} and (${t.kind} <> 'declined' or ${t.reasonCode} <> ''))`,
+    ),
+    check("booking_evidence_tournament_deadline_check", sql`${t.subject} <> 'tournament' or (${t.decidedAt} is not null and ${t.deadlineAt} is null)`),
+    check("booking_evidence_enforced_check", sql`${t.enforced} is null or (${t.subject} = 'match' and ${t.kind} in ('accepted', 'declined', 'expired', 'late_attempt'))`), // Plan 16h.1: Schalterstand nur bei Antwort/Ablauf/Antwortversuch
+    check("booking_evidence_tournament_statement_check", sql`${t.subject} <> 'tournament' or ${t.statementAt} = ${t.decidedAt}`), // Plan 16h.1 (c): Turnier: Anweisungszeit = Entscheidungszeit
+    check("booking_evidence_late_check", sql`${t.kind} <> 'late_attempt' or (${t.deadlineAt} is not null and ${t.decidedAt} is not null and ${t.decidedAt} > ${t.deadlineAt})`),
   ],
 );
 
@@ -381,3 +414,18 @@ export const evidenceActor = pgTable("evidence_actor", {
   email: text("email"),
   salt: text("salt").notNull(),
 });
+
+/**
+ * Klartext der Begruendung (Freitext des Betreibers) zum Protokolleintrag, AUSSERHALB des Hashes (Nachlieferung 009 M3, Plan 16b.1/16f.7): im Hash steht nur reason_commitment = sha256(salt:reason).
+ * NICHT anhaengend: Loeschen der Zeile (Kontoloeschung, Aufbewahrung, Anwaltsanfrage) laesst die Kette gueltig. Anonymisieren nur per DELETE (ein UPDATE bricht das Commitment).
+ * Frage R3 (Anwalt): Speicherung zum Beweiszweck, Aufbewahrung; Backups/WAL erreicht das Loeschen nicht.
+ */
+export const bookingEvidenceReasonText = pgTable(
+  "booking_evidence_reason_text",
+  {
+    evidenceId: uuid("evidence_id").primaryKey().references(() => bookingEvidence.id, { onDelete: "cascade" }),
+    reason: text("reason").notNull(),
+    salt: text("salt").notNull(),
+  },
+  (t) => [check("booking_evidence_reason_text_len", sql`char_length(${t.reason}) between 3 and 200`), check("booking_evidence_reason_text_salt", sql`char_length(${t.salt}) > 0`)],
+);

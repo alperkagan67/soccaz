@@ -228,7 +228,10 @@ export async function deleteAccount(userId: string) {
 
     // Beweisprotokoll (009 M3, Plan 14.1): Personenfelder des Kontos loesen (Zeile und Hash bleiben, die Kette bleibt gueltig). evidence_actor hat KEINEN Fremdschluessel auf users
     // (users wird oft FOR UPDATE gesperrt, ein FK braechte den Deadlock-Zyklus mit der COMMIT-Zaehlersperre); darum loescht diese Regel user_id, name und email ausdruecklich.
+    // Nachlieferung (Plan 16g.6): ERST der Klartext der Begruendungen der Eintraege dieses Kontos (Nebentabelle, Commitment im Hash bleibt), DANN evidence_actor leeren; Zusage-Bestaetiger der Turniere loesen.
+    await tx.execute(sql`delete from booking_evidence_reason_text where evidence_id in (select evidence_id from evidence_actor where user_id = ${userId})`);
     await tx.update(evidenceActor).set({ userId: null, name: null, email: null }).where(eq(evidenceActor.userId, userId));
+    await tx.execute(sql`update tournaments set venue_confirmed_by = null where venue_confirmed_by = ${userId}`);
 
     const mine = await tx.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.userId, userId));
     for (const m of mine.filter((x) => x.role === "admin")) {

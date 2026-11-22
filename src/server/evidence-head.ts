@@ -14,6 +14,13 @@ const LAST_KEY = "evidence_head_last";
  * anonymisiert ist (E-Mail geloescht-<id>@geloescht.invalid). Zeile und Hash bleiben, die Kette bleibt gueltig. Gibt die Anzahl geleerter Zeilen zurueck.
  */
 export async function clearOrphanActors(): Promise<number> {
+  // Plan 16g.6: Klartext der Begruendungen zuerst (Eintraege, deren Actor-Zeile anonymisiert ist oder deren Konto nicht mehr existiert), dann die Actor-Zeilen; Turnier-Bestaetiger ohne Konto loesen
+  await db.execute(sql`
+    delete from booking_evidence_reason_text rt using evidence_actor ea
+    where ea.evidence_id = rt.evidence_id
+      and ((ea.user_id is null and ea.name is null and ea.email is null)
+        or (ea.user_id is not null and not exists (select 1 from users u where u.id = ea.user_id and u.email not like 'geloescht-%@geloescht.invalid')))`);
+  await db.execute(sql`update tournaments t set venue_confirmed_by = null where t.venue_confirmed_by is not null and not exists (select 1 from users u where u.id = t.venue_confirmed_by and u.email not like 'geloescht-%@geloescht.invalid')`);
   const r = await db.execute(sql`
     update evidence_actor ea set user_id = null, name = null, email = null
     where (ea.user_id is not null or ea.name is not null or ea.email is not null)
@@ -33,20 +40,23 @@ export async function runEvidenceHead(now: Date = new Date()): Promise<{ ok: boo
   const last = await getSetting<Last | null>(LAST_KEY, null);
   const alarms: string[] = [];
   if (!report.chain.ok) alarms.push(`Kette ungültig ab seq ${report.chain.firstBadSeq} (${report.chain.reason})`);
-  if (report.orphans.matchIds.length || report.orphans.venueIds.length) alarms.push(`verwaiste Verweise: ${report.orphans.matchIds.length} Spiele, ${report.orphans.venueIds.length} Hallen`);
+  if (report.orphans.matchIds.length || report.orphans.venueIds.length || report.orphans.tournamentIds.length) alarms.push(`verwaiste Verweise: ${report.orphans.matchIds.length} Spiele, ${report.orphans.venueIds.length} Hallen, ${report.orphans.tournamentIds.length} Turniere`);
   if (report.missing.length) alarms.push(`${report.missing.length} Anfragen/Aufträge ohne Protokolleintrag`);
   if (last && report.chain.count < last.count) alarms.push(`Anzahl kleiner als beim letzten Lauf (${report.chain.count} statt ${last.count})`);
   if (last && last.count > 0) {
     const [still] = (await db.execute(sql`select 1 as ok from booking_evidence where hash = ${last.headHash} and seq = ${last.count}`)).rows as { ok: number }[];
     if (!still) alarms.push("der frühere Kopf-Hash liegt nicht mehr in der Kette");
   }
-  await audit(null, "evidence.head", "evidence", "chain", { after: { count: report.chain.count, headHash: report.chain.headHash, alarms: alarms.length, actorsCleared } });
+  // Plan 16g.1: Durchsetzung AUS = Hinweis (die Uhrenquelle prüft nicht der Job, sondern evidence_set_setting beim Einschalten) in JEDEM Lauf, bis Admin 1 sie einschaltet (hart vor Go-live); kein Kettenalarm, daher nicht in alarms
+  const enforcement = await getSetting<string>("evidence_enforcement", "on");
+  const enforcementNote = enforcement === "off" ? " HINWEIS: Durchsetzung (Frist, Pflichtbegründung) ist AUS; Go-live nur mit 'on'." : "";
+  await audit(null, "evidence.head", "evidence", "chain", { after: { count: report.chain.count, headHash: report.chain.headHash, alarms: alarms.length, actorsCleared, enforcement } });
   const owners = (await db.select({ id: users.id }).from(users).where(and(eq(users.isOwner, true), sql`${users.bannedAt} is null`))).map((u) => u.id);
   if (owners.length) {
     await notifyUsers(owners, {
       type: "admin.task",
       title: alarms.length ? "Beweisprotokoll: Abweichung" : "Beweisprotokoll: Tagesstand",
-      body: `${report.chain.count} Einträge, Kopf-Hash ${report.chain.headHash || "(leer)"}${alarms.length ? ` Alarm: ${alarms.join("; ")}.` : ""}`,
+      body: `${report.chain.count} Einträge, Kopf-Hash ${report.chain.headHash || "(leer)"}${alarms.length ? ` Alarm: ${alarms.join("; ")}.` : ""}${enforcementNote}`,
       url: "/admin",
     });
   }

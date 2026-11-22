@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "encoding": "je Teil '<Anzahl Bytes UTF-8>:<Text>;', SHA-256 ueber die Verkettung, hex; NULL/fehlend = leerer Teil ('0:;')",
+  "fields": [
+    "'v2'",
+    "subject",
+    "seq",
+    "match_id",
+    "tournament_id",
+    "venue_id",
+    "round",
+    "job_id",
+    "kind",
+    "reason_code",
+    "reason_commitment",
+    "at",
+    "actor_commitment",
+    "prev_hash",
+    "deadline_at",
+    "decided_at",
+    "statement_at",
+    "enforced"
+  ],
+  "times": "UTC, 'YYYY-MM-DDTHH:MI:SS.UUUUUUZ' (Mikrosekunden, immer 6 Stellen)",
+  "enforced": "true='1', false='0', NULL=''",
+  "sources": {
+    "a": "Spiel-Antwort/Ablauf: deadline/decided/statement/enforced aus den Spalten der Anfragezeile",
+    "b": "Anfrage und Auftrag: deadline/decided/statement/enforced leer",
+    "c": "Turnier-Zusage: statement_at = decided_at, deadline leer, enforced leer",
+    "d": "late_attempt: deadline, decided (> deadline), statement = clock_timestamp, enforced = Schalterstand"
+  }
+}

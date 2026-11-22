@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanReason, pdfSafe } from "@/lib/evidence";
+import { checkReasonText, cleanReason, pdfSafe } from "@/lib/evidence";
 import { evidencePdfModel } from "@/server/evidence-pdf";
 import type { MatchEvidence } from "@/server/evidence-export";
 
@@ -9,8 +9,8 @@ function data(over: Partial<MatchEvidence["entries"][number]> = {}, report: Part
   return {
     matchId: "11111111-1111-4111-8111-111111111111",
     number: 7,
-    entries: [{ seq: 1, at: T0, kind: "declined", round: 1, reason: "Halle belegt, Training", venueName: "Sporthalle Süd", actorName: "Max Müller", hash: "a".repeat(64), ...over }],
-    report: { ok: true, chain: { ok: true, count: 1, headHash: "a".repeat(64), firstBadSeq: null, reason: null }, orphans: { matchIds: [], venueIds: [] }, missing: [], checkedAt: T0, ...report },
+    entries: [{ seq: 1, at: T0, kind: "declined", round: 1, reason: "Halle belegt, Training", venueName: "Sporthalle Süd", actorName: "Max Müller", hash: "a".repeat(64), reasonCode: "", reasonDeleted: false, deadlineAt: null, decidedAt: null, statementAt: null, enforced: null, ...over }],
+    report: { ok: true, chain: { ok: true, count: 1, headHash: "a".repeat(64), firstBadSeq: null, reason: null }, orphans: { matchIds: [], venueIds: [], tournamentIds: [] }, missing: [], checkedAt: T0, ...report },
   };
 }
 
@@ -22,7 +22,12 @@ describe("pdfSafe", () => {
     expect(pdfSafe(null)).toBe("");
     expect(pdfSafe("<b>fett</b> **x** [l](http://x.invalid)")).toBe("<b>fett</b> **x** [l](http://x.invalid)"); // reiner Text, kein Markup im PDF
   });
-  it("baut auf cleanReason auf (Kürzung auf 300 Zeichen)", () => {
+  it("baut auf cleanReason auf (Anzeigegrenze 300 Zeichen; cleanReason selbst kürzt nicht, checkReasonText lehnt zu lange Texte ab)", () => {
+    expect(Array.from(cleanReason("x".repeat(400))).length).toBe(400);
+    expect(checkReasonText("x".repeat(201))).toEqual({ ok: false, error: "zu-lang" });
+    expect(checkReasonText("ab")).toEqual({ ok: false, error: "zu-kurz" });
+    expect(checkReasonText("  abc  ")).toEqual({ ok: true, text: "abc" });
+    expect(checkReasonText("   ")).toEqual({ ok: true, text: "" });
     expect(Array.from(pdfSafe("x".repeat(400))).length).toBe(300);
     expect(pdfSafe("a‏b")).toBe(cleanReason("a‏b"));
   });
@@ -46,7 +51,7 @@ describe("evidencePdfModel", () => {
     expect(ok.summary.checkedAt).toContain("Prüfstand vom 2026-11-22 10:00:00.123 UTC");
     expect(ok.notice).toContain("extern abgelegten Kopf-Hash");
     const bad = evidencePdfModel(
-      data({}, { ok: false, chain: { ok: false, count: 3, headHash: "b".repeat(64), firstBadSeq: 2, reason: "hash" }, orphans: { matchIds: ["x"], venueIds: [] }, missing: [{ source: "hall", matchId: "m", venueId: "v", jobId: null, status: "pending" }] }),
+      data({}, { ok: false, chain: { ok: false, count: 3, headHash: "b".repeat(64), firstBadSeq: 2, reason: "hash" }, orphans: { matchIds: ["x"], venueIds: [], tournamentIds: [] }, missing: [{ source: "hall", subject: "match", tournamentId: null, matchId: "m", venueId: "v", jobId: null, status: "pending" }] }),
     );
     expect(bad.summary.result).toBe("Ergebnis: Kette UNGÜLTIG ab Nr. 2 (hash)");
     expect(evidencePdfModel(data({}, { ok: false, chain: { ok: false, count: 3, headHash: "b".repeat(64), firstBadSeq: 2, reason: "ha​sh" } })).summary.result).toBe("Ergebnis: Kette UNGÜLTIG ab Nr. 2 (hash)"); // auch der Grund läuft durch pdfSafe
@@ -57,5 +62,17 @@ describe("evidencePdfModel", () => {
     expect(m.entries[0].actor).toBeNull();
     expect(m.entries[0].reason).toBeNull();
     expect(m.entries[0].head).toContain("neu_art");
+  });
+});
+
+describe("evidencePdfModel: Felder der Version 2", () => {
+  it("zeigt Grund, Frist, Entscheidungs- und Anweisungszeit, Durchsetzung; gelöschter Freitext wird benannt, nie Klartext erfunden", () => {
+    const entry = { seq: 1, at: new Date("2027-03-04T05:06:07Z"), kind: "declined", round: 1, reason: null, venueName: "Halle", actorName: null, hash: "a".repeat(64), reasonCode: "belegt", reasonDeleted: true, deadlineAt: "2027-03-04T06:00:00.000000Z", decidedAt: "2027-03-04T05:06:07.000001Z", statementAt: "2027-03-04T05:06:07.250000Z", enforced: true };
+    const m = evidencePdfModel({ matchId: "x", number: 1, entries: [entry], report: { ok: true, chain: { ok: true, count: 1, headHash: "a".repeat(64), firstBadSeq: null, reason: null }, orphans: { matchIds: [], venueIds: [], tournamentIds: [] }, missing: [], checkedAt: new Date() } });
+    const r = m.entries[0].reason ?? "";
+    expect(r).toContain("Grund: belegt");
+    expect(r).toContain("Freitext gelöscht");
+    expect(r).toContain("Antwortfrist (UTC): 2027-03-04T06:00:00.000000Z");
+    expect(r).toContain("Durchsetzung beim Eintrag: an");
   });
 });

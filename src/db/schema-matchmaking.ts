@@ -84,6 +84,10 @@ export const matchHallRequests = pgTable(
     answeredBy: uuid("answered_by").references(() => users.id, { onDelete: "set null" }),
     answeredAt: timestamp("answered_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // 009 M3 Nachlieferung (Plan 16g.4): NUR der BEFORE-Trigger setzt diese Spalten (ein Wert der Anwendung wird verworfen); nach dem Setzen unveraenderlich.
+    replyDeadline: timestamp("reply_deadline", { withTimezone: true }), // Antwortfrist des Spiels (matches.veto_turn_deadline) zum Zeitpunkt der entscheidenden Anweisung
+    decisionStatementAt: timestamp("decision_statement_at", { withTimezone: true }), // clock_timestamp() der entscheidenden Anweisung
+    decisionEnforced: boolean("decision_enforced"), // Schalterstand evidence_enforcement bei der Entscheidung (NULL = nicht entschieden)
   },
   (t) => [primaryKey({ columns: [t.matchId, t.venueId] })],
 );

@@ -3,8 +3,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { bookingEvidence, evidenceActor } from "@/db/schema-finance";
-import { cleanReason, isRequestKind, type EvidenceKind } from "@/lib/evidence";
+import { bookingEvidence, bookingEvidenceReasonText, evidenceActor } from "@/db/schema-finance";
+import { checkReasonText, isRequestKind, type EvidenceKind } from "@/lib/evidence";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Exec = Pick<typeof db, "select" | "execute">;
@@ -16,8 +16,10 @@ export type EvidenceInput = {
   round: number;
   kind: EvidenceKind;
   jobId?: string | null;
-  /** Begründung der Halle (Fremdtext): wird bereinigt und auf 300 Zeichen gekürzt; leer = keine. */
+  /** Begründung der Halle (Fremdtext): wird bereinigt (3 bis 200 Zeichen, sonst ohne Text gespeichert); Version 2: im Hash nur das Commitment, Klartext in booking_evidence_reason_text (Plan 16b.1). */
   reason?: string | null;
+  /** Kategorie der Ablehnung (belegt | wartung | veranstaltung | sonstiges), im Hash. */
+  reasonCode?: string | null;
   /** Betreiber, der geantwortet hat (Plan 011 P2): Name und E-Mail landen NUR in evidence_actor, im Hash steht nur ein gesalzener Verpflichtungswert. */
   actor?: { userId: string; name?: string | null; email?: string | null } | null;
 };
@@ -44,7 +46,9 @@ export async function recordEvidence(tx: Tx, input: EvidenceInput): Promise<{ cr
     if (existing) return { created: false, seq: null };
   }
   const salt = input.actor ? randomBytes(16).toString("hex") : null;
-  const reason = cleanReason(input.reason);
+  const checked = checkReasonText(input.reason);
+  const reason = checked.ok ? checked.text : ""; // zu kurz/zu lang: kein Text gespeichert (nur Tests; die App lehnt vorher ab)
+  const reasonSalt = reason !== "" ? randomBytes(16).toString("hex") : null;
   const [row] = await tx
     .insert(bookingEvidence)
     .values({
@@ -53,10 +57,13 @@ export async function recordEvidence(tx: Tx, input: EvidenceInput): Promise<{ cr
       round: input.round,
       jobId: input.jobId ?? null,
       kind: input.kind,
-      reason: reason === "" ? null : reason,
+      hashVersion: 2, // neue Eintraege sind Version 2 (Plan 16f.5): reason bleibt NULL, Klartext nur in der Nebentabelle
+      reasonCode: input.reasonCode ?? "",
+      reasonCommitment: reason !== "" && reasonSalt ? createHash("sha256").update(`${reasonSalt}:${reason}`, "utf8").digest("hex") : "",
       actorCommitment: input.actor && salt ? actorCommitment(salt, input.actor.userId) : "",
     })
     .returning({ id: bookingEvidence.id, seq: bookingEvidence.seq });
+  if (reason !== "" && reasonSalt) await tx.insert(bookingEvidenceReasonText).values({ evidenceId: row.id, reason, salt: reasonSalt });
   if (input.actor && salt) await tx.insert(evidenceActor).values({ evidenceId: row.id, userId: input.actor.userId, name: input.actor.name ?? null, email: input.actor.email ?? null, salt });
   return { created: true, seq: row.seq };
 }
