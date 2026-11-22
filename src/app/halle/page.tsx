@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { ActionButton } from "@/components/ActionButton";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { replyWindow } from "@/lib/hall-reply-view";
 import { formatDateTime } from "@/lib/time";
 import { answerHallAction, declineHallAction } from "@/server/matchmaking-actions";
+import { listTournamentConfirmations, rentText } from "@/server/tournament-confirm";
+import { confirmTournamentVenueAction } from "@/server/tournament-confirm-actions";
 import { requireVenueManager } from "@/server/venue-session";
 import { pendingHallInquiries } from "@/server/veto";
 import { HallDeclineForm } from "./HallDeclineForm";
@@ -19,6 +22,7 @@ export default async function HallInquiriesPage() {
   const now = new Date();
   const user = await requireVenueManager("/halle");
   const inquiries = await pendingHallInquiries(user.id);
+  const confirmations = await listTournamentConfirmations(user.id); // Turniere, die auf die Zusage der Halle warten (M5-7b, namenfrei)
   return (
     <section className="mx-auto mt-4 max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">Spielanfragen für eure Halle</h1>
@@ -64,6 +68,31 @@ export default async function HallInquiriesPage() {
             );
           })}
         </ul>
+      )}
+      {confirmations.length > 0 && (
+        <section className="space-y-3" aria-labelledby="zusage-turniere" data-testid="tournament-confirmations">
+          <h2 id="zusage-turniere" className="text-lg font-semibold">Zusage der Halle</h2>
+          <p className="text-sm text-muted">Für diese Turniere fehlt die Zusage der Halle. Ohne Zusage wird nichts abgebucht, und das Turnier fällt zur Frist aus. Ihr sagt ein Turnier im Namen der Halle zu.</p>
+          <ul className="space-y-3">
+            {confirmations.map((c) => (
+              <li key={c.tournamentId} className="card space-y-2" data-testid="tournament-confirmation">
+                <p className="font-semibold">{c.name}</p>
+                <p className="text-sm">
+                  {c.startsAt ? `${formatDateTime(c.startsAt)} Uhr · ` : ""}{c.durationMin} Minuten
+                  <span className="block text-muted">{c.teams} Teams{c.rentCents !== null ? ` · Hallenmiete ${rentText(c.rentCents)}` : ""} · {c.venueName}</span>
+                  {c.due && <span className="block text-xs text-muted">Zusage bis {formatDateTime(c.due)} Uhr, sonst fällt das Turnier aus.</span>}
+                </p>
+                <ConfirmDialog
+                  trigger={{ label: "Zusagen", variant: "primary" }}
+                  title={`${c.name} zusagen?`}
+                  body="Die Zusage ist verbindlich und lässt sich nicht rückgängig machen. Ihr sagt das Turnier im Namen der Halle zu."
+                  confirmLabel="Zusagen"
+                  onConfirmAction={confirmTournamentVenueAction.bind(null, c.tournamentId)}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </section>
   );

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, ne } from "drizzle-orm";
+import { and, asc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { venueAccess } from "@/db/schema-finance";
@@ -30,6 +30,22 @@ export async function venueHasActiveAccess(venueId: string, exec: Reader = db): 
     .where(and(eq(venueAccess.venueId, venueId), activeAccessWhere()))
     .limit(1);
   return Boolean(row);
+}
+
+/**
+ * Wie venueHasActiveAccess, aber nur Zugang, der STRIKT VOR dem Zeitpunkt `before` wirksam wurde (assigned_at, sonst invited_at; before = null: ohne Zeitgrenze). Fuer die Live-Pruefung der Zusage
+ * (012 M5-7b, R-T250 Mittel 2): ein Zugang, der erst nach der Abbuchungsfrist wirksam wird, macht ein Turnier nicht mehr zusagepflichtig.
+ */
+export async function venueHasActiveAccessBefore(venueId: string, before: Date | null, exec: Reader = db): Promise<boolean> {
+  const cond = before ? and(eq(venueAccess.venueId, venueId), activeAccessWhere(), sql`coalesce(${venueAccess.assignedAt}, ${venueAccess.invitedAt}) < ${before}`) : and(eq(venueAccess.venueId, venueId), activeAccessWhere());
+  const [row] = await exec.select({ id: venueAccess.id }).from(venueAccess).innerJoin(users, eq(users.id, venueAccess.userId)).where(cond).limit(1);
+  return Boolean(row);
+}
+
+/** Die Konten mit aktivem Zugang zu dieser Halle (Mitteilungen an die Halle, 012 M5-7b); dieselbe Bedingung wie hasVenueAccess. */
+export async function venueAccessHolderIds(venueId: string, exec: Reader = db): Promise<string[]> {
+  const rows = await exec.select({ userId: venueAccess.userId }).from(venueAccess).innerJoin(users, eq(users.id, venueAccess.userId)).where(and(eq(venueAccess.venueId, venueId), activeAccessWhere()));
+  return rows.map((r) => r.userId).filter((x): x is string => Boolean(x));
 }
 
 /** Alle Hallen mit aktivem Betreiber-Zugang in EINER Abfrage (Auswahlliste, 012 M5-7a). */
