@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import {
   assignSubstituteAction,
@@ -10,7 +9,6 @@ import {
   joinLobbyAction,
   leaveLobbyAction,
   removeParticipantAction,
-  payShareAction,
   setReadyAction,
   setVenueAction,
 } from "@/server/actions";
@@ -56,15 +54,13 @@ type MyActionsProps = {
   ready: boolean;
   hasTeam: boolean;
   /** Nur gesetzt, wenn Zahlungen eingeschaltet sind. */
-  pay?: { reserveCents: number; balanceCents: number; paid: boolean; backTo: string } | null;
   /** Wie viele Spieler des eigenen Teams haben schon bezahlt? Bereit geht erst, wenn alle bezahlt haben. */
-  teamPaid?: { paid: number; total: number };
-  /** Nur im Kartenmodell (Schalter card_payments_enabled EIN): Karte statt Guthaben, Vertrag 012. */
+  /** Nur im Kartenmodell (Schalter card_payments_enabled EIN): Karte hinterlegen, Vertrag 012. */
   card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; stored: { brand: string | null; last4: string } | null; failure?: { text: string; until: string | null; expired: boolean; authorize?: boolean } | null } | null;
 };
 
-export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid, card }: MyActionsProps) {
-  const { error, needsTopupCents, pending, run } = useRun();
+export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProps) {
+  const { error, pending, run } = useRun();
   const busy = pending ? "opacity-60" : "";
 
   return (
@@ -103,28 +99,14 @@ export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid, card }
                 </>
               )}
               {card?.ready && <p className="text-sm text-accent-fg" data-testid="card-ready-text">Deine Karte ist hinterlegt. Dein Anteil wird zur Frist abgebucht.</p>}
-              {pay && !pay.paid && (
+              {(
                 <>
-                  <p className="text-sm text-muted" data-testid="pay-hint">
-                    Schritt 1: Bezahlen. Es werden {formatEuro(pay.reserveCents)} von deinem Guthaben ({formatEuro(pay.balanceCents)}) reserviert. Was nach der Abrechnung übrig ist, bekommst du zurück.
-                  </p>
-                  <button className={`btn btn-primary w-full ${busy}`} disabled={pending} onClick={() => run(() => payShareAction(matchId))}>
-                    {formatEuro(pay.reserveCents)} bezahlen
-                  </button>
-                </>
-              )}
-              {pay?.paid && <p className="text-sm text-accent-fg">Dein Anteil ist bezahlt.</p>}
-              {(!pay || pay.paid) && (
-                <>
-                  {pay && teamPaid && teamPaid.paid < teamPaid.total && !ready && (
-                    <p className="text-sm text-muted" data-testid="team-pay-hint">Bereit machen geht, sobald alle in deinem Team bezahlt haben ({teamPaid.paid} von {teamPaid.total}).</p>
-                  )}
                   <button
                     className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`}
-                    disabled={pending || (!ready && Boolean(card && !card.ready)) || (!ready && Boolean(pay && teamPaid && teamPaid.paid < teamPaid.total))}
+                    disabled={pending || (!ready && Boolean(card && !card.ready))}
                     onClick={() => run(() => setReadyAction(matchId, !ready))}
                   >
-                    {ready ? "Nicht mehr bereit" : pay ? "Bereit machen" : "Ich bin bereit"}
+                    {ready ? "Nicht mehr bereit" : "Ich bin bereit"}
                   </button>
                 </>
               )}
@@ -151,11 +133,6 @@ export function MyActions({ matchId, mode, ready, hasTeam, pay, teamPaid, card }
         </>
       )}
       {mode === "full" && <p className="text-sm text-muted">Dein Team ist voll (5 Spieler plus 1 Ersatz).</p>}
-      {needsTopupCents ? (
-        <Link href={`/app/guthaben?betrag=${Math.ceil(needsTopupCents / 500) * 500}&zurueck=${encodeURIComponent(pay?.backTo ?? "/app")}`} className="btn btn-primary w-full">
-          Guthaben aufladen
-        </Link>
-      ) : null}
       {mode === "guest" && <p className="text-sm text-muted">Melde dich an, um mitzuspielen.</p>}
       {mode === "none" && <p className="text-sm text-muted">Dieses Spiel nimmt keine weiteren Spieler auf.</p>}
       <ErrorText message={error} />

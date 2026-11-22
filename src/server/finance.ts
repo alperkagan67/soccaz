@@ -294,7 +294,7 @@ export async function manualRefund(actorId: string, matchId: string, userId: str
     if (cents > net.net) throw new DomainError(`Es können höchstens ${formatEuro(Math.max(net.net, 0))} erstattet werden (so viel hat die Person für dieses Spiel netto bezahlt).`);
     await creditWallet(tx, userId, { from: "revenue", amountCents: cents, kind: "refund", matchId, reason: `Ausnahme-Erstattung: ${text}`, idempotencyKey: `manual-refund:${randomUUID()}`, actorId });
     await audit(actorId, "wallet.manual_refund", "match", matchId, { after: { userId, cents, reason: text } }, tx);
-    await notifyUsers([userId], { type: "payment", title: "Erstattung", body: `${formatEuro(cents)} wurden deinem Guthaben gutgeschrieben (${text}).`, url: "/app/guthaben" }, tx);
+    await notifyUsers([userId], { type: "payment", title: "Erstattung", body: `${formatEuro(cents)} wurden dir erstattet (${text}).`, url: "/app" }, tx);
   });
 }
 

@@ -482,8 +482,6 @@ test("Privatspiel ohne volle Miete: zur 48-h-Frist vor Anstoß wird abgesagt, al
     for (const p of everyone) expect(await walletBalanceOf(await userIdByEmail(`${p.key}-${run}@test.local`)), p.key).toBe(5000);
     await payers[1].page.reload();
     await slow(payers[1].page.getByText("Dieses Spiel wurde abgesagt.")).toBeVisible();
-    await payers[1].page.goto("/app/guthaben");
-    await slow(payers[1].page.getByTestId("statement")).toContainText("Erstattung");
   } finally {
     await setPlatformSetting("payments_enabled", false);
   }

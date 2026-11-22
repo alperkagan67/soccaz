@@ -135,7 +135,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             {inPayment && (
               <ActionButton action={reopenRostersAction.bind(null, t.id)} label="Kader wieder öffnen" confirm="Alle bereits gezahlten Anteile werden erstattet, der Preis wird später neu berechnet." className="btn btn-ghost !min-h-9 !px-3 text-sm" />
             )}
-            <ActionButton action={cancelTournamentAction.bind(null, t.id)} label="Turnier absagen" confirm="Turnier absagen? Alle bezahlten Anteile gehen vollständig aufs Guthaben der Zahler zurück." className="btn btn-danger !min-h-9 !px-3 text-sm" />
+            <ActionButton action={cancelTournamentAction.bind(null, t.id)} label="Turnier absagen" confirm="Turnier absagen? Alle bezahlten Anteile werden vollständig erstattet." className="btn btn-danger !min-h-9 !px-3 text-sm" />
           </div>
           <p className="text-xs text-muted">Bis zum Anmeldeschluss kannst du Teams entfernen und durch neue ersetzen. Danach kannst du mit weniger Teams starten (mindestens 4) oder absagen. Wenn in der Zahlungsphase jemand nicht zahlt, öffne die Kader wieder: Alles wird erstattet und der Preis neu berechnet.</p>
         </section>

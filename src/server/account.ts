@@ -184,7 +184,7 @@ export async function deleteAccount(userId: string) {
     if (!user || user.bannedAt) throw new DomainError("Dieses Konto gibt es nicht mehr.");
     if (user.role !== "player") throw new DomainError("Dein Konto hat eine Admin-Rolle. Bitte lass sie zuerst entfernen.");
 
-    if ((await walletBalance(tx, userId)) > 0) throw new DomainError("Du hast noch Guthaben. Bitte melde dich beim Support, damit wir es dir auszahlen.");
+    if ((await walletBalance(tx, userId)) > 0) throw new DomainError("Du hast noch offene Beträge. Bitte melde dich beim Support.");
 
     // Turniere (M5-5, Entscheid t9): wer in einem Turnier steht, das noch nicht beendet oder abgesagt ist (Anmeldung, Zahlungsphase, laeuft), kann das Konto nicht loeschen: Loeschsperre wie im Teamspiel.
     // Gelesen unter der Turniersperre von oben.

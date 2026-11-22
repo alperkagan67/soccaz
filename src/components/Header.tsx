@@ -2,10 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { signOut } from "@/auth";
 import { canUser } from "@/lib/roles";
-import { formatEuro } from "@/lib/money";
 import { UserMenu } from "./UserMenu";
-import { walletBalance } from "@/server/ledger";
-import { db } from "@/db";
 import { unreadCount } from "@/server/notifications";
 import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
@@ -15,7 +12,6 @@ export async function Header() {
   const { t } = await getT();
   const user = await getCurrentUser();
   const unread = user ? await unreadCount(user.id) : 0;
-  const balance = user ? await walletBalance(db, user.id) : 0;
   const isVenueManager = user ? await checkVenueManager(user.id) : false;
 
   return (
@@ -52,18 +48,14 @@ export async function Header() {
                   </span>
                 )}
               </Link>
-              <Link href="/app/guthaben" className="hidden px-2 text-muted hover:text-ink sm:inline" title={t("nav.wallet")} data-testid="header-wallet">
-                {formatEuro(balance)}
-              </Link>
               <UserMenu
                 name={user.name}
                 userId={user.id}
                 avatarUrl={user.avatarUrl ?? null}
-                balanceText={formatEuro(balance)}
                 unread={unread}
                 showAdmin={canUser(user, "dashboard")}
                 showVenue={isVenueManager}
-                labels={{ games: t("menu.games"), profile: t("menu.profile"), venue: t("menu.venue"), wallet: t("nav.wallet"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help"), account: t("menu.account"), unread: t("menu.unread") }}
+                labels={{ games: t("menu.games"), profile: t("menu.profile"), venue: t("menu.venue"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help"), account: t("menu.account"), unread: t("menu.unread") }}
                 signOutAction={async () => {
                   "use server";
                   await signOut({ redirectTo: "/" });

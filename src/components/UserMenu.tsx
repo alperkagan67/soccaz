@@ -8,22 +8,15 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { buttonClasses } from "./ui/button-styles";
 
-export type MenuLabels = { games: string; profile: string; venue: string; wallet: string; settings: string; notifications: string; admin: string; signOut: string; help: string; account: string; unread: string };
+export type MenuLabels = { games: string; profile: string; venue: string; settings: string; notifications: string; admin: string; signOut: string; help: string; account: string; unread: string };
 
 const ITEM = "ui-focus flex min-h-[var(--tap)] w-full items-center rounded-md px-3 text-left text-sm text-ink no-underline hover:bg-panel2";
 const SEPARATOR = "my-1 border-t border-line";
-
-/**
- * AUSLAUFEND (Vertrag 012, Backlog 63): Der Eintrag "Guthaben" bleibt bis 012 M6a im Konto-Menü sichtbar (Option B) und fällt dann weg.
- * M6a setzt diese Konstante auf false und löscht danach den markierten Block samt Prop `balanceText` und Label `wallet` (Header.tsx).
- */
-export const SHOW_WALLET_ITEM_UNTIL_M6A = true;
 
 export type UserMenuProps = {
   name: string;
   userId: string;
   avatarUrl: string | null;
-  balanceText: string;
   unread: number;
   showAdmin: boolean;
   /** Hallenbetreiber (mindestens eine Halle zugewiesen): Eintrag "Meine Halle" */
@@ -33,7 +26,7 @@ export type UserMenuProps = {
 };
 
 /** Der Inhalt des Menüs (eigene Komponente, damit er ohne Browser als statisches Markup geprüft werden kann). */
-export function UserMenuContent({ name, userId, balanceText, unread, showAdmin, showVenue, labels, signOutAction, onNavigate }: Omit<UserMenuProps, "avatarUrl"> & { onNavigate?: () => void }) {
+export function UserMenuContent({ name, userId, unread, showAdmin, showVenue, labels, signOutAction, onNavigate }: Omit<UserMenuProps, "avatarUrl"> & { onNavigate?: () => void }) {
   const titleId = useId();
   return (
     <div data-testid="user-menu" className="space-y-1">
@@ -60,7 +53,7 @@ export function UserMenuContent({ name, userId, balanceText, unread, showAdmin, 
           </Link>
         )}
         <div role="separator" className={SEPARATOR} />
-        {/* Gruppe 2: Benachrichtigungen, Guthaben (auslaufend bis 012 M6a), Konto (Einstellungen mit Karte ändern), Hilfe */}
+        {/* Gruppe 2: Benachrichtigungen, Konto (Einstellungen mit Karte ändern), Hilfe */}
         <Link role="menuitem" href="/app/benachrichtigungen" className={`${ITEM} justify-between`} onClick={onNavigate}>
           <span>{labels.notifications}</span>
           {unread > 0 && (
@@ -75,13 +68,6 @@ export function UserMenuContent({ name, userId, balanceText, unread, showAdmin, 
             </>
           )}
         </Link>
-        {/* AUSLAUFEND bis 012 M6a (siehe SHOW_WALLET_ITEM_UNTIL_M6A): hier nur streichen */}
-        {SHOW_WALLET_ITEM_UNTIL_M6A && (
-          <Link role="menuitem" href="/app/guthaben" className={`${ITEM} justify-between`} onClick={onNavigate}>
-            <span>{labels.wallet}</span>
-            <span className="tabular-nums text-muted">{balanceText}</span>
-          </Link>
-        )}
         <Link role="menuitem" href="/app/einstellungen" className={ITEM} onClick={onNavigate}>
           {labels.settings}
         </Link>
