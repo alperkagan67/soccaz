@@ -10,6 +10,8 @@ import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runTournamentCharges, runTournamentChargesDue } from "@/server/payments/tournament-charge";
 import { runTournamentRefunds } from "@/server/payments/tournament-refund";
+import { handleStripeWebhook } from "@/server/payments/webhook";
+import { trialBalance } from "@/server/ledger";
 import { setSetting } from "@/server/settings";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
@@ -187,5 +189,25 @@ describe("M5-5: Konto loeschen bei abgesagtem Turnier mit offener Erstattung", (
     const [after] = await db.select().from(paymentRefunds).where(eq(paymentRefunds.id, before.id));
     expect(after.status).toBe("pending");
     expect((await db.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, member.id)))).length).toBe(1);
+  });
+});
+
+describe("M5-5: Zahlungsstreit VOR der Erstattung (Turnierzweig)", () => {
+  it("ist die Abbuchung im Streit, wird ihre Erstattung nie gesendet (bleibt pending, nicht doppelt erstattet); die uebrigen 15 gehen raus; Hauptbuch ausgeglichen", async () => {
+    const { t, squads } = await booked();
+    const victim = squads[2].players[1];
+    const row = (await rowsOf(t.id)).find((x) => x.userId === victim.id)!;
+    const dp = nid("dp_tcp");
+    const obj = { id: dp, amount: row.amountCents, currency: "eur", payment_intent: row.paymentIntentId, charge: "ch_test_1", reason: "fraudulent", status: "needs_response", evidence_details: { due_by: Math.floor(Date.now() / 1000) + 7 * 86400 }, balance_transactions: [{ id: nid("txn_tcp"), amount: -row.amountCents, fee: 1500, currency: "eur", reporting_category: "dispute", type: "adjustment" }] };
+    const e = provider.signEvent({ id: nid("evt_tcp"), type: "charge.dispute.created", object: obj, created: 1_800_000_000 });
+    expect((await handleStripeWebhook(e.rawBody, e.signature)).status).toBe(200);
+    await cancelTournament(owner.id, t.id); // Absage NACH dem Streit
+    await runTournamentRefunds(new Date());
+    const sent = provider.calls.filter((c) => c.method === "createRefund" && (c.args as { metadata: { tournamentId?: string } }).metadata.tournamentId === t.id);
+    expect(sent).toHaveLength(15);
+    expect(sent.some((c) => (c.args as { metadata: { userId?: string } }).metadata.userId === victim.id)).toBe(false);
+    const mine = (await refundsOf(t.id)).find((r) => r.chargeId === row.id);
+    expect(mine && mine.status !== "succeeded" && mine.refundId === null).toBe(true);
+    expect((await trialBalance()).balanced).toBe(true);
   });
 });
