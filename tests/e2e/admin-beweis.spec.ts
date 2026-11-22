@@ -67,3 +67,34 @@ test("Admin 2 sieht die Seite nicht (Weiterleitung nach /app, kein Navigationsei
     expect((await page.request.get(url)).status(), url).toBe(404);
   }
 });
+
+// 011 M2a: Admin 1 schaltet die Beweispflicht in zwei Schritten ein (Uhrenquelle Datenbank, dann Pflicht). Zustand vorher/nachher auf die Vorgabe (aus, js) gesetzt.
+async function resetSwitches() {
+  const { query } = await import("./helpers-db");
+  await query("begin; select set_config('socaz.ledger_maintenance', 'on', true); update settings set value = to_jsonb('off'::text) where key = 'evidence_enforcement'; update settings set value = to_jsonb('js'::text) where key = 'evidence_clock_source'; commit;");
+}
+
+test("Beweispflicht einschalten: Schritt 1 Uhrenquelle, Schritt 2 Pflicht, Grund Pflicht, Admin 2 sieht die Seite nicht", async ({ browser }) => {
+  await resetSwitches();
+  try {
+    const page = await login(browser, "bw5", true, "/admin/beweis");
+    await page.goto("/admin/beweis");
+    await page.waitForLoadState("networkidle");
+    const box = page.getByTestId("evidence-switch");
+    await expect(page.getByTestId("evidence-switch-state")).toContainText("noch nicht umgestellt");
+    await expect(box.getByRole("button", { name: "Beweispflicht einschalten" })).toHaveCount(0); // Schritt 2 erst nach Schritt 1
+    // ohne Grund: Fehler am Feld (native Pflichtprüfung hält an)
+    await box.getByRole("button", { name: "Uhrenquelle auf Datenbank stellen" }).click();
+    expect(await box.getByLabel(/Grund/).evaluate((el) => (el as HTMLTextAreaElement).validity.valueMissing)).toBe(true);
+    await box.getByLabel(/Grund/).fill("App nutzt Datenbankzeit");
+    await box.getByRole("button", { name: "Uhrenquelle auf Datenbank stellen" }).click();
+    await expect(box.getByRole("button", { name: "Beweispflicht einschalten" })).toBeVisible();
+    await box.getByLabel(/Grund/).fill("Go-live");
+    await box.getByRole("button", { name: "Beweispflicht einschalten" }).click();
+    await expect(page.getByTestId("switch-done")).toBeVisible();
+    await expect(page.getByTestId("evidence-switch-state")).toContainText("eingeschaltet");
+    await expect(box.getByRole("button")).toHaveCount(0); // kein Ausschalten über die Oberfläche
+  } finally {
+    await resetSwitches();
+  }
+});

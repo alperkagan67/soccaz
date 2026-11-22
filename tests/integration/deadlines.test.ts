@@ -15,9 +15,9 @@ import { createPrivateGame, joinPrivateGame } from "@/server/privategame";
 import { cancelUnderfilledLobbies, closeLobbiesAtDeadline, settleDueMatches } from "@/server/scheduled";
 import { proposeOption, voteOption } from "@/server/scheduling";
 import { setSetting } from "@/server/settings";
-import { answerHallRequest, banHall } from "@/server/veto";
+import { banHall } from "@/server/veto";
 import { leaveClosed } from "@/server/wallet";
-import { addPlayer, cleanup, grantVenueAccess, makeMatch, makeTeam, makeUser, reloadMatch } from "./helpers";
+import { addPlayer, cleanup, grantVenueAccess, makeMatch, makeTeam, makeUser, reloadMatch, answerHall } from "./helpers";
 
 beforeAll(async () => {
   await setSetting(null, "payments_enabled", true);
@@ -427,8 +427,8 @@ describe("Frist-Regel: Karenz nur bei nachträglichem Termin, echter Audit-Pfad,
     const [opt] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, id));
     await voteOption(b.id, id, opt.id); // beide Teams stimmen gleich: lockIfAgreed legt den Termin fest und schreibt scheduling.locked
     expect((await reloadMatch(id)).vetoStatus).toBe("halls");
-    await answerHallRequest(manager.id, id, rows[0].id, true);
-    await answerHallRequest(manager.id, id, rows[1].id, true);
+    await answerHall(manager.id, id, rows[0].id, true);
+    await answerHall(manager.id, id, rows[1].id, true);
     for (let i = 0; i < 6 && (await reloadMatch(id)).vetoStatus === "running"; i++) {
       const cur = await reloadMatch(id);
       const pool = await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, id));
