@@ -132,3 +132,77 @@ test("Namenfrei: Seite, HTML und RSC-Payload enthalten keine Spielernamen und ke
     expect(body).not.toContain(`/lobby/${matchId}`);
   }
 });
+
+// ---- Erweiterungen (a11y, Namenfreiheit): lokal geschrieben, nach dem Merge mit origin/main (5bb35ed) noch NICHT gelaufen ----
+
+test("Struktur (a11y): eine h1, je Karte eine h2, Gruppe mit Namen, Radios und Textfeld mit Namen, Fehler per aria-describedby verknüpft", async ({ browser }) => {
+  const { boss } = await setup(browser, "5");
+  await boss.goto("/halle");
+  const inquiry = inquiryOf(boss, "5");
+  await boss.waitForLoadState("networkidle");
+  await expect(boss.getByRole("heading", { level: 1 })).toHaveCount(1);
+  await expect(inquiry.getByRole("heading", { level: 2, name: hall("5") })).toBeVisible();
+  await inquiry.getByText("Halle ist belegt (Grund angeben)").click();
+  await expect(inquiry.getByRole("group", { name: "Grund der Ablehnung (Pflicht)" })).toBeVisible();
+  await expect(inquiry.getByRole("radiogroup")).toHaveCount(1);
+  for (const label of ["Belegt", "Geschlossen oder Wartung", "Veranstaltung", "Sonstiges"]) await expect(inquiry.getByRole("radio", { name: label })).toBeVisible();
+  await expect(inquiry.getByLabel(/Anmerkung/)).toBeVisible();
+  await expect(inquiry.getByRole("button", { name: "Ablehnung senden" })).toBeVisible();
+
+  // Fehler: Meldung als Alarm, der erste Radioknopf verweist per aria-describedby auf sie
+  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
+  await expect(inquiry.getByRole("alert").filter({ hasText: "Bitte wähle einen Grund." })).toBeVisible();
+  const describedBy = await inquiry.getByRole("radio", { name: "Belegt" }).getAttribute("aria-describedby");
+  expect(describedBy).toBeTruthy();
+  expect(await boss.locator(`#${describedBy}`).innerText()).toContain("Bitte wähle einen Grund.");
+  await expect(inquiry.getByRole("radio", { name: "Belegt" })).toHaveAttribute("aria-invalid", "true");
+});
+
+for (const scheme of ["dark", "light"] as const) {
+  test(`Handy 390 px (${scheme}): kein seitliches Scrollen, sichtbarer Fokus auf Aufklapper und Radioknopf`, async ({ browser }) => {
+    const { boss } = await setup(browser, `6${scheme}`);
+    await boss.emulateMedia({ colorScheme: scheme });
+    await boss.setViewportSize({ width: 390, height: 844 });
+    await boss.goto("/halle");
+    const inquiry = inquiryOf(boss, `6${scheme}`);
+    await boss.waitForLoadState("networkidle");
+    const noOverflow = () => boss.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(await noOverflow()).toBe(true);
+    await inquiry.getByText("Halle ist belegt (Grund angeben)").click();
+    expect(await noOverflow()).toBe(true);
+
+    // Fokus per Tastatur auf den Aufklapper: sichtbarer Ring (Umriss vorhanden)
+    const summary = inquiry.locator("summary");
+    await summary.focus();
+    await boss.keyboard.press("Shift+Tab");
+    await boss.keyboard.press("Tab");
+    await expect(summary).toBeFocused();
+    const ring = (loc: ReturnType<Page["locator"]>) => loc.evaluate((el) => ({ style: getComputedStyle(el).outlineStyle, width: parseFloat(getComputedStyle(el).outlineWidth) }));
+    const r1 = await ring(summary);
+    expect(r1.style).not.toBe("none");
+    expect(r1.width).toBeGreaterThanOrEqual(2);
+    await boss.keyboard.press("Tab");
+    const radio = inquiry.getByRole("radio", { name: "Belegt" });
+    await expect(radio).toBeFocused();
+    const r2 = await ring(radio);
+    expect(r2.style).not.toBe("none");
+    expect(r2.width).toBeGreaterThanOrEqual(2);
+  });
+}
+
+test("Namenfrei auch nach Fehlern und Meldung: Text, Attribute und Links ohne Spielernamen und Lobby-Link", async ({ browser }) => {
+  const { boss, matchId } = await setup(browser, "7");
+  await boss.goto("/halle");
+  const inquiry = inquiryOf(boss, "7");
+  await boss.waitForLoadState("networkidle");
+  await inquiry.getByText("Halle ist belegt (Grund angeben)").click();
+  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click(); // Fehler am Feld
+  await inquiry.getByRole("radio", { name: "Veranstaltung" }).check();
+  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click(); // ohne Anbindung: Meldung „Ablehnen mit Grund folgt“
+  await expect(inquiry.getByRole("alert").filter({ hasText: "Ablehnen mit Grund folgt" })).toBeVisible();
+  const text = await boss.locator("body").innerText();
+  expect(text).not.toContain("Spieler hfa7");
+  expect(text).not.toContain("Spieler hfb7");
+  expect(await boss.locator('a[href*="/lobby/"]').count()).toBe(0);
+  expect(await boss.content()).not.toContain(`/lobby/${matchId}`);
+});
