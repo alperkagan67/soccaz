@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, notifications, paymentCharges, paymentDisputes, paymentErasureTasks, paymentProfiles, paymentRefunds, paymentSetupIntents, teamMembers, teams, users } from "@/db/schema";
 import { evidenceActor, ledgerEntries, payments, receipts } from "@/db/schema-finance";
 import { tournamentMatches, tournamentPlayers, tournaments } from "@/db/schema-league";
+import { lockGamesNoWait } from "./tournaments";
 import { comments, media } from "@/db/schema-content";
 import { mvpVotes, playerStats, userBadges, userReliability } from "@/db/schema-community";
 import { CITIES } from "@/lib/validation";
@@ -156,6 +157,15 @@ export async function deleteAccount(userId: string) {
     const tIdsFromGames = allMatchIds.length === 0 ? [] : await tx.select({ id: tournamentMatches.tournamentId }).from(tournamentMatches).where(inArray(tournamentMatches.matchId, allMatchIds)); // Turniere der betroffenen Spiele (Turnierspiele)
     const allTournamentIds = [...new Set([...tIdsFromCharges, ...tIdsFromRefunds, ...tIdsFromPlay, ...tIdsFromGames].map((r) => r.id).filter((id): id is string => id !== null))].sort();
     const lockedTournaments = allTournamentIds.length === 0 ? [] : await tx.select({ id: tournaments.id, status: tournaments.status }).from(tournaments).where(inArray(tournaments.id, allTournamentIds)).orderBy(tournaments.id).for("no key update");
+    // Loeschsperre Turnier (M5-5, Entscheid t9), jetzt VOR den Spielen (R-T284 N1): wer in einem Turnier steht, das noch nicht beendet oder abgesagt ist (Anmeldung, Zahlungsphase, laeuft), kann das Konto nicht
+    // loeschen. Gelesen unter der Turniersperre; so wartet dieser Pfad im laufenden Turnier nie auf ein Spiel, das der Ergebnis-Finalizer (Spiel -> Turnier) haelt.
+    const mineInOpenTournament = new Set(tIdsFromPlay.map((r) => r.id));
+    if (lockedTournaments.some((t) => mineInOpenTournament.has(t.id) && ["registration", "payment", "running"].includes(t.status))) {
+      throw new DomainError("Du bist noch in einem Turnier eingetragen. Bitte melde dich zuerst ab oder warte, bis es beendet ist.");
+    }
+    // Spiele, die zu einem Turnier gehoeren (auch abgeschlossener/abgesagter Turniere), OHNE Warten sperren (Turnier -> Spiel, nie warten unter der Turniersperre); Teamspiele danach wie bisher blockierend
+    const tournamentGameIds = allMatchIds.length === 0 ? [] : (await tx.select({ id: tournamentMatches.matchId }).from(tournamentMatches).where(inArray(tournamentMatches.matchId, allMatchIds))).map((r) => r.id).filter((id): id is string => id !== null);
+    await lockGamesNoWait(tx, tournamentGameIds);
     // ZUERST alle betroffenen Spiele sperren (nach id sortiert, wie mergeTeams), DANN die Abbuchungs- und Erstattungszeilen, DANN die Nutzerzeile. Reihenfolge Spiel -> Nutzer wie in der Abbuchung (Phase A sperrt das Spiel
     // und nimmt beim Anlegen der Zeilen einen Schlüssel-Share auf die Nutzerzeile): so verklemmt sich nichts, und Phase A kann nicht zwischen die Prüfung und das Anonymisieren geraten.
     const lockedAll =
@@ -186,13 +196,6 @@ export async function deleteAccount(userId: string) {
     if (user.role !== "player") throw new DomainError("Dein Konto hat eine Admin-Rolle. Bitte lass sie zuerst entfernen.");
 
     if ((await walletBalance(tx, userId)) > 0) throw new DomainError("Du hast noch Guthaben. Bitte melde dich beim Support, damit wir es dir auszahlen.");
-
-    // Turniere (M5-5, Entscheid t9): wer in einem Turnier steht, das noch nicht beendet oder abgesagt ist (Anmeldung, Zahlungsphase, laeuft), kann das Konto nicht loeschen: Loeschsperre wie im Teamspiel.
-    // Gelesen unter der Turniersperre von oben.
-    const mineInOpenTournament = new Set(tIdsFromPlay.map((r) => r.id));
-    if (lockedTournaments.some((t) => mineInOpenTournament.has(t.id) && ["registration", "payment", "running"].includes(t.status))) {
-      throw new DomainError("Du bist noch in einem Turnier eingetragen. Bitte melde dich zuerst ab oder warte, bis es beendet ist.");
-    }
 
     const open = await tx
       .select({ id: matches.id })
