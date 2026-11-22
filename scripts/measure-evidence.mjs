@@ -2,6 +2,7 @@
 // 1) Zaehlersperre je COMMIT: N Anfragezeilen (startHallCheck-Muster) in EINER Transaktion, gemessen wird der COMMIT, in dem die DEFERRABLE-Trigger laufen (N = 100/500/1000);
 //    dazu die Wartezeit eines zweiten, gleichzeitigen COMMITs auf den Zaehler.
 // 2) Kettenwachstum und verifyEvidenceChain (dieselbe Anweisung wie src/server/evidence.ts) bei 100 000 und 1 000 000 Zeilen; Abgleich (evidence_reconcile) und Verwaisten-Pruefung.
+// NIE PARALLEL zu anderen Laeufen mit demselben Skript (der Datenbankname enthaelt die Prozess-ID; es wird nur die EIGENE Wegwerf-DB geloescht) und nie waehrend eines Integrationslaufs (Last verfaelscht die Zahlen).
 // Aufruf: node scripts/measure-evidence.mjs [maxZeilen=1000000] [--skip-big]    (DATABASE_URL aus .env.local, wird nur im Prozess umgeschrieben und nie ausgegeben; lokale DB Pflicht)
 // Zeitlimit: Gesamtlauf bricht nach 15 Minuten ab.
 import { spawnSync } from "node:child_process";
@@ -12,12 +13,13 @@ const base = new URL(process.env.DATABASE_URL);
 if (!["localhost", "127.0.0.1"].includes(base.hostname) || base.search || base.hash) throw new Error("nur lokale DB");
 const MAX = Number(process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : 1_000_000);
 const SKIP_BIG = process.argv.includes("--skip-big");
-const name = "soccaz_measure_evidence";
+const name = `soccaz_measure_evidence_${process.pid}`; // mit Prozess-ID: nie dieselbe Datenbank wie ein anderer Lauf
 const adminUrl = new URL(base);
 adminUrl.pathname = "/postgres";
 const testUrl = new URL(base);
 testUrl.pathname = "/" + name;
 const deadline = Date.now() + 15 * 60_000;
+const STATEMENT_TIMEOUT_MS = 120_000; // je Verbindung: keine Anweisung laeuft laenger als 2 Minuten (das Gesamtzeitlimit wirkt nur zwischen den Schritten)
 const out = [];
 const log = (s) => {
   out.push(s);
@@ -28,6 +30,8 @@ const checkTime = () => {
   if (Date.now() > deadline) throw new Error("Zeitlimit (15 Minuten) erreicht");
 };
 
+// ACHTUNG: KOPIE der Pruefanweisung aus src/server/evidence.ts (verifyEvidenceChain) mit der 10-Argument-Fassung von evidence_hash. Mit der Nachlieferung (Plan 16, 13 Parameter) mitaendern;
+// ein Test (migrate-check/Vergleich) soll beide Fassungen gleich halten (Backlog).
 const VERIFY_SQL = `
   select e.seq, e.hash, c.last_seq::int as counter_seq, c.last_hash as counter_hash,
     case
@@ -39,14 +43,14 @@ const VERIFY_SQL = `
     end as bad
   from booking_evidence_counter c left join booking_evidence e on true where c.id = 1 order by e.seq`;
 
-const admin = new pg.Client({ connectionString: adminUrl.toString() });
+const admin = new pg.Client({ connectionString: adminUrl.toString(), statement_timeout: STATEMENT_TIMEOUT_MS });
 await admin.connect();
 await admin.query(`drop database if exists "${name}" with (force)`);
 await admin.query(`create database "${name}"`);
 try {
   const env = { ...process.env, DATABASE_URL: testUrl.toString() };
   if (spawnSync("node", ["scripts/migrate.mjs"], { env, stdio: "ignore" }).status !== 0) throw new Error("Migration fehlgeschlagen");
-  const db = new pg.Client({ connectionString: testUrl.toString() });
+  const db = new pg.Client({ connectionString: testUrl.toString(), statement_timeout: STATEMENT_TIMEOUT_MS });
   db.on("error", () => {}); // beim Loeschen der Wegwerf-DB getrennte Verbindungen nicht als Absturz melden
   await db.connect();
   const pgVersion = (await db.query("show server_version")).rows[0].server_version;
@@ -66,7 +70,7 @@ try {
     await db.query("insert into venues (name, city, source) select 'Mess Halle ' || $1 || '-' || g, 'Essen', 'manual' from generate_series(1, $1::int) g", [n]);
     const before = Number((await db.query("select count(*) from booking_evidence")).rows[0].count);
     // erste Verbindung: Zeilen einfuegen (Ereignisse eingereiht), dann COMMIT messen; zweite Verbindung committet gleichzeitig eine eigene Anfragezeile und wartet auf den Zaehler
-    const c2 = new pg.Client({ connectionString: testUrl.toString() });
+    const c2 = new pg.Client({ connectionString: testUrl.toString(), statement_timeout: STATEMENT_TIMEOUT_MS });
     c2.on("error", () => {});
     await c2.connect();
     const m2 = (await db.query("insert into matches (home_team_id, away_team_id, starts_at, duration_min) values ($1, $2, now() + interval '4 days', 60) returning id", teams)).rows[0].id;

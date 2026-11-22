@@ -97,7 +97,7 @@ export async function cachedEvidenceReport(now: number = Date.now(), exec: Exec 
   return inflight;
 }
 
-/** Cache leeren (Tests). */
+/** NUR FÜR TESTS: leert Zwischenspeicher UND das laufende Versprechen (eine gerade laufende Berechnung wird dadurch nicht abgebrochen, ihr Ergebnis landet aber nicht mehr im Zwischenspeicher). */
 export function clearEvidenceReportCache(): void {
   cache = null;
   inflight = null;
