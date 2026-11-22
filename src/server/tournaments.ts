@@ -20,7 +20,7 @@ import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
 import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
-import { assertVenueFixable, freezeVenueTerms, hallZusageOk, isPartnerVenue } from "./tournament-venue";
+import { assertVenueFixable, freezeVenueTerms, hallZusageOk, isPartnerVenue, venueRejectionText } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled } from "./settings";
 
@@ -92,7 +92,7 @@ export async function createTournament(userId: string, input: TournamentInput) {
   let venueId: string | null = null;
   let venueLabel: string | null = null;
   if (input.venueId) {
-    if (!(await isPartnerVenue(db, input.venueId))) throw new DomainError("Bitte wähle eine Partnerhalle.");
+    if (!(await isPartnerVenue(db, input.venueId))) throw new DomainError(await venueRejectionText(db, input.venueId));
     venueId = input.venueId;
     const [v] = await db.select({ name: venues.name, address: venues.address }).from(venues).where(eq(venues.id, venueId));
     venueLabel = [v?.name, v?.address].filter(Boolean).join(", ") || null;

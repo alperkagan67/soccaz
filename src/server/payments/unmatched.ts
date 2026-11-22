@@ -1,6 +1,6 @@
 // Ereignisse ohne Zuordnung (Backlog 118, 012 M5-7a, Entscheid t2q P-M57-6): das Ignorieren einer Zahlungsmeldung steht im Audit (charge.ignored); hier kommt die Alarmlogik dazu.
 //  - Eine ERFOLGREICHE Zahlung (succeeded) ohne Zuordnung ist echtes Geld ohne Buchung: SOFORT eine Mitteilung an Admin 1 (Owner), ohne Personendaten (nur PaymentIntent-ID, Betrag, Zeit),
-//    entprellt: je PaymentIntent genau einmal (das Audit "charge.unmatched_success" ist der Marker).
+//    entprellt: je PaymentIntent genau einmal (enger als "je Ereignis-ID": auch die Wiederholung mit neuer Ereignis-ID loest nichts aus; parallele Zustellungen serialisiert eine Advisory-Sperre) (das Audit "charge.unmatched_success" ist der Marker).
 //  - Alle anderen unbekannten Ereignisse zaehlen nur (Audit); der Alarm in der Alarmliste (finance.ts) kommt erst bei mehr als UNMATCHED_THRESHOLD in 24 Stunden.
 import { and, eq, sql } from "drizzle-orm";
 import { auditLog, users } from "@/db/schema";
@@ -22,15 +22,20 @@ export const isUnmatchedReason = (reason: string): boolean => (UNMATCHED_REASONS
 export async function noteIgnoredCharge(tx: Tx, r: { paymentIntentId: string; outcome: string; amountCents: number | null }, reason: string): Promise<void> {
   await audit(null, "charge.ignored", "payment_intent", r.paymentIntentId, { after: { reason, outcome: r.outcome } }, tx);
   if (r.outcome !== "succeeded" || !isUnmatchedReason(reason)) return;
+  // Parallele Zustellungen derselben Zahlung (Stripe-Wiederholung) serialisieren: Pruefung und Marker sind sonst nicht atomar (doppelte Mitteilung)
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"unmatched:" + r.paymentIntentId}, 0))`);
   const [done] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, "charge.unmatched_success"), eq(auditLog.entityId, r.paymentIntentId))).limit(1);
   if (done) return;
   await audit(null, "charge.unmatched_success", "payment_intent", r.paymentIntentId, { after: { amountCents: r.amountCents } }, tx);
   try {
-    const owners = await tx.select({ id: users.id }).from(users).where(eq(users.isOwner, true));
-    const amount = r.amountCents !== null && Number.isInteger(r.amountCents) ? ` über ${formatEuro(r.amountCents)}` : "";
-    await notifyUsers(owners.map((o) => o.id), { type: "system", title: "Zahlung ohne Buchung", body: `Eine erfolgreiche Zahlung${amount} (${r.paymentIntentId}) konnte keiner Abbuchung zugeordnet werden. Bitte im Stripe-Dashboard prüfen und gegebenenfalls erstatten.`, url: "/admin/finanzen" }, tx);
+    // Savepoint: ein SQL-Fehler in der Mitteilung bricht nur den Savepoint ab, nicht die Transaktion des Webhooks (sonst 25P02, Webhook 500, Marker zurueckgerollt, kein Alarm)
+    await tx.transaction(async (sp) => {
+      const owners = await sp.select({ id: users.id }).from(users).where(eq(users.isOwner, true));
+      const amount = r.amountCents !== null && Number.isInteger(r.amountCents) ? ` über ${formatEuro(r.amountCents)}` : "";
+      await notifyUsers(owners.map((o) => o.id), { type: "system", title: "Zahlung ohne Buchung", body: `Eine erfolgreiche Zahlung${amount} (${r.paymentIntentId}) konnte keiner Abbuchung zugeordnet werden. Bitte im Stripe-Dashboard prüfen und gegebenenfalls erstatten.`, url: "/admin/finanzen" }, sp);
+    });
   } catch {
-    /* die Mitteilung darf die Verbuchung des Webhooks nie verhindern; der Alarm in der Alarmliste bleibt */
+    /* die Mitteilung darf die Verbuchung des Webhooks nie verhindern; der Marker (Audit) bleibt, der Alarm in der Alarmliste auch */
   }
 }
 

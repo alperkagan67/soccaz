@@ -123,7 +123,8 @@ describe("M5-7a: Hallenauswahl im Kartenmodell nur ohne Zugang (Liste und Pruefu
     const withAccess = await venue();
     await grant(withAccess.id);
     const o = await organizer();
-    await expect(createTournament(o.id, { ...base, venueId: withAccess.id })).rejects.toThrow(/Partnerhalle/);
+    await expect(createTournament(o.id, { ...base, venueId: withAccess.id })).rejects.toThrow(/Halle noch ohne Online-Zusage/); // eigener Text statt "Bitte waehle eine Partnerhalle"
+    await expect(createTournament(o.id, { ...base, venueId: (await venue({ isPartner: false })).id })).rejects.toThrow(/Partnerhalle/); // andere Gruende behalten den alten Text
     expect(await isPartnerVenue(db, withAccess.id)).toBe(false);
     expect(await isPartnerVenue(db, free.id)).toBe(true);
     const list = (await listPartnerVenueOptions())!;
@@ -132,7 +133,7 @@ describe("M5-7a: Hallenauswahl im Kartenmodell nur ohne Zugang (Liste und Pruefu
     for (const opt of list) expect(await isPartnerVenue(db, opt.id)).toBe(!opt.unavailable); // Konsistenz: waehlbar <=> vom Validator angenommen
     expect(NO_ONLINE_CONFIRM_HINT).toBe("Halle noch ohne Online-Zusage");
     const t = await createTournament(o.id, { ...base, venueId: free.id });
-    await expect(setTournamentVenue(o.id, false, t.id, withAccess.id)).rejects.toThrow(/Partnerhalle/);
+    await expect(setTournamentVenue(o.id, false, t.id, withAccess.id)).rejects.toThrow(/Halle noch ohne Online-Zusage/);
     await setSetting(null, "card_payments_enabled", false);
     try {
       expect(await isPartnerVenue(db, withAccess.id)).toBe(true);
@@ -160,6 +161,19 @@ describe("M5-7a: Hallenauswahl im Kartenmodell nur ohne Zugang (Liste und Pruefu
     const fixed = await rowOf(t.id);
     expect(fixed.status).toBe("payment");
     expect(fixed.venueAccessRequiredSnapshot).toBe(false);
+  });
+});
+
+describe("M5-7a: freezeVenueTerms prueft auf derselben Lesung (Zugang zwischen Pruefung und Einfrieren)", () => {
+  it("hat die Halle beim Einfrieren einen Zugang, wird verweigert und nichts eingefroren", async () => {
+    const v = await venue();
+    const o = await organizer();
+    const t = await createTournament(o.id, { ...base, venueId: v.id });
+    await grant(v.id); // der Zugang kommt NACH einer (hier nicht gemachten) Vorpruefung
+    await expect(db.transaction((tx) => freezeVenueTerms(tx, t.id, v.id))).rejects.toThrow(/Betreiber-Zugang/);
+    const after = await rowOf(t.id);
+    expect(after.venueAccessRequiredSnapshot).toBeNull();
+    expect(after.commissionPercentSnapshot).toBeNull();
   });
 });
 

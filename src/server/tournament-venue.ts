@@ -10,7 +10,7 @@ import { audit } from "./audit";
 import { cardPaymentsEnabled } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
-import { venueHasActiveAccess } from "./venue-access-rules";
+import { venueHasActiveAccess, venueIdsWithActiveAccess } from "./venue-access-rules";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -41,6 +41,8 @@ export async function venueCommissionPercent(venueId: string, exec: Pick<Tx, "se
   return p;
 }
 
+const NO_ACCESS_YET_TEXT = "Diese Halle hat inzwischen einen Betreiber-Zugang; die Online-Zusage für Turniere folgt. Bitte wähle eine andere Halle.";
+
 /** Hinweis an den Veranstalter, solange die Online-Zusage fuer Turniere (M5-7b) fehlt. */
 export const NO_ONLINE_CONFIRM_HINT = "Halle noch ohne Online-Zusage";
 
@@ -51,9 +53,8 @@ export const NO_ONLINE_CONFIRM_HINT = "Halle noch ohne Online-Zusage";
 export async function listPartnerVenueOptions(): Promise<{ id: string; label: string; unavailable: boolean }[] | null> {
   if (!(await cardPaymentsEnabled())) return null;
   const rows = await db.select({ id: venues.id, name: venues.name, city: venues.city }).from(venues).where(and(eq(venues.active, true), eq(venues.isPartner, true))).orderBy(venues.city, venues.name);
-  const out: { id: string; label: string; unavailable: boolean }[] = [];
-  for (const v of rows) out.push({ id: v.id, label: [v.name, v.city].join(", "), unavailable: await venueHasActiveAccess(v.id) });
-  return out;
+  const withAccess = await venueIdsWithActiveAccess(); // eine Abfrage statt einer je Halle
+  return rows.map((v) => ({ id: v.id, label: [v.name, v.city].join(", "), unavailable: withAccess.has(v.id) }));
 }
 
 /**
@@ -69,18 +70,31 @@ export async function isPartnerVenue(exec: Pick<typeof db, "select">, venueId: s
 }
 
 /**
+ * Text, wenn eine Halle nicht gewaehlt werden darf: eine aktive Partnerhalle MIT Betreiber-Zugang bekommt den Hinweis zur fehlenden Online-Zusage (nicht "keine Partnerhalle"), alles andere den
+ * bisherigen Text. Nur aufrufen, wenn isPartnerVenue false ergab.
+ */
+export async function venueRejectionText(exec: Pick<typeof db, "select">, venueId: string): Promise<string> {
+  if (typeof venueId === "string" && UUID.test(venueId)) {
+    const [v] = await exec.select({ id: venues.id }).from(venues).where(and(eq(venues.id, venueId), eq(venues.active, true), eq(venues.isPartner, true)));
+    if (v && (await venueHasActiveAccess(venueId, exec))) return `${NO_ONLINE_CONFIRM_HINT}. Bitte wähle eine andere Halle.`;
+  }
+  return "Bitte wähle eine Partnerhalle.";
+}
+
+/**
  * Prueft VOR dem Statuswechsel auf "payment", ob die Halle fixierbar ist (M5-7a, Plan 19.9 Punkt 2): hat sie inzwischen einen aktiven Betreiber-Zugang (Einladung eingeloest), gibt es bis M5-7b keine
  * Zusage, das Turnier waere unbuchbar (Absage zur Frist). Dann wird das Fixieren mit klarer Meldung verweigert (kein Absturz in der Transaktion, nichts geaendert).
  */
 export async function assertVenueFixable(tx: Tx, venueId: string): Promise<void> {
-  if (await venueHasActiveAccess(venueId, tx)) {
-    throw new DomainError("Diese Halle hat inzwischen einen Betreiber-Zugang; die Online-Zusage für Turniere folgt. Bitte wähle eine andere Halle.");
-  }
+  if (await venueHasActiveAccess(venueId, tx)) throw new DomainError(NO_ACCESS_YET_TEXT);
 }
 
 /** Zugang und Provisionssatz beim Fixieren einfrieren (in der Transaktion des Aufrufers, unter der Turniersperre). */
 export async function freezeVenueTerms(tx: Tx, tournamentId: string, venueId: string): Promise<{ accessRequired: boolean; commissionPercent: number }> {
   const accessRequired = await venueHasAccess(venueId, tx);
+  // Zweite, ENTSCHEIDENDE Pruefung auf derselben Lesung, die eingefroren wird: assertVenueFixable (vorher) und diese Lesung sind getrennte Abfragen (READ COMMITTED); wird der Zugang dazwischen
+  // eingeloest, wuerde `true` eingefroren und das Turnier waere unbuchbar. Der DomainError rollt die Transaktion des Aufrufers (Statuswechsel) zurueck. Entfaellt mit M5-7b.
+  if (accessRequired) throw new DomainError(NO_ACCESS_YET_TEXT);
   const commissionPercent = await venueCommissionPercent(venueId, tx);
   await tx.update(tournaments).set({ venueAccessRequiredSnapshot: accessRequired, commissionPercentSnapshot: commissionPercent.toFixed(2) }).where(eq(tournaments.id, tournamentId));
   return { accessRequired, commissionPercent };
@@ -95,7 +109,7 @@ export async function setTournamentVenue(userId: string, isPlatformAdmin: boolea
     if (!t) throw new DomainError("Turnier nicht gefunden.");
     if (t.organizerId !== userId && !isPlatformAdmin) throw new DomainError("Nur der Veranstalter kann die Halle wählen.");
     if (t.status !== "registration" || t.bracketGeneratedAt) throw new DomainError("Die Halle lässt sich nur wählen, solange der Kader offen ist.");
-    if (!(await isPartnerVenue(tx, venueId))) throw new DomainError("Bitte wähle eine Partnerhalle.");
+    if (!(await isPartnerVenue(tx, venueId))) throw new DomainError(await venueRejectionText(tx, venueId));
     await tx.update(tournaments).set({ venueId, venueConfirmedAt: null }).where(eq(tournaments.id, tournamentId)); // eine neue Halle braucht eine neue Zusage
     await audit(userId, "tournament.venue", "tournament", tournamentId, { before: { venueId: t.venueId }, after: { venueId } }, tx);
   });
