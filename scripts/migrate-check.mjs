@@ -52,6 +52,37 @@ async function evidenceStructure(pool) {
   }
   check((await pool.query("select 1 from pg_proc where proname = 'evidence_hash'")).rowCount === 1, "Beweisprotokoll: Funktion evidence_hash");
   check((await pool.query("select 1 from pg_constraint where conname = 'booking_evidence_kind_check'")).rowCount === 1, "Beweisprotokoll: CHECK der Arten");
+  // DEFERRABLE-Haken (Plan 009 M3 v4/v5): je Tabelle ein Constraint-Trigger fuer INSERT und UPDATE, aufgeschoben bis zum COMMIT
+  for (const [tg, table] of [
+    ["match_hall_requests_evidence_ins", "match_hall_requests"],
+    ["match_hall_requests_evidence_upd", "match_hall_requests"],
+    ["booking_jobs_evidence_ins", "booking_jobs"],
+    ["booking_jobs_evidence_upd", "booking_jobs"],
+  ]) {
+    const r = await pool.query(
+      "select t.tgdeferrable, t.tginitdeferred, t.tgconstraint <> 0 as is_constraint, t.tgqual is not null as has_when from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = $1 and c.relname = $2",
+      [tg, table],
+    );
+    const row = r.rows[0];
+    check(Boolean(row) && row.tgdeferrable && row.tginitdeferred && row.is_constraint, "Beweisprotokoll: Constraint-Trigger " + tg + " (DEFERRABLE INITIALLY DEFERRED)");
+    if (tg.endsWith("_upd")) check(Boolean(row) && row.has_when, "Beweisprotokoll: " + tg + " feuert nur bei geaendertem Status (WHEN)");
+  }
+  for (const [tg, table] of [["matches_forbid_delete_with_evidence", "matches"], ["venues_forbid_delete_with_evidence", "venues"]]) {
+    check((await pool.query("select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = $1 and c.relname = $2", [tg, table])).rowCount === 1, "Beweisprotokoll: Guard " + tg);
+  }
+  for (const fn of ["evidence_write", "evidence_hall_event", "evidence_job_event", "evidence_reconcile", "forbid_delete_with_evidence", "forbid_evidence_truncate"]) {
+    check((await pool.query("select 1 from pg_proc where proname = $1", [fn])).rowCount === 1, "Beweisprotokoll: Funktion " + fn);
+  }
+  for (const ix of ["booking_evidence_venue_idx", "booking_evidence_job_idx", "booking_evidence_match_idx", "booking_evidence_seq_idx", "booking_evidence_request_idx"]) {
+    check((await pool.query("select 1 from pg_indexes where indexname = $1", [ix])).rowCount === 1, "Beweisprotokoll: Index " + ix);
+  }
+  // KEINE Fremdschluessel an booking_evidence und evidence_actor.user_id (Deadlock-Zyklus mit der COMMIT-Zaehlersperre, Plan 14.1); evidence_actor.evidence_id -> booking_evidence bleibt
+  const fks = await pool.query(
+    "select c.conrelid::regclass::text as tbl, a.attname from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.contype = 'f' and c.conrelid::regclass::text in ('booking_evidence', 'evidence_actor')",
+  );
+  const fkList = fks.rows.map((r) => r.tbl + "." + r.attname).sort();
+  check(JSON.stringify(fkList) === JSON.stringify(["evidence_actor.evidence_id"]), "Beweisprotokoll: keine Fremdschluessel ausser evidence_actor.evidence_id (gefunden: " + fkList.join(", ") + ")");
+  check((await pool.query("select 1 from information_schema.columns where table_name = 'booking_evidence' and column_name = 'tx_id'")).rowCount === 1, "Beweisprotokoll: Spalte tx_id");
 }
 
 async function commissionStructure(pool, withOldMatch) {
@@ -132,8 +163,18 @@ try {
   const mt = [];
   for (const n of ["a", "b"]) mt.push((await existing.query("insert into teams (name, slug, city, created_by) values ($1, $2, 'Essen', $3) returning id", [`Mig ${n}`, `mig-${n}`, mu])).rows[0].id);
   await existing.query("insert into matches (home_team_id, away_team_id, starts_at, duration_min) values ($1, $2, now() + interval '3 days', 60)", mt);
+  // Hallen mit bisherigem Betreiber VOR der Migration 011 M1 (Datenübernahme in venue_access): ok, Admin-Konto, anonymisiertes Konto, verwaister Verweis, ohne Betreiber
+  const okId = (await existing.query("select id from users where email = 'spieler@migcheck.test'")).rows[0].id;
+  const anonId = (await existing.query("insert into users (email, name, role) values ('geloescht-1@geloescht.invalid', 'Gelöscht', 'player') returning id")).rows[0].id;
+  for (const [name, mgr] of [['H-ok', okId], ['H-admin', mu], ['H-anon', anonId], ['H-orphan', '00000000-0000-4000-8000-000000000001'], ['H-frei', null]]) {
+    await existing.query("insert into venues (name, city, manager_user_id) values ($1, 'Essen', $2)", [name, mgr]);
+  }
   await migrate(drizzle(existing), { migrationsFolder: "./drizzle" });
   await structure(existing);
+  const acc = (await existing.query("select v.name, a.status, a.user_id from venue_access a join venues v on v.id = a.venue_id order by v.name")).rows;
+  check(acc.length === 1 && acc[0].name === 'H-ok' && acc[0].status === 'active' && acc[0].user_id === okId, "Datenübernahme venue_access: nur die Halle mit gültigem Betreiber wird aktiv (Admin, anonymisiert, verwaist, ohne Betreiber werden übersprungen)");
+  check((await existing.query("select count(*)::int as n from venues where manager_user_id is not null")).rows[0].n === 4, "venues.manager_user_id bleibt unverändert (Rückfall bis 011 M4)");
+  check((await existing.query("select 1 from pg_indexes where indexname = 'venue_access_one_open_per_venue'")).rowCount === 1, "venue_access: höchstens ein offener Zugang je Halle (partieller Unique)");
   const old = await existing.query("select role, is_owner from users where email = 'alt@migcheck.test'");
   check(old.rows[0]?.role === "admin" && old.rows[0]?.is_owner === false, "bestehende Zeile bleibt unverändert, is_owner = false");
   if (/teilrollen/.test(journal.entries.length ? JSON.parse(readFileSync("./drizzle/meta/_journal.json", "utf8")).entries.at(-1).tag : "")) {

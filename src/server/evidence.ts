@@ -1,69 +1,8 @@
-import { createHash, randomBytes } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { bookingEvidence, evidenceActor } from "@/db/schema-finance";
-import { cleanReason, isRequestKind, type EvidenceKind } from "@/lib/evidence";
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Exec = Pick<typeof db, "select" | "execute">;
 const rowsOf = <T>(r: unknown): T[] => ((r as { rows?: T[] }).rows ?? (r as T[]));
-
-export type EvidenceInput = {
-  matchId: string;
-  venueId: string | null;
-  round: number;
-  kind: EvidenceKind;
-  jobId?: string | null;
-  /** Begründung der Halle (Fremdtext): wird bereinigt und auf 300 Zeichen gekürzt; leer = keine. */
-  reason?: string | null;
-  /** Betreiber, der geantwortet hat (Plan 011 P2): Name und E-Mail landen NUR in evidence_actor, im Hash steht nur ein gesalzener Verpflichtungswert. */
-  actor?: { userId: string; name?: string | null; email?: string | null } | null;
-};
-
-/** Verpflichtungswert: sha256(salt:user_id). Das Salz liegt in evidence_actor; ohne diese Zeile lässt sich der Bezug nicht mehr herstellen. */
-export function actorCommitment(salt: string, userId: string): string {
-  return createHash("sha256").update(`${salt}:${userId}`, "utf8").digest("hex");
-}
-
-/**
- * Trägt einen Zustandswechsel ins Beweisprotokoll ein, in DERSELBEN Transaktion wie der Wechsel (Rollback des Wechsels = kein Eintrag).
- * Reihenfolge (Plan 12, R-T210): (1) Zählerzeile nur SPERREN, (2) Existenz prüfen (Anfrage-Arten: vorhanden = still weiter, keine seq), (3) einfügen; der INSERT-Trigger zählt hoch.
- * Die Sperre vor der Prüfung verhindert das Rennen "beide prüfen nicht vorhanden, der zweite scheitert am UNIQUE und die Geschäftsaktion rollt zurück".
- * Sperrreihenfolge der Aufrufer: Spiel → Halle → Anfragezeile → Zähler (zuletzt).
- */
-export async function recordEvidence(tx: Tx, input: EvidenceInput): Promise<{ created: boolean; seq: number | null }> {
-  await tx.execute(sql`select id from booking_evidence_counter where id = 1 for update`);
-  if (isRequestKind(input.kind)) {
-    const venueCond = input.venueId === null ? sql`${bookingEvidence.venueId} is null` : eq(bookingEvidence.venueId, input.venueId);
-    const [existing] = await tx
-      .select({ seq: bookingEvidence.seq })
-      .from(bookingEvidence)
-      .where(and(eq(bookingEvidence.matchId, input.matchId), venueCond, eq(bookingEvidence.round, input.round), eq(bookingEvidence.kind, input.kind)));
-    if (existing) return { created: false, seq: null };
-  }
-  const salt = input.actor ? randomBytes(16).toString("hex") : null;
-  const reason = cleanReason(input.reason);
-  const [row] = await tx
-    .insert(bookingEvidence)
-    .values({
-      matchId: input.matchId,
-      venueId: input.venueId,
-      round: input.round,
-      jobId: input.jobId ?? null,
-      kind: input.kind,
-      reason: reason === "" ? null : reason,
-      actorCommitment: input.actor && salt ? actorCommitment(salt, input.actor.userId) : "",
-    })
-    .returning({ id: bookingEvidence.id, seq: bookingEvidence.seq });
-  if (input.actor && salt) await tx.insert(evidenceActor).values({ evidenceId: row.id, userId: input.actor.userId, name: input.actor.name ?? null, email: input.actor.email ?? null, salt });
-  return { created: true, seq: row.seq };
-}
-
-/** Aktuelle Runde der Hallenprüfung eines Spiels (0 = noch keine). */
-export async function currentRound(exec: Exec, matchId: string): Promise<number> {
-  const rows = rowsOf<{ r: number }>(await exec.execute(sql`select coalesce(max(round), 0)::int as r from booking_evidence where match_id = ${matchId}`));
-  return rows[0]?.r ?? 0;
-}
 
 export type ChainCheck = { ok: boolean; count: number; headHash: string; firstBadSeq: number | null; reason: string | null };
 
@@ -97,4 +36,38 @@ export async function verifyEvidenceChain(exec: Exec = db): Promise<ChainCheck> 
   if (first) return { ok: false, count: rows.length, headHash, firstBadSeq: first.seq, reason: first.bad };
   if (!counter || counter.last_seq !== (last?.seq ?? 0) || counter.last_hash !== headHash) return { ok: false, count: rows.length, headHash, firstBadSeq: (last?.seq ?? 0) + 1, reason: "zaehler" };
   return { ok: true, count: rows.length, headHash, firstBadSeq: null, reason: null };
+}
+
+export type Orphans = { matchIds: string[]; venueIds: string[] };
+
+/**
+ * Verwaiste Verweise (Plan 14.2): Einträge, deren Spiel oder Halle nicht mehr existiert (die Fremdschlüssel entfallen wegen der Sperrfolge; der Guard auf matches/venues liest ohne Sperre).
+ * Alarm, KEIN Kettenbruch: die Kette selbst bleibt gültig.
+ */
+export async function findOrphans(exec: Exec = db): Promise<Orphans> {
+  const m = rowsOf<{ id: string }>(await exec.execute(sql`select distinct e.match_id as id from booking_evidence e left join matches x on x.id = e.match_id where x.id is null`));
+  const v = rowsOf<{ id: string }>(await exec.execute(sql`select distinct e.venue_id as id from booking_evidence e left join venues x on x.id = e.venue_id where e.venue_id is not null and x.id is null`));
+  return { matchIds: m.map((r) => r.id), venueIds: v.map((r) => r.id) };
+}
+
+export type MissingEntry = { source: "hall" | "job"; matchId: string; venueId: string | null; jobId: string | null; status: string };
+
+/**
+ * Abgleich (Plan 14.3/15.2): Anfragezeilen (pending, confirmed, declined, unmanaged) und Aufträge (alle außer in_progress) im Endstatus, zu denen der Protokolleintrag IN DER AKTUELLEN RUNDE fehlt
+ * (z. B. weil ein Trigger deaktiviert oder die Wartungsausnahme gesetzt war). Die SQL-Funktion evidence_reconcile() steht in der Migration. Bewusst nicht erfasst: Wechsel confirmed -> declined
+ * o. ä. (nur pending -> X erzeugt Einträge), in_progress, gelöschte Zeilen.
+ */
+export async function reconcileEvidence(exec: Exec = db): Promise<MissingEntry[]> {
+  const rows = rowsOf<{ src: "hall" | "job"; r_match: string; r_venue: string | null; r_job: string | null; r_status: string }>(await exec.execute(sql`select src, r_match, r_venue, r_job, r_status from evidence_reconcile()`));
+  return rows.map((r) => ({ source: r.src, matchId: r.r_match, venueId: r.r_venue, jobId: r.r_job, status: r.r_status }));
+}
+
+export type EvidenceReport = { chain: ChainCheck; orphans: Orphans; missing: MissingEntry[]; ok: boolean };
+
+/** Gesamtbericht für den Admin-Abruf und den Tagesjob: Kette (Kopf-Hash, Anzahl), Verwaiste, fehlende Einträge. */
+export async function evidenceReport(exec: Exec = db): Promise<EvidenceReport> {
+  const chain = await verifyEvidenceChain(exec);
+  const orphans = await findOrphans(exec);
+  const missing = await reconcileEvidence(exec);
+  return { chain, orphans, missing, ok: chain.ok && orphans.matchIds.length === 0 && orphans.venueIds.length === 0 && missing.length === 0 };
 }

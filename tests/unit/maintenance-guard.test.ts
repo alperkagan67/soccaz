@@ -71,3 +71,29 @@ describe("Wartungsausnahme und Zählerschutz der Trigger (Präfix socaz.)", () =
     ]) expect(mentionsSocazSetting(code), code).toBe(false);
   });
 });
+
+// Weitere Umgehungswege der DEFERRABLE-Haken (Plan 15.4): SET CONSTRAINTS ... IMMEDIATE (ändert das Timing), session_replication_role (Trigger feuern nicht), DISABLE TRIGGER,
+// pg_restore --disable-triggers. Nicht im App-Code (src/) und nicht in Skripten (scripts/); tests/, drizzle/ und die Wiederherstellung (BETRIEB, manuell) sind ausgenommen.
+const BYPASS = /\b(set\s+constraints\b|session_replication_role\b|disable\s+trigger\b|enable\s+replica\s+trigger\b)|--disable-triggers/i;
+export const usesBypass = (text: string) => BYPASS.test(stripComments(text));
+
+describe("Umgehungswege der Trigger (SET CONSTRAINTS, session_replication_role, DISABLE TRIGGER)", () => {
+  it("kommen in src/ und scripts/ außerhalb von Kommentaren nirgends vor (Allowlist leer)", () => {
+    const offenders = [...walk(join(ROOT, "src")), ...walk(join(ROOT, "scripts"))]
+      .map((p) => relative(ROOT, p).replace(/\\/g, "/"))
+      .filter((rel) => !ALLOW.includes(rel))
+      .filter((rel) => usesBypass(readFileSync(join(ROOT, rel), "utf8")));
+    expect(offenders, `Umgehungsweg in: ${offenders.join(", ")}`).toEqual([]);
+  });
+
+  it("Selbsttest: erkannt werden die Schreibweisen, Kommentare nicht", () => {
+    for (const code of [
+      "await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`)",
+      "set constraints booking_jobs_evidence_upd immediate",
+      "SET LOCAL session_replication_role = replica",
+      "ALTER TABLE booking_jobs DISABLE TRIGGER booking_jobs_evidence_ins",
+      "pg_restore --disable-triggers dump",
+    ]) expect(usesBypass(code), code).toBe(true);
+    for (const code of ["// SET CONSTRAINTS ALL IMMEDIATE ist verboten", "-- session_replication_role", "/* DISABLE TRIGGER */ const x = 1;"]) expect(usesBypass(code), code).toBe(false);
+  });
+});

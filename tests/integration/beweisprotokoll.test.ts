@@ -3,7 +3,9 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { bookingEvidence, bookingEvidenceCounter, evidenceActor, venues } from "@/db/schema-finance";
 import { EVIDENCE_KINDS, EVIDENCE_REASON_MAX } from "@/lib/evidence";
-import { actorCommitment, currentRound, recordEvidence, verifyEvidenceChain } from "@/server/evidence";
+import { evidenceReport, findOrphans, reconcileEvidence, verifyEvidenceChain } from "@/server/evidence";
+import { runEvidenceHead } from "@/server/evidence-head";
+import { actorCommitment, currentRound, recordEvidence } from "@/server/evidence-write";
 import { cleanup, makeMatch, makeUser } from "./helpers";
 
 // Vertrag 009 M3a (Plan docs/design/009-m3-plan.md, Abschnitte 3 und 12): Beweisprotokoll, Kette, Unveränderlichkeit, Idempotenz unter der Zählersperre.
@@ -19,6 +21,7 @@ async function resetChain() {
     await tx.delete(evidenceActor);
     await tx.delete(bookingEvidence);
     await tx.update(bookingEvidenceCounter).set({ lastSeq: 0, lastHash: "" }).where(eq(bookingEvidenceCounter.id, 1));
+    await tx.execute(sql`delete from settings where key = 'evidence_head_last'`);
   });
 }
 
@@ -316,11 +319,72 @@ describe("Personenfelder getrennt (evidence_actor, außerhalb des Hashes; Entwur
   });
 });
 
-describe("Fremdschlüssel RESTRICT (Plan 8.2)", () => {
-  it("ein Spiel mit Protokolleinträgen und eine Halle mit Protokolleinträgen lassen sich nicht löschen", async () => {
+describe("Guard statt Fremdschlüssel, Verwaiste, Abgleich (Plan 14.1/14.2/14.3) – UNGETESTET gegen die Datenbank", () => {
+  it("ein Spiel und eine Halle mit Protokolleinträgen lassen sich nicht löschen (Guard-Trigger statt RESTRICT); mit Wartungsausnahme geht es", async () => {
     const { matchId, venueId } = await setup();
     await rec(matchId, venueId, "request_sent");
-    await expect(db.execute(sql`delete from matches where id = ${matchId}`)).rejects.toThrow();
-    await expect(db.execute(sql`delete from venues where id = ${venueId}`)).rejects.toThrow();
+    await expect(db.execute(sql`delete from matches where id = ${matchId}`)).rejects.toThrow(/Beweisprotokoll/);
+    await expect(db.execute(sql`delete from venues where id = ${venueId}`)).rejects.toThrow(/Beweisprotokoll/);
+  });
+
+  it("keine Fremdschlüssel an booking_evidence und evidence_actor.user_id (nur evidence_actor.evidence_id bleibt)", async () => {
+    const r = await db.execute(sql`
+      select c.conrelid::regclass::text as tbl, a.attname as col
+      from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey)
+      where c.contype = 'f' and c.conrelid::regclass::text in ('booking_evidence', 'evidence_actor')`);
+    expect((r.rows as { tbl: string; col: string }[]).map((x) => `${x.tbl}.${x.col}`).sort()).toEqual(["evidence_actor.evidence_id"]);
+  });
+
+  it("Verwaiste: ein Eintrag zu einem (per Wartungsausnahme) gelöschten Spiel/Halle wird gemeldet, die Kette bleibt gültig", async () => {
+    const { matchId, venueId } = await setup();
+    await rec(matchId, venueId, "request_sent");
+    expect(await findOrphans()).toEqual({ matchIds: [], venueIds: [] });
+    await maintenance(async (tx) => {
+      await tx.execute(sql`delete from matches where id = ${matchId}`);
+      await tx.execute(sql`delete from venues where id = ${venueId}`);
+    });
+    expect(await findOrphans()).toEqual({ matchIds: [matchId], venueIds: [venueId] });
+    expect((await verifyEvidenceChain()).ok).toBe(true);
+    expect((await evidenceReport()).ok).toBe(false);
+  });
+
+  it("Abgleich: eine Anfragezeile OHNE Eintrag (Wartungsausnahme unterdrückt den Haken) wird gemeldet; mit Eintrag der AKTUELLEN Runde nicht; ein Altrunden-Eintrag zählt nicht", async () => {
+    const { matchId, venueId } = await setup();
+    // Zeile unter Wartungsausnahme anlegen: der Trigger schreibt nichts
+    await maintenance((tx) => tx.execute(sql`insert into match_hall_requests (match_id, venue_id, position, status) values (${matchId}, ${venueId}, 0, 'pending')`));
+    expect((await reconcileEvidence()).map((m) => [m.source, m.matchId, m.status])).toContainEqual(["hall", matchId, "pending"]);
+    // Eintrag der Runde 1 nachtragen: gemeldet wird nichts mehr
+    await rec(matchId, venueId, "request_sent");
+    expect((await reconcileEvidence()).filter((m) => m.matchId === matchId)).toEqual([]);
+    // neuer Termin: Runde 2 existiert (anderer Eintrag), die Zeile hat aber nur den Eintrag der Runde 1 -> fehlt in der aktuellen Runde
+    await db.transaction((tx) => recordEvidence(tx, { matchId, venueId: null, round: 2, kind: "job_open" }));
+    expect((await reconcileEvidence()).filter((m) => m.matchId === matchId).map((m) => m.status)).toEqual(["pending"]);
+  });
+
+  it("Abgleich: Aufträge in jedem Status außer in_progress brauchen den Eintrag job_<Status>", async () => {
+    const { matchId, venueId } = await setup();
+    await maintenance((tx) => tx.execute(sql`insert into booking_jobs (match_id, venue_id, status) values (${matchId}, ${venueId}, 'booked')`));
+    expect((await reconcileEvidence()).some((m) => m.source === "job" && m.matchId === matchId && m.status === "booked")).toBe(true);
+    const id = ((await db.execute(sql`select id from booking_jobs where match_id = ${matchId}`)).rows[0] as { id: string }).id;
+    await db.transaction((tx) => recordEvidence(tx, { matchId, venueId, round: 0, kind: "job_booked", jobId: id }));
+    expect((await reconcileEvidence()).some((m) => m.source === "job" && m.matchId === matchId)).toBe(false);
+  });
+
+  it("Tagesjob evidence-head: gibt Anzahl und Kopf-Hash aus, merkt sich den Stand und schlägt Alarm, wenn die Anzahl kleiner wird oder der frühere Kopf-Hash fehlt", async () => {
+    const owner = await makeUser("beweishead", "owner");
+    void owner;
+    const { matchId, venueId } = await setup();
+    await rec(matchId, venueId, "request_sent");
+    await rec(matchId, venueId, "accepted");
+    const first = await runEvidenceHead();
+    expect(first).toMatchObject({ count: 2, ok: true });
+    expect(first.headHash).toMatch(/^[0-9a-f]{64}$/);
+    // Zeile 2 per Wartung löschen: Anzahl kleiner als beim letzten Lauf, Kette (Zähler) passt nicht mehr
+    await maintenance((tx) => tx.delete(bookingEvidence).where(eq(bookingEvidence.seq, 2)));
+    const second = await runEvidenceHead();
+    expect(second.ok).toBe(false);
+    expect(second.alarms.join(" ")).toMatch(/Anzahl kleiner|Kette ungültig/);
+    expect(second.alarms.join(" ")).toMatch(/früherer Kopf-Hash|frühere Kopf-Hash/);
   });
 });
+

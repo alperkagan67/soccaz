@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/ActionForm";
 import { CITIES } from "@/lib/validation";
 import { formatEuro } from "@/lib/money";
-import { addPriceRuleAction, createVenueAction, setVenueCommissionAction, setVenueManagerAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
+import { addPriceRuleAction, createVenueAction, revokeVenueAccessAction, setVenueCommissionAction, setVenueManagerAction, toggleVenueAction, verifyVenueAction } from "@/server/admin-finance-actions";
+import { formatDateTime } from "@/lib/time";
+import { listVenueAccess } from "@/server/venue-access";
 import { canUser } from "@/lib/roles";
 import { requirePermission } from "@/server/session";
 import { listPriceRules, listVenues } from "@/server/venues";
@@ -58,6 +60,7 @@ export default async function VenuesPage() {
   const canCommission = canUser(user, "owner"); // Provision je Halle: nur Admin 1 (Vertrag 009 M2); Admin 2 sieht sie nicht
   const canAssign = canUser(user, "owner"); // Betreiber zuordnen nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht nur, ob einer zugewiesen ist
   const venues = await listVenues();
+  const access = new Map((await listVenueAccess({ isOwner: canAssign })).map((a) => [a.venueId, a])); // E-Mail nur für Admin 1 (Entscheid P7), Admin 2 sieht Status und Datum
 
   return (
     <div className="space-y-6">
@@ -147,15 +150,32 @@ export default async function VenuesPage() {
                     <p className="text-xs text-muted">Wirkt nur auf künftige Buchungen. 0 bis 100, höchstens zwei Nachkommastellen.</p>
                   </ActionForm>
                 )}
-                {canAssign ? (
-                  <ActionForm action={setVenueManagerAction.bind(null, v.id)} submit={v.managerUserId ? "Betreiber ändern" : "Betreiber zuweisen"} className="flex items-end gap-2" keepOnSuccess>
-                    <div className="flex-1">
-                      <label className="label" htmlFor={`mgr-${v.id}`}>Betreiber (E-Mail des Kontos){v.managerUserId ? ", zugewiesen" : ""}</label>
-                      <input id={`mgr-${v.id}`} name="email" type="email" className="field" placeholder="halle@beispiel.de (leer = entfernen)" />
-                    </div>
-                  </ActionForm>
-                ) : (
-                  <p className="text-xs text-muted" data-testid="manager-readonly">{v.managerUserId ? "Betreiber zugewiesen (Änderung nur Admin 1)." : "Kein Betreiber zugewiesen (Zuordnung nur Admin 1)."}</p>
+                {(() => {
+                  const acc = access.get(v.id);
+                  const state = acc ? (acc.status === "active" ? `Zugang aktiv seit ${formatDateTime(acc.assignedAt ?? acc.invitedAt)} Uhr` : `Einladung offen seit ${formatDateTime(acc.invitedAt)} Uhr (gilt 14 Tage)${acc.invitedEmail ? `: ${acc.invitedEmail}` : ""}`) : "Kein Zugang für Betreiber";
+                  return <p className="text-xs text-muted" data-testid="venue-access-status">{state}{!canAssign ? " (Zuordnung nur Admin 1)" : ""}</p>;
+                })()}
+                {canAssign && (
+                  <>
+                    <ActionForm action={setVenueManagerAction.bind(null, v.id)} submit={access.has(v.id) ? "Betreiber ändern" : "Betreiber einladen"} className="space-y-2" keepOnSuccess>
+                      <div>
+                        <label className="label" htmlFor={`mgr-${v.id}`}>Betreiber (Google-E-Mail, der Betreiber meldet sich selbst damit an)</label>
+                        <input id={`mgr-${v.id}`} name="email" type="email" className="field" placeholder="halle@beispiel.de" />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor={`mgr-why-${v.id}`}>Grund (wird protokolliert)</label>
+                        <input id={`mgr-why-${v.id}`} name="reason" className="field" required minLength={3} maxLength={200} />
+                      </div>
+                    </ActionForm>
+                    {access.has(v.id) && (
+                      <ActionForm action={revokeVenueAccessAction.bind(null, v.id)} submit={access.get(v.id)?.status === "invited" ? "Einladung zurückziehen" : "Zugang entziehen"} className="space-y-2" keepOnSuccess danger>
+                        <div>
+                          <label className="label" htmlFor={`rev-why-${v.id}`}>Grund (wird protokolliert)</label>
+                          <input id={`rev-why-${v.id}`} name="reason" className="field" required minLength={3} maxLength={200} />
+                        </div>
+                      </ActionForm>
+                    )}
+                  </>
                 )}
                 {!v.verified && <ActionForm action={verifyVenueAction.bind(null, v.id, true)} submit="Als geprüft markieren" className="space-y-2" keepOnSuccess />}
                 <ActionForm action={toggleVenueAction.bind(null, v.id, !v.active)} submit={v.active ? "Deaktivieren" : "Aktivieren"} className="space-y-2" keepOnSuccess danger={v.active} />

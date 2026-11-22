@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -92,6 +93,33 @@ export const invoiceNumberCounters = pgTable("invoice_number_counters", {
   year: integer("year").primaryKey(),
   last: integer("last").notNull().default(0),
 });
+
+/**
+ * Betreiber-Zugang je Halle (Vertrag 011 M1, Entscheid t9: je Halle eine Zeile, ein Zugang geteilt mit den Mitarbeitern). invited = Admin 1 hat eine Google-E-Mail freigegeben (user_id leer),
+ * active = beim ersten verifizierten Google-Login eingelöst (danach hängt der Zugang an user_id, nie wieder an der E-Mail), revoked = entzogen (Historie bleibt, E-Mail geleert).
+ * Genau ein offener oder aktiver Zugang je Halle (partieller Unique). venues.manager_user_id bleibt bis 011 M4 als Rückfall und wird in jedem Pfad mitgeschrieben.
+ */
+export const venueAccess = pgTable(
+  "venue_access",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    venueId: uuid("venue_id").notNull().references(() => venues.id, { onDelete: "restrict" }),
+    userId: uuid("user_id").references(() => users.id),
+    invitedEmail: text("invited_email"),
+    status: text("status").$type<"invited" | "active" | "revoked">().notNull(),
+    invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
+    assignedBy: uuid("assigned_by").references(() => users.id),
+    assignedAt: timestamp("assigned_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("venue_access_one_open_per_venue").on(t.venueId).where(sql`${t.status} <> 'revoked'`),
+    index("venue_access_user_idx").on(t.userId),
+    index("venue_access_email_idx").on(sql`lower(${t.invitedEmail})`).where(sql`${t.status} = 'invited'`),
+    check("venue_access_invited_chk", sql`${t.status} <> 'invited' or (${t.userId} is null and ${t.invitedEmail} is not null)`),
+    check("venue_access_active_chk", sql`${t.status} <> 'active' or ${t.userId} is not null`),
+  ],
+);
 
 /** Monatssammelrechnung über die Provision an eine Halle. NUR ANHÄNGEN (Trigger): Korrektur = Gutschrift als eigene Rechnung. Eine Rechnung je Halle und Monat. */
 export const invoices = pgTable(
@@ -300,8 +328,10 @@ export const bookingEvidence = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     seq: integer("seq").notNull().default(0),
-    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "restrict" }),
-    venueId: uuid("venue_id").references(() => venues.id, { onDelete: "restrict" }),
+    // KEINE Fremdschluessel (Plan 14.1): ein INSERT mit FK nimmt FOR KEY SHARE auf matches/venues; die DEFERRABLE-Trigger schreiben beim COMMIT unter der Zaehlersperre, das ergaebe einen Deadlock-Zyklus.
+    // Ersatz fuer RESTRICT: BEFORE-DELETE-Guard-Trigger auf matches/venues (Migration); Verwaiste meldet verifyEvidenceChain/Tagesjob.
+    matchId: uuid("match_id").notNull(),
+    venueId: uuid("venue_id"),
     round: integer("round").notNull().default(0),
     jobId: uuid("job_id"),
     kind: text("kind").notNull(),
@@ -310,12 +340,15 @@ export const bookingEvidence = pgTable(
     actorCommitment: text("actor_commitment").notNull().default(""),
     prevHash: text("prev_hash").notNull().default(""),
     hash: text("hash").notNull().default(""),
+    txId: bigint("tx_id", { mode: "number" }).notNull().default(sql`txid_current()`), // Transaktionsnummer: Eintraege einer Hallenpruefung gehoeren zur selben Runde (Plan 14.4); nicht im Hash
     matchPrevHash: text("match_prev_hash"), // Variante Z (Kette je Spiel): nur als Spalte angelegt, nicht ausgewertet (Entscheid t9)
   },
   (t) => [
     uniqueIndex("booking_evidence_seq_idx").on(t.seq),
     uniqueIndex("booking_evidence_request_idx").on(t.matchId, t.venueId, t.round, t.kind).where(sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired')`),
     index("booking_evidence_match_idx").on(t.matchId, t.seq),
+    index("booking_evidence_venue_idx").on(t.venueId), // Guard auf venues, Abgleich, Verwaisten-Pruefung (sonst Seq-Scans)
+    index("booking_evidence_job_idx").on(t.jobId), // Abgleich der Auftraege
     check(
       "booking_evidence_kind_check",
       sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done')`,
@@ -341,7 +374,7 @@ export const bookingEvidenceCounter = pgTable(
  */
 export const evidenceActor = pgTable("evidence_actor", {
   evidenceId: uuid("evidence_id").primaryKey().references(() => bookingEvidence.id, { onDelete: "cascade" }),
-  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  userId: uuid("user_id"), // KEIN Fremdschluessel (Plan 14.1: users wird oft FOR UPDATE gesperrt); die Kontoloeschung leert user_id, name, email
   name: text("name"),
   email: text("email"),
   salt: text("salt").notNull(),

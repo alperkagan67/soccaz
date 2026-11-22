@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { Pool } from "pg";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
-import { venues } from "@/db/schema-finance";
+import { venueAccess, venues } from "@/db/schema-finance";
 import { cleanupTestData } from "../cleanup";
 
 const run = randomUUID().slice(0, 8);
@@ -94,6 +94,12 @@ export async function cleanup() {
   await cleanupTestData(getPool());
   await pool?.end();
   pool = undefined;
+}
+
+/** Test-Abkürzung: Betreiber-Zugang direkt aktiv setzen (statt Einladung und Login), mit Rückfall-Spalte wie die echten Pfade. */
+export async function grantVenueAccess(venueId: string, userId: string) {
+  await db.insert(venueAccess).values({ venueId, userId, status: "active", assignedAt: new Date() });
+  await db.update(venues).set({ managerUserId: userId }).where(eq(venues.id, venueId));
 }
 
 /** Konto, auf das die Kartenabbuchung eines Spielanteils im aktuellen Testlauf fließt (revenue im alten Modell, venue_payable im Provisionsmodell, TEST_LEDGER_MODEL=commission). */

@@ -342,6 +342,7 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
     const [u] = await query<{ id: string }>("select id from users where email = $1", [`um19-${run}@test.local`]);
     // eigene Halle mit diesem Nutzer als Betreiber (wird danach gelöscht, kein Eingriff in vorhandene Hallen)
     const [venue] = await query<{ id: string }>("insert into venues (name, city, manager_user_id) values ($1, 'Essen', $2) returning id", [`E2E Menühalle ${run}`, u.id]);
+    await query("insert into venue_access (venue_id, user_id, status, assigned_at) values ($1, $2, 'active', now())", [venue.id, u.id]); // 011 M1
     try {
       await page.reload();
       await page.waitForLoadState("networkidle");
@@ -353,6 +354,7 @@ test.describe("Konto-Menü: Critique-Punkte", () => {
       await menu(page).getByRole("menuitem", { name: "Meine Halle" }).click();
       await expect(page).toHaveURL(/\/halle$/);
     } finally {
+      await query("delete from venue_access where venue_id = $1", [venue.id]);
       await query("delete from venues where id = $1", [venue.id]);
     }
   });
