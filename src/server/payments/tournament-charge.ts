@@ -7,7 +7,7 @@
 // Dieses Modul schreibt tournament_id (Zeilen, Erstattungen); die Teamspiel-Pfade nie.
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { paymentCharges, paymentProfiles } from "@/db/schema";
+import { paymentChargeAttempts, paymentCharges, paymentProfiles } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { audit } from "../audit";
@@ -15,7 +15,7 @@ import { DomainError } from "../teams";
 import type { Tx } from "../tx";
 import { dueWithGrace, fixDeadline, hasLongLead } from "@/lib/deadlines";
 import { formatEuro } from "@/lib/money";
-import { graceUntil, isCardProblemCode } from "@/lib/grace";
+import { graceUntil, inGraceWindow, isCardProblemCode, NON_CARD_CODES } from "@/lib/grace";
 import { post } from "../ledger";
 import { notifyUsers } from "../notifications";
 import { issueReceipt } from "../receipts";
@@ -272,10 +272,22 @@ export async function applyTournamentCharge(tx: Tx, r: ChargeReport): Promise<Ap
     const q = tx.select().from(paymentCharges).where(and(eq(paymentCharges.tournamentId, tournamentId), eq(paymentCharges.userId, userId)));
     return (lock ? await q.for("update") : await q)[0];
   };
-  const probe = (await byPi(false)) ?? (await byMeta(false));
+  // Ein ALTER, abgeschlossener Versuch (Historie, Wiederholen im Nachzahlfenster): die Zeile gehoert zu dem Versuch, der inzwischen durch einen neueren ersetzt wurde
+  const byHistory = async (lock: boolean) => {
+    const [h] = await tx.select({ chargeId: paymentChargeAttempts.chargeId }).from(paymentChargeAttempts).where(eq(paymentChargeAttempts.paymentIntentId, r.paymentIntentId));
+    if (!h) return undefined;
+    const q = tx.select().from(paymentCharges).where(eq(paymentCharges.id, h.chargeId));
+    return (lock ? await q.for("update") : await q)[0];
+  };
+  const probe = (await byPi(false)) ?? (await byHistory(false)) ?? (await byMeta(false));
   if (!probe || probe.tournamentId === null) return ignore("unknown_payment_intent");
   await tx.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, probe.tournamentId)).for("update"); // Turnier zuerst
   let row: typeof paymentCharges.$inferSelect | undefined = await byPi(true);
+  let oldAttempt = false;
+  if (!row) {
+    row = await byHistory(true);
+    oldAttempt = row !== undefined;
+  }
   if (!row) {
     row = await byMeta(true);
     if (!row) return ignore("unknown_charge");
@@ -291,6 +303,11 @@ export async function applyTournamentCharge(tx: Tx, r: ChargeReport): Promise<Ap
   const [profile] = await tx.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, row.payerUserId ?? row.userId));
   if (!profile || r.customerId !== profile.stripeCustomerId) return ignore("customer_mismatch");
 
+  // Ereignis eines ALTEN Versuchs: ein Fehlschlag aendert nichts (der neuere Versuch zaehlt), ein Erfolg ist trotzdem Geld und wird verbucht (succeeded gewinnt immer)
+  if (oldAttempt && r.outcome !== "succeeded") {
+    await audit(null, "charge.old_attempt_event", "tournament", tournamentId, { after: { userId: row.userId, outcome: r.outcome } }, tx);
+    return { status: "already" };
+  }
   if (r.outcome === "succeeded" && row.status === "succeeded") {
     // ZWEITER erfolgreicher PaymentIntent zur selben Zeile: der Betrag liegt bei uns, also gebucht UND sofort voll erstattet (nie stilles Behalten), mit Audit
     if (row.paymentIntentId === r.paymentIntentId) return { status: "already" };
@@ -304,7 +321,14 @@ export async function applyTournamentCharge(tx: Tx, r: ChargeReport): Promise<Ap
   if (row.status === "succeeded") return { status: "already" };
   if (r.outcome !== "succeeded" && RANK[r.outcome] < RANK[row.status]) return { status: "already" };
   if (row.paymentIntentId === null) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
-  else if (r.outcome === "succeeded" && row.paymentIntentId !== r.paymentIntentId) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
+  else if (r.outcome === "succeeded" && row.paymentIntentId !== r.paymentIntentId) {
+    // der BEZAHLTE PaymentIntent ist nicht der gebundene: der bisher gebundene wandert in die Historie (spaetere Ereignisse zu ihm werden weiter zugeordnet), die Zeile zeigt auf den bezahlten
+    await tx
+      .insert(paymentChargeAttempts)
+      .values({ chargeId: row.id, attemptNo: row.currentAttempt, idempotencyKey: row.idempotencyKey, paymentIntentId: row.paymentIntentId, status: row.status, failureCode: row.failureCode, attemptStartedAt: row.attemptStartedAt })
+      .onConflictDoNothing();
+    await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
+  }
 
   if (r.outcome === "succeeded") {
     await post(tx, { debit: { account: "clearing" }, credit: { account: "venue_payable" }, amountCents: row.amountCents, kind: "tournament_share", tournamentId, idempotencyKey: `charge:${r.paymentIntentId}`, reason: "Abbuchung Anteil (Karte), Turnier" });
@@ -371,4 +395,107 @@ export async function bookTournamentCommission(tx: Tx, t: T): Promise<boolean> {
   if (cents <= 0) return false;
   const r = await post(tx, { debit: { account: "venue_payable" }, credit: { account: "commission" }, amountCents: cents, kind: "commission", tournamentId: t.id, idempotencyKey: `commission:t:${t.id}`, reason: `Provision ${pct} % der Hallenkosten (Turnier)` });
   return r.created;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Wiederholen im Nachzahlfenster / neue Karte (M5-5): wie retryChargesInWindow fuer Spiele (charge-retry.ts), aber je Turnier. Signal ist die NEUE Karte des Zahlers (Profil nach dem Fehlschlag aktualisiert,
+// Zahlungsmittel vorhanden), nie ein Platzstatus; hoechstens ein Versuch je Kartenaenderung und nur im effektiven Fenster (das fruehere von grace_until und Start minus 1 Stunde).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+type RetryCandidate = { id: string; tournamentId: string; userId: string; attempt: number; amountCents: number; currentPi: string | null };
+
+/** Prueft ALLE bekannten PaymentIntents einer Turnier-Zeile (laufender + Historie) per retrieve: succeeded => verbuchen ("booked"); processing/Netzfehler => "skip"; offene werden abgebrochen; sonst "go". Netz, nie in einer Transaktion. */
+export async function reconcileTournamentIntents(c: RetryCandidate): Promise<"booked" | "skip" | "go"> {
+  const provider = await getPaymentProvider();
+  const book = async (f: { id: string; amountCents: number | null; currency: string | null; customerId: string | null }) => {
+    await db.transaction((tx) => applyTournamentCharge(tx, { outcome: "succeeded", paymentIntentId: f.id, amountCents: f.amountCents, currency: f.currency, customerId: f.customerId, metadata: { matchId: null, tournamentId: c.tournamentId, userId: c.userId }, failureCode: null }));
+    try {
+      await bookChargeFee(f.id);
+    } catch {
+      /* der Nachholer bucht die Gebuehr spaeter */
+    }
+  };
+  try {
+    const hist = await db.select({ pi: paymentChargeAttempts.paymentIntentId }).from(paymentChargeAttempts).where(eq(paymentChargeAttempts.chargeId, c.id));
+    const known = [...new Set([c.currentPi, ...hist.map((h) => h.pi)].filter((x): x is string => typeof x === "string"))];
+    for (const id of known) {
+      const f = await provider.retrievePaymentIntent(id);
+      if (f === null) continue;
+      if (f.status === "succeeded") {
+        await book(f);
+        return "booked";
+      }
+      if (f.status === "processing") return "skip";
+      const res = await provider.cancelPaymentIntent(f.id);
+      if (res.status === "succeeded") {
+        await book({ ...f });
+        return "booked";
+      }
+      if (res.status === "other") return "skip";
+    }
+  } catch {
+    return "skip"; // Netzfehler: diese Runde auslassen, nie blind neu senden
+  }
+  return "go";
+}
+
+/** Phase 2 (Tx): schliesst den Versuch in der Historie ab und setzt die Zeile auf einen frischen pending-Versuch (Compare-and-set auf current_attempt, alle Bedingungen unter der Sperre neu geprueft). */
+export async function rotateTournamentAttempt(c: RetryCandidate, now: Date): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [t] = await tx.select().from(tournaments).where(eq(tournaments.id, c.tournamentId)).for("share");
+    if (!t || t.status !== "payment" || t.settledAt !== null || t.bracketGeneratedAt !== null || !t.startsAt || t.startsAt.getTime() <= now.getTime()) return false;
+    if (!(await tournamentCardMode(tx, t.id))) return false;
+    const [row] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, c.id)).for("update");
+    if (!row || !["failed", "requires_action"].includes(row.status) || row.currentAttempt !== c.attempt) return false;
+    if (!inGraceWindow(row.graceUntil, t.startsAt, now)) return false; // effektives Ende, Altzeilen (null) nie
+    if (NON_CARD_CODES.includes(row.failureCode ?? "")) return false;
+    const payerId = row.payerUserId ?? row.userId;
+    const [prof] = await tx.select({ pm: paymentProfiles.paymentMethodId, at: paymentProfiles.updatedAt }).from(paymentProfiles).where(eq(paymentProfiles.userId, payerId)).for("share");
+    if (!prof?.pm || prof.at.getTime() <= row.updatedAt.getTime()) return false; // ohne neue Karte kein Wiederholen (kein Dauerbeschuss)
+    await tx.insert(paymentChargeAttempts).values({ chargeId: row.id, attemptNo: row.currentAttempt, idempotencyKey: row.idempotencyKey, paymentIntentId: row.paymentIntentId, status: row.status, failureCode: row.failureCode, attemptStartedAt: row.attemptStartedAt });
+    const next = row.currentAttempt + 1;
+    await tx.update(paymentCharges).set({ status: "pending", paymentIntentId: null, idempotencyKey: tournamentChargeKey(t.id, row.userId, t.priceRound, next), failureCode: null, attemptStartedAt: null, currentAttempt: next, updatedAt: now }).where(eq(paymentCharges.id, row.id));
+    await audit(null, "charge.retry", "tournament", t.id, { after: { userId: row.userId, attempt: next } }, tx);
+    return true;
+  });
+}
+
+/**
+ * Startet neue Versuche fuer alle fehlgeschlagenen Abbuchungen im Fenster, deren Zahler eine NEUE Karte gespeichert hat. Optional auf einen Nutzer (als Platz oder Zahler) eingegrenzt.
+ * Liefert die Zahl der neu angelegten Versuche. Wiederholbar und parallel sicher. Ausloeser: Webhook "Karte aendern" und der Job card-charges.
+ */
+export async function retryTournamentChargesInWindow(opts: { userId?: string; now?: Date; limit?: number } = {}): Promise<number> {
+  const now = opts.now ?? new Date();
+  const rows = await db.execute(sql`
+    select c.id, c.tournament_id, c.user_id, c.current_attempt, c.amount_cents, c.payment_intent_id
+    from payment_charges c join tournaments t on t.id = c.tournament_id
+    where c.status in ('failed', 'requires_action') and c.grace_until is not null
+      and least(c.grace_until, t.starts_at - interval '1 hour') > ${now}
+      and t.status = 'payment' and t.settled_at is null and t.bracket_generated_at is null and t.starts_at > ${now}
+      and (c.failure_code is null or c.failure_code not in (${sql.join(NON_CARD_CODES.map((x) => sql`${x}`), sql`, `)}))
+      and exists (select 1 from payment_profiles pp where pp.user_id = coalesce(c.payer_user_id, c.user_id) and pp.payment_method_id is not null and pp.updated_at > c.updated_at)
+      ${opts.userId ? sql`and coalesce(c.payer_user_id, c.user_id) = ${opts.userId}` : sql``}
+    order by c.created_at, c.id`);
+  const cands = (rows.rows as { id: string; tournament_id: string; user_id: string; current_attempt: number; amount_cents: number; payment_intent_id: string | null }[]).map((r) => ({ id: r.id, tournamentId: r.tournament_id, userId: r.user_id, attempt: r.current_attempt, amountCents: r.amount_cents, currentPi: r.payment_intent_id }));
+  let started = 0;
+  const toSend = new Set<string>();
+  for (const c of opts.limit !== undefined ? cands.slice(0, Math.max(0, opts.limit)) : cands) {
+    try {
+      if ((await reconcileTournamentIntents(c)) !== "go") continue;
+      if (await rotateTournamentAttempt(c, now)) {
+        started += 1;
+        toSend.add(c.tournamentId);
+      }
+    } catch (error) {
+      console.error("retryTournamentChargesInWindow: Fehler bei Zeile", c.id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  for (const tid of toSend) {
+    try {
+      await runTournamentCharges(tid, now); // Phase B und C fuer die frisch angelegten pending-Versuche (Zeilen existieren: rows_exist)
+    } catch (error) {
+      console.error("retryTournamentChargesInWindow: Senden fehlgeschlagen", tid, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return started;
 }
