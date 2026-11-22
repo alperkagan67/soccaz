@@ -1069,21 +1069,26 @@ export async function frozenTournaments(exec: Pick<typeof db, "select" | "execut
  * Mitteilung an Admin 1 (Owner) zu eingefrorenen Turnieren: ab 6 h, dann alle 12 h, je Stufe einmal je Turnier (Audit-Marker unter der Turniersperre). OHNE Personendaten und ohne Turniername.
  * In einem Savepoint (ein Fehler kippt den Job nicht). Gibt die Zahl der benachrichtigten Turniere zurueck.
  */
-export async function notifyFrozenTournaments(now: Date = new Date()): Promise<number> {
-  const frozen = await frozenTournaments(db, now);
+export async function notifyFrozenTournaments(now: Date = new Date(), opts: { candidates?: { id: string; since: Date }[] } = {}): Promise<number> {
+  const frozen = opts.candidates ?? (await frozenTournaments(db, now)); // opts.candidates nur fuer Tests (veraltete Liste)
   let sent = 0;
   for (const f of frozen) {
-    const stage = frozenStage(now, f.since);
-    if (stage === undefined) continue;
     try {
       await db.transaction(async (tx) => {
         const t = await lockTournament(tx, f.id);
         if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || (await cardPaymentsEnabled())) return; // inzwischen geloest
+        // Frist/Fenster UNTER der Sperre neu rechnen (R-T269): wurde zwischenzeitlich nachgezahlt oder ist das Turnier nicht mehr eingefroren, keine Mitteilung; die Stufe stammt aus dieser Rechnung
+        const since = await frozenSince(tx, t);
+        if (!since || now.getTime() < since.getTime()) return;
+        const stage = frozenStage(now, since);
+        if (stage === undefined) return;
         const action = `tournament.frozen_notice.${stage}`;
         const [done] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, action), eq(auditLog.entityId, t.id))).limit(1);
         if (done) return;
-        const hours = Math.floor((now.getTime() - f.since.getTime()) / 3_600_000);
-        const owners = await tx.select({ id: users.id }).from(users).where(eq(users.isOwner, true));
+        const hours = Math.floor((now.getTime() - since.getTime()) / 3_600_000);
+        // nur Admin 1 und nicht gesperrt (wie evidence-head)
+        const owners = await tx.select({ id: users.id }).from(users).where(and(eq(users.isOwner, true), isNull(users.bannedAt)));
+        // Savepoint nur um die Mitteilung: scheitert sie, wird die Transaktion dieses Turniers zurueckgerollt (kein Marker, naechster Lauf versucht es erneut); die anderen Turniere und der Job laufen weiter (aeusseres try/catch)
         await tx.transaction(async (sp) => {
           await notifyUsers(owners.map((o) => o.id), { type: "system", title: "Turnier eingefroren", body: `Ein Turnier ist bei ausgeschaltetem Kartenmodell eingefroren (seit etwa ${hours} Stunden). Bitte entscheiden: Kartenmodell einschalten oder das Turnier absagen.`, url: `/turniere/${t.id}` }, sp);
         });

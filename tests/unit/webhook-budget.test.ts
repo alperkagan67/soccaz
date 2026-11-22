@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { remainingBudget, WEBHOOK_RETRY_BUDGET_MS } from "@/server/payments/webhook";
+import { remainingBudget, runWebhookRetries, WEBHOOK_RETRY_BUDGET_MS } from "@/server/payments/webhook";
 
 // 012-Rest PR A (Backlog 145): Spiele und Turniere teilen EIN Zeitbudget im Webhook (Stripe-Zeitlimit), statt je 12 Sekunden.
 describe("remainingBudget", () => {
@@ -11,12 +11,32 @@ describe("remainingBudget", () => {
   });
 });
 
-describe("Webhook: gemeinsames Budget", () => {
+describe("runWebhookRetries (Verhalten mit gefaelschter Uhr)", () => {
+  const run = async (gamesCost: number) => {
+    let now = 1_000_000;
+    const calls: { games: number[]; tournaments: number[] } = { games: [], tournaments: [] };
+    await runWebhookRetries(
+      "u1",
+      { games: async (o) => (calls.games.push(o.budgetMs), (now += gamesCost)), tournaments: async (o) => void calls.tournaments.push(o.budgetMs) },
+      () => now,
+    );
+    return calls;
+  };
+  it("Spielteil verbraucht wenig: Turnierteil bekommt den Rest", async () => {
+    const c = await run(4_000);
+    expect(c.games).toEqual([WEBHOOK_RETRY_BUDGET_MS]);
+    expect(c.tournaments).toEqual([WEBHOOK_RETRY_BUDGET_MS - 4_000]);
+  });
+  it("Spielteil verbraucht alles: Turnierteil wird NICHT gerufen", async () => {
+    expect((await run(WEBHOOK_RETRY_BUDGET_MS)).tournaments).toEqual([]);
+    expect((await run(WEBHOOK_RETRY_BUDGET_MS + 5_000)).tournaments).toEqual([]);
+  });
+});
+
+describe("Webhook: nutzt das gemeinsame Budget", () => {
   const src = readFileSync("src/server/payments/webhook.ts", "utf8");
-  it("beide Wiederholungen bekommen das Restbudget, nie je das volle Budget", () => {
+  it("der Webhook ruft runWebhookRetries; kein Aufruf bekommt das volle Budget", () => {
+    expect(src).toMatch(/await runWebhookRetries\(cardUserId\)/);
     expect(src).not.toMatch(/budgetMs: WEBHOOK_RETRY_BUDGET_MS/);
-    expect(src.match(/budgetMs: remainingBudget\(deadline, Date\.now\(\)\)/g)).toHaveLength(1);
-    expect(src).toMatch(/budgetMs: rest/);
-    expect(src).toMatch(/if \(rest > 0\) await retryTournamentChargesInWindow/);
   });
 });

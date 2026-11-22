@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, notifications, paymentCharges } from "@/db/schema";
+import { auditLog, notifications, paymentCharges, users } from "@/db/schema";
 import { tournaments } from "@/db/schema-league";
 import { cardAlertsFrom, getRefundAlerts } from "@/server/finance";
 import { setSetting } from "@/server/settings";
@@ -75,14 +75,19 @@ describe("Backlog 141: eingefrorene Turniere (Schalter AUS)", () => {
     expect(await markers(t.id)).toBe(3);
   });
 
-  it("Text ohne Personendaten und ohne Turniername; nie an andere als Admin 1", async () => {
-    const { t, due, org } = await fixture();
+  it("Text ohne Personendaten und ohne Turniername (auch mit Personenbezug im Namen); nie an andere als Admin 1 (Admin 2, Betreiber, gesperrter Owner)", async () => {
+    const { t, due, org } = await fixture({ name: nid("Mueller Cup") });
+    const admin2 = await makeUser("adm2", "admin");
+    const operator = await makeUser("op");
     await notifyFrozenTournaments(new Date(due.getTime() + 7 * H));
     const note = (await db.select().from(notifications).where(and(eq(notifications.userId, owner.id), eq(notifications.title, "Turnier eingefroren"), eq(notifications.url, `/turniere/${t.id}`))))[0];
     expect(note).toBeDefined(); // genau die Mitteilung zu DIESEM Turnier (Positivkontrolle)
+    expect(note.body).toContain("eingefroren"); // Kerntext (Positivkontrolle)
+    expect(note.body).toMatch(/Stunden/);
     expect(note.body).not.toContain(t.name);
+    expect(note.body).not.toContain("Mueller");
     expect(note.body).not.toMatch(/@/);
-    expect(await notes(org.id)).toBe(0);
+    for (const other of [org, admin2, operator]) expect(await notes(other.id)).toBe(0); // nur Admin 1
   });
 
   it("Alarm in der Liste ab 6 h; weg bei Schalter AN, abgesagtem oder gebuchtem Turnier", async () => {
@@ -115,6 +120,32 @@ describe("Backlog 141: eingefrorene Turniere (Schalter AUS)", () => {
     await db.insert(paymentCharges).values({ tournamentId: t.id, userId: org.id, amountCents: 1000, idempotencyKey: nid("c"), status: "failed", failureCode: "card_declined", graceUntil: new Date(Date.now() - 8 * H) });
     expect((await frozenTournaments(db, new Date())).map((f) => f.id)).toContain(t.id); // Fenster seit 8 h abgelaufen
     expect(await alarm(new Date())).toBe(true);
+  });
+
+  it("R-T269: zwischenzeitlich nachgezahlt oder nicht mehr eingefroren: keine Mitteilung (Pruefung unter der Sperre)", async () => {
+    const { t, org } = await fixture();
+    const now = new Date();
+    await db.insert(paymentCharges).values({ tournamentId: t.id, userId: org.id, amountCents: 1000, idempotencyKey: nid("c"), status: "failed", failureCode: "card_declined", graceUntil: new Date(Date.now() - 8 * H) });
+    const stale = await frozenTournaments(db, now);
+    expect(stale.map((f) => f.id)).toContain(t.id); // so sieht die Liste VOR dem Nachzahlen aus
+    await db.update(paymentCharges).set({ status: "succeeded", failureCode: null }).where(eq(paymentCharges.tournamentId, t.id));
+    await db.update(tournaments).set({ startsAt: new Date(Date.now() + 20 * DAY), registrationDeadline: new Date(Date.now() + 18 * DAY) }).where(eq(tournaments.id, t.id)); // Frist weit in der Zukunft
+    const before = await notes(owner.id);
+    expect(await notifyFrozenTournaments(now, { candidates: stale.filter((f) => f.id === t.id) })).toBe(0);
+    expect(await notes(owner.id)).toBe(before);
+    expect(await markers(t.id)).toBe(0);
+  });
+
+  it("gesperrter Owner bekommt nichts", async () => {
+    const { t, due } = await fixture();
+    await db.update(users).set({ bannedAt: new Date() }).where(eq(users.id, owner.id));
+    const before = await notes(owner.id);
+    try {
+      await notifyFrozenTournaments(new Date(due.getTime() + 7 * H), { candidates: [{ id: t.id, since: due }] });
+      expect(await notes(owner.id)).toBe(before);
+    } finally {
+      await db.update(users).set({ bannedAt: null }).where(eq(users.id, owner.id));
+    }
   });
 
   it("Zeile mit technischem Code (kein Kartenproblem) startet keine Einfrierung", async () => {
