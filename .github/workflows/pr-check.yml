@@ -1,6 +1,6 @@
 name: PR-Text
 
-# Prueft nur, dass der PR-Text die vier Pflichtueberschriften der Vorlage enthaelt.
+# Prueft nur, dass der PR-Text die vier Pflichtueberschriften der Vorlage enthaelt (## oder ###, danach darf ein Zusatz stehen, z. B. "### Beleg (Tests lokal ...)").
 # Keine Fremd-Action; der PR-Text wird ueber env gelesen (nie direkt ins Skript eingesetzt).
 # Kein Pflicht-Check im Ruleset.
 
@@ -25,7 +25,7 @@ jobs:
         run: |
           fehlt=0
           for h in "Anlass" "Änderung" "Risiko" "Beleg"; do
-            if ! printf '%s\n' "$PR_BODY" | grep -qE "^#{2,3} ${h}[[:space:]]*$"; then
+            if ! printf '%s\n' "$PR_BODY" | grep -qE "^#{2,3} ${h}([[:space:]].*)?$"; then
               echo "::error::Im PR-Text fehlt die Überschrift '## ${h}' (siehe .github/pull_request_template.md)."
               fehlt=1
             fi
