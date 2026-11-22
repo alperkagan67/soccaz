@@ -40,7 +40,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email
   "result.disputed": { label: "Ergebnis strittig", email: true, optional: false },
   "result.final": { label: "Endergebnis", email: false, optional: true },
   "admin.task": { label: "Neue Aufgabe für Admins", email: false, optional: true },
-  payment: { label: "Zahlungen und Guthaben", email: true, optional: false },
+  payment: { label: "Zahlungen", email: true, optional: false },
   system: { label: "Wichtige Hinweise", email: true, optional: false },
 };
 

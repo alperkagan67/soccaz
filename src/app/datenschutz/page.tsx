@@ -20,7 +20,7 @@ export default async function DatenschutzPage() {
         <ul>
           <li>Konto: Name und E-Mail-Adresse aus der Google-Anmeldung, Stadt, Position, Geburtsdatum (nur zur Altersprüfung, nicht öffentlich).</li>
           <li>Spielbetrieb: Teams, Mitgliedschaften, Lobbys, Ergebnisse, Tore, Karten, Statistiken, Abzeichen und Bewertungen.</li>
-          <li>Zahlungen: Guthaben, Buchungen, Belege. Zahlungsdaten (z. B. Kartennummern) verarbeitet ausschließlich der Zahlungsdienstleister Stripe, nicht wir.</li>
+          <li>Zahlungen: Buchungen, Belege. Zahlungsdaten (z. B. Kartennummern) verarbeitet ausschließlich der Zahlungsdienstleister Stripe, nicht wir.</li>
           <li>Technik: Sitzungs-Cookie für die Anmeldung, Server-Protokolle, Fehlerberichte (ohne Inhalte), bei Zustimmung Web-Push-Kennungen.</li>
         </ul>
       </section>

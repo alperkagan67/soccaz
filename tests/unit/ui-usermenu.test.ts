@@ -1,11 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SHOW_WALLET_ITEM_UNTIL_M6A, UserMenu, UserMenuContent, type UserMenuProps } from "@/components/UserMenu";
+import { UserMenu, UserMenuContent, type UserMenuProps } from "@/components/UserMenu";
 
 // M2-4a: Struktur des Konto-Menüs als statisches Markup (vitest läuft ohne DOM; Tastatur, Fokus und Schließen: tests/e2e/user-menu.spec.ts).
-const labels = { games: "Meine Spiele", profile: "Mein Profil", venue: "Meine Halle", wallet: "Guthaben", settings: "Konto und Einstellungen", notifications: "Benachrichtigungen", admin: "Admin", signOut: "Abmelden", help: "Hilfe", account: "Konto", unread: "ungelesen" };
-const base: UserMenuProps = { name: "Alex Beispiel", userId: "u-1", avatarUrl: null, balanceText: "12,00 €", unread: 0, showAdmin: false, showVenue: false, labels, signOutAction: async () => {} };
+const labels = { games: "Meine Spiele", profile: "Mein Profil", venue: "Meine Halle", settings: "Konto und Einstellungen", notifications: "Benachrichtigungen", admin: "Admin", signOut: "Abmelden", help: "Hilfe", account: "Konto", unread: "ungelesen" };
+const base: UserMenuProps = { name: "Alex Beispiel", userId: "u-1", avatarUrl: null, unread: 0, showAdmin: false, showVenue: false, labels, signOutAction: async () => {} };
 const menu = (p: Partial<UserMenuProps> = {}) => renderToStaticMarkup(createElement(UserMenu, { ...base, ...p }));
 const content = (p: Partial<UserMenuProps> = {}) => renderToStaticMarkup(createElement(UserMenuContent, { ...base, ...p }));
 
@@ -24,7 +24,7 @@ describe("UserMenu (M2-4a)", () => {
   it("vor der Hydration (und ohne Skript) steht der Inhalt im Popover: der native Knopf öffnet nichts Leeres (B-01)", () => {
     const m = menu();
     expect(m).toContain('role="menu"');
-    expect((m.match(/role="menuitem"/g) ?? []).length).toBe(7);
+    expect((m.match(/role="menuitem"/g) ?? []).length).toBe(6);
   });
 
   it("ohne Popover-Unterstützung bleibt das Popover verborgen (B-04)", () => {
@@ -67,23 +67,23 @@ describe("UserMenuContent (M2-4a)", () => {
     expect(c.indexOf('data-testid="user-menu-name"')).toBeLessThan(c.indexOf('role="menu"'));
   });
 
-  it("im Menü nur Einträge und Trenner: kein <p>, Formular als none, zwei Trenner (Gruppen), sieben Einträge für Spieler", () => {
+  it("im Menü nur Einträge und Trenner: kein <p>, Formular als none, zwei Trenner (Gruppen), sechs Einträge für Spieler", () => {
     const c = content();
     const inner = c.slice(c.indexOf('role="menu"'));
     expect(inner).not.toContain("<p ");
     expect(inner).toContain('<form role="none"');
     expect((inner.match(/role="separator"/g) ?? []).length).toBe(2);
-    expect((inner.match(/role="menuitem"/g) ?? []).length).toBe(7);
-    expect((c.match(/min-h-\[var\(--tap\)\]/g) ?? []).length).toBe(7);
+    expect((inner.match(/role="menuitem"/g) ?? []).length).toBe(6);
+    expect((c.match(/min-h-\[var\(--tap\)\]/g) ?? []).length).toBe(6);
   });
 
-  it("Reihenfolge (Textentscheid t9): Meine Spiele, Mein Profil, [Meine Halle], [Admin], Trenner, Benachrichtigungen, Guthaben, Konto, Hilfe, Trenner, Abmelden", () => {
+  it("Reihenfolge (Textentscheid t9): Meine Spiele, Mein Profil, [Meine Halle], [Admin], Trenner, Benachrichtigungen, Konto, Hilfe, Trenner, Abmelden", () => {
     const c = content({ showAdmin: true, showVenue: true });
-    const marks = ['href="/app"', 'href="/spieler/u-1"', 'href="/halle"', 'href="/admin"', 'role="separator"', "/app/benachrichtigungen", "/app/guthaben", "/app/einstellungen", "/hilfe", "Abmelden"];
+    const marks = ['href="/app"', 'href="/spieler/u-1"', 'href="/halle"', 'href="/admin"', 'role="separator"', "/app/benachrichtigungen", "/app/einstellungen", "/hilfe", "Abmelden"];
     const at = marks.map((s) => c.indexOf(s));
     for (let i = 1; i < at.length; i++) expect(at[i], `Schritt ${i}: ${marks[i]}`).toBeGreaterThan(at[i - 1]);
     expect(c.lastIndexOf('role="separator"')).toBeGreaterThan(c.indexOf("/hilfe")); // zweiter Trenner vor Abmelden
-    expect((c.match(/role="menuitem"/g) ?? []).length).toBe(9);
+    expect((c.match(/role="menuitem"/g) ?? []).length).toBe(8);
   });
 
   it("Mein Profil ist ein eigener Eintrag mit Ziel /spieler/<id>; Mein Bereich gibt es nicht mehr", () => {
@@ -94,17 +94,16 @@ describe("UserMenuContent (M2-4a)", () => {
     expect(c).toContain(">Meine Spiele<");
   });
 
-  it("Guthaben ist als auslaufend markiert: eigene Konstante bis 012 M6a, Eintrag in der Konto-Gruppe sichtbar", () => {
-    expect(SHOW_WALLET_ITEM_UNTIL_M6A).toBe(true);
+  it("Guthaben gibt es im Konto-Menü nicht mehr (012 M6a, Vertrag 013 AC-14): kein Eintrag, kein Betrag, kein Link", () => {
     const c = content();
-    const sep = c.indexOf('role="separator"');
-    expect(c.indexOf("/app/guthaben")).toBeGreaterThan(sep); // Konto-Gruppe, nach dem ersten Trenner
-    expect(c).toContain("12,00 €");
+    expect(c).not.toContain("/app/guthaben");
+    expect(c).not.toContain("Guthaben");
+    expect(c).not.toMatch(/d,dds?€/);
   });
 
   it("Ziele und Beschriftungen (Beschriftungen kommen von der Seite)", () => {
     const c = content({ labels: { ...labels, games: "Spiele X" } });
-    for (const href of ["/app", "/spieler/u-1", "/app/guthaben", "/app/benachrichtigungen", "/app/einstellungen", "/hilfe"]) expect(c).toContain(`href="${href}"`);
+    for (const href of ["/app", "/spieler/u-1", "/app/benachrichtigungen", "/app/einstellungen", "/hilfe"]) expect(c).toContain(`href="${href}"`);
     expect(c).toContain("Spiele X");
   });
 
@@ -115,7 +114,7 @@ describe("UserMenuContent (M2-4a)", () => {
     expect(content({ showVenue: true })).toContain(">Meine Halle<");
     expect(content({ showAdmin: true })).toContain('href="/admin"');
     expect(content({ showAdmin: true })).toContain(">Admin<");
-    expect((content({ showAdmin: true }).match(/role="menuitem"/g) ?? []).length).toBe(8);
+    expect((content({ showAdmin: true }).match(/role="menuitem"/g) ?? []).length).toBe(7);
   });
 
   it("Ungelesen-Zähler: nur wenn > 0, ab 10 als 9+, text-sm (≥ 14 px), Zahl aria-hidden und zusätzlich als Text N ungelesen (B-06)", () => {
