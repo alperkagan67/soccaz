@@ -99,17 +99,13 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
                 </>
               )}
               {card?.ready && <p className="text-sm text-accent-fg" data-testid="card-ready-text">Deine Karte ist hinterlegt. Dein Anteil wird zur Frist abgebucht.</p>}
-              {(
-                <>
-                  <button
-                    className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`}
-                    disabled={pending || (!ready && Boolean(card && !card.ready))}
-                    onClick={() => run(() => setReadyAction(matchId, !ready))}
-                  >
-                    {ready ? "Nicht mehr bereit" : "Ich bin bereit"}
-                  </button>
-                </>
-              )}
+              <button
+                className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`}
+                disabled={pending || (!ready && Boolean(card && !card.ready))}
+                onClick={() => run(() => setReadyAction(matchId, !ready))}
+              >
+                {ready ? "Nicht mehr bereit" : "Ich bin bereit"}
+              </button>
             </>
           ) : (
             <p className="text-sm text-muted">Du wartest auf die Zuweisung durch einen Team-Admin.</p>

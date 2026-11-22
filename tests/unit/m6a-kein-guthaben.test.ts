@@ -31,6 +31,9 @@ describe("012 M6a: keine Guthaben-Oberfläche", () => {
     expect(readFileSync(path.join(root, "src/app/app/guthaben/page.tsx"), "utf8")).toContain('redirect("/app")');
     for (const gone of ["src/app/admin/codes", "src/app/app/guthaben/TopUpForm.tsx", "src/server/wallet-actions.ts"]) expect(existsSync(path.join(root, gone)), gone).toBe(false);
   });
+  it("Admin-Navigation hat keinen Eintrag Codes mehr", () => {
+    expect(readFileSync(path.join(root, "src/app/admin/layout.tsx"), "utf8")).not.toContain("/admin/codes");
+  });
   it("Kopfleiste und Konto-Menü rufen walletBalance nicht mehr auf", () => {
     for (const f of ["src/components/Header.tsx", "src/components/UserMenu.tsx", "src/app/app/page.tsx"]) expect(readFileSync(path.join(root, f), "utf8"), f).not.toContain("walletBalance");
   });
