@@ -379,6 +379,13 @@
       "when": 1795360932321,
       "tag": "0053_blushing_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1795366372343,
+      "tag": "0054_nachlieferung",
+      "breakpoints": true
     }
   ]
 }

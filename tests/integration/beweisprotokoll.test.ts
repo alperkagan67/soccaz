@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { bookingEvidence, bookingEvidenceCounter, evidenceActor, venues } from "@/db/schema-finance";
@@ -30,6 +31,10 @@ async function setup() {
   const m = await makeMatch({ hoursAhead: 72 });
   const [v] = await db.insert(venues).values({ name: `E2E Beweis Halle ${Date.now().toString(36)}${++seq}`, city: "Essen", source: "manual" }).returning();
   return { matchId: m.match.id, venueId: v.id, m };
+}
+async function reasonTextOf(id: string): Promise<{ reason: string; salt: string } | null> {
+  const r = await db.execute(sql`select reason, salt from booking_evidence_reason_text where evidence_id = ${id}`);
+  return ((r as unknown as { rows: { reason: string; salt: string }[] }).rows ?? [])[0] ?? null;
 }
 const rec = (matchId: string, venueId: string | null, kind: (typeof EVIDENCE_KINDS)[number], extra: Partial<Parameters<typeof recordEvidence>[1]> = {}) =>
   db.transaction((tx) => recordEvidence(tx, { matchId, venueId, round: 1, kind, ...extra }));
@@ -83,8 +88,8 @@ describe("Eintrag und Kette", () => {
     await expect(db.delete(bookingEvidence)).rejects.toThrow();
     await expect(db.update(bookingEvidenceCounter).set({ lastSeq: 0 })).rejects.toThrow();
     await expect(db.delete(bookingEvidenceCounter)).rejects.toThrow();
-    await maintenance((tx) => tx.update(bookingEvidence).set({ reason: "Wartung" }));
-    expect((await all())[0].reason).toBe("Wartung");
+    await maintenance((tx) => tx.update(bookingEvidence).set({ round: 99 })); // Version 2: reason bleibt NULL (CHECK), darum eine andere Spalte
+    expect((await all())[0].round).toBe(99);
   });
 
   it("verifyEvidenceChain meldet die ERSTE abweichende seq: geänderter Inhalt, geänderter Hash, gelöschte Zeile (Lücke), gelöschte letzte Zeile (Zähler), manipulierter Zähler", async () => {
@@ -92,9 +97,9 @@ describe("Eintrag und Kette", () => {
     for (const kind of ["request_sent", "accepted", "job_open", "job_booked"] as const) await rec(matchId, kind.startsWith("job") ? null : venueId, kind);
     const base = await all();
     // Inhalt geändert (Zeile 2) -> Hash passt nicht mehr
-    await maintenance((tx) => tx.update(bookingEvidence).set({ reason: "nachträglich" }).where(eq(bookingEvidence.seq, 2)));
+    await maintenance((tx) => tx.update(bookingEvidence).set({ round: 99 }).where(eq(bookingEvidence.seq, 2)));
     expect(await verifyEvidenceChain()).toMatchObject({ ok: false, firstBadSeq: 2, reason: "hash" });
-    await maintenance((tx) => tx.update(bookingEvidence).set({ reason: base[1].reason }).where(eq(bookingEvidence.seq, 2)));
+    await maintenance((tx) => tx.update(bookingEvidence).set({ round: base[1].round }).where(eq(bookingEvidence.seq, 2)));
     expect((await verifyEvidenceChain()).ok).toBe(true);
     // Hash und Inhalt gleichzeitig umgeschrieben (Zeile 2): die Folgezeile hat den alten prev_hash
     await maintenance((tx) => tx.update(bookingEvidence).set({ kind: "declined", hash: "abc" }).where(eq(bookingEvidence.seq, 2)));
@@ -142,16 +147,23 @@ describe("Eintrag und Kette", () => {
     await expect(db.insert(bookingEvidence).values({ matchId, venueId, kind: "erfunden" })).rejects.toThrow();
   });
 
-  it("Begründung: Fremdtext wird bereinigt (Steuerzeichen, Leerraum) und auf 300 Zeichen gekürzt; die Datenbank lehnt mehr als 300 Zeichen ab", async () => {
+  it("Begründung (Version 2): Fremdtext wird bereinigt, Klartext liegt NUR in der Nebentabelle (3 bis 200 Zeichen), im Datensatz steht das Commitment; zu lange Texte werden nicht gespeichert; Klartext im Datensatz wird abgelehnt", async () => {
     const { matchId, venueId } = await setup();
-    await rec(matchId, venueId, "declined", { reason: `  Halle\u0000 belegt‮!\n\n\n\n am  Samstag\u0007 ${"x".repeat(400)}` });
+    await rec(matchId, venueId, "declined", { reason: "  Halle\u0000 belegt\u202E!\n\n\n\n am  Samstag\u0007", reasonCode: "belegt" });
     const [row] = await all();
-    expect(row.reason!.length).toBeLessThanOrEqual(EVIDENCE_REASON_MAX);
-    expect(row.reason).not.toMatch(/[\u0000-\u0008‮\u0007]/);
-    expect(row.reason!.startsWith("Halle belegt!")).toBe(true);
-    await expect(db.insert(bookingEvidence).values({ matchId, venueId, kind: "expired", reason: "y".repeat(301) })).rejects.toThrow();
+    expect(row.reason).toBeNull();
+    expect(row.reasonCode).toBe("belegt");
+    const t = await reasonTextOf(row.id);
+    expect(t!.reason.length).toBeLessThanOrEqual(200);
+    expect(t!.reason).not.toMatch(/[\u0000-\u0008\u202E\u0007]/);
+    expect(t!.reason.startsWith("Halle belegt!")).toBe(true);
+    expect(row.reasonCommitment).toBe(createHash("sha256").update(`${t!.salt}:${t!.reason}`, "utf8").digest("hex"));
+    await expect(db.insert(bookingEvidence).values({ matchId, venueId, kind: "expired", reason: "y" })).rejects.toThrow(); // Version 2: reason muss NULL sein
     await rec(matchId, venueId, "request_sent", { reason: "   \n  " });
-    expect((await all()).find((r) => r.kind === "request_sent")!.reason).toBeNull(); // nur Leerraum = keine Begründung
+    expect((await all()).find((r) => r.kind === "request_sent")!.reasonCommitment).toBe(""); // nur Leerraum = keine Begründung
+    await rec(matchId, venueId, "expired", { reason: "x".repeat(400) }); // zu lang: kein Text gespeichert (Ablehnen statt Kürzen)
+    const exp = (await all()).find((r) => r.kind === "expired")!;
+    expect(await reasonTextOf(exp.id)).toBeNull();
   });
 });
 
@@ -250,7 +262,7 @@ describe("Review-Fixes M3a (Security/Code-Review)", () => {
   it("verifyEvidenceChain liefert unter gleichzeitigen Eintraegen nie einen Fehlalarm (Zeilen und Zaehlerstand aus einer Anweisung)", async () => {
     const { matchId, venueId } = await setup();
     await rec(matchId, venueId, "request_sent");
-    const writers = Array.from({ length: 25 }, (_, i) => db.insert(bookingEvidence).values({ matchId, venueId: null, round: 1, kind: "job_booked", jobId: null, reason: `w${i}` }));
+    const writers = Array.from({ length: 25 }, (_, i) => db.insert(bookingEvidence).values({ matchId, venueId: null, round: 1, kind: "job_booked", jobId: null }));
     const readers = Array.from({ length: 25 }, () => verifyEvidenceChain());
     const results = await Promise.all([...writers, ...readers]);
     const checks = results.filter((r): r is Awaited<ReturnType<typeof verifyEvidenceChain>> => typeof r === "object" && r !== null && "ok" in r);
@@ -282,7 +294,7 @@ describe("Review-Fixes M3a (Security/Code-Review)", () => {
   it("Begruendung: Zero-Width- und Richtungszeichen werden entfernt (Wirkung im PDF, M3c)", async () => {
     const { matchId, venueId } = await setup();
     await rec(matchId, venueId, "declined", { reason: "Hal\u200Ble\u200F \uFEFFbelegt\u2060" });
-    expect((await all())[0].reason).toBe("Halle belegt");
+    expect((await reasonTextOf((await all())[0].id))!.reason).toBe("Halle belegt");
   });
 });
 
@@ -350,12 +362,12 @@ describe("Guard statt Fremdschlüssel, Verwaiste, Abgleich (Plan 14.1/14.2/14.3)
   it("Verwaiste: ein Eintrag zu einem (per Wartungsausnahme) gelöschten Spiel/Halle wird gemeldet, die Kette bleibt gültig", async () => {
     const { matchId, venueId } = await setup();
     await rec(matchId, venueId, "request_sent");
-    expect(await findOrphans()).toEqual({ matchIds: [], venueIds: [] });
+    expect(await findOrphans()).toEqual({ matchIds: [], venueIds: [], tournamentIds: [] });
     await maintenance(async (tx) => {
       await tx.execute(sql`delete from matches where id = ${matchId}`);
       await tx.execute(sql`delete from venues where id = ${venueId}`);
     });
-    expect(await findOrphans()).toEqual({ matchIds: [matchId], venueIds: [venueId] });
+    expect(await findOrphans()).toEqual({ matchIds: [matchId], venueIds: [venueId], tournamentIds: [] });
     expect((await verifyEvidenceChain()).ok).toBe(true);
     expect((await evidenceReport()).ok).toBe(false);
   });
