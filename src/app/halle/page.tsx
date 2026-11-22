@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ActionButton } from "@/components/ActionButton";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { formatDateTime } from "@/lib/time";
 import { answerHallAction } from "@/server/matchmaking-actions";
 import { listTournamentConfirmations, rentText } from "@/server/tournament-confirm";
@@ -41,7 +42,7 @@ export default async function HallInquiriesPage() {
       {confirmations.length > 0 && (
         <section className="space-y-3" aria-labelledby="zusage-turniere" data-testid="tournament-confirmations">
           <h2 id="zusage-turniere" className="text-lg font-semibold">Zusage der Halle</h2>
-          <p className="text-sm text-muted">Für diese Turniere fehlt die Zusage der Halle. Ohne Zusage wird nichts abgebucht, und das Turnier fällt zur Frist aus. Ein Turnier zusagt ihr im Namen der Halle.</p>
+          <p className="text-sm text-muted">Für diese Turniere fehlt die Zusage der Halle. Ohne Zusage wird nichts abgebucht, und das Turnier fällt zur Frist aus. Ihr sagt ein Turnier im Namen der Halle zu.</p>
           <ul className="space-y-3">
             {confirmations.map((c) => (
               <li key={c.tournamentId} className="card space-y-2" data-testid="tournament-confirmation">
@@ -51,7 +52,13 @@ export default async function HallInquiriesPage() {
                   <span className="block text-muted">{c.teams} Teams{c.rentCents !== null ? ` · Hallenmiete ${rentText(c.rentCents)}` : ""} · {c.venueName}</span>
                   {c.due && <span className="block text-xs text-muted">Zusage bis {formatDateTime(c.due)} Uhr, sonst fällt das Turnier aus.</span>}
                 </p>
-                <ActionButton action={confirmTournamentVenueAction.bind(null, c.tournamentId)} label="Zusagen" className="btn btn-primary !min-h-9 !px-3 text-sm" />
+                <ConfirmDialog
+                  trigger={{ label: "Zusagen", variant: "primary" }}
+                  title={`${c.name} zusagen?`}
+                  body="Die Zusage ist verbindlich und lässt sich nicht rückgängig machen. Ihr sagt das Turnier im Namen der Halle zu."
+                  confirmLabel="Zusagen"
+                  onConfirmAction={confirmTournamentVenueAction.bind(null, c.tournamentId)}
+                />
               </li>
             ))}
           </ul>

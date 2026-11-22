@@ -62,6 +62,8 @@ test("Hallenbetreiber sieht das Turnier ohne Namen, sagt im Namen der Halle zu, 
 
   await boss.waitForLoadState("networkidle");
   await card.getByRole("button", { name: "Zusagen" }).click();
+  await expect(boss.getByRole("dialog")).toContainText(/verbindlich/); // Bestaetigungsschritt: die Zusage ist nicht rueckgaengig zu machen
+  await boss.getByRole("dialog").getByRole("button", { name: "Zusagen" }).click();
   await expect(boss.getByTestId("tournament-confirmation").filter({ hasText: tournamentName })).toHaveCount(0, { timeout: 20_000 });
 
   const [row] = await query<{ venue_confirmed_at: Date | null }>("select venue_confirmed_at from tournaments where id = $1", [t.id]);
