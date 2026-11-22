@@ -40,6 +40,13 @@ describe("HallDeclineForm (M2b)", () => {
     expect(m).toContain('data-testid="error-reasonCode"');
   });
 
+  it("Gruppenfehler: der erste Radioknopf trägt aria-invalid (Fokus des Formulars), alle verweisen auf den Fehler", () => {
+    const m = renderFields({ reasonCode: "Bitte wähle einen Grund." });
+    expect((m.match(/aria-invalid="true"/g) ?? []).length).toBe(1);
+    expect(m.indexOf("aria-invalid=\"true\"")).toBeLessThan(m.indexOf("value=\"wartung\"")); // am ersten Radioknopf, nicht an den späteren
+    expect((m.match(/aria-describedby="reasonCode-m1-v1-error"/g) ?? []).length).toBeGreaterThanOrEqual(4);
+  });
+
   it("Anmerkungsfehler am Feld (aria-invalid, aria-describedby)", () => {
     const m = renderFields({ reason: "Bitte beschreibe den Grund in 3 bis 200 Zeichen." });
     expect(m).toContain('aria-invalid="true"');

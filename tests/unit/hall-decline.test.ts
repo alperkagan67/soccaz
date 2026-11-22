@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DECLINE_CODES, DECLINE_MESSAGES, tidyDeclineText, validateDecline } from "@/lib/hall-decline";
+import { DECLINE_CODES, DECLINE_MESSAGES, DECLINE_NOT_WIRED_MESSAGE, HALL_DECLINE_WIRED, planDecline, tidyDeclineText, validateDecline } from "@/lib/hall-decline";
 import { formatRemaining, replyWindow } from "@/lib/hall-reply-view";
 
 // 011 M2b: Eingabeprüfung der Ablehnung (erste Stufe) und Anzeige der Antwortfrist (reine Funktionen, ohne Datenbank).
@@ -55,8 +55,8 @@ describe("replyWindow (gespeicherte Frist, Restzeit nur beim Laden)", () => {
   it("keine Frist: none", () => {
     expect(replyWindow(null, now)).toEqual({ state: "none", remainingText: null });
   });
-  it("Frist erreicht oder überschritten: expired, keine Restzeit", () => {
-    expect(replyWindow(at(0), now).state).toBe("expired");
+  it("Frist strikt überschritten: expired, keine Restzeit; genau am Fristende noch nicht (Plan 009 M3, 16f.3)", () => {
+    expect(replyWindow(at(0), now)).toEqual({ state: "soon", remainingText: "weniger als 1 Min." });
     expect(replyWindow(at(-1), now)).toEqual({ state: "expired", remainingText: null });
   });
   it("weniger als 1 Stunde: soon; sonst open", () => {
@@ -68,5 +68,24 @@ describe("replyWindow (gespeicherte Frist, Restzeit nur beim Laden)", () => {
     expect(formatRemaining(30_000)).toBe("weniger als 1 Min.");
     expect(formatRemaining(60_000)).toBe("1 Min.");
     expect(formatRemaining(2 * 3_600_000)).toBe("2 Std.");
+  });
+});
+
+// R-T238: Solange die Anbindung fehlt, darf die Ablehnung NICHT still ohne Speichern laufen.
+describe("planDecline (Feature-Weiche)", () => {
+  it("Weiche ist im Zwischenstand aus", () => {
+    expect(HALL_DECLINE_WIRED).toBe(false);
+  });
+  it("ohne Anbindung: gültige Eingabe führt NICHT zur Ablehnung, sondern zur Meldung „Ablehnen mit Grund folgt“", () => {
+    expect(planDecline({ code: "belegt", text: "" })).toEqual({ kind: "not-wired", error: DECLINE_NOT_WIRED_MESSAGE });
+    expect(DECLINE_NOT_WIRED_MESSAGE).toContain("Ablehnen mit Grund folgt");
+  });
+  it("ohne Anbindung: Eingabefehler werden weiter am Feld gezeigt", () => {
+    const p = planDecline({ code: "", text: "" });
+    expect(p.kind).toBe("invalid");
+    if (p.kind === "invalid") expect(p.fieldErrors.reasonCode).toBe(DECLINE_MESSAGES.codeMissing);
+  });
+  it("mit Anbindung (nur im Test): gültige Eingabe geht mit Grund und Text weiter", () => {
+    expect(planDecline({ code: "sonstiges", text: " Platz gesperrt " }, true)).toEqual({ kind: "go", code: "sonstiges", text: "Platz gesperrt" });
   });
 });

@@ -14,7 +14,7 @@ import { requireUser } from "./session";
 import { answerHallRequest, banHall } from "./veto";
 import { acceptChallenge, challengeTeam, declineChallenge } from "./challenges";
 import { DomainError } from "./teams";
-import { validateDecline } from "@/lib/hall-decline";
+import { planDecline } from "@/lib/hall-decline";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -149,13 +149,15 @@ export async function answerHallAction(matchId: string, venueId: string, accept:
 }
 
 /**
- * Hallenbetreiber lehnt mit Grund ab (011 M2b). ZWISCHENSTAND bis zur Nachlieferung 009 M3 (Migration 0054): Grund und Anmerkung werden **geprüft** (erste Stufe, Fehler am Feld),
- * aber noch **nicht gespeichert** und die Runde wird noch nicht mitgeschickt; die Anbindung (Sitzungswert je Zeile, Runde, Fristgrenze, `late`) folgt mit M2a-2 (Plan 011 M2, 3.2/3.3).
+ * Hallenbetreiber lehnt mit Grund ab (011 M2b). ZWISCHENSTAND (R-T238): Solange die Anbindung fehlt (HALL_DECLINE_WIRED = false: Begründung speichern, Runde, Fristgrenze, late; M2a-2 nach der
+ * Nachlieferung 009 M3), wird **nicht abgelehnt** und nichts geschrieben: Rückgabe „Ablehnen mit Grund folgt“. Eingabefehler (Grund fehlt, Anmerkung) werden weiter am Feld gezeigt.
  */
 export async function declineHallAction(matchId: string, venueId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const user = await requireUser("/halle");
-  const check = validateDecline({ code: String(formData.get("reasonCode") ?? ""), text: String(formData.get("reason") ?? "") });
-  if (!check.ok) return { error: Object.values(check.fieldErrors)[0], fieldErrors: check.fieldErrors };
+  const plan = planDecline({ code: String(formData.get("reasonCode") ?? ""), text: String(formData.get("reason") ?? "") });
+  if (plan.kind === "invalid") return { error: Object.values(plan.fieldErrors)[0], fieldErrors: plan.fieldErrors };
+  if (plan.kind === "not-wired") return { error: plan.error };
+  // Anbindung (M2a-2): reason/reason_code/Runde an answerHallRequest übergeben, Fristgrenze und late behandeln. Bis dahin unerreichbar.
   const result = await guarded(() => answerHallRequest(user.id, matchId, venueId, false));
   revalidatePath("/halle");
   revalidatePath(`/lobby/${matchId}`);

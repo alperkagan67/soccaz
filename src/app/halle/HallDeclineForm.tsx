@@ -46,14 +46,15 @@ function Reason({ uid, other }: { uid: string; other: boolean }) {
 /** Die Felder (Grund und Anmerkung); eigene Komponente, damit die Struktur ohne `Form` prüfbar ist. */
 export function HallDeclineFields({ uid }: { uid: string }) {
   const [code, setCode] = useState<DeclineCode | "">("");
+  const groupError = useContext(FormErrorsContext).reasonCode;
   const groupErrorId = `reasonCode-${uid}-error`;
   return (
     <>
       <Fieldset legend="Grund der Ablehnung (Pflicht)">
         <div role="radiogroup" aria-required="true" aria-describedby={groupErrorId} className="space-y-2">
-          {DECLINE_CODES.map((value) => (
+          {DECLINE_CODES.map((value, index) => (
             <label key={value} className="flex min-h-[var(--tap)] cursor-pointer items-center gap-3 rounded-[10px] border border-line px-3">
-              <input type="radio" name="reasonCode" value={value} checked={code === value} onChange={() => setCode(value)} className="ui-focus h-5 w-5" />
+              <input type="radio" name="reasonCode" value={value} checked={code === value} onChange={() => setCode(value)} aria-invalid={groupError && index === 0 ? true : undefined} aria-describedby={groupError ? groupErrorId : undefined} className="ui-focus h-5 w-5" />
               <span className="text-base">{DECLINE_LABELS[value]}</span>
             </label>
           ))}

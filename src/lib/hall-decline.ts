@@ -45,3 +45,23 @@ export function validateDecline(input: { code?: string | null; text?: string | n
   if (Object.keys(fieldErrors).length > 0) return { ok: false, fieldErrors };
   return { ok: true, code: code as DeclineCode, text };
 }
+
+/**
+ * Feature-Weiche (R-T238): Solange die Anbindung an den Server fehlt (Begründung speichern, Runde, Fristgrenze: Plan 011 M2, M2a-2 nach der Nachlieferung 009 M3),
+ * darf die Oberfläche **nicht ablehnen**: eine Ablehnung mit Pflichtfeld, die still ohne Speichern läuft, wäre eine Ablehnung ohne Beweis-Grund. Erst mit der Anbindung wird die Weiche auf true gesetzt.
+ */
+export const HALL_DECLINE_WIRED = false;
+export const DECLINE_NOT_WIRED_MESSAGE = "Ablehnen mit Grund folgt. Bitte versuche es später noch einmal.";
+
+export type DeclinePlan =
+  | { kind: "invalid"; fieldErrors: Record<string, string> }
+  | { kind: "not-wired"; error: string }
+  | { kind: "go"; code: DeclineCode; text: string };
+
+/** Entscheidet, was die Aktion tut: Eingabe prüfen, dann (nur mit Anbindung) ablehnen. Reine Funktion, damit „ohne Anbindung ändert nichts“ testbar ist. */
+export function planDecline(input: { code?: string | null; text?: string | null }, wired: boolean = HALL_DECLINE_WIRED): DeclinePlan {
+  const check = validateDecline(input);
+  if (!check.ok) return { kind: "invalid", fieldErrors: check.fieldErrors };
+  if (!wired) return { kind: "not-wired", error: DECLINE_NOT_WIRED_MESSAGE };
+  return { kind: "go", code: check.code, text: check.text };
+}

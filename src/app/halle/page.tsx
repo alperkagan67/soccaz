@@ -42,7 +42,7 @@ export default async function HallInquiriesPage() {
                     Antwort bis <time dateTime={q.deadline.toISOString()}>{formatDateTime(q.deadline)} Uhr</time>
                     {window.remainingText ? ` (noch ${window.remainingText})` : ""}
                     {window.state === "soon" && <strong className="ml-2 whitespace-nowrap"><span aria-hidden>⏱</span> Frist läuft bald ab</strong>}
-                    <span className="block text-xs text-muted">Stand beim Laden, der Server prüft die Frist. Ohne Antwort gilt die Halle als belegt.</span>
+                    <span className="block text-xs text-muted">Ohne Antwort gilt die Halle als belegt.</span>
                   </p>
                 )}
                 {window.state === "expired" ? (
@@ -53,7 +53,7 @@ export default async function HallInquiriesPage() {
                   <div className="flex flex-wrap items-start gap-2">
                     <ActionButton action={answerHallAction.bind(null, q.matchId, q.venueId, true)} label="Halle ist frei" className="btn btn-primary !min-h-11 !px-4 text-sm" />
                     <details className="w-full" data-testid="decline">
-                      <summary className="btn btn-ghost ui-focus !min-h-11 !px-4 cursor-pointer list-none text-sm">Halle ist belegt</summary>
+                      <summary className="btn btn-ghost ui-focus !min-h-11 !px-4 cursor-pointer list-none text-sm">Halle ist belegt (Grund angeben)</summary>
                       <div className="mt-2">
                         <HallDeclineForm action={declineHallAction.bind(null, q.matchId, q.venueId)} uid={uid} />
                       </div>
