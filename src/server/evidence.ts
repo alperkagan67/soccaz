@@ -108,3 +108,18 @@ export function clearEvidenceReportCache(): void {
   cache = null;
   inflight = null;
 }
+
+/** Aktuelle Runde der Hallenprüfung eines Spiels (011 M2, Plan 3.3): max(round) der Einträge des Betreffs „match“, 0 = noch keiner. Nur lesend (recordEvidence ist nur für Tests). */
+export async function currentRoundOf(exec: Pick<typeof db, "execute">, matchId: string): Promise<number> {
+  const res = await exec.execute(sql`select coalesce(max(round), 0)::int as r from booking_evidence where subject = 'match' and match_id = ${matchId}`);
+  return rowsOf<{ r: number }>(res)[0]?.r ?? 0;
+}
+
+/** Aktuelle Runden mehrerer Spiele auf einmal (für die Betreiber-Liste). */
+export async function currentRoundsOf(exec: Pick<typeof db, "execute">, matchIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>(matchIds.map((id) => [id, 0]));
+  if (matchIds.length === 0) return out;
+  const res = await exec.execute(sql`select match_id as id, max(round)::int as r from booking_evidence where subject = 'match' and match_id in (${sql.join(matchIds.map((id) => sql`${id}`), sql`, `)}) group by match_id`);
+  for (const r of rowsOf<{ id: string; r: number }>(res)) out.set(r.id, r.r);
+  return out;
+}
