@@ -38,7 +38,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
               <option key={v.id} value={v.id} disabled={v.unavailable}>{v.label}{v.unavailable ? " (Halle noch ohne Online-Zusage)" : ""}</option>
             ))}
           </select>
-          <p className="text-xs text-muted">Pflicht, sobald das Turnier etwas kostet. Der Anteil geht an die Halle.</p>
+          <p className="text-xs text-muted">Pflicht, sobald das Turnier etwas kostet. Der Anteil geht an die Halle. Der Turniername ist für die Halle sichtbar.</p>
           <FieldError message={fe.venueId} />
         </div>
       )}

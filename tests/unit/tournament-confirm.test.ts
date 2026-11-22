@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentReminderStage, hallReminderText } from "@/server/tournament-confirm";
+import { currentReminderStage, hallReminderText, holderText } from "@/server/tournament-confirm";
 import { venueTermsChanged } from "@/server/tournament-venue";
 
 // 012 M5-7b (Entscheid t2q F4, F7): Erinnerungsstufen vor der Frist und die Bedingungen, unter denen die Zusage der Halle gilt. Rein rechnerisch, ohne Datenbank.
@@ -48,5 +48,20 @@ describe("venueTermsChanged (F7: die Zusage gilt nur fuer Halle, Termin, Dauer u
     ["Dauer entfernt", { durationMin: null }],
   ])("%s geaendert -> Aenderung", (_name, over) => {
     expect(venueTermsChanged(base, { ...base, ...over })).toBe(true);
+  });
+});
+
+describe("holderText (Entscheid t2q A: Zugangsinhaber der Halle)", () => {
+  const starts = new Date("2026-12-12T10:00:00Z");
+  it("beim Fixieren: Turnier, Termin, Frist, Verbindlichkeit; keine Person", () => {
+    const t = holderText("Hallen-Cup", starts, due, null);
+    expect(t).toContain("Hallen-Cup");
+    expect(t).toContain("wartet auf die Zusage der Halle");
+    expect(t).toContain("Zusage bis");
+    expect(t).toContain("Die Zusage ist verbindlich.");
+    expect(t).not.toMatch(/@/);
+  });
+  it("in der Erinnerung: nennt die Stunden bis zur Frist", () => {
+    expect(holderText("Hallen-Cup", starts, due, 6)).toContain("in etwa 6 Stunden");
   });
 });

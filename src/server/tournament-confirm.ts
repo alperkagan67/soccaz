@@ -10,9 +10,11 @@ import { auditLog, users } from "@/db/schema";
 import { venueAccess, venues } from "@/db/schema-finance";
 import { tournamentTeams, tournaments } from "@/db/schema-league";
 import { formatEuro } from "@/lib/money";
+import { formatDateTime } from "@/lib/time";
 import { audit } from "./audit";
 import { notifyUsers } from "./notifications";
 import { DomainError } from "./teams";
+import type { Tx } from "./tx";
 import { chargeDueAt, lockTournament } from "./tournaments";
 import { activeAccessWhere, hasVenueAccess, venueIdsOf } from "./venue-access-rules";
 
@@ -24,6 +26,14 @@ export function currentReminderStage(now: Date, due: Date, stages: readonly numb
   if (now.getTime() >= due.getTime()) return undefined;
   const reached = stages.filter((h) => now.getTime() >= due.getTime() - h * 3_600_000);
   return reached.length === 0 ? undefined : Math.min(...reached);
+}
+
+/** Text an die Zugangsinhaber der Halle (Entscheid A): Turnier, Termin, Frist; keine Namen Dritter. stage = Stunden bis zur Frist, null = beim Fixieren. */
+export function holderText(tournamentName: string, startsAt: Date | null, due: Date | null, stage: number | null): string {
+  const when = startsAt ? ` am ${formatDateTime(startsAt)} Uhr` : "";
+  const until = due ? ` Zusage bis ${formatDateTime(due)} Uhr.` : "";
+  const lead = stage === null ? "Ein Turnier wartet auf die Zusage der Halle" : `Die Zusage der Halle fehlt noch (Frist in etwa ${stage} Stunden)`;
+  return `${lead}: ${tournamentName}${when}.${until} Die Zusage ist verbindlich.`;
 }
 
 /** Text der Erinnerung an den Veranstalter und die Captains: nennt das Turnier, keine Namen Dritter. */
@@ -81,6 +91,26 @@ async function dbNow(tx: Pick<typeof db, "execute">): Promise<Date> {
   return new Date((r.rows as { n: Date | string }[])[0].n);
 }
 
+/**
+ * Beim Fixieren des Preises (Snapshot "Zugang noetig"): Zugangsinhaber der Halle benachrichtigen, entprellt je Turnier und Preisrunde (Marker unter der Turniersperre des Aufrufers). In der Transaktion
+ * des Aufrufers (maybeFixPrice), als Savepoint gekapselt: ein Fehler hier darf das Fixieren nie kippen.
+ */
+export async function notifyHolderOnFix(tx: Tx, t: { id: string; name: string; venueId: string | null; startsAt: Date | null; priceRound: number }, due: Date | null): Promise<void> {
+  if (!NOTIFY_ACCESS_HOLDERS || !t.venueId) return;
+  const action = `tournament.hall_fixed_notice.${t.priceRound}`;
+  try {
+    await tx.transaction(async (sp) => {
+      const [done] = await sp.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, action), eq(auditLog.entityId, t.id))).limit(1);
+      if (done) return;
+      const holders = await accessHolderIdsOf(t.venueId!, sp);
+      await notifyUsers(holders, { type: "system", title: "Zusage der Halle gefragt", body: holderText(t.name, t.startsAt, due, null), url: "/halle" }, sp);
+      await audit(null, action, "tournament", t.id, { after: { holders: holders.length } }, sp);
+    });
+  } catch {
+    /* Zugabe: das Fixieren gilt */
+  }
+}
+
 export type HallConfirmation = { tournamentId: string; name: string; venueName: string; startsAt: Date | null; durationMin: number; teams: number; rentCents: number | null; due: Date | null };
 
 /**
@@ -117,10 +147,10 @@ export async function listTournamentConfirmations(userId: string, now: Date = ne
 }
 
 /**
- * Vorbereitet, NICHT aktiv (Produktfrage an t2q, R-T244 4): Mitteilung an die Zugangsinhaber der Halle beim Fixieren und bei den Erinnerungen 24 h/6 h, damit sie rechtzeitig zusagen. Ohne Namen.
- * Erst nach dem Entscheid auf true setzen; die Struktur ist da (Empfaenger kommen aus derselben Zugangsbedingung).
+ * Entscheid t2q A (JA): Mitteilung an die Zugangsinhaber der Halle (a) beim Fixieren mit Snapshot "Zusage noetig" und (b) 24 h/6 h vor der Frist, damit sie rechtzeitig zusagen. Ohne Namen Dritter:
+ * Turnier, Termin, Frist, Link nach /halle. Entprellt je Turnier und Zeitpunkt (Audit-Marker unter der Turniersperre). Empfaenger kommen aus derselben Zugangsbedingung wie hasVenueAccess.
  */
-export const NOTIFY_ACCESS_HOLDERS = false;
+export const NOTIFY_ACCESS_HOLDERS = true; // Entscheid t2q A: JA (In-App/Push; Mail fehlt, FEHLT-NOCH)
 
 export async function accessHolderIdsOf(venueId: string, exec: Pick<typeof db, "select"> = db): Promise<string[]> {
   const rows = await exec.select({ userId: venueAccess.userId }).from(venueAccess).innerJoin(users, eq(users.id, venueAccess.userId)).where(and(eq(venueAccess.venueId, venueId), activeAccessWhere()));
@@ -152,9 +182,10 @@ export async function notifyHallConfirmReminders(now: Date = new Date()): Promis
         const [done] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, action), eq(auditLog.entityId, t.id))).limit(1);
         if (done) return;
         const captains = await tx.select({ captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
-        const holders = NOTIFY_ACCESS_HOLDERS && t.venueId ? await accessHolderIdsOf(t.venueId, tx) : [];
-        const recipients = [...new Set([t.organizerId, ...captains.map((x) => x.captainId), ...holders])].filter((x): x is string => Boolean(x));
+        const recipients = [...new Set([t.organizerId, ...captains.map((x) => x.captainId)])].filter((x): x is string => Boolean(x));
         await notifyUsers(recipients, { type: "system", title: "Halle hat noch nicht zugesagt", body: hallReminderText(t.name, stage), url: `/turniere/${t.id}` }, tx);
+        const holders = NOTIFY_ACCESS_HOLDERS && t.venueId ? await accessHolderIdsOf(t.venueId, tx) : [];
+        await notifyUsers(holders, { type: "system", title: "Zusage der Halle fehlt", body: holderText(t.name, t.startsAt, due, stage), url: "/halle" }, tx);
         await audit(null, action, "tournament", t.id, { after: { recipients: recipients.length } }, tx);
         sent += 1;
       });

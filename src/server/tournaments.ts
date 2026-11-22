@@ -356,7 +356,14 @@ async function maybeFixPrice(tx: Tx, t: T) {
   if (cardMode && !fresh.venueId) throw new DomainError("Für dieses Turnier ist noch keine Partnerhalle gewählt. Der Veranstalter muss zuerst eine Halle wählen.");
   if (cardMode && fresh.venueId) await assertVenueFixable(tx, fresh.venueId); // M5-7a: Halle mit Zugang und ohne Online-Zusage (M5-7b) wird nicht fixiert, vor jeder Aenderung
   await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
-  if (cardMode && fresh.venueId) await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
+  if (cardMode && fresh.venueId) {
+    const frozen = await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
+    // Entscheid t2q A: Zugangsinhaber der Halle erfahren beim Fixieren, dass eine Zusage gefragt ist (entprellt, im Savepoint; dynamischer Import gegen den Importkreis)
+    if (frozen.accessRequired) {
+      const { notifyHolderOnFix } = await import("./tournament-confirm");
+      await notifyHolderOnFix(tx, { id: t.id, name: fresh.name, venueId: fresh.venueId, startsAt: fresh.startsAt, priceRound: fresh.priceRound + 1 }, await chargeDueAt(tx, fresh));
+    }
+  }
   await audit(null, "tournament.price", "tournament", t.id, { after: { share, players: everyone.length } }, tx);
   await notifyUsers(
     [...new Set(everyone.map((p) => p.userId))],

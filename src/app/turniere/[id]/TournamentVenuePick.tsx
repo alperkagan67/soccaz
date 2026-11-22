@@ -13,7 +13,7 @@ export function TournamentVenuePick({ tournamentId, options }: { tournamentId: s
   return (
     <section className="card space-y-2" data-testid="venue-pick">
       <h2 className="font-semibold">Partnerhalle wählen</h2>
-      <p className="text-sm text-muted">Für dieses Turnier ist noch keine Halle gewählt. Ohne Halle kann der Preis nicht festgelegt werden.</p>
+      <p className="text-sm text-muted">Für dieses Turnier ist noch keine Halle gewählt. Ohne Halle kann der Preis nicht festgelegt werden. Der Turniername ist für die Halle sichtbar.</p>
       {options.filter((o) => !o.unavailable).length === 0 && <p className="text-sm" role="status" data-testid="venue-pick-empty">Es gibt noch keine Partnerhalle. Bitte melde dich beim Admin.</p>}
       <label className="label" htmlFor="venue-pick-select">Partnerhalle</label>
       <select id="venue-pick-select" className="field" value={venueId} onChange={(e) => setVenueId(e.target.value)}>
