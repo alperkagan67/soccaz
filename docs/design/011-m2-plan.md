@@ -115,7 +115,7 @@ Aus v3 unverändert: DB-Trigger statt Haken, Entscheide t2q (P2, P3, P4, P7, P9,
 |---|---|
 | Migration | Nachlieferung (worker-2), **eine** Migration inkl. Sofort-Prüfung: `drizzle/<nächste freie Nummer>_*.sql`, `drizzle/meta/*`, `src/db/schema-finance.ts`, `src/server/evidence*.ts`, `scripts/lib/evidence-chain.mjs`, Export, `scripts/migrate-check.mjs`; Journal-`when` > 1795360932321 |
 | Logik (M2a-2) | `src/server/veto.ts` (`answerHallRequest(userId, matchId, venueId, accept, opts?: { reason?, round? })`: Fristgrenze in SQL mit `transaction_timestamp()`, Rundenprüfung, Pflicht-Begründung, Sitzungswert, Rückgabewert `late`; `startHallCheck` über `hallReplyDeadline`), `src/lib/hall-deadline.ts` (neu), `src/server/evidence.ts` (`currentRoundOf`), `src/server/matchmaking-actions.ts` (`answerHallAction`: `reason`, `round`, Meldung bei `late`), `src/server/venue-access.ts` (Backlog 115) |
-| Oberfläche (M2b) | `src/app/halle/page.tsx` (Ablehnen-Formular mit Auswahlliste, Runde als Hidden-Feld; bestehende Klassen, kein Look-Umbau), `pendingHallInquiries` liefert die Runde, Benachrichtigungstext „abgelehnt“ ohne Freitext, Lobby zeigt die Kategorie |
+| Oberfläche (M2b, Detail: Abschnitt 12) | `src/app/halle/page.tsx` (Ablehnen-Formular mit Auswahlliste, Runde als Hidden-Feld; bestehende Klassen, kein Look-Umbau), `pendingHallInquiries` liefert die Runde, Benachrichtigungstext „abgelehnt“ ohne Freitext, Lobby zeigt die Kategorie |
 | Tests | Abschnitt 7 |
 | Doku | `docs/BETRIEB.md` (Begründung, Frist, was „zu spät“ bedeutet), `docs/loop/GO-LIVE-AUDIT.md` |
 
@@ -218,3 +218,86 @@ Grund für alle: **Pflicht-Begründung bei Ablehnung (Vertrag 011 AC-3)**. Zusag
 - **R-M2-2** Beweiswert der Zeiten (`at` = COMMIT-Zeit, `decided_at`, `deadline_at`); qualifizierter Zeitstempel später.
 - **R-M2-3** Verbindlichkeit „keine Antwort = abgelehnt“ und Partnervertrag.
 
+
+## 12. M2b: Oberfläche für Hallenbetreiber `/halle` (UI-Plan, nur Plan, kein Code)
+Stand 2026-11-22 · baut auf dem Plan 011 M2 v5 (Abschnitte 3 bis 7) auf · **Start erst nach M2a-2 und damit nach der Nachlieferung von worker-2** (6); **M2a-Code wird nicht begonnen**. Quellen: `src/app/halle/page.tsx`, `src/server/matchmaking-actions.ts`, `src/components/{ActionButton,ActionForm}.tsx`, `src/components/ui/{Form,Field,Button,StateMessage,PageShell,PageHeader}.tsx`, Vertrag 013 (AC-1 bis AC-3, AC-7, AC-15, Meilenstein M6), `docs/design/begriffe.md`, `tests/e2e/halle.spec.ts`.
+
+### 12.1 Ziel und Abgrenzung
+- **Ziel:** Der Betreiber bestätigt oder lehnt jede Anfrage ab, mit Begründungsliste und optionalem Text, sieht die Frist, bekommt bei veralteter Anfrage, abgelaufener Frist oder schon beantworteter Anfrage einen **neutralen** Text mit genau einer nächsten Handlung, und sieht **keine Spielernamen** (P8 aus 011 M1).
+- **Kein Look-Umbau.** `/halle` ist eine **Betreiber-Seite, keine Admin-Seite**; den Look bringt der Umbau der Betreiber-Seite im Vertrag 013 (Meilenstein **M6**: „Hallen (öffentlich), `/halle` für Betreiber (011)“). M2b ändert Inhalt und Verhalten mit **bestehenden Komponenten**; die sechs Impeccable-Befehle (013 AC-15) laufen für `/halle` mit M6.
+- **Zum Umfang von M2b** gehören (Plan 6.1): Seite `/halle`, Hidden-Feld der Runde, Benachrichtigungstext „abgelehnt“ ohne Freitext, Anzeige der **Kategorie** in der Lobby für Captains.
+
+### 12.2 Bestand (Code `origin/main`)
+`src/app/halle/page.tsx` hat eine Überschrift „Spielanfragen für eure Halle“, einen Einleitungssatz (nennt „per Veto“, siehe 12.9), je Anfrage eine Karte (`data-testid="inquiry"`): Halle, Termin, Dauer, `Team gegen Team`, Spielnummer, Spielerzahl (keine Namen, kein Lobby-Link), Satz „Antwort bis … Uhr, sonst gilt die Halle als belegt“ und **zwei `ActionButton`** („Halle ist frei“ primär, „Halle ist belegt“ ghost, je `!min-h-9`, also unter 44 px). Fehler zeigt `ActionButton` als `role="alert"`. Leerzustand `data-testid="no-inquiries"`. `answerHallAction(matchId, venueId, accept)` (`matchmaking-actions.ts`) kennt weder Runde noch Begründung.
+
+### 12.3 Zielbild je Anfrage
+- **Kopf (unverändert):** Halle, Termin (`<time>` mit `datetime`), Dauer, Teams, Spielnummer, Spielerzahl. **Keine Namen, kein Lobby-Link.**
+- **Frist und Restzeit:** Sie stammen aus der **gespeicherten** Frist der Anfrage (`vetoTurnDeadline`, gesetzt über `hallReplyDeadline`, 3.2), nicht neu berechnet. Anzeige: „Antwort bis 18:30 Uhr (noch 3 Std. 20 Min.)“ mit absoluter Zeit **und** Restzeit, beides beim Laden der Seite gerechnet (**kein** sich selbst aktualisierender Text, siehe a11y). Ist weniger als 1 Stunde übrig, steht zusätzlich ein Wort mit Symbol („Frist läuft bald ab“), nie nur Farbe. Ist die Frist abgelaufen, aber die Zeile noch da (der Minutenjob lief noch nicht), zeigt die Karte **keine Knöpfe**, sondern den Text „Die Antwortfrist ist abgelaufen. Die Anfrage gilt als nicht beantwortet.“ (konsistent mit der harten Grenze, 3.2).
+- **Zwei Wege, eine Karte:**
+  1. **„Halle ist frei“** (Zusage): ein Knopf (wie heute `ActionButton`, bindet zusätzlich die **Runde**: `answerHallAction.bind(null, matchId, venueId, true, round)`). Der Knopfname bleibt, weil `halle.spec.ts` ihn bindet.
+  2. **„Halle ist belegt“** öffnet **an Ort und Stelle** ein kleines Formular (natives `<details>`/`<summary>` oder ein Umschalt-Knopf mit `aria-expanded`): **Fieldset „Grund“** mit vier Radiooptionen **belegt · geschlossen oder Wartung · Veranstaltung · sonstiges** (Codes `belegt`, `wartung`, `veranstaltung`, `sonstiges`), darunter ein Textfeld „Anmerkung (optional, 3 bis 200 Zeichen)“, **Pflicht bei „sonstiges“** (ENTSCHIEDEN t2q, P12), und der Knopf **„Ablehnung senden“**. Die Runde und die Ids liegen als Hidden-Felder im Formular.
+- **Reihenfolge der Prüfungen:** (1) **Formular/App** (Kategorie gewählt, Text 3 bis 200, bei „sonstiges“ Pflicht): Fehler **am Feld** (`Field`, `fieldErrors`), nie „Bitte erneut versuchen“; (2) Server: Zugang, Runde, Frist, schon beantwortet; (3) Trigger als Sicherheitsnetz (technischer Fehler, nur dann der Text „Das hat nicht geklappt, bitte versuche es noch einmal“).
+- **Nach der Antwort:** Die Karte verschwindet (Seite wird neu geladen, `revalidatePath`). Damit die Rückmeldung nicht verloren geht, steht oben ein Statusbereich (`role="status"`): „Danke, die Halle ist als frei gemeldet.“ bzw. „Die Halle ist als belegt gemeldet.“ (Mechanismus: Aktionsergebnis in der Seite behalten oder Rücksprung mit Hinweis, **Frage U6**). Optional eine Liste **„Zuletzt beantwortet“** mit der **eigenen** Entscheidung (Zeit, Kategorie; P8 aus 011 M2 v5, **Zurückholen verboten**).
+
+### 12.4 Zustände und Texte (neutral, ein Satz, eine nächste Handlung)
+| Zustand | Text (Entwurf) | Nächste Handlung |
+|---|---|---|
+| Frist abgelaufen (`late`) | „Die Antwortfrist ist abgelaufen. Die Anfrage gilt als nicht beantwortet.“ | „Anfragen neu laden“ |
+| schon beantwortet | „Diese Anfrage ist schon beantwortet.“ (ein Kollege am geteilten Zugang war schneller) | „Anfragen neu laden“ |
+| veraltete Runde | „Diese Anfrage hat sich geändert, zum Beispiel durch einen neuen Termin. Bitte lade die Seite neu.“ | „Anfragen neu laden“ |
+| Zugang entzogen | „Für diese Halle ist dein Zugang nicht mehr gültig.“ | Link auf die Startseite; kein Hinweis auf Details |
+| Kategorie fehlt | „Bitte wähle einen Grund.“ | Feld `Grund` (Fokus) |
+| Text fehlt/zu kurz/zu lang | „Bitte beschreibe den Grund in 3 bis 200 Zeichen.“ (bei „sonstiges“ Pflicht; sonst „Die Anmerkung braucht 3 bis 200 Zeichen oder bleibt leer.“) | Feld `Anmerkung` (Fokus) |
+| technischer Fehler (Trigger/COMMIT) | „Das hat nicht geklappt. Bitte versuche es noch einmal.“ | Wiederholen |
+| Zusage ohne Rückmeldung der Netzwerkaktion | wie `ActionButton` (`role="alert"`) | Wiederholen |
+| Leerzustand | „Keine offenen Anfragen. Wir benachrichtigen euch, sobald ein Team eure Halle anfragt.“ (der Satz „Ist hier nichts zu sehen, ist für dieses Konto noch keine Halle hinterlegt.“ entfällt: ohne Zugang gibt es die Seite nicht, `notFound()` seit M1) | – |
+Alle Texte ohne Fachwörter und ohne Namen; die Zustände „zu spät“ und „schon beantwortet“ verraten **nicht**, wer geantwortet hat.
+
+### 12.5 Namenfreier Blick (P8 aus 011 M1, AC-5)
+Unverändert: Teams, Zeit, Dauer, Spielerzahl, **keine Spielernamen, keine Kontaktdaten, kein Lobby-Link**. Neu zu prüfen: Das Formular und die Zustandstexte enthalten keine Namen; die Liste „Zuletzt beantwortet“ zeigt **keinen** Namen des antwortenden Kontos an Dritte (der Betreiber sieht nur die eigene Entscheidung). Tests prüfen **HTML und RSC-Payload** (wie in `halle.spec.ts`) auch für den neuen Formularzweig.
+
+### 12.6 Barrierefreiheit und Bedienung
+- **Struktur:** eine `h1`, je Anfrage eine Überschrift der Stufe 2 (Halle) statt eines Absatzes; die Karten sind Listenelemente. Termin und Frist als `<time>`.
+- **Formular:** `fieldset` mit `legend` „Grund“, Radiooptionen mit `label[for]`, Textfeld mit `label`, Hinweis „3 bis 200 Zeichen“ per `aria-describedby`, Pflichtmarke als Wort („Pflicht“) und `required`/`aria-required`; bei „sonstiges“ wird `required` gesetzt (die Serverprüfung ist maßgeblich). Fehler **unter dem Feld mit Symbol und Wort** (`Field`), `role="alert"`, Fokus springt auf das erste fehlerhafte Feld (`Form` tut das).
+- **Tippflächen** mindestens **44 px** (heute `!min-h-9`, also 36 px: wird über `ui/Button` behoben, Vertrag 013 AC-3); Schrift 16 px in Feldern.
+- **Aufklappen** per Tastatur bedienbar (`<details>` natürlich, oder Knopf mit `aria-expanded` und `aria-controls`), Fokus nach dem Öffnen auf die erste Option; Escape schließt nur bei eigener Implementierung.
+- **Kein sich selbst aktualisierender Text** (Restzeit nur beim Laden); optional `RefreshWhile` (Seite lädt alle paar Sekunden nach) **nur wenn** eine Anfrage in der letzten Stunde ist: **Frage U5** (Last/Fokusverlust, vgl. Backlog 108).
+- **Farbe nie allein:** Frist-Warnung mit Wort und Symbol; Fehler mit Symbol; hell und dunkel nur mit Tokens; kein horizontales Scrollen bei 390 px.
+- **Lesefolge:** Kopf, Frist, Aktionen; der Hinweis zur Frist steht **vor** den Knöpfen.
+
+### 12.7 Bestehende Klassen und Komponenten (keine neuen Bausteine außer einem kleinen Formular)
+- `PageShell`/`PageHeader`/`PageTitle` für die Seite (oder die bestehende `section`, Entscheid mit 013 M6 abstimmen), `ui/Button` für Knöpfe (44 px), `ui/Form` und `ui/Field` für das Ablehnungsformular (Fehler am Feld, Fokus, Eingaben bleiben erhalten), `StateMessage` für den Leerzustand und den Fehlerzustand „Zugang entzogen“, `ActionButton` bleibt für „Halle ist frei“ (oder `Form` mit nur einem Knopf, **Frage U4**).
+- **Eine neue kleine Client-Komponente** `HallDeclineForm` unter `src/app/halle/` (bindet `Form`/`Field`, Radiogruppe und Textfeld); keine neue Designvariante, keine eigenen Farben.
+- **Genau eine Hauptaktion je Ansicht** (Vertrag 013): in einer Liste mit mehreren Karten ist „Halle ist frei“ je Karte primär (heute genauso); die Hauptaktions-Regel für Listen klärt **Frage U3**.
+
+### 12.8 Dateiliste und Tests (Entwurf)
+| Bereich | Dateien |
+|---|---|
+| Seite und Formular | `src/app/halle/page.tsx` (Karten, Frist/Restzeit, Statusbereich), neu `src/app/halle/HallDeclineForm.tsx` |
+| Aktion | `src/server/matchmaking-actions.ts` (`answerHallAction(matchId, venueId, accept, round)` für die Zusage; neue `declineHallAction(matchId, venueId, round, prev, formData)` für das Formular; Rückgabe der Texte aus 12.4, Brücke zu `answerHallRequest`/`late`) |
+| Lesen | `pendingHallInquiries` (`src/server/veto.ts`) liefert `round` (`currentRoundOf`) und die gespeicherte Frist (schon M2a-2); Lobby-Kategorie über den lesenden Helfer in `evidence.ts` |
+| Benachrichtigung, Lobby | Text „abgelehnt“ ohne Freitext (`notifyUsers`), Lobby zeigt „Halle abgelehnt: <Kategorie>“ nur dem **Captain** (U2) |
+| Tests | Unit: Formularprüfung (Kategorie, Text 3 bis 200, `sonstiges` Pflicht). Integration: Aktion je Zustand (12.4) mit den Texten. E2E (neu, `tests/e2e/halle.spec.ts` ergänzen): Ablehnung per Formular mit Kategorie, `sonstiges` ohne Text bleibt mit Fehler am Feld, veraltete Runde (Termin geändert, alte Seite), Antwort nach Fristende (Frist in der Datenbank in die Vergangenheit), Tastaturbedienung (Tab/Enter/Leertaste), 44-px-Messung der Knöpfe, **HTML und RSC ohne Namen**, Captain sieht nur Kategorie (HTML, RSC, Notification-Body ohne Freitext), Mutationen (Formularprüfung entfernen, Runde nicht mitsenden, Freitext in die Benachrichtigung) |
+| **AC-5 (bestehende Tests)** | `tests/e2e/halle.spec.ts`, Test „Hallenbetreiber: Anfrage sehen, Halle als frei bestätigen, danach läuft das Veto“: bindet `data-testid="inquiry"`, den Knopfnamen „Halle ist frei“, den Hinweis „Seite nicht gefunden“ ohne Zugang und die Namenfreiheit (Seite, HTML, RSC): **bleibt unverändert**, weil Testid und Knopfname erhalten bleiben (Ausnahme: ein E2E-Pfad, der „Halle ist belegt“ klickt, existiert dort nicht; falls einer entsteht, geht er über das Formular). `tests/e2e/user-menu.spec.ts` (Menüpunkt „Meine Halle“) unberührt. Änderungen nur mit Freigabe t9, einzeln im PR-Text. |
+
+### 12.9 Texte nach `begriffe.md`
+Der Einleitungssatz nennt „per Veto“ (Fachwort laut `begriffe.md`, Zeile „Fachwörter ohne Erklärung“). **Vorschlag:** „Die Teams wählen danach unter allen freien Hallen.“; die Änderung ist ein Text, keine Logik, und braucht die Freigabe von t9, weil ein Test den Satz binden könnte (Prüfung per Grep vor dem Bau). Die Begriffe „Halle ist frei“ und „Halle ist belegt“ bleiben (Test bindet den ersten). Die Kategorienamen sind für Betreiber geschrieben („geschlossen oder Wartung“), nicht für Spieler.
+
+### 12.10 Impeccable und „Degradiert“: Entscheid-Frage an t2q
+- **Fakten:** `/halle` ist **keine Admin-Seite**, sondern die Betreiber-Seite (Rolle Hallenbetreiber, 011). Vertrag 013 führt sie im Meilenstein **M6** (nicht M7, der den Admin umbaut) und verlangt für **jede Seite und Rolle** alle sechs Impeccable-Befehle einzeln (AC-15) sowie im PR die Zeile „Degradiert: ja/nein“ (AC-1). Der Look der Betreiber-Seite ist also noch **nicht** abgenommen; M2b ändert nur Inhalt und Verhalten.
+- **Vorschlag für den PR-Text von M2b:** „Look unverändert, Umbau mit 013 M6. Impeccable AC-15 für `/halle` (Rolle Hallenbetreiber) **offen**. Degradiert: ja, Grund: kein Look-Umbau in diesem PR; geprüft sind Tippflächen (44 px), Beschriftungen, Fokus und Namenfreiheit durch Tests.“ Der PR trägt zusätzlich eine **Backlog-Zeile** „`/halle`: Impeccable-Durchlauf mit 013 M6“.
+- **FRAGE-PRODUKT U1 (Entscheid t2q):** Gilt die Impeccable-Pflicht für `/halle` **vor dem Einschalten des Schalters** (`card_payments_enabled`), wie für die Turnierseiten (Backlog 114), oder darf `/halle` bis 013 M6 mit der **Auflage** „44 px, Fokus, Texte, Namenfreiheit per Test belegt“ in Betrieb gehen (die Halle wird in der Pilotphase von wenigen eingeladenen Betreibern genutzt)? [Empfehlung: Auflage statt Pflicht, mit Backlog-Eintrag; ein reduzierter Durchlauf `audit` + `adapt` + `clarify` nur, wenn t2q es verlangt.]
+
+### 12.11 Reihenfolge, Abhängigkeiten, Risiken
+- **Reihenfolge:** Nachlieferung (worker-2) → M2a-2 (Server: Runde, Frist, `late`, Kategorie) → **M2b (dieser Abschnitt)** → M2c (Security/E2E). M2b startet nicht vor M2a-2; vorbereiten lassen sich nur Texte und Formularprüfung (Unit).
+- **Abhängigkeit:** `answerHallRequest` gibt `{ status: "late" }` zurück; `pendingHallInquiries` liefert `round`; Kategorie-Helfer für die Lobby (PL-E).
+- **Risiken:** (1) Doppelklick auf „Halle ist frei“ und „Ablehnung senden“: Server ist idempotent (3.1), die Oberfläche deaktiviert den Knopf (`pending`). (2) Ein Betreiber lässt die Seite lange offen: Runde und Frist machen die Aktion ungültig, Text 12.4. (3) Aufklappformular verliert Eingaben bei Fehler: `Form` behält sie. (4) Zwei Karten gleichzeitig offen: Aktionen bleiben je Karte getrennt, Fokus nach dem Absenden auf den Statusbereich. (5) Ein Test bindet den Einleitungssatz oder den Hinweis zur Frist: Grep vor dem Bau, AC-5-Freigabe. (6) Lobby-Anzeige der Kategorie wird versehentlich für andere Rollen sichtbar: Test HTML/RSC je Rolle.
+
+### 12.12 Fragen (nur gestellt; Entscheide gehen an t2q)
+- **U1** Impeccable-Pflicht für `/halle` vor Schalter AN oder Auflage + Backlog bis 013 M6 (12.10)? Bestätigung, dass `/halle` zu M6 gehört (nicht M7).
+- **U2** Wer sieht die Kategorie der Ablehnung in der Lobby: nur die Captains der beiden Teams (Entscheid P2) oder auch Spieler und Gäste? [ANNAHME: nur Captains und Plattform-Admins]
+- **U3** Hauptaktion in einer Liste: „Halle ist frei“ je Karte primär (wie heute) oder die Seite genau eine Hauptaktion (z. B. nur die dringendste Anfrage primär)?
+- **U4** „Halle ist frei“ weiter als `ActionButton` oder als Formular mit einem Knopf (wie die Ablehnung, einheitlich)?
+- **U5** Soll die Seite sich bei einer Anfrage in der letzten Stunde alle paar Sekunden aktualisieren (`RefreshWhile`) oder nur beim Laden rechnen? [ANNAHME: nur beim Laden]
+- **U6** Rückmeldung nach der Antwort: Statusbereich mit Hinweis (Aktionsergebnis behalten) und Liste „Zuletzt beantwortet“ mit der eigenen Entscheidung, oder nur das Verschwinden der Karte? [ANNAHME: Statushinweis; die Liste folgt P8]
+- **U7** Einleitungssatz ohne „Veto“ (12.9) ändern: ja/nein, mit AC-5-Freigabe?
