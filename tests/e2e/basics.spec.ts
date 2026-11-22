@@ -31,7 +31,8 @@ test("Kein Guthaben: weder Karte, noch Betrag in der Kopfleiste; /app/guthaben l
   await expect(p.getByTestId("first-steps")).toContainText("Team gründen"); // neue Nutzer bekommen eine Starthilfe
   await expect(p.getByTestId("wallet-card")).toHaveCount(0);
   await expect(p.getByTestId("header-wallet")).toHaveCount(0);
-  await expect(p.locator("main, header")).not.toContainText(/Guthaben|Aufladen/);
+  await expect(p.getByRole("banner")).not.toContainText(/Guthaben|Aufladen/);
+  await expect(p.getByRole("main")).not.toContainText(/Guthaben|Aufladen/);
   await p.goto("/app/guthaben");
   await expect(p).toHaveURL(/\/app$/);
   for (const link of ["Lobby aufmachen", "Mein Profil", "Rangliste", "Einstellungen", "Hilfe"]) await expect(p.getByRole("navigation", { name: "Schnellzugriff" }).getByRole("link", { name: link })).toBeVisible();
