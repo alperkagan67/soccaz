@@ -71,8 +71,8 @@ test("Ablehnen-Formular: Fehler am Feld, Fokus auf die Radiogruppe, sonstiges br
   await inquiry.getByLabel(/Anmerkung/).fill("  Platz   gesperrt ");
   await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
   await expect(inquiryOf(boss, "1")).toHaveCount(0);
-  const [row] = await query<{ status: string }>("select status from match_hall_requests where match_id = $1 and venue_id = $2", [matchId, venueId]);
-  expect(row.status).toBe("declined");
+  // die einzige angefragte Halle ist belegt: „keine Halle frei“ löscht die Anfragezeilen (der Beweiseintrag bleibt), die Teams wählen einen neuen Termin
+  expect(await query("select 1 from match_hall_requests where match_id = $1 and venue_id = $2", [matchId, venueId])).toHaveLength(0);
   const [ev] = await query<{ reason_code: string; reason: string | null; hash_version: number }>("select reason_code, reason, hash_version from booking_evidence where match_id = $1 and venue_id = $2 and kind = 'declined'", [matchId, venueId]);
   expect(ev).toMatchObject({ reason_code: "sonstiges", reason: null, hash_version: 2 });
   const [txt] = await query<{ reason: string }>("select t.reason from booking_evidence_reason_text t join booking_evidence e on e.id = t.evidence_id where e.match_id = $1 and e.venue_id = $2 and e.kind = 'declined'", [matchId, venueId]);

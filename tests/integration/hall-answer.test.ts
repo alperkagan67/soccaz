@@ -7,8 +7,8 @@ import { matchHallRequests, matchOptions } from "@/db/schema-matchmaking";
 import { acceptChallenge, challengeTeam } from "@/server/challenges";
 import { currentRoundOf } from "@/server/evidence";
 import { proposeOption, voteOption } from "@/server/scheduling";
-import { advanceVetos, answerHallRequest, pendingHallInquiries, startHallCheck } from "@/server/veto";
-import { cleanup, grantVenueAccess, makeTeam, makeUser } from "./helpers";
+import { advanceVetos, answerHallRequest, hallExpiredInDb, pendingHallInquiries, startHallCheck } from "@/server/veto";
+import { cleanup, grantVenueAccess, makeTeam, makeUser, answerHall } from "./helpers";
 
 // 011 M2a-2 (Plan 011 M2, 3.1 bis 3.3, 7.1): Antwort des Betreibers mit Kategorie, Runde, Fristgrenze in SQL, late_attempt, Beweiseinträge per Datenbank-Trigger.
 // Die Beweispflicht (evidence_enforcement) steht standardmäßig AUS: die App prüft Frist, Kategorie und Runde immer selbst; ein eigener Test schaltet die Pflicht kurz ein (Datenbank-Ebene).
@@ -69,7 +69,7 @@ const statusOf = async (matchId: string, venueId: string) => (await db.select().
 describe("Antwort des Betreibers (011 M2a-2)", () => {
   it("Zusage: accepted mit Actor (Name nur in evidence_actor), kein Grund, Frist und Entscheidungszeit gesetzt, decided_at <= deadline_at", async () => {
     const d = await duel();
-    const res = await answerHallRequest(d.manager.id, d.id, d.v[0].id, true);
+    const res = await answerHall(d.manager.id, d.id, d.v[0].id, true);
     expect(res).toEqual({ status: "answered" });
     const ev = await evidenceOf(d.id, d.v[0].id);
     const acc = ev.find((e) => e.kind === "accepted")!;
@@ -84,7 +84,7 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
 
   it("Ablehnung mit Kategorie und Anmerkung: reason_code im Datensatz, Commitment im Hash, Klartext (bereinigt) nur in der Nebentabelle, Version 2", async () => {
     const d = await duel();
-    await answerHallRequest(d.manager.id, d.id, d.v[1].id, false, { reasonCode: "sonstiges", reason: "  Platz   gesperrt  " });
+    await answerHall(d.manager.id, d.id, d.v[1].id, false, { reasonCode: "sonstiges", reason: "  Platz   gesperrt  " });
     expect(await statusOf(d.id, d.v[1].id)).toBe("declined");
     const dec = (await evidenceOf(d.id, d.v[1].id)).find((e) => e.kind === "declined")!;
     expect(dec).toMatchObject({ reason_code: "sonstiges", reason: null, hash_version: 2 });
@@ -96,7 +96,7 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
   it("Ablehnung ohne Kategorie, mit zu kurzem Text oder „sonstiges“ ohne Text: Eingabefehler, Zeile bleibt pending, kein Beweiseintrag declined", async () => {
     const d = await duel();
     for (const opts of [{}, { reasonCode: "", reason: "" }, { reasonCode: "unbekannt" }, { reasonCode: "belegt", reason: "ab" }, { reasonCode: "sonstiges", reason: "" }]) {
-      await expect(answerHallRequest(d.manager.id, d.id, d.v[0].id, false, opts)).rejects.toThrow();
+      await expect(answerHall(d.manager.id, d.id, d.v[0].id, false, opts)).rejects.toThrow();
     }
     expect(await statusOf(d.id, d.v[0].id)).toBe("pending");
     expect((await evidenceOf(d.id, d.v[0].id)).filter((e) => e.kind === "declined")).toHaveLength(0);
@@ -130,8 +130,8 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
   it("Antwort nach Fristende (Job noch nicht gelaufen): late, Zeile unverändert, kein accepted, genau EIN late_attempt, auch beim zweiten Versuch", async () => {
     const d = await duel();
     await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() - 60_000) }).where(eq(matches.id, d.id));
-    expect(await answerHallRequest(d.manager.id, d.id, d.v[0].id, true)).toEqual({ status: "late" });
-    expect(await answerHallRequest(d.manager.id, d.id, d.v[0].id, false, { reasonCode: "belegt" })).toEqual({ status: "late" });
+    expect(await answerHall(d.manager.id, d.id, d.v[0].id, true)).toEqual({ status: "late" });
+    expect(await answerHall(d.manager.id, d.id, d.v[0].id, false, { reasonCode: "belegt" })).toEqual({ status: "late" });
     expect(await statusOf(d.id, d.v[0].id)).toBe("pending");
     const ev = await evidenceOf(d.id, d.v[0].id);
     expect(ev.filter((e) => e.kind === "accepted")).toHaveLength(0);
@@ -141,10 +141,10 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
   it("Frist noch nicht verstrichen (in 30 Sekunden): Antwort zulässig; ohne Zugang kein late_attempt", async () => {
     const d = await duel();
     await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() + 30_000) }).where(eq(matches.id, d.id));
-    expect(await answerHallRequest(d.manager.id, d.id, d.v[0].id, true)).toEqual({ status: "answered" });
+    expect(await answerHall(d.manager.id, d.id, d.v[0].id, true)).toEqual({ status: "answered" });
     const d2 = await duel();
     await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() - 60_000) }).where(eq(matches.id, d2.id));
-    await expect(answerHallRequest(d2.other.id, d2.id, d2.v[0].id, true)).rejects.toThrow(/nicht zu deinem Konto/);
+    await expect(answerHall(d2.other.id, d2.id, d2.v[0].id, true)).rejects.toThrow(/nicht zu deinem Konto/);
     expect((await evidenceOf(d2.id, d2.v[0].id)).filter((e) => e.kind === "late_attempt")).toHaveLength(0);
   });
 
@@ -154,7 +154,7 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
     // Fristablauf entscheidet die Datenbank: ein JS-Zeitpunkt in der Zukunft darf nichts ablaufen lassen, ein verstrichenes DB-Datum schon
     await advanceVetos(new Date(Date.now() - 10 * 86_400_000));
     expect((await evidenceOf(d.id, d.v[0].id)).some((e) => e.kind === "expired")).toBe(true);
-    expect(await answerHallRequest(d.manager.id, d.id, d.v[0].id, true)).toEqual({ status: "late" });
+    expect(await answerHall(d.manager.id, d.id, d.v[0].id, true)).toEqual({ status: "late" });
     expect((await evidenceOf(d.id, d.v[0].id)).filter((e) => e.kind === "late_attempt")).toHaveLength(1);
   });
 
@@ -169,9 +169,9 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
     const round = await currentRoundOf(db, d.id);
     expect(round).toBeGreaterThanOrEqual(1);
     expect((await pendingHallInquiries(d.manager.id)).find((q) => q.matchId === d.id)?.round).toBe(round);
-    await expect(answerHallRequest(d.manager.id, d.id, d.v[0].id, true, { round: round - 1 })).rejects.toThrow(/geändert/);
+    await expect(answerHall(d.manager.id, d.id, d.v[0].id, true, { round: round - 1 })).rejects.toThrow(/geändert/);
     expect(await statusOf(d.id, d.v[0].id)).toBe("pending");
-    expect(await answerHallRequest(d.manager.id, d.id, d.v[0].id, true, { round })).toEqual({ status: "answered" });
+    expect(await answerHall(d.manager.id, d.id, d.v[0].id, true, { round })).toEqual({ status: "answered" });
   });
 
   it("Frist = min(12 h, Anstoß − 1 h); Vorlauf unter 1 h: Hallen mit Zugang bekommen keine Anfrage (P11)", async () => {
@@ -216,11 +216,37 @@ describe("Antwort des Betreibers (011 M2a-2)", () => {
       ).rejects.toThrow();
       // Frist wieder offen, über die App mit Grund: geht
       await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() + 3_600_000) }).where(eq(matches.id, d.id));
-      expect(await answerHallRequest(d.manager.id, d.id, d.v[0].id, false, { reasonCode: "veranstaltung", reason: "" })).toEqual({ status: "answered" });
+      expect(await answerHall(d.manager.id, d.id, d.v[0].id, false, { reasonCode: "veranstaltung", reason: "" })).toEqual({ status: "answered" });
       const dec = (await evidenceOf(d.id, d.v[0].id)).find((e) => e.kind === "declined")!;
       expect(dec.reason_code).toBe("veranstaltung");
     } finally {
       await resetSettings();
     }
+  });
+
+  it("Runde ist Pflicht: ohne Runde wird nicht geantwortet (Zusage und Ablehnung), nichts geändert", async () => {
+    const d = await duel();
+    await expect(answerHallRequest(d.manager.id, d.id, d.v[0].id, true, {})).rejects.toThrow(/geändert/);
+    await expect(answerHallRequest(d.manager.id, d.id, d.v[0].id, false, { reasonCode: "belegt", round: null })).rejects.toThrow(/geändert/);
+    expect(await statusOf(d.id, d.v[0].id)).toBe("pending");
+  });
+
+  it("Zeile fehlt (Spiel ohne freie Halle hat alle Anfragen gelöscht): Antwort = „nicht mehr offen“, kein late_attempt", async () => {
+    const d = await duel();
+    const round = await currentRoundOf(db, d.id);
+    await db.delete(matchHallRequests).where(eq(matchHallRequests.matchId, d.id));
+    await expect(answerHall(d.manager.id, d.id, d.v[0].id, true, { round })).rejects.toThrow(/nicht mehr offen/);
+    expect((await evidenceOf(d.id, d.v[0].id)).filter((e) => e.kind === "late_attempt")).toHaveLength(0);
+  });
+
+  it("Gleichheitsfall der Frist: genau transaction_timestamp() = nicht abgelaufen, eine Mikrosekunde früher = abgelaufen", async () => {
+    const d = await duel();
+    const check = (shift: string) =>
+      db.transaction(async (tx) => {
+        await tx.execute(sql`update matches set veto_turn_deadline = transaction_timestamp() - ${shift}::interval where id = ${d.id}`);
+        return hallExpiredInDb(tx, d.id);
+      });
+    expect(await check("0 microseconds")).toBe(false);
+    expect(await check("1 microsecond")).toBe(true);
   });
 });

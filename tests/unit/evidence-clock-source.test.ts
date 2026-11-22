@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { EVIDENCE_CLOCK } from "@/lib/evidence-clock";
 
+// Der Marker EVIDENCE_CLOCK ist nur zusammen mit diesem Quelltext-Test aussagekräftig (allein beweist die Konstante nichts).
 // 011 M2a / Plan 16g.5: Hallen-Fristen werden mit der Datenbankzeit entschieden. Quelltext-Test über veto.ts (Marker + keine JS-Uhr in der Ablaufprüfung).
 const src = readFileSync("src/server/veto.ts", "utf8");
 const NL = String.fromCharCode(10);

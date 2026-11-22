@@ -12,7 +12,7 @@ import { matchmakingQueue } from "@/db/schema-matchmaking";
 import { proposeOption, voteOption, withdrawOption } from "./scheduling";
 import { requireUser } from "./session";
 import { answerHallRequest, banHall, type HallAnswerResult } from "./veto";
-import { HALL_TEXTS, describeHallDbFailure } from "@/lib/hall-answer-errors";
+import { HALL_TEXTS, describeHallDbFailure, pgCodeOf } from "@/lib/hall-answer-errors";
 import { acceptChallenge, challengeTeam, declineChallenge } from "./challenges";
 import { DomainError } from "./teams";
 import { planDecline } from "@/lib/hall-decline";
@@ -150,15 +150,16 @@ async function hallAnswer(fn: () => Promise<HallAnswerResult>): Promise<ActionSt
     if (r.status === "late") return { error: HALL_TEXTS.late };
   } catch (error) {
     if (error instanceof DomainError) return { error: error.message };
+    console.error("hallAnswer:", pgCodeOf(error) ?? "Fehler"); // nur der Fehlercode, nie Meldung oder Freitext
     return { error: describeHallDbFailure(error).text };
   }
   return { ok: true };
 }
 
 /** Hallenbetreiber: Anfrage bestätigen (frei). `round` ist die Runde, die der Betreiber gesehen hat (veraltete Seiten werden abgelehnt). */
-export async function answerHallAction(matchId: string, venueId: string, accept: boolean, round: number | null = null): Promise<ActionState> {
+export async function answerHallAction(matchId: string, venueId: string, accept: boolean, round: number | null): Promise<ActionState> {
   const user = await requireUser("/halle");
-  const result = await hallAnswer(() => answerHallRequest(user.id, matchId, venueId, accept, { round }));
+  const result = await hallAnswer(() => answerHallRequest(user.id, matchId, venueId, accept, { round: round ?? undefined }));
   revalidatePath("/halle");
   revalidatePath(`/lobby/${matchId}`);
   return result;
@@ -173,7 +174,7 @@ export async function declineHallAction(matchId: string, venueId: string, round:
   const plan = planDecline({ code: String(formData.get("reasonCode") ?? ""), text: String(formData.get("reason") ?? "") });
   if (plan.kind === "invalid") return { fieldErrors: plan.fieldErrors }; // nur am Feld: `Form` zeigt dazu den Hinweis, ein zweiter Alarm würde doppelt vorgelesen
   if (plan.kind === "not-wired") return { error: plan.error };
-  const result = await hallAnswer(() => answerHallRequest(user.id, matchId, venueId, false, { reasonCode: plan.code, reason: plan.text, round }));
+  const result = await hallAnswer(() => answerHallRequest(user.id, matchId, venueId, false, { reasonCode: plan.code, reason: plan.text, round: round ?? undefined }));
   revalidatePath("/halle");
   revalidatePath(`/lobby/${matchId}`);
   return result;

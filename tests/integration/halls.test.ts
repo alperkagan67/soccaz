@@ -6,8 +6,8 @@ import { venues } from "@/db/schema-finance";
 import { matchHallRequests, matchOptions, matchVetoHalls } from "@/db/schema-matchmaking";
 import { acceptChallenge, challengeTeam } from "@/server/challenges";
 import { proposeOption, voteOption } from "@/server/scheduling";
-import { advanceVetos, answerHallRequest, pendingHallInquiries } from "@/server/veto";
-import { cleanup, grantVenueAccess, makeTeam, makeUser } from "./helpers";
+import { advanceVetos, pendingHallInquiries } from "@/server/veto";
+import { cleanup, grantVenueAccess, makeTeam, makeUser, answerHall } from "./helpers";
 
 // 011 M2: Ablehnen braucht eine Kategorie (Vertrag 011 AC-3); die Tests prüfen weiter ihre bisherigen Aussagen, mit gültiger Eingabe
 const REASON = { reasonCode: "belegt", reason: "" } as const;
@@ -54,11 +54,11 @@ describe("Hallen-Anfrage nach dem Termin", () => {
     expect(await pendingHallInquiries(d.a.id)).toHaveLength(0);
 
     // nur der eigene Betreiber darf antworten
-    await expect(answerHallRequest(d.a.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht zu deinem Konto/);
-    await answerHallRequest(d.manager.id, d.id, d.rows[0].id, true);
-    await expect(answerHallRequest(d.manager.id, d.id, d.rows[0].id, false, REASON)).rejects.toThrow(/schon beantwortet/);
+    await expect(answerHall(d.a.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht zu deinem Konto/);
+    await answerHall(d.manager.id, d.id, d.rows[0].id, true);
+    await expect(answerHall(d.manager.id, d.id, d.rows[0].id, false, REASON)).rejects.toThrow(/schon beantwortet/);
     expect((await db.select().from(matches).where(eq(matches.id, d.id)))[0].vetoStatus).toBe("halls"); // eine Antwort fehlt noch
-    await answerHallRequest(d.manager.id, d.id, d.rows[1].id, false, REASON); // belegt
+    await answerHall(d.manager.id, d.id, d.rows[1].id, false, REASON); // belegt
 
     const [after] = await db.select().from(matches).where(eq(matches.id, d.id));
     expect(after.vetoStatus).toBe("running");
@@ -66,7 +66,7 @@ describe("Hallen-Anfrage nach dem Termin", () => {
     expect(pool.some((h) => h.venueId === d.rows[0].id)).toBe(true);
     expect(pool.some((h) => h.venueId === d.rows[1].id)).toBe(false); // belegte Halle steht nicht im Veto
     expect(pool.some((h) => h.venueId === d.rows[2].id)).toBe(true); // Halle ohne Konto bleibt im Rennen
-    await expect(answerHallRequest(d.manager.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht mehr offen/);
+    await expect(answerHall(d.manager.id, d.id, d.rows[0].id, true)).rejects.toThrow(/nicht mehr offen/);
   });
 
   it("keine Antwort bis zur Frist zählt als belegt", async () => {
@@ -86,8 +86,8 @@ describe("Hallen-Anfrage nach dem Termin", () => {
     try {
       await db.update(venues).set({ active: false }).where(inArray(venues.id, [...others, d.rows[2].id]));
       const m2 = await agreedDuelAgain(d);
-      await answerHallRequest(d.manager.id, m2, d.rows[0].id, false, REASON);
-      await answerHallRequest(d.manager.id, m2, d.rows[1].id, false, REASON);
+      await answerHall(d.manager.id, m2, d.rows[0].id, false, REASON);
+      await answerHall(d.manager.id, m2, d.rows[1].id, false, REASON);
       const [m] = await db.select().from(matches).where(eq(matches.id, m2));
       expect(m).toMatchObject({ vetoStatus: "none", schedulingOpen: true });
       expect(await db.select().from(matchOptions).where(eq(matchOptions.matchId, m2))).toHaveLength(0);

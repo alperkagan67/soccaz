@@ -51,7 +51,7 @@ export async function startHallCheck(tx: Tx, match: MatchRow, city: string, now:
   await settleHallCheck(tx, (await tx.select().from(matches).where(eq(matches.id, match.id)))[0], now);
 }
 
-async function hallExpiredInDb(tx: Tx, matchId: string): Promise<boolean> {
+export async function hallExpiredInDb(tx: Tx, matchId: string): Promise<boolean> {
   const res = await tx.execute(sql`select (veto_turn_deadline is null or transaction_timestamp() > veto_turn_deadline) as expired from matches where id = ${matchId}`);
   return Boolean(rowsOf<{ expired: boolean }>(res)[0]?.expired);
 }
@@ -103,7 +103,9 @@ export type HallAnswerOpts = { reasonCode?: DeclineCode | string | null; reason?
  *   der Versuch wird danach in einer EIGENEN kurzen Transaktion im Beweisprotokoll festgehalten (evidence_late_attempt), nie mitten in der Hauptransaktion.
  * Sperrreihenfolge unverändert: Spiel (FOR UPDATE), Zugang ohne Sperre, Anfragezeile. Der Beweiseintrag entsteht per Datenbank-Trigger beim COMMIT.
  */
-export async function answerHallRequest(userId: string, matchId: string, venueId: string, accept: boolean, opts: HallAnswerOpts = {}): Promise<HallAnswerResult> {
+export async function answerHallRequest(userId: string, matchId: string, venueId: string, accept: boolean, opts: HallAnswerOpts): Promise<HallAnswerResult> {
+  // Runde Pflicht (R-T257 N1): ohne die Runde der gesehenen Anfrage wird nicht geantwortet (sonst umgeht ein Aufruf ohne Runde die Veraltet-Prüfung)
+  if (typeof opts.round !== "number") throw new DomainError("Diese Anfrage hat sich geändert, zum Beispiel durch einen neuen Termin. Bitte lade die Seite neu.");
   const decline = accept ? null : validateDecline({ code: opts.reasonCode ?? "", text: opts.reason ?? "" });
   if (decline && !decline.ok) throw new DomainError(Object.values(decline.fieldErrors)[0]);
   const result = await db.transaction(async (tx): Promise<HallAnswerResult> => {
@@ -115,9 +117,10 @@ export async function answerHallRequest(userId: string, matchId: string, venueId
     // Der Ablauf-Job war schneller: Zeile „declined“ ohne Antwortzeit (= abgelaufen) → zu spät (wird als late_attempt festgehalten), nicht „schon beantwortet“
     if (r && r.status === "declined" && !r.answeredAt) return { status: "late" };
     if (m.vetoStatus !== "halls") throw new DomainError("Diese Anfrage ist nicht mehr offen.");
-    if (!r || r.status !== "pending") throw new DomainError("Diese Anfrage ist schon beantwortet.");
+    if (!r) throw new DomainError("Diese Anfrage ist nicht mehr offen."); // z. B. „keine Halle frei“ hat alle Zeilen gelöscht (kein late_attempt möglich)
+    if (r.status !== "pending") throw new DomainError("Diese Anfrage ist schon beantwortet.");
     // veraltete Seite (neue Runde durch neuen Termin): nichts ändern
-    if (opts.round !== undefined && opts.round !== null && opts.round !== (await currentRoundOf(tx, matchId))) {
+    if (opts.round !== (await currentRoundOf(tx, matchId))) {
       throw new DomainError("Diese Anfrage hat sich geändert, zum Beispiel durch einen neuen Termin. Bitte lade die Seite neu.");
     }
     // Fristgrenze mit der Datenbankzeit derselben Transaktion (Plan 3.2): strikt überschritten = zu spät, genau am Fristende noch zulässig

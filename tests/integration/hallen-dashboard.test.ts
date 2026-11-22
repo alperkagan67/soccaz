@@ -11,8 +11,8 @@ import { acceptChallenge, challengeTeam } from "@/server/challenges";
 import { proposeOption, voteOption } from "@/server/scheduling";
 import { inviteVenueManager, listVenueAccess, redeemVenueInvites, revokeAccessOfUser, revokeVenueAccess } from "@/server/venue-access";
 import { hasVenueAccess, isVenueManager, venueIdsOf } from "@/server/venue-access-rules";
-import { answerHallRequest, pendingHallInquiries } from "@/server/veto";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { pendingHallInquiries } from "@/server/veto";
+import { cleanup, makeTeam, makeUser, answerHall } from "./helpers";
 
 // Vertrag 011 M1 (Server): venue_access, Einlösen beim Login, hasVenueAccess, Datenübernahme. Entscheide t9: Einlösepfad für alle (P10), Admin nie Betreiber (P4),
 // 14 Tage Ablauf (P6), offene Anfragen eines entzogenen Zugangs werden „unmanaged“ (P5), nur Admin 1 sieht die E-Mail (P7), je Halle eine Zeile (P9).
@@ -251,14 +251,14 @@ describe("Rechte und Mandantentrennung (AC-1, AC-4, AC-7, M1-E, M1-F, M1-K)", ()
       expect((await pendingHallInquiries(mine.id)).map((q) => q.venueId)).toEqual([own.id]); // nur die eigene Halle
       expect((await pendingHallInquiries(mine.id))[0]).toHaveProperty("players");
       expect(JSON.stringify(await pendingHallInquiries(mine.id))).not.toContain(a.name); // keine Spielernamen (AC-5)
-      await expect(answerHallRequest(mine.id, id, foreign.id, true)).rejects.toThrow(/nicht zu deinem Konto/); // fremde Halle
-      await answerHallRequest(theirs.id, id, foreign.id, true);
+      await expect(answerHall(mine.id, id, foreign.id, true)).rejects.toThrow(/nicht zu deinem Konto/); // fremde Halle
+      await answerHall(theirs.id, id, foreign.id, true);
       // Entzug des Zugangs von „own“, während die Anfrage offen ist: wird „unmanaged“ (nicht abgelehnt), das Veto beginnt
       await revokeVenueAccess(owner.id, own.id, "Entzug im Test");
       const reqs = await db.select().from(matchHallRequests).where(eq(matchHallRequests.matchId, id));
       expect(reqs.find((r) => r.venueId === own.id)?.status).toBe("unmanaged");
       expect((await db.select().from(matches).where(eq(matches.id, id)))[0].vetoStatus).not.toBe("halls");
-      await expect(answerHallRequest(mine.id, id, own.id, true)).rejects.toThrow(); // nach dem Entzug nichts mehr (nicht mehr offen oder nicht dein Konto)
+      await expect(answerHall(mine.id, id, own.id, true)).rejects.toThrow(); // nach dem Entzug nichts mehr (nicht mehr offen oder nicht dein Konto)
     } finally {
       await db.update(venues).set({ active: true }).where(inArray(venues.id, others));
     }
@@ -401,7 +401,7 @@ describe("Nachbesserungen aus Security- und Code-Review", () => {
       await proposeOption(a.id, id, { startsAt: new Date(Date.now() + 5 * 86_400_000) });
       const [opt] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, id));
       await voteOption(b.id, id, opt.id);
-      const results = await Promise.allSettled([revokeVenueAccess(owner.id, v.id, reason), answerHallRequest(m.id, id, v.id, true), revokeVenueAccess(owner.id, v.id, reason)]);
+      const results = await Promise.allSettled([revokeVenueAccess(owner.id, v.id, reason), answerHall(m.id, id, v.id, true), revokeVenueAccess(owner.id, v.id, reason)]);
       for (const r of results) if (r.status === "rejected" && /deadlock|40P01/i.test(String((r.reason as Error)?.message ?? r.reason))) failures.push(`Lauf ${i}: ${(r.reason as Error).message}`);
       expect(await hasVenueAccess(v.id, m.id)).toBe(false); // der Entzug gilt in jedem Fall
     }

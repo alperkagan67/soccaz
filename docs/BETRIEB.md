@@ -174,6 +174,7 @@ Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert�
 ## Beweispflicht einschalten (011 M2a, nur Admin 1)
 
 - **Reihenfolge beim Ausrollen:** (1) Version mit 011 M2a-2 deployen (die App prüft Frist mit der Datenbankzeit, Ablehnung nur mit Grund). (2) Admin 1 öffnet `/admin/beweis` und wählt **„Uhrenquelle auf Datenbank stellen“** (Grund Pflicht). (3) danach **„Beweispflicht einschalten“** (Grund Pflicht). Erst dann lehnt die Datenbank Ablehnungen ohne Grund und Antworten nach der Frist selbst ab.
+- **Marker `EVIDENCE_CLOCK`** (`src/lib/evidence-clock.ts`) ist nur zusammen mit dem Quelltext-Test `tests/unit/evidence-clock-source.test.ts` aussagekräftig; wer `veto.ts` ändert, lässt ihn laufen.
 - **Ausschalten gibt es nicht über die Oberfläche.** Bei eingeschalteter Pflicht darf die Uhrenquelle nicht zurück auf `js`. Ein Ausschalten ist ein Wartungsfall (Wartungsausnahme, siehe unten) und wird im Eingriffsprotokoll festgehalten.
 - Jede Änderung läuft nur über die Datenbankfunktion `evidence_set_setting` (Akteur, Grund, `audit_log`); `setSetting` lehnt diese Schlüssel ab. Solange die Pflicht aus ist, meldet der Tagesjob `evidence-head` einen Hinweis. **Go-live nur mit Pflicht „on“** (GO-LIVE-AUDIT G26-009, G27-011).
 
