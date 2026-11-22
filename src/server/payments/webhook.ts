@@ -8,6 +8,11 @@ import { retryTournamentChargesInWindow } from "./tournament-charge";
 /** Obergrenze fuer das Wiederabbuchen direkt im Webhook-Request (Stripe-Zeitlimit je Aufruf 8 s): hoechstens so viele Plaetze, nach so vielen Millisekunden nichts Neues mehr. */
 export const WEBHOOK_RETRY_LIMIT = 3;
 export const WEBHOOK_RETRY_BUDGET_MS = 12_000;
+
+/** Restbudget bis zur gemeinsamen Frist (Backlog 145): nie negativ. Rein rechnerisch (Unit-Test). */
+export function remainingBudget(deadlineMs: number, nowMs: number): number {
+  return Math.max(0, deadlineMs - nowMs);
+}
 import { applyDisputeInTx } from "./dispute";
 import { parseDispute, type DisputeReport } from "./dispute-parse";
 import { applyRefundInTx, finalizeCancel, type RefundReport } from "./refund";
@@ -227,8 +232,11 @@ async function processEvent(event: ProviderEvent) {
     try {
       // Bewusste Entscheidung: synchron NACH der Transaktion (der Spieler soll nach 'Karte aendern' sofort abgebucht werden). Das kostet Stripe-Latenz im Webhook-Request
       // (Zeitlimits der Stripe-Aufrufe: 8 s); Fehler sind isoliert, und der Job card-charges holt alles Ausgelassene nach (siehe docs/BETRIEB.md)
-      await retryChargesInWindow({ userId: cardUserId, limit: WEBHOOK_RETRY_LIMIT, budgetMs: WEBHOOK_RETRY_BUDGET_MS });
-      await retryTournamentChargesInWindow({ userId: cardUserId, limit: WEBHOOK_RETRY_LIMIT, budgetMs: WEBHOOK_RETRY_BUDGET_MS }); // Turniere: neue Karte im Nachzahlfenster (M5-5), begrenzt: der Rest kommt mit dem Job (alle 5 Minuten)
+      // EIN gemeinsames Budget fuer Spiele und Turniere (Backlog 145): der zweite Aufruf bekommt nur den Rest; ist er aufgebraucht, bleibt der Turnierteil fuer den Job (alle 5 Minuten)
+      const deadline = Date.now() + WEBHOOK_RETRY_BUDGET_MS;
+      await retryChargesInWindow({ userId: cardUserId, limit: WEBHOOK_RETRY_LIMIT, budgetMs: remainingBudget(deadline, Date.now()) });
+      const rest = remainingBudget(deadline, Date.now());
+      if (rest > 0) await retryTournamentChargesInWindow({ userId: cardUserId, limit: WEBHOOK_RETRY_LIMIT, budgetMs: rest }); // Turniere: neue Karte im Nachzahlfenster (M5-5), begrenzt: der Rest kommt mit dem Job (alle 5 Minuten)
     } catch {
       /* nichts loggen */
     }
