@@ -566,6 +566,8 @@ async function completeKo(tx: Tx, t: T, tm: TmRow, winner: string) {
 }
 
 /** Finalizer: Ein Turnierspiel ist gespielt. Eintragen, Sieger weiterführen. Bei Gleichstand entscheidet der Veranstalter das Siebenmeterschießen. */
+// SPERRREIHENFOLGE: der Aufrufer haelt schon das SPIEL; hier kommt das TURNIER dazu (Spiel -> Turnier). Das ist die einzige erlaubte Rueckrichtung, weil die Absage ihre Spiele mit NOWAIT sperrt und unter
+// der Turniersperre nie wartet (lockTournamentGames); siehe docs/BETRIEB.md.
 export async function advanceFromMatch(tx: Tx, matchId: string): Promise<void> {
   const [tm] = await tx.select().from(tournamentMatches).where(eq(tournamentMatches.matchId, matchId));
   if (!tm || tm.scoreA !== null) return;
@@ -646,6 +648,45 @@ export async function cancelTournament(userId: string, tournamentId: string) {
   if (proposed) throw new DomainError("Nach der ersten Abbuchung kann nur Admin 1 das Turnier absagen. Dein Absagevorschlag ist gespeichert.");
 }
 
+/** Das Turnier ist gerade in Bearbeitung (ein Spiel ist gesperrt): die Absage wartet nie, sondern meldet das und wird wiederholt (Job: naechster Lauf). */
+export class TournamentBusyError extends DomainError {}
+
+const isLockNotAvailable = (e: unknown): boolean => (e as { code?: string })?.code === "55P03" || (e as { cause?: { code?: string } })?.cause?.code === "55P03";
+const BUSY_BACKOFF_MS = [50, 100, 200];
+
+/**
+ * SPERRREIHENFOLGE (Backlog 144, docs/BETRIEB.md): Halle -> Zugang -> TURNIER -> SPIEL -> Zahlungszeile -> Nutzer. Die Absage haelt das Turnier und braucht danach die Spiele des Turniers; Pfade, die ein
+ * Spiel zuerst halten (Ergebnis-Finalizer advanceFromMatch: Spiel -> Turnier), duerften sonst in einen Zyklus laufen (Postgres-Deadlock 40P01). Darum sperrt die Absage die Spiele sortiert mit NOWAIT und
+ * WARTET NIE unter der Turniersperre: ist ein Spiel gesperrt, bis zu dreimal kurz wiederholen (50/100/200 ms, je im Savepoint, die Transaktion bleibt benutzbar), danach TournamentBusyError
+ * ("bitte gleich noch einmal"; der Job versucht es im naechsten Lauf, nie stilles Auslassen). Ohne Personendaten im Protokoll (tournament.cancel_busy).
+ */
+export async function lockTournamentGames(tx: Tx, tournamentId: string): Promise<string[]> {
+  const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
+  const ids = [...new Set(games.map((g) => g.matchId!).filter(Boolean))].sort();
+  if (ids.length === 0) return ids;
+  for (let attempt = 0; attempt <= BUSY_BACKOFF_MS.length; attempt++) {
+    try {
+      await tx.transaction(async (sp) => {
+        await sp.select({ id: matches.id }).from(matches).where(inArray(matches.id, ids)).orderBy(matches.id).for("update", { noWait: true });
+      });
+      return ids;
+    } catch (error) {
+      if (!isLockNotAvailable(error)) throw error;
+      if (attempt < BUSY_BACKOFF_MS.length) {
+        await new Promise((r) => setTimeout(r, BUSY_BACKOFF_MS[attempt]));
+        continue;
+      }
+      try {
+        await audit(null, "tournament.cancel_busy", "tournament", tournamentId, {}, db); // eigene Verbindung: die Transaktion wird zurueckgerollt
+      } catch {
+        /* das Protokoll ist Zugabe */
+      }
+      throw new TournamentBusyError("Das Turnier ist gerade in Bearbeitung. Bitte gleich noch einmal versuchen.");
+    }
+  }
+  return ids;
+}
+
 /** Sagt ein Turnier unter der Turniersperre ab und erstattet alle Eintritte (feste Schlüssel, genau einmal). `actorId` null = Job. */
 async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: (card: boolean) => string) {
   const tournamentId = t.id;
@@ -681,8 +722,7 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
       /* Zugabe */
     }
   }
-  const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
-  const gameIds = games.map((g) => g.matchId!).filter(Boolean);
+  const gameIds = await lockTournamentGames(tx, tournamentId); // Spiele sortiert und OHNE Warten sperren (Sperrreihenfolge, Backlog 144)
   if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
   await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
   await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));

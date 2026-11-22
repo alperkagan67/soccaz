@@ -3,7 +3,7 @@ import { revokeAccessOfUser } from "./venue-access";
 import { db } from "@/db";
 import { matchParticipants, matches, notifications, paymentCharges, paymentDisputes, paymentErasureTasks, paymentProfiles, paymentRefunds, paymentSetupIntents, teamMembers, teams, users } from "@/db/schema";
 import { evidenceActor, ledgerEntries, payments, receipts } from "@/db/schema-finance";
-import { tournamentPlayers, tournaments } from "@/db/schema-league";
+import { tournamentMatches, tournamentPlayers, tournaments } from "@/db/schema-league";
 import { comments, media } from "@/db/schema-content";
 import { mvpVotes, playerStats, userBadges, userReliability } from "@/db/schema-community";
 import { CITIES } from "@/lib/validation";
@@ -148,6 +148,14 @@ export async function deleteAccount(userId: string) {
       .innerJoin(matches, eq(matches.id, matchParticipants.matchId))
       .where(and(eq(matchParticipants.userId, userId), inArray(matches.status, ["lobby", "confirmed"])));
     const allMatchIds = [...new Set([...openIds.map((r) => r.id), ...myChargeIds.map((c) => c.matchId), ...myRefundMatchIds.map((r) => r.matchId)].filter((id): id is string => id !== null))].sort(); // Turnier-Zeilen (match_id leer) gehoeren nicht zu den Spielsperren (M5-5 behandelt sie)
+    // Turniere (M5-5): alle Turniere, in denen der Nutzer spielt oder Zahlungszeilen hat (Platz, Zahler, Erstattung), ZUERST sperren (nach id sortiert), dann die Zeilen. Reihenfolge TURNIER -> SPIEL -> Zeile -> Nutzer (Backlog 144, docs/BETRIEB.md):
+    // die Turniere kommen VOR den Spielen, wie in der Absage (Turnier -> Spiele); sonst waere Spiel -> Turnier gegen Turnier -> Spiel ein Zyklus (40P01).
+    const tIdsFromCharges = myChargeIds.length === 0 ? [] : await tx.select({ id: paymentCharges.tournamentId }).from(paymentCharges).where(inArray(paymentCharges.id, myChargeIds.map((c) => c.id)));
+    const tIdsFromRefunds = await tx.select({ id: paymentRefunds.tournamentId }).from(paymentRefunds).where(eq(paymentRefunds.userId, userId));
+    const tIdsFromPlay = await tx.select({ id: tournamentPlayers.tournamentId }).from(tournamentPlayers).where(eq(tournamentPlayers.userId, userId));
+    const tIdsFromGames = allMatchIds.length === 0 ? [] : await tx.select({ id: tournamentMatches.tournamentId }).from(tournamentMatches).where(inArray(tournamentMatches.matchId, allMatchIds)); // Turniere der betroffenen Spiele (Turnierspiele)
+    const allTournamentIds = [...new Set([...tIdsFromCharges, ...tIdsFromRefunds, ...tIdsFromPlay, ...tIdsFromGames].map((r) => r.id).filter((id): id is string => id !== null))].sort();
+    const lockedTournaments = allTournamentIds.length === 0 ? [] : await tx.select({ id: tournaments.id, status: tournaments.status }).from(tournaments).where(inArray(tournaments.id, allTournamentIds)).orderBy(tournaments.id).for("no key update");
     // ZUERST alle betroffenen Spiele sperren (nach id sortiert, wie mergeTeams), DANN die Abbuchungs- und Erstattungszeilen, DANN die Nutzerzeile. Reihenfolge Spiel -> Nutzer wie in der Abbuchung (Phase A sperrt das Spiel
     // und nimmt beim Anlegen der Zeilen einen Schlüssel-Share auf die Nutzerzeile): so verklemmt sich nichts, und Phase A kann nicht zwischen die Prüfung und das Anonymisieren geraten.
     const lockedAll =
@@ -164,13 +172,6 @@ export async function deleteAccount(userId: string) {
       // der beiden Transaktionen (Deadlock-Erkennung), nichts wird beschädigt; siehe docs/BETRIEB.md.
             .for("no key update", { of: matches });
     const lockedGames = lockedAll.filter((g) => ["lobby", "confirmed"].includes(g.status)); // offene Spiele, Stand beim Sperren
-    // Turniere (M5-5): alle Turniere, in denen der Nutzer spielt oder Zahlungszeilen hat (Platz, Zahler, Erstattung), ZUERST sperren (nach id sortiert), dann die Zeilen. Reihenfolge Turnier -> Zeile -> Nutzer wie in der
-    // Abbuchung und im Webhook (lockTournament). Spiele und Turniere sperrt sonst kein Pfad gemeinsam, es gibt keinen Zyklus zwischen beiden.
-    const tIdsFromCharges = myChargeIds.length === 0 ? [] : await tx.select({ id: paymentCharges.tournamentId }).from(paymentCharges).where(inArray(paymentCharges.id, myChargeIds.map((c) => c.id)));
-    const tIdsFromRefunds = await tx.select({ id: paymentRefunds.tournamentId }).from(paymentRefunds).where(eq(paymentRefunds.userId, userId));
-    const tIdsFromPlay = await tx.select({ id: tournamentPlayers.tournamentId }).from(tournamentPlayers).where(eq(tournamentPlayers.userId, userId));
-    const allTournamentIds = [...new Set([...tIdsFromCharges, ...tIdsFromRefunds, ...tIdsFromPlay].map((r) => r.id).filter((id): id is string => id !== null))].sort();
-    const lockedTournaments = allTournamentIds.length === 0 ? [] : await tx.select({ id: tournaments.id, status: tournaments.status }).from(tournaments).where(inArray(tournaments.id, allTournamentIds)).orderBy(tournaments.id).for("no key update");
     // Abbuchungszeilen (sortiert), dann Erstattungszeilen (sortiert)
     const chargeIds = myChargeIds.map((c) => c.id).sort();
     const lockedCharges = chargeIds.length === 0 ? [] : await tx.select().from(paymentCharges).where(inArray(paymentCharges.id, chargeIds)).orderBy(paymentCharges.id).for("update");

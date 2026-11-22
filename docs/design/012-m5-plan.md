@@ -581,7 +581,7 @@ Sobald `venueHasAccess` echt ist, bekommt jedes Turnier in einer **Halle mit Zug
 | 119 Alarmliste: Link auf das Turnier statt ins Leere | Alarme nennen die Turnier-ID; ein **Link** in der Oberfläche ist nicht belegt | prüfen und bauen (kleiner UI-Teil, M5-6) |
 | 120 `deleteAccount` sperrt das Turnier, räumt `covered_by` auf | M5-5 (PR #147) | nach dem Merge schließen |
 | 121 `validCoversOf` bei der Abbuchung | M5-4 | Beleg |
-| 122 Indizes für die neuen Abfragen | **Korrektur (012-Rest):** `payment_refunds_tournament_idx`, `payment_charges_tournament_user_idx`, `tournaments_status_idx`, `payment_disputes_tournament_idx` **bestehen schon**; offen: zwei partielle Indizes (offene Erstattungen; nicht erfolgreiche Abbuchungen), nur nach Messung mit Last | **Migration 0055** (klein, mit `EXPLAIN`-Beleg; die Nachlieferung 009 M3 nimmt 0054), serielle Nummer beim Bau noch einmal abstimmen |
+| 122 Indizes für die neuen Abfragen | **Korrektur (012-Rest):** `payment_refunds_tournament_idx`, `payment_charges_tournament_user_idx`, `tournaments_status_idx`, `payment_disputes_tournament_idx` **bestehen schon**; Messung gelaufen: nur **ein** partieller Index nötig (`payment_charges (tournament_id, status)` für nicht erfolgreiche Zeilen, 40→1 ms bei 320 000 Zeilen); der Erstattungsindex ist entbehrlich | **Migration 0055** (klein, mit `EXPLAIN`-Beleg; die Nachlieferung 009 M3 nimmt 0054), serielle Nummer beim Bau noch einmal abstimmen |
 | 123 Seeds und `tests/cleanup.ts` | `cleanup.ts` räumt seit M5-5 auch Belege; Seeds (`scripts/seed-*.mts`) für Turnierzahlungszeilen nicht belegt | Beleg, ggf. kleine Änderung |
 
 ### 19.8 Fragen und Entscheide (Stand 2026-11-22)
