@@ -3,7 +3,7 @@
 //
 // Beweisprotokoll: kein App-Aufruf einer Beweisfunktion in dieser Transaktion (Zaehlersperre vor dem COMMIT waere ein Deadlock-Muster). Der Eintrag entsteht durch den DEFERRABLE-Trigger auf
 // tournaments (Nachlieferung 009 M3, Migration 0054, Variante T): UPDATE venue_confirmed_at NULL -> Wert. DIESE Datei setzt nur die Spalten.
-// STAND: UNGETESTET GEGEN DIE DATENBANK, und venue_confirmed_by gibt es erst mit 0054 (TODO(0054): in confirmTournamentVenue und resetVenueConfirmation mit setzen/leeren).
+// venue_confirmed_by (0054) wird mit der Zusage gesetzt und bei den Resets geleert.
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, paymentCharges } from "@/db/schema";
@@ -61,8 +61,8 @@ export async function confirmTournamentVenue(userId: string, tournamentId: strin
     const now = opts.now ?? (await dbNow(tx));
     const due = await chargeDueAt(tx, t);
     if (due && now.getTime() >= due.getTime()) throw new DomainError("Die Frist ist vorbei. Das Turnier wird nicht mehr zugesagt.");
-    // EINE Anweisung; die Bedingung "is null" macht es zum Compare-and-set (der Trigger feuert nur beim Uebergang NULL -> Wert). TODO(0054): venueConfirmedBy: userId in dieselbe Anweisung.
-    const updated = await tx.update(tournaments).set({ venueConfirmedAt: sql`now()` }).where(and(eq(tournaments.id, t.id), isNull(tournaments.venueConfirmedAt))).returning({ id: tournaments.id });
+    // EINE Anweisung; die Bedingung "is null" macht es zum Compare-and-set (der Trigger feuert nur beim Uebergang NULL -> Wert). venue_confirmed_by (Akteur, 0054) steht in derselben Anweisung.
+    const updated = await tx.update(tournaments).set({ venueConfirmedAt: sql`now()`, venueConfirmedBy: userId }).where(and(eq(tournaments.id, t.id), isNull(tournaments.venueConfirmedAt))).returning({ id: tournaments.id });
     if (updated.length === 0) return { confirmed: false };
     await audit(userId, "tournament.venue_confirm", "tournament", t.id, { after: { venueId: t.venueId } }, tx);
     // Die Mitteilung laeuft in einem Savepoint (wie der Webhook-Alarm): ein Fehler dort darf die Zusage nicht kippen
