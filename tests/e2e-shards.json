@@ -33,6 +33,7 @@
       "admin.spec.ts",
       "board.spec.ts",
       "community.spec.ts",
+      "halle-turnier.spec.ts",
       "halle.spec.ts",
       "karte-uebernahme-a11y.spec.ts",
       "karte-uebernahme.spec.ts",
