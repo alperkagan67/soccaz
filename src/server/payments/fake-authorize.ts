@@ -41,6 +41,7 @@ export async function fakeAuthorizeTournamentCore(userId: string, tournamentId: 
     .select({ owner: paymentCharges.userId, pi: paymentCharges.paymentIntentId, amount: paymentCharges.amountCents, status: paymentCharges.status, code: paymentCharges.failureCode })
     .from(paymentCharges)
     .where(and(eq(paymentCharges.tournamentId, tournamentId), sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${userId}`, eq(paymentCharges.status, "requires_action")))
+    .orderBy(paymentCharges.createdAt, paymentCharges.id) // eindeutig: bei mehreren offenen Zeilen (eigene + uebernommene) zuerst die aelteste
     .limit(1);
   const [profile] = await db.select({ customer: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
   if (!row || row.status !== "requires_action" || row.code !== "authentication_required" || !row.pi || !profile) return { error: NONE };

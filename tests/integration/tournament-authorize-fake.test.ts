@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, like } from "drizzle-orm";
 import { db } from "@/db";
 import { paymentCharges, paymentProfiles, stripeEvents } from "@/db/schema";
@@ -8,7 +8,12 @@ import { FakeProvider } from "@/server/payments/fake";
 import { fakeAuthorizeTournamentCore } from "@/server/payments/fake-authorize";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { setSetting } from "@/server/settings";
+import { fakeAuthorizeTournamentAction } from "@/server/payments/fake-card-actions";
 import { cleanup, makeUser } from "./helpers";
+
+// Die Sitzung und der Next-Cache gibt es im Test nicht: die Aktion darf sie in den Sperr-Faellen NIE erreichen (der Mock der Sitzung wirft, wenn sie doch gerufen wird).
+vi.mock("@/server/session", () => ({ requireUser: async () => { throw new Error("SITZUNG-GERUFEN"); } }));
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 // 012-Rest PR B (Backlog 143): Fake-3-D-Secure fuer Turnierzeilen. Fixtures per DB (Turnier in payment, Zeile requires_action mit PaymentIntent und Profil); die Zahlung laeuft durch den echten Webhook.
 let provider: FakeProvider;
@@ -110,5 +115,40 @@ describe("Fake-Freigabe fuer Turnierzeilen", () => {
     expect(r.error).toBeDefined();
     expect(r.error).not.toMatch(NONE); // "Nicht verfügbar."
     expect(await rowOf((await db.select().from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)))[0].id)).toMatchObject({ status: "requires_action" });
+  });
+});
+
+describe("Mehrere offene Zeilen eines Zahlers (eigene + uebernommene), Reihenfolge", () => {
+  it("Zahler mit zwei requires_action-Zeilen: beide nacheinander freigebbar, zuerst die aelteste", async () => {
+    const { payer, row, t } = await fixture();
+    const owner2 = await makeUser("pl2");
+    const [row2] = await db
+      .insert(paymentCharges)
+      .values({ tournamentId: t.id, userId: owner2.id, payerUserId: payer.id, amountCents: 1000, idempotencyKey: nid("c"), status: "requires_action", failureCode: "authentication_required", paymentIntentId: nid("pi_fake3ds"), graceUntil: new Date(Date.now() + 3_600_000), createdAt: new Date(row.createdAt.getTime() - 60_000) }) // physisch SPAETER eingefuegt, aber AELTER
+      .returning();
+    expect(await fakeAuthorizeTournamentCore(payer.id, t.id, "ok")).toEqual({});
+    expect((await rowOf(row2.id)).status).toBe("succeeded"); // die aeltere zuerst (ORDER BY created_at, id), nicht die zuerst eingefuegte
+    expect((await rowOf(row.id)).status).toBe("requires_action");
+    expect(await fakeAuthorizeTournamentCore(payer.id, t.id, "ok")).toEqual({});
+    expect((await rowOf(row.id)).status).toBe("succeeded");
+    expect(await fakeAuthorizeTournamentCore(payer.id, t.id, "ok")).toEqual({ error: expect.stringMatching(NONE) }); // nichts mehr offen
+  });
+});
+
+describe("Aktion: Sperren im Verhalten (NODE_ENV=production), ohne Sitzung und Server", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  it("PAYMENTS_FAKE=1 in Produktion: die Aktion wirft vor jeder Sitzung und jedem Kern", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("PAYMENTS_FAKE", "1");
+    await expect(fakeAuthorizeTournamentAction("00000000-0000-4000-8000-000000000000", "ok")).rejects.toThrow(/Produktion verboten/);
+  });
+  it("Produktion ohne PAYMENTS_FAKE: 'Nicht verfuegbar', kein Kern, keine Aenderung", async () => {
+    const { payer, row, t } = await fixture();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("PAYMENTS_FAKE", "");
+    expect(await fakeAuthorizeTournamentAction(t.id, "ok")).toEqual({ error: "Nicht verfügbar." });
+    vi.unstubAllEnvs();
+    expect((await rowOf(row.id)).status).toBe("requires_action");
+    expect(payer.id).toBeDefined();
   });
 });

@@ -55,7 +55,21 @@ test("Freigabe im Turnier: Knopf fuer den Zahler, Klick => Webhook => bezahlt; D
   const w = await setup(page, "tf1");
   const url = `/turniere/${w.tid}`;
 
-  // Dritte: Mitspieler-Konto ohne eigene Zeile und Gast sehen den Abschnitt nicht
+  // Dritte: ein EINGELOGGTER Mitspieler ohne eigene Zeile (gleiches Team) und ein Gast sehen den Abschnitt nicht
+  const matePage = await (await browser.newContext()).newPage();
+  await newUser(matePage, "tf1m");
+  const mateId = (await query<{ id: string }>("select id from users where email = $1", [`tf1m-${run}@test.local`]))[0].id;
+  const teamId = (await query<{ team_id: string }>("select team_id from tournament_players where tournament_id = $1 limit 1", [w.tid]))[0].team_id;
+  await query("insert into team_members (team_id, user_id, role) values ($1, $2, 'player') on conflict do nothing", [teamId, mateId]);
+  await query("insert into tournament_players (tournament_id, team_id, user_id) values ($1, $2, $3)", [w.tid, teamId, mateId]);
+  await matePage.goto(url);
+  await expect(matePage.getByTestId("tournament-card")).toBeVisible({ timeout: 60_000 }); // Positivkontrolle: der Mitspieler sieht seine Karten-Karte
+  await expect(matePage.getByTestId("tournament-authorize")).toHaveCount(0);
+  const mate = await bodies(matePage, url);
+  for (const body of [mate.html, mate.rsc]) {
+    expect(body).not.toContain(PI_PREFIX);
+    expect(body).not.toMatch(/client_secret|clientSecret/i);
+  }
   const guest = await (await browser.newContext()).newPage();
   const g = await bodies(guest, url);
   for (const body of [g.html, g.rsc]) {
