@@ -11,6 +11,7 @@ import { paymentChargeAttempts, paymentCharges, paymentProfiles } from "@/db/sch
 import { ledgerEntries } from "@/db/schema-finance";
 import { tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { audit } from "../audit";
+import { noteIgnoredCharge } from "./unmatched";
 import { DomainError } from "../teams";
 import type { Tx } from "../tx";
 import { dueWithGrace, fixDeadline, hasLongLead } from "@/lib/deadlines";
@@ -259,7 +260,7 @@ const cleanCode = (c: string | null) => (typeof c === "string" && /^[a-z0-9_.-]{
  */
 export async function applyTournamentCharge(tx: Tx, r: ChargeReport): Promise<ApplyResult> {
   const ignore = async (reason: string): Promise<ApplyResult> => {
-    await audit(null, "charge.ignored", "payment_intent", r.paymentIntentId, { after: { reason } }, tx);
+    await noteIgnoredCharge(tx, r, reason); // Audit mit Ergebnis; erfolgreiche Zahlung ohne Zuordnung: sofortiger Alarm an Admin 1 (Backlog 118)
     return { status: "ignored", reason };
   };
   const byPi = async (lock: boolean) => {
