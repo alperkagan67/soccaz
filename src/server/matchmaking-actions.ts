@@ -155,7 +155,7 @@ export async function answerHallAction(matchId: string, venueId: string, accept:
 export async function declineHallAction(matchId: string, venueId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const user = await requireUser("/halle");
   const plan = planDecline({ code: String(formData.get("reasonCode") ?? ""), text: String(formData.get("reason") ?? "") });
-  if (plan.kind === "invalid") return { error: Object.values(plan.fieldErrors)[0], fieldErrors: plan.fieldErrors };
+  if (plan.kind === "invalid") return { fieldErrors: plan.fieldErrors }; // nur am Feld: `Form` zeigt dazu den Hinweis "Bitte prüfe die Felder"; ein zweiter allgemeiner Alarm mit demselben Text würde doppelt vorgelesen
   if (plan.kind === "not-wired") return { error: plan.error };
   // Anbindung (M2a-2): reason/reason_code/Runde an answerHallRequest übergeben, Fristgrenze und late behandeln. Bis dahin unerreichbar.
   const result = await guarded(() => answerHallRequest(user.id, matchId, venueId, false));

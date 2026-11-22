@@ -32,6 +32,7 @@ describe("declineHallAction ohne Anbindung (Zwischenstand 011 M2b)", () => {
     const { declineHallAction } = await import("@/server/matchmaking-actions");
     const r = await declineHallAction("m1", "v1", undefined, form("", ""));
     expect(r?.fieldErrors?.reasonCode).toBeTruthy();
+    expect(r?.error).toBeUndefined(); // kein zweiter allgemeiner Alarm neben dem Feldfehler
     expect(answerHallRequest).not.toHaveBeenCalled();
   });
 });

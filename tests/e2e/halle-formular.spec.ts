@@ -151,7 +151,8 @@ test("Struktur (a11y): eine h1, je Karte eine h2, Gruppe mit Namen, Radios und T
 
   // Fehler: Meldung als Alarm, der erste Radioknopf verweist per aria-describedby auf sie
   await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
-  await expect(inquiry.getByRole("alert").filter({ hasText: "Bitte wähle einen Grund." })).toBeVisible();
+  await expect(inquiry.getByTestId("error-reasonCode")).toBeVisible();
+  await expect(inquiry.getByRole("alert").filter({ hasText: "Bitte wähle einen Grund." })).toHaveCount(1); // genau ein Alarm, kein doppelt vorgelesener zweiter
   const describedBy = await inquiry.getByRole("radio", { name: "Belegt" }).getAttribute("aria-describedby");
   expect(describedBy).toBeTruthy();
   expect(await boss.locator(`#${describedBy}`).innerText()).toContain("Bitte wähle einen Grund.");
