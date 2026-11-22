@@ -13,6 +13,20 @@ const eslintConfig = defineConfig([
     plugins: { soccaz },
     rules: { "soccaz/min-font-size": "error" },
   },
+  // Beweisprotokoll (009 M3, Plan 14.7): recordEvidence nur in Tests. Produktiv schreiben DEFERRABLE-Trigger beim COMMIT; ein App-Aufruf mitten in der Transaktion braechte den Deadlock-Zyklus zurueck.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/server/evidence-write.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { patterns: [{ group: ["**/evidence-write", "**/evidence-write.ts"], message: "recordEvidence ist nur fuer Tests (Plan 009 M3, 14.7); die Eintraege entstehen per DB-Trigger." }] }],
+      // dynamische Imports und require() erfassen (no-restricted-imports sieht nur statische Importe)
+      "no-restricted-syntax": [
+        "error",
+        { selector: "ImportExpression[source.value=/evidence-write/]", message: "recordEvidence ist nur fuer Tests (Plan 009 M3, 14.7)." },
+        { selector: "CallExpression[callee.name='require'][arguments.0.value=/evidence-write/]", message: "recordEvidence ist nur fuer Tests (Plan 009 M3, 14.7)." },
+      ],
+    },
+  },
   // Altbestand: LiveBadge hat text-[11px]. Darstellung bleibt in M2-1 unverändert; Umstellung auf text-xs in M2b/M3.
   {
     files: ["src/app/turniere/[[]id]/LiveBadge.tsx"],

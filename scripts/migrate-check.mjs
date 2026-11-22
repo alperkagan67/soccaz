@@ -43,6 +43,48 @@ async function structure(pool) {
   check(chk.rowCount === 1, "CHECK users_owner_is_admin");
 }
 
+/** Beweisprotokoll (009 M3a): Tabellen, Zaehlerzeile, Trigger, Hash-Funktion, CHECK der Arten (das Verhalten der Kette prueft tests/integration/beweisprotokoll.test.ts). */
+async function evidenceStructure(pool) {
+  if ((await pool.query("select 1 from information_schema.tables where table_name = 'booking_evidence'")).rowCount === 0) return; // Migration von 009 M3a nicht vorhanden
+  check((await pool.query("select 1 from booking_evidence_counter where id = 1 and last_seq = 0")).rowCount === 1, "Beweisprotokoll: Zaehlerzeile (id 1) vorhanden");
+  for (const tg of ["booking_evidence_before_insert", "booking_evidence_append_only", "booking_evidence_counter_guard", "booking_evidence_no_truncate", "booking_evidence_counter_no_truncate"]) {
+    check((await pool.query("select 1 from pg_trigger where tgname = $1", [tg])).rowCount === 1, "Beweisprotokoll: Trigger " + tg);
+  }
+  check((await pool.query("select 1 from pg_proc where proname = 'evidence_hash'")).rowCount === 1, "Beweisprotokoll: Funktion evidence_hash");
+  check((await pool.query("select 1 from pg_constraint where conname = 'booking_evidence_kind_check'")).rowCount === 1, "Beweisprotokoll: CHECK der Arten");
+  // DEFERRABLE-Haken (Plan 009 M3 v4/v5): je Tabelle ein Constraint-Trigger fuer INSERT und UPDATE, aufgeschoben bis zum COMMIT
+  for (const [tg, table] of [
+    ["match_hall_requests_evidence_ins", "match_hall_requests"],
+    ["match_hall_requests_evidence_upd", "match_hall_requests"],
+    ["booking_jobs_evidence_ins", "booking_jobs"],
+    ["booking_jobs_evidence_upd", "booking_jobs"],
+  ]) {
+    const r = await pool.query(
+      "select t.tgdeferrable, t.tginitdeferred, t.tgconstraint <> 0 as is_constraint, t.tgqual is not null as has_when from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = $1 and c.relname = $2",
+      [tg, table],
+    );
+    const row = r.rows[0];
+    check(Boolean(row) && row.tgdeferrable && row.tginitdeferred && row.is_constraint, "Beweisprotokoll: Constraint-Trigger " + tg + " (DEFERRABLE INITIALLY DEFERRED)");
+    if (tg.endsWith("_upd")) check(Boolean(row) && row.has_when, "Beweisprotokoll: " + tg + " feuert nur bei geaendertem Status (WHEN)");
+  }
+  for (const [tg, table] of [["matches_forbid_delete_with_evidence", "matches"]]) { // KEIN Guard auf venues (Plan 15.9)
+    check((await pool.query("select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = $1 and c.relname = $2", [tg, table])).rowCount === 1, "Beweisprotokoll: Guard " + tg);
+  }
+  for (const fn of ["evidence_write", "evidence_hall_event", "evidence_job_event", "evidence_reconcile", "forbid_delete_with_evidence", "forbid_evidence_truncate"]) {
+    check((await pool.query("select 1 from pg_proc where proname = $1", [fn])).rowCount === 1, "Beweisprotokoll: Funktion " + fn);
+  }
+  for (const ix of ["booking_evidence_venue_idx", "booking_evidence_job_idx", "booking_evidence_match_idx", "booking_evidence_seq_idx", "booking_evidence_request_idx"]) {
+    check((await pool.query("select 1 from pg_indexes where indexname = $1", [ix])).rowCount === 1, "Beweisprotokoll: Index " + ix);
+  }
+  // KEINE Fremdschluessel an booking_evidence und evidence_actor.user_id (Deadlock-Zyklus mit der COMMIT-Zaehlersperre, Plan 14.1); evidence_actor.evidence_id -> booking_evidence bleibt
+  const fks = await pool.query(
+    "select c.conrelid::regclass::text as tbl, a.attname from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any(c.conkey) where c.contype = 'f' and c.conrelid::regclass::text in ('booking_evidence', 'evidence_actor')",
+  );
+  const fkList = fks.rows.map((r) => r.tbl + "." + r.attname).sort();
+  check(JSON.stringify(fkList) === JSON.stringify(["evidence_actor.evidence_id"]), "Beweisprotokoll: keine Fremdschluessel ausser evidence_actor.evidence_id (gefunden: " + fkList.join(", ") + ")");
+  check((await pool.query("select 1 from information_schema.columns where table_name = 'booking_evidence' and column_name = 'tx_id'")).rowCount === 1, "Beweisprotokoll: Spalte tx_id");
+}
+
 async function commissionStructure(pool, withOldMatch) {
   const col = await pool.query("select column_default from information_schema.columns where table_name = 'matches' and column_name = 'ledger_model'");
   if (col.rowCount === 0) return; // Migration von 009 M2 nicht vorhanden
@@ -97,17 +139,19 @@ try {
   check((await fresh.query("select count(*)::int as n from audit_log")).rows[0].n === 0, "frische Datenbank: kein Protokolleintrag durch Migrationen");
   await secondOwnerRejected(fresh);
   await commissionStructure(fresh, false);
+  await evidenceStructure(fresh);
   await fresh.end();
 
-  // VORLÄUFIG ("letzte zwei" ist fest verdrahtet): die robuste Marke (erste Migration mit ledger_model, alle späteren danach) kommt mit 009 M3a.
-  // 2. BESTEHEND: ohne die letzten ZWEI Migrationen (009 M2: Buchungsmodell, 011 M1: venue_access) anlegen, Daten einfügen, dann beide nachziehen
-  console.log("== BESTEHEND (Stand ohne die letzten zwei Migrationen, mit Daten, dann diese)");
+  // 2. BESTEHEND: Stand vor der 009-M2-Migration (feste Marke: die erste Migration mit ledger_model, nicht "die letzte") anlegen, Daten einfügen, dann ALLE weiteren nachziehen
+  console.log("== BESTEHEND (Stand vor der Migration von 009 M2 (ledger_model), mit Daten, dann alle weiteren Migrationen)");
   const tmp = mkdtempSync(path.join(tmpdir(), "migcheck-"));
   cpSync("./drizzle", tmp, { recursive: true });
   const journalPath = path.join(tmp, "meta", "_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf8"));
   const full = journal.entries.length;
-  journal.entries = journal.entries.slice(0, full - 2);
+  // Schnitt: vor der Migration von 009 M2 (ledger_model), damit der Test "bestehendes Spiel bleibt legacy" sie wirklich auf ein Altspiel anwendet; spaetere Migrationen (z. B. 009 M3a) laufen danach mit
+  const m2 = journal.entries.findIndex((e) => /ledger_model/.test(readFileSync(path.join(tmp, e.tag + ".sql"), "utf8")));
+  journal.entries = journal.entries.slice(0, m2 >= 0 ? m2 : full - 1);
   writeFileSync(journalPath, JSON.stringify(journal));
   const existing = new pg.Pool({ connectionString: urlFor(names[1]), max: 2 });
   await migrate(drizzle(existing), { migrationsFolder: tmp });
@@ -143,6 +187,7 @@ try {
   }
   await secondOwnerRejected(existing);
   await commissionStructure(existing, true);
+  await evidenceStructure(existing);
   await existing.end();
 } finally {
   for (const name of names) await admin.query(`drop database if exists "${name}" with (force)`).catch(() => {});

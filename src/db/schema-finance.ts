@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -312,3 +313,69 @@ export const pendingRefunds = pgTable(
   },
   (t) => [primaryKey({ columns: [t.matchId, t.userId] })],
 );
+
+// ---------------------------------------------------------------------------------------------
+// Beweisprotokoll (Vertrag 009 M3, Plan docs/design/009-m3-plan.md)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Beweisprotokoll der Hallenanfragen und Buchungsaufträge. NUR ANHÄNGEN (Trigger forbid_append_only_mutation, Wartungsausnahme socaz.ledger_maintenance).
+ * seq, prev_hash, hash und at setzt der INSERT-Trigger aus dem Zählerstand (booking_evidence_counter): die Anwendung kann keinen dieser Werte vorgeben.
+ * Im Hash steht kein Personenbezug (nur actor_commitment); Name und E-Mail des Betreibers liegen getrennt in evidence_actor.
+ */
+export const bookingEvidence = pgTable(
+  "booking_evidence",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    seq: integer("seq").notNull().default(0),
+    // KEINE Fremdschluessel (Plan 14.1): ein INSERT mit FK nimmt FOR KEY SHARE auf matches/venues; die DEFERRABLE-Trigger schreiben beim COMMIT unter der Zaehlersperre, das ergaebe einen Deadlock-Zyklus.
+    // Ersatz fuer RESTRICT: BEFORE-DELETE-Guard-Trigger auf matches/venues (Migration); Verwaiste meldet verifyEvidenceChain/Tagesjob.
+    matchId: uuid("match_id").notNull(),
+    venueId: uuid("venue_id"),
+    round: integer("round").notNull().default(0),
+    jobId: uuid("job_id"),
+    kind: text("kind").notNull(),
+    reason: text("reason"),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    actorCommitment: text("actor_commitment").notNull().default(""),
+    prevHash: text("prev_hash").notNull().default(""),
+    hash: text("hash").notNull().default(""),
+    txId: bigint("tx_id", { mode: "number" }).notNull().default(sql`txid_current()`), // Transaktionsnummer: Eintraege einer Hallenpruefung gehoeren zur selben Runde (Plan 14.4); nicht im Hash
+    matchPrevHash: text("match_prev_hash"), // Variante Z (Kette je Spiel): nur als Spalte angelegt, nicht ausgewertet (Entscheid t9)
+  },
+  (t) => [
+    uniqueIndex("booking_evidence_seq_idx").on(t.seq),
+    uniqueIndex("booking_evidence_request_idx").on(t.matchId, t.venueId, t.round, t.kind).where(sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired')`),
+    index("booking_evidence_match_idx").on(t.matchId, t.seq),
+    index("booking_evidence_venue_idx").on(t.venueId), // Guard auf venues, Abgleich, Verwaisten-Pruefung (sonst Seq-Scans)
+    index("booking_evidence_job_idx").on(t.jobId), // Abgleich der Auftraege
+    check(
+      "booking_evidence_kind_check",
+      sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done')`,
+    ),
+    check("booking_evidence_reason_len", sql`${t.reason} is null or char_length(${t.reason}) <= 300`),
+  ],
+);
+
+/** Eine Zeile (id = 1): letzter Stand der Kette. Der INSERT-Trigger sperrt sie, zählt hoch und schreibt den neuen Kopf-Hash. */
+export const bookingEvidenceCounter = pgTable(
+  "booking_evidence_counter",
+  {
+    id: integer("id").primaryKey().default(1),
+    lastSeq: integer("last_seq").notNull().default(0),
+    lastHash: text("last_hash").notNull().default(""),
+  },
+  (t) => [check("booking_evidence_counter_single", sql`${t.id} = 1`)],
+);
+
+/**
+ * Personenfelder zum Protokolleintrag (Betreiber, der geantwortet hat; Plan 011 P2), AUSSERHALB des Hashes. Das Salz je Zeile liegt hier: Löschen/Anonymisieren der Zeile löst den
+ * Bezug endgültig, die Kette bleibt gültig (im Hash steht nur actor_commitment = sha256(salt || user_id)). Entwurf, Frage R3 (Anwalt).
+ */
+export const evidenceActor = pgTable("evidence_actor", {
+  evidenceId: uuid("evidence_id").primaryKey().references(() => bookingEvidence.id, { onDelete: "cascade" }),
+  userId: uuid("user_id"), // KEIN Fremdschluessel (Plan 14.1: users wird oft FOR UPDATE gesperrt); die Kontoloeschung leert user_id, name, email
+  name: text("name"),
+  email: text("email"),
+  salt: text("salt").notNull(),
+});

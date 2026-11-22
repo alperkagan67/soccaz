@@ -2,7 +2,7 @@ import { and, eq, gt, inArray, or, sql } from "drizzle-orm";
 import { revokeAccessOfUser } from "./venue-access";
 import { db } from "@/db";
 import { matchParticipants, matches, notifications, paymentCharges, paymentDisputes, paymentErasureTasks, paymentProfiles, paymentRefunds, paymentSetupIntents, teamMembers, teams, users } from "@/db/schema";
-import { ledgerEntries, payments, receipts } from "@/db/schema-finance";
+import { evidenceActor, ledgerEntries, payments, receipts } from "@/db/schema-finance";
 import { tournamentPlayers } from "@/db/schema-league";
 import { comments, media } from "@/db/schema-content";
 import { mvpVotes, playerStats, userBadges, userReliability } from "@/db/schema-community";
@@ -211,6 +211,10 @@ export async function deleteAccount(userId: string) {
     }
     await tx.delete(paymentSetupIntents).where(eq(paymentSetupIntents.userId, userId));
     await tx.delete(paymentProfiles).where(eq(paymentProfiles.userId, userId));
+
+    // Beweisprotokoll (009 M3, Plan 14.1): Personenfelder des Kontos loesen (Zeile und Hash bleiben, die Kette bleibt gueltig). evidence_actor hat KEINEN Fremdschluessel auf users
+    // (users wird oft FOR UPDATE gesperrt, ein FK braechte den Deadlock-Zyklus mit der COMMIT-Zaehlersperre); darum loescht diese Regel user_id, name und email ausdruecklich.
+    await tx.update(evidenceActor).set({ userId: null, name: null, email: null }).where(eq(evidenceActor.userId, userId));
 
     const mine = await tx.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.userId, userId));
     for (const m of mine.filter((x) => x.role === "admin")) {

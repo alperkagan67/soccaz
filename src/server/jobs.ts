@@ -8,6 +8,7 @@ import { runMatchmaker } from "./matchmaking";
 import { expireScheduling } from "./scheduling";
 import { advanceVetos } from "./veto";
 import { expireVenueInvites } from "./venue-access";
+import { runEvidenceHead } from "./evidence-head";
 import { runCardCharges } from "./payments/charge-trigger";
 import { runRefunds } from "./payments/refund";
 import { cancelUnderfilledLobbies, cleanup, expireOldRequests, expireStalePayments, notifyFinanceAlerts, sendMatchReminders, sendResultReminders, settleDueMatches } from "./scheduled";
@@ -35,6 +36,7 @@ export const JOBS: Record<string, () => Promise<unknown>> = {
   "expire-scheduling": () => expireScheduling(),
   "advance-vetos": () => advanceVetos(),
   "expire-venue-invites": () => expireVenueInvites(),
+  "evidence-head": () => runEvidenceHead(),
 };
 
 /** Zeitplan (Cron, UTC). Läuft über pg-boss, siehe instrumentation.ts. */
@@ -60,6 +62,7 @@ export const SCHEDULE: Record<string, string> = {
   "close-city-challenge": "30 5 1 * *", // am 1. jedes Monats den Vormonat festschreiben
   "invoice-month": "0 3 1 * *", // am 1. jedes Monats die Rechnungen über die Provision des Vormonats (Vertrag 009 M2)
   "deliver-invoices": "*/10 * * * *",
+  "evidence-head": "40 3 * * *", // taeglich: Kopf-Hash und Anzahl der Beweiskette ausgeben, Kette/Verwaiste/fehlende Eintraege pruefen (Vertrag 009 M3)
 };
 
 export async function runJob(name: string): Promise<unknown> {
