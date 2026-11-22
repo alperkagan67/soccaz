@@ -22,7 +22,7 @@ import { notifyUsers } from "../notifications";
 import { issueReceipt } from "../receipts";
 import { lockTournament, maybeGenerateBracket, tournamentPayOpenAt } from "../tournaments";
 import { seatsOf, tournamentCardMode } from "../tournament-card";
-import { hallZusageOk } from "../tournament-venue";
+import { hallZusageOkLive } from "../tournament-venue";
 import { validCoversOf } from "./cover";
 import { cardPaymentsEnabled } from "../settings";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
@@ -57,7 +57,7 @@ export async function tournamentChargeEligibility(tx: Tx, t: T, now: Date, requi
   if (!(await tournamentCardMode(tx, t.id))) return none("not_card_mode");
   if (!t.venueId) return none("no_venue");
   if (t.venueAccessRequiredSnapshot === null) return none("not_fixed"); // fail-closed: der Zugangs-Snapshot muss beim Fixieren eingefroren sein (M5-7)
-  if (!hallZusageOk(t)) return none("no_zusage");
+  if (!(await hallZusageOkLive(tx, t))) return none("no_zusage"); // Zugang JETZT aktiv und keine Zusage: nicht abbuchbar, auch bei Snapshot false (Plan 19.14)
   if (t.finalShareCents === null) return none("not_fixed");
   const amount = tournamentChargeAmount(t.finalShareCents);
   if (amount === null) return none("free");

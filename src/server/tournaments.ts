@@ -20,7 +20,7 @@ import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
 import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
-import { assertVenueFixable, freezeVenueTerms, hallZusageOk, isPartnerVenue, venueRejectionText } from "./tournament-venue";
+import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled } from "./settings";
 
@@ -92,7 +92,7 @@ export async function createTournament(userId: string, input: TournamentInput) {
   let venueId: string | null = null;
   let venueLabel: string | null = null;
   if (input.venueId) {
-    if (!(await isPartnerVenue(db, input.venueId))) throw new DomainError(await venueRejectionText(db, input.venueId));
+    if (!(await isPartnerVenue(db, input.venueId))) throw new DomainError("Bitte wähle eine Partnerhalle.");
     venueId = input.venueId;
     const [v] = await db.select({ name: venues.name, address: venues.address }).from(venues).where(eq(venues.id, venueId));
     venueLabel = [v?.name, v?.address].filter(Boolean).join(", ") || null;
@@ -354,7 +354,6 @@ async function maybeFixPrice(tx: Tx, t: T) {
   // Kartenmodell: ohne Partnerhalle wird der Preis nicht fixiert (die Abbuchung geht an die Halle, Provision und Zusage haengen an ihr)
   const cardMode = await tournamentCardMode(tx, t.id);
   if (cardMode && !fresh.venueId) throw new DomainError("Für dieses Turnier ist noch keine Partnerhalle gewählt. Der Veranstalter muss zuerst eine Halle wählen.");
-  if (cardMode && fresh.venueId) await assertVenueFixable(tx, fresh.venueId); // M5-7a: Halle mit Zugang und ohne Online-Zusage (M5-7b) wird nicht fixiert, vor jeder Aenderung
   await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
   if (cardMode && fresh.venueId) {
     const frozen = await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
@@ -809,7 +808,7 @@ async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
     return paid.length === 0;
   }
   if (row) return true;
-  if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !hallZusageOk(t)) return false;
+  if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !(await hallZusageOkLive(tx, t))) return false;
   const entries = await tx.select({ ready: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
   if (!(entries.length === t.maxTeams && entries.every((e) => e.ready !== null))) return false;
   // M5-5 (haengt ohne Zeilen): fehlen zur Frist Karten (z. B. nach "Bereit" entfernt), ist das Turnier NICHT abbuchbar und faellt aus (nichts abgebucht), statt still zu haengen

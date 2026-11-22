@@ -1,6 +1,5 @@
 // Turnier und Halle (Vertrag 012, M5-1): Partnerhalle (Pflicht im Kartenmodell), Zusage der Halle (Schnittstelle mit Attrappe) und der Provisions-Snapshot.
-// M5-7a: Zugang und Provisionssatz kommen jetzt aus den echten Quellen (011 M1: venue-access-rules.ts, 009 M2: venues.commission_percent). Die Zusage der Halle fuer Turniere (M5-7b) fehlt noch:
-// bis dahin sind im Kartenmodell nur Hallen OHNE Betreiber-Zugang waehlbar, und das Fixieren wird bei einer Halle mit Zugang verweigert (assertVenueFixable).
+// M5-7a/b: Zugang und Provisionssatz kommen aus den echten Quellen (011 M1: venue-access-rules.ts, 009 M2: venues.commission_percent); die Zusage der Halle fuer Turniere steht in tournament-confirm.ts.
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { venues } from "@/db/schema-finance";
@@ -24,6 +23,15 @@ export function hallZusageOk(t: { venueAccessRequiredSnapshot: boolean | null; v
   return t.venueAccessRequiredSnapshot !== true || t.venueConfirmedAt !== null;
 }
 
+/**
+ * Ist die Zusage erfuellt, geprueft mit dem Zugang JETZT (Entscheid t2q zur Luecke "Zugang nach dem Fixieren", Plan 19.14): wer jetzt einen aktiven Zugang hat, braucht die Zusage, auch wenn der
+ * Snapshot beim Fixieren "false" war. Der Snapshot bleibt maßgeblich, wenn er true ist (Entzug aendert nichts). NULL-Snapshot bleibt fail-closed (hallZusageOk).
+ */
+export async function hallZusageOkLive(exec: Pick<Tx, "select">, t: { venueId: string | null; venueAccessRequiredSnapshot: boolean | null; venueConfirmedAt: Date | null }): Promise<boolean> {
+  const accessNow = t.venueId ? await venueHasActiveAccess(t.venueId, exec) : false;
+  return hallZusageOk({ venueAccessRequiredSnapshot: t.venueAccessRequiredSnapshot === null ? null : t.venueAccessRequiredSnapshot || accessNow, venueConfirmedAt: t.venueConfirmedAt });
+}
+
 /** Hat die Halle einen aktiven Betreiber-Zugang (011 M1)? Einzige Quelle: venue-access-rules.ts (aktiv, Konto nicht gesperrt, kein Admin). */
 export async function venueHasAccess(venueId: string, exec: Pick<Tx, "select"> = db): Promise<boolean> {
   return venueHasActiveAccess(venueId, exec);
@@ -41,60 +49,26 @@ export async function venueCommissionPercent(venueId: string, exec: Pick<Tx, "se
   return p;
 }
 
-const NO_ACCESS_YET_TEXT = "Diese Halle hat inzwischen einen Betreiber-Zugang; die Online-Zusage für Turniere folgt. Bitte wähle eine andere Halle.";
-
-/** Hinweis an den Veranstalter, solange die Online-Zusage fuer Turniere (M5-7b) fehlt. */
-export const NO_ONLINE_CONFIRM_HINT = "Halle noch ohne Online-Zusage";
-
 /**
- * Auswahlliste fuer die Partnerhalle: nur bei eingeschaltetem Kartenmodell (null = Schalter AUS, das Formular bleibt unveraendert), sonst alle aktiven Partnerhallen. Hallen MIT Betreiber-Zugang sind bis
- * M5-7b nicht waehlbar (unavailable), aber sichtbar mit dem Hinweis statt stillem Fehlen (Entscheid t2q P-M57-2). Die waehlbaren Eintraege sind genau die, die isPartnerVenue annimmt (Test).
+ * Auswahlliste fuer die Partnerhalle: nur bei eingeschaltetem Kartenmodell (null = Schalter AUS, das Formular bleibt unveraendert), sonst alle aktiven Partnerhallen. Seit M5-7b auch Hallen MIT
+ * Betreiber-Zugang (die Zusage der Halle gibt es jetzt; die 7a-Sperre ist aufgehoben). Die Eintraege sind genau die, die isPartnerVenue annimmt (Test).
  */
-export async function listPartnerVenueOptions(): Promise<{ id: string; label: string; unavailable: boolean }[] | null> {
+export async function listPartnerVenueOptions(): Promise<{ id: string; label: string }[] | null> {
   if (!(await cardPaymentsEnabled())) return null;
   const rows = await db.select({ id: venues.id, name: venues.name, city: venues.city }).from(venues).where(and(eq(venues.active, true), eq(venues.isPartner, true))).orderBy(venues.city, venues.name);
-  const withAccess = await venueIdsWithActiveAccess(); // eine Abfrage statt einer je Halle
-  return rows.map((v) => ({ id: v.id, label: [v.name, v.city].join(", "), unavailable: withAccess.has(v.id) }));
+  return rows.map((v) => ({ id: v.id, label: [v.name, v.city].join(", ") }));
 }
 
-/**
- * Ist die Halle eine aktive Partnerhalle, die fuer ein Turnier gewaehlt werden darf? Im Kartenmodell zusaetzlich: OHNE aktiven Betreiber-Zugang (bis M5-7b gibt es keine Zusage; Entscheid t2q P-M57-2).
- * Bei ausgeschaltetem Kartenmodell gilt nur die Partnerhalle (das Turnier laeuft im alten Modell, die Zusage spielt keine Rolle).
- */
+/** Ist die Halle eine aktive Partnerhalle? Nur solche duerfen fuer ein Turnier gewaehlt werden (mit oder ohne Betreiber-Zugang; mit Zugang braucht das Turnier die Zusage der Halle, M5-7b). */
 export async function isPartnerVenue(exec: Pick<typeof db, "select">, venueId: string): Promise<boolean> {
   if (typeof venueId !== "string" || !UUID.test(venueId)) return false;
   const [v] = await exec.select({ id: venues.id }).from(venues).where(and(eq(venues.id, venueId), eq(venues.active, true), eq(venues.isPartner, true)));
-  if (!v) return false;
-  if (await cardPaymentsEnabled()) return !(await venueHasActiveAccess(venueId, exec));
-  return true;
-}
-
-/**
- * Text, wenn eine Halle nicht gewaehlt werden darf: eine aktive Partnerhalle MIT Betreiber-Zugang bekommt den Hinweis zur fehlenden Online-Zusage (nicht "keine Partnerhalle"), alles andere den
- * bisherigen Text. Nur aufrufen, wenn isPartnerVenue false ergab.
- */
-export async function venueRejectionText(exec: Pick<typeof db, "select">, venueId: string): Promise<string> {
-  if (typeof venueId === "string" && UUID.test(venueId)) {
-    const [v] = await exec.select({ id: venues.id }).from(venues).where(and(eq(venues.id, venueId), eq(venues.active, true), eq(venues.isPartner, true)));
-    if (v && (await venueHasActiveAccess(venueId, exec))) return `${NO_ONLINE_CONFIRM_HINT}. Bitte wähle eine andere Halle.`;
-  }
-  return "Bitte wähle eine Partnerhalle.";
-}
-
-/**
- * Prueft VOR dem Statuswechsel auf "payment", ob die Halle fixierbar ist (M5-7a, Plan 19.9 Punkt 2): hat sie inzwischen einen aktiven Betreiber-Zugang (Einladung eingeloest), gibt es bis M5-7b keine
- * Zusage, das Turnier waere unbuchbar (Absage zur Frist). Dann wird das Fixieren mit klarer Meldung verweigert (kein Absturz in der Transaktion, nichts geaendert).
- */
-export async function assertVenueFixable(tx: Tx, venueId: string): Promise<void> {
-  if (await venueHasActiveAccess(venueId, tx)) throw new DomainError(NO_ACCESS_YET_TEXT);
+  return Boolean(v);
 }
 
 /** Zugang und Provisionssatz beim Fixieren einfrieren (in der Transaktion des Aufrufers, unter der Turniersperre). */
 export async function freezeVenueTerms(tx: Tx, tournamentId: string, venueId: string): Promise<{ accessRequired: boolean; commissionPercent: number }> {
   const accessRequired = await venueHasAccess(venueId, tx);
-  // Zweite, ENTSCHEIDENDE Pruefung auf derselben Lesung, die eingefroren wird: assertVenueFixable (vorher) und diese Lesung sind getrennte Abfragen (READ COMMITTED); wird der Zugang dazwischen
-  // eingeloest, wuerde `true` eingefroren und das Turnier waere unbuchbar. Der DomainError rollt die Transaktion des Aufrufers (Statuswechsel) zurueck. Entfaellt mit M5-7b.
-  if (accessRequired) throw new DomainError(NO_ACCESS_YET_TEXT);
   const commissionPercent = await venueCommissionPercent(venueId, tx);
   await tx.update(tournaments).set({ venueAccessRequiredSnapshot: accessRequired, commissionPercentSnapshot: commissionPercent.toFixed(2) }).where(eq(tournaments.id, tournamentId));
   return { accessRequired, commissionPercent };
@@ -127,7 +101,7 @@ export async function setTournamentVenue(userId: string, isPlatformAdmin: boolea
     if (!t) throw new DomainError("Turnier nicht gefunden.");
     if (t.organizerId !== userId && !isPlatformAdmin) throw new DomainError("Nur der Veranstalter kann die Halle wählen.");
     if (t.status !== "registration" || t.bracketGeneratedAt) throw new DomainError("Die Halle lässt sich nur wählen, solange der Kader offen ist.");
-    if (!(await isPartnerVenue(tx, venueId))) throw new DomainError(await venueRejectionText(tx, venueId));
+    if (!(await isPartnerVenue(tx, venueId))) throw new DomainError("Bitte wähle eine Partnerhalle.");
     await tx.update(tournaments).set({ venueId, venueConfirmedAt: null }).where(eq(tournaments.id, tournamentId)); // eine neue Halle braucht eine neue Zusage
     await audit(userId, "tournament.venue", "tournament", tournamentId, { before: { venueId: t.venueId }, after: { venueId } }, tx);
   });
