@@ -40,7 +40,9 @@ describe("CI-Workflow: Namen der Pflicht-Checks", () => {
 describe("CI-Workflow: Browser-Test-Teile", () => {
   const shard = job("e2e-shard");
   it("jeder Teil nimmt seine Dateiliste aus tests/e2e-shards.json (kein --shard)", () => {
-    expect(shard).toContain("npx playwright test $(node scripts/e2e-shards.mjs list ${{ matrix.shard }})");
+    // eigene Zuweisung mit set -e: schlaegt das Lesen der Liste fehl oder ist sie leer, bricht der Schritt ab (nicht "playwright test" ohne Filter = ALLE Specs)
+    const lines = ["set -e", "files=$(node scripts/e2e-shards.mjs list ${{ matrix.shard }})", 'test -n "$files"', "npx playwright test $files"];
+    expect(shard).toContain(lines.join("\n          "));
     expect(shard).not.toContain("--shard=");
   });
   it("PAYMENTS_FAKE steht im Schritt mit dem Playwright-Aufruf (der Test-Prozess prueft die Variable) und im Server-Schritt", () => {
@@ -54,6 +56,16 @@ describe("CI-Workflow: Browser-Test-Teile", () => {
   });
   it("die Pruefung der Zuordnung laeuft im Pflicht-Job 'Typen, Lint, Unit-Tests'", () => {
     expect(job("check")).toContain("node scripts/e2e-shards.mjs check");
+  });
+});
+
+describe("CI-Workflow: Rechte und Zeitlimits", () => {
+  it("das GITHUB_TOKEN hat auf Workflow-Ebene nur contents: read; kein Job vergibt schreibende Rechte", () => {
+    expect(wf).toContain("\npermissions:\n  contents: read\n");
+    expect(wf).not.toMatch(/: write\b/);
+  });
+  it("Integrationsjob hat 25 Minuten (zwei Laeufe: normal und Provisionsmodell)", () => {
+    expect(job("integration")).toContain("timeout-minutes: 25");
   });
 });
 

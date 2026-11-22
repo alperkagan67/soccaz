@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Minimale Rechte fuer das GITHUB_TOKEN (Checkout genuegt; Artefakt-Upload und Cache nutzen eigene Laufzeit-Tokens).
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -133,7 +137,11 @@ jobs:
         env:
           # Auch der Test-Prozess braucht die Variable (die Specs karte-lobby und karte-freigabe pruefen sie und werden sonst uebersprungen); der Entwicklungsserver hat sie schon.
           PAYMENTS_FAKE: "1"
-        run: npx playwright test $(node scripts/e2e-shards.mjs list ${{ matrix.shard }})
+        run: |
+          set -e
+          files=$(node scripts/e2e-shards.mjs list ${{ matrix.shard }})
+          test -n "$files"
+          npx playwright test $files
       - name: Berichte sichern
         if: failure()
         uses: actions/upload-artifact@v4
@@ -149,7 +157,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17
