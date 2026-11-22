@@ -433,4 +433,13 @@ describe("Guard statt Fremdschlüssel, Verwaiste, Abgleich (Plan 14.1/14.2/14.3)
     expect((await verifyEvidenceChain()).ok).toBe(true);
     expect((await runEvidenceHead()).actorsCleared).toBe(0); // idempotent
   });
+
+  it("Tagesjob leert auch Zeilen mit user_id NULL, aber gesetztem Namen/E-Mail (Reste einer halben Anonymisierung)", async () => {
+    const { matchId, venueId } = await setup();
+    const u = await makeUser("beweisrest");
+    await rec(matchId, venueId, "accepted", { actor: { userId: u.id, name: u.name, email: u.email } });
+    await db.update(evidenceActor).set({ userId: null });
+    expect((await runEvidenceHead()).actorsCleared).toBe(1);
+    expect((await db.select().from(evidenceActor))[0]).toMatchObject({ userId: null, name: null, email: null });
+  });
 });

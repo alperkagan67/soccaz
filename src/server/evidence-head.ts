@@ -17,8 +17,7 @@ export async function clearOrphanActors(): Promise<number> {
   const r = await db.execute(sql`
     update evidence_actor ea set user_id = null, name = null, email = null
     where (ea.user_id is not null or ea.name is not null or ea.email is not null)
-      and ea.user_id is not null
-      and not exists (select 1 from users u where u.id = ea.user_id and u.email not like 'geloescht-%@geloescht.invalid')`);
+      and (ea.user_id is null or not exists (select 1 from users u where u.id = ea.user_id and u.email not like 'geloescht-%@geloescht.invalid'))`);
   return (r as unknown as { rowCount?: number }).rowCount ?? 0;
 }
 type Last = { count: number; headHash: string; at: string };
@@ -47,7 +46,7 @@ export async function runEvidenceHead(now: Date = new Date()): Promise<{ ok: boo
     await notifyUsers(owners, {
       type: "admin.task",
       title: alarms.length ? "Beweisprotokoll: Abweichung" : "Beweisprotokoll: Tagesstand",
-      body: `${report.chain.count} Einträge, Kopf-Hash ${report.chain.headHash.slice(0, 16) || "(leer)"}…${alarms.length ? ` Alarm: ${alarms.join("; ")}.` : ""}`,
+      body: `${report.chain.count} Einträge, Kopf-Hash ${report.chain.headHash || "(leer)"}${alarms.length ? ` Alarm: ${alarms.join("; ")}.` : ""}`,
       url: "/admin",
     });
   }

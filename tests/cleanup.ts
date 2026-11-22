@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { dbUrlAllowed } from "./integration/db-guard";
 
 /**
  * Entfernt alle Testdaten: Nutzer mit @test.local samt Teams, Spielen, Buchungen, Zahlungen und Belegen.
@@ -39,11 +40,13 @@ export async function cleanupTestData(pool: Pool) {
       // Beweisprotokoll (009 M3): ohne Fremdschluessel (Plan 14.1), aber der Guard auf matches/venues verweigert das Loeschen von Spielen mit Eintraegen: Eintraege der Testspiele VOR den Spielen
       // entfernen (die Wartungsausnahme gilt in dieser Transaktion; dann schreiben die Trigger auf den Fachtabellen nichts). Nur Testspiele; Eintraege fremder Spiele und Seed-Protokolle bleiben.
       // Das Loeschen mitten aus der globalen Kette erzeugt eine seq-Luecke und bricht prev_hash: darum wird die Kette danach NEU NUMMERIERT und neu verkettet (nur in dieser Test-/Entwicklungs-
-      // Datenbank, nie produktiv; verifyEvidenceChain bleibt in den Folgetests gueltig). Ist die Tabelle leer, steht der Zaehler wieder auf 0.
+      // Datenbank, nie produktiv und nie die Haupt-DB (Schutz: NODE_ENV, dbUrlAllowed, current_database()); verifyEvidenceChain bleibt in den Folgetests gueltig).
+      // Nebenwirkung in Entwicklungs-Datenbanken: der Tagesjob evidence-head meldet danach einmal "frueherer Kopf-Hash nicht mehr in der Kette" (erwartet, nur Testdaten).
       "delete from booking_evidence where match_id in (select id from _tm)",
       `do $$
        declare r record; prev text := ''; i integer := 0; h text;
        begin
+         if current_database() = 'soccav2' then return; end if; -- Haupt-Entwicklungsdatenbank: nie neu verketten
          for r in select * from booking_evidence order by seq loop
            i := i + 1;
            h := evidence_hash(i, r.match_id, r.venue_id, r.round, r.job_id, r.kind, r.reason, r.at, r.actor_commitment, prev);
@@ -69,7 +72,12 @@ export async function cleanupTestData(pool: Pool) {
       "update settings set value = 'false'::jsonb where key = 'payments_enabled'",
       "update settings set value = '8'::jsonb where key = 'min_paid_players'",
     ];
-    for (const s of statements) await client.query(s);
+    // Neuverkettung der Beweiskette nur gegen eine erlaubte lokale Datenbank und nie produktiv (Review R-T224)
+    const rebuildAllowed = process.env.NODE_ENV !== "production" && dbUrlAllowed(process.env.DATABASE_URL);
+    for (const s of statements) {
+      if (s.trimStart().startsWith("do $$") && !rebuildAllowed) continue;
+      await client.query(s);
+    }
     await client.query("commit");
   } catch (error) {
     await client.query("rollback").catch(() => {});
