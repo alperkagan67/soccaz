@@ -31,6 +31,12 @@ describe("012 M6a: keine Guthaben-Oberfläche", () => {
     expect(readFileSync(path.join(root, "src/app/app/guthaben/page.tsx"), "utf8")).toContain('redirect("/app")');
     for (const gone of ["src/app/admin/codes", "src/app/app/guthaben/TopUpForm.tsx", "src/server/wallet-actions.ts"]) expect(existsSync(path.join(root, gone)), gone).toBe(false);
   });
+  it("Rechtstexte versprechen kein Kartenmodell, das es noch nicht überall gibt (AGB, Hilfe, i18n): neutral „abgerechnet“/„erstattet“ bis 012 M6b", () => {
+    for (const f of ["src/app/agb/page.tsx", "src/app/hilfe/page.tsx", "src/lib/i18n.ts"]) {
+      const s = readFileSync(path.join(root, f), "utf8");
+      expect(s, f).not.toMatch(/abgebucht|auf die Karte|auf deine Karte|hinterlegst eine Karte|hinterlegten Zahlungskarte/);
+    }
+  });
   it("Admin-Navigation hat keinen Eintrag Codes mehr", () => {
     expect(readFileSync(path.join(root, "src/app/admin/layout.tsx"), "utf8")).not.toContain("/admin/codes");
   });

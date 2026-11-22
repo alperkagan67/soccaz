@@ -77,16 +77,16 @@ export default async function HelpPage() {
           <p>Die Anmeldung und alle Funktionen sind kostenlos. Bezahlt wird nur die Halle: <strong>{e(p60?.priceCents)}</strong> für 60 Minuten, <strong>{e(p90?.priceCents)}</strong> für 90 Minuten. Der Preis wird durch alle zahlenden Spieler geteilt.</p>
         </Q>
         <Q q="Wie viel zahle ich genau?">
-          <p>Dein Anteil ist der Hallenpreis geteilt durch die Zahl der zahlenden Spieler. Du hinterlegst eine Karte und machst dich bereit; abgebucht wird erst zur Frist. Je mehr mitspielen, desto weniger zahlt jeder. Bei 12 Spielern sind es {p60 ? e(shareFor(p60.priceCents, 12)) : "–"}.</p>
+          <p>Dein Anteil ist der Hallenpreis geteilt durch die Zahl der zahlenden Spieler. Du machst dich bereit; abgerechnet wird erst zur Frist. Je mehr mitspielen, desto weniger zahlt jeder. Bei 12 Spielern sind es {p60 ? e(shareFor(p60.priceCents, 12)) : "–"}.</p>
         </Q>
         <Q q="Wie bezahle ich?">
-          <p>Du hinterlegst eine Karte (in der Lobby oder unter „Konto und Einstellungen“). Dein Anteil wird zur Frist abgebucht, vorher wird nichts abgebucht. Einen Beleg als PDF bekommst du automatisch.</p>
+          <p>Dein Anteil wird zur Frist abgerechnet, vorher wird nichts berechnet. Wie du bezahlst, siehst du in der Lobby. Einen Beleg als PDF bekommst du automatisch.</p>
         </Q>
         <Q q="Wann bekomme ich mein Geld zurück?">
           <ul className="list-disc space-y-1 pl-5">
-            <li>Bis 24 Stunden vor Anstoß abmelden: Es wird nichts abgebucht.</li>
+            <li>Bis 24 Stunden vor Anstoß abmelden: Es wird nichts berechnet.</li>
             <li>Später abmelden: Du bekommst es zurück, sobald ein Ersatzspieler deinen Platz bezahlt hat.</li>
-            <li>Spiel abgesagt oder zu wenige Spieler: Ein abgebuchter Betrag geht auf deine Karte zurück.</li>
+            <li>Spiel abgesagt oder zu wenige Spieler: Ein bereits gezahlter Betrag wird erstattet, auf dem Zahlungsweg, den du genutzt hast.</li>
           </ul>
         </Q>
       </section>
@@ -113,7 +113,7 @@ export default async function HelpPage() {
           <p>Standardmäßig ist es öffentlich (Name, Stadt, Position, Statistik, Teams). In den Einstellungen kannst du es auf privat stellen. Dein Geburtsdatum und deine E-Mail sieht niemand.</p>
         </Q>
         <Q q="Wie lösche ich mein Konto?">
-          <p>In den Einstellungen unter „Deine Daten“. Vorher darf keine Zahlung offen sein, du darfst in keinem kommenden Spiel stehen und kein Team allein verwalten. Dort kannst du auch alle deine Daten herunterladen.</p>
+          <p>In den Einstellungen unter „Deine Daten“. Vorher darf keine Zahlung offen sein und ein Restbetrag muss über den Support geklärt sein, du darfst in keinem kommenden Spiel stehen und kein Team allein verwalten. Dort kannst du auch alle deine Daten herunterladen.</p>
         </Q>
         <Q q="Es funktioniert etwas nicht. Wen frage ich?">
           <p>Schreib uns über die <Link href="/kontakt" className="text-accent-fg underline">Kontaktseite</Link>.</p>

@@ -16,11 +16,11 @@ export default function AgbPage() {
       </section>
       <section className="space-y-1">
         <h2>3. Preise und Zahlung</h2>
-        <p>Jeder Spieler zahlt seinen Anteil an der Hallenmiete selbst. Der Anteil ergibt sich aus dem Hallenpreis geteilt durch die Zahl der zahlenden Spieler. Er wird zur Frist von der hinterlegten Zahlungskarte abgebucht. Alle Preise sind Bruttopreise.</p>
+        <p>Jeder Spieler zahlt seinen Anteil an der Hallenmiete selbst. Der Anteil ergibt sich aus dem Hallenpreis geteilt durch die Zahl der zahlenden Spieler. Er wird zur Frist abgerechnet. Alle Preise sind Bruttopreise.</p>
       </section>
       <section className="space-y-1">
         <h2>4. Absage und Erstattung</h2>
-        <p>Bis 24 Stunden vor Anstoß kann man sich kostenlos abmelden; es wird dann nichts abgebucht. Sagt ein Team das Spiel ab oder kommt die Mindestzahl an Spielern nicht zusammen, wird ein bereits abgebuchter Betrag vollständig auf die Karte erstattet. Gesetzliche Rechte bleiben unberührt.</p>
+        <p>Bis 24 Stunden vor Anstoß kann man sich kostenlos abmelden; es wird dann nichts berechnet. Sagt ein Team das Spiel ab oder kommt die Mindestzahl an Spielern nicht zusammen, wird ein bereits gezahlter Betrag vollständig erstattet. Gesetzliche Rechte bleiben unberührt.</p>
       </section>
       <section className="space-y-1">
         <h2>5. Regeln für Inhalte</h2>
