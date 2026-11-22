@@ -41,7 +41,7 @@ export async function cleanupTestData(pool: Pool) {
       // Das Loeschen mitten aus der globalen Kette erzeugt eine seq-Luecke und bricht prev_hash: darum wird die Kette danach NEU NUMMERIERT und neu verkettet (nur in dieser Test-/Entwicklungs-
       // Datenbank, nie produktiv; verifyEvidenceChain bleibt in den Folgetests gueltig). Ist die Tabelle leer, steht der Zaehler wieder auf 0.
       "delete from booking_evidence where match_id in (select id from _tm)",
-      `do $
+      `do $$
        declare r record; prev text := ''; i integer := 0; h text;
        begin
          for r in select * from booking_evidence order by seq loop
@@ -51,7 +51,7 @@ export async function cleanupTestData(pool: Pool) {
            prev := h;
          end loop;
          update booking_evidence_counter set last_seq = i, last_hash = prev where id = 1;
-       end $`,
+       end $$`,
       "delete from matches where id in (select id from _tm)",
       // 011 M1: Betreiber-Zugänge zuerst (Fremdschlüssel auf Nutzer ohne cascade, auf Halle restrict)
       "delete from venue_access where user_id in (select id from _tu) or assigned_by in (select id from _tu) or lower(invited_email) like '%@test.local' or venue_id in (select id from venues where name like 'E2E %' or manager_user_id in (select id from _tu))",

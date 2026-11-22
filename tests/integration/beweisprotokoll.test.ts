@@ -323,8 +323,19 @@ describe("Guard statt Fremdschlüssel, Verwaiste, Abgleich (Plan 14.1/14.2/14.3)
   it("ein Spiel und eine Halle mit Protokolleinträgen lassen sich nicht löschen (Guard-Trigger statt RESTRICT); mit Wartungsausnahme geht es", async () => {
     const { matchId, venueId } = await setup();
     await rec(matchId, venueId, "request_sent");
-    await expect(db.execute(sql`delete from matches where id = ${matchId}`)).rejects.toThrow(/Beweisprotokoll/);
-    await expect(db.execute(sql`delete from venues where id = ${venueId}`)).rejects.toThrow(/Beweisprotokoll/);
+    // drizzle verpackt den Datenbankfehler ("Failed query"); der Text des Guards steht in cause
+    const guardMessage = async (p: Promise<unknown>) => {
+      try {
+        await p;
+      } catch (e) {
+        const err = e as { message?: string; cause?: { message?: string } };
+        return `${err.message ?? ""} ${err.cause?.message ?? ""}`;
+      }
+      return "";
+    };
+    expect(await guardMessage(db.execute(sql`delete from matches where id = ${matchId}`))).toMatch(/Beweisprotokoll/);
+    expect(await guardMessage(db.execute(sql`delete from venues where id = ${venueId}`))).toMatch(/Beweisprotokoll/);
+    await expect(maintenance((tx) => tx.execute(sql`delete from matches where id = ${matchId}`))).resolves.toBeUndefined(); // Wartungsausnahme: erlaubt
   });
 
   it("keine Fremdschlüssel an booking_evidence und evidence_actor.user_id (nur evidence_actor.evidence_id bleibt)", async () => {
