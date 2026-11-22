@@ -1,5 +1,4 @@
-import type { CardStatus } from "@/db/schema";
-import { CARD_LEGEND, cardView } from "@/lib/card-view";
+import { CARD_LEGEND, cardView, type CardViewStatus } from "@/lib/card-view";
 
 /**
  * Ampel pro Spieler in der Lobby:
@@ -46,11 +45,11 @@ export function LightLegend({ paymentsOn = true }: { paymentsOn?: boolean }) {
  * Kartenmodell (Vertrag 012, AC-12): Form UND Wort, nie nur Farbe. Grün = Karte hinterlegt (Haken im gefüllten Kreis), rot = keine Karte (Kreuz im Ring)
  * oder Abbuchung fehlgeschlagen (Ausrufezeichen im Ring), neutral = Abbuchung läuft (Pünktchen im Ring). Die Zuordnung steht in src/lib/card-view.ts.
  */
-export function CardLight({ status, showLabel = true }: { status: CardStatus; showLabel?: boolean }) {
+export function CardLight({ status, showLabel = true, legend = false }: { status: CardViewStatus; showLabel?: boolean; legend?: boolean }) {
   const v = cardView(status);
   const color = v.tone === "green" ? COLOR.green : v.tone === "red" ? COLOR.red : "var(--color-muted, #9ca3af)";
   return (
-    <span className="inline-flex items-center gap-1.5" title={v.label} data-card-light={v.tone === "neutral" ? "neutral" : v.tone} data-card-status={status}>
+    <span className="inline-flex items-center gap-1.5" title={v.label} data-card-light={v.tone === "neutral" ? "neutral" : v.tone} data-card-status={legend ? undefined : status}>
       <span
         className="inline-flex size-5 items-center justify-center rounded-full text-xs font-bold leading-none"
         style={v.filled ? { background: color, color: "#04130a" } : { border: `2px ${v.tone === "neutral" ? "dashed" : "solid"} ${color}`, color }}
@@ -67,7 +66,7 @@ export function CardLightLegend() {
   return (
     <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legende der Ampel" data-testid="card-light-legend">
       {CARD_LEGEND.map((status) => (
-        <CardLight key={status} status={status} />
+        <CardLight key={cardView(status).label} status={status} legend />
       ))}
     </p>
   );

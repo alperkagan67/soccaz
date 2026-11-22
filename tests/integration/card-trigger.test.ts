@@ -470,6 +470,9 @@ describe("T104b: Bestätigungen bleiben, Nachholen, Zusammenführen, Konto, Kart
     await db.update(matches).set({ startsAt: new Date(Date.now() - 8 * 3_600_000) }).where(eq(matches.id, g.match.id)); // weit nach Anstoß: die 6-h-Regel greift nicht mehr
     await expect(deleteAccount(user.id)).rejects.toThrow(/laufendes Spiel mit Abbuchung/);
     await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, g.match.id));
+    // M4b (Review): Zeilen, die schon an Stripe gegangen sein koennen (Ausgang offen), halten die Loeschung auch im abgesagten Spiel auf; das Profil wird fuer den Kundenabgleich gebraucht
+    await expect(deleteAccount(user.id)).rejects.toThrow(/laufende Zahlung/);
+    await db.update(paymentCharges).set({ status: "failed", failureCode: "match_closed" }).where(eq(paymentCharges.matchId, g.match.id)); // geklaert
     await deleteAccount(user.id);
     expect((await seatsOf(g)).find((s) => s.userId === user.id)!.readyAt).not.toBeNull();
   });

@@ -82,3 +82,6 @@ TASKS.md
 **/.impeccable/live/deferred-svelte-component-accepts.json
 **/.impeccable/live/*.png
 # impeccable-ignore-end
+
+# Playwright-MCP-Ausgaben (lokal)
+/.playwright-mcp/

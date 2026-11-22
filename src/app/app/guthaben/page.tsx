@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RefreshWhile } from "@/components/RefreshWhile";
 import { formatEuro } from "@/lib/money";
-import { safeInternalPath } from "@/lib/safe-path";
+import { firstSafePath, safeInternalPath } from "@/lib/safe-path";
 import { formatDateTime } from "@/lib/time";
 import { walletBalance, walletStatement } from "@/server/ledger";
 import { activeProvider, getPaymentFor } from "@/server/payments";
@@ -41,6 +41,8 @@ export default async function WalletPage({ searchParams }: PageProps<"/app/gutha
 
   const [balance, statement, receipts] = await Promise.all([walletBalance(db, user.id), walletStatement(user.id, 50), listReceipts(user.id)]);
   const payment = paymentId ? await getPaymentFor(user.id, paymentId) : null;
+  // erst das beim Anlegen gespeicherte Ziel, bei ungültigem Altwert (statt null) das Ziel aus der Adresse
+  const returnLink = firstSafePath(payment?.returnTo, back);
   const waiting = Boolean(payment && payment.status === "pending" && status === "ok");
   const provider = activeProvider();
   const payOn = await paymentsEnabled();
@@ -72,8 +74,8 @@ export default async function WalletPage({ searchParams }: PageProps<"/app/gutha
           {(payment.status === "canceled" || payment.status === "failed") && "Die Zahlung wurde nicht abgeschlossen. Es wurde nichts abgebucht."}
         </p>
       )}
-      {payment?.status === "succeeded" && safeBack(payment.returnTo ?? back ?? undefined) && (
-        <Link href={safeBack(payment.returnTo ?? back ?? undefined)!} className="btn btn-primary w-full">Zurück zum Spiel</Link>
+      {payment?.status === "succeeded" && returnLink && (
+        <Link href={returnLink} className="btn btn-primary w-full">Zurück zum Spiel</Link>
       )}
 
       {provider ? (

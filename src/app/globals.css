@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-/* Richtung E „Trikot“ (Vertrag 007, DESIGN.md): neutrale Töne, Orange als einzige Akzentfarbe.
+/* Richtung E „Trikot“ (Vertrag 007, DESIGN.md): neutrale Töne, Orange als einzige Akzentfarbe (nur Marke und Hauptaktion).
+   Status-Töne (--ok/--warn/--danger/--info) sind keine Akzentfarben, sondern Zustandsfarben mit Symbol und Wort.
    Hell und Dunkel folgen der Systemeinstellung. Messung: tests/unit/contrast.test.ts */
 :root {
   --bg: #0f1914;
@@ -25,6 +26,42 @@
   --pc-coral: hsl(12, 95%, 62%);
   --pc-yellow: hsl(44, 98%, 58%);
   --radius: 12px;
+  /* Status (M2-1): immer zusammen mit Symbol und Wort, nie allein. -ink = Schrift auf voller Fläche, -soft = Tönung */
+  --ok: #4ade80;
+  --ok-ink: #0b1118;
+  --ok-soft: rgba(74, 222, 128, 0.1);
+  --warn: #facc15;
+  --warn-ink: #0b1118;
+  --warn-soft: rgba(250, 204, 21, 0.1);
+  --danger: #ff8a8a;
+  --danger-ink: #0b1118;
+  --danger-soft: rgba(255, 138, 138, 0.1);
+  --info: #6cb2ff;
+  --info-ink: #0b1118;
+  --info-soft: rgba(108, 178, 255, 0.1);
+  --focus: #9ecbff;
+  --focus-w: 2px;
+  /* Schriftstufen (M2-1): 12 px ist die kleinste Stufe und nur für Zusatztext, nie für Bedienelemente */
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-base: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.25rem;
+  /* Abstände (4er-Raster), Touch-Ziel und Seitenbreiten */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --tap: 44px;
+  --w-narrow: 720px;
+  --w-std: 1040px;
+  --w-full: 1280px;
   color-scheme: light dark;
 }
 
@@ -41,6 +78,19 @@
     --accent-ink: #ffffff;
     --accent-fg: #b23a0a;
     --accent-soft: rgba(194, 65, 12, 0.12);
+    --ok: #0f5f2c;
+    --ok-ink: #ffffff;
+    --ok-soft: rgba(15, 95, 44, 0.1);
+    --warn: #704800;
+    --warn-ink: #ffffff;
+    --warn-soft: rgba(112, 72, 0, 0.1);
+    --danger: #a51d12;
+    --danger-ink: #ffffff;
+    --danger-soft: rgba(165, 29, 18, 0.1);
+    --info: #1a44bd;
+    --info-ink: #ffffff;
+    --info-soft: rgba(26, 68, 189, 0.1);
+    --focus: #1a44bd;
   }
 }
 
@@ -57,6 +107,19 @@
   --accent-ink: #1d0a00;
   --accent-fg: #ff6a1f;
   --accent-soft: rgba(255, 106, 31, 0.14);
+  --ok: #4ade80;
+  --ok-ink: #0b1118;
+  --ok-soft: rgba(74, 222, 128, 0.1);
+  --warn: #facc15;
+  --warn-ink: #0b1118;
+  --warn-soft: rgba(250, 204, 21, 0.1);
+  --danger: #ff8a8a;
+  --danger-ink: #0b1118;
+  --danger-soft: rgba(255, 138, 138, 0.1);
+  --info: #6cb2ff;
+  --info-ink: #0b1118;
+  --info-soft: rgba(108, 178, 255, 0.1);
+  --focus: #9ecbff;
   color-scheme: dark;
 }
 
@@ -72,6 +135,19 @@
   --color-accent-ink: var(--accent-ink);
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --color-ok-ink: var(--ok-ink);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-ink: var(--warn-ink);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-ink: var(--info-ink);
+  --color-info-soft: var(--info-soft);
+  --color-focus: var(--focus);
   --color-card-yellow: var(--card-yellow);
   --color-card-red: var(--card-red);
   --font-heading: var(--font-outfit), var(--font-jakarta), sans-serif;
@@ -140,6 +216,8 @@ h1, h2, h3 {
 .error { color: var(--ink); font-size: 0.9rem; font-weight: 600; border: 2px solid var(--ink); border-radius: 8px; padding: 0.4rem 0.6rem; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Neue Komponenten (src/components/ui): Fokusring in --focus; höhere Spezifität als die allgemeine Regel darüber */
+.ui-focus:focus-visible { outline: var(--focus-w) solid var(--focus); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

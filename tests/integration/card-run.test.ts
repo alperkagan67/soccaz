@@ -9,7 +9,7 @@ import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { setSetting } from "@/server/settings";
-import { addPlayer, cleanup, makeMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, SHARE_ACCOUNT } from "./helpers";
 
 let provider: FakeProvider;
 beforeAll(async () => {
@@ -71,7 +71,7 @@ describe("AC-4/AC-5: Abbuchung eines Kartenspiels", () => {
     expect(rows).toHaveLength(10);
     expect(rows.every((x) => x.status === "succeeded" && x.amountCents === 800 && x.paymentIntentId !== null)).toBe(true);
     expect(await shares(g)).toHaveLength(10);
-    expect((await shares(g)).every((e) => e.debitAccount === "clearing" && e.creditAccount === "revenue" && e.amountCents === 800)).toBe(true);
+    expect((await shares(g)).every((e) => e.debitAccount === "clearing" && e.creditAccount === SHARE_ACCOUNT && e.amountCents === 800)).toBe(true);
     expect((await trialBalance()).balanced).toBe(true);
 
     const m = await matchOf(g);

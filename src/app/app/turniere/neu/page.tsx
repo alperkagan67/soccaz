@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { priceFor } from "@/server/pricing";
 import { commissionPercent } from "@/server/tournaments";
 import { getSetting } from "@/server/settings";
+import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { requireUser } from "@/server/session";
 import { TournamentForm } from "./TournamentForm";
 
@@ -18,11 +19,13 @@ export default async function NewTournamentPage() {
   const min = nextQuarterHourInput();
   const standard = allowed ? await priceFor(db, null, 60) : null;
   const commission = await commissionPercent();
+  // Kartenmodell (012 M5-1): Partnerhalle waehlen. Bei ausgeschaltetem Schalter bleibt das Formular unveraendert.
+  const partnerVenues = await listPartnerVenueOptions();
   return (
     <section className="mx-auto mt-4 max-w-md space-y-4">
       <h1 className="text-2xl font-bold">Turnier anlegen</h1>
       {allowed ? (
-        <TournamentForm min={min} defaultCity={user.city} standardHourly={standard ? formatEuro(standard.priceCents) : null} commission={commission} />
+        <TournamentForm min={min} defaultCity={user.city} standardHourly={standard ? formatEuro(standard.priceCents) : null} commission={commission} partnerVenues={partnerVenues} />
       ) : (
         <div className="card space-y-2" data-testid="organizer-info">
           <p>Turniere dürfen nur freigeschaltete Veranstalter anlegen.</p>

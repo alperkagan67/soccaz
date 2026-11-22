@@ -4,12 +4,15 @@ import { revalidatePath } from "next/cache";
 import { parseEuro } from "@/lib/money";
 import type { ActionState } from "@/lib/validation";
 import { recordExpense, updateBookingJob, type BookingPatch, type BookingStatus } from "./booking";
+import { setVenueCommission } from "./commission";
+import { parseVatMode } from "@/lib/invoice";
 import { manualRefund } from "./finance";
 import { createPromo, setPromoActive } from "./promo";
 import { requirePermission } from "./session";
 import { setSetting } from "./settings";
 import { DomainError } from "./teams";
 import { addPriceRule, createVenue, listVenues, setVenueManager, setVenueVerified, updateVenue } from "./venues";
+import { revokeVenueAccess } from "./venue-access";
 
 type Permission = Parameters<typeof requirePermission>[0];
 
@@ -132,8 +135,35 @@ export async function toggleVenueAction(venueId: string, active: boolean, _prev:
 }
 
 export async function setVenueManagerAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
-  return guarded("booking", "/admin/hallen", async (actor) => {
-    await setVenueManager(actor, venueId, String(fd.get("email") ?? ""));
+  // Hallenbetreiber zuordnen/entziehen: nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht die Zuordnung nur
+  return guarded("owner", "/admin/hallen", async (actor) => {
+    await setVenueManager(actor, venueId, String(fd.get("email") ?? ""), String(fd.get("reason") ?? "")); // Grund ist Pflicht (Eingriffsprotokoll)
+  });
+}
+
+/** Zugang einer Halle entziehen bzw. eine offene Einladung zurückziehen: nur Admin 1, Grund Pflicht, wirkt sofort. */
+export async function revokeVenueAccessAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guarded("owner", "/admin/hallen", async (actor) => {
+    await revokeVenueAccess(actor, venueId, String(fd.get("reason") ?? ""));
+  });
+}
+
+/** Provision und 10er-Bonus einer Halle: nur Admin 1, Pflicht-Begründung (Vertrag 009 M2, AC-5). */
+export async function setVenueCommissionAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guarded("owner", "/admin/hallen", async (actor) => {
+    await setVenueCommission(actor, venueId, { percent: fd.get("percent"), bonusEnabled: fd.get("bonus") === "on", reason: String(fd.get("reason") ?? ""), invoiceEmail: String(fd.get("invoiceEmail") ?? "") });
+  });
+}
+
+/** Rechnungseinstellungen (Vertrag 009 M2): Umsatzsteuer-Schalter OHNE Standardwert und Hinweistext; nur Admin 1. Wortlaut und Satz legt der Steuerberater fest. */
+export async function saveInvoiceSettingsAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const mode = parseVatMode(text(fd, "vatMode"));
+  if (!mode) return { error: "Bitte den Umsatzsteuer-Schalter wählen (19 % oder Kleinunternehmer)." };
+  const note = text(fd, "vatNote").slice(0, 600);
+  if (mode === "kleinunternehmer" && note.length < 5) return { error: "Für Kleinunternehmer ist ein Hinweistext auf der Rechnung nötig (Wortlaut vom Steuerberater)." };
+  return guarded("owner", "/admin/einstellungen", async (actor) => {
+    await setSetting(actor, "vat_mode", mode);
+    await setSetting(actor, "vat_note", note);
   });
 }
 
@@ -158,7 +188,7 @@ export async function addPriceRuleAction(venueId: string | null, _prev: ActionSt
 export async function savePlatformSettingsAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const minPaid = Number(text(fd, "minPaid"));
   if (!Number.isInteger(minPaid) || minPaid < 2 || minPaid > 12) return { error: "Die Mindestzahl zahlender Spieler liegt zwischen 2 und 12." };
-  return guarded("admin", "/admin/einstellungen", async (actor) => {
+  return guarded("owner", "/admin/einstellungen", async (actor) => {
     await setSetting(actor, "payments_enabled", fd.get("paymentsEnabled") === "on");
     await setSetting(actor, "min_paid_players", minPaid);
     await setSetting(actor, "emergency_phone", String(fd.get("emergencyPhone") ?? "").trim().slice(0, 40));

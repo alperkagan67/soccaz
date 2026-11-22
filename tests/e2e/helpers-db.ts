@@ -11,6 +11,17 @@ export async function seedAdmin(key: string, name = `Admin ${key}`): Promise<str
   return seedUserRole(key, "admin", name);
 }
 
+/**
+ * Legt Admin 1 an (role admin und is_owner, ohne Login). Es gibt höchstens einen je Datenbank (Teilindex users_one_owner): ein früherer Admin 1 aus einem
+ * anderen Test wird zuvor zu Admin 2 (is_owner false). Nur für Tests, die Admin-1-Rechte brauchen (Finanzen, Einstellungen, Rollen; Vertrag 009 AC-1).
+ */
+export async function seedOwner(key: string, name = `Admin ${key}`): Promise<string> {
+  await testDb().query("update users set is_owner = false where is_owner");
+  const id = await seedUserRole(key, "admin", name);
+  await testDb().query("update users set is_owner = true where id = $1", [id]);
+  return id;
+}
+
 /** Legt einen Nutzer mit beliebiger Rolle an (ohne Login). */
 export async function seedUserRole(key: string, role: string, name = `${role} ${key}`): Promise<string> {
   const { rows } = await testDb().query(

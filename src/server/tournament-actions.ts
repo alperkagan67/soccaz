@@ -8,6 +8,10 @@ import { parseBerlinLocal } from "@/lib/time";
 import { InsufficientFunds } from "./ledger";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
+import { setTournamentVenue } from "./tournament-venue";
+import { triggerTournamentChargesInBackground } from "./payments/tournament-charge";
+import { isPlatformAdmin } from "@/lib/roles";
+import { releaseTournamentCover, takeOverTournamentShare } from "./tournament-card";
 import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, payForTeam, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
@@ -38,6 +42,7 @@ export async function createTournamentAction(_prev: ActionState, f: FormData): P
       name: str(f, "name"),
       city: str(f, "city"),
       venueText: str(f, "venueText"),
+      venueId: str(f, "venueId") || undefined,
       startsAt,
       registrationDeadline: deadline,
       maxTeams: Number(str(f, "maxTeams")),
@@ -69,6 +74,28 @@ export async function joinAsPlayerAction(tournamentId: string, teamId: string): 
 export async function leavePlayerAction(tournamentId: string, targetUserId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => leavePlayer(uid, tournamentId, targetUserId));
 }
+/** Partnerhalle waehlen (Veranstalter, solange der Kader offen ist). */
+export async function setTournamentVenueAction(tournamentId: string, venueId: string): Promise<ActionState> {
+  const user = await requireUser(`/turniere/${tournamentId}`);
+  const result = await guarded(() => setTournamentVenue(user.id, isPlatformAdmin(user), tournamentId, String(venueId)));
+  revalidatePath(`/turniere/${tournamentId}`);
+  return result;
+}
+
+/** "Anteil uebernehmen" im Turnier (Kartenmodell): der Uebernehmer kommt immer aus der Sitzung, nie vom Client; die Zustimmung erzwingt der Server noch einmal. */
+export async function takeOverTournamentShareAction(tournamentId: string, targetUserId: string, consent: boolean): Promise<ActionState> {
+  return touch(tournamentId, async (userId) => {
+    await takeOverTournamentShare(userId, tournamentId, targetUserId, consent === true);
+  });
+}
+
+/** Zuruecknehmen: nur die EIGENE Uebernahme der Sitzung (es gibt kein Ziel-Argument vom Client). */
+export async function releaseTournamentCoverAction(tournamentId: string): Promise<ActionState> {
+  return touch(tournamentId, async (userId) => {
+    await releaseTournamentCover(userId, tournamentId);
+  });
+}
+
 export async function payEntryAction(tournamentId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => payEntry(uid, tournamentId));
 }
@@ -82,7 +109,10 @@ export async function setRosterCompleteAction(tournamentId: string, complete: bo
 }
 /** Der Captain drückt Bereit, nachdem sein Team vollständig bezahlt hat (Prüfung serverseitig). */
 export async function setPaidReadyAction(tournamentId: string): Promise<ActionState> {
-  return touch(tournamentId, (uid) => setPaidReady(uid, tournamentId));
+  const r = await touch(tournamentId, (uid) => setPaidReady(uid, tournamentId));
+  // Kartenmodell (M5-4): ist das letzte Team bereit und kurzer Vorlauf, wird sofort abgebucht (im Hintergrund, nie auf Kosten von "Bereit"); der Job holt sonst nach
+  if (r?.ok) void triggerTournamentChargesInBackground(tournamentId);
+  return r;
 }
 export async function reopenRostersAction(tournamentId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => reopenRosters(uid, tournamentId));

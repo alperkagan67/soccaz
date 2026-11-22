@@ -4,7 +4,10 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { priceRules, venues } from "@/db/schema-finance";
 import { audit } from "./audit";
+import { defaultCommissionPercent } from "./commission";
 import { DomainError } from "./teams";
+import { inviteVenueManager, revokeVenueAccess } from "./venue-access";
+import { isVenueManager as hasAnyVenueAccess } from "./venue-access-rules";
 
 export type VenueInput = {
   name: string;
@@ -30,23 +33,23 @@ export async function listVenues(includeInactive = true) {
   return db.select().from(venues).where(includeInactive ? undefined : eq(venues.active, true)).orderBy(asc(venues.city), asc(venues.name));
 }
 
-/** Weist einer Halle ein Betreiber-Konto zu (leer = entfernen). Das Konto muss existieren. */
-export async function setVenueManager(actorId: string, venueId: string, email: string) {
-  let userId: string | null = null;
-  if (email.trim()) {
-    const [u] = await db.select({ id: users.id }).from(users).where(eq(users.email, email.trim().toLowerCase()));
-    if (!u) throw new DomainError("Zu dieser E-Mail gibt es kein Konto. Der Betreiber muss sich zuerst anmelden.");
-    userId = u.id;
+/**
+ * Ordnet einer Halle einen Betreiber-Zugang zu (E-Mail) oder entzieht ihn (leer). Vertrag 011 M1: Die Adresse wird nur freigegeben (keine Mail-Zustellung); der Zugang wird beim ersten
+ * verifizierten Google-Login aktiv (Einlösepfad für alle). Entzug und neue Einladung wirken sofort und sind protokolliert (nur IDs und Grund). Nur Admin 1 (der Aufrufer prüft `owner`).
+ */
+export async function setVenueManager(actorId: string, venueId: string, email: string, reason: string) {
+  if (!email.trim()) {
+    await revokeVenueAccess(actorId, venueId, reason);
+    return;
   }
-  await db.update(venues).set({ managerUserId: userId }).where(eq(venues.id, venueId));
-  await audit(actorId, "venue.manager", "venue", venueId, { after: { managerUserId: userId } });
+  await inviteVenueManager(actorId, venueId, email, reason);
 }
 
 export async function createVenue(actorId: string, input: VenueInput) {
   const v = clean(input);
   const [row] = await db
     .insert(venues)
-    .values({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false })
+    .values({ commissionPercent: (await defaultCommissionPercent()).toFixed(2), name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false })
     .returning();
   await audit(actorId, "venue.create", "venue", row.id, { after: row });
   return row;
@@ -117,4 +120,9 @@ export async function getPublicVenue(id: string) {
   if (!v) return null;
   const [r] = (await db.execute<{ avg: string | null; n: number }>(sql`select round(avg(rating)::numeric, 1)::text as avg, count(*)::int as n from comments where target_type = 'venue' and target_id = ${id} and status = 'visible'`)).rows;
   return { venue: { id: v.id, name: v.name, city: v.city, address: v.address, surface: v.surface, hasShowers: v.hasShowers, hasParking: v.hasParking, isPartner: v.isPartner }, avg: r.avg, n: r.n };
+}
+
+/** Hat der Nutzer Zugang zu mindestens einer Halle? (Eintrag „Meine Halle“ im Konto-Menü; eine Quelle: venue_access, siehe venue-access-rules.ts) */
+export async function isVenueManager(userId: string): Promise<boolean> {
+  return hasAnyVenueAccess(userId);
 }

@@ -38,7 +38,7 @@ export class StripeProvider implements PaymentProvider {
     return { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null };
   }
 
-  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string } }): Promise<ChargeResult> {
+  async createPaymentIntent(input: { customerId: string; paymentMethodId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string } }): Promise<ChargeResult> {
     try {
       const pi = await this.stripe().paymentIntents.create(
         { amount: input.amountCents, currency: "eur", customer: input.customerId, payment_method: input.paymentMethodId, off_session: true, confirm: true, metadata: input.metadata },
@@ -60,7 +60,7 @@ export class StripeProvider implements PaymentProvider {
     }
   }
 
-  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId: string; userId: string; chargeId: string } }): Promise<RefundResult> {
+  async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string; chargeId: string } }): Promise<RefundResult> {
     try {
       const r = await this.stripe().refunds.create(
         { payment_intent: input.paymentIntentId, amount: input.amountCents, metadata: input.metadata },
@@ -74,6 +74,72 @@ export class StripeProvider implements PaymentProvider {
       // Von Stripe abgelehnt (kein Netzfehler): als Ergebnis melden, damit die Zeile failed wird und der Admin-Alarm greift
       if (e?.type === "StripeInvalidRequestError" && (e.code === "charge_disputed" || e.code === "charge_already_refunded" || e.code === "charge_expired_for_refund" || e.code === "insufficient_funds")) {
         return { id: "", status: "failed", failureCode: e.code };
+      }
+      throw error;
+    }
+  }
+
+  async retrieveDispute(disputeId: string): Promise<Record<string, unknown> | null> {
+    if (!/^dp_[A-Za-z0-9_]{1,64}$/.test(disputeId)) return null;
+    try {
+      const d = await this.stripe().disputes.retrieve(disputeId, { expand: ["balance_transactions"] }, SETUP_REQUEST);
+      return d as unknown as Record<string, unknown>;
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return null;
+      throw error;
+    }
+  }
+
+  async retrievePaymentIntent(paymentIntentId: string): Promise<FoundIntent | null> {
+    if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return null;
+    try {
+      const pi = await this.stripe().paymentIntents.retrieve(paymentIntentId, {}, SETUP_REQUEST);
+      return {
+        id: pi.id,
+        status: pi.status === "succeeded" ? "succeeded" : pi.status === "requires_action" ? "requires_action" : pi.status === "processing" ? "processing" : pi.status === "requires_payment_method" || pi.status === "canceled" ? "failed" : "other",
+        amountCents: Number.isInteger(pi.amount) ? pi.amount : null,
+        currency: pi.currency ?? null,
+        customerId: typeof pi.customer === "string" ? pi.customer : (pi.customer?.id ?? null),
+        failureCode: pi.last_payment_error?.code ?? null,
+      };
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return null;
+      throw error;
+    }
+  }
+
+  async retrievePaymentIntentSecret(paymentIntentId: string): Promise<{ intent: FoundIntent; clientSecret: string } | null> {
+    if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return null;
+    try {
+      const pi = await this.stripe().paymentIntents.retrieve(paymentIntentId, {}, SETUP_REQUEST);
+      if (!pi.client_secret) return null;
+      return {
+        clientSecret: pi.client_secret,
+        intent: {
+          id: pi.id,
+          status: pi.status === "succeeded" ? "succeeded" : pi.status === "requires_action" ? "requires_action" : pi.status === "processing" ? "processing" : pi.status === "requires_payment_method" || pi.status === "canceled" ? "failed" : "other",
+          amountCents: Number.isInteger(pi.amount) ? pi.amount : null,
+          currency: pi.currency ?? null,
+          customerId: typeof pi.customer === "string" ? pi.customer : (pi.customer?.id ?? null),
+          failureCode: pi.last_payment_error?.code ?? null,
+        },
+      };
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return null;
+      throw error;
+    }
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string): Promise<{ status: "canceled" | "succeeded" | "other" }> {
+    if (!/^pi_[A-Za-z0-9_]{1,64}$/.test(paymentIntentId)) return { status: "other" };
+    try {
+      await this.stripe().paymentIntents.cancel(paymentIntentId, {}, SETUP_REQUEST);
+      return { status: "canceled" };
+    } catch (error) {
+      // Schon in einem Endzustand (abgebrochen/erfolgreich): den echten Zustand lesen statt zu raten
+      if ((error as { code?: string } | null)?.code === "payment_intent_unexpected_state") {
+        const pi = await this.stripe().paymentIntents.retrieve(paymentIntentId, {}, SETUP_REQUEST);
+        return { status: pi.status === "succeeded" ? "succeeded" : pi.status === "canceled" ? "canceled" : "other" };
       }
       throw error;
     }
@@ -116,13 +182,23 @@ export class StripeProvider implements PaymentProvider {
     await this.stripe().paymentMethods.detach(id);
   }
 
+  async deleteCustomer(customerId: string): Promise<void> {
+    if (!/^cus_[A-Za-z0-9_]{1,64}$/.test(customerId)) return; // keine gueltige Kunden-ID: es gibt nichts zu loeschen
+    try {
+      await this.stripe().customers.del(customerId, {}, SETUP_REQUEST);
+    } catch (error) {
+      if ((error as { code?: string } | null)?.code === "resource_missing") return; // gibt es nicht (mehr): erledigt
+      throw error;
+    }
+  }
+
   constructWebhookEvent(rawBody: string, signature: string | null): ProviderEvent {
     const secret = this.config.webhookSecret ?? process.env.STRIPE_CARD_WEBHOOK_SECRET; // eigenes Secret dieses Endpunkts; STRIPE_WEBHOOK_SECRET gehört der alten Route /api/webhooks/stripe
     if (!secret) throw new PaymentsUnavailableError();
     if (!signature) throw new WebhookSignatureError();
     try {
       const e = this.stripe().webhooks.constructEvent(rawBody, signature, secret);
-      return { id: e.id, type: e.type, object: e.data.object as unknown as Record<string, unknown> };
+      return { id: e.id, type: e.type, object: e.data.object as unknown as Record<string, unknown>, created: typeof e.created === "number" ? e.created : undefined };
     } catch {
       throw new WebhookSignatureError();
     }

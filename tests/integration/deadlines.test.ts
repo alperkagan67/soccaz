@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, teamMembers, teams } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
@@ -15,16 +15,16 @@ import { createPrivateGame, joinPrivateGame } from "@/server/privategame";
 import { cancelUnderfilledLobbies, closeLobbiesAtDeadline, settleDueMatches } from "@/server/scheduled";
 import { proposeOption, voteOption } from "@/server/scheduling";
 import { setSetting } from "@/server/settings";
-import { answerHallRequest, banHall } from "@/server/veto";
-import { setVenueManager } from "@/server/venues";
+import { banHall } from "@/server/veto";
 import { leaveClosed } from "@/server/wallet";
-import { addPlayer, cleanup, makeMatch, makeTeam, makeUser, reloadMatch } from "./helpers";
+import { addPlayer, cleanup, grantVenueAccess, makeMatch, makeTeam, makeUser, reloadMatch, answerHall } from "./helpers";
 
 beforeAll(async () => {
   await setSetting(null, "payments_enabled", true);
 });
 afterAll(async () => {
   await setSetting(null, "payments_enabled", false);
+  await db.execute(sql`delete from venue_access where venue_id in (select id from venues where name like 'E2E Echtort%')`); // 011 M1: Zugang vor der Halle (Fremdschlüssel restrict)
   await db.delete(venues).where(like(venues.name, "E2E Echtort%"));
   await cleanup();
 });
@@ -418,8 +418,8 @@ describe("Frist-Regel: Karenz nur bei nachträglichem Termin, echter Audit-Pfad,
       .insert(venues)
       .values([1, 2, 3].map((i) => ({ name: `E2E Echtort ${i} ${manager.id.slice(0, 6)}`, city: "Echtort", isPartner: i < 3 })))
       .returning();
-    await setVenueManager(a.id, rows[0].id, manager.email);
-    await setVenueManager(a.id, rows[1].id, manager.email);
+    await grantVenueAccess(rows[0].id, manager.id);
+    await grantVenueAccess(rows[1].id, manager.id);
     const id = await challengeTeam(a.id, ta.id, tb.id);
     await acceptChallenge(b.id, id);
     const start = new Date(Date.now() + 30 * H);
@@ -427,8 +427,8 @@ describe("Frist-Regel: Karenz nur bei nachträglichem Termin, echter Audit-Pfad,
     const [opt] = await db.select().from(matchOptions).where(eq(matchOptions.matchId, id));
     await voteOption(b.id, id, opt.id); // beide Teams stimmen gleich: lockIfAgreed legt den Termin fest und schreibt scheduling.locked
     expect((await reloadMatch(id)).vetoStatus).toBe("halls");
-    await answerHallRequest(manager.id, id, rows[0].id, true);
-    await answerHallRequest(manager.id, id, rows[1].id, true);
+    await answerHall(manager.id, id, rows[0].id, true);
+    await answerHall(manager.id, id, rows[1].id, true);
     for (let i = 0; i < 6 && (await reloadMatch(id)).vetoStatus === "running"; i++) {
       const cur = await reloadMatch(id);
       const pool = await db.select().from(matchVetoHalls).where(eq(matchVetoHalls.matchId, id));

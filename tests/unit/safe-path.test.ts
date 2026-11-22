@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeInternalPath } from "@/lib/safe-path";
+import { firstSafePath, safeInternalPath } from "@/lib/safe-path";
 
 const BS = String.fromCharCode(92); // Backslash
 const ch = (n: number) => String.fromCharCode(n);
@@ -58,5 +58,22 @@ describe("safeInternalPath: nur interne Pfade", () => {
     expect(safeInternalPath(`/${BS}evil.example`, null)).toBeNull();
     expect(safeInternalPath("//evil", null)).toBeNull();
     expect(safeInternalPath("/spiele/1?x=2", null)).toBe("/spiele/1?x=2");
+  });
+});
+
+describe("firstSafePath: erstes gültiges Ziel", () => {
+  it("nimmt den ersten gültigen Kandidaten", () => {
+    expect(firstSafePath("/lobby/1", "/app")).toBe("/lobby/1");
+  });
+  it("ein ungültiger oder fehlender Altwert vorn verdeckt das gültige Ziel dahinter nicht (Backlog 3, T42-Review)", () => {
+    expect(firstSafePath("//evil.example", "/lobby/2")).toBe("/lobby/2");
+    expect(firstSafePath(null, "/lobby/2")).toBe("/lobby/2");
+    expect(firstSafePath(undefined, "/lobby/2")).toBe("/lobby/2");
+    expect(firstSafePath("", "/lobby/2")).toBe("/lobby/2");
+    expect(firstSafePath(`/${String.fromCharCode(92)}evil`, "/lobby/2")).toBe("/lobby/2");
+  });
+  it("kein gültiges Ziel: null (kein Fallback-Pfad erfunden)", () => {
+    expect(firstSafePath("//evil", null, undefined, 42)).toBeNull();
+    expect(firstSafePath()).toBeNull();
   });
 });

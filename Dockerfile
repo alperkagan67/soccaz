@@ -14,6 +14,10 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 # DATABASE_URL wird beim Bauen nur als Platzhalter gebraucht (kein Zugriff)
 ENV DATABASE_URL=postgres://build:build@localhost:5432/build
+# Öffentlicher (publishable) Stripe-Schlüssel für die Karteneingabe: Next bettet NEXT_PUBLIC_* beim BAUEN in den Browser-Code ein (CardForm.tsx), `env_file` wirkt erst zur
+# Laufzeit. Der Wert kommt als Build-Argument (docker-compose.yml, aus der .env), nie aus dem Repo. Nach einer Änderung neu bauen: docker compose up -d --build
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=""
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 RUN npm run build
 
 # Werkzeug-Image: Migrationen und Wartungsskripte (mit allen Abhängigkeiten)

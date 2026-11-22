@@ -3,21 +3,35 @@
 // Netzaufrufe laufen NIE innerhalb einer Datenbanktransaktion (die Gebühr wird vorher geholt oder in einem eigenen Folgeschritt gebucht).
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, paymentCharges, paymentProfiles, paymentRefunds } from "@/db/schema";
+import { matchParticipants, matches, paymentChargeAttempts, paymentCharges, paymentProfiles, paymentRefunds } from "@/db/schema";
+import { ledgerEntries } from "@/db/schema-finance";
 import { audit } from "../audit";
+import { noteIgnoredCharge } from "./unmatched";
 import { formatEuro } from "@/lib/money";
 import { notifyUsers } from "../notifications";
 import { issueReceipt } from "../receipts";
 import { teamName } from "../names";
 import { post } from "../ledger";
+import { bookCommission, shareAccountFor } from "../commission";
 import type { Tx } from "../tx";
 import { getPaymentProvider } from "./provider";
+import { notifyChargeProblem } from "./charge-notify";
+import { graceUntil, inGraceWindow } from "@/lib/grace";
+import { failSubstitute } from "./substitute-fail";
+import { refundVoidedByDispute } from "./dispute";
+import { applyTournamentCharge } from "./tournament-charge";
+import { matchIdOf } from "./charge-context";
 
 export const refundKey = (chargeId: string) => `refund:${chargeId}`;
 
 /** Legt die (einzige, volle) Erstattungszeile einer erfolgreichen Abbuchung an. Idempotent (UNIQUE charge_id). Gesendet wird sie vom Erstattungs-Ablauf (refund.ts). */
-export async function ensureRefundRow(tx: Tx, charge: typeof paymentCharges.$inferSelect, reason: string) {
-  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, userId: charge.userId, amountCents: charge.amountCents, idempotencyKey: refundKey(charge.id), reason }).onConflictDoNothing();
+export async function ensureRefundRow(tx: Tx, charge: typeof paymentCharges.$inferSelect, reason: string, extraPaymentIntentId: string | null = null) {
+  // Standard: die Erstattung des PaymentIntents der Zeile (Schluessel refund:<Abbuchung>). Mit extraPaymentIntentId: ein WEITERER erfolgreicher PaymentIntent derselben Abbuchung
+  // (Doppelabbuchung), eigene Zeile und Schluessel refund:<Abbuchung>:<PaymentIntent>.
+  const key = extraPaymentIntentId ? `${refundKey(charge.id)}:${extraPaymentIntentId}` : refundKey(charge.id);
+  // Zahlungsstreit (M4a): hat die Zahlung einen offenen oder verlorenen Streit, entfaellt die Erstattung (cancelled_dispute), die Absage bleibt unblockiert
+  const voided = await refundVoidedByDispute(tx, charge, extraPaymentIntentId);
+  await tx.insert(paymentRefunds).values({ chargeId: charge.id, matchId: charge.matchId, tournamentId: charge.tournamentId, userId: charge.payerUserId ?? charge.userId, amountCents: charge.amountCents, idempotencyKey: key, reason, paymentIntentId: extraPaymentIntentId, status: voided ? "cancelled_dispute" : "pending" }).onConflictDoNothing();
 }
 
 export type ChargeOutcome = "succeeded" | "requires_action" | "failed";
@@ -29,7 +43,7 @@ export type ChargeReport = {
   amountCents: number | null;
   currency: string | null;
   customerId: string | null;
-  metadata: { matchId: string | null; userId: string | null };
+  metadata: { matchId: string | null; tournamentId?: string | null; userId: string | null };
   failureCode: string | null;
 };
 
@@ -48,7 +62,7 @@ const cleanCode = (c: string | null) => (typeof c === "string" && /^[a-z0-9_.-]{
  */
 export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyResult> {
   const ignore = async (reason: string): Promise<ApplyResult> => {
-    await audit(null, "charge.ignored", "payment_intent", r.paymentIntentId, { after: { reason } }, tx);
+    await noteIgnoredCharge(tx, r, reason); // Audit mit Ergebnis; erfolgreiche Zahlung ohne Zuordnung: sofortiger Alarm an Admin 1 (Backlog 118)
     return { status: "ignored", reason };
   };
 
@@ -58,38 +72,100 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
     const q = tx.select().from(paymentCharges).where(eq(paymentCharges.paymentIntentId, r.paymentIntentId));
     return (lock ? await q.for("update") : await q)[0];
   };
+  // Ein ALTER, abgeschlossener Versuch (Historie, M3c-1): die Zeile gehört zu dem Versuch, der inzwischen durch einen neueren ersetzt wurde
+  const byHistory = async (lock: boolean) => {
+    const [h] = await tx.select({ chargeId: paymentChargeAttempts.chargeId }).from(paymentChargeAttempts).where(eq(paymentChargeAttempts.paymentIntentId, r.paymentIntentId));
+    if (!h) return undefined;
+    const q = tx.select().from(paymentCharges).where(eq(paymentCharges.id, h.chargeId));
+    return (lock ? await q.for("update") : await q)[0];
+  };
   const byMeta = async (lock: boolean) => {
     const { matchId, userId } = r.metadata;
     if (!matchId || !userId || !UUID.test(matchId) || !UUID.test(userId)) return undefined;
     const q = tx.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId)));
     return (lock ? await q.for("update") : await q)[0];
   };
-  const probe = (await byPi(false)) ?? (await byMeta(false));
-  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, probe.matchId)).for("update");
+  const probe = (await byPi(false)) ?? (await byHistory(false)) ?? (await byMeta(false));
+  // Turnier-Zeile (oder Metadaten eines Turniers ohne Treffer): eigener Zweig, gleiche Regeln (tournament-charge.ts); die Spiel-Pfade fassen sie nie an
+  if ((probe && probe.tournamentId !== null) || (!probe && r.metadata.tournamentId)) return applyTournamentCharge(tx, r);
+  if (probe) await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update"); // Spiel zuerst
   let row: typeof paymentCharges.$inferSelect | undefined = await byPi(true);
+  let oldAttempt = false;
+  if (!row) {
+    row = await byHistory(true);
+    oldAttempt = row !== undefined;
+  }
   if (!row) {
     if (!r.metadata.matchId || !r.metadata.userId || !UUID.test(r.metadata.matchId) || !UUID.test(r.metadata.userId)) return ignore("unknown_payment_intent");
     row = await byMeta(true);
     if (!row) return ignore("unknown_charge");
     // Die Zeile gehört zu einem ANDEREN PaymentIntent. Derselbe PaymentIntent ist kein Fehler: ein paralleles Ereignis hat ihn gerade gebunden
     // (wir haben auf seine Sperre gewartet) und wird normal weiterverarbeitet, sonst ginge ein succeeded verloren (Geld abgebucht, nicht gebucht).
-    if (row.paymentIntentId !== null && row.paymentIntentId !== r.paymentIntentId) return ignore("other_payment_intent");
+    if (row.paymentIntentId !== null && row.paymentIntentId !== r.paymentIntentId) {
+      // Die Zeile ist schon erfolgreich oder ihr Platz wurde vergeben, und nun meldet Stripe einen weiteren erfolgreichen PaymentIntent: kein Fehler, sondern Geld, das
+      // gebucht UND voll erstattet wird (siehe unten). Jeder andere fremde PaymentIntent wird ignoriert.
+      if (!(r.outcome === "succeeded" && (row.status === "succeeded" || row.resolution === "replaced"))) return ignore("other_payment_intent");
+    }
   }
   if (r.metadata.matchId !== null && r.metadata.matchId !== row.matchId) return ignore("metadata_mismatch");
   if (r.metadata.userId !== null && r.metadata.userId !== row.userId) return ignore("metadata_mismatch");
   if (r.amountCents !== row.amountCents || r.currency?.toLowerCase() !== "eur") return ignore("amount_mismatch");
-  const [profile] = await tx.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, row.userId));
+  // WESSEN Kunde: bei einer Uebernahme (Variante B) der des ZAHLERS; Metadaten und Betrag gehoeren zum Platz (row.userId)
+  const [profile] = await tx.select({ stripeCustomerId: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, row.payerUserId ?? row.userId));
   if (!profile || r.customerId !== profile.stripeCustomerId) return ignore("customer_mismatch");
 
+  // Ereignis eines ALTEN Versuchs: ein Fehlschlag aendert nichts (der neuere Versuch zaehlt), ein Erfolg ist trotzdem Geld und wird verbucht (succeeded gewinnt immer)
+  if (oldAttempt && r.outcome !== "succeeded") {
+    await audit(null, "charge.old_attempt_event", "match", matchIdOf(row), { after: { userId: row.userId, outcome: r.outcome } }, tx);
+    return { status: "already" };
+  }
+  // Ersetzter Platz (Platz vergeben): Fehlschlaege aendern nichts mehr
+  if (row.resolution === "replaced" && r.outcome !== "succeeded") return { status: "already" };
+  if (r.outcome === "succeeded" && (row.status === "succeeded" || row.resolution === "replaced")) {
+    // SPAETER ERFOLG nach Ersatz oder ZWEITER erfolgreicher PaymentIntent zur selben Zeile (Plan v2 Punkt 4): der Betrag liegt bei uns, also wird er gebucht (Hauptbuch
+    // clearing -> revenue, Schluessel charge:<PI>) UND sofort voll auf die Karte erstattet (revenue -> clearing ueber den Erstattungsablauf) + Admin-Alarm. Nie ein stilles Behalten.
+    const [booked] = await tx.select({ id: ledgerEntries.id }).from(ledgerEntries).where(eq(ledgerEntries.idempotencyKey, `charge:${r.paymentIntentId}`));
+    if (booked) return { status: "already" };
+    await post(tx, {
+      debit: { account: "clearing" },
+      credit: { account: await shareAccountFor(tx, matchIdOf(row)) },
+      amountCents: row.amountCents,
+      kind: "match_share",
+      matchId: row.matchId,
+      idempotencyKey: `charge:${r.paymentIntentId}`,
+      reason: "Abbuchung Anteil (Karte), spaet eingegangen oder doppelt",
+    });
+    if (row.status !== "succeeded") {
+      // der ersetzte Platz selbst war nie erfolgreich: die Zeile wird mit DIESEM PaymentIntent erfolgreich (und gleich erstattet)
+      await tx.update(paymentCharges).set({ status: "succeeded", failureCode: null, paymentIntentId: r.paymentIntentId, updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
+      await ensureRefundRow(tx, { ...row, status: "succeeded", paymentIntentId: r.paymentIntentId }, "Spät eingegangene Zahlung (Platz vergeben)");
+    } else {
+      await ensureRefundRow(tx, row, "Doppelte Abbuchung", r.paymentIntentId);
+    }
+    await audit(null, "charge.duplicate_success", "match", matchIdOf(row), { after: { userId: row.userId, paymentIntentId: r.paymentIntentId, replaced: row.resolution === "replaced" } }, tx);
+    return { status: "applied" };
+  }
   if (row.status === "succeeded") return { status: "already" };
   // Rangfolge succeeded > failed > requires_action > pending: ein verspätetes, "schwächeres" Ereignis überschreibt nichts
   if (r.outcome !== "succeeded" && RANK[r.outcome] < RANK[row.status]) return { status: "already" };
-  if (row.paymentIntentId === null) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
+  if (r.outcome === "succeeded" && row.paymentIntentId !== r.paymentIntentId) {
+    // Der BEZAHLTE PaymentIntent ist nicht der gebundene (ein ALTER Versuch gewinnt das Rennen, oder die Zeile ist schon auf einen neueren Versuch gedreht): die Zeile muss auf den
+    // bezahlten zeigen, sonst findet die Gebuehrenbuchung (bookChargeFee/bookOpenFees) die Zeile nicht, bucht die Gebuehr eines unbezahlten PaymentIntents, und die Erstattung nimmt den
+    // falschen PaymentIntent. Der bisher gebundene PaymentIntent des laufenden Versuchs wandert in die Historie (spaetere Ereignisse zu ihm werden weiter zugeordnet).
+    if (row.paymentIntentId !== null) {
+      await tx
+        .insert(paymentChargeAttempts)
+        .values({ chargeId: row.id, attemptNo: row.currentAttempt, idempotencyKey: row.idempotencyKey, paymentIntentId: row.paymentIntentId, status: row.status, failureCode: row.failureCode, attemptStartedAt: row.attemptStartedAt })
+        .onConflictDoNothing();
+    }
+    await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
+    row = { ...row, paymentIntentId: r.paymentIntentId };
+  } else if (row.paymentIntentId === null && !oldAttempt) await tx.update(paymentCharges).set({ paymentIntentId: r.paymentIntentId }).where(eq(paymentCharges.id, row.id));
 
   if (r.outcome === "succeeded") {
     await post(tx, {
       debit: { account: "clearing" },
-      credit: { account: "revenue" },
+      credit: { account: await shareAccountFor(tx, matchIdOf(row)) }, // Altspiel revenue, neues Modell venue_payable (Verbindlichkeit Halle), Vertrag 009 M2
       amountCents: row.amountCents,
       kind: "match_share",
       matchId: row.matchId,
@@ -97,23 +173,40 @@ export async function applyChargeInTx(tx: Tx, r: ChargeReport): Promise<ApplyRes
       reason: "Abbuchung Anteil (Karte)",
     });
     await tx.update(paymentCharges).set({ status: "succeeded", failureCode: null, updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
-    await tx.update(matchParticipants).set({ cardStatus: "charged" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
-    await audit(null, "charge.succeeded", "match", row.matchId, { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
+    await tx.update(matchParticipants).set({ cardStatus: "charged" }).where(and(eq(matchParticipants.matchId, matchIdOf(row)), eq(matchParticipants.userId, row.userId)));
+    await audit(null, "charge.succeeded", "match", matchIdOf(row), { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
     // Gelingt die Abbuchung erst NACH der Absage (oder während sie läuft), wird sofort erstattet: nie Geld einer abgesagten Lobby behalten
-    const [game] = await tx.select({ status: matches.status, cancelRequestedAt: matches.cancelRequestedAt }).from(matches).where(eq(matches.id, row.matchId));
+    const [game] = await tx.select({ status: matches.status, cancelRequestedAt: matches.cancelRequestedAt }).from(matches).where(eq(matches.id, matchIdOf(row)));
     if (game && (game.cancelRequestedAt !== null || game.status === "cancelled")) {
       await ensureRefundRow(tx, { ...row, status: "succeeded" }, "Abbuchung nach Absage");
-      await audit(null, "refund.auto", "match", row.matchId, { after: { userId: row.userId } }, tx);
+      await audit(null, "refund.auto", "match", matchIdOf(row), { after: { userId: row.userId } }, tx);
     }
-    await settleIfComplete(tx, row.matchId); // der letzte erfolgreiche Spieler bucht das Spiel, egal ob über den Job oder den Webhook
+    await settleIfComplete(tx, matchIdOf(row)); // der letzte erfolgreiche Spieler bucht das Spiel, egal ob über den Job oder den Webhook
     return { status: "applied" };
   }
 
   // Nicht erfolgreich: nur der Status und das Audit (Nachzahlfenster, Nachrücker und Absage sind M3). Eine zweite gleiche Meldung ändert nichts.
   if (row.status === r.outcome && row.failureCode === cleanCode(r.failureCode)) return { status: "already" };
-  await tx.update(paymentCharges).set({ status: r.outcome, failureCode: cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), updatedAt: new Date() }).where(eq(paymentCharges.id, row.id));
-  await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, row.matchId), eq(matchParticipants.userId, row.userId)));
-  await audit(null, "charge.failed", "match", row.matchId, { after: { userId: row.userId, outcome: r.outcome, code: cleanCode(r.failureCode) } }, tx);
+  const firstProblem = row.status !== "failed" && row.status !== "requires_action";
+  const now = new Date();
+  if (row.slotOf !== null) {
+    // Nachruecker: sofort draussen, kein Fenster, keine Nachricht an Captain oder Dritte (AC-8/AC-20); der Platz geht an den Naechsten
+    const code = cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined");
+    await tx.update(paymentCharges).set({ status: r.outcome, failureCode: code, updatedAt: now }).where(eq(paymentCharges.id, row.id));
+    await audit(null, "charge.failed", "match", matchIdOf(row), { after: { userId: row.userId, outcome: r.outcome, code } }, tx);
+    if (row.resolution === null) await failSubstitute(tx, { ...row, matchId: matchIdOf(row) }, code);
+    return { status: "applied" };
+  }
+  // Nachzahlfenster (AC-6): beginnt mit dem ERSTEN Fehler und wird danach nicht mehr verschoben; unter 1 h bis zum Anstoss gibt es keins (null)
+  const [game] = await tx.select({ startsAt: matches.startsAt }).from(matches).where(eq(matches.id, matchIdOf(row)));
+  // Nur der erste Versuch setzt das Fenster; ein fehlgeschlagener Wiederholungsversuch (current_attempt > 1) laesst es unveraendert
+  const grace = firstProblem && row.currentAttempt === 1 ? graceUntil(now, game?.startsAt ?? now) : row.graceUntil; // immer gesetzt (kein Fenster = Ende ist jetzt)
+  await tx.update(paymentCharges).set({ status: r.outcome, failureCode: cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), graceUntil: grace, updatedAt: now }).where(eq(paymentCharges.id, row.id));
+  await tx.update(matchParticipants).set({ cardStatus: "failed" }).where(and(eq(matchParticipants.matchId, matchIdOf(row)), eq(matchParticipants.userId, row.userId)));
+  await audit(null, "charge.failed", "match", matchIdOf(row), { after: { userId: row.userId, outcome: r.outcome, code: cleanCode(r.failureCode) } }, tx);
+  // NUR beim ersten Wechsel in einen Problemzustand: war die Zeile schon failed oder requires_action, ändern sich Status und Code (und das Audit), aber es geht keine
+  // zweite Nachricht raus (requires_action -> failed, Codewechsel). Empfänger: Betroffener + Captain/Veranstalter, nie Dritte (AC-12/AC-20)
+  if (firstProblem) await notifyChargeProblem(tx, { ...row, matchId: matchIdOf(row) }, cleanCode(r.failureCode) ?? (r.outcome === "requires_action" ? "authentication_required" : "card_declined"), game && inGraceWindow(grace, game.startsAt, now) ? grace : null);
   return { status: "applied" };
 }
 
@@ -145,10 +238,12 @@ export async function bookChargeFee(paymentIntentId: string): Promise<"booked" |
         amountCents: fee,
         kind: "fee",
         matchId: fresh.matchId,
+        tournamentId: fresh.tournamentId, // Turnier-Abbuchung: die Gebuehr gehoert zum Turnier (Auswertung)
         idempotencyKey: `fee:${paymentIntentId}`,
         reason: "Stripe-Gebühr (echt)",
       });
     }
+    // Hinweis: setzt updated_at. Unkritisch fuer das Wiederholen bei fremdem Anteil (charge-retry vergleicht updated_at mit der Karte des Zahlers): die Gebuehr gibt es nur bei erfolgreichen Zeilen, wiederholt werden nur failed/requires_action.
     await tx.update(paymentCharges).set({ feeCents: fee, updatedAt: new Date() }).where(eq(paymentCharges.id, fresh.id));
     return "booked" as const;
   });
@@ -170,17 +265,25 @@ export async function bookOpenFees(limit = 50): Promise<number> {
 export async function settleIfComplete(tx: Tx, matchId: string): Promise<boolean> {
   const [match] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
   if (!match || match.settledAt !== null || !["lobby", "confirmed"].includes(match.status) || match.cancelRequestedAt !== null) return false; // Absage angefordert: nie abrechnen
-  const rows = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
+  // Ersetzte Zeilen (resolution=replaced: Platz vergeben, gescheiterter Nachruecker) zaehlen nicht mit
+  const all = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
+  // Ein vergebener Platz (Ursprungszeile resolution=replaced) muss durch einen ERFOLGREICHEN Nachruecker besetzt sein; ist er noch offen, fehlt ein Anteil und es wird NICHT abgerechnet
+  for (const root of all.filter((r) => r.slotOf === null && r.resolution === "replaced")) if (!all.some((k) => k.slotOf === root.id && k.status === "succeeded" && k.resolution === null)) return false; // ein ERSETZTER Nachruecker (auch mit spaetem Erfolg) besetzt den Platz nicht
+  const rows = all.filter((r) => r.resolution === null);
   if (rows.length === 0 || rows.some((r) => r.status !== "succeeded")) return false;
   const seated = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId)));
   const paid = new Set(rows.map((r) => r.userId));
   if (seated.length === 0 || seated.some((s) => !paid.has(s.userId))) return false; // jemand ist eingeteilt, aber wurde nie belastet
 
   await tx.update(matches).set({ settledAt: new Date() }).where(and(eq(matches.id, matchId), isNull(matches.settledAt)));
+  await bookCommission(tx, match); // Vertrag 009 M2: Provision und 10er-Bonus genau einmal, wenn das Spiel gebucht ist (nur Modell commission)
   const [home, away] = [await teamName(tx, match.homeTeamId), await teamName(tx, match.awayTeamId)];
-  for (const r of rows) {
-    await issueReceipt(tx, { userId: r.userId, kind: "match", matchId, amountCents: r.amountCents });
-    await notifyUsers([r.userId], { type: "payment", title: "Abrechnung", body: `${home} gegen ${away}: ${formatEuro(r.amountCents)} wurden von deiner Karte abgebucht.`, url: `/lobby/${matchId}` }, tx);
+  // Beleg und Nachricht gehen an den, dessen Karte belastet wurde (Zahler); uebernimmt B einen Anteil, bekommt B EINEN Beleg ueber die Summe beider Posten
+  const byPayer = new Map<string, number>();
+  for (const r of rows) byPayer.set(r.payerUserId ?? r.userId, (byPayer.get(r.payerUserId ?? r.userId) ?? 0) + r.amountCents);
+  for (const [payer, cents] of byPayer) {
+    await issueReceipt(tx, { userId: payer, kind: "match", matchId, amountCents: cents });
+    await notifyUsers([payer], { type: "payment", title: "Abrechnung", body: `${home} gegen ${away}: ${formatEuro(cents)} wurden von deiner Karte abgebucht.`, url: `/lobby/${matchId}` }, tx);
   }
   await audit(null, "charge.settled", "match", matchId, { after: { payers: rows.length, totalCents: rows.reduce((s, r) => s + r.amountCents, 0) } }, tx);
   return true;

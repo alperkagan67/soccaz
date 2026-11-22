@@ -1,4 +1,5 @@
 import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { clearCoversInvolving } from "./payments/cover-clear";
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
@@ -15,7 +16,7 @@ import {
   teams,
   users,
 } from "@/db/schema";
-import type { Role } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, isOwner, type Role } from "@/lib/roles";
 import { audit } from "./audit";
 import { DomainError } from "./teams";
 import { hasChargeRows } from "./wallet";
@@ -130,6 +131,7 @@ export async function listUsers(filter: { q?: string; role?: string; banned?: bo
       name: users.name,
       email: users.email,
       role: users.role,
+      isOwner: users.isOwner,
       city: users.city,
       isVerifiedPro: users.isVerifiedPro,
       isOrganizer: users.isOrganizer,
@@ -140,7 +142,7 @@ export async function listUsers(filter: { q?: string; role?: string; banned?: bo
     .where(
       and(
         filter.q ? or(ilike(users.name, likeTerm(filter.q)), ilike(users.email, likeTerm(filter.q))) : undefined,
-        filter.role && ["player", "admin", "moderator", "finance", "booking"].includes(filter.role) ? eq(users.role, filter.role as Role) : undefined,
+        filter.role && ["player", "admin"].includes(filter.role) ? eq(users.role, filter.role as Role) : undefined,
         filter.banned ? isNotNull(users.bannedAt) : undefined,
       ),
     )
@@ -164,10 +166,15 @@ export async function setBanned(actorId: string, userId: string, banned: boolean
 }
 
 export async function setRole(actorId: string, userId: string, role: Role) {
-  if (actorId === userId) throw new DomainError("Du kannst deine eigene Rolle nicht ändern.");
   await db.transaction(async (tx) => {
+    // Rollen vergibt nur Admin 1 (Vertrag 009, AC-1/AC-2): auch hier im Server geprüft, nicht nur an der Seite
+    if (!ASSIGNABLE_ROLES.includes(role)) throw new DomainError("Diese Rolle gibt es nicht mehr. Vergeben werden nur Spieler und Admin.");
+    const [actor] = await tx.select({ role: users.role, isOwner: users.isOwner }).from(users).where(eq(users.id, actorId));
+    if (!isOwner(actor)) throw new DomainError("Nur Admin 1 darf Rollen vergeben.");
     const [target] = await tx.select().from(users).where(eq(users.id, userId)).for("update");
     if (!target) throw new DomainError("Nutzer nicht gefunden.");
+    if (target.isOwner) throw new DomainError("Die Rolle von Admin 1 lässt sich hier nicht ändern. Admin 1 wird über den Betreiber-Schritt abgegeben (docs/BETRIEB.md).");
+    if (actorId === userId) throw new DomainError("Du kannst deine eigene Rolle nicht ändern.");
     await tx.update(users).set({ role }).where(eq(users.id, userId));
     await audit(actorId, "user.role", "user", userId, { before: { role: target.role }, after: { role } }, tx);
   });
@@ -263,6 +270,7 @@ export async function mergeTeams(actorId: string, sourceId: string, targetId: st
       join match_participants b on b.match_id = a.match_id and b.user_id = a.user_id
       where a.team_id = ${sourceId} and b.team_id = ${targetId}`);
     for (const row of clash.rows as { match_id: string; user_id: string }[]) {
+      await clearCoversInvolving(tx, row.match_id, row.user_id); // (Primaerschluessel match_id+user_id macht diesen Fall praktisch unerreichbar; die Regel gilt trotzdem an jeder Stelle, die Teilnahmen loescht)
       await tx.delete(matchParticipants).where(and(eq(matchParticipants.matchId, row.match_id), eq(matchParticipants.userId, row.user_id), eq(matchParticipants.teamId, sourceId)));
     }
     await tx.update(matchParticipants).set({ teamId: targetId }).where(eq(matchParticipants.teamId, sourceId));

@@ -8,8 +8,8 @@ import type { Tx } from "./tx";
 
 type Exec = Pick<typeof db, "insert" | "select">;
 
-export type Account = "wallet" | "clearing" | "bank" | "revenue" | "venue_cost" | "fees" | "promo" | "chargeback" | "tournament";
-export type LedgerKind = "topup" | "fee" | "promo_credit" | "match_share" | "refund" | "venue_cost" | "adjustment" | "chargeback" | "tournament_entry" | "tournament_refund" | "tournament_payout" | "tournament_commission";
+export type Account = "wallet" | "clearing" | "bank" | "revenue" | "venue_cost" | "fees" | "promo" | "chargeback" | "tournament" | "venue_payable" | "commission";
+export type LedgerKind = "topup" | "fee" | "promo_credit" | "match_share" | "refund" | "venue_cost" | "adjustment" | "chargeback" | "tournament_entry" | "tournament_refund" | "tournament_payout" | "tournament_commission" | "commission" | "commission_bonus" | "tournament_share";
 
 export type Posting = {
   debit: { account: Account; userId?: string };
@@ -111,6 +111,7 @@ export async function reverseEntry(tx: Tx, entryId: string, opts: { reason: stri
     amountCents: orig.amountCents,
     kind: "adjustment",
     matchId: orig.matchId,
+    tournamentId: orig.tournamentId, // M5-5: die Gegenbuchung gehoert zum selben Turnier (Summe 0 je tournament_id)
     paymentId: orig.paymentId,
     reversesEntryId: orig.id,
     reason: opts.reason,

@@ -1,12 +1,14 @@
 import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { clearCoversInvolving } from "./payments/cover-clear";
 import { alias } from "drizzle-orm/pg-core";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
+import { matchParticipants, matches, paymentCharges, teamMembers, teams, users } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { MIN_READY_PER_TEAM, hasFreeSlot, teamCapacity, isConfirmable, isSubstituteByRank, MAX_PENDING_STRANGERS } from "@/lib/lobby-rules";
 import type { Role } from "@/lib/roles";
 import { audit } from "./audit";
+import { reverseCommission } from "./commission";
 import { teamName, userName } from "./names";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 import { DomainError } from "./teams";
@@ -380,6 +382,9 @@ const LIST_LOCKED = "Ab 48 Stunden vor Anstoß ist die Teilnehmerliste gesperrt:
 
 export function joinLobby(userId: string, matchId: string) {
   return mutateLobby(userId, matchId, async (tx, match, now) => {
+    // Wurde der Platz wegen einer nicht zustande gekommenen Zahlung vergeben (M3c-2), gibt es keinen Wiederbeitritt: neutrale Meldung, kein Grund
+    const [replaced] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.userId, userId), eq(paymentCharges.resolution, "replaced")));
+    if (replaced) throw new DomainError("Dein Platz wurde vergeben.");
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst.");
     const mine = await tx
@@ -462,8 +467,9 @@ export function setVenue(userId: string, matchId: string, venue: string) {
 }
 
 export function joinAsSubstitute(userId: string, matchId: string) {
-  return mutateLobby(userId, matchId, async (tx, match) => {
+  return mutateLobby(userId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst."); // wie joinLobby: auch der Direktaufruf nach der Frist
     if (match.visibility !== "public") throw new DomainError("Diese Lobby ist privat.");
     const mine = await tx
       .select({ teamId: teamMembers.teamId })
@@ -491,8 +497,9 @@ export function joinAsSubstitute(userId: string, matchId: string) {
 }
 
 export function assignSubstitute(actorId: string, matchId: string, targetUserId: string, teamId: string) {
-  return mutateLobby(actorId, matchId, async (tx, match) => {
+  return mutateLobby(actorId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await joinClosed(tx, match, now)) throw new DomainError("Die Teilnehmerliste ist gesperrt (ab 48 Stunden vor Anstoß oder nach der Buchung): Niemand kann mehr beitreten. Ersatz regelt ihr selbst."); // die Einteilung gehört zur Liste: nach der Frist gesperrt
     if (teamId !== match.homeTeamId && teamId !== match.awayTeamId) throw new DomainError("Ungültiges Team.");
     if (!(await isPlatformAdmin(tx, actorId)) && !(await isAdminOf(tx, actorId, teamId))) {
       throw new DomainError("Nur Admins dieses Teams können Ersatzspieler zuweisen.");
@@ -518,12 +525,15 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false,
     if (match.kind !== "private") throw new DomainError("Zufällig einteilen gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
     if (reshuffle) {
+      // neue Einteilung: alle Uebernahmen dieses Spiels enden (neue Zustimmung noetig)
+      await tx.update(matchParticipants).set({ coveredByUserId: null, coverMandateText: null, coverAcceptedAt: null }).where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.coveredByUserId)));
       await tx
         .update(matchParticipants)
         .set({ teamId: null })
         .where(and(eq(matchParticipants.matchId, matchId), isNotNull(matchParticipants.teamId), isNull(matchParticipants.readyAt), eq(matchParticipants.paidCents, 0)));
     }
-    const pool = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNull(matchParticipants.teamId)));
+    // feste Reihenfolge (nach Nutzer-ID): ohne ORDER BY hängt die Zeilenfolge der Datenbank vom Speicherort ab (nach Updates anders), dieselbe Zufallsquelle gäbe dann andere Teams (Backlog 3)
+    const pool = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), isNull(matchParticipants.teamId))).orderBy(asc(matchParticipants.userId));
     if (pool.length === 0) throw new DomainError("Es wartet niemand auf eine Einteilung.");
     const cap = teamCapacity(match);
     const counts = { [match.homeTeamId]: await teamCount(tx, matchId, match.homeTeamId), [match.awayTeamId]: await teamCount(tx, matchId, match.awayTeamId) };
@@ -543,13 +553,15 @@ export function randomSplit(actorId: string, matchId: string, reshuffle = false,
 
 /** Privatspiel: Ein eingeteilter Spieler (noch nicht bereit, nicht bezahlt) geht zurück in den Pool der Nichteingeteilten. */
 export function unassignParticipant(actorId: string, matchId: string, targetUserId: string) {
-  return mutateLobby(actorId, matchId, async (tx, match) => {
+  return mutateLobby(actorId, matchId, async (tx, match, now) => {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
+    if (await leaveClosed(tx, match, now)) throw new DomainError(LIST_LOCKED); // wie removeParticipant
     if (match.kind !== "private") throw new DomainError("Das gibt es nur bei Privatspielen.");
     if (!(await canManageMatch(tx, actorId, match))) throw new DomainError("Nur der Veranstalter kann die Teams einteilen.");
     const p = await findParticipant(tx, matchId, targetUserId);
     if (!p || !p.teamId) throw new DomainError("Dieser Spieler ist keinem Team zugeteilt.");
     if (p.readyAt || p.paidCents > 0) throw new DomainError("Der Spieler ist schon bereit oder hat bezahlt. Entferne ihn, wenn er gehen soll.");
+    await clearCoversInvolving(tx, matchId, targetUserId);
     await tx.update(matchParticipants).set({ teamId: null }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, targetUserId)));
     await audit(actorId, "lobby.unassign", "match", matchId, { after: { userId: targetUserId } }, tx);
   });
@@ -590,8 +602,9 @@ export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | n
   // (die Erstattung auf die Karte kommt mit M3). Deshalb für ALLE Pfade (Captain, Admin, System/Job: actorId null) abgelehnt; kein Wallet-Eintrag, Status bleibt.
   // Einzige Ausnahme: der Erstattungs-Ablauf (refund.ts) ruft mit afterRefund auf, NACHDEM jede Abbuchung erstattet ist (finalizeCancel). Absage von Hand: nur Admin 1 über adminCancelMatch.
   if (!opts.afterRefund && (await hasChargeRows(tx, match.id))) throw new DomainError("Für dieses Spiel hat die Abbuchung begonnen: Absage und Erstattung folgen erst mit der Karten-Erstattung. Bitte kontaktiere den Support.");
-  await tx.update(matches).set({ status: "cancelled" }).where(eq(matches.id, match.id));
+  await tx.update(matches).set({ status: "cancelled", cancelReason: reason }).where(eq(matches.id, match.id)); // der Grund bleibt am Spiel (Anzeige in der Lobby); der Erstattungspfad (refund.ts) hat denselben Text schon gesetzt
   await refundOnCancel(tx, match, actorId);
+  await reverseCommission(tx, match.id); // Vertrag 009 M2 (Entscheid t9 P7): Absage -> Provision ganz storniert (ein ausgeloester 10er-Bonus bleibt)
   await withdrawBookingJob(tx, match.id);
   await audit(actorId, "match.cancel", "match", match.id, { before: { status: match.status }, after: { status: "cancelled", reason } }, tx);
   await notifyUsers(

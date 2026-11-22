@@ -34,6 +34,9 @@ services:
     build:
       context: .
       target: runner
+      args:
+        # Wird beim Bauen in den Browser-Code eingebettet (öffentlicher Schlüssel, Wert nur in der .env); leer = kein Kartenformular
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
     restart: unless-stopped
     env_file: .env
     environment:

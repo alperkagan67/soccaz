@@ -24,13 +24,26 @@ describe("cardView: Anzeige je Kartenstatus (Vertrag 012, AC-12)", () => {
   }
   it("grün und rot unterscheiden sich auch in Form und Wort, nicht nur in der Farbe", () => {
     const g = cardView("card_ready");
-    for (const s of ["none", "failed", "charge_pending"] as CardStatus[]) {
+    for (const s of ["none", "failed", "charge_pending", "open"] as const) {
       const o = cardView(s);
       expect(o.glyph).not.toBe(g.glyph);
       expect(o.label).not.toBe(g.label);
     }
   });
-  it("die Legende zeigt vier verschiedene Zustände", () => {
-    expect(new Set(CARD_LEGEND.map((s) => cardView(s).label)).size).toBe(4);
+  it("die Legende zeigt fünf verschiedene Zustände (mit Gedeckt) und nie das Wort fehlgeschlagen", () => {
+    expect(CARD_LEGEND.map((s) => cardView(s).label).join(" ")).not.toMatch(/fehlgeschlagen/i);
+    expect(new Set(CARD_LEGEND.map((s) => cardView(s).label)).size).toBe(5);
+    expect(CARD_LEGEND).toContain("covered");
+  });
+  it("Gedeckt (Anteil übernommen, Entscheid t9 b): grün, Wort Gedeckt, anderer Form als Karte hinterlegt (Ring statt gefüllt), nennt keinen Namen und keinen Grund", () => {
+    const c = cardView("covered");
+    const g = cardView("card_ready");
+    expect(c.tone).toBe("green");
+    expect(c.label).toBe("Gedeckt");
+    expect(c.filled).toBe(false);
+    expect(g.filled).toBe(true); // Unterschied in der Form, nicht nur im Wort
+    expect(c.label).not.toBe(g.label);
+    expect(c.label).not.toMatch(/übernomm|fehlgeschlagen|Karte/i);
+    expect(c.hasCard).toBe(true);
   });
 });

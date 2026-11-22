@@ -76,7 +76,7 @@ export async function deleteComment(userId: string, commentId: string) {
   const [c] = await db.select().from(comments).where(eq(comments.id, commentId));
   if (!c || c.status === "removed") throw new DomainError("Kommentar nicht gefunden.");
   const [actor] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-  const mod = actor?.role === "admin" || actor?.role === "moderator";
+  const mod = actor?.role === "admin";
   if (c.authorId !== userId && !mod) throw new DomainError("Das darfst du nicht.");
   await db.update(comments).set({ status: "removed", hiddenReason: c.authorId === userId ? "author" : "moderation", updatedAt: new Date() }).where(eq(comments.id, commentId));
   await audit(userId, "comment.delete", "comment", commentId, { before: { status: c.status } });

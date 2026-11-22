@@ -7,6 +7,12 @@ import { matches } from "@/db/schema";
 import { audit } from "../audit";
 import { cardPaymentsEnabled } from "../settings";
 import { bookOpenFees } from "./charge";
+import { runErasureTasks } from "./erasure";
+import { retryTournamentChargesInWindow, runTournamentChargesDue } from "./tournament-charge";
+import { notifyHallConfirmReminders } from "../tournament-confirm";
+import { cancelTournamentsAfterWindow, notifyFrozenTournaments, notifyMissingCardReminders } from "../tournaments";
+import { retryChargesInWindow } from "./charge-retry";
+import { runSubstitutes } from "./substitute";
 import { AFTER_START, runCharges, UNKNOWN_OUTCOME, type RunResult } from "./charge-run";
 
 /** Bucht ein Kartenspiel ab, wenn es Zeit ist (Frist erreicht bzw. Vorlauf unter 48 h und beide Captains bereit). Sonst passiert nichts: kein Netz, keine Zeilen. */
@@ -79,6 +85,49 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
         console.error("runCardCharges: Fehler bei Spiel", c.id, error instanceof Error ? error.name : "Fehler");
       }
     }
+  }
+  // Turniere im Kartenmodell (012 M5-4): Abbuchung zur Frist bzw. sofort, und Nachholen offener Zeilen
+  if (await cardPaymentsEnabled()) {
+    try {
+      touched += (await runTournamentChargesDue(now)).turniere;
+      touched += await retryTournamentChargesInWindow({ now }); // neue Karte im Nachzahlfenster: erneut abbuchen (M5-5)
+      touched += await cancelTournamentsAfterWindow(now); // Alles-oder-nichts: abgelaufenes Nachzahlfenster -> Absage + Erstattung (M5-5)
+      touched += await notifyHallConfirmReminders(); // Datenbankuhr // Vorwarnung 24 h und 6 h vor der Frist: Halle hat noch nicht zugesagt (M5-7b)
+      touched += await notifyMissingCardReminders(now); // Vorwarnung 24 h und 6 h vor der Frist: Karte fehlt (M5-5)
+    } catch (error) {
+      console.error("runCardCharges: Fehler bei Turnieren", error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  // Eingefrorene Turniere bei Schalter AUS: Mitteilung an Admin 1 ab 6 h, dann alle 12 h (Backlog 141); keine automatische Absage
+  if (!(await cardPaymentsEnabled())) {
+    try {
+      touched += await notifyFrozenTournaments(now);
+    } catch (error) {
+      console.error("runCardCharges: eingefrorene Turniere", error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  // Nachzahlen im Fenster (M3c-1): holt nach, was der Webhook-Pfad nicht geschafft hat (Stripe-Fehler, Abbruch). Nur bei eingeschaltetem Kartenmodell.
+  if (await cardPaymentsEnabled()) {
+    try {
+      touched += await retryChargesInWindow({ now });
+    } catch (error) {
+      console.error("runCardCharges: Wiederabbuchen", error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  // Fensterende: Platz frei und Nachruecker von der Warteliste (M3c-2a), nur bei eingeschaltetem Kartenmodell
+  if (await cardPaymentsEnabled()) {
+    try {
+      const r = await runSubstitutes({ now });
+      touched += r.filled;
+    } catch (error) {
+      console.error("runCardCharges: Nachruecker", error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  // DSGVO (M4b): Loeschauftraege fuer Stripe-Kunden abarbeiten, unabhaengig vom Kartenmodell (eine Kontoloeschung muss auch bei ausgeschaltetem Kartenmodell zu Ende gehen)
+  try {
+    await runErasureTasks(now);
+  } catch (error) {
+    console.error("runCardCharges: Loeschauftraege", error instanceof Error ? error.name : "Fehler");
   }
   try {
     await markAfterStart(now);

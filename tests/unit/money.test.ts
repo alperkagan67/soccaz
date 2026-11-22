@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ceilDiv, finalShareFor, formatEuro, isValidTopup, parseEuro, reservationFor, roundingRemainderCents, shareCents, shareFor } from "@/lib/money";
+import { ceilDiv, finalShareFor, formatEuro, isValidTopup, MAX_SHARE_PLAYERS, MAX_SHARE_RENT_CENTS, parseEuro, reservationFor, roundingRemainderCents, shareCents, shareFor } from "@/lib/money";
 
 describe("Beträge", () => {
   it("parst Eingaben in Cent", () => {
@@ -124,6 +124,42 @@ describe("Privatspiel: Anteil pro Spieler (shareCents, roundingRemainderCents)",
       expect(rest).toBeGreaterThanOrEqual(0);
       expect(rest).toBeLessThan(n);
       expect((share - 1) * n, `rent=${rent} n=${n} minimal`).toBeLessThan(rent || 1); // kleinster Anteil, der reicht
+    }
+  });
+});
+
+describe("shareCents: Obergrenzen und sichere Ganzzahlen (Backlog 3)", () => {
+  it("die Grenzen selbst sind noch gültig und rechnen exakt", () => {
+    expect(shareCents(MAX_SHARE_RENT_CENTS, 1)).toBe(MAX_SHARE_RENT_CENTS);
+    expect(shareCents(MAX_SHARE_RENT_CENTS, MAX_SHARE_PLAYERS)).toBe(MAX_SHARE_RENT_CENTS / MAX_SHARE_PLAYERS);
+    expect(shareCents(1, MAX_SHARE_PLAYERS)).toBe(1);
+  });
+  it("eine Miete über der Obergrenze wird abgelehnt", () => {
+    expect(() => shareCents(MAX_SHARE_RENT_CENTS + 1, 4)).toThrow(/Obergrenze/);
+    expect(() => roundingRemainderCents(MAX_SHARE_RENT_CENTS + 1, 4)).toThrow(/Obergrenze/);
+  });
+  it("keine sicheren Ganzzahlen: NaN, Infinity, Kommazahlen, 2^53 und größer werden abgelehnt (Miete und Spielerzahl)", () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 100.5, 2 ** 53, 2 ** 53 + 2, Number.MAX_VALUE]) {
+      expect(() => shareCents(bad, 4), String(bad)).toThrow();
+      expect(() => shareCents(1000, bad), String(bad)).toThrow();
+    }
+  });
+  it("negative Miete und Spielerzahl unter 1 bleiben abgelehnt", () => {
+    expect(() => shareCents(-1, 4)).toThrow();
+    expect(() => shareCents(100, 0)).toThrow();
+    expect(() => shareCents(100, -3)).toThrow();
+  });
+  it("mehr Spieler als die Obergrenze werden abgelehnt", () => {
+    expect(() => shareCents(1000, MAX_SHARE_PLAYERS + 1)).toThrow(/Obergrenze/);
+  });
+  it("das Ergebnis ist bis zur Obergrenze immer eine sichere Ganzzahl und deckt die Miete", () => {
+    for (const rent of [0, 1, 99, 12_345, 100_000, MAX_SHARE_RENT_CENTS - 1, MAX_SHARE_RENT_CENTS]) {
+      for (const n of [1, 2, 3, 7, 22, 999, MAX_SHARE_PLAYERS]) {
+        const share = shareCents(rent, n);
+        expect(Number.isSafeInteger(share)).toBe(true);
+        expect(share * n).toBeGreaterThanOrEqual(rent);
+        expect(share * n - rent).toBeLessThan(n);
+      }
     }
   });
 });

@@ -1,0 +1,70 @@
+{
+  "note": "Erzeugt unter dem Stand 0053 (Funktion evidence_hash, Version 1), eingefroren. Nicht neu erzeugen.",
+  "rows": [
+    {
+      "seq": 1,
+      "matchId": "11111111-1111-4111-8111-111111111111",
+      "venueId": "33333333-3333-4333-8333-333333333333",
+      "round": 1,
+      "jobId": null,
+      "kind": "request_sent",
+      "reason": null,
+      "at": "2026-11-22T17:02:17.677867Z",
+      "actorCommitment": "",
+      "prevHash": "",
+      "hash": "f96437d7ea136ddf0be5ab332a6d2cabd7431cc6244d873f85fa1b3103c436b6"
+    },
+    {
+      "seq": 2,
+      "matchId": "11111111-1111-4111-8111-111111111111",
+      "venueId": "33333333-3333-4333-8333-333333333333",
+      "round": 1,
+      "jobId": null,
+      "kind": "declined",
+      "reason": "Halle belegt: Veranstaltung Übung äöü 🏟\nzweite Zeile",
+      "at": "2026-11-22T17:02:17.681594Z",
+      "actorCommitment": "c0ffee",
+      "prevHash": "f96437d7ea136ddf0be5ab332a6d2cabd7431cc6244d873f85fa1b3103c436b6",
+      "hash": "ebbaa388403863fc5d03cb4269997132bfee85e6c963e21a959db02254b0aa87"
+    },
+    {
+      "seq": 3,
+      "matchId": "22222222-2222-4222-8222-222222222222",
+      "venueId": null,
+      "round": 1,
+      "jobId": null,
+      "kind": "unmanaged",
+      "reason": null,
+      "at": "2026-11-22T17:02:17.682375Z",
+      "actorCommitment": "",
+      "prevHash": "ebbaa388403863fc5d03cb4269997132bfee85e6c963e21a959db02254b0aa87",
+      "hash": "81be0a47cb512210f9ea52ce3b998f8a76bfb4f21efc095a53cb42556e7ab5b3"
+    },
+    {
+      "seq": 4,
+      "matchId": "22222222-2222-4222-8222-222222222222",
+      "venueId": "33333333-3333-4333-8333-333333333333",
+      "round": 2,
+      "jobId": "44444444-4444-4444-8444-444444444444",
+      "kind": "job_open",
+      "reason": "x",
+      "at": "2026-11-22T17:02:17.683025Z",
+      "actorCommitment": "",
+      "prevHash": "81be0a47cb512210f9ea52ce3b998f8a76bfb4f21efc095a53cb42556e7ab5b3",
+      "hash": "0f0043efed8cf9a5ecd62aa4c3ae71ca46e4893da5a05036fea8ca4bd2c5ed44"
+    },
+    {
+      "seq": 5,
+      "matchId": "11111111-1111-4111-8111-111111111111",
+      "venueId": "33333333-3333-4333-8333-333333333333",
+      "round": 2,
+      "jobId": null,
+      "kind": "accepted",
+      "reason": null,
+      "at": "2026-11-22T17:02:17.683792Z",
+      "actorCommitment": "abc123",
+      "prevHash": "0f0043efed8cf9a5ecd62aa4c3ae71ca46e4893da5a05036fea8ca4bd2c5ed44",
+      "hash": "07a4c6c978aabbc444c67c9f21a9e187ef67c56d3b0c0745cee15869b50c4840"
+    }
+  ]
+}

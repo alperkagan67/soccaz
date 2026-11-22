@@ -5,7 +5,7 @@ import { useFormAction } from "@/components/useFormAction";
 import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
 
-export function TournamentForm({ min, defaultCity, standardHourly, commission }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number }) {
+export function TournamentForm({ min, defaultCity, standardHourly, commission, partnerVenues }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number; partnerVenues: { id: string; label: string }[] | null }) {
   const { state, pending, onSubmit } = useFormAction(createTournamentAction);
   const fe = state?.fieldErrors ?? {};
   return (
@@ -28,6 +28,20 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission }:
           <input id="maxTeams" name="maxTeams" type="number" min={4} max={32} defaultValue={8} className="field" required />
         </div>
       </div>
+      {partnerVenues && (
+        <div>
+          <label className="label" htmlFor="venueId">Partnerhalle</label>
+          {/* nicht required: kostenlose Turniere brauchen keine Halle; der Server verlangt sie, sobald das Turnier etwas kostet */}
+          <select id="venueId" name="venueId" className="field" defaultValue="">
+            <option value="">Halle wählen</option>
+            {partnerVenues.map((v) => (
+              <option key={v.id} value={v.id}>{v.label}</option>
+            ))}
+          </select>
+          <p className="text-xs text-muted">Pflicht, sobald das Turnier etwas kostet. Der Anteil geht an die Halle. Der Turniername ist für die Halle sichtbar.</p>
+          <FieldError message={fe.venueId} />
+        </div>
+      )}
       <div>
         <label className="label" htmlFor="venueText">Spielort</label>
         <input id="venueText" name="venueText" className="field" maxLength={120} placeholder="Halle und Adresse" />

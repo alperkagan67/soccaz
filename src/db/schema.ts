@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { COLOR_KEYS } from "../lib/team-color";
 ﻿import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -24,7 +25,9 @@ export const requestStatus = pgEnum("request_status", ["open", "matched", "cance
 export const matchStatus = pgEnum("match_status", ["lobby", "confirmed", "played", "disputed", "cancelled"]);
 export const eventType = pgEnum("event_type", ["goal", "yellow_card", "red_card"]);
 
-export const users = pgTable("users", {
+export const users = pgTable(
+  "users",
+  {
   id: uuid("id").primaryKey().defaultRandom(),
   googleId: text("google_id").unique(),
   email: text("email").notNull().unique(),
@@ -42,13 +45,21 @@ export const users = pgTable("users", {
   favoriteClub: text("favorite_club"),
   strongFoot: text("strong_foot"), // links | rechts | beidfüßig
   isOrganizer: boolean("is_organizer").notNull().default(false), // darf Turniere gegen Startgeld veranstalten
+  // Admin 1 (Vertrag 009 M1): genau ein Konto mit role = 'admin' UND is_owner. Ein boolean statt eines Enum-Werts: ein Teilindex auf enum::text ist in Postgres nicht erlaubt (nicht IMMUTABLE),
+  // und ADD VALUE ist nicht rückgängig zu machen. Weil der Admin 1 weiter role = 'admin' trägt, behalten alle bisherigen Plattform-Admin-Prüfungen für ihn ihre Wirkung.
+  isOwner: boolean("is_owner").notNull().default(false),
   locale: text("locale").notNull().default("de"),
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   ageConfirmedAt: timestamp("age_confirmed_at", { withTimezone: true }),
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
   bannedAt: timestamp("banned_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  },
+  (t) => [
+    uniqueIndex("users_one_owner").on(t.isOwner).where(sql`${t.isOwner}`), // höchstens ein Admin 1
+    check("users_owner_is_admin", sql`not ${t.isOwner} or ${t.role} = 'admin'`), // Admin 1 ist immer Plattform-Admin
+  ],
+);
 
 export const teams = pgTable(
   "teams",
@@ -126,6 +137,8 @@ export const matches = pgTable("matches", {
   costCents: integer("cost_cents"),
   finalShareCents: integer("final_share_cents"),
   settledAt: timestamp("settled_at", { withTimezone: true }),
+  // Buchungsmodell (Vertrag 009 M2, Entscheid t9 P4): Altspiele 'legacy' (Abbuchung auf revenue, Hallenmiete als venue_cost), Spiele ab Einführung 'commission' (Abbuchung auf venue_payable, nur die Provision ist Ertrag)
+  ledgerModel: text("ledger_model").$type<"legacy" | "commission">().notNull().default("commission"),
   cancelRequestedAt: timestamp("cancel_requested_at", { withTimezone: true }), // 012 M3a: Absage angefordert; das Spiel bleibt lobby/confirmed, bis alle Erstattungen auf die Karte terminal sind
   cancelReason: text("cancel_reason"),
   finalizedAt: timestamp("finalized_at", { withTimezone: true }),
@@ -163,8 +176,19 @@ export const matchParticipants = pgTable(
     // Kartenstatus je Platz (Vertrag 012, ADR 0001): none, card_ready (Karte hinterlegt), charge_pending (Abbuchung angelegt), charged, failed.
     // Spaeter (M3): charge_due_at, grace_until und covered_by_user_id ("Anteil uebernehmen"). Aendert weder paid_cents (nur Guthaben) noch das Hauptbuch.
     cardStatus: text("card_status").$type<CardStatus>().notNull().default("none"),
+    // "Anteil uebernehmen" (M3c-3, Variante B): Der Spieler covered_by_user_id uebernimmt den Endanteil DIESES Platzes (er braucht eine eigene Karte). Der Platz bleibt seiner;
+    // zur Frist wird der Anteil ueber den Kunden des Uebernehmers abgebucht (payment_charges.payer_user_id). Ein Platz je Uebernehmer, keine Kette. Mandatszusatz: Text-Schluessel + Zeitpunkt.
+    coveredByUserId: uuid("covered_by_user_id").references(() => users.id), // NO ACTION (nicht SET NULL): ein stilles Nullsetzen liesse cover_accepted_at ohne Uebernehmer zurueck und verletzte cover_consent; Uebernahmen enden ueber clearCoversInvolving
+    coverMandateText: text("cover_mandate_text"),
+    coverAcceptedAt: timestamp("cover_accepted_at", { withTimezone: true }),
   },
-  (t) => [primaryKey({ columns: [t.matchId, t.userId] }), check("match_participants_card_status_check", sql`${t.cardStatus} in ('none', 'card_ready', 'charge_pending', 'charged', 'failed')`)],
+  (t) => [
+    primaryKey({ columns: [t.matchId, t.userId] }),
+    check("match_participants_card_status_check", sql`${t.cardStatus} in ('none', 'card_ready', 'charge_pending', 'charged', 'failed')`),
+    check("match_participants_cover_not_self", sql`${t.coveredByUserId} is null or ${t.coveredByUserId} <> ${t.userId}`),
+    check("match_participants_cover_consent", sql`(${t.coveredByUserId} is null) = (${t.coverAcceptedAt} is null)`),
+    uniqueIndex("match_participants_cover_payer_idx").on(t.matchId, t.coveredByUserId).where(sql`${t.coveredByUserId} is not null`),
+  ],
 );
 
 export const matchEvents = pgTable("match_events", {
@@ -288,12 +312,14 @@ export const paymentSetupIntents = pgTable(
     id: text("id").primaryKey(), // Stripe-ID seti_...
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     matchId: uuid("match_id").references(() => matches.id, { onDelete: "cascade" }),
+    // M5 (Turnier auf Karte): Platz im Turnier statt im Spiel (optional). Fremdschluessel auf tournaments (NO ACTION, KEIN cascade: Zahlungsnachweise bleiben erhalten) steht in der Migration, weil schema-league aus diesem Modul importiert.
+    tournamentId: uuid("tournament_id"),
     status: text("status").$type<"created" | "succeeded" | "failed">().notNull().default("created"),
     mandateText: text("mandate_text").notNull(),
     mandateAcceptedAt: timestamp("mandate_accepted_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("payment_setup_intents_user_idx").on(t.userId, t.createdAt), check("payment_setup_intents_status_check", sql`${t.status} in ('created', 'succeeded', 'failed')`)],
+  (t) => [index("payment_setup_intents_user_idx").on(t.userId, t.createdAt), index("payment_setup_intents_tournament_idx").on(t.tournamentId), check("payment_setup_intents_status_check", sql`${t.status} in ('created', 'succeeded', 'failed')`)],
 );
 
 /** Verarbeitete Stripe-Webhook-Ereignisse: event_id eindeutig, damit ein doppelt zugestelltes Ereignis nur einmal wirkt. */
@@ -314,7 +340,9 @@ export const paymentCharges = pgTable(
   "payment_charges",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    matchId: uuid("match_id").references(() => matches.id, { onDelete: "cascade" }),
+    // M5 (Turnier auf Karte): Zeile gehoert zu einem Turnier (2a: nullable, match_id bleibt NOT NULL; ab 2b genau eines von beiden). Fremdschluessel auf tournaments (NO ACTION, KEIN cascade: Zahlungsnachweise bleiben erhalten) steht in der Migration, weil schema-league aus diesem Modul importiert.
+    tournamentId: uuid("tournament_id"),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     amountCents: integer("amount_cents").notNull(),
     status: text("status").$type<"pending" | "requires_action" | "succeeded" | "failed">().notNull().default("pending"),
@@ -323,11 +351,33 @@ export const paymentCharges = pgTable(
     failureCode: text("failure_code"),
     feeCents: integer("fee_cents"),
     attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
+    // Nachzahlfenster (Vertrag 012, AC-6): Ende des Fensters, bei jedem Kartenproblem GESETZT (bei hoechstens 1 h bis zum Anstoss ist das Ende der Fehlzeitpunkt = kein Fenster).
+    // NULL = nie ein Kartenproblem oder Altzeile (vor Migration 0039). Massgeblich ist das effektive Ende min(grace_until, Anstoss - 1 h), siehe src/lib/grace.ts.
+    graceUntil: timestamp("grace_until", { withTimezone: true }),
+    // Nummer des LAUFENDEN Versuchs (1 = erster Versuch). Diese Zeile ist der Zustand des laufenden Versuchs; abgeschlossene Versuche stehen in payment_charge_attempts.
+    currentAttempt: integer("current_attempt").notNull().default(1),
+    // M3c-2 (Nachruecker): 'replaced' = der Spieler ist aus dem Spiel genommen (Platz vergeben; nichts erstattet, weil nichts gezahlt, oder ein spaeter Erfolg wird erstattet).
+    // Solche Zeilen zaehlen weder fuer die Abrechnung noch fuer die Erstattung der Absage.
+    resolution: text("resolution").$type<"replaced">(),
+    // Nachruecker-Zeile: zeigt auf die Ursprungszeile des ersetzten Spielers (der "Platz"). Je Platz hoechstens EINE aktive und hoechstens 3 gescheiterte Nachruecker-Zeilen.
+    slotOf: uuid("slot_of").references((): AnyPgColumn => paymentCharges.id), // NO ACTION: Zahlungsnachweise bleiben erhalten; ein Loeschen des Spiels (cascade ueber match_id) entfernt Nachruecker- und Ursprungszeilen in EINER Anweisung
+    // Auf der Ursprungszeile: das Team des entfernten Spielers (dorthin kommt der Nachruecker), weil seine Teilnahmezeile geloescht wird
+    slotTeamId: uuid("slot_team_id").references(() => teams.id),
+    // M3c-3 (Variante B): Zahler, wenn ein anderer Spieler den Anteil uebernommen hat; NULL = der Spieler zahlt selbst. Die Zeile bleibt die des Platzes (user_id), der PaymentIntent liegt
+    // beim Kunden des Zahlers, die Erstattung geht automatisch auf dessen PaymentIntent. NO ACTION: Zahlungsnachweise bleiben erhalten.
+    payerUserId: uuid("payer_user_id").references(() => users.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("payment_charges_match_user_idx").on(t.matchId, t.userId),
+    uniqueIndex("payment_charges_tournament_user_idx").on(t.tournamentId, t.userId).where(sql`${t.tournamentId} is not null`),
+    check("payment_charges_payer_not_self", sql`${t.payerUserId} is null or ${t.payerUserId} <> ${t.userId}`),
+    check("payment_charges_resolution_check", sql`${t.resolution} is null or ${t.resolution} = 'replaced'`),
+    check("payment_charges_attempt_positive", sql`${t.currentAttempt} >= 1`),
+    // M5-2b: genau eines von beiden (Spiel ODER Turnier); Turnier-Zeilen haben weder Nachruecker-Kette noch Platz-Team
+    check("payment_charges_scope_xor", sql`(${t.matchId} is null) <> (${t.tournamentId} is null)`),
+    check("payment_charges_tournament_no_slot", sql`${t.tournamentId} is null or (${t.slotOf} is null and ${t.slotTeamId} is null)`),
     check("payment_charges_amount_positive", sql`${t.amountCents} > 0`),
     check("payment_charges_fee_nonneg", sql`${t.feeCents} is null or ${t.feeCents} >= 0`),
     check("payment_charges_status_check", sql`${t.status} in ('pending', 'requires_action', 'succeeded', 'failed')`),
@@ -339,26 +389,151 @@ export const paymentCharges = pgTable(
  * Hauptbuch erst bei Erfolg (revenue -> clearing, Schluessel refund:<refund_id>); die Stripe-Gebuehr wird nicht zurueckgebucht (Soccaz traegt sie).
  * status: pending (angelegt oder bei Stripe unterwegs), succeeded, failed (manuell zu klaeren, Admin-Alarm). idempotency_key = refund:<charge_id>.
  */
+/**
+ * Historie ABGESCHLOSSENER Abbuchungsversuche einer Zeile (Vertrag 012, M3c-1). Jeder Versuch hat einen eigenen Idempotenzschluessel und PaymentIntent
+ * (charge:<m>:<u>:<n> ab Versuch 2). Dient der Webhook-Zuordnung alter PaymentIntents; der laufende Versuch steht auf payment_charges.
+ */
+export const paymentChargeAttempts = pgTable(
+  "payment_charge_attempts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    chargeId: uuid("charge_id").notNull().references(() => paymentCharges.id, { onDelete: "cascade" }),
+    attemptNo: integer("attempt_no").notNull(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    paymentIntentId: text("payment_intent_id").unique(),
+    status: text("status").$type<"pending" | "requires_action" | "succeeded" | "failed">().notNull(),
+    failureCode: text("failure_code"),
+    attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("payment_charge_attempts_charge_no_idx").on(t.chargeId, t.attemptNo),
+    check("payment_charge_attempts_no_positive", sql`${t.attemptNo} >= 1`),
+    check("payment_charge_attempts_status_check", sql`${t.status} in ('pending', 'requires_action', 'succeeded', 'failed')`),
+  ],
+);
+
 export const paymentRefunds = pgTable(
   "payment_refunds",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     chargeId: uuid("charge_id").notNull().references(() => paymentCharges.id, { onDelete: "cascade" }),
-    matchId: uuid("match_id").notNull().references(() => matches.id, { onDelete: "cascade" }),
+    matchId: uuid("match_id").references(() => matches.id, { onDelete: "cascade" }),
+    // M5 (Turnier auf Karte): Erstattung zu einer Turnier-Abbuchung. Fremdschluessel auf tournaments (NO ACTION, KEIN cascade: Zahlungsnachweise bleiben erhalten) steht in der Migration, weil schema-league aus diesem Modul importiert.
+    tournamentId: uuid("tournament_id"),
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     amountCents: integer("amount_cents").notNull(),
-    status: text("status").$type<"pending" | "succeeded" | "failed">().notNull().default("pending"),
+    status: text("status").$type<"pending" | "succeeded" | "failed" | "cancelled_dispute">().notNull().default("pending"), // cancelled_dispute (M4a): Streit verloren, bevor die Erstattung gesendet wurde: nichts mehr zu erstatten
     refundId: text("refund_id").unique(),
     idempotencyKey: text("idempotency_key").notNull().unique(),
     reason: text("reason"),
     failureCode: text("failure_code"),
+    // Erstattung eines ANDEREN PaymentIntents als dem der Zeile (spaeter Erfolg eines alten Versuchs, M3c-2b); null = der PaymentIntent der Zeile
+    paymentIntentId: text("payment_intent_id"),
     attemptStartedAt: timestamp("attempt_started_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("payment_refunds_charge_idx").on(t.chargeId),
+    // eine Erstattung je Abbuchung UND PaymentIntent: der PaymentIntent der Zeile (payment_intent_id NULL) oder ein weiterer erfolgreicher (spaeter Erfolg / Doppelabbuchung, M3c-2b)
+    uniqueIndex("payment_refunds_charge_idx").on(t.chargeId, sql`coalesce(${t.paymentIntentId}, '')`),
     check("payment_refunds_amount_positive", sql`${t.amountCents} > 0`),
-    check("payment_refunds_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed')`),
+    check("payment_refunds_scope_xor", sql`(${t.matchId} is null) <> (${t.tournamentId} is null)`),
+    index("payment_refunds_tournament_idx").on(t.tournamentId),
+    check("payment_refunds_status_check", sql`${t.status} in ('pending', 'succeeded', 'failed', 'cancelled_dispute')`),
+  ],
+);
+
+/**
+ * Zahlungsstreit (Dispute) zu einer Kartenabbuchung (Vertrag 012, M4a, AC-11). Eine Zeile je Stripe-Streit (dispute_id eindeutig). charge_id, match_id und payer_user_id sind NULL, wenn der
+ * PaymentIntent unbekannt ist (das Geld ist trotzdem weg: Alarm). Der Streit trifft den ZAHLER (payer_user_id), nicht den Platz. status bewusst OHNE CHECK: unbekannte Stripe-Werte werden
+ * tolerant gespeichert (Alarm), nie als Fehler im Webhook abgelehnt. NO ACTION: Zahlungsnachweise bleiben erhalten.
+ */
+export const paymentDisputes = pgTable(
+  "payment_disputes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    disputeId: text("dispute_id").notNull().unique(),
+    chargeId: uuid("charge_id").references(() => paymentCharges.id),
+    paymentIntentId: text("payment_intent_id"),
+    matchId: uuid("match_id").references(() => matches.id),
+    // M5 (Turnier auf Karte): Streit zu einer Turnier-Abbuchung (Zuordnung primaer ueber charge_id). Fremdschluessel auf tournaments (NO ACTION, KEIN cascade: Zahlungsnachweise bleiben erhalten) steht in der Migration, weil schema-league aus diesem Modul importiert.
+    tournamentId: uuid("tournament_id"),
+    payerUserId: uuid("payer_user_id").references(() => users.id),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull(),
+    reason: text("reason").notNull().default("unknown"),
+    status: text("status").notNull(),
+    evidenceDueBy: timestamp("evidence_due_by", { withTimezone: true }),
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    // Entprellung der Admin-Alarme: je Streit und Grund hoechstens EINE Nachricht
+    alertedReasons: text("alerted_reasons").array().notNull().default(sql`'{}'::text[]`),
+    // Streit verloren, obwohl die Erstattung schon gesendet war: Soccaz hat zweimal gezahlt (Folgen: Produkt-/Rechtsfrage)
+    refundConflict: boolean("refund_conflict").notNull().default(false),
+    doubleLossCents: integer("double_loss_cents").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("payment_disputes_payer_idx").on(t.payerUserId),
+    index("payment_disputes_tournament_idx").on(t.tournamentId),
+    index("payment_disputes_status_idx").on(t.status),
+    index("payment_disputes_pi_idx").on(t.paymentIntentId),
+    check("payment_disputes_amount_positive", sql`${t.amountCents} > 0`),
+  ],
+);
+
+/**
+ * Eine Balance-Transaction eines Streits (Abzug oder Rueckbuchung), gebucht genau einmal (Schluessel dispute:<dp>:bt:<txn>, Gebuehr :fee). status: booked, parked (Rueckbuchung wartet auf ihren
+ * Abzug), rejected (Betragspruefung, endgueltig, nie neu bewertet). Die Gebuehr wird unabhaengig vom Status gebucht (eigener Schluessel :fee).
+ */
+export const paymentDisputeEntries = pgTable(
+  "payment_dispute_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    disputeRowId: uuid("dispute_row_id").notNull().references(() => paymentDisputes.id),
+    balanceTransactionId: text("balance_transaction_id").notNull().unique(),
+    kind: text("kind").$type<"withdrawal" | "reversal">().notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    feeCents: integer("fee_cents").notNull().default(0),
+    status: text("status").$type<"booked" | "parked" | "rejected">().notNull(),
+    rejectReason: text("reject_reason"),
+    bookedAt: timestamp("booked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("payment_dispute_entries_dispute_idx").on(t.disputeRowId),
+    check("payment_dispute_entries_kind_check", sql`${t.kind} in ('withdrawal', 'reversal')`),
+    check("payment_dispute_entries_status_check", sql`${t.status} in ('booked', 'parked', 'rejected')`),
+    check("payment_dispute_entries_amount_positive", sql`${t.amountCents} > 0`),
+    check("payment_dispute_entries_fee_nonneg", sql`${t.feeCents} >= 0`),
+  ],
+);
+
+/**
+ * Loeschauftrag fuer den Stripe-Kunden eines geloeschten Kontos (Vertrag 012, M4b, AC-16). Wird in DERSELBEN Transaktion wie die Anonymisierung angelegt; dort verschwinden payment_profiles und das Mandat
+ * (payment_setup_intents), die Kunden-ID steht danach NUR noch hier. Ein Job ruft Stripe auf (Netz, nie in einer Transaktion) und setzt die Kunden-ID nach Erfolg auf NULL.
+ * status: pending (wartet), claimed (ein Lauf arbeitet, bis claimed_until), done, failed (nach zu vielen Versuchen: Admin-Alarm, manuell klaeren). NO ACTION: der Nachweis bleibt erhalten.
+ */
+export const paymentErasureTasks = pgTable(
+  "payment_erasure_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    stripeCustomerId: text("stripe_customer_id"),
+    status: text("status").$type<"pending" | "claimed" | "done" | "failed">().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextTryAt: timestamp("next_try_at", { withTimezone: true }).notNull().defaultNow(),
+    claimedUntil: timestamp("claimed_until", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("payment_erasure_tasks_user_idx").on(t.userId),
+    index("payment_erasure_tasks_due_idx").on(t.status, t.nextTryAt),
+    check("payment_erasure_tasks_status_check", sql`${t.status} in ('pending', 'claimed', 'done', 'failed')`),
+    check("payment_erasure_tasks_attempts_nonneg", sql`${t.attempts} >= 0`),
   ],
 );

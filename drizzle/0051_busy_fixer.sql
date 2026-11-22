@@ -1,0 +1,7 @@
+ALTER TABLE "tournament_players" ADD COLUMN "covered_by_user_id" uuid;--> statement-breakpoint
+ALTER TABLE "tournament_players" ADD COLUMN "cover_mandate_text" text;--> statement-breakpoint
+ALTER TABLE "tournament_players" ADD COLUMN "cover_accepted_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "tournament_players" ADD CONSTRAINT "tournament_players_covered_by_user_id_users_id_fk" FOREIGN KEY ("covered_by_user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "tournament_players_cover_payer_idx" ON "tournament_players" USING btree ("tournament_id","covered_by_user_id") WHERE "tournament_players"."covered_by_user_id" is not null;--> statement-breakpoint
+ALTER TABLE "tournament_players" ADD CONSTRAINT "tournament_players_cover_not_self" CHECK ("tournament_players"."covered_by_user_id" is null or "tournament_players"."covered_by_user_id" <> "tournament_players"."user_id");--> statement-breakpoint
+ALTER TABLE "tournament_players" ADD CONSTRAINT "tournament_players_cover_consent" CHECK (("tournament_players"."covered_by_user_id" is null) = ("tournament_players"."cover_accepted_at" is null) and ("tournament_players"."covered_by_user_id" is null) = ("tournament_players"."cover_mandate_text" is null));
