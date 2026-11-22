@@ -9,7 +9,7 @@ function data(over: Partial<MatchEvidence["entries"][number]> = {}, report: Part
   return {
     matchId: "11111111-1111-4111-8111-111111111111",
     number: 7,
-    entries: [{ seq: 1, at: T0, kind: "declined", round: 1, reason: "Halle belegt, Training", venueName: "Sporthalle Süd", actorName: "Max Müller", hash: "a".repeat(64), ...over }],
+    entries: [{ seq: 1, at: T0, kind: "declined", round: 1, reason: "Halle belegt, Training", venueName: "Sporthalle Süd", actorName: "Max Müller", hash: "a".repeat(64), reasonCode: "", reasonDeleted: false, deadlineAt: null, decidedAt: null, statementAt: null, enforced: null, ...over }],
     report: { ok: true, chain: { ok: true, count: 1, headHash: "a".repeat(64), firstBadSeq: null, reason: null }, orphans: { matchIds: [], venueIds: [], tournamentIds: [] }, missing: [], checkedAt: T0, ...report },
   };
 }
@@ -62,5 +62,17 @@ describe("evidencePdfModel", () => {
     expect(m.entries[0].actor).toBeNull();
     expect(m.entries[0].reason).toBeNull();
     expect(m.entries[0].head).toContain("neu_art");
+  });
+});
+
+describe("evidencePdfModel: Felder der Version 2", () => {
+  it("zeigt Grund, Frist, Entscheidungs- und Anweisungszeit, Durchsetzung; gelöschter Freitext wird benannt, nie Klartext erfunden", () => {
+    const entry = { seq: 1, at: new Date("2027-03-04T05:06:07Z"), kind: "declined", round: 1, reason: null, venueName: "Halle", actorName: null, hash: "a".repeat(64), reasonCode: "belegt", reasonDeleted: true, deadlineAt: "2027-03-04T06:00:00.000000Z", decidedAt: "2027-03-04T05:06:07.000001Z", statementAt: "2027-03-04T05:06:07.250000Z", enforced: true };
+    const m = evidencePdfModel({ matchId: "x", number: 1, entries: [entry], report: { ok: true, chain: { ok: true, count: 1, headHash: "a".repeat(64), firstBadSeq: null, reason: null }, orphans: { matchIds: [], venueIds: [], tournamentIds: [] }, missing: [], checkedAt: new Date() } });
+    const r = m.entries[0].reason ?? "";
+    expect(r).toContain("Grund: belegt");
+    expect(r).toContain("Freitext gelöscht");
+    expect(r).toContain("Antwortfrist (UTC): 2027-03-04T06:00:00.000000Z");
+    expect(r).toContain("Durchsetzung beim Eintrag: an");
   });
 });

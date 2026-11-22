@@ -277,6 +277,7 @@ describe("Einstellungen und Schalter (Plan 16g.1/16g.5)", () => {
     await db.execute(sql`select evidence_set_setting('evidence_enforcement', 'on', ${admin.id}::uuid, 'Go-live')`);
     const a = rows<{ n: number }>(await db.execute(sql`select count(*)::int as n from audit_log where action = 'evidence_setting' and actor_id = ${admin.id}`));
     expect(a[0].n).toBe(2);
+    expect(await msgOf(db.execute(sql`select evidence_set_setting('evidence_clock_source', 'js', ${admin.id}::uuid, 'zurueck')`))).toMatch(/nicht auf js zurueck/); // Durchsetzung an: Uhrenquelle bleibt db
     expect(await code(db.execute(sql`select evidence_set_setting('evidence_enforcement', 'vielleicht', ${admin.id}::uuid, 'x')`))).not.toBeNull();
     expect(await code(db.execute(sql`select evidence_set_setting('evidence_unbekannt', '1', ${admin.id}::uuid, 'x')`))).not.toBeNull();
   });

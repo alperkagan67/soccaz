@@ -58,7 +58,17 @@ export function evidencePdfModel(data: MatchEvidence): EvidencePdfModel {
       head: `Nr. ${e.seq} · Runde ${e.round} · ${KIND_LABEL[e.kind] ?? pdfSafe(e.kind)}${e.venueName ? ` · ${pdfSafe(e.venueName)}` : ""}`,
       times: `${utc(e.at)} · ${berlin(e.at)}`,
       actor: e.actorName ? `Antwort durch: ${pdfSafe(e.actorName)}` : null,
-      reason: e.reason ? `Begründung: ${pdfSafe(e.reason)}` : null,
+      reason:
+        [
+          e.reasonCode ? `Grund: ${pdfSafe(e.reasonCode)}` : null,
+          e.reason ? `Begründung: ${pdfSafe(e.reason)}` : e.reasonDeleted ? "Begründung: Freitext gelöscht (Prüfwert bleibt in der Kette)" : null,
+          e.deadlineAt ? `Antwortfrist (UTC): ${pdfSafe(e.deadlineAt)}` : null,
+          e.decidedAt ? `Entscheidung (Transaktionsbeginn, Datenbankzeit, UTC): ${pdfSafe(e.decidedAt)}` : null,
+          e.statementAt ? `Anweisungszeit (UTC): ${pdfSafe(e.statementAt)}` : null,
+          e.enforced === null || e.enforced === undefined ? null : `Durchsetzung beim Eintrag: ${e.enforced ? "an" : "aus"}`,
+        ]
+          .filter(Boolean)
+          .join(String.fromCharCode(10)) || null,
       hash: e.hash,
     })),
     summary: {

@@ -47,13 +47,16 @@ export async function runEvidenceHead(now: Date = new Date()): Promise<{ ok: boo
     const [still] = (await db.execute(sql`select 1 as ok from booking_evidence where hash = ${last.headHash} and seq = ${last.count}`)).rows as { ok: number }[];
     if (!still) alarms.push("der frühere Kopf-Hash liegt nicht mehr in der Kette");
   }
-  await audit(null, "evidence.head", "evidence", "chain", { after: { count: report.chain.count, headHash: report.chain.headHash, alarms: alarms.length, actorsCleared } });
+  // Plan 16g.1: Durchsetzung AUS (oder Uhrenquelle nicht db) = Hinweis in JEDEM Lauf, bis Admin 1 sie einschaltet (hart vor Go-live); kein Kettenalarm, daher nicht in alarms
+  const enforcement = await getSetting<string>("evidence_enforcement", "on");
+  const enforcementNote = enforcement === "off" ? " HINWEIS: Durchsetzung (Frist, Pflichtbegründung) ist AUS; Go-live nur mit 'on'." : "";
+  await audit(null, "evidence.head", "evidence", "chain", { after: { count: report.chain.count, headHash: report.chain.headHash, alarms: alarms.length, actorsCleared, enforcement } });
   const owners = (await db.select({ id: users.id }).from(users).where(and(eq(users.isOwner, true), sql`${users.bannedAt} is null`))).map((u) => u.id);
   if (owners.length) {
     await notifyUsers(owners, {
       type: "admin.task",
       title: alarms.length ? "Beweisprotokoll: Abweichung" : "Beweisprotokoll: Tagesstand",
-      body: `${report.chain.count} Einträge, Kopf-Hash ${report.chain.headHash || "(leer)"}${alarms.length ? ` Alarm: ${alarms.join("; ")}.` : ""}`,
+      body: `${report.chain.count} Einträge, Kopf-Hash ${report.chain.headHash || "(leer)"}${alarms.length ? ` Alarm: ${alarms.join("; ")}.` : ""}${enforcementNote}`,
       url: "/admin",
     });
   }

@@ -213,6 +213,9 @@ BEGIN
   IF p_key = 'evidence_enforcement' AND p_value = 'on' AND coalesce(evidence_setting('evidence_clock_source'), 'js') <> 'db' THEN
     RAISE EXCEPTION 'Durchsetzung erst einschalten, wenn evidence_clock_source = db (011 M2a).';
   END IF;
+  IF p_key = 'evidence_clock_source' AND p_value <> 'db' AND NOT (lower(coalesce(nullif(evidence_setting('evidence_enforcement'), ''), 'on')) = 'off') THEN
+    RAISE EXCEPTION 'evidence_clock_source darf bei eingeschalteter Durchsetzung nicht auf js zurueck.';
+  END IF;
   v_old := evidence_setting(p_key);
   PERFORM set_config('socaz.evidence_setting_write', 'on', true);
   INSERT INTO settings (key, value, updated_at, updated_by) VALUES (p_key, to_jsonb(p_value), now(), p_actor)
