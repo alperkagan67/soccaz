@@ -10,14 +10,11 @@ test.setTimeout(120_000);
 const venueName = `E2E Zusagehalle ${run}`;
 const tournamentName = `Zusage-Cup ${run}`;
 
+// Aufraeumen: Turnier, Halle und Zugang bleiben stehen; das globale Aufraeumen der Testdaten loescht sie samt Beweiseintraegen (tests/cleanup.ts, Wartungsausnahme). Ein Loeschen hier scheitert am
+// Turnier-Guard der Nachlieferung (Beweiseintrag der Zusage).
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
   await query("delete from notifications where body like $1", [`%${tournamentName}%`]);
-  await query("delete from tournament_players where tournament_id in (select id from tournaments where name = $1)", [tournamentName]);
-  await query("delete from tournament_teams where tournament_id in (select id from tournaments where name = $1)", [tournamentName]);
-  await query("delete from tournaments where name = $1", [tournamentName]);
-  await query("delete from venue_access where venue_id in (select id from venues where name = $1)", [venueName]);
-  await query("delete from venues where name = $1", [venueName]);
 });
 
 test("Hallenbetreiber sieht das Turnier ohne Namen, sagt im Namen der Halle zu, danach ist die Karte weg und der Veranstalter ist benachrichtigt", async ({ browser }) => {
