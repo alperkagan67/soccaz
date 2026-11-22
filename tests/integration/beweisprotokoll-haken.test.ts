@@ -113,6 +113,19 @@ describe("SQL-Matrix Anfragezeilen (Plan 13.2): jeder Statuswechsel direkt per S
   });
 });
 
+describe("Actor eines gelöschten/anonymisierten Kontos (Plan 14.1)", () => {
+  it("antwortet ein bereits anonymisiertes Konto, schreibt der Trigger KEINEN evidence_actor (Eintrag bleibt, Commitment leer)", async () => {
+    const { matchId, venueId } = await setup();
+    const op = await makeUser("hakengone");
+    await db.execute(sql`update users set email = ${`geloescht-${op.id}@geloescht.invalid`}, name = 'Gelöscht' where id = ${op.id}`);
+    await committed((tx) => insertHall(tx, matchId, venueId, "pending"));
+    await committed((tx) => setHall(tx, matchId, venueId, "confirmed", true, op.id));
+    const accepted = (await entries(matchId)).find((r) => r.kind === "accepted")!;
+    expect(accepted.actorCommitment).toBe("");
+    expect(await db.select().from(evidenceActor).where(eq(evidenceActor.evidenceId, accepted.id))).toHaveLength(0);
+  });
+});
+
 describe("SQL-Matrix Buchungsaufträge (Plan 13.2): jeder Statuswechsel, Werte des Enums aus der Datenbank", () => {
   const JOB_KIND: Record<string, string | null> = { open: null, in_progress: null, booked: "job_booked", unavailable: "job_unavailable", confirmed: "job_confirmed", withdrawn: "job_withdrawn", done: "job_done" };
   it("jeder (alt, neu) aller Enum-Werte; ein neuer Enum-Wert ohne Zeile in der Matrix lässt den Test rot werden", async () => {

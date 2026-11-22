@@ -180,7 +180,13 @@ DECLARE
   v_commit text := '';
 BEGIN
   IF p_actor IS NOT NULL THEN
-    SELECT name, email INTO v_name, v_email FROM users WHERE id = p_actor; -- einfacher Lesezugriff, keine Zeilensperre
+    -- einfacher Lesezugriff, keine Zeilensperre; ein geloeschtes oder anonymisiertes Konto (E-Mail geloescht-<id>@geloescht.invalid) bekommt KEINEN Actor (Loeschpflicht, Plan 14.1)
+    SELECT name, email INTO v_name, v_email FROM users WHERE id = p_actor AND email NOT LIKE 'geloescht-%@geloescht.invalid';
+    IF NOT FOUND THEN
+      p_actor := NULL;
+    END IF;
+  END IF;
+  IF p_actor IS NOT NULL THEN
     v_salt := encode(sha256(convert_to(gen_random_uuid()::text, 'UTF8')), 'hex');
     v_commit := encode(sha256(convert_to(v_salt || ':' || p_actor::text, 'UTF8')), 'hex');
   END IF;
@@ -290,14 +296,19 @@ CREATE CONSTRAINT TRIGGER booking_jobs_evidence_upd
   AFTER UPDATE ON booking_jobs
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status) EXECUTE FUNCTION evidence_job_event();
 --> statement-breakpoint
+-- Stichtag fuer den Abgleich: ab hier erzeugen die Trigger Eintraege; Altbestand wird nicht nachgetragen (kein Backfill)
+INSERT INTO settings (key, value) VALUES ('evidence_cutover_at', to_jsonb(to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))) ON CONFLICT (key) DO NOTHING;
+--> statement-breakpoint
 -- Abgleich (Tagesjob evidence-head, Plan 14.3/15.2): Zeilen im Endstatus OHNE passenden Protokolleintrag IN DER AKTUELLEN RUNDE (sonst gaelte ein Altrunden-Eintrag als vorhanden).
--- Bewusst nicht erfasst: Wechsel confirmed -> declined o. ae. (nur pending -> X erzeugt Eintraege), in_progress, geloeschte Zeilen.
+-- STICHTAG (Altbestand ohne Eintraege): nur Zeilen, die NACH der Migration entstanden sind (created_at >= Setting evidence_cutover_at); Altzeilen haben keine Eintraege (kein Backfill).
+-- Ein Wechsel confirmed -> declined o. ae. erzeugt keinen Eintrag; so eine Zeile (declined MIT answered_at und accepted in der aktuellen Runde) gilt als ERWARTET. in_progress und geloeschte Zeilen sind ausgenommen.
 CREATE OR REPLACE FUNCTION evidence_reconcile() RETURNS TABLE (src text, r_match uuid, r_venue uuid, r_job uuid, r_status text) AS $$
   WITH cur AS (SELECT e.match_id AS m, max(e.round) AS r FROM booking_evidence e GROUP BY e.match_id)
   SELECT 'hall'::text, h.match_id, h.venue_id, NULL::uuid, h.status::text
   FROM match_hall_requests h
   LEFT JOIN cur ON cur.m = h.match_id
   WHERE h.status IN ('pending', 'confirmed', 'declined', 'unmanaged')
+    AND h.created_at >= coalesce((SELECT (value #>> '{}')::timestamptz FROM settings WHERE key = 'evidence_cutover_at'), '-infinity'::timestamptz)
     AND NOT EXISTS (
       SELECT 1 FROM booking_evidence e
       WHERE e.match_id = h.match_id AND e.venue_id = h.venue_id AND e.round = coalesce(cur.r, -1)
@@ -305,6 +316,7 @@ CREATE OR REPLACE FUNCTION evidence_reconcile() RETURNS TABLE (src text, r_match
           (h.status = 'pending' AND e.kind = 'request_sent')
           OR (h.status = 'confirmed' AND e.kind = 'accepted')
           OR (h.status = 'declined' AND e.kind IN ('declined', 'expired'))
+          OR (h.status = 'declined' AND h.answered_at IS NOT NULL AND e.kind = 'accepted')
           OR (h.status = 'unmanaged' AND e.kind = 'unmanaged')
         )
     )
@@ -312,5 +324,6 @@ CREATE OR REPLACE FUNCTION evidence_reconcile() RETURNS TABLE (src text, r_match
   SELECT 'job'::text, j.match_id, j.venue_id, j.id, j.status::text
   FROM booking_jobs j
   WHERE j.status::text <> 'in_progress'
+    AND j.created_at >= coalesce((SELECT (value #>> '{}')::timestamptz FROM settings WHERE key = 'evidence_cutover_at'), '-infinity'::timestamptz)
     AND NOT EXISTS (SELECT 1 FROM booking_evidence e WHERE e.job_id = j.id AND e.kind = 'job_' || j.status::text);
 $$ LANGUAGE sql STABLE;

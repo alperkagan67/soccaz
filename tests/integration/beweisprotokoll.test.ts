@@ -386,5 +386,39 @@ describe("Guard statt Fremdschlüssel, Verwaiste, Abgleich (Plan 14.1/14.2/14.3)
     expect(second.alarms.join(" ")).toMatch(/Anzahl kleiner|Kette ungültig/);
     expect(second.alarms.join(" ")).toMatch(/früherer Kopf-Hash|frühere Kopf-Hash/);
   });
-});
 
+  it("Abgleich: Stichtag – Zeilen von VOR dem Stichtag (Altbestand ohne Einträge) werden nicht gemeldet; Zeilen danach schon", async () => {
+    const { matchId, venueId } = await setup();
+    await maintenance((tx) => tx.execute(sql`insert into match_hall_requests (match_id, venue_id, position, status, created_at) values (${matchId}, ${venueId}, 0, 'confirmed', '2000-01-01T00:00:00Z')`));
+    expect((await reconcileEvidence()).filter((m) => m.matchId === matchId)).toEqual([]); // Altbestand
+    await maintenance((tx) => tx.execute(sql`update match_hall_requests set created_at = now() where match_id = ${matchId}`));
+    expect((await reconcileEvidence()).filter((m) => m.matchId === matchId).map((m) => m.status)).toEqual(["confirmed"]);
+  });
+
+  it("Abgleich: eine Zeile declined MIT answered_at, zu der die Runde nur accepted kennt (confirmed -> declined ohne Eintrag), gilt als erwartet; ohne answered_at wird sie gemeldet", async () => {
+    const { matchId, venueId } = await setup();
+    await maintenance((tx) => tx.execute(sql`insert into match_hall_requests (match_id, venue_id, position, status, answered_at) values (${matchId}, ${venueId}, 0, 'declined', now())`));
+    await rec(matchId, venueId, "accepted");
+    expect((await reconcileEvidence()).filter((m) => m.matchId === matchId)).toEqual([]);
+    await maintenance((tx) => tx.execute(sql`update match_hall_requests set answered_at = null where match_id = ${matchId}`));
+    expect((await reconcileEvidence()).filter((m) => m.matchId === matchId).map((m) => m.status)).toEqual(["declined"]);
+  });
+
+  it("Tagesjob leert evidence_actor-Zeilen gelöschter oder anonymisierter Konten (zweite Anonymisierung, Race mit deleteAccount); Zeile und Kette bleiben", async () => {
+    const { matchId, venueId } = await setup();
+    const alive = await makeUser("beweisalive");
+    const gone = await makeUser("beweisgone");
+    await rec(matchId, venueId, "accepted", { actor: { userId: alive.id, name: alive.name, email: alive.email } });
+    await rec(matchId, venueId, "declined", { actor: { userId: gone.id, name: gone.name, email: gone.email } });
+    await db.execute(sql`update users set email = ${`geloescht-${gone.id}@geloescht.invalid`}, name = 'Gelöscht' where id = ${gone.id}`);
+    const r = await runEvidenceHead();
+    expect(r.actorsCleared).toBe(1);
+    const actors = await db.select().from(evidenceActor);
+    expect(actors).toHaveLength(2);
+    const goneRow = actors.find((a) => a.userId === null)!;
+    expect(goneRow).toMatchObject({ userId: null, name: null, email: null });
+    expect(actors.find((a) => a.userId === alive.id)!.email).toBe(alive.email);
+    expect((await verifyEvidenceChain()).ok).toBe(true);
+    expect((await runEvidenceHead()).actorsCleared).toBe(0); // idempotent
+  });
+});
