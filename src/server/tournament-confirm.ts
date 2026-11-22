@@ -6,8 +6,8 @@
 // STAND: UNGETESTET GEGEN DIE DATENBANK, und venue_confirmed_by gibt es erst mit 0054 (TODO(0054): in confirmTournamentVenue und resetVenueConfirmation mit setzen/leeren).
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, users } from "@/db/schema";
-import { venueAccess, venues } from "@/db/schema-finance";
+import { auditLog } from "@/db/schema";
+import { venues } from "@/db/schema-finance";
 import { tournamentTeams, tournaments } from "@/db/schema-league";
 import { formatEuro } from "@/lib/money";
 import { formatDateTime } from "@/lib/time";
@@ -16,7 +16,7 @@ import { notifyUsers } from "./notifications";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { chargeDueAt, lockTournament } from "./tournaments";
-import { activeAccessWhere, hasVenueAccess, venueIdsOf } from "./venue-access-rules";
+import { hasVenueAccess, venueAccessHolderIds, venueHasActiveAccess, venueIdsOf } from "./venue-access-rules";
 
 /** Erinnerungsstufen vor der Frist (Entscheid t2q F4): 24 h und 6 h, je Stufe einmal je Turnier. */
 export const HALL_REMINDER_STAGES = [24, 6] as const;
@@ -152,10 +152,7 @@ export async function listTournamentConfirmations(userId: string, now: Date = ne
  */
 export const NOTIFY_ACCESS_HOLDERS = true; // Entscheid t2q A: JA (In-App/Push; Mail fehlt, FEHLT-NOCH)
 
-export async function accessHolderIdsOf(venueId: string, exec: Pick<typeof db, "select"> = db): Promise<string[]> {
-  const rows = await exec.select({ userId: venueAccess.userId }).from(venueAccess).innerJoin(users, eq(users.id, venueAccess.userId)).where(and(eq(venueAccess.venueId, venueId), activeAccessWhere()));
-  return rows.map((r) => r.userId).filter((x): x is string => Boolean(x));
-}
+export const accessHolderIdsOf = (venueId: string, exec: Pick<typeof db, "select"> = db) => venueAccessHolderIds(venueId, exec);
 
 export const rentText = (c: number | null) => (c === null ? "" : formatEuro(c));
 
@@ -203,4 +200,30 @@ export async function notifyHallConfirmReminders(now: Date = new Date()): Promis
     }
   }
   return sent;
+}
+
+/**
+ * Fairness-Zusatz (Entscheid t2q, Plan 19.14): ein Zugang wird WIRKSAM (Einladung eingeloest), waehrend ein Turnier mit dieser Halle im Status payment ohne Zusage existiert und sein Snapshot
+ * "Zusage noetig" false ist. Dann wird der Snapshot true gesetzt und die Zugangsinhaber werden wie beim Fixieren benachrichtigt (entprellt je Turnier und Preisrunde). In der Transaktion des Aufrufers
+ * (redeemVenueInvites), NACH den Hallensperren; die Turniere werden nach id sortiert gesperrt. Gibt die Zahl der geaenderten Turniere zurueck.
+ */
+export async function armConfirmationForNewAccess(tx: Tx, venueIds: string[], now: Date = new Date()): Promise<number> {
+  if (venueIds.length === 0) return 0;
+  const candidates = await tx
+    .select({ id: tournaments.id })
+    .from(tournaments)
+    .where(and(inArray(tournaments.venueId, venueIds), eq(tournaments.status, "payment"), isNull(tournaments.venueConfirmedAt), isNull(tournaments.bracketGeneratedAt), isNull(tournaments.settledAt)))
+    .orderBy(asc(tournaments.id));
+  let armed = 0;
+  for (const c of candidates) {
+    const t = await lockTournament(tx, c.id);
+    if (t.status !== "payment" || t.venueConfirmedAt || t.bracketGeneratedAt || t.settledAt || !t.venueId || t.venueAccessRequiredSnapshot !== false) continue; // nur: fixiert ohne Zusagepflicht
+    const due = await chargeDueAt(tx, t);
+    if (due && now.getTime() >= due.getTime()) continue; // Frist vorbei: das Turnier laeuft/endet wie es ist
+    await tx.update(tournaments).set({ venueAccessRequiredSnapshot: true }).where(eq(tournaments.id, t.id));
+    await audit(null, "tournament.venue_access_armed", "tournament", t.id, { after: { venueId: t.venueId } }, tx);
+    await notifyHolderOnFix(tx, { id: t.id, name: t.name, venueId: t.venueId, startsAt: t.startsAt, priceRound: t.priceRound }, due);
+    armed += 1;
+  }
+  return armed;
 }

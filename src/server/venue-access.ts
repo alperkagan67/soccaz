@@ -7,6 +7,7 @@ import { isPlatformAdmin } from "@/lib/roles";
 import { audit } from "./audit";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
+import { armConfirmationForNewAccess } from "./tournament-confirm";
 import { settleHallCheck } from "./veto";
 import { INVITE_VALID_DAYS, isAnonymizedEmail, normalizeEmail } from "./venue-access-rules";
 
@@ -143,6 +144,8 @@ export async function redeemVenueInvites(input: { userId: string; email: string;
     if (rows.length === 0) return 0;
     await tx.update(venues).set({ managerUserId: input.userId }).where(and(inArray(venues.id, rows.map((r) => r.venue_id)), sql`${venues.managerUserId} is null`));
     for (const r of rows) await audit(input.userId, "venue.access.redeem", "venue", r.venue_id, { after: { accessId: r.id } }, tx);
+    // 012 M5-7b (Entscheid t2q, Plan 19.14): ein Turnier dieser Halle in payment ohne Zusage bekommt "Zusage noetig"; gleiche Transaktion, nach den Hallensperren
+    await armConfirmationForNewAccess(tx, [...new Set(rows.map((r) => r.venue_id))]);
     return rows.length;
   });
 }

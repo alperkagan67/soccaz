@@ -32,6 +32,12 @@ export async function venueHasActiveAccess(venueId: string, exec: Reader = db): 
   return Boolean(row);
 }
 
+/** Die Konten mit aktivem Zugang zu dieser Halle (Mitteilungen an die Halle, 012 M5-7b); dieselbe Bedingung wie hasVenueAccess. */
+export async function venueAccessHolderIds(venueId: string, exec: Reader = db): Promise<string[]> {
+  const rows = await exec.select({ userId: venueAccess.userId }).from(venueAccess).innerJoin(users, eq(users.id, venueAccess.userId)).where(and(eq(venueAccess.venueId, venueId), activeAccessWhere()));
+  return rows.map((r) => r.userId).filter((x): x is string => Boolean(x));
+}
+
 /** Alle Hallen mit aktivem Betreiber-Zugang in EINER Abfrage (Auswahlliste, 012 M5-7a). */
 export async function venueIdsWithActiveAccess(exec: Reader = db): Promise<Set<string>> {
   const rows = await exec.select({ venueId: venueAccess.venueId }).from(venueAccess).innerJoin(users, eq(users.id, venueAccess.userId)).where(activeAccessWhere());
