@@ -123,7 +123,7 @@ try {
   const t = await q2("select name, venue_confirmed_at, venue_confirmed_by from tournaments where organizer_id = $1 order by name", [u]);
   check(t.every((r) => r.venue_confirmed_at === null), "Turniere ohne Halle: Zusage zurueckgesetzt");
   const au = await q2("select after from audit_log where action = 'migration_0054_tournament_cleanup'");
-  check(au.length === 1 && au[0].after.confirmed_without_venue_reset === 1, "audit_log-Eintrag der Bereinigung (Zaehler 1)");
+  check(au.length === 1 && au[0].after.confirmed_without_venue_reset === 1 && au[0].after.confirmed_without_venue_ids.length === 1, "audit_log-Eintrag der Bereinigung (Zaehler 1, Turnier-ID protokolliert)");
   const lg = await q2("select count(*)::int n from evidence_legacy_plaintext");
   check(lg[0].n === 2, "Altklartext markiert (evidence_legacy_plaintext)");
   const st = await q2("select key, value #>> '{}' as v from settings where key like 'evidence%' order by key");

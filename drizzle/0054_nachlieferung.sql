@@ -42,13 +42,13 @@ ALTER TABLE "booking_evidence_reason_text" ADD CONSTRAINT "booking_evidence_reas
 ALTER TABLE "booking_evidence" ADD CONSTRAINT "booking_evidence_kind_check" CHECK ("booking_evidence"."kind" in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'late_attempt', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done'));--> statement-breakpoint
 -- Altdaten bereinigen (Plan 16f.2), BEVOR die CHECKs und die Trigger auf tournaments angelegt werden; Anzahl wird protokolliert (NOTICE der Migration)
 DO $$
-DECLARE n_a integer; n_b integer;
+DECLARE n_a integer; n_b integer; ids_a uuid[]; ids_b uuid[];
 BEGIN
-  SELECT count(*) INTO n_a FROM tournaments WHERE venue_confirmed_at IS NOT NULL AND venue_id IS NULL;
+  SELECT count(*), coalesce(array_agg(id), '{}') INTO n_a, ids_a FROM tournaments WHERE venue_confirmed_at IS NOT NULL AND venue_id IS NULL;
   UPDATE tournaments SET venue_confirmed_at = NULL WHERE venue_confirmed_at IS NOT NULL AND venue_id IS NULL;
-  SELECT count(*) INTO n_b FROM tournaments WHERE venue_confirmed_by IS NOT NULL AND venue_confirmed_at IS NULL;
+  SELECT count(*), coalesce(array_agg(id), '{}') INTO n_b, ids_b FROM tournaments WHERE venue_confirmed_by IS NOT NULL AND venue_confirmed_at IS NULL;
   UPDATE tournaments SET venue_confirmed_by = NULL WHERE venue_confirmed_by IS NOT NULL AND venue_confirmed_at IS NULL;
-  INSERT INTO audit_log (actor_id, action, entity, entity_id, after) VALUES (NULL, 'migration_0054_tournament_cleanup', 'tournaments', '0054', jsonb_build_object('confirmed_without_venue_reset', n_a, 'confirmed_by_cleaned', n_b));
+  INSERT INTO audit_log (actor_id, action, entity, entity_id, after) VALUES (NULL, 'migration_0054_tournament_cleanup', 'tournaments', '0054', jsonb_build_object('confirmed_without_venue_reset', n_a, 'confirmed_by_cleaned', n_b, 'confirmed_without_venue_ids', to_jsonb(ids_a), 'confirmed_by_cleaned_ids', to_jsonb(ids_b)));
   RAISE NOTICE 'Migration 0054: % Turniere ohne Halle: Zusage zurueckgesetzt; % Turniere: venue_confirmed_by bereinigt', n_a, n_b;
 END $$;--> statement-breakpoint
 ALTER TABLE "tournaments" ADD CONSTRAINT "tournaments_confirmed_needs_venue" CHECK ("tournaments"."venue_confirmed_at" is null or "tournaments"."venue_id" is not null) NOT VALID;--> statement-breakpoint
@@ -144,7 +144,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
--- ===== Teil 2: Einstellungen, Schalter, Schreib-/Trigger-Funktionen (Plan 16b bis 16h). UNGETESTET gegen die Datenbank (Stand: lokal ohne Datenbank geschrieben). =====
+-- ===== Teil 2: Einstellungen, Schalter, Schreib-/Trigger-Funktionen (Plan 16b bis 16h). (getestet: tests/integration/beweisprotokoll-nachlieferung.test.ts, scripts/verify-evidence-migration.mjs, scripts/mutation-evidence.mjs). =====
 -- Fehlercodes (SQLSTATE) fuer die App: EV001 Antwortfrist abgelaufen, EV002 Begruendung fehlt/ungueltig (Fehlertext enthaelt NIE den Freitext), EV003 Frist fehlt, EV004 kein Hallenzugang.
 -- Deadlock-Regel (Plan 16e.6): ausser FOR UPDATE auf booking_evidence_counter in diesem Teil KEINE Zeilensperre (nur reine SELECTs auf matches, Fachzeilen, users, venue_access).
 
@@ -355,6 +355,8 @@ BEGIN
     IF p_round_mode <> 'accepted_count' THEN
       RAISE EXCEPTION 'evidence_emit: round_mode % passt nicht zum Betreff tournament.', p_round_mode;
     END IF;
+    -- Einmaligkeit beim Turnier bewusst NICHT ueber Existenz: v_round = 1 + Anzahl accepted ist immer neu, die Existenzpruefung unten greift hier nie. Die Idempotenz liefert das WHEN des Triggers
+    -- (nur NULL -> Wert), der partielle UNIQUE (tournament_id, venue_id, round, kind) sichert ab; Zusage, Ruecknahme, Zusage = zwei accepted ist gewollt (Plan 16f.9; Test 'Turnier-Idempotenz').
     SELECT 1 + count(*) INTO v_round FROM booking_evidence WHERE subject = 'tournament' AND tournament_id = p_tournament AND kind = 'accepted';
     IF EXISTS (
       SELECT 1 FROM booking_evidence WHERE subject = 'tournament' AND tournament_id = p_tournament AND venue_id IS NOT DISTINCT FROM p_venue AND round = v_round AND kind = p_kind

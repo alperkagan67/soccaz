@@ -92,7 +92,7 @@ const stmtOf = (fn) => {
 };
 const runTests = (files) => spawnSync("npx", ["vitest", "run", "--config", "vitest.integration.config.mts", ...files, "--testTimeout=60000"], { encoding: "utf8", shell: true, timeout: 280_000 });
 
-// Hinweis: bei hartem Abbruch (Prozess beendet, Strg+C) kann eine Mutation stehen bleiben: dann die Worker-Datenbank neu anlegen (node scripts/worktree.mjs) oder die Funktion aus der Migration per CREATE OR REPLACE nachziehen.
+// Hinweis: bei hartem Abbruch (Prozess beendet, Strg+C) kann eine Mutation stehen bleiben: (1) Worker-Datenbank neu anlegen (node scripts/worktree.mjs) oder die Funktion aus der Migration per CREATE OR REPLACE nachziehen, (2) QUELLDATEIEN (Mutationen mit 'file': src/server/account.ts, src/server/evidence.ts) mit 'git status' und 'git diff src' pruefen und per 'git checkout -- <datei>' zuruecksetzen.
 const report = [];
 try {
   for (const [i, m] of MUTATIONS.entries()) {
