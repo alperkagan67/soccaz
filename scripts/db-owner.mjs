@@ -5,7 +5,9 @@
 //   2. Anwenden:               node scripts/db-owner.mjs --apply --plan plan.json --plan-sha256 <hex>   (die Summe wird GETRENNT uebergeben; Ziel-DB der Datei = Verbindung; neue Objekte seit dem Plan = Abbruch)
 //   3. Rueckfall:              node scripts/db-owner.mjs --reverse --plan plan.json --plan-sha256 <hex> (setzt den bisherigen Eigentuemer je Objekt wieder ein)
 // Objekte: Schemas public/drizzle; Tabellen/Views/Sichten/fremde Tabellen; EIGENSTAENDIGE Sequenzen (an Spalten gebundene folgen der Tabelle); Funktionen/Prozeduren/Aggregate (mit Signatur);
-// eigenstaendige Typen (Enum, Domain, zusammengesetzt). Nicht: Array-/Zeilentypen, Erweiterungsobjekte (pg_depend 'e'), Objekte, die schon soccaz_owner gehoeren.
+// eigenstaendige Typen (Enum, Domain, Bereichstypen, zusammengesetzt). Nicht: Array-/Zeilentypen, Erweiterungsobjekte (pg_depend 'e'), Objekte, die schon soccaz_owner gehoeren.
+// BEKANNTE LUECKEN (nicht erfasst, in der Katalog-Positivpruefung von A2 zu melden): Operatoren, Operatorklassen/-familien, Kollationen, Textsuche-Objekte, Konversionen, erweiterte Statistiken,
+// Ereignis-Trigger, Publikationen. Die Anwendung nutzt sie nicht; findet das Pruefskript welche, wird die Klasse ergaenzt.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -55,25 +57,53 @@ export async function buildPlan(client) {
   )) {
     if (!owned(r.owner)) continue;
     const word = r.kind === "p" ? "PROCEDURE" : r.kind === "a" ? "AGGREGATE" : "FUNCTION";
-    const full = `${q_(r.schema)}.${q_(r.name)}(${r.args})`;
+    const full = `${q_(r.schema)}.${q_(r.name)}(${r.args === "" && r.kind === "a" ? "*" : r.args})`;
     items.push({ kind: "function", schema: r.schema, name: r.name, args: r.args, prokind: r.kind, oldOwner: r.owner, statement: `ALTER ${word} ${full} OWNER TO ${TARGET_OWNER}`, reverse: `ALTER ${word} ${full} OWNER TO ${q_(r.owner)}` });
   }
   // eigenstaendige Typen (Enum, Domain); keine Array- und keine Zeilentypen von Relationen
   for (const r of await q(
     `select n.nspname as schema, t.typname as name, t.typtype as kind, pg_get_userbyid(t.typowner) as owner
        from pg_type t join pg_namespace n on n.oid = t.typnamespace
-      where n.nspname = any($1) and t.typtype in ('e','d') and t.typelem = 0
+      where n.nspname = any($1) and t.typtype in ('e','d','r') and t.typelem = 0
         and not exists (select 1 from pg_depend d where d.classid = 'pg_type'::regclass and d.objid = t.oid and d.deptype = 'e')
       order by 1, 2`,
     [SCHEMAS],
   )) {
     if (!owned(r.owner)) continue;
-    const word = r.kind === "d" ? "DOMAIN" : "TYPE";
+    const word = r.kind === "d" ? "DOMAIN" : "TYPE"; // Enum, Bereichstyp: ALTER TYPE (der Multirange-Typ folgt dem Bereichstyp)
     const full = `${q_(r.schema)}.${q_(r.name)}`;
     items.push({ kind: "type", schema: r.schema, name: r.name, typtype: r.kind, oldOwner: r.owner, statement: `ALTER ${word} ${full} OWNER TO ${TARGET_OWNER}`, reverse: `ALTER ${word} ${full} OWNER TO ${q_(r.owner)}` });
   }
   items.sort((a, b) => ORDER.indexOf(a.kind === "relation" ? "relation" : a.kind) - ORDER.indexOf(b.kind === "relation" ? "relation" : b.kind) || a.schema.localeCompare(b.schema) || a.name.localeCompare(b.name) || (a.args ?? "").localeCompare(b.args ?? ""));
   return { version: 1, database, targetOwner: TARGET_OWNER, items };
+}
+
+/** Bezeichner wie pg: in Anfuehrungszeichen, " verdoppelt. */
+const ident = (s) => '"' + String(s).replace(/"/g, '""') + '"';
+const SAFE_ARGS = /^[A-Za-z0-9_ ,."\[\]()*]*$/; // Typnamen aus pg_get_function_identity_arguments: keine Semikolons, keine Kommentarzeichen, keine Zeilenumbrueche
+
+/**
+ * Baut die Anweisung eines Plan-Eintrags AUS DEN STRUKTURFELDERN (nicht aus dem Text der Datei) und verlangt, dass der Text der Datei genau so lautet:
+ * eine manipulierte Plan-Datei (z. B. ein eingeschleustes zweites Statement oder ein fremder Eigentuemer) bricht ab, bevor irgendetwas ausgefuehrt wird.
+ */
+export function statementOf(item, reverse) {
+  const owner = reverse ? ident(item.oldOwner) : TARGET_OWNER;
+  let head;
+  if (item.kind === "schema") head = `ALTER SCHEMA ${ident(item.name)}`;
+  else if (item.kind === "function") {
+    if (!SAFE_ARGS.test(item.args ?? "")) throw new Error(`Plan: ungueltige Argumentliste bei ${item.name}`);
+    const word = item.prokind === "p" ? "PROCEDURE" : item.prokind === "a" ? "AGGREGATE" : "FUNCTION";
+    head = `ALTER ${word} ${ident(item.schema)}.${ident(item.name)}(${item.args === "" && item.prokind === "a" ? "*" : item.args})`;
+  } else if (item.kind === "type" && item.typtype) head = `ALTER ${item.typtype === "d" ? "DOMAIN" : "TYPE"} ${ident(item.schema)}.${ident(item.name)}`;
+  else {
+    const word = { r: "TABLE", p: "TABLE", v: "VIEW", m: "MATERIALIZED VIEW", f: "FOREIGN TABLE", S: "SEQUENCE", c: "TYPE" }[item.relkind];
+    if (!word) throw new Error(`Plan: unbekannte Objektart bei ${item.name}`);
+    head = `ALTER ${word} ${ident(item.schema)}.${ident(item.name)}`;
+  }
+  const rebuilt = `${head} OWNER TO ${owner}`;
+  const written = reverse ? item.reverse : item.statement;
+  if (written !== rebuilt) throw new Error(`Plan: Anweisung weicht von den Strukturfeldern ab (${item.name}); Datei manipuliert?`);
+  return rebuilt;
 }
 
 export const planText = (plan) => JSON.stringify(plan, null, 2) + "\n";
@@ -110,15 +140,23 @@ export async function applyPlan(url, file, sha256, { reverse = false } = {}) {
     const database = (await client.query("select current_database() as d")).rows[0].d;
     if (plan.database !== database) throw new Error(`Plan gilt fuer die Datenbank ${plan.database}, Verbindung zeigt auf ${database}`);
     if (!(await client.query("select 1 from pg_roles where rolname = $1", [TARGET_OWNER])).rowCount) throw new Error(`Rolle ${TARGET_OWNER} fehlt (zuerst db-roles.mjs)`);
-    if (!reverse) {
-      const now = await buildPlan(client);
-      const planned = new Set(plan.items.map(keyOf));
-      const extra = now.items.filter((i) => !planned.has(keyOf(i)));
-      if (extra.length) throw new Error(`Abbruch: ${extra.length} Objekt(e) seit dem Planlauf neu (z. B. ${keyOf(extra[0])}); neuen Plan erzeugen`);
-    }
+    const statements = plan.items.map((i) => statementOf(i, reverse)); // vor jeder Ausfuehrung: alles pruefen
     await client.query("begin");
     try {
-      for (const i of plan.items) await client.query(reverse ? i.reverse : i.statement);
+      await client.query("set local lock_timeout = '5s'"); // laeuft die Anwendung noch, wartet der Wechsel nicht endlos auf Sperren
+      const now = await buildPlan(client); // IN der Transaktion: Abweichungen seit dem Planlauf
+      if (!reverse) {
+        const planned = new Set(plan.items.map(keyOf));
+        const extra = now.items.filter((i) => !planned.has(keyOf(i)));
+        if (extra.length) throw new Error(`Abbruch: ${extra.length} Objekt(e) seit dem Planlauf neu (z. B. ${keyOf(extra[0])}); neuen Plan erzeugen`);
+      } else if (now.items.length) {
+        throw new Error(`Rueckfall abgebrochen: ${now.items.length} Objekt(e) gehoeren (noch) nicht soccaz_owner (Zustand weicht vom angewendeten Plan ab)`);
+      }
+      for (const s of statements) await client.query(s);
+      if (!reverse) {
+        const after = await buildPlan(client); // Nachpruefung: nichts mehr offen
+        if (after.items.length) throw new Error(`Abbruch: nach dem Wechsel noch ${after.items.length} Objekt(e) anderer Eigentuemer (z. B. ${keyOf(after.items[0])})`);
+      }
       await client.query("commit");
     } catch (e) {
       await client.query("rollback");

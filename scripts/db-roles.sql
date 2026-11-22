@@ -30,41 +30,22 @@ BEGIN
 END
 $$;
 --> statement
--- Eigenschaften auch bei bestehenden Rollen erzwingen (idempotent: ein fruehere abweichende Anlage wird korrigiert)
-ALTER ROLE soccaz_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+-- Eigenschaften auch bei bestehenden Rollen erzwingen (idempotent: eine fruehere abweichende Anlage wird korrigiert; auch REPLICATION, INHERIT, Verbindungslimit)
+ALTER ROLE soccaz_owner NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION INHERIT CONNECTION LIMIT -1;
 --> statement
-ALTER ROLE soccaz_maintenance NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ALTER ROLE soccaz_maintenance NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION INHERIT CONNECTION LIMIT -1;
 --> statement
-ALTER ROLE soccaz_migrate LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ALTER ROLE soccaz_migrate LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION INHERIT CONNECTION LIMIT -1;
 --> statement
-ALTER ROLE soccaz_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ALTER ROLE soccaz_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION INHERIT CONNECTION LIMIT -1;
 --> statement
-ALTER ROLE soccaz_ops LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ALTER ROLE soccaz_ops LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION INHERIT CONNECTION LIMIT -1;
 --> statement
-ALTER ROLE soccaz_backup LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+ALTER ROLE soccaz_backup LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS NOREPLICATION INHERIT CONNECTION LIMIT -1;
 --> statement
 -- Mitgliedschaften (Soll-Liste): soccaz_migrate erbt soccaz_owner; soccaz_migrate ist NICHT dauerhaft Mitglied von soccaz_maintenance (nur im Wartungsfenster);
 -- soccaz_owner ist KEIN Mitglied von soccaz_maintenance; soccaz_app/ops sind in keiner Rolle; soccaz_backup liest alles.
 GRANT soccaz_owner TO soccaz_migrate;
 --> statement
 GRANT pg_read_all_data TO soccaz_backup;
---> statement
-DO $$
-BEGIN
-  IF pg_has_role('soccaz_owner', 'soccaz_maintenance', 'member') THEN
-    REVOKE soccaz_maintenance FROM soccaz_owner;
-  END IF;
-  IF pg_has_role('soccaz_app', 'soccaz_owner', 'member') THEN
-    REVOKE soccaz_owner FROM soccaz_app;
-  END IF;
-  IF pg_has_role('soccaz_app', 'soccaz_maintenance', 'member') THEN
-    REVOKE soccaz_maintenance FROM soccaz_app;
-  END IF;
-  IF pg_has_role('soccaz_ops', 'soccaz_owner', 'member') THEN
-    REVOKE soccaz_owner FROM soccaz_ops;
-  END IF;
-  IF pg_has_role('soccaz_ops', 'soccaz_maintenance', 'member') THEN
-    REVOKE soccaz_maintenance FROM soccaz_ops;
-  END IF;
-END
-$$;
+-- Abweichende Mitgliedschaften entzieht scripts/db-roles.mjs nach diesem Teil anhand von pg_auth_members (Soll-Liste, bricht bei fremden Mitgliedern ab).

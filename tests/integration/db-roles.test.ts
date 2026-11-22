@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
-import { ROLES, clusterStatements, dbUrlAllowed, setupRoles } from "../../scripts/db-roles.mjs";
-import { applyPlan, buildPlan, planSha, writePlan } from "../../scripts/db-owner.mjs";
+import { ROLES, clusterStatements, dbUrlAllowed, scramVerifier, setupRoles } from "../../scripts/db-roles.mjs";
+import { applyPlan, buildPlan, planSha, statementOf, writePlan } from "../../scripts/db-owner.mjs";
 
 // Etappe D (G25-009): Rollen-Skript und Eigentumswechsel. Arbeitet NUR in einer selbst angelegten Wegwerf-Datenbank (Prozess-ID im Namen) plus den (idempotenten, noch unbenutzten) Rollen des Clusters.
 // Die Anwendung selbst aendert sich nicht: die Rollen sind angelegt, aber niemand verbindet sich damit.
@@ -26,6 +26,7 @@ beforeAll(async () => {
   tmp = mkdtempSync(join(tmpdir(), "soccaz-owner-"));
 });
 afterAll(async () => {
+  await admin.query("alter role soccaz_ops password null").catch(() => null); // kein bekanntes Test-Passwort im Cluster hinterlassen
   await admin.query(`drop database if exists "${name}" with (force)`);
   await admin.end();
   rmSync(tmp, { recursive: true, force: true });
@@ -39,6 +40,9 @@ describe("db-roles.mjs", () => {
     expect(dbUrlAllowed("postgres://u@127.0.0.1/x?host=evil")).toBe(false);
     expect(dbUrlAllowed("postgres://u@postgres/x", {})).toBe(false);
     expect(dbUrlAllowed("postgres://u@postgres/x", { GITHUB_ACTIONS: "true" })).toBe(true);
+    expect(dbUrlAllowed("postgres://u@127.0.0.1,evil.example.com/x")).toBe(false); // Mehrfachhost: Gegenprobe mit dem Parser von pg
+    expect(dbUrlAllowed("postgres://u@127.0.0.1%2Cevil.example.com/x")).toBe(false);
+    expect(dbUrlAllowed("postgres://u@%2Fvar%2Frun%2Fpostgresql/x")).toBe(false); // Socket-Pfad
   });
 
   it("Trockenlauf führt nichts aus und gibt keine Passwörter aus; Anwenden ist idempotent (zweimal) und setzt die Soll-Eigenschaften", async () => {
@@ -47,9 +51,11 @@ describe("db-roles.mjs", () => {
     expect(dry.applied).toBe(false);
     expect(lines.join("\n")).not.toContain("geheim-nicht-ausgeben");
     for (let i = 0; i < 2; i++) expect((await setupRoles({ url: scratchUrl.toString(), apply: true, env: {} })).applied).toBe(true);
-    const roles = (await admin.query("select rolname, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls, rolcanlogin from pg_roles where rolname = any($1)", [ROLES])).rows;
+    await admin.query("alter role soccaz_app replication connection limit 3 noinherit"); // Fehlkonfiguration, wird korrigiert
+    await setupRoles({ url: scratchUrl.toString(), apply: true, env: {} });
+    const roles = (await admin.query("select rolname, rolsuper, rolcreaterole, rolcreatedb, rolbypassrls, rolcanlogin, rolreplication, rolinherit, rolconnlimit from pg_roles where rolname = any($1)", [ROLES])).rows;
     expect(roles.map((r) => r.rolname).sort()).toEqual([...ROLES].sort());
-    for (const r of roles) expect([r.rolsuper, r.rolcreaterole, r.rolcreatedb, r.rolbypassrls], r.rolname).toEqual([false, false, false, false]);
+    for (const r of roles) expect([r.rolsuper, r.rolcreaterole, r.rolcreatedb, r.rolbypassrls, r.rolreplication, r.rolinherit, r.rolconnlimit], r.rolname).toEqual([false, false, false, false, false, true, -1]);
     const login = Object.fromEntries(roles.map((r) => [r.rolname, r.rolcanlogin]));
     expect(login).toMatchObject({ soccaz_owner: false, soccaz_maintenance: false, soccaz_migrate: true, soccaz_app: true, soccaz_ops: true, soccaz_backup: true });
   });
@@ -63,11 +69,16 @@ describe("db-roles.mjs", () => {
     for (const r of ["soccaz_app", "soccaz_ops"]) for (const of of ["soccaz_owner", "soccaz_maintenance", "soccaz_migrate"]) expect(await member(r, of), `${r} in ${of}`).toBe(false);
     expect(await member("soccaz_backup", "pg_read_all_data")).toBe(true);
     // bewusste Fehlkonfiguration wird beim naechsten Lauf korrigiert
-    await admin.query("grant soccaz_maintenance to soccaz_owner");
-    await admin.query("grant soccaz_owner to soccaz_app");
+    for (const [m, r] of [["soccaz_owner", "soccaz_maintenance"], ["soccaz_app", "soccaz_owner"], ["soccaz_migrate", "soccaz_maintenance"], ["soccaz_app", "soccaz_migrate"], ["soccaz_backup", "soccaz_app"], ["soccaz_ops", "pg_write_all_data"]]) await admin.query(`grant ${r} to ${m}`);
     await setupRoles({ url: scratchUrl.toString(), apply: true, env: {} });
     expect(await member("soccaz_owner", "soccaz_maintenance")).toBe(false);
     expect(await member("soccaz_app", "soccaz_owner")).toBe(false);
+    expect(await member("soccaz_migrate", "soccaz_maintenance")).toBe(false);
+    expect(await member("soccaz_app", "soccaz_migrate")).toBe(false);
+    expect(await member("soccaz_backup", "soccaz_app")).toBe(false);
+    expect(await member("soccaz_ops", "pg_write_all_data")).toBe(false);
+    const rows = (await admin.query("select m.rolname as member, r.rolname as role from pg_auth_members am join pg_roles m on m.oid = am.member join pg_roles r on r.oid = am.roleid where m.rolname = any($1) or r.rolname = any($1) order by 1, 2", [ROLES])).rows.map((x) => `${x.member}>${x.role}`);
+    expect(rows).toEqual(["soccaz_backup>pg_read_all_data", "soccaz_migrate>soccaz_owner"]); // EXAKT die Soll-Liste
   });
 
   it("Datenbank-Rechte: CONNECT für alle Rollen, CREATE nur für soccaz_owner; Passwort nur aus der Umgebung gesetzt", async () => {
@@ -78,6 +89,39 @@ describe("db-roles.mjs", () => {
     expect(await priv("soccaz_app", "CREATE")).toBe(false);
     const pw = (await admin.query("select rolpassword is not null as has from pg_authid where rolname = 'soccaz_ops'")).rows[0].has;
     expect(pw).toBe(true);
+    const verifier = (await admin.query("select rolpassword as p from pg_authid where rolname = 'soccaz_ops'")).rows[0].p as string;
+    expect(verifier.startsWith("SCRAM-SHA-256$")).toBe(true);
+    expect(verifier).not.toContain("pw-nur-im-test");
+  });
+
+  it("fremdes Mitglied einer unserer Rollen bricht ab (nie still), rollenbezogene Einstellungen werden entfernt", async () => {
+    await admin.query("drop role if exists soccaz_fremd_test");
+    await admin.query("create role soccaz_fremd_test nologin");
+    try {
+      await admin.query("grant soccaz_owner to soccaz_fremd_test");
+      await expect(setupRoles({ url: scratchUrl.toString(), apply: true, env: {} })).rejects.toThrow(/Soll-Liste.*soccaz_fremd_test in soccaz_owner/);
+    } finally {
+      await admin.query("revoke soccaz_owner from soccaz_fremd_test");
+      await admin.query("drop role soccaz_fremd_test");
+    }
+    await admin.query("alter role soccaz_app set statement_timeout = '1s'");
+    await admin.query(`alter role soccaz_app in database "${name}" set search_path = 'public'`);
+    await setupRoles({ url: scratchUrl.toString(), apply: true, env: {} });
+    const left = (await admin.query("select count(*)::int as n from pg_db_role_setting s join pg_roles r on r.oid = s.setrole where r.rolname = any($1)", [ROLES])).rows[0].n;
+    expect(left).toBe(0);
+  });
+
+  it("Passwort nur als SCRAM-Verifier: gleiche Berechnung wie der Server (Salz und Iterationen übernommen), nie Klartext in der Rolle", async () => {
+    await admin.query("set password_encryption = 'scram-sha-256'");
+    await admin.query("alter role soccaz_backup password 'vergleichs-passwort'");
+    const server = (await admin.query("select rolpassword as p from pg_authid where rolname = 'soccaz_backup'")).rows[0].p as string;
+    const m = server.match(/^SCRAM-SHA-256\$(\d+):([^$]+)\$/)!;
+    expect(scramVerifier("vergleichs-passwort", Buffer.from(m[2], "base64"), Number(m[1]))).toBe(server);
+    await setupRoles({ url: scratchUrl.toString(), apply: true, env: { DB_PASSWORD_BACKUP: "anderes-passwort" } });
+    const now = (await admin.query("select rolpassword as p from pg_authid where rolname = 'soccaz_backup'")).rows[0].p as string;
+    expect(now.startsWith("SCRAM-SHA-256$")).toBe(true);
+    expect(now).not.toContain("anderes-passwort");
+    await admin.query("alter role soccaz_backup password null");
   });
 
   it("der Cluster-Teil enthält keine Passwörter und keine Anwendungs-Rechte (Etappe D ändert kein Verhalten)", () => {
@@ -114,6 +158,8 @@ describe("db-owner.mjs", () => {
       create aggregate public.agg(int) (sfunc = int4pl, stype = int);
       create type public.mood as enum ('a', 'b');
       create domain public.dom as int;
+      create type public.rng as range (subtype = int);
+      create aggregate public.cnt(*) (sfunc = int8inc, stype = bigint, initcond = '0');
       create type public.pair as (a int, b int);
       create table drizzle.__journal (id int);
     `);
@@ -124,7 +170,7 @@ describe("db-owner.mjs", () => {
     const stmts: string[] = plan.items.map((i: { statement: string }) => i.statement);
     expect(plan.database).toBe(name);
     expect(stmts[0]).toMatch(/^ALTER SCHEMA/); // Schemas zuerst
-    for (const must of ['TABLE "public"."t"', 'SEQUENCE "public"."s_alone"', 'VIEW "public"."v"', 'MATERIALIZED VIEW "public"."mv"', 'FUNCTION "public"."f"(integer)', 'FUNCTION "public"."f"(text)', 'PROCEDURE "public"."p"()', 'AGGREGATE "public"."agg"(integer)', 'TYPE "public"."mood"', 'DOMAIN "public"."dom"', 'TYPE "public"."pair"', 'TABLE "drizzle"."__journal"']) {
+    for (const must of ['TABLE "public"."t"', 'SEQUENCE "public"."s_alone"', 'VIEW "public"."v"', 'MATERIALIZED VIEW "public"."mv"', 'FUNCTION "public"."f"(integer)', 'FUNCTION "public"."f"(text)', 'PROCEDURE "public"."p"()', 'AGGREGATE "public"."agg"(integer)', 'TYPE "public"."mood"', 'DOMAIN "public"."dom"', 'TYPE "public"."pair"', 'TYPE "public"."rng"', 'AGGREGATE "public"."cnt"(*)', 'TABLE "drizzle"."__journal"']) {
       expect(stmts.some((s) => s.includes(must)), must).toBe(true);
     }
     expect(stmts.some((s) => s.includes("t_id_seq"))).toBe(false); // an Spalte gebundene Sequenz folgt der Tabelle
@@ -137,6 +183,14 @@ describe("db-owner.mjs", () => {
     const other = join(tmp, "other.json");
     writeFileSync(other, JSON.stringify({ ...plan, database: "andere_db" }, null, 2) + "\n");
     await expect(applyPlan(scratchUrl.toString(), other, planSha(readFileSync(other, "utf8")))).rejects.toThrow(/Datenbank/);
+    // manipulierte Plan-Datei (Summe passend neu berechnet): eingeschleustes Statement bzw. fremder Eigentuemer im Rueckfall bricht VOR jeder Ausfuehrung ab
+    const evil = join(tmp, "evil.json");
+    const evilPlan = JSON.parse(JSON.stringify(plan));
+    evilPlan.items[1].statement += "; ALTER ROLE soccaz_app SUPERUSER";
+    writeFileSync(evil, JSON.stringify(evilPlan, null, 2) + "\n");
+    await expect(applyPlan(scratchUrl.toString(), evil, planSha(readFileSync(evil, "utf8")))).rejects.toThrow(/Strukturfeldern/);
+    expect((await admin.query("select rolsuper from pg_roles where rolname = 'soccaz_app'")).rows[0].rolsuper).toBe(false);
+    expect(() => statementOf({ kind: "function", schema: "public", name: "f", args: "x); drop table t; --", prokind: "f", oldOwner: "postgres", statement: "", reverse: "" }, false)).toThrow(/Argumentliste/);
     // neues Objekt seit dem Plan = Abbruch, nichts geaendert
     await scratch("create table public.nachtraeglich (id int)");
     await expect(applyPlan(scratchUrl.toString(), file, w.sha256)).rejects.toThrow(/seit dem Planlauf neu/);
