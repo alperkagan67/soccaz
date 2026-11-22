@@ -3,7 +3,7 @@ import { revokeAccessOfUser } from "./venue-access";
 import { db } from "@/db";
 import { matchParticipants, matches, notifications, paymentCharges, paymentDisputes, paymentErasureTasks, paymentProfiles, paymentRefunds, paymentSetupIntents, teamMembers, teams, users } from "@/db/schema";
 import { evidenceActor, ledgerEntries, payments, receipts } from "@/db/schema-finance";
-import { tournamentPlayers } from "@/db/schema-league";
+import { tournamentPlayers, tournaments } from "@/db/schema-league";
 import { comments, media } from "@/db/schema-content";
 import { mvpVotes, playerStats, userBadges, userReliability } from "@/db/schema-community";
 import { CITIES } from "@/lib/validation";
@@ -164,6 +164,13 @@ export async function deleteAccount(userId: string) {
       // der beiden Transaktionen (Deadlock-Erkennung), nichts wird beschädigt; siehe docs/BETRIEB.md.
             .for("no key update", { of: matches });
     const lockedGames = lockedAll.filter((g) => ["lobby", "confirmed"].includes(g.status)); // offene Spiele, Stand beim Sperren
+    // Turniere (M5-5): alle Turniere, in denen der Nutzer spielt oder Zahlungszeilen hat (Platz, Zahler, Erstattung), ZUERST sperren (nach id sortiert), dann die Zeilen. Reihenfolge Turnier -> Zeile -> Nutzer wie in der
+    // Abbuchung und im Webhook (lockTournament). Spiele und Turniere sperrt sonst kein Pfad gemeinsam, es gibt keinen Zyklus zwischen beiden.
+    const tIdsFromCharges = myChargeIds.length === 0 ? [] : await tx.select({ id: paymentCharges.tournamentId }).from(paymentCharges).where(inArray(paymentCharges.id, myChargeIds.map((c) => c.id)));
+    const tIdsFromRefunds = await tx.select({ id: paymentRefunds.tournamentId }).from(paymentRefunds).where(eq(paymentRefunds.userId, userId));
+    const tIdsFromPlay = await tx.select({ id: tournamentPlayers.tournamentId }).from(tournamentPlayers).where(eq(tournamentPlayers.userId, userId));
+    const allTournamentIds = [...new Set([...tIdsFromCharges, ...tIdsFromRefunds, ...tIdsFromPlay].map((r) => r.id).filter((id): id is string => id !== null))].sort();
+    const lockedTournaments = allTournamentIds.length === 0 ? [] : await tx.select({ id: tournaments.id, status: tournaments.status }).from(tournaments).where(inArray(tournaments.id, allTournamentIds)).orderBy(tournaments.id).for("no key update");
     // Abbuchungszeilen (sortiert), dann Erstattungszeilen (sortiert)
     const chargeIds = myChargeIds.map((c) => c.id).sort();
     const lockedCharges = chargeIds.length === 0 ? [] : await tx.select().from(paymentCharges).where(inArray(paymentCharges.id, chargeIds)).orderBy(paymentCharges.id).for("update");
@@ -178,6 +185,13 @@ export async function deleteAccount(userId: string) {
     if (user.role !== "player") throw new DomainError("Dein Konto hat eine Admin-Rolle. Bitte lass sie zuerst entfernen.");
 
     if ((await walletBalance(tx, userId)) > 0) throw new DomainError("Du hast noch Guthaben. Bitte melde dich beim Support, damit wir es dir auszahlen.");
+
+    // Turniere (M5-5, Entscheid t9): wer in einem Turnier steht, das noch nicht beendet oder abgesagt ist (Anmeldung, Zahlungsphase, laeuft), kann das Konto nicht loeschen: Loeschsperre wie im Teamspiel.
+    // Gelesen unter der Turniersperre von oben.
+    const mineInOpenTournament = new Set(tIdsFromPlay.map((r) => r.id));
+    if (lockedTournaments.some((t) => mineInOpenTournament.has(t.id) && ["registration", "payment", "running"].includes(t.status))) {
+      throw new DomainError("Du bist noch in einem Turnier eingetragen. Bitte melde dich zuerst ab oder warte, bis es beendet ist.");
+    }
 
     const open = await tx
       .select({ id: matches.id })
@@ -233,6 +247,8 @@ export async function deleteAccount(userId: string) {
     await tx.delete(userBadges).where(eq(userBadges.userId, userId));
     await tx.delete(playerStats).where(eq(playerStats.userId, userId));
     await tx.delete(userReliability).where(eq(userReliability.userId, userId));
+    // Turniere (M5-5): die Einwilligung zu "Anteil uebernehmen" (Textschluessel und Zeit) gehoert zur Person und wird aufgeraeumt, als Uebernehmer UND als Platz; die Plaetze selbst bleiben (Buchungsnachweis)
+    await tx.update(tournamentPlayers).set({ coveredByUserId: null, coverMandateText: null, coverAcceptedAt: null }).where(or(eq(tournamentPlayers.coveredByUserId, userId), eq(tournamentPlayers.userId, userId)));
     // Plätze in Spielen mit Abbuchungszeilen (z. B. abgesagt, abgerechnet) bleiben unberührt: Bereit gehört zum Nachweis der Abbuchung
     await tx.update(matchParticipants).set({ readyAt: null }).where(and(eq(matchParticipants.userId, userId), sql`not exists (select 1 from payment_charges c where c.match_id = ${matchParticipants.matchId})`));
 
