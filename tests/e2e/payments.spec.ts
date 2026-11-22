@@ -301,9 +301,14 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   await devLogin(adm, `p4adm-${run}@test.local`, "Admin p4adm", "/admin/hallen");
   await idle(adm);
   const venueName = `E2E Halle ${run}`;
+  // erst bedienen, wenn React das Formular übernommen hat: vor der Hydration löst der Klick das native Absenden aus (Seite lädt neu, Eingaben weg, keine Halle angelegt);
+  // die Hallenseite ist durch Provision/Betreiber-Zugang (009 M2, 011 M1) größer geworden und hydratisiert unter CI-Last später
+  const create = adm.getByRole("button", { name: "Halle anlegen" });
+  await expect.poll(() => create.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps")))).toBe(true);
   await adm.getByLabel("Name", { exact: true }).fill(venueName);
-  await adm.getByLabel("Adresse").fill("Hauptstr. 1");
-  await adm.getByRole("button", { name: "Halle anlegen" }).click();
+  await adm.getByLabel("Adresse", { exact: true }).fill("Hauptstr. 1");
+  await create.click();
+  await expect(adm.getByRole("status").filter({ hasText: "Gespeichert." }).first()).toBeVisible(); // die Server-Aktion ist durch, erst danach die Liste prüfen
   await expect(adm.getByTestId(`venue-${venueName}`)).toBeVisible();
 
   await adm.goto("/admin/buchungen");
