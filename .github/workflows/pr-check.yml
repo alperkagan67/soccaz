@@ -25,7 +25,7 @@ jobs:
         run: |
           fehlt=0
           for h in "Anlass" "Änderung" "Risiko" "Beleg"; do
-            if ! printf '%s\n' "$PR_BODY" | grep -qE "^## ${h}[[:space:]]*$"; then
+            if ! printf '%s\n' "$PR_BODY" | grep -qE "^#{2,3} ${h}[[:space:]]*$"; then
               echo "::error::Im PR-Text fehlt die Überschrift '## ${h}' (siehe .github/pull_request_template.md)."
               fehlt=1
             fi
