@@ -24,19 +24,26 @@ export function hallZusageOk(t: { venueAccessRequiredSnapshot: boolean | null; v
   return t.venueAccessRequiredSnapshot !== true || t.venueConfirmedAt !== null;
 }
 
+type ZusageFacts = { id: string; venueId: string | null; venueAccessRequiredSnapshot: boolean | null; venueConfirmedAt: Date | null };
+
 /**
- * Ist die Zusage erfuellt, geprueft mit dem Zugang JETZT (Entscheid t2q zur Luecke "Zugang nach dem Fixieren", Plan 19.14): wer jetzt einen aktiven Zugang hat, braucht die Zusage, auch wenn der
- * Snapshot beim Fixieren "false" war. Der Snapshot bleibt maßgeblich, wenn er true ist (Entzug aendert nichts). NULL-Snapshot bleibt fail-closed (hallZusageOk).
+ * Verlangt dieses Turnier die Zusage der Halle? EINE Regel fuer die Abbuchungspruefung UND die Zusage-Aktion (Invariante R-T251 B: verlangt die Pruefung eine Zusage, muss confirmTournamentVenue sie
+ * annehmen): (1) Snapshot true = ja (der Snapshot bleibt massgeblich, auch nach einem Entzug); (2) Snapshot false = nur wenn die Halle JETZT einen aktiven Zugang hat, der STRIKT VOR der Abbuchungsfrist
+ * wirksam wurde, und noch KEINE Abbuchungszeile existiert (eine laufende Alles-oder-nichts-Abbuchung wird nie nachtraeglich zusagepflichtig); ohne bekannte Frist (due = null, Altturnier) zaehlt der
+ * Live-Zugang NICHT (konsistent mit armConfirmationForNewAccess, das solche Turniere ueberspringt); (3) Snapshot NULL = nein (die Pruefung ist dann fail-closed, hallZusageOk).
  */
-export async function hallZusageOkLive(exec: Pick<Tx, "select">, t: { id: string; venueId: string | null; venueAccessRequiredSnapshot: boolean | null; venueConfirmedAt: Date | null }, due: Date | null): Promise<boolean> {
-  // Der Live-Zugang zaehlt nur, wenn (a) der Snapshot false war, (b) noch KEINE Abbuchungszeile existiert (eine laufende Alles-oder-nichts-Abbuchung wird nie nachtraeglich zusagepflichtig) und
-  // (c) der Zugang VOR der Abbuchungsfrist wirksam wurde (ein spaeter Zugang bringt kein Turnier zum Platzen). due = null (Altturnier ohne Frist): ohne Zeitgrenze.
-  let accessNow = false;
-  if (t.venueId && t.venueAccessRequiredSnapshot === false) {
-    const [row] = await exec.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)).limit(1);
-    if (!row) accessNow = await venueHasActiveAccessBefore(t.venueId, due, exec);
-  }
-  return hallZusageOk({ venueAccessRequiredSnapshot: t.venueAccessRequiredSnapshot === null ? null : t.venueAccessRequiredSnapshot || accessNow, venueConfirmedAt: t.venueConfirmedAt });
+export async function zusageRequired(exec: Pick<Tx, "select">, t: ZusageFacts, due: Date | null): Promise<boolean> {
+  if (t.venueAccessRequiredSnapshot === true) return true;
+  if (t.venueAccessRequiredSnapshot !== false || !t.venueId || !due) return false;
+  const [row] = await exec.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)).limit(1);
+  if (row) return false;
+  return venueHasActiveAccessBefore(t.venueId, due, exec);
+}
+
+/** Ist die Zusage erfuellt (nicht verlangt oder gesetzt)? Mit dem Zugang JETZT (Entscheid t2q, Plan 19.14). NULL-Snapshot bleibt fail-closed (hallZusageOk). */
+export async function hallZusageOkLive(exec: Pick<Tx, "select">, t: ZusageFacts, due: Date | null): Promise<boolean> {
+  if (t.venueAccessRequiredSnapshot === null) return false;
+  return !(await zusageRequired(exec, t, due)) || t.venueConfirmedAt !== null;
 }
 
 /** Hat die Halle einen aktiven Betreiber-Zugang (011 M1)? Einzige Quelle: venue-access-rules.ts (aktiv, Konto nicht gesperrt, kein Admin). */

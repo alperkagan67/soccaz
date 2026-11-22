@@ -139,3 +139,86 @@ describe("M5-7b: Einloesen und Fehler", () => {
     expect((await db.select().from(users).where(eq(users.id, (await rowOf(t.id)).organizerId))).length).toBe(1);
   });
 });
+
+// ---- R-T251: Grenze, Fallback, ohne Frist, Zustandsmatrix, Ende zu Ende ----
+import { confirmTournamentVenue } from "@/server/tournament-confirm";
+import { zusageRequired } from "@/server/tournament-venue";
+import { tournamentChargeEligibility } from "@/server/payments/tournament-charge";
+
+describe("M5-7b R-T251: Live-Pflicht und Zusage sind EINE Regel", () => {
+  const dueOf = async (id: string) => {
+    const row = await rowOf(id);
+    return (await db.transaction((tx) => chargeDueAt(tx, row)))!;
+  };
+  const okLive = async (id: string) => {
+    const row = await rowOf(id);
+    return db.transaction(async (tx) => hallZusageOkLive(tx, row, await chargeDueAt(tx, row)));
+  };
+
+  it("ohne bekannte Frist (Altturnier) zaehlt der Live-Zugang NICHT (keine Sackgasse)", async () => {
+    const { v, t } = await fixture();
+    await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() + 5.9 * DAY) }).where(eq(tournaments.id, t.id)); // spaeter als Start minus 48 h: Altturnier, chargeDueAt = null
+    expect(await db.transaction(async (tx) => chargeDueAt(tx, await rowOf(t.id)))).toBeNull();
+    await grantAccess(v.id);
+    expect(await okLive(t.id)).toBe(true);
+  });
+
+  it("Grenze: Zugang exakt zur Frist zaehlt nicht (strikt davor), eine Sekunde davor zaehlt", async () => {
+    const a = await fixture();
+    const dueA = await dueOf(a.t.id);
+    await grantAccess(a.v.id, dueA);
+    expect(await okLive(a.t.id)).toBe(true);
+    const b = await fixture();
+    const dueB = await dueOf(b.t.id);
+    await grantAccess(b.v.id, new Date(dueB.getTime() - 1000));
+    expect(await okLive(b.t.id)).toBe(false);
+  });
+
+  it("assigned_at NULL: der Zeitpunkt der Einladung (invited_at) entscheidet", async () => {
+    const a = await fixture();
+    const opA = await makeUser("op");
+    await db.insert(venueAccess).values({ venueId: a.v.id, userId: opA.id, status: "active", invitedAt: new Date(Date.now() - DAY) });
+    expect(await okLive(a.t.id)).toBe(false); // Einladung lange vor der Frist
+    const b = await fixture();
+    const dueB = await dueOf(b.t.id);
+    const opB = await makeUser("op");
+    await db.insert(venueAccess).values({ venueId: b.v.id, userId: opB.id, status: "active", invitedAt: new Date(dueB.getTime() + 3_600_000) });
+    expect(await okLive(b.t.id)).toBe(true); // Einladung erst nach der Frist
+  });
+
+  it("Zustandsmatrix: Abbuchung erlaubt <=> Zusage nicht verlangt; Zusage verlangt und Zugang da => confirm moeglich", async () => {
+    for (const snapshot of [true, false, null] as const) {
+      for (const access of ["none", "before", "after"] as const) {
+        for (const rows of [false, true]) {
+          for (const confirmed of [false, true]) {
+            const { v, t, org } = await fixture({ snapshot });
+            const due = await dueOf(t.id);
+            let boss: { id: string } | null = null;
+            if (access !== "none") boss = await grantAccess(v.id, access === "before" ? new Date(due.getTime() - 3_600_000) : new Date(due.getTime() + 3_600_000));
+            if (rows) await db.insert(paymentCharges).values({ tournamentId: t.id, userId: org.id, amountCents: 1000, idempotencyKey: nid("m") });
+            if (confirmed) await db.update(tournaments).set({ venueConfirmedAt: new Date() }).where(eq(tournaments.id, t.id));
+            const row = await rowOf(t.id);
+            const required = snapshot === true || (snapshot === false && access === "before" && !rows);
+            const expectedOk = snapshot === null ? false : !required || confirmed;
+            const label = JSON.stringify({ snapshot, access, rows, confirmed });
+            expect(await db.transaction((tx) => zusageRequired(tx, row, due)), label).toBe(required);
+            expect(await okLive(t.id), label).toBe(expectedOk);
+            if (required && !confirmed && boss) {
+              await expect(confirmTournamentVenue(boss.id, t.id), label).resolves.toEqual({ confirmed: true }); // Invariante: verlangt die Pruefung eine Zusage, nimmt confirm sie an
+              expect((await rowOf(t.id)).venueAccessRequiredSnapshot, label).toBe(true);
+            }
+          }
+        }
+      }
+    }
+  }, 240_000);
+
+  it("Ende zu Ende: Live-Pflicht -> no_zusage (kein Abbuchungsweg), nach der Zusage nicht mehr no_zusage", async () => {
+    const { v, t } = await fixture(); // Snapshot false
+    const boss = await grantAccess(v.id);
+    const reason = async () => db.transaction(async (tx) => (await tournamentChargeEligibility(tx, await rowOf(t.id), new Date())).reason);
+    expect(await reason()).toBe("no_zusage");
+    await confirmTournamentVenue(boss.id, t.id);
+    expect(await reason()).not.toBe("no_zusage"); // die naechste Huerde (Teams) ist eine andere
+  });
+});

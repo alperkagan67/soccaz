@@ -33,11 +33,11 @@ export async function venueHasActiveAccess(venueId: string, exec: Reader = db): 
 }
 
 /**
- * Wie venueHasActiveAccess, aber nur Zugang, der VOR dem Zeitpunkt `before` wirksam wurde (assigned_at, sonst invited_at; before = null: ohne Zeitgrenze). Fuer die Live-Pruefung der Zusage
+ * Wie venueHasActiveAccess, aber nur Zugang, der STRIKT VOR dem Zeitpunkt `before` wirksam wurde (assigned_at, sonst invited_at; before = null: ohne Zeitgrenze). Fuer die Live-Pruefung der Zusage
  * (012 M5-7b, R-T250 Mittel 2): ein Zugang, der erst nach der Abbuchungsfrist wirksam wird, macht ein Turnier nicht mehr zusagepflichtig.
  */
 export async function venueHasActiveAccessBefore(venueId: string, before: Date | null, exec: Reader = db): Promise<boolean> {
-  const cond = before ? and(eq(venueAccess.venueId, venueId), activeAccessWhere(), sql`coalesce(${venueAccess.assignedAt}, ${venueAccess.invitedAt}) <= ${before}`) : and(eq(venueAccess.venueId, venueId), activeAccessWhere());
+  const cond = before ? and(eq(venueAccess.venueId, venueId), activeAccessWhere(), sql`coalesce(${venueAccess.assignedAt}, ${venueAccess.invitedAt}) < ${before}`) : and(eq(venueAccess.venueId, venueId), activeAccessWhere());
   const [row] = await exec.select({ id: venueAccess.id }).from(venueAccess).innerJoin(users, eq(users.id, venueAccess.userId)).where(cond).limit(1);
   return Boolean(row);
 }

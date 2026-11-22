@@ -17,6 +17,7 @@ import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { chargeDueAt, lockTournament } from "./tournaments";
 import { accessHolderIdsOf, holderText, NOTIFY_ACCESS_HOLDERS, notifyHolderOnFix } from "./tournament-holders";
+import { zusageRequired } from "./tournament-venue";
 import { hasVenueAccess, venueIdsOf } from "./venue-access-rules";
 
 export { holderText, NOTIFY_ACCESS_HOLDERS, notifyHolderOnFix };
@@ -56,15 +57,19 @@ export async function confirmTournamentVenue(userId: string, tournamentId: strin
     // BERECHTIGUNG ZUERST (R-T244 1): Zugang zur Halle DES Turniers, jetzt (aktiv, nicht gesperrt, kein Admin); nur gelesen. Jeder Mangel (kein Zugang, keine Halle, abgesagt, fixiert, Snapshot) gibt
     // dem Unberechtigten dieselbe Antwort: nichts verraet, ob es das Turnier gibt oder in welchem Stand es ist.
     if (!t.venueId || !(await hasVenueAccess(t.venueId, userId, tx))) throw new DomainError(NOT_POSSIBLE);
-    if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || t.venueAccessRequiredSnapshot !== true) throw new DomainError(NOT_POSSIBLE);
+    if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt) throw new DomainError(NOT_POSSIBLE);
     if (t.venueConfirmedAt) return { confirmed: false }; // schon zugesagt: nichts aendern, kein Fehler
     const now = opts.now ?? (await dbNow(tx));
     const due = await chargeDueAt(tx, t);
+    // dieselbe Regel wie die Abbuchungspruefung (zusageRequired): verlangt sie eine Zusage, nimmt diese Aktion sie an (Snapshot true ODER Live-Pflicht vor der Frist)
+    const required = await zusageRequired(tx, t, due);
+    if (!required) throw new DomainError(NOT_POSSIBLE);
     if (due && now.getTime() >= due.getTime()) throw new DomainError("Die Frist ist vorbei. Das Turnier wird nicht mehr zugesagt.");
+    const livePflicht = t.venueAccessRequiredSnapshot !== true; // Snapshot war false: die Live-Pflicht wird mit der Zusage festgehalten
     // EINE Anweisung; die Bedingung "is null" macht es zum Compare-and-set (der Trigger feuert nur beim Uebergang NULL -> Wert). venue_confirmed_by (Akteur, 0054) steht in derselben Anweisung.
-    const updated = await tx.update(tournaments).set({ venueConfirmedAt: sql`now()`, venueConfirmedBy: userId }).where(and(eq(tournaments.id, t.id), isNull(tournaments.venueConfirmedAt))).returning({ id: tournaments.id });
+    const updated = await tx.update(tournaments).set({ venueConfirmedAt: sql`now()`, venueConfirmedBy: userId, ...(livePflicht ? { venueAccessRequiredSnapshot: true } : {}) }).where(and(eq(tournaments.id, t.id), isNull(tournaments.venueConfirmedAt))).returning({ id: tournaments.id });
     if (updated.length === 0) return { confirmed: false };
-    await audit(userId, "tournament.venue_confirm", "tournament", t.id, { after: { venueId: t.venueId } }, tx);
+    await audit(userId, "tournament.venue_confirm", "tournament", t.id, { after: { venueId: t.venueId, livePflicht } }, tx);
     // Die Mitteilung laeuft in einem Savepoint (wie der Webhook-Alarm): ein Fehler dort darf die Zusage nicht kippen
     try {
       await tx.transaction(async (sp) => {
@@ -210,6 +215,11 @@ export async function armConfirmationForNewAccess(tx: Tx, venueIds: string[], op
       });
     } catch (error) {
       console.error("armConfirmationForNewAccess: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+      try {
+        await audit(null, "tournament.venue_access_arm_failed", "tournament", c.id, {}, tx); // ohne Details (R-T251 4)
+      } catch {
+        /* das Protokoll ist Zugabe */
+      }
     }
   }
   return armed;
