@@ -6,7 +6,7 @@
 // STAND: UNGETESTET GEGEN DIE DATENBANK, und venue_confirmed_by gibt es erst mit 0054 (TODO(0054): in confirmTournamentVenue und resetVenueConfirmation mit setzen/leeren).
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog } from "@/db/schema";
+import { auditLog, paymentCharges } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { tournamentTeams, tournaments } from "@/db/schema-league";
 import { formatEuro } from "@/lib/money";
@@ -174,23 +174,43 @@ export async function notifyHallConfirmReminders(now: Date = new Date()): Promis
  * "Zusage noetig" false ist. Dann wird der Snapshot true gesetzt und die Zugangsinhaber werden wie beim Fixieren benachrichtigt (entprellt je Turnier und Preisrunde). In der Transaktion des Aufrufers
  * (redeemVenueInvites), NACH den Hallensperren; die Turniere werden nach id sortiert gesperrt. Gibt die Zahl der geaenderten Turniere zurueck.
  */
-export async function armConfirmationForNewAccess(tx: Tx, venueIds: string[], now: Date = new Date()): Promise<number> {
+export async function armConfirmationForNewAccess(tx: Tx, venueIds: string[], opts: { now?: Date } = {}): Promise<number> {
   if (venueIds.length === 0) return 0;
+  const now = opts.now ?? (await dbNow(tx)); // Datenbankuhr (nur Tests geben die Zeit vor)
   const candidates = await tx
     .select({ id: tournaments.id })
     .from(tournaments)
-    .where(and(inArray(tournaments.venueId, venueIds), eq(tournaments.status, "payment"), isNull(tournaments.venueConfirmedAt), isNull(tournaments.bracketGeneratedAt), isNull(tournaments.settledAt)))
+    .where(
+      and(
+        inArray(tournaments.venueId, venueIds),
+        eq(tournaments.status, "payment"),
+        isNull(tournaments.venueConfirmedAt),
+        isNull(tournaments.bracketGeneratedAt),
+        isNull(tournaments.settledAt),
+        sql`not exists (select 1 from payment_charges c where c.tournament_id = ${tournaments.id})`, // eine laufende oder erfolgte Abbuchung wird nie nachtraeglich zusagepflichtig
+      ),
+    )
     .orderBy(asc(tournaments.id));
   let armed = 0;
   for (const c of candidates) {
-    const t = await lockTournament(tx, c.id);
-    if (t.status !== "payment" || t.venueConfirmedAt || t.bracketGeneratedAt || t.settledAt || !t.venueId || t.venueAccessRequiredSnapshot !== false) continue; // nur: fixiert ohne Zusagepflicht
-    const due = await chargeDueAt(tx, t);
-    if (due && now.getTime() >= due.getTime()) continue; // Frist vorbei: das Turnier laeuft/endet wie es ist
-    await tx.update(tournaments).set({ venueAccessRequiredSnapshot: true }).where(eq(tournaments.id, t.id));
-    await audit(null, "tournament.venue_access_armed", "tournament", t.id, { after: { venueId: t.venueId } }, tx);
-    await notifyHolderOnFix(tx, { id: t.id, name: t.name, venueId: t.venueId, startsAt: t.startsAt, priceRound: t.priceRound }, due);
-    armed += 1;
+    // je Turnier ein Savepoint: ein Fehler hier darf das Einloesen des Zugangs nie kippen (sonst bliebe der Betreiber ausgesperrt); ohne Personendaten loggen
+    try {
+      await tx.transaction(async (sp) => {
+        const t = await lockTournament(sp, c.id);
+        if (t.status !== "payment" || t.venueConfirmedAt || t.bracketGeneratedAt || t.settledAt || !t.venueId || !venueIds.includes(t.venueId) || t.venueAccessRequiredSnapshot !== false) return; // nur: fixiert ohne Zusagepflicht, genau diese Hallen
+        const [row] = await sp.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)).limit(1);
+        if (row) return; // nach der Sperre erneut: Abbuchung hat begonnen
+        const due = await chargeDueAt(sp, t);
+        if (!due) return; // Altturnier ohne Frist: kein stilles Scharfschalten
+        if (now.getTime() >= due.getTime()) return; // Frist vorbei: das Turnier laeuft/endet wie es ist
+        await sp.update(tournaments).set({ venueAccessRequiredSnapshot: true }).where(eq(tournaments.id, t.id));
+        await audit(null, "tournament.venue_access_armed", "tournament", t.id, { after: { venueId: t.venueId } }, sp);
+        await notifyHolderOnFix(sp, { id: t.id, name: t.name, venueId: t.venueId, startsAt: t.startsAt, priceRound: t.priceRound }, due);
+        armed += 1;
+      });
+    } catch (error) {
+      console.error("armConfirmationForNewAccess: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+    }
   }
   return armed;
 }

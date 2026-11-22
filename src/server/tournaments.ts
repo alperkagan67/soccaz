@@ -819,7 +819,7 @@ async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
     return paid.length === 0;
   }
   if (row) return true;
-  if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !(await hallZusageOkLive(tx, t))) return false;
+  if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !(await hallZusageOkLive(tx, t, await chargeDueAt(tx, t)))) return false;
   const entries = await tx.select({ ready: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
   if (!(entries.length === t.maxTeams && entries.every((e) => e.ready !== null))) return false;
   // M5-5 (haengt ohne Zeilen): fehlen zur Frist Karten (z. B. nach "Bereit" entfernt), ist das Turnier NICHT abbuchbar und faellt aus (nichts abgebucht), statt still zu haengen

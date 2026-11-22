@@ -3,13 +3,14 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { venues } from "@/db/schema-finance";
+import { paymentCharges } from "@/db/schema";
 import { tournaments } from "@/db/schema-league";
 import { percentFromDb } from "@/lib/commission";
 import { audit } from "./audit";
 import { cardPaymentsEnabled } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
-import { venueHasActiveAccess, venueIdsWithActiveAccess } from "./venue-access-rules";
+import { venueHasActiveAccess, venueHasActiveAccessBefore } from "./venue-access-rules";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -27,8 +28,14 @@ export function hallZusageOk(t: { venueAccessRequiredSnapshot: boolean | null; v
  * Ist die Zusage erfuellt, geprueft mit dem Zugang JETZT (Entscheid t2q zur Luecke "Zugang nach dem Fixieren", Plan 19.14): wer jetzt einen aktiven Zugang hat, braucht die Zusage, auch wenn der
  * Snapshot beim Fixieren "false" war. Der Snapshot bleibt maßgeblich, wenn er true ist (Entzug aendert nichts). NULL-Snapshot bleibt fail-closed (hallZusageOk).
  */
-export async function hallZusageOkLive(exec: Pick<Tx, "select">, t: { venueId: string | null; venueAccessRequiredSnapshot: boolean | null; venueConfirmedAt: Date | null }): Promise<boolean> {
-  const accessNow = t.venueId ? await venueHasActiveAccess(t.venueId, exec) : false;
+export async function hallZusageOkLive(exec: Pick<Tx, "select">, t: { id: string; venueId: string | null; venueAccessRequiredSnapshot: boolean | null; venueConfirmedAt: Date | null }, due: Date | null): Promise<boolean> {
+  // Der Live-Zugang zaehlt nur, wenn (a) der Snapshot false war, (b) noch KEINE Abbuchungszeile existiert (eine laufende Alles-oder-nichts-Abbuchung wird nie nachtraeglich zusagepflichtig) und
+  // (c) der Zugang VOR der Abbuchungsfrist wirksam wurde (ein spaeter Zugang bringt kein Turnier zum Platzen). due = null (Altturnier ohne Frist): ohne Zeitgrenze.
+  let accessNow = false;
+  if (t.venueId && t.venueAccessRequiredSnapshot === false) {
+    const [row] = await exec.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)).limit(1);
+    if (!row) accessNow = await venueHasActiveAccessBefore(t.venueId, due, exec);
+  }
   return hallZusageOk({ venueAccessRequiredSnapshot: t.venueAccessRequiredSnapshot === null ? null : t.venueAccessRequiredSnapshot || accessNow, venueConfirmedAt: t.venueConfirmedAt });
 }
 
