@@ -286,3 +286,9 @@ Der tägliche Abgleich im Job `evidence-head` prüft zusätzlich **`pending` (Ei
 
 ### 15.6 (e) Matrix-Tests müssen COMMITTEN
 Die DEFERRABLE-Trigger feuern erst beim **COMMIT**. Ein Test, der seine Transaktion zurückrollt oder nie abschließt (übliche Muster „in einer Transaktion testen und am Ende zurückrollen“), sieht **keine** Einträge und beweist nichts. Darum: Der **Testhelfer** (`tests/integration/helpers.ts`, `commitEvidence`/`asCommitted`) führt jede geprüfte Änderung in einer **eigenen, committenden Transaktion** aus und liest das Protokoll danach in einer neuen Verbindung; Rollback-Tests dürfen **absichtlich** zurückrollen und müssen **keinen** Eintrag finden. Der Matrix-Test (13.7) benutzt nur diesen Helfer; ein Selbsttest des Helfers (Eintrag nach COMMIT vorhanden, nach ROLLBACK nicht) hält die Regel fest.
+
+### 15.7 Nachtrag (Checkliste w4, Abschn. 9)
+- **Abgleich:** `evidence_reconcile()` berücksichtigt die **Runde** und klammert die Arten je Status (Entwurf F korrigiert).
+- **`confirmed → declined`** (und jeder andere Wechsel, der nicht von `pending` ausgeht) erzeugt **bewusst keinen** Eintrag; der Code kennt solche Wechsel nicht, ein Test hält das fest.
+- **Guard bei Kaskaden:** der Guard auf `matches`/`venues` verweigert auch Löschungen durch Kaskaden, **gewollt**; der Test-Cleanup löscht die Einträge vorher unter der Wartungsausnahme.
+- **Umsetzungsstand:** Code und SQL liegen auf `feat/009-m3a` (lokal, ungetestet gegen die Datenbank): Migration `0050_breezy_zemo` (endgültig 0052), Job `evidence-head`, `recordEvidence` nur in `evidence-write.ts` (ESLint), Konto-Löschungs-Regel, Grep-Test für `SET CONSTRAINTS`/`session_replication_role`, `migrate-check`, Matrix-/Deadlock-Tests.

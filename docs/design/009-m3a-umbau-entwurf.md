@@ -1,4 +1,4 @@
-# Entwurf: SQL des M3a-Umbaus (DEFERRABLE-Trigger), Plan 009 M3 v5
+# Entwurf: SQL des M3a-Umbaus (DEFERRABLE-Trigger), Plan 009 M3 v5 (Abschnitt F korrigiert; Umsetzung im Code: Branch feat/009-m3a, ungetestet gegen die Datenbank)
 
 Status: **ENTWURF, nicht ausgeführt, nicht geprüft** (die lokale Datenbank ist gesperrt, NEEDS-USER). Nur Text zum Review; nicht in eine Migration kopieren, bevor der Spike (Plan 14.7) gelaufen ist. Stand 2026-11-22, worker-2. Gehört zu `docs/design/009-m3-plan.md` (Abschnitte 13 bis 15).
 
@@ -142,28 +142,25 @@ CREATE CONSTRAINT TRIGGER booking_jobs_evidence_upd
 ```
 `createBookingJob` nutzt `ON CONFLICT DO NOTHING`: bei bestehendem Auftrag entsteht kein INSERT-Ereignis (Test 14.6). Job-Einträge sind nicht eindeutig (derselbe Wechsel kann wiederkehren).
 
-## F. Abgleich (Job `evidence-head`, Plan 14.3 und 15)
+## F. Abgleich (Job `evidence-head`, Plan 14.3 und 15) – korrigiert nach der Checkliste w4 (Abschn. 9)
+Als SQL-Funktion `evidence_reconcile()` in der Migration (Stand: im Code geschrieben, ungetestet gegen die Datenbank). Korrekturen gegenüber dem ersten Entwurf: (1) **Runde berücksichtigt:** ein Eintrag gilt nur, wenn seine `round` der **aktuellen Runde des Spiels** (`max(round)` über alle Einträge des Spiels) entspricht, sonst gälte ein Altrunden-Eintrag fälschlich als vorhanden; (2) **Klammerung:** die Art je Status steht in EINER geklammerten Bedingung (`pending` → `request_sent`, `confirmed` → `accepted`, `declined` → `declined` oder `expired`, `unmanaged` → `unmanaged`), kein AND/OR-Vorrang-Problem; (3) Aufträge: Art `job_<Status>` (`open` → `job_open`), `in_progress` ausgenommen.
 ```sql
--- fehlende Eintraege: Anfragezeilen
-SELECT r.match_id, r.venue_id, r.status
-FROM match_hall_requests r
-WHERE r.status IN ('pending', 'confirmed', 'declined', 'unmanaged')
-  AND NOT EXISTS (
-    SELECT 1 FROM booking_evidence e
-    WHERE e.match_id = r.match_id AND e.venue_id = r.venue_id
-      AND e.kind = CASE r.status WHEN 'pending' THEN 'request_sent' WHEN 'confirmed' THEN 'accepted'
-                                 WHEN 'declined' THEN 'declined' ELSE 'unmanaged' END
-      OR (r.status = 'declined' AND e.kind = 'expired' AND e.match_id = r.match_id AND e.venue_id = r.venue_id));
--- fehlende Eintraege: Auftraege (open -> job_open, sonst job_<status>)
-SELECT j.id, j.match_id, j.status
-FROM booking_jobs j
-WHERE j.status <> 'in_progress'
-  AND NOT EXISTS (SELECT 1 FROM booking_evidence e WHERE e.job_id = j.id AND e.kind = 'job_' || j.status);
--- verwaiste Verweise (Plan 14.2)
-SELECT e.seq FROM booking_evidence e LEFT JOIN matches m ON m.id = e.match_id WHERE m.id IS NULL;
-SELECT e.seq FROM booking_evidence e LEFT JOIN venues  v ON v.id = e.venue_id WHERE e.venue_id IS NOT NULL AND v.id IS NULL;
+CREATE OR REPLACE FUNCTION evidence_reconcile() RETURNS TABLE (src text, r_match uuid, r_venue uuid, r_job uuid, r_status text) AS $$
+  WITH cur AS (SELECT e.match_id AS m, max(e.round) AS r FROM booking_evidence e GROUP BY e.match_id)
+  SELECT 'hall'::text, h.match_id, h.venue_id, NULL::uuid, h.status::text
+  FROM match_hall_requests h LEFT JOIN cur ON cur.m = h.match_id
+  WHERE h.status IN ('pending', 'confirmed', 'declined', 'unmanaged')
+    AND NOT EXISTS (
+      SELECT 1 FROM booking_evidence e
+      WHERE e.match_id = h.match_id AND e.venue_id = h.venue_id AND e.round = coalesce(cur.r, -1)
+        AND ((h.status = 'pending' AND e.kind = 'request_sent') OR (h.status = 'confirmed' AND e.kind = 'accepted')
+          OR (h.status = 'declined' AND e.kind IN ('declined', 'expired')) OR (h.status = 'unmanaged' AND e.kind = 'unmanaged')))
+  UNION ALL
+  SELECT 'job'::text, j.match_id, j.venue_id, j.id, j.status::text FROM booking_jobs j
+  WHERE j.status::text <> 'in_progress' AND NOT EXISTS (SELECT 1 FROM booking_evidence e WHERE e.job_id = j.id AND e.kind = 'job_' || j.status::text);
+$$ LANGUAGE sql STABLE;
 ```
-Die Klammerung der ersten Abfrage ist im Entwurf bewusst grob (OR-Zweig für `expired`); im Bau als zwei getrennte `EXISTS` schreiben und testen. Zeilen, die ein Spiel inzwischen verlassen haben (gelöscht), fallen nicht unter den Abgleich.
+**Bewusst nicht erfasst:** Wechsel **`confirmed → declined`** o. ä. (nur `pending → X` erzeugt Einträge; der Code kennt keinen anderen Wechsel, ein Test über `veto.ts`/`venue-access.ts` hält das fest), `in_progress`, gelöschte Zeilen. **Guard bei Kaskaden:** `forbid_delete_with_evidence` greift auch, wenn ein Spiel durch Kaskaden (Löschen von Teams/Nutzern) mitgerissen würde; das ist **gewollt** (Test-Cleanup löscht die Einträge vorher unter der Wartungsausnahme).
 
 ## G. Zusätzliche Prüfungen für `scripts/migrate-check.mjs` (Plan 15 d)
 Trigger je Tabelle (`match_hall_requests_evidence_ins/upd`, `booking_jobs_evidence_ins/upd`, jeweils `tgdeferrable` und `tginitdeferred` wahr, `tgconstraint` gesetzt), Guards (`matches_forbid_delete_with_evidence`, `venues_forbid_delete_with_evidence`), TRUNCATE-Trigger, Indizes `booking_evidence_venue_idx`/`booking_evidence_job_idx`, Funktionen `evidence_write`/`evidence_hall_event`/`evidence_job_event`, keine Fremdschlüssel an `booking_evidence`/`evidence_actor.user_id`.
