@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { formatEuro, shareCents } from "../../src/lib/money";
+import { shareCents } from "../../src/lib/money";
 import { setupLobby } from "./flows";
 import { closeContexts, closeTestDb, devLogin, newUser, run } from "./helpers";
 import {
@@ -8,6 +8,7 @@ import {
   query,
   seedOwner,
   seedPaidPlayer,
+  seedShare,
   seedAdmin,
   setMatchTimes,
   setPlatformSetting,
@@ -32,8 +33,6 @@ test.afterAll(async () => {
 
 const idle = (p: import("@playwright/test").Page) => p.waitForLoadState("networkidle");
 const euro = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s"));
-// Betrag wie in der App formatiert, aber mit normalem Leerzeichen (Playwright normalisiert geschützte Leerzeichen in Namen); euro() macht daraus Whitespace-Muster.
-const eur = (cents: number) => formatEuro(cents).replace(/\s/g, " ");
 
 // 012 M6a: Die Tests zu Aufladen, Guthaben-Seite, Rabattcodes und Stripe-Aufladung entfallen mit der Oberfläche (Vertrag 013 AC-14); die Datei wird mit 012 M6b für das Kartenmodell neu geschrieben.
 
@@ -48,7 +47,7 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
 
   // Neues Modell (008): 10 eingeteilte Spieler (4 je Team vorbezahlt + 2 Team-Admins) -> Anteil = shareCents(80,00 €, 10) = 8,00 €.
   const share = shareCents(8000, 10);
-  // 4 Spieler je Team haben schon bezahlt, die beiden Team-Admins bezahlen über die Oberfläche
+  // 4 Spieler je Team haben schon bezahlt; die beiden Team-Admins ebenfalls (Seed: den Bezahlen-Knopf gibt es seit 012 M6a nicht mehr), dann nur noch der Bereit-Klick
   const seeded: string[] = [];
   for (let i = 1; i <= 4; i++) {
     seeded.push(await seedPaidPlayer(matchId, teamA, `p4h${i}`, share));
@@ -56,14 +55,12 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   }
   await fundWallet(adminA, 2000);
   await fundWallet(adminB, 2000);
+  await seedShare(matchId, adminA, share);
+  await seedShare(matchId, adminB, share);
   await a.goto(`/lobby/${matchId}`);
   await b.goto(`/lobby/${matchId}`);
-  await a.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
-  await expect(a.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
-  await a.getByRole("button", { name: "Bereit machen" }).click();
-  await b.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
-  await expect(b.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
-  await b.getByRole("button", { name: "Bereit machen" }).click();
+  await a.getByRole("button", { name: "Ich bin bereit" }).click();
+  await b.getByRole("button", { name: "Ich bin bereit" }).click();
   await expect(b.getByTestId("match-status").filter({ hasText: "Bestätigt" })).toBeVisible();
 
   // Der Buchungsauftrag ist entstanden und die Admins wurden informiert
