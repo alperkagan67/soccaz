@@ -43,6 +43,7 @@
     ],
     "5": [
       "admin-beweis.spec.ts",
+      "halle-formular.spec.ts",
       "karte-privatsphaere.spec.ts",
       "matchmaking.spec.ts",
       "notifications.spec.ts",
