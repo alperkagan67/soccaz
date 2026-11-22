@@ -30,18 +30,19 @@ const checkTime = () => {
   if (Date.now() > deadline) throw new Error("Zeitlimit (15 Minuten) erreicht");
 };
 
-// ACHTUNG: KOPIE der Pruefanweisung aus src/server/evidence.ts (verifyEvidenceChain) mit der 10-Argument-Fassung von evidence_hash. Mit der Nachlieferung (Plan 16, 13 Parameter) mitaendern;
-// ein Test (migrate-check/Vergleich) soll beide Fassungen gleich halten (Backlog).
+// ACHTUNG: KOPIE der Pruefanweisung aus src/server/evidence.ts (verifyEvidenceChain, evidence_hash_of, Commitment). Der Unit-Test tests/unit/evidence-verify-copy.test.ts haelt beide Fassungen gleich (Whitespace normalisiert).
 const VERIFY_SQL = `
   select e.seq, e.hash, c.last_seq::int as counter_seq, c.last_hash as counter_hash,
     case
       when e.seq is null then null
       when e.seq <> row_number() over (order by e.seq) then 'seq-luecke'
-      when e.prev_hash <> coalesce(lag(e.hash) over (order by e.seq), '') then 'prev_hash'
-      when e.hash <> evidence_hash(e.seq, e.match_id, e.venue_id, e.round, e.job_id, e.kind, e.reason, e.at, e.actor_commitment, e.prev_hash) then 'hash'
+      when e.prev_hash is distinct from coalesce(lag(e.hash) over (order by e.seq), '') then 'prev_hash'
+      when e.hash_version not in (1, 2) or (e.hash_version = 1 and e.match_id is null) then 'hash'
+      when e.hash is distinct from evidence_hash_of(e) then 'hash'
+      when rt.evidence_id is not null and e.reason_commitment is distinct from encode(sha256(convert_to(rt.salt || ':' || rt.reason, 'UTF8')), 'hex') then 'commitment'
       else null
     end as bad
-  from booking_evidence_counter c left join booking_evidence e on true where c.id = 1 order by e.seq`;
+  from booking_evidence_counter c left join booking_evidence e on true left join booking_evidence_reason_text rt on rt.evidence_id = e.id where c.id = 1 order by e.seq`;
 
 const admin = new pg.Client({ connectionString: adminUrl.toString(), statement_timeout: STATEMENT_TIMEOUT_MS });
 await admin.connect();

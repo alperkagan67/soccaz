@@ -17,6 +17,13 @@ export type EvidenceEntryView = {
   /** Name des antwortenden Betreibers (nur Admin 1, aus evidence_actor; nach Anonymisierung null). */
   actorName: string | null;
   hash: string;
+  /** Version 2 (Nachlieferung): Kategorie der Ablehnung, Freitext-Commitment ohne Klartext (gelöscht), Fristen als UTC-Text mit Mikrosekunden, Schalterstand beim Eintrag. */
+  reasonCode: string;
+  reasonDeleted: boolean;
+  deadlineAt: string | null;
+  decidedAt: string | null;
+  statementAt: string | null;
+  enforced: boolean | null;
 };
 
 export type MatchEvidence = { matchId: string; number: number | null; entries: EvidenceEntryView[]; report: CachedEvidenceReport };
@@ -24,12 +31,16 @@ export type MatchEvidence = { matchId: string; number: number | null; entries: E
 /** Einträge eines Spiels in Reihenfolge der seq, mit Hallenname und (nur für Admin 1) dem Namen des Betreibers. Unbekannte oder ungültige Spiel-ID: null. */
 export async function loadMatchEvidence(matchId: string, exec: Exec = db): Promise<MatchEvidence | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(matchId)) return null;
-  const rows = rowsOf<{ seq: number; at: Date | string; kind: string; round: number; reason: string | null; venue_name: string | null; actor_name: string | null; hash: string; number: number | null }>(
+  const rows = rowsOf<{ seq: number; at: Date | string; kind: string; round: number; reason: string | null; venue_name: string | null; actor_name: string | null; hash: string; number: number | null; reason_code: string; reason_deleted: boolean; enforced: boolean | null; deadline_text: string | null; decided_text: string | null; statement_text: string | null }>(
     await exec.execute(sql`
-      select e.seq, e.at, e.kind, e.round, e.reason, v.name as venue_name, a.name as actor_name, e.hash, m.number
+      select e.seq, e.at, e.kind, e.round, coalesce(e.reason, rt.reason) as reason, v.name as venue_name, a.name as actor_name, e.hash, m.number,
+        e.reason_code, (rt.evidence_id is null and e.reason_commitment <> '') as reason_deleted, e.enforced,
+        to_char(e.deadline_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as deadline_text, to_char(e.decided_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as decided_text,
+        to_char(e.statement_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as statement_text
       from booking_evidence e
       left join venues v on v.id = e.venue_id
       left join evidence_actor a on a.evidence_id = e.id
+      left join booking_evidence_reason_text rt on rt.evidence_id = e.id
       left join matches m on m.id = e.match_id
       where e.match_id = ${matchId}
       order by e.seq`),
@@ -38,7 +49,7 @@ export async function loadMatchEvidence(matchId: string, exec: Exec = db): Promi
   return {
     matchId,
     number: rows[0].number,
-    entries: rows.map((r) => ({ seq: r.seq, at: new Date(r.at), kind: r.kind, round: r.round, reason: r.reason, venueName: r.venue_name, actorName: r.actor_name, hash: r.hash })),
+    entries: rows.map((r) => ({ seq: r.seq, at: new Date(r.at), kind: r.kind, round: r.round, reason: r.reason, venueName: r.venue_name, actorName: r.actor_name, hash: r.hash, reasonCode: r.reason_code, reasonDeleted: r.reason_deleted, deadlineAt: r.deadline_text, decidedAt: r.decided_text, statementAt: r.statement_text, enforced: r.enforced })),
     report: await cachedEvidenceReport(), // höchstens alle 60 s neu (O(n)), Prüfzeitpunkt im Ergebnis
   };
 }
@@ -62,7 +73,16 @@ type ChainRow = {
   seq: number;
   at_text: string;
   kind: string;
-  match_id: string;
+  match_id: string | null;
+  hash_version: number;
+  subject: string;
+  tournament_id: string | null;
+  reason_code: string;
+  reason_commitment: string;
+  deadline_at_text: string | null;
+  decided_at_text: string | null;
+  statement_at_text: string | null;
+  enforced: boolean | null;
   venue_id: string | null;
   job_id: string | null;
   round: number;
@@ -73,7 +93,7 @@ type ChainRow = {
 };
 
 const chainLine = (r: ChainRow) =>
-  JSON.stringify({ seq: r.seq, at: r.at_text, kind: r.kind, matchId: r.match_id, venueId: r.venue_id, jobId: r.job_id, round: r.round, reason: r.reason ?? "", actorCommitment: r.actor_commitment, prevHash: r.prev_hash, hash: r.hash });
+  JSON.stringify({ hashVersion: r.hash_version, subject: r.subject, seq: r.seq, at: r.at_text, kind: r.kind, matchId: r.match_id, tournamentId: r.tournament_id, reasonCode: r.reason_code, reasonCommitment: r.reason_commitment, deadlineAt: r.deadline_at_text, decidedAt: r.decided_at_text, statementAt: r.statement_at_text, enforced: r.enforced, venueId: r.venue_id, jobId: r.job_id, round: r.round, reason: r.reason ?? "", actorCommitment: r.actor_commitment, prevHash: r.prev_hash, hash: r.hash });
 
 /**
  * Gesamtketten-Export (NDJSON, eine Zeile je Eintrag) für die externe Prüfung (Plan 12 e), als Generator in Batches (Schlüsselmengen-Cursor über seq, Review R-T225a): nie die ganze Kette im Speicher.
@@ -84,7 +104,9 @@ export async function* exportEvidenceChainLines(batch = 1000, exec: Exec = db): 
   for (;;) {
     const rows = rowsOf<ChainRow>(
       await exec.execute(sql`
-        select seq, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text, kind, match_id, venue_id, job_id, round, reason, actor_commitment, prev_hash, hash
+        select seq, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_text, kind, match_id, hash_version, subject, tournament_id, reason_code, reason_commitment,
+          to_char(deadline_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as deadline_at_text, to_char(decided_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as decided_at_text,
+          to_char(statement_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as statement_at_text, enforced, venue_id, job_id, round, reason, actor_commitment, prev_hash, hash
         from booking_evidence where seq > ${last} order by seq limit ${batch}`),
     );
     for (const r of rows) yield chainLine(r);
