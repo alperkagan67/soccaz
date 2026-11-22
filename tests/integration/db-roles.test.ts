@@ -3,13 +3,14 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
-import { ROLES, clusterStatements, dbUrlAllowed, scramVerifier, setupRoles } from "../../scripts/db-roles.mjs";
+import { ROLES, assertDatabaseAllowed, clusterStatements, dbUrlAllowed, scramVerifier, setupRoles } from "../../scripts/db-roles.mjs";
 import { applyPlan, buildPlan, planSha, statementOf, writePlan } from "../../scripts/db-owner.mjs";
 
 // Etappe D (G25-009): Rollen-Skript und Eigentumswechsel. Arbeitet NUR in einer selbst angelegten Wegwerf-Datenbank (Prozess-ID im Namen) plus den (idempotenten, noch unbenutzten) Rollen des Clusters.
 // Die Anwendung selbst aendert sich nicht: die Rollen sind angelegt, aber niemand verbindet sich damit.
 const base = new URL(process.env.DATABASE_URL ?? "postgres://x@127.0.0.1/x");
 const name = `soccaz_dbroles_test_${process.pid}`;
+const foreign = `soccaz_fremd_${process.pid}`; // KEIN freigegebener Name (Sperrliste)
 const adminUrl = new URL(base);
 adminUrl.pathname = "/postgres";
 const scratchUrl = new URL(base);
@@ -23,13 +24,19 @@ beforeAll(async () => {
   await admin.connect();
   await admin.query(`drop database if exists "${name}" with (force)`);
   await admin.query(`create database "${name}"`);
+  await admin.query(`drop database if exists "${foreign}" with (force)`);
+  await admin.query(`create database "${foreign}"`);
   tmp = mkdtempSync(join(tmpdir(), "soccaz-owner-"));
 });
 afterAll(async () => {
-  await admin.query("alter role soccaz_ops password null").catch(() => null); // kein bekanntes Test-Passwort im Cluster hinterlassen
-  await admin.query(`drop database if exists "${name}" with (force)`);
-  await admin.end();
-  rmSync(tmp, { recursive: true, force: true });
+  // robust: auch wenn beforeAll scheitert (admin nicht verbunden)
+  if (admin) {
+    await admin.query("alter role soccaz_ops password null").catch(() => null); // kein bekanntes Test-Passwort im Cluster hinterlassen
+    await admin.query(`drop database if exists "${name}" with (force)`).catch(() => null);
+    await admin.query(`drop database if exists "${foreign}" with (force)`).catch(() => null);
+    await admin.end().catch(() => null);
+  }
+  if (tmp) rmSync(tmp, { recursive: true, force: true });
 });
 
 describe("db-roles.mjs", () => {
@@ -122,6 +129,39 @@ describe("db-roles.mjs", () => {
     expect(now.startsWith("SCRAM-SHA-256$")).toBe(true);
     expect(now).not.toContain("anderes-passwort");
     await admin.query("alter role soccaz_backup password null");
+  });
+
+  it("Sperrliste (1): Anwenden gegen soccav2 und jede nicht freigegebene Datenbank verweigert, nur mit --allow-database <exakter Name>; Trockenlauf bleibt erlaubt", async () => {
+    expect(() => assertDatabaseAllowed("soccav2", undefined, {})).toThrow(/nicht freigegeben/);
+    expect(() => assertDatabaseAllowed("soccav2", "soccaz_w2", {})).toThrow(/nicht freigegeben/); // falscher Name in der Freigabe
+    expect(() => assertDatabaseAllowed("soccav2", "soccav2", {})).not.toThrow();
+    for (const ok of ["soccaz_w1", "soccaz_w4", "soccaz_dbroles_test_123"]) expect(() => assertDatabaseAllowed(ok, undefined, {}), ok).not.toThrow();
+    expect(() => assertDatabaseAllowed("socaz", undefined, {})).toThrow(); // nur im CI
+    expect(() => assertDatabaseAllowed("socaz", undefined, { GITHUB_ACTIONS: "true" })).not.toThrow();
+    expect(() => assertDatabaseAllowed("prod", undefined, {})).toThrow();
+    const foreignUrl = new URL(base);
+    foreignUrl.pathname = "/" + foreign;
+    await expect(setupRoles({ url: foreignUrl.toString(), apply: true, env: {} })).rejects.toThrow(/nicht freigegeben/);
+    expect((await setupRoles({ url: foreignUrl.toString(), apply: false, env: {}, log: () => null })).applied).toBe(false); // Trockenlauf ohne Sperre
+    expect((await setupRoles({ url: foreignUrl.toString(), apply: true, allowDatabase: foreign, env: {} })).applied).toBe(true);
+    // db-owner: gleiche Sperrliste beim Anwenden
+    const file = join(tmp, "foreign.json");
+    const w = await writePlan(foreignUrl.toString(), file);
+    await expect(applyPlan(foreignUrl.toString(), file, w.sha256)).rejects.toThrow(/nicht freigegeben/);
+  });
+
+  it("--database muss die Datenbank der Verbindung sein (2); leeres DB_PASSWORD_* ist ein Fehler, Nicht-ASCII-Passwort wird abgelehnt (3)", async () => {
+    await expect(setupRoles({ url: scratchUrl.toString(), apply: true, database: "soccav2", env: {} })).rejects.toThrow(/nicht die Datenbank der Verbindung/);
+    await expect(setupRoles({ url: scratchUrl.toString(), apply: true, env: { DB_PASSWORD_APP: "" } })).rejects.toThrow(/DB_PASSWORD_APP ist leer/);
+    await expect(setupRoles({ url: scratchUrl.toString(), apply: true, env: { DB_PASSWORD_APP: "pässword" } })).rejects.toThrow(/ASCII/);
+    expect(() => scramVerifier("mit leerzeichen")).toThrow(/ASCII/);
+  });
+
+  it("erlaubte Mitgliedschaft: ADMIN OPTION, INHERIT FALSE und SET FALSE werden korrigiert (4)", async () => {
+    await admin.query("grant soccaz_owner to soccaz_migrate with admin option, inherit false, set false");
+    await setupRoles({ url: scratchUrl.toString(), apply: true, env: {} });
+    const row = (await admin.query("select am.admin_option, am.inherit_option, am.set_option from pg_auth_members am join pg_roles m on m.oid = am.member join pg_roles r on r.oid = am.roleid where m.rolname = 'soccaz_migrate' and r.rolname = 'soccaz_owner'")).rows;
+    expect(row).toEqual([{ admin_option: false, inherit_option: true, set_option: true }]);
   });
 
   it("der Cluster-Teil enthält keine Passwörter und keine Anwendungs-Rechte (Etappe D ändert kein Verhalten)", () => {

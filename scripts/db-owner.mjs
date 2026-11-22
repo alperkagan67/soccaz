@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
-import { dbUrlAllowed } from "./db-roles.mjs";
+import { assertDatabaseAllowed, dbUrlAllowed } from "./db-roles.mjs";
 
 export const TARGET_OWNER = "soccaz_owner";
 export const SCHEMAS = ["public", "drizzle"];
@@ -132,12 +132,13 @@ export async function writePlan(url, file) {
 }
 
 /** Anwenden oder Rueckfall; prueft Summe, Ziel-DB, Rolle und neue Objekte; alles in EINER Transaktion. */
-export async function applyPlan(url, file, sha256, { reverse = false } = {}) {
+export async function applyPlan(url, file, sha256, { reverse = false, allowDatabase = undefined } = {}) {
   const text = readFileSync(file, "utf8");
   if (!sha256 || planSha(text) !== sha256) throw new Error("Plan-Summe (--plan-sha256) passt nicht zur Plan-Datei");
   const plan = JSON.parse(text);
   return withClient(url, async (client) => {
     const database = (await client.query("select current_database() as d")).rows[0].d;
+    assertDatabaseAllowed(database, allowDatabase); // Sperrliste: soccav2 und jede nicht freigegebene Datenbank nur mit --allow-database <Name>
     if (plan.database !== database) throw new Error(`Plan gilt fuer die Datenbank ${plan.database}, Verbindung zeigt auf ${database}`);
     if (!(await client.query("select 1 from pg_roles where rolname = $1", [TARGET_OWNER])).rowCount) throw new Error(`Rolle ${TARGET_OWNER} fehlt (zuerst db-roles.mjs)`);
     const statements = plan.items.map((i) => statementOf(i, reverse)); // vor jeder Ausfuehrung: alles pruefen
@@ -177,7 +178,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (!file) throw new Error("--plan <datei> fehlt");
     const url = process.env.DATABASE_URL;
     if (args.includes("--apply") || args.includes("--reverse")) {
-      const r = await applyPlan(url, file, arg("--plan-sha256"), { reverse: args.includes("--reverse") });
+      const r = await applyPlan(url, file, arg("--plan-sha256"), { reverse: args.includes("--reverse"), allowDatabase: arg("--allow-database") });
       console.log(`${r.reverse ? "Rueckfall" : "Eigentumswechsel"} angewendet: ${r.applied} Objekte.`);
     } else {
       const r = await writePlan(url, file);
