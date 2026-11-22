@@ -6,9 +6,9 @@ import { bookingEvidence, bookingEvidenceCounter, evidenceActor, venueAccess, ve
 import { deleteAccount } from "@/server/account";
 import { createBookingJob, updateBookingJob, withdrawBookingJob } from "@/server/booking";
 import { verifyEvidenceChain } from "@/server/evidence";
-import { answerHallRequest, settleHallCheck, startHallCheck } from "@/server/veto";
+import { settleHallCheck, startHallCheck } from "@/server/veto";
 import { revokeVenueAccess } from "@/server/venue-access";
-import { cleanup, makeMatch, makeUser } from "./helpers";
+import { cleanup, makeMatch, makeUser, answerHall } from "./helpers";
 
 // Beweisprotokoll, echte Anwendungspfade (Plan 009 M3 v5, 13.7): die DEFERRABLE-Trigger erzeugen die Einträge beim COMMIT der jeweiligen Fachfunktion; die Tests rufen die echten Funktionen auf
 // (startHallCheck, answerHallRequest, settleHallCheck mit Frist, Entzug, Buchungsaufträge, Kontolöschung). Die Kette ist EINE globale Reihe: jeder Test setzt sie zurück (nur Test-Datenbank).
@@ -68,7 +68,7 @@ describe("Hallenprüfung über die echten Funktionen", () => {
   it("answerHallRequest: Zusage = accepted mit Actor (Name/E-Mail nur in evidence_actor), Ablehnung = declined; ein zweiter Aufruf wird abgelehnt und erzeugt nichts", async () => {
     const s = await setup();
     await db.transaction((tx) => startHallCheck(tx, s.match, s.city));
-    await answerHallRequest(s.op.id, s.match.id, s.managed.id, true);
+    await answerHall(s.op.id, s.match.id, s.managed.id, true);
     const accepted = (await mine(s.match.id, [s.managed.id])).find((r) => r.kind === "accepted")!;
     expect(accepted).toBeTruthy();
     expect(accepted.round).toBe(1);
@@ -76,7 +76,7 @@ describe("Hallenprüfung über die echten Funktionen", () => {
     expect(actor).toMatchObject({ userId: s.op.id, email: s.op.email });
     expect(JSON.stringify(accepted)).not.toContain(s.op.email);
     const before = (await mine(s.match.id, [s.managed.id])).length;
-    await expect(answerHallRequest(s.op.id, s.match.id, s.managed.id, true)).rejects.toThrow(); // schon beantwortet
+    await expect(answerHall(s.op.id, s.match.id, s.managed.id, true)).rejects.toThrow(); // schon beantwortet
     expect((await mine(s.match.id, [s.managed.id])).length).toBe(before);
     expect((await verifyEvidenceChain()).ok).toBe(true);
   });
@@ -85,7 +85,8 @@ describe("Hallenprüfung über die echten Funktionen", () => {
     const s = await setup();
     await db.transaction((tx) => startHallCheck(tx, s.match, s.city));
     const m = await reload(s.match.id);
-    await db.transaction((tx) => settleHallCheck(tx, m, new Date(Date.now() + 13 * 3_600_000))); // nach HALL_REPLY_MS (12 h)
+    await db.update(matches).set({ vetoTurnDeadline: new Date(Date.now() - 60_000) }).where(eq(matches.id, m.id)); // Frist verstrichen (Datenbankzeit entscheidet, nicht der übergebene Zeitpunkt)
+    await db.transaction((tx) => settleHallCheck(tx, m, new Date()));
     const rows = await mine(s.match.id, [s.managed.id]);
     expect(rows.map((r) => r.kind)).toEqual(["request_sent", "expired"]);
     expect(rows.find((r) => r.kind === "expired")!.actorCommitment).toBe("");
@@ -132,7 +133,7 @@ describe("Kontolöschung (Plan 14.1): evidence_actor wird geleert, Eintrag und K
   it("deleteAccount des Betreibers, der geantwortet hat: user_id/name/email NULL, Kette gültig", async () => {
     const s = await setup();
     await db.transaction((tx) => startHallCheck(tx, s.match, s.city));
-    await answerHallRequest(s.op.id, s.match.id, s.managed.id, true);
+    await answerHall(s.op.id, s.match.id, s.managed.id, true);
     const accepted = (await mine(s.match.id, [s.managed.id])).find((r) => r.kind === "accepted")!;
     await deleteAccount(s.op.id);
     const [actor] = await db.select().from(evidenceActor).where(eq(evidenceActor.evidenceId, accepted.id));

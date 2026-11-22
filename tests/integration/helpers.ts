@@ -5,6 +5,8 @@ import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
 import { venueAccess, venues } from "@/db/schema-finance";
 import { cleanupTestData } from "../cleanup";
+import { currentRoundOf } from "@/server/evidence";
+import { answerHallRequest, type HallAnswerOpts } from "@/server/veto";
 
 const run = randomUUID().slice(0, 8);
 let seq = 0;
@@ -104,3 +106,9 @@ export async function grantVenueAccess(venueId: string, userId: string) {
 
 /** Konto, auf das die Kartenabbuchung eines Spielanteils im aktuellen Testlauf fließt (revenue im alten Modell, venue_payable im Provisionsmodell, TEST_LEDGER_MODEL=commission). */
 export const SHARE_ACCOUNT = process.env.TEST_LEDGER_MODEL === "commission" ? "venue_payable" : "revenue";
+
+/** Test-Abkürzung: Hallen-Antwort mit der aktuellen Runde (der Server verlangt die Runde der gesehenen Anfrage, R-T257 N1); eine ausdrücklich übergebene Runde bleibt. */
+export async function answerHall(userId: string, matchId: string, venueId: string, accept: boolean, opts: Omit<HallAnswerOpts, "round"> & { round?: number | null } = {}) {
+  const round = opts.round === undefined ? await currentRoundOf(db, matchId) : opts.round;
+  return answerHallRequest(userId, matchId, venueId, accept, { ...opts, round });
+}
