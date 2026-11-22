@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkShards, filterFor, main, parseShards, SHARDS_FILE, SPEC_DIR } from "../../scripts/e2e-shards.mjs";
 
-// Aufteilung der Browser-Tests in der CI (.github/e2e-shards.json): jede Spec-Datei in genau einem Shard, sonst faellt ein Test still aus der CI.
+// Aufteilung der Browser-Tests in der CI (tests/e2e-shards.json): jede Spec-Datei in genau einem Shard, sonst faellt ein Test still aus der CI.
 const specs = readdirSync(SPEC_DIR).filter((f) => f.endsWith(".spec.ts"));
 const shards = parseShards(readFileSync(SHARDS_FILE, "utf8"));
 

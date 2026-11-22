@@ -39,7 +39,7 @@ describe("CI-Workflow: Namen der Pflicht-Checks", () => {
 
 describe("CI-Workflow: Browser-Test-Teile", () => {
   const shard = job("e2e-shard");
-  it("jeder Teil nimmt seine Dateiliste aus .github/e2e-shards.json (kein --shard)", () => {
+  it("jeder Teil nimmt seine Dateiliste aus tests/e2e-shards.json (kein --shard)", () => {
     expect(shard).toContain("npx playwright test $(node scripts/e2e-shards.mjs list ${{ matrix.shard }})");
     expect(shard).not.toContain("--shard=");
   });

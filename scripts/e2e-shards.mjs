@@ -1,4 +1,4 @@
-// CI-Hilfe: Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf Shards nach Laufzeit (Datei .github/e2e-shards.json).
+// CI-Hilfe: Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf Shards nach Laufzeit (Datei tests/e2e-shards.json).
 // Keine Fremd-Action, keine Abhaengigkeiten. Aufruf:
 //   node scripts/e2e-shards.mjs list <N>   gibt die Playwright-Dateifilter des Shards N aus (durch Leerzeichen getrennt, je Datei ein verankerter Ausdruck)
 //   node scripts/e2e-shards.mjs check      Exit 1, wenn eine Spec-Datei in keinem oder in mehreren Shards steht, eine eingetragene Datei fehlt oder ein Shard leer ist
@@ -6,7 +6,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-export const SHARDS_FILE = ".github/e2e-shards.json";
+export const SHARDS_FILE = "tests/e2e-shards.json";
 export const SPEC_DIR = "tests/e2e";
 const SPEC_NAME = /^[a-z0-9][a-z0-9.-]*\.spec\.ts$/;
 

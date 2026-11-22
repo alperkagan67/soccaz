@@ -42,7 +42,7 @@ jobs:
       - run: npm run typecheck
       - run: npx eslint src tests scripts
       - run: npm test
-      # Jede Browser-Test-Datei muss in genau einem Shard stehen (.github/e2e-shards.json); sonst fiele sie still aus der CI.
+      # Jede Browser-Test-Datei muss in genau einem Shard stehen (tests/e2e-shards.json); sonst fiele sie still aus der CI.
       - run: node scripts/e2e-shards.mjs check
       - run: node scripts/migrate.mjs
       - run: npm run build
@@ -66,7 +66,7 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: node scripts/ci-gate.mjs changes
 
-  # Browser-Tests in 5 Teilen, nach gemessener Laufzeit aufgeteilt (.github/e2e-shards.json, Pruefung: scripts/e2e-shards.mjs, tests/unit/e2e-shards.test.ts).
+  # Browser-Tests in 5 Teilen, nach gemessener Laufzeit aufgeteilt (tests/e2e-shards.json, Pruefung: scripts/e2e-shards.mjs, tests/unit/e2e-shards.test.ts).
   # Jeder Teil hat einen eigenen Postgres-Dienst (nichts wird geteilt). Der Sammelcheck "Browser-Tests" (Job browser-tests) bleibt EIN Check.
   e2e-shard:
     name: Browser-Tests Teil ${{ matrix.shard }}/5
