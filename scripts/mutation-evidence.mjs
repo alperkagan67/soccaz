@@ -93,11 +93,19 @@ const MUTATIONS = [
   { name: "A1: Rollenbindung entfernt (nur Wert zaehlt)", fn: "socaz_maintenance_allowed", from: "      OR pg_catalog.pg_has_role(session_user, 'soccaz_maintenance', 'member')", to: "      OR true", tests: [MR] },
   { name: "A1: current_user statt session_user (Definer-Bypass)", fn: "socaz_maintenance_allowed", from: "pg_catalog.pg_has_role(session_user,", to: "pg_catalog.pg_has_role(current_user,", tests: [MR] },
   { name: "A1: Zwischenzustand ohne Rolle schlaegt nicht auf den Wert zurueck (immer gesperrt)", fn: "socaz_maintenance_allowed", from: "NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'soccaz_maintenance')", to: "false", tests: [MR] },
-  { name: "A1: Restore ohne Leere-Tabelle-Pruefung", fn: "evidence_restore_begin", from: "IF EXISTS (SELECT 1 FROM public.booking_evidence) OR", to: "IF false AND", tests: [MR] },
+  { name: "A1: Restore-Start ohne Leere-/Fortsetzungsbedingung (Wert allein genuegt)", fn: "booking_evidence_before_insert", from: "AND ((c.last_seq = 0 AND NOT EXISTS (SELECT 1 FROM booking_evidence))", to: "AND (true OR (c.last_seq = 0 AND NOT EXISTS (SELECT 1 FROM booking_evidence))", tests: [MR] },
   { name: "A1: Restore ohne Kopf-Hash-Pruefung", fn: "evidence_restore_finish", from: "IF c.last_hash IS DISTINCT FROM p_expected_head THEN", to: "IF false THEN", tests: [MR] },
   { name: "A1: Restore ohne at-Monotonie", fn: "booking_evidence_before_insert", from: "IF c.last_seq > 0 AND NEW.at <", to: "IF false AND NEW.at <", tests: [MR] },
   { name: "A1: Restore ohne Hash-Pruefung der Zeile", fn: "booking_evidence_before_insert", from: "IF NEW.hash IS DISTINCT FROM evidence_hash_of(NEW) THEN RAISE EXCEPTION 'Restore: Hash stimmt nicht", to: "IF false THEN RAISE EXCEPTION 'Restore: Hash stimmt nicht", tests: [MR] },
   { name: "A1: Restore ohne Wartungsrolle moeglich", fn: "evidence_restore_begin", from: "IF NOT public.socaz_maintenance_allowed() THEN", to: "IF false THEN", tests: [MR] },
+  { name: "A1: evidence_restore_begin ohne Leerpruefung", fn: "evidence_restore_begin", from: "IF EXISTS (SELECT 1 FROM public.booking_evidence) OR EXISTS (SELECT 1 FROM public.booking_evidence_counter WHERE id = 1 AND (last_seq <> 0 OR last_hash <> '')) THEN", to: "IF false THEN", tests: [MR] },
+  { name: "A1: finish wird nicht erzwungen", fn: "evidence_restore_done", from: "IF coalesce(current_setting('" + PFX + "evidence_restore_pending', true), '') = 'on' THEN", to: "IF false THEN", tests: [MR] },
+  { name: "A1: Wert ignoriert (nur die Rolle zaehlt)", fn: "socaz_maintenance_allowed", from: `SELECT coalesce(current_setting('${PFX}ledger_maintenance', true), '') = 'on'`, to: "SELECT true", tests: [MR] },
+  { name: "A1: search_path der Funktion entfernt", fn: "socaz_maintenance_allowed", from: " STABLE SET search_path = pg_catalog, pg_temp;", to: " STABLE;", tests: [MR] },
+  { name: "A1: Restore ohne seq-Pruefung", fn: "booking_evidence_before_insert", from: "IF NEW.seq IS DISTINCT FROM c.last_seq + 1 THEN RAISE", to: "IF false THEN RAISE", tests: [MR] },
+  { name: "A1: Restore ohne prev_hash-Pruefung", fn: "booking_evidence_before_insert", from: "IF NEW.prev_hash IS DISTINCT FROM c.last_hash THEN RAISE", to: "IF false THEN RAISE", tests: [MR] },
+  { name: "A1: finish ohne Zeilenzahl-Pruefung", fn: "evidence_restore_finish", from: "IF n <> c.last_seq THEN", to: "IF false THEN", tests: [MR] },
+  { name: "A1: Restore ohne at-Zukunftspruefung", fn: "booking_evidence_before_insert", from: "IF NEW.at > clock_timestamp() + interval '1 minute' THEN RAISE", to: "IF false THEN RAISE", tests: [MR] },
 ];
 
 const only = process.argv.slice(2).map(Number).filter(Boolean);

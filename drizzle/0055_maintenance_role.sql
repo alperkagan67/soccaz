@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION socaz_maintenance_allowed() RETURNS boolean AS $$
       NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'soccaz_maintenance') -- Zwischenzustand ohne Rollen: nur der Wert (A2 ersetzt das durch die harte Fassung)
       OR pg_catalog.pg_has_role(session_user, 'soccaz_maintenance', 'member')
     )
-$$ LANGUAGE sql STABLE SET search_path = pg_catalog, public;
+$$ LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp;
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION forbid_ledger_mutation() RETURNS trigger AS $$
 BEGIN
@@ -246,8 +246,13 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'booking_evidence_counter fehlt';
   END IF;
-  IF public.socaz_maintenance_allowed() AND coalesce(current_setting('socaz.evidence_restore', true), '') = 'on' THEN
-    -- Wiederherstellung (logischer Restore, Plan 10.3): seq/prev_hash/at/hash bleiben UNVERAENDERT, werden aber geprueft; Wartungsmitglied + evidence_restore_begin() noetig
+  IF public.socaz_maintenance_allowed() AND coalesce(current_setting('socaz.evidence_restore', true), '') = 'on'
+     AND ((c.last_seq = 0 AND NOT EXISTS (SELECT 1 FROM booking_evidence)) -- Start NUR in eine LEERE Tabelle (vom Wert allein nicht umgehbar)
+          OR (c.last_seq > 0 AND (SELECT xmin FROM booking_evidence WHERE seq = c.last_seq) = pg_current_xact_id()::xid)) THEN -- Fortsetzung nur, wenn die Vorzeile in DIESER Transaktion eingefuegt wurde
+    -- Wiederherstellung (logischer Restore, Plan 10.3): seq/prev_hash/at/hash bleiben UNVERAENDERT, werden aber geprueft; Wartungsmitglied noetig; evidence_restore_finish() ist Pflicht (aufgeschobener Trigger)
+    PERFORM set_config('socaz.evidence_restore_pending', 'on', true);
+    IF NEW.at IS NULL THEN RAISE EXCEPTION 'Restore: at fehlt (seq %)', NEW.seq; END IF;
+    IF NEW.at > clock_timestamp() + interval '1 minute' THEN RAISE EXCEPTION 'Restore: at liegt in der Zukunft (seq %)', NEW.seq; END IF;
     IF NEW.seq IS DISTINCT FROM c.last_seq + 1 THEN RAISE EXCEPTION 'Restore: seq % erwartet %', NEW.seq, c.last_seq + 1; END IF;
     IF NEW.prev_hash IS DISTINCT FROM c.last_hash THEN RAISE EXCEPTION 'Restore: prev_hash passt nicht zu seq %', NEW.seq; END IF;
     IF NEW.hash IS DISTINCT FROM evidence_hash_of(NEW) THEN RAISE EXCEPTION 'Restore: Hash stimmt nicht (seq %)', NEW.seq; END IF;
@@ -292,5 +297,20 @@ BEGIN
   IF c.last_hash IS DISTINCT FROM p_expected_head THEN RAISE EXCEPTION 'evidence_restore_finish: Kopf-Hash weicht ab'; END IF;
   IF n <> c.last_seq THEN RAISE EXCEPTION 'evidence_restore_finish: Zeilenzahl % passt nicht zum Zaehler %', n, c.last_seq; END IF;
   PERFORM set_config('socaz.evidence_restore', 'off', true);
+  PERFORM set_config('socaz.evidence_restore_pending', 'off', true);
 END;
 $$ LANGUAGE plpgsql;
+--> statement-breakpoint
+-- Erzwingt evidence_restore_finish: wurde in dieser Transaktion ein Restore-Insert gemacht, muss finish vor dem COMMIT gelaufen sein (nur Schutz vor Versehen, ein Mitglied kann den Wert ohnehin setzen)
+CREATE OR REPLACE FUNCTION evidence_restore_done() RETURNS trigger AS $$
+BEGIN
+  IF coalesce(current_setting('socaz.evidence_restore_pending', true), '') = 'on' THEN
+    RAISE EXCEPTION 'Restore nicht mit evidence_restore_finish abgeschlossen';
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+DROP TRIGGER IF EXISTS booking_evidence_restore_done ON booking_evidence
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER booking_evidence_restore_done AFTER INSERT ON booking_evidence DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION evidence_restore_done()

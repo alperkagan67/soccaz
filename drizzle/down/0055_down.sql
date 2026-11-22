@@ -1,6 +1,10 @@
 -- Rueckfall zu 0055_maintenance_role (NUR VOR A2, im Wartungsfenster, NICHT vom Migrator ausgefuehrt): stellt die Funktionsdefinitionen aus den Migrationen 0007/0048/0052/0054 wieder her.
 -- ACHTUNG: das stellt die Rohpruefung des freien Sitzungswerts socaz.ledger_maintenance wieder her (die Luecke, die G25-009 schliessen soll): kein Sicherheits-Rueckfall.
 -- Danach von Hand: den Eintrag "0055_maintenance_role" aus drizzle.__drizzle_migrations entfernen.
+DROP TRIGGER IF EXISTS booking_evidence_restore_done ON booking_evidence;
+--> statement-breakpoint
+DROP FUNCTION IF EXISTS evidence_restore_done();
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION forbid_ledger_mutation() RETURNS trigger AS $$
 BEGIN
   IF current_setting('socaz.ledger_maintenance', true) = 'on' THEN

@@ -14,6 +14,7 @@ const NON = `soccaz_t_non_${pid}`; // kein Mitglied von soccaz_maintenance
 const MEM = `soccaz_t_mem_${pid}`; // Mitglied von soccaz_maintenance
 const url = process.env.DATABASE_URL as string;
 let admin: pg.Client;
+let createdMaintenanceRole = false; // die Rolle fehlt in der CI/auf frischen Clustern: der Test legt sie an und entfernt sie wieder
 
 const q = async (c: pg.Client, text: string, params?: unknown[]) => (await c.query(text, params)).rows;
 /** Einzelne Verbindung als Superuser, mit session authorization auf die Test-Rolle (session_user = Test-Rolle). */
@@ -39,14 +40,26 @@ const fails = async (p: Promise<unknown>) => {
 beforeAll(async () => {
   admin = new pg.Client({ connectionString: url });
   await admin.connect();
-  const maint = await q(admin, "select 1 from pg_roles where rolname = 'soccaz_maintenance'");
-  if (!maint.length) throw new Error("Rolle soccaz_maintenance fehlt: zuerst node scripts/db-roles.mjs --apply (PR D)");
   for (const r of [NON, MEM]) {
     await admin.query(`drop role if exists ${r}`);
     await admin.query(`create role ${r} nologin`);
     await admin.query(`grant select, update on booking_evidence_counter to ${r}`);
+    await admin.query(`grant select, insert on booking_evidence to ${r}`);
+    await admin.query(`grant truncate on booking_evidence_counter to ${r}`);
+    await admin.query(`grant select, insert, update on settings to ${r}`);
+  }
+});
+
+/** Legt die Rolle soccaz_maintenance an, falls sie fehlt (nur fuer den Test; wie scripts/db-roles.sql, ohne Mitglieder), und macht MEM zum Mitglied. Entfernt wird nur, was der Test selbst angelegt hat. */
+async function ensureMaintenanceRole() {
+  if (!(await q(admin, "select 1 from pg_roles where rolname = 'soccaz_maintenance'")).length) {
+    await admin.query("create role soccaz_maintenance nologin");
+    createdMaintenanceRole = true;
   }
   await admin.query(`grant soccaz_maintenance to ${MEM}`);
+}
+beforeEach(async (ctx) => {
+  if (!ctx.task.name.startsWith("Zwischenzustand")) await ensureMaintenanceRole();
 });
 afterAll(async () => {
   if (admin) {
@@ -54,6 +67,7 @@ afterAll(async () => {
       await admin.query(`drop owned by ${r}`).catch(() => null);
       await admin.query(`drop role if exists ${r}`).catch(() => null);
     }
+    if (createdMaintenanceRole) await admin.query("drop role if exists soccaz_maintenance").catch(() => null);
     await admin.end().catch(() => null);
   }
 });
@@ -124,12 +138,16 @@ describe("socaz_maintenance_allowed()", () => {
     }
   });
 
-  it("Zwischenzustand ohne die Rolle soccaz_maintenance: es gilt wie heute nur der Wert (transaktionslokal umbenannt, Rollback)", async () => {
+  it("Zwischenzustand ohne die Rolle soccaz_maintenance: es gilt wie heute nur der Wert (nativ, wenn die Rolle im Cluster fehlt; sonst transaktionslokal umbenannt, Rollback)", async () => {
     const c = new pg.Client({ connectionString: url });
     await c.connect();
     try {
       await c.query("begin");
-      await c.query("alter role soccaz_maintenance rename to soccaz_maintenance_weg");
+      if ((await q(c, "select 1 from pg_roles where rolname = 'soccaz_maintenance'")).length > 0) {
+        // Rolle vorhanden (lokaler Cluster mit Rollen aus PR D): fuer die Dauer der Transaktion umbenennen
+        await c.query("alter role soccaz_maintenance rename to soccaz_maintenance_weg");
+      }
+      expect((await q(c, "select 1 from pg_roles where rolname = 'soccaz_maintenance'")).length).toBe(0); // in beiden Faellen: die Rolle fehlt
       await c.query(`set local session authorization ${NON}`);
       await c.query("select set_config('socaz.ledger_maintenance', 'on', true)");
       expect((await q(c, "select socaz_maintenance_allowed() as a"))[0].a).toBe(true);
@@ -137,7 +155,29 @@ describe("socaz_maintenance_allowed()", () => {
     } finally {
       await c.end();
     }
-    expect((await q(admin, "select 1 from pg_roles where rolname = 'soccaz_maintenance'")).length).toBe(1); // zurueckgerollt
+  });
+
+  it("weitere Guards als Nicht-Mitglied trotz gesetztem Wert: Version-1-Insert, TRUNCATE, evidence_*-Einstellung abgelehnt", async () => {
+    await asRole(NON, async (c) => {
+      await c.query("begin");
+      await c.query("select set_config('socaz.ledger_maintenance', 'on', true)");
+      expect(await fails(c.query("insert into booking_evidence (match_id, kind, hash_version) values (gen_random_uuid(), 'request_sent', 1)"))).toMatch(/hash_version 1 ist nur unter der Wartungsausnahme/);
+      await c.query("rollback");
+      await c.query("begin");
+      await c.query("select set_config('socaz.ledger_maintenance', 'on', true)");
+      expect(await fails(c.query("truncate booking_evidence_counter"))).toMatch(/nur anhaengend/);
+      await c.query("rollback");
+      await c.query("begin");
+      await c.query("select set_config('socaz.ledger_maintenance', 'on', true)");
+      expect(await fails(c.query("update settings set value = to_jsonb('on'::text) where key = 'evidence_enforcement'"))).toMatch(/nur ueber evidence_set_setting/);
+      await c.query("rollback");
+    });
+  });
+
+  it("search_path der Funktion ist gehaertet (pg_catalog, pg_temp) und sie ist kein SECURITY DEFINER", async () => {
+    const r = (await q(admin, "select proconfig::text as cfg, prosecdef from pg_proc where proname = 'socaz_maintenance_allowed'"))[0];
+    expect(r.cfg).toContain("search_path=pg_catalog, pg_temp");
+    expect(r.prosecdef).toBe(false);
   });
 
   it("Katalog-Gate: keine Funktion ausser socaz_maintenance_allowed enthaelt die Rohpruefung des Wertes; die Marker stehen bis A2 noch", async () => {
@@ -224,11 +264,25 @@ describe("Restore-Wartungsmodus (logischer Restore der Beweiskette)", () => {
     await wipe();
     expect(await msg(restore(orig.rows, ""))).toMatch(/Pflicht/);
     await wipe();
-    expect(await msg(restore([orig.rows[0], orig.rows[2]], orig.head))).toMatch(/seq 3 erwartet 2|seq/);
+    expect(await msg(restore([orig.rows[0], orig.rows[2]], orig.head))).toMatch(/seq 3 erwartet 2/);
     await wipe();
     const bad = JSON.parse(JSON.stringify(orig.rows));
     bad[1].hash = "0".repeat(64);
     expect(await msg(restore(bad, orig.head))).toMatch(/Hash stimmt nicht/);
+    await wipe();
+    // prev_hash falsch, Hash der Zeile aber passend neu berechnet (sonst greift schon die Hash-Pruefung)
+    const pv = JSON.parse(JSON.stringify(orig.rows));
+    pv[1].prev_hash = "a".repeat(64);
+    const hp = (await db.execute(sql`select evidence_hash_of(jsonb_populate_record(null::booking_evidence, ${JSON.stringify(pv[1])}::jsonb)) as h`)) as unknown as { rows: { h: string }[] };
+    pv[1].hash = hp.rows[0].h;
+    expect(await msg(restore(pv, null))).toMatch(/prev_hash passt nicht zu seq 2/);
+    await wipe();
+    // at in der Zukunft (Hash passend neu berechnet) und at fehlt
+    const fut = JSON.parse(JSON.stringify(orig.rows));
+    fut[0].at = new Date(Date.now() + 3_600_000).toISOString();
+    const hf = (await db.execute(sql`select evidence_hash_of(jsonb_populate_record(null::booking_evidence, ${JSON.stringify(fut[0])}::jsonb)) as h`)) as unknown as { rows: { h: string }[] };
+    fut[0].hash = hf.rows[0].h;
+    expect(await msg(restore(fut, null))).toMatch(/at liegt in der Zukunft/);
     await wipe();
     // zurueckdatiert: at der Zeile 2 vor Zeile 1, Hash passend neu berechnet (sonst greift schon die Hash-Pruefung)
     const early = JSON.parse(JSON.stringify(orig.rows));
@@ -241,6 +295,37 @@ describe("Restore-Wartungsmodus (logischer Restore der Beweiskette)", () => {
     await restore(orig.rows, null, { begin: false });
     const re = (await db.select().from(bookingEvidenceCounter))[0];
     expect(re.lastHash).not.toBe(orig.head);
+  });
+
+  it("der Wert allein umgeht die Leere-Pruefung NICHT: bei nicht leerer Tabelle (Mitglied, Marker direkt gesetzt, ohne begin) werden seq/hash neu vergeben, kein gefaelschter Eintrag", async () => {
+    const orig = await chain();
+    const forged = JSON.parse(JSON.stringify(orig.rows[0]));
+    forged.seq = 99;
+    forged.hash = "f".repeat(64);
+    forged.prev_hash = "e".repeat(64);
+    await maintenance(async (tx) => {
+      await tx.execute(sql`select set_config('socaz.evidence_restore', 'on', true)`);
+      await tx.execute(sql`insert into booking_evidence select * from jsonb_populate_recordset(null::booking_evidence, ${JSON.stringify([{ ...forged, id: "11111111-1111-4111-8111-111111111111" }])}::jsonb)`);
+    });
+    const last = (await db.select().from(bookingEvidenceCounter))[0];
+    expect(last.lastSeq).toBe(orig.count + 1); // normal vergeben, nicht 99
+    expect((await verifyEvidenceChain()).ok).toBe(true);
+  });
+
+  it("ein Restore ohne evidence_restore_finish scheitert am COMMIT; finish mit abweichender Zeilenzahl scheitert", async () => {
+    const orig = await chain();
+    await wipe();
+    expect(await msg(restore(orig.rows, null))).toMatch(/nicht mit evidence_restore_finish abgeschlossen/);
+    await wipe();
+    const miss = await msg(
+      maintenance(async (tx) => {
+        await tx.execute(sql`select evidence_restore_begin()`);
+        await tx.execute(sql`insert into booking_evidence select * from jsonb_populate_recordset(null::booking_evidence, ${JSON.stringify(orig.rows)}::jsonb)`);
+        await tx.execute(sql`delete from booking_evidence where seq = 1`); // Wartung darf loeschen: Zeilenzahl passt nun nicht mehr zum Zaehler
+        await tx.execute(sql`select evidence_restore_finish(${orig.head})`);
+      }),
+    );
+    expect(miss).toMatch(/Zeilenzahl/);
   });
 
   it("Nicht-Mitglied kann den Restore-Modus nicht starten (Wert allein genuegt nicht)", async () => {
