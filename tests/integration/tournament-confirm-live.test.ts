@@ -222,3 +222,13 @@ describe("M5-7b R-T251: Live-Pflicht und Zusage sind EINE Regel", () => {
     expect(await reason()).not.toBe("no_zusage"); // die naechste Huerde (Teams) ist eine andere
   });
 });
+
+describe("M5-7b R-T251: arm ueberspringt Turniere ohne bekannte Frist", () => {
+  it("Altturnier (chargeDueAt = null): kein stilles Scharfschalten, Snapshot bleibt false", async () => {
+    const { v, t } = await fixture();
+    await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() + 5.9 * DAY) }).where(eq(tournaments.id, t.id));
+    await grantAccess(v.id);
+    expect(await arm([v.id])).toBe(0);
+    expect((await rowOf(t.id)).venueAccessRequiredSnapshot).toBe(false);
+  });
+});
