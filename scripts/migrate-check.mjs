@@ -9,13 +9,14 @@ import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import pg from "pg";
+import { assertLocalDbUrl } from "./lib/db-url-guard.mjs";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL fehlt.");
+assertLocalDbUrl(url, "migrate-check"); // VOR jeder Verbindung (Query/Fragment/Leerraum/Parser-Gegenprobe)
 const base = new URL(url);
-if (!["localhost", "127.0.0.1"].includes(base.hostname) || base.search || base.hash) throw new Error("Nur lokale Datenbank ohne Query/Fragment.");
 
 const adminUrl = new URL(url);
 adminUrl.pathname = "/postgres";
