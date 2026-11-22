@@ -30,8 +30,6 @@ import { CopyLink } from "./CopyLink";
 import { RegisterForm } from "./RegisterForm";
 import { TournamentVenuePick } from "./TournamentVenuePick";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
-import { tournamentCardMode } from "@/server/tournament-card";
-import { db } from "@/db";
 import { TournamentCard } from "./TournamentCard";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
@@ -62,7 +60,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
   // Turnier ohne Halle im Kartenmodell: der Veranstalter waehlt sie hier (sonst laesst sich der Preis nicht festlegen)
-  const venueOptions = manage && inRegistration && !t.venueId && (await tournamentCardMode(db, t.id)) ? await listPartnerVenueOptions() : null;
+  const venueOptions = manage && inRegistration && !t.venueId && data.cardMode ? await listPartnerVenueOptions() : null;
   const linkUrl = t.inviteToken ? `${process.env.APP_URL ?? `${proto}://${host}`}/turniere/${t.id}?t=${t.inviteToken}` : null;
   const played = data.stages.flatMap((s) => s.matches).filter((m) => m.scoreA !== null).length;
   const totalGames = data.stages.flatMap((s) => s.matches).length;
