@@ -16,6 +16,7 @@ const ACTOR_UPDATE = "    await tx.update(evidenceActor).set({ userId: null, nam
 const cut = (s, part) => s.split(part).join("");
 const CHAIN_OK = "= report.chain.ok" + String.fromCharCode(10) + "    ? await sweepReasonText";
 const CHAIN_TRUE = "= true" + String.fromCharCode(10) + "    ? await sweepReasonText";
+const MR = "tests/integration/maintenance-role.test.ts";
 const AUF = "tests/integration/beweisprotokoll-aufbewahrung.test.ts";
 const NL = "tests/integration/beweisprotokoll-nachlieferung.test.ts";
 const HAKEN = "tests/integration/beweisprotokoll-haken.test.ts";
@@ -35,7 +36,7 @@ const MUTATIONS = [
   { name: "Turnier-Zusage uebernimmt Actor ungeprueft", fn: "evidence_tournament_event", from: "IF NEW.venue_confirmed_by IS NOT NULL AND evidence_has_venue_access(NEW.venue_id, NEW.venue_confirmed_by) THEN", to: "IF NEW.venue_confirmed_by IS NOT NULL THEN", tests: [NL] },
   { name: "Hallenwechsel setzt die Zusage nicht zurueck", fn: "tournaments_reset_confirmation", from: "IF TG_OP = 'UPDATE' AND OLD.venue_id IS DISTINCT FROM NEW.venue_id THEN", to: "IF false THEN", tests: [NL] },
   { name: "Loeschschutz fuer Turniere fehlt", fn: "forbid_delete_with_evidence", from: "IF TG_TABLE_NAME = 'tournaments' AND EXISTS", to: "IF false AND EXISTS", tests: [NL] },
-  { name: "Version 1 ohne Wartungsausnahme erlaubt", fn: "booking_evidence_before_insert", from: `IF NEW.hash_version = 1 AND coalesce(current_setting('${PFX}ledger_maintenance', true), '') <> 'on' THEN`, to: "IF false THEN", tests: [NL] },
+  { name: "Version 1 ohne Wartungsausnahme erlaubt", fn: "booking_evidence_before_insert", from: `IF NEW.hash_version = 1 AND NOT public.socaz_maintenance_allowed() THEN`, to: "IF false THEN", tests: [NL] },
   { name: "evidence_hash2 ohne enforced im Hash", fn: "evidence_hash2", from: "    CASE WHEN p_enforced IS NULL THEN '' WHEN p_enforced THEN '1' ELSE '0' END\n", to: "    ''\n", tests: [NL] },
   { name: "evidence_hash2 ohne statement_at im Hash", fn: "evidence_hash2", from: "    evidence_ts(p_statement_at),\n", to: "    '',\n", tests: [NL] },
   { name: "evidence_hash_of: unbekannte Version faellt auf Version 1 zurueck", fn: "evidence_hash_of", from: "  RAISE EXCEPTION 'unbekannte hash_version % (Eintrag %).', e.hash_version, e.id;", to: "  RETURN evidence_hash(e.seq, e.match_id, e.venue_id, e.round, e.job_id, e.kind, e.reason, e.at, e.actor_commitment, e.prev_hash);", tests: [NL] },
@@ -89,20 +90,47 @@ const MUTATIONS = [
   { name: "Aufbewahrung loescht auch bei ungueltiger Kette (Pruefung nicht vorgeschaltet)", file: "src/server/evidence-head.ts", transform: (s) => s.replace(CHAIN_OK, CHAIN_TRUE), tests: [AUF] },
   { name: "Aufbewahrung: Stichtag inklusiv (<= statt <)", file: "src/server/evidence-head.ts", transform: (s) => s.replace("e.at < " + String.fromCharCode(36) + "{cutoff", "e.at <= " + String.fromCharCode(36) + "{cutoff"), tests: [AUF] },
   { name: "Aufbewahrung: Batch-Limit entfernt", file: "src/server/evidence-head.ts", transform: (s) => s.replace(" order by e.seq limit " + String.fromCharCode(36) + "{batch}", ""), tests: [AUF] },
+  { name: "A1: Rollenbindung entfernt (nur Wert zaehlt)", fn: "socaz_maintenance_allowed", from: "      OR pg_catalog.pg_has_role(session_user, 'soccaz_maintenance', 'member')", to: "      OR true", tests: [MR] },
+  { name: "A1: current_user statt session_user (Definer-Bypass)", fn: "socaz_maintenance_allowed", from: "pg_catalog.pg_has_role(session_user,", to: "pg_catalog.pg_has_role(current_user,", tests: [MR] },
+  { name: "A1: Zwischenzustand ohne Rolle schlaegt nicht auf den Wert zurueck (immer gesperrt)", fn: "socaz_maintenance_allowed", from: "NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'soccaz_maintenance')", to: "false", tests: [MR] },
+  { name: "A1: Restore ohne Leere-Tabelle-Pruefung", fn: "evidence_restore_begin", from: "IF EXISTS (SELECT 1 FROM public.booking_evidence) OR", to: "IF false AND", tests: [MR] },
+  { name: "A1: Restore ohne Kopf-Hash-Pruefung", fn: "evidence_restore_finish", from: "IF c.last_hash IS DISTINCT FROM p_expected_head THEN", to: "IF false THEN", tests: [MR] },
+  { name: "A1: Restore ohne at-Monotonie", fn: "booking_evidence_before_insert", from: "IF c.last_seq > 0 AND NEW.at <", to: "IF false AND NEW.at <", tests: [MR] },
+  { name: "A1: Restore ohne Hash-Pruefung der Zeile", fn: "booking_evidence_before_insert", from: "IF NEW.hash IS DISTINCT FROM evidence_hash_of(NEW) THEN RAISE EXCEPTION 'Restore: Hash stimmt nicht", to: "IF false THEN RAISE EXCEPTION 'Restore: Hash stimmt nicht", tests: [MR] },
+  { name: "A1: Restore ohne Wartungsrolle moeglich", fn: "evidence_restore_begin", from: "IF NOT public.socaz_maintenance_allowed() THEN", to: "IF false THEN", tests: [MR] },
 ];
 
 const only = process.argv.slice(2).map(Number).filter(Boolean);
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
-const migration = readFileSync("drizzle/0054_nachlieferung.sql", "utf8").split("--> statement-breakpoint");
+// Funktionsdefinitionen: die LETZTE Definition ueber ALLE Migrationen in Journal-Reihenfolge (Funktionen werden von spaeteren Migrationen, z. B. 0055, neu definiert)
+const journalTags = JSON.parse(readFileSync("drizzle/meta/_journal.json", "utf8")).entries.map((e) => e.tag);
+const allStatements = journalTags.flatMap((tag) => readFileSync(`drizzle/${tag}.sql`, "utf8").split("--> statement-breakpoint"));
 const stmtOf = (fn) => {
-  const s = migration.filter((x) => x.includes(`CREATE OR REPLACE FUNCTION ${fn}(`));
-  if (s.length !== 1) throw new Error(`Funktion ${fn}: ${s.length} Statements`);
-  return s[0];
+  const s = allStatements.filter((x) => x.includes(`CREATE OR REPLACE FUNCTION ${fn}(`));
+  if (s.length < 1) throw new Error(`Funktion ${fn}: keine Definition gefunden`);
+  const last = s[s.length - 1];
+  return last.slice(last.indexOf("CREATE OR REPLACE FUNCTION")); // ohne fuehrende Kommentare
 };
 const runTests = (files) => spawnSync("npx", ["vitest", "run", "--config", "vitest.integration.config.mts", ...files, "--testTimeout=60000"], { encoding: "utf8", shell: true, timeout: 280_000 });
 
 // Hinweis: bei hartem Abbruch (Prozess beendet, Strg+C) kann eine Mutation stehen bleiben: (1) Worker-Datenbank neu anlegen (node scripts/worktree.mjs) oder die Funktion aus der Migration per CREATE OR REPLACE nachziehen, (2) QUELLDATEIEN (Mutationen mit 'file': src/server/account.ts, src/server/evidence.ts) mit 'git status' und 'git diff src' pruefen und per 'git checkout -- <datei>' zuruecksetzen.
+/** Stellt die evidence_*-Einstellungen nach einer Mutation sicher (unter der Wartungsausnahme dieser Verbindung, Superuser). */
+const repairSettings = async () => {
+  await client.query("begin");
+  try {
+    await client.query("select set_config('" + PFX + "ledger_maintenance', 'on', true)");
+    await client.query("delete from settings where key in ('evidence_frei', 'evidence_tmp_frei', 'evidence_head_test_frei')");
+    await client.query("insert into settings (key, value) values ('evidence_tournament_cutover_at', to_jsonb(to_char(now() at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'))) on conflict (key) do nothing");
+    await client.query("insert into settings (key, value) values ('evidence_enforcement', to_jsonb('off'::text)) on conflict (key) do nothing");
+    await client.query("insert into settings (key, value) values ('evidence_clock_source', to_jsonb('js'::text)) on conflict (key) do nothing");
+    await client.query("insert into settings (key, value) values ('evidence_reason_retention_days', to_jsonb('0'::text)) on conflict (key) do nothing");
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  }
+};
 const report = [];
 try {
   for (const [i, m] of MUTATIONS.entries()) {
@@ -119,6 +147,7 @@ try {
         console.log(`${red ? "ROT (gut)" : "GRUEN (Luecke!)"}  #${i + 1} ${m.name}`);
       } finally {
         writeFileSync(m.file, orig); // Quelldatei wiederherstellen
+        await repairSettings();
       }
       continue;
     }
@@ -137,6 +166,7 @@ try {
     } finally {
       if (custom) for (const s of m.restore) await client.query(s);
       else await client.query(orig); // Original wiederherstellen
+      await repairSettings();
     }
   }
 } finally {

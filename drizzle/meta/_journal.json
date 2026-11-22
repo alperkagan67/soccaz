@@ -386,6 +386,13 @@
       "when": 1795366372343,
       "tag": "0054_nachlieferung",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1795387581289,
+      "tag": "0055_maintenance_role",
+      "breakpoints": true
     }
   ]
 }
