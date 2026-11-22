@@ -11,6 +11,9 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+    # Playwright vorerst NICHT automatisch (alle Updates): bis Image-Tag und Digest in ci.yml mitgezogen werden, Backlog 182 (Playwright 1.65.1).
+      - dependency-name: "@playwright/test"
+      - dependency-name: "playwright"
     groups:
       playwright:
         patterns:
