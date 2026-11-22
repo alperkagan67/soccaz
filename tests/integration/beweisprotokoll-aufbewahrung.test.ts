@@ -63,6 +63,7 @@ describe("Aufbewahrung des Klartexts", () => {
     const { cutoff } = await twoEntries();
     await setRetention("30");
     const before = await counts();
+    const auditBefore = rows<{ n: number }>(await db.execute(sql`select count(*)::int as n from audit_log where action = 'evidence.retention'`))[0].n;
     const r = await sweepReasonText(nowFor(cutoff, 30));
     expect(r).toEqual({ days: 30, deleted: 1 });
     expect(await textCount()).toBe(1);
@@ -70,7 +71,7 @@ describe("Aufbewahrung des Klartexts", () => {
     expect((await verifyEvidenceChain()).ok).toBe(true);
     expect((await sweepReasonText(nowFor(cutoff, 30))).deleted).toBe(0);
     const a = rows<{ n: number }>(await db.execute(sql`select count(*)::int as n from audit_log where action = 'evidence.retention'`))[0].n;
-    expect(a).toBe(1);
+    expect(a - auditBefore).toBe(1); // genau ein neuer Eintrag (der audit_log waechst ueber Laeufe hinaus)
     const left = rows<{ reason: string }>(await db.execute(sql`select reason from booking_evidence_reason_text`));
     expect(left[0].reason).toBe("Wartungsarbeiten"); // der jüngere bleibt
   });
