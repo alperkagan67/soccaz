@@ -67,7 +67,7 @@ async function evidenceStructure(pool) {
     check(Boolean(row) && row.tgdeferrable && row.tginitdeferred && row.is_constraint, "Beweisprotokoll: Constraint-Trigger " + tg + " (DEFERRABLE INITIALLY DEFERRED)");
     if (tg.endsWith("_upd")) check(Boolean(row) && row.has_when, "Beweisprotokoll: " + tg + " feuert nur bei geaendertem Status (WHEN)");
   }
-  for (const [tg, table] of [["matches_forbid_delete_with_evidence", "matches"], ["venues_forbid_delete_with_evidence", "venues"]]) {
+  for (const [tg, table] of [["matches_forbid_delete_with_evidence", "matches"]]) { // KEIN Guard auf venues (Plan 15.9)
     check((await pool.query("select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid where t.tgname = $1 and c.relname = $2", [tg, table])).rowCount === 1, "Beweisprotokoll: Guard " + tg);
   }
   for (const fn of ["evidence_write", "evidence_hall_event", "evidence_job_event", "evidence_reconcile", "forbid_delete_with_evidence", "forbid_evidence_truncate"]) {

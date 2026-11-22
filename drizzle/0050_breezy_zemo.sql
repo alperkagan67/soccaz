@@ -146,7 +146,8 @@ CREATE TRIGGER booking_evidence_counter_no_truncate
   FOR EACH STATEMENT EXECUTE FUNCTION forbid_evidence_truncate();
 --> statement-breakpoint
 -- Beweisprotokoll, DEFERRABLE-Haken (Plan 009 M3 v4/v5): UNGETESTET gegen die Datenbank (Stand: lokal ohne Datenbank geschrieben).
--- Ersatz fuer RESTRICT: Spiele und Hallen mit Protokolleintraegen werden nicht geloescht (liest ohne Zeilensperre; Restluecke: Plan 14.2)
+-- Ersatz fuer RESTRICT: Spiele mit Protokolleintraegen werden nicht geloescht (liest ohne Zeilensperre; Restluecke: Plan 14.2). KEIN Guard auf venues: die App loescht nie Hallen (nur aktiv/inaktiv),
+-- viele Tests raeumen Hallen per DELETE auf; eine geloeschte Halle meldet die Verwaisten-Pruefung (findOrphans, Tagesjob) als Alarm (Entscheid w2, Plan 15.9).
 CREATE OR REPLACE FUNCTION forbid_delete_with_evidence() RETURNS trigger AS $$
 BEGIN
   IF coalesce(current_setting('socaz.ledger_maintenance', true), '') = 'on' THEN
@@ -155,9 +156,6 @@ BEGIN
   IF TG_TABLE_NAME = 'matches' AND EXISTS (SELECT 1 FROM booking_evidence WHERE match_id = OLD.id) THEN
     RAISE EXCEPTION 'Spiel % hat Beweisprotokoll-Eintraege und kann nicht geloescht werden.', OLD.id;
   END IF;
-  IF TG_TABLE_NAME = 'venues' AND EXISTS (SELECT 1 FROM booking_evidence WHERE venue_id = OLD.id) THEN
-    RAISE EXCEPTION 'Halle % hat Beweisprotokoll-Eintraege und kann nicht geloescht werden.', OLD.id;
-  END IF;
   RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;
@@ -165,10 +163,6 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS matches_forbid_delete_with_evidence ON matches;
 --> statement-breakpoint
 CREATE TRIGGER matches_forbid_delete_with_evidence BEFORE DELETE ON matches FOR EACH ROW EXECUTE FUNCTION forbid_delete_with_evidence();
---> statement-breakpoint
-DROP TRIGGER IF EXISTS venues_forbid_delete_with_evidence ON venues;
---> statement-breakpoint
-CREATE TRIGGER venues_forbid_delete_with_evidence BEFORE DELETE ON venues FOR EACH ROW EXECUTE FUNCTION forbid_delete_with_evidence();
 --> statement-breakpoint
 -- Eintrag schreiben (nach dem Sperren des Zaehlers). actor_commitment = sha256(salt:user_id), wie src/server/evidence-write.ts (actorCommitment).
 CREATE OR REPLACE FUNCTION evidence_write(p_match uuid, p_venue uuid, p_job uuid, p_round integer, p_kind text, p_actor uuid) RETURNS void AS $$

@@ -320,7 +320,7 @@ describe("Personenfelder getrennt (evidence_actor, außerhalb des Hashes; Entwur
 });
 
 describe("Guard statt Fremdschlüssel, Verwaiste, Abgleich (Plan 14.1/14.2/14.3) – UNGETESTET gegen die Datenbank", () => {
-  it("ein Spiel und eine Halle mit Protokolleinträgen lassen sich nicht löschen (Guard-Trigger statt RESTRICT); mit Wartungsausnahme geht es", async () => {
+  it("ein Spiel mit Protokolleinträgen lässt sich nicht löschen (Guard-Trigger statt RESTRICT, mit Wartungsausnahme geht es); eine Halle schon (kein Guard, Verwaiste melden es)", async () => {
     const { matchId, venueId } = await setup();
     await rec(matchId, venueId, "request_sent");
     // drizzle verpackt den Datenbankfehler ("Failed query"); der Text des Guards steht in cause
@@ -334,7 +334,8 @@ describe("Guard statt Fremdschlüssel, Verwaiste, Abgleich (Plan 14.1/14.2/14.3)
       return "";
     };
     expect(await guardMessage(db.execute(sql`delete from matches where id = ${matchId}`))).toMatch(/Beweisprotokoll/);
-    expect(await guardMessage(db.execute(sql`delete from venues where id = ${venueId}`))).toMatch(/Beweisprotokoll/);
+    // KEIN Guard auf venues (Plan 15.9): eine Halle laesst sich loeschen, die Verwaisten-Pruefung meldet den Verweis (Test unten)
+    expect(await guardMessage(db.execute(sql`delete from venues where id = ${venueId}`))).toBe("");
     await expect(maintenance((tx) => tx.execute(sql`delete from matches where id = ${matchId}`))).resolves.toBeUndefined(); // Wartungsausnahme: erlaubt
   });
 

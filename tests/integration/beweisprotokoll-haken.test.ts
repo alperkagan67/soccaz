@@ -248,7 +248,8 @@ describe("Deadlock-Tests (Plan 14.1): echte parallele Transaktionen, Zähler nur
         // … gleichzeitig Halle FOR UPDATE (wie bookCommission/lockVenues) und Nutzer FOR UPDATE (wie admin/deleteAccount) mit eigenem Statuswechsel
         committed(async (tx) => {
           await tx.execute(sql`select id from venues where id = ${c.venueId} for update`);
-          await tx.execute(sql`select id from users where id = ${op.id} for update`);
+          // wie deleteAccount: FOR NO KEY UPDATE (vertraegt sich mit dem Schluessel-Share der FK answered_by -> users); FOR UPDATE nach dem Spiel waere ein Zyklus unabhaengig vom Beweisprotokoll
+          await tx.execute(sql`select id from users where id = ${op.id} for no key update`);
           await tx.execute(sql`insert into booking_jobs (match_id, venue_id) values (${c.matchId}, ${c.venueId}) on conflict (match_id) do nothing`);
         }),
       ]),
