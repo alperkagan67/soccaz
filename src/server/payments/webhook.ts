@@ -228,7 +228,7 @@ async function processEvent(event: ProviderEvent) {
       // Bewusste Entscheidung: synchron NACH der Transaktion (der Spieler soll nach 'Karte aendern' sofort abgebucht werden). Das kostet Stripe-Latenz im Webhook-Request
       // (Zeitlimits der Stripe-Aufrufe: 8 s); Fehler sind isoliert, und der Job card-charges holt alles Ausgelassene nach (siehe docs/BETRIEB.md)
       await retryChargesInWindow({ userId: cardUserId, limit: WEBHOOK_RETRY_LIMIT, budgetMs: WEBHOOK_RETRY_BUDGET_MS });
-      await retryTournamentChargesInWindow({ userId: cardUserId, limit: WEBHOOK_RETRY_LIMIT }); // Turniere: neue Karte im Nachzahlfenster (M5-5) // begrenzt: der Rest kommt mit dem Job (alle 5 Minuten)
+      await retryTournamentChargesInWindow({ userId: cardUserId, limit: WEBHOOK_RETRY_LIMIT, budgetMs: WEBHOOK_RETRY_BUDGET_MS }); // Turniere: neue Karte im Nachzahlfenster (M5-5), begrenzt: der Rest kommt mit dem Job (alle 5 Minuten)
     } catch {
       /* nichts loggen */
     }

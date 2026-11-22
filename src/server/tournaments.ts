@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matchResults, matches, notifications, paymentCharges, teamMembers, teams, users } from "@/db/schema";
@@ -19,7 +19,7 @@ import type { Tx } from "./tx";
 import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
 import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
-import { effectiveGraceEnd } from "@/lib/grace";
+import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
 import { freezeVenueTerms, hallZusageOk, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled } from "./settings";
@@ -613,16 +613,22 @@ async function settle(tx: Tx, t: T) {
 
 /** Absagen: Alle bezahlten Eintritte gehen vollständig aufs Guthaben der Spieler zurück. Nur möglich, solange noch kein Spiel gespielt ist. */
 export async function cancelTournament(userId: string, tournamentId: string) {
-  await db.transaction(async (tx) => {
+  const proposed = await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann absagen.");
     // Kartenmodell (AC-21): nach der ersten Abbuchung sagt nur Admin 1 ab (Rolle owner); der Veranstalter und Admin 2 nur davor. Die automatische Absage (Job) ist ausgenommen.
     if (await hasTournamentChargeRows(tx, tournamentId)) {
       const [u] = await tx.select({ role: users.role, isOwner: users.isOwner }).from(users).where(eq(users.id, userId));
-      if (!isOwner(u)) throw new DomainError("Nach der ersten Abbuchung kann nur Admin 1 das Turnier absagen.");
+      if (!isOwner(u)) {
+        // Vorschlagsweg (009 AC-9): die Absage wird NICHT ausgefuehrt (keine Erstattung), aber als Vorschlag gespeichert; Admin 1 sieht ihn im Eingriffsprotokoll und entscheidet
+        await audit(userId, "tournament.cancel_proposal", "tournament", tournamentId, { after: { status: t.status } }, tx);
+        return true;
+      }
     }
     await cancelTournamentTx(tx, t, userId);
+    return false;
   });
+  if (proposed) throw new DomainError("Nach der ersten Abbuchung kann nur Admin 1 das Turnier absagen. Dein Absagevorschlag ist gespeichert.");
 }
 
 /** Sagt ein Turnier unter der Turniersperre ab und erstattet alle Eintritte (feste Schlüssel, genau einmal). `actorId` null = Job. */
@@ -702,7 +708,8 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
  * (keine technischen Codes). Je Turnier eine eigene Transaktion unter der Turniersperre, Bedingung wird dort neu geprueft (die Zeile kann inzwischen erfolgreich nachgezahlt sein). Idempotent.
  */
 export async function cancelTournamentsAfterWindow(now: Date = new Date()): Promise<number> {
-  const NON_CARD = ["tournament_closed", "tournament_cancelled", "idempotency_mismatch", "unknown_outcome", "after_start", "attempt_expired", "match_closed"];
+  if (!(await cardPaymentsEnabled())) return 0; // Schalter AUS: nicht wegen Fenster absagen (Plan 17.2); nach dem Wiedereinschalten laeuft die Pruefung weiter
+  const NON_CARD = NON_CARD_CODES;
   const expired = (tx: Pick<Tx, "execute">, id: string | null) =>
     tx.execute(sql`select distinct t.id from tournaments t join payment_charges c on c.tournament_id = t.id
       where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null ${id ? sql`and t.id = ${id}` : sql``}
@@ -764,8 +771,8 @@ export async function notifyMissingCardReminders(now: Date = new Date()): Promis
         const players = [...new Set(missing.map((m) => m.userId))];
         const capIds = [...new Set(missing.map((m) => captainOf(m.teamId)).filter((x): x is string => Boolean(x)))].filter((x) => !players.includes(x));
         const url = `/turniere/${t.id}`;
-        await notifyUsers(players, { type: "payment", title: "Karte fehlt", body: `${t.name}: Du hast noch keine Karte hinterlegt. Ohne Karte fällt das Turnier aus (spätestens in ${stage} Stunden ist Frist).`, url }, tx);
-        await notifyUsers(capIds, { type: "payment", title: "Karte fehlt", body: `${t.name}: In deinem Team fehlt noch eine Karte. Ohne sie fällt das Turnier aus (spätestens in ${stage} Stunden ist Frist).`, url }, tx);
+        await notifyUsers(players, { type: "payment", title: "Karte fehlt", body: `${t.name}: Du hast noch keine Karte hinterlegt. Ohne Karte fällt das Turnier aus. Die Frist ist in etwa ${stage} Stunden.`, url }, tx);
+        await notifyUsers(capIds, { type: "payment", title: "Karte fehlt", body: `${t.name}: In deinem Team fehlt noch eine Karte. Ohne sie fällt das Turnier aus. Die Frist ist in etwa ${stage} Stunden.`, url }, tx);
         await audit(null, `tournament.card_reminder.${stage}`, "tournament", t.id, { after: { players: players.length, captains: capIds.length } }, tx);
         sent += 1;
       });
@@ -778,8 +785,14 @@ export async function notifyMissingCardReminders(now: Date = new Date()): Promis
 
 /** Kartenmodell: laeuft die Abbuchung oder ist sie faellig (Zeilen vorhanden, oder alle Teams bereit und die Zusage der Halle erfuellt)? Dann wird das Turnier nicht wegen der Frist abgesagt. Unter der Turniersperre. */
 async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
-  if (!(await tournamentCardMode(tx, t.id))) return false;
   const [row] = await tx.select({ id: paymentCharges.id }).from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id)).limit(1);
+  if (!(await tournamentCardMode(tx, t.id))) {
+    // Schalter AUS (Plan 17.2): Kartenfluss mit Zeilen oder eingefrorenem Zugangs-Snapshot wird NICHT wegen der Frist abgesagt (die Abschaltung ist keine Schuld der Spieler); bucht nach, sobald der Schalter wieder EIN ist
+    if (row) return true;
+    if (t.venueAccessRequiredSnapshot === null || (await cardPaymentsEnabled())) return false;
+    const paid = await tx.select({ id: tournamentPlayers.userId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), gt(tournamentPlayers.paidCents, 0))).limit(1);
+    return paid.length === 0;
+  }
   if (row) return true;
   if (t.status !== "payment" || !t.venueId || t.venueAccessRequiredSnapshot === null || !hallZusageOk(t)) return false;
   const entries = await tx.select({ ready: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));

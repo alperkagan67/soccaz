@@ -44,7 +44,7 @@ export async function runTournamentRefunds(now: Date = new Date()): Promise<numb
 export async function cancelOpenIntentsOfCancelledTournaments(): Promise<number> {
   const rows = await db.execute(sql`
     select c.id, c.payment_intent_id from payment_charges c join tournaments t on t.id = c.tournament_id
-    where t.status = 'cancelled' and c.status in ('pending', 'requires_action') and c.payment_intent_id is not null`);
+    where t.status = 'cancelled' and c.status in ('pending', 'requires_action') and c.payment_intent_id is not null order by c.updated_at limit 100`); // begrenzt je Lauf (kein unbegrenzter Beschuss); haengende Zeilen meldet der Alarm card:tournament-charge-stuck
   let ended = 0;
   for (const r of rows.rows as { id: string; payment_intent_id: string }[]) {
     try {

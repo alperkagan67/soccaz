@@ -464,8 +464,10 @@ export async function rotateTournamentAttempt(c: RetryCandidate, now: Date): Pro
  * Startet neue Versuche fuer alle fehlgeschlagenen Abbuchungen im Fenster, deren Zahler eine NEUE Karte gespeichert hat. Optional auf einen Nutzer (als Platz oder Zahler) eingegrenzt.
  * Liefert die Zahl der neu angelegten Versuche. Wiederholbar und parallel sicher. Ausloeser: Webhook "Karte aendern" und der Job card-charges.
  */
-export async function retryTournamentChargesInWindow(opts: { userId?: string; now?: Date; limit?: number } = {}): Promise<number> {
+export async function retryTournamentChargesInWindow(opts: { userId?: string; now?: Date; limit?: number; budgetMs?: number } = {}): Promise<number> {
   const now = opts.now ?? new Date();
+  const startedAt = Date.now();
+  const overBudget = () => opts.budgetMs !== undefined && Date.now() - startedAt >= opts.budgetMs; // Webhook-Pfad: nichts Neues mehr beginnen, der Rest kommt mit dem Job
   const rows = await db.execute(sql`
     select c.id, c.tournament_id, c.user_id, c.current_attempt, c.amount_cents, c.payment_intent_id
     from payment_charges c join tournaments t on t.id = c.tournament_id
@@ -480,6 +482,7 @@ export async function retryTournamentChargesInWindow(opts: { userId?: string; no
   let started = 0;
   const toSend = new Set<string>();
   for (const c of opts.limit !== undefined ? cands.slice(0, Math.max(0, opts.limit)) : cands) {
+    if (overBudget()) break;
     try {
       if ((await reconcileTournamentIntents(c)) !== "go") continue;
       if (await rotateTournamentAttempt(c, now)) {
@@ -491,6 +494,7 @@ export async function retryTournamentChargesInWindow(opts: { userId?: string; no
     }
   }
   for (const tid of toSend) {
+    if (overBudget()) break;
     try {
       await runTournamentCharges(tid, now); // Phase B und C fuer die frisch angelegten pending-Versuche (Zeilen existieren: rows_exist)
     } catch (error) {
