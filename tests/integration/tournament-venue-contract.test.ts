@@ -196,6 +196,13 @@ describe("M5-7a: Zahlung ohne Zuordnung (Backlog 118, Entscheid t2q P-M57-6)", (
     expect(alerts.some((a) => a.code === "card:unmatched-success")).toBe(true);
   });
 
+  it("parallele Zustellungen derselben Zahlung (Stripe-Wiederholung): genau eine Mitteilung (Advisory-Sperre)", async () => {
+    const pi = nid("pi_m57par");
+    const results = await Promise.all(Array.from({ length: 6 }, () => send("payment_intent.succeeded", pi, 1800)));
+    expect(results.every((r) => r.status === 200)).toBe(true);
+    expect(await notes(pi)).toBe(1);
+  });
+
   it("andere unbekannte Ereignisse: keine Mitteilung, Alarm erst ab dem sechsten innerhalb 24 Stunden", async () => {
     await db.execute(sql`delete from audit_log where action = 'charge.ignored' and (after->>'reason') in ('unknown_payment_intent', 'unknown_charge') and coalesce(after->>'outcome', '') <> 'succeeded'`);
     for (let i = 0; i < 5; i++) await send("payment_intent.payment_failed", nid("pi_m57f"));

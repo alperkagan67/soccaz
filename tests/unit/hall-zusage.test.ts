@@ -3,7 +3,7 @@ import { hallZusageOk } from "@/server/tournament-venue";
 
 // 012 M5-1: Wahrheitstabelle der Zusage-Schnittstelle (Plan 3.6). M5-7a: fail-closed bei NULL-Snapshot.
 // AC-5-Aenderung (Bestandstest, EINE Zeile): "noch nicht eingefroren (null), keine Zusage" erwartete bisher true (fail-open, nur mit der Attrappe vertretbar, G24-012, R-T207b);
-// jetzt false: ein Turnier darf nicht mit NULL-Snapshot in "payment"/"bereit" durchrutschen. Keine Abschwaechung: die uebrigen vier Zeilen sind unveraendert, eine Zeile kam hinzu.
+// jetzt false: ein Turnier darf nicht mit NULL-Snapshot in "payment"/"bereit" durchrutschen. Keine Abschwaechung: main hatte 5 Zeilen, jetzt 6: EINE Zeile geaendert (NULL ohne Zusage: true -> false), EINE neu (NULL mit Zusage: false), die uebrigen vier unveraendert.
 describe("hallZusageOk", () => {
   const at = new Date();
   it.each([
