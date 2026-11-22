@@ -6,6 +6,7 @@ import { tournaments } from "@/db/schema-league";
 import { bookingEvidence, bookingEvidenceCounter, evidenceActor, venueAccess, venues } from "@/db/schema-finance";
 import { cleanReason } from "@/lib/evidence";
 import { reconcileEvidence, verifyEvidenceChain } from "@/server/evidence";
+import { clearOrphanActors } from "@/server/evidence-head";
 import { evidenceHash2 } from "../../scripts/lib/evidence-chain.mjs";
 import { cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -304,6 +305,17 @@ describe("Hash Version 2, Bereinigung, Einschränkungen (Plan 16d.6, 16e.4, 16f.
     }
   });
 
+  it("Golden-Fixture Version 2: SQL evidence_hash2 = feste Literale je Quelle", async () => {
+    const gold = JSON.parse((await import("node:fs")).readFileSync("tests/fixtures/evidence-golden-v2.json", "utf8")).rows as Record<string, never>[];
+    for (const c of gold) {
+      const r = rows<{ h: string }>(
+        await db.execute(sql`select evidence_hash2(${c.subject}, ${c.seq}, ${c.matchId}::uuid, ${c.tournamentId}::uuid, ${c.venueId}::uuid, ${c.round}, ${c.jobId}::uuid, ${c.kind}, ${c.reasonCode}, ${c.reasonCommitment},
+          ${c.at}::timestamptz, ${c.actorCommitment}, ${c.prevHash}, ${c.deadlineAt}::timestamptz, ${c.decidedAt}::timestamptz, ${c.statementAt}::timestamptz, ${c.enforced}::boolean) as h`),
+      )[0].h;
+      expect(r, String(c.source)).toBe(c.hash);
+    }
+  });
+
   it("direkter INSERT Version 1 ohne Wartungsausnahme wird abgelehnt, unbekannte Version abgelehnt; Version 2 mit Klartext reason abgelehnt", async () => {
     const m = await makeMatch({ hoursAhead: 72 });
     expect(await code(db.insert(bookingEvidence).values({ matchId: m.match.id, kind: "request_sent", hashVersion: 1 }))).not.toBeNull();
@@ -412,5 +424,36 @@ describe("Review R-T243 (w4): Einstellungsschutz, expired ohne Frist, Turnier-Id
     });
     const x = (await ev(s2.matchId)).find((e) => e.kind === "expired")!;
     expect(x.deadlineAt!.getTime()).toBe(s2.deadline.getTime());
+  });
+});
+
+describe("Commitment-Prüfung und Löschpfade (Plan 16f.7, 16g.6)", () => {
+  async function declinedWithText(): Promise<{ s: Awaited<ReturnType<typeof setup>>; id: string }> {
+    await enforceOn();
+    const s = await setup();
+    await answer(s, "declined", { code: "belegt", text: "Halle belegt am Samstag" });
+    const d = (await ev(s.matchId)).find((e) => e.kind === "declined")!;
+    return { s, id: d.id };
+  }
+
+  it("Prüfer: manipulierter Klartext = 'commitment'; gelöschter Klartext oder NULL-Zeile = nicht prüfbar, Kette gültig; Anonymisieren per UPDATE auf Leertext bricht (nur DELETE ist sicher)", async () => {
+    const { id } = await declinedWithText();
+    expect((await verifyEvidenceChain()).ok).toBe(true);
+    await db.execute(sql`update booking_evidence_reason_text set reason = 'Halle frei obwohl behauptet' where evidence_id = ${id}`);
+    expect(await verifyEvidenceChain()).toMatchObject({ ok: false, reason: "commitment" });
+    await db.execute(sql`update booking_evidence_reason_text set reason = 'Halle belegt am Samstag' where evidence_id = ${id}`);
+    expect((await verifyEvidenceChain()).ok).toBe(true);
+    await db.execute(sql`delete from booking_evidence_reason_text where evidence_id = ${id}`);
+    expect((await verifyEvidenceChain()).ok).toBe(true); // Klartext gelöscht: Kette gültig
+  });
+
+  it("Tagesjob: Klartext zu anonymisierter Actor-Zeile wird gelöscht, Kette bleibt gültig; Turnier-Bestätiger ohne Konto wird gelöst", async () => {
+    const { s, id } = await declinedWithText();
+    await db.execute(sql`update evidence_actor set user_id = null, name = null, email = null where evidence_id = ${id}`);
+    await clearOrphanActors();
+    const left = rows<{ n: number }>(await db.execute(sql`select count(*)::int as n from booking_evidence_reason_text where evidence_id = ${id}`))[0].n;
+    expect(left).toBe(0);
+    expect((await verifyEvidenceChain()).ok).toBe(true);
+    expect(s.matchId).toBeTruthy();
   });
 });

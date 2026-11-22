@@ -14,6 +14,13 @@ const LAST_KEY = "evidence_head_last";
  * anonymisiert ist (E-Mail geloescht-<id>@geloescht.invalid). Zeile und Hash bleiben, die Kette bleibt gueltig. Gibt die Anzahl geleerter Zeilen zurueck.
  */
 export async function clearOrphanActors(): Promise<number> {
+  // Plan 16g.6: Klartext der Begruendungen zuerst (Eintraege, deren Actor-Zeile anonymisiert ist oder deren Konto nicht mehr existiert), dann die Actor-Zeilen; Turnier-Bestaetiger ohne Konto loesen
+  await db.execute(sql`
+    delete from booking_evidence_reason_text rt using evidence_actor ea
+    where ea.evidence_id = rt.evidence_id
+      and ((ea.user_id is null and ea.name is null and ea.email is null)
+        or (ea.user_id is not null and not exists (select 1 from users u where u.id = ea.user_id and u.email not like 'geloescht-%@geloescht.invalid')))`);
+  await db.execute(sql`update tournaments t set venue_confirmed_by = null where t.venue_confirmed_by is not null and not exists (select 1 from users u where u.id = t.venue_confirmed_by and u.email not like 'geloescht-%@geloescht.invalid')`);
   const r = await db.execute(sql`
     update evidence_actor ea set user_id = null, name = null, email = null
     where (ea.user_id is not null or ea.name is not null or ea.email is not null)

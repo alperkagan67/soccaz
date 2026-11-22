@@ -7,7 +7,7 @@ const rowsOf = <T>(r: unknown): T[] => ((r as { rows?: T[] }).rows ?? (r as T[])
 export type ChainCheck = { ok: boolean; count: number; headHash: string; firstBadSeq: number | null; reason: string | null };
 
 /**
- * Prüft die Gesamtkette: lückenlose seq ab 1, prev_hash = Hash der Vorgängerzeile, hash = evidence_hash_of(Zeile) (dieselbe SQL-Funktion wie der Trigger, Version 1 oder 2; unbekannte Version = 'hash'; NULL-Hashes werden mit IS DISTINCT FROM erkannt) und Zählerstand = letzte Zeile.
+ * Prüft die Gesamtkette: lückenlose seq ab 1, prev_hash = Hash der Vorgängerzeile, hash = evidence_hash_of(Zeile), Klartext-Commitment (vorhandener Klartext muss zum Commitment passen; fehlender Klartext = nicht pruefbar, gueltig) (dieselbe SQL-Funktion wie der Trigger, Version 1 oder 2; unbekannte Version = 'hash'; NULL-Hashes werden mit IS DISTINCT FROM erkannt) und Zählerstand = letzte Zeile.
  * Meldet die ERSTE abweichende seq. Zeilen UND Zählerstand kommen aus EINER Anweisung (ein Schnappschuss unter READ COMMITTED): ein Eintrag, der gleichzeitig committet, kann keinen
  * Fehlalarm "zaehler" auslösen (wichtig für den Tagesjob).
  */
@@ -22,10 +22,12 @@ export async function verifyEvidenceChain(exec: Exec = db): Promise<ChainCheck> 
           when e.prev_hash is distinct from coalesce(lag(e.hash) over (order by e.seq), '') then 'prev_hash'
           when e.hash_version not in (1, 2) or (e.hash_version = 1 and e.match_id is null) then 'hash'
           when e.hash is distinct from evidence_hash_of(e) then 'hash'
+          when rt.evidence_id is not null and e.reason_commitment is distinct from encode(sha256(convert_to(rt.salt || ':' || rt.reason, 'UTF8')), 'hex') then 'commitment'
           else null
         end as bad
       from booking_evidence_counter c
       left join booking_evidence e on true
+      left join booking_evidence_reason_text rt on rt.evidence_id = e.id
       where c.id = 1
       order by e.seq`),
   );

@@ -26,7 +26,7 @@ const check = (ok, what) => {
   console.log(`${ok ? "OK  " : "FEHLT"} ${what}`);
 };
 
-const admin = new pg.Client({ connectionString: adminUrl.toString() });
+const admin = new pg.Client({ connectionString: adminUrl.toString(), statement_timeout: 120_000 });
 await admin.connect();
 await admin.query(`drop database if exists "${name}" with (force)`);
 await admin.query(`create database "${name}"`);
@@ -51,7 +51,7 @@ try {
   const m1 = runMigrate(tmp);
   if (m1.status !== 0) throw new Error("Migration bis 0053 fehlgeschlagen: " + (m1.stderr || "").slice(0, 400));
 
-  const db = new pg.Client({ connectionString: testUrl.toString() });
+  const db = new pg.Client({ connectionString: testUrl.toString(), statement_timeout: 120_000 });
   await db.connect();
   const q = async (s, p) => (await db.query(s, p)).rows;
 
@@ -93,7 +93,7 @@ try {
   if (m2r.status !== 0) throw new Error("Migration 0054 fehlgeschlagen");
 
   // 5) pruefen
-  const db2 = new pg.Client({ connectionString: testUrl.toString() });
+  const db2 = new pg.Client({ connectionString: testUrl.toString(), statement_timeout: 120_000 });
   await db2.connect();
   const q2 = async (s, p) => (await db2.query(s, p)).rows;
   const after = await q2(`select seq, match_id as "matchId", venue_id as "venueId", round, job_id as "jobId", kind, reason, to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at,
