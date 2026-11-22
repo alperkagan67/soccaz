@@ -216,7 +216,8 @@ test("Antwort nach Fristende: neutraler Text, Zeile bleibt, genau ein late_attem
   await boss.waitForLoadState("networkidle");
   await query("update matches set veto_turn_deadline = now() - interval '1 minute' where id = $1", [matchId]); // die Seite zeigt noch den Stand beim Laden
   await inquiry.getByRole("button", { name: "Halle ist frei" }).click();
-  await expect(boss.getByRole("alert").filter({ hasText: "Die Antwortfrist ist abgelaufen" })).toBeVisible();
+  // je nach Zeitpunkt der Revalidierung als Meldung am Knopf (Alarm) oder als Hinweis der danach abgelaufen angezeigten Karte: der Text ist in beiden Fällen derselbe
+  await expect(boss.getByText("Die Antwortfrist ist abgelaufen").first()).toBeVisible();
   const [row] = await query<{ status: string }>("select status from match_hall_requests where match_id = $1 and venue_id = $2", [matchId, venueId]);
   expect(row.status).toBe("pending");
   const [n] = await query<{ n: string }>("select count(*)::text as n from booking_evidence where match_id = $1 and venue_id = $2 and kind = 'late_attempt'", [matchId, venueId]);
