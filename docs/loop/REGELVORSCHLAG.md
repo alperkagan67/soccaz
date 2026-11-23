@@ -349,6 +349,16 @@ Wer ändert: AGENTS-SETUP.md (Rolle Writer) und CLAUDE.md (Stolperfallen); Regel
 
 **Status:** offen (Sammelkandidat, noch kein Regel-PR).
 
+## 29. Dev-Server für Browserbelege: direkt `node …/next dev`, nie `npm run dev`
+
+Anlass: Ein Dev-Server, der per `npm run dev -- -p <Port>` als `run_in_background` gestartet wurde, blieb nach `TaskStop` stehen: `TaskStop` beendet nur die Shell (npm), der Node-Prozess lauscht weiter (mehrfach beobachtet auf 3104 und 3105; der Klassifizierer verweigerte das Beenden per Befehl, der Nutzer musste es tun). Zugleich verlangsamte sich der verwaiste Server stark (Ausgabe-Pipe weg, rund 7 s je Anfrage).
+
+Vorschlag: Ein Dev-Server für Browserbelege wird nie über `npm run dev`, sondern direkt mit `node node_modules/next/dist/bin/next dev -p <Port>` als `run_in_background` gestartet, damit `TaskStop` den Node-Prozess selbst trifft. Nach dem Beenden wird der Port per `netstat -ano` auf einen Listener geprüft (deutsches Windows: Zustand `ABHÖREN`, nicht `LISTEN`); die PID des Node-Prozesses steht im eigenen Log. Bleibt ein Listener, wird die PID gemeldet, nicht umgangen. Höchstens 2 Dev-Server gleichzeitig, jeder Start mit eigenem Beenden im selben Ablauf (Speicherregel, `CLAUDE.md`).
+
+Wer ändert: `AGENTS-SETUP.md` (Rolle Writer) und `CLAUDE.md` (Stolperfallen, Speicherregel); Regel-PR (Nutzer mergt). Sammelkandidat, nächster Regel-PR (nicht hetzen; Entscheid t2q).
+
+**Status:** offen (Sammelkandidat, noch kein Regel-PR).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.

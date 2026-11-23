@@ -1,6 +1,6 @@
 # PAUSE-STAND
 
-Stand: 2026-11-23 (Abend), main = `9a2bfc0` (nach #261 Fristjob PR B, #267 Hero `23b67ab`, #268 PAUSE-STAND `1a9849e`) (Migrationen bis 0057). **PAUSE-MODUS** (Nutzer, via t2q): keine neuen Tasks, nichts Unfertiges pushen; Abschluss siehe Abschnitt 3. Verfasser: worker-4 (t1b); Angaben zu fremden Branches sind aus `gh pr list` und `git worktree list` gelesen, nicht im Code geprüft.
+Stand: 2026-11-23 (Abend), main = `ee71651` (seit dem letzten Stand gemergt: #261 Fristjob PR B `9a2bfc0`, #263 Spieler-Onboarding PR 1 `60d1a68`, #267 Hero `23b67ab`, #269 Flake-Hydration `1e6bb6c`, #271 AC-27 enforce `ee71651`) (Migrationen bis 0057). **PAUSE-MODUS** (Nutzer, via t2q): keine neuen Tasks, nichts Unfertiges pushen; Abschluss siehe Abschnitt 3. Verfasser: worker-4 (t1b); Angaben zu fremden Branches sind aus `gh pr list` und `git worktree list` gelesen, nicht im Code geprüft.
 Es gelten die Regeln aus dem Regel-PR #258 (`CLAUDE.md`, `AGENTS-SETUP.md` 2.5/3a/3b, `docs/loop/LOOP-SPEC.md` Abschnitt 14): Änderungen nur über eigenen Branch und PR, Worktrees nur über `worktree.mjs create`, Dev-Server nur nach Speicherregel (höchstens 2, sofort beenden), Port 3100 gehört dem Nutzer, `.env*` nie lesen.
 
 ## 1. Seit dem letzten Stand gemergt (einzeln, squash)
@@ -19,7 +19,9 @@ Es gelten die Regeln aus dem Regel-PR #258 (`CLAUDE.md`, `AGENTS-SETUP.md` 2.5/3
 | PR | Branch | Hash | Stand |
 |---|---|---|---|
 | #261 | `feat/pause-karenz-b` (w1) | 9a2bfc0 | **GEMERGT** (21:15 UTC): Fristjob PR B, G29-012 ganz abgehakt (Turnier-Haken in `GO-LIVE-AUDIT.md`); Notschalter für Spiele und Turniere benutzbar |
-| #263 | `feat-spieler-onboarding-server` | 480e86a | Spieler-Onboarding PR 1 (Server-Prüfung `player-onboarding.ts`, Aktion, Guard); Lauf 1 grün, 2. Lauf offen |
+| #263 | `feat-spieler-onboarding-server` | 60d1a68 | **GEMERGT**: Spieler-Onboarding PR 1 (Server-Prüfung `player-onboarding.ts`, Aktion, Guard) |
+| #272 | Spieler-Onboarding PR 2 | offen | neue Seite `/willkommen`, löscht `app/willkommen/OnboardingForm.tsx` (Ausnahmeeintrag im Wächter-Test `forms-action` dann streichen); Nutzer mergt |
+| #273 | `feat/forms-pilot` (w4) | 06853a4 | Formulare vor der Hydration, Pilot (`useFormAction` gibt `formAction` zurück, `AcceptForm`, Wächter-Test mit Ausnahmeliste, 3 E2E; E2E nur in der CI belegt); Welle 2 (Konto/Profil, `feat/forms-welle2`, Basis Pilot) wartet auf den Merge |
 | #267 | `feat/m2c-hero` (w3) | 23b67ab | **GEMERGT**: Hero Standbild und Scrim; danach AC-27 `enforce`, sobald der main-Lauf 0 Verstöße zeigt |
 | #198 | `feat/012-m6b-code` | 6515fad (lokal 7444770, 7 voraus) | Altstand 012 M6b PR 1a: Guthaben-Altpfad im Code entfernen; lokal liegt der Doppelbelastungs-Schutz; **prüfen, ob durch #207ff. überholt, sonst schließen** |
 
@@ -47,7 +49,7 @@ Migrationen: Nummer beim Bau, serieller Merge, wer später mergt renummeriert (J
 - Backlog 217/218/221 (Marker aufräumen, Limit 200 und Test mit 11 Pausen, Nachreview-Beobachtungen PR B).
 
 ## 6. Punkte, die nur der Nutzer entscheiden oder tun kann
-- **Dev-Server auf 3101 und 3104 beenden** (**laufen weiter**: 3101 PID 27364, 3104 PID 23588; `netstat` ist deutsch, Zustand ABHÖREN; mein Beenden verweigerte der Klassifizierer) und den Worktree `test-ac27-rest` (falls noch vorhanden) mit `git worktree remove` entfernen; Port 3100 gehört dem Nutzer.
+- **Dev-Server:** der Nutzer hat 3101, 3104 und 3105 beendet; danach lief für den Welle-2-Beleg wieder ein Server auf **3104 (PID 34444, ABHÖREN)**, `TaskStop` traf nur die npm-Shell: bitte beenden (Kandidat 29 in `docs/loop/REGELVORSCHLAG.md`: künftig `node …/next dev` direkt); danach ggf. Worktree `test-ac27-rest` entfernen; Port 3100 gehört dem Nutzer.
 - **Anbieter-Spike A2** (Entscheid und Konto); **Stripe-Bump** erst nach M6b (stille API-Version, `docs/loop/LOOP-SPEC.md` Abschnitt 14); Dependabot-Regeln siehe `CLAUDE.md`, Merge-Regel.
 - **Rechtsliste (`docs/loop/FEHLT-NOCH.md`):** Bedingungstext Hallen-Onboarding (ENTWURF, Anwalt), Partnervertrag Hallen, Markenprüfung Richtung F (Backlog 171), Mindestalter und Zeitzone (Backlog 214), Erstattung und Abschreibung von Guthaben, Hero-Video-Lizenz (Backlog 222).
 - **Look-Abnahme M2b / Look-Abnahme 2** (Bilder, Videos, Handy-Prüfung AC-24); Branch `feat/m2b-look` bleibt Referenz.
