@@ -43,9 +43,9 @@ function MatchRow({ m, teamId, homeId }: { m: Row; teamId: string; homeId: strin
           <span className="block truncate text-sm font-semibold">
             {m.homeName} {played ? `${m.homeScore}:${m.awayScore}` : "gegen"} {m.awayName}
           </span>
-          <span className="text-xs text-muted">{played ? formatDate(m.startsAt) : `${formatDateTime(m.startsAt)} Uhr`}</span>
+          <span className="text-sm text-muted">{played ? formatDate(m.startsAt) : `${formatDateTime(m.startsAt)} Uhr`}</span>
         </span>
-        {outcome && <span className="text-xs text-muted">{outcome}</span>}
+        {outcome && <span className="text-sm text-muted">{outcome}</span>}
       </Link>
     </li>
   );
@@ -76,7 +76,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         <h1 className="text-3xl font-bold">
           <TeamColorDot color={team.color} slug={team.slug} className="mr-2 !size-4" />
           {team.name}
-          {team.isVerified && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 align-middle text-xs text-accent-fg">Verifiziert</span>}
+          {team.isVerified && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 align-middle text-sm text-accent-fg">Verifiziert</span>}
         </h1>
         <p className="text-muted">
           {team.city} · Spielstärke {team.strength} von 5 · gegründet {formatDate(team.createdAt)}
@@ -92,7 +92,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         {isMyTeam && (
           <div className="pt-2" data-testid="team-open-lobby">
             <Link href="/matchmaking" className="btn btn-primary">Lobby aufmachen</Link>
-            <p className="mt-1 text-xs text-muted">Tag und Zeitfenster festlegen, dann sehen alle Teams eure offene Lobby und können antreten.</p>
+            <p className="mt-1 text-sm text-muted">Tag und Zeitfenster festlegen, dann sehen alle Teams eure offene Lobby und können antreten.</p>
           </div>
         )}
         {canChallenge && (
@@ -206,8 +206,8 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
                 <PlayerRow
                   data={playerCardFor(viewer, { name: m.name, elo: m.elo, position: m.position, teamColor: team.color ?? null, teamSlug: team.slug }, RATING)}
                   href={`/spieler/${m.userId}`}
-                  badges={m.isVerifiedPro ? <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs font-normal text-accent-fg">Profi</span> : null}
-                  trailing={m.role === "admin" ? <span className="text-xs text-muted">Team-Admin</span> : null}
+                  badges={m.isVerifiedPro ? <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-sm font-normal text-accent-fg">Profi</span> : null}
+                  trailing={m.role === "admin" ? <span className="text-sm text-muted">Team-Admin</span> : null}
                 />
                 {admin && <MemberControls teamId={team.id} userId={m.userId} isAdmin={m.role === "admin"} isSelf={m.userId === user?.id} />}
               </li>

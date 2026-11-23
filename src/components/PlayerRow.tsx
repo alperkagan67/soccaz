@@ -44,8 +44,9 @@ export function PlayerRow({ data, href, badges, trailing, className = "" }: { da
       )}
       {rated ? (
         <span className="flex shrink-0 items-center gap-2">
-          <span data-testid="player-row-rating" className="text-lg font-bold tabular-nums" aria-label={`Wertung ${rated.rating}`}>
-            {rated.rating}
+          <span className="text-lg font-bold tabular-nums">
+            <span className="sr-only">Wertung </span>
+            <span data-testid="player-row-rating">{rated.rating}</span>
           </span>
           <TierChip tier={rated.tier} />
         </span>

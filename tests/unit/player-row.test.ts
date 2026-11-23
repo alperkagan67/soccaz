@@ -117,3 +117,27 @@ describe("Stilregeln AC-30 (Quelltext der Listenkomponenten und der Teamseite)",
     for (const v of used) expect(["1", "2", "3", "0.5", "2.5"], `Abstand ${v}`).toContain(v);
   });
 });
+
+describe("Schriftgrößen der Teamseite (AC-30 e: höchstens vier je Ansicht)", () => {
+  // Die Teamseite zählt als umgebaute Seite. Gezählt wird der Quelltext der Seite und der Komponenten dieses Umbaus (TeamCard, PlayerRow, TierChip); base (Fließtext) zählt als eine Größe mit.
+  // Bekannte Grenze: geteilte ältere Komponenten auf derselben Seite (Stats, Sparkline, Comments, ChallengeNow, Verwaltung) bringen xs/2xl dazu; ihre Vereinheitlichung gehört in den DESIGN-F-Umbau.
+  const files = ["src/app/teams/[slug]/page.tsx", "src/components/TeamCard.tsx", "src/components/PlayerRow.tsx", "src/components/TierChip.tsx"];
+  const sizes = () => new Set([...files.map(src).join("\n").matchAll(/\btext-(xs|sm|base|lg|xl|2xl|3xl|4xl)\b/g)].map((m) => m[1]));
+
+  it("Seite plus TeamCard, Zeile und Chip: höchstens vier Größen (3xl Titel, lg Name/Wertung, sm Zusatztext, dazu base als Fließtext)", () => {
+    const used = sizes();
+    expect([...used].sort()).toEqual(["3xl", "lg", "sm"]);
+    expect(used.size + 1).toBeLessThanOrEqual(4); // plus base
+  });
+
+  it("TeamCard-Initialen, Teamname und Zeilen-Wertung teilen EINE Größe (lg); Team-Admin und Profi-Marke sind sm", () => {
+    expect(src("src/components/TeamCard.tsx")).not.toMatch(/text-xl/);
+    expect(src("src/app/teams/[slug]/page.tsx")).not.toMatch(/text-xs/);
+  });
+
+  it("die Wertung in der Zeile hat einen für Screenreader lesbaren Text (sr-only 'Wertung'), kein aria-label auf einem Span ohne Rolle", () => {
+    const out = renderToStaticMarkup(createElement(PlayerRow, { data: playerCardFor(viewers.mitglied, person, RATING) }));
+    expect(out).toContain('<span class="sr-only">Wertung </span>');
+    expect(out).not.toMatch(/aria-label="Wertung/);
+  });
+});
