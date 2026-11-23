@@ -9,7 +9,8 @@
       "privatspiel.spec.ts",
       "turnier-freigabe.spec.ts",
       "ui-confirm.spec.ts",
-      "ui-shell.spec.ts"
+      "ui-shell.spec.ts",
+      "wertung-aufdecken.spec.ts"
     ],
     "2": [
       "a11y.spec.ts",
