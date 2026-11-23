@@ -10,12 +10,28 @@ export async function devLogin(page: Page, email: string, name: string, next?: s
   await page.getByRole("button", { name: "Als Dev-Nutzer anmelden" }).click();
 }
 
+/**
+ * Spieler-Onboarding (Assistent, AC-26): Schritte Du (Name vorbelegt, Stadt), Position, Alter, Zusammenfassung, Abschluss. Felder und Knöpfe sind bis zur Hydration gesperrt
+ * (Backlog 224); Playwright wartet auf "enabled", ein Wiederholen ist nicht nötig. Alles nur innerhalb des Assistenten adressieren (strict mode).
+ */
 export async function onboard(page: Page, birthDate: string) {
   await expect(page).toHaveURL(/\/willkommen/);
-  await page.getByLabel("Stadt").selectOption("Gelsenkirchen");
-  await page.getByLabel("Position").selectOption("Angriff");
-  await page.getByLabel("Geburtsdatum").fill(birthDate);
-  await page.getByRole("checkbox").check();
+  const form = page.getByTestId("assistent");
+  const weiter = page.getByTestId("assistent-weiter");
+  // Nach jedem Weiter auf den Schritt warten: bei einem Fehler (z. B. Pflichtfeld) kommt eine klare Meldung "data-schritt", nicht "Checkbox nicht gefunden"
+  const schritt = (n: number) => expect(form).toHaveAttribute("data-schritt", String(n));
+  await form.getByLabel("Stadt").selectOption("Gelsenkirchen");
+  await weiter.click();
+  await schritt(2);
+  await form.getByLabel("Position").selectOption("Angriff");
+  await weiter.click();
+  await schritt(3);
+  await form.getByLabel("Geburtsdatum").fill(birthDate);
+  await weiter.click(); // Zusammenfassung
+  await schritt(4);
+  await weiter.click(); // Abschluss
+  await schritt(5);
+  await form.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Los geht's" }).click();
 }
 
