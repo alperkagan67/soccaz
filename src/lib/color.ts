@@ -22,10 +22,10 @@ export const TEAM_COLORS: readonly TeamColor[] = [
 export const TEXT_LIGHT = "#ffffff";
 export const TEXT_DARK = "#0b1118";
 
-/** Neutrale Töne und Orange je Thema (DESIGN.md, Abschnitt Richtung E). */
+/** Neutrale Töne und Orange je Thema (DESIGN.md, Abschnitt Richtung E). cl = Rand von Bedienelementen (--control-line, AC-27/AC-28), of = Orange als Schrift (--accent-fg), at = Orange als Schrift auf Tönung (--accent-text). */
 export const THEMES = {
-  dark: { bg: "#0f1914", fl: "#1b2a23", fl2: "#24362d", ink: "#eef4f0", muted: "#a3b5ab", rim: "#cfe0d6", line: "#3a5043", o: "#ff6a1f", oi: "#1d0a00" },
-  light: { bg: "#dde5e0", fl: "#f1f5f2", fl2: "#e3eae5", ink: "#12201a", muted: "#4a5a51", rim: "#12201a", line: "#b3c2b9", o: "#c2410c", oi: "#ffffff" },
+  dark: { bg: "#0f1914", fl: "#1b2a23", fl2: "#24362d", ink: "#eef4f0", muted: "#a3b5ab", rim: "#cfe0d6", line: "#3a5043", cl: "#6f8a7c", o: "#ff6a1f", of: "#ff6e24", at: "#ff8f57", oi: "#1d0a00" },
+  light: { bg: "#dde5e0", fl: "#f1f5f2", fl2: "#e3eae5", ink: "#12201a", muted: "#4a5a51", rim: "#12201a", line: "#b3c2b9", cl: "#6b7f73", o: "#c2410c", of: "#b23a0a", at: "#9a3412", oi: "#ffffff" },
 } as const;
 
 /** Status-Töne je Thema (M2-1): fg = Schrift/Strich auf Grund und Fläche, ink = Schrift auf voller Fläche, soft = Tönung (Deckkraft 0,10). Muss mit globals.css übereinstimmen (Test). */

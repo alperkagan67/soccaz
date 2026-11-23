@@ -70,17 +70,21 @@ describe("Orange als einzige Akzentfarbe (AC-14)", () => {
     for (const [name, theme] of [["dark", THEMES.dark], ["light", THEMES.light], ["forceDark", THEMES.dark]] as const) {
       for (const k of keys) expect(blocks[name][k]?.toLowerCase(), `${name} --${k}`).toBe(theme[map[k]]);
     }
-    expect(blocks.dark["accent-fg"]).toBe(THEMES.dark.o);
-    expect(blocks.light["accent-fg"]).toBe("#b23a0a");
-    expect(blocks.forceDark["accent-fg"]).toBe(THEMES.dark.o);
+    expect(blocks.dark["accent-fg"]).toBe(THEMES.dark.of);
+    expect(blocks.light["accent-fg"]).toBe(THEMES.light.of);
+    expect(blocks.forceDark["accent-fg"]).toBe(THEMES.dark.of);
+    // AC-27: Rand von Bedienelementen und Orange als Schrift auf der Tönung (neue Tokens), je Block gleich der Referenz
+    for (const [name, theme] of [["dark", THEMES.dark], ["light", THEMES.light], ["forceDark", THEMES.dark]] as const) {
+      expect(blocks[name]["control-line"], `${name} --control-line`).toBe(theme.cl);
+      expect(blocks[name]["accent-text"], `${name} --accent-text`).toBe(theme.at);
+    }
     expect(css).toContain("color-scheme: light dark");
   });
 
-  it("Orange als Schrift (accent-fg) hat auf Grund und Fläche mindestens 4,5:1, auf dem Feldgrund 3:1", () => {
+  it("Orange als Schrift (accent-fg) hat auf Grund, Fläche UND Feldgrund mindestens 4,5:1 (AC-27)", () => {
     for (const [theme, t] of [["dark", THEMES.dark], ["light", THEMES.light]] as const) {
       const fg = blocks[theme]["accent-fg"];
-      for (const ground of [t.bg, t.fl]) expect(contrast(fg, ground), `${theme} ${ground}`).toBeGreaterThanOrEqual(4.5);
-      expect(contrast(fg, t.fl2), `${theme} Feldgrund`).toBeGreaterThanOrEqual(3); // Feldgrund trägt keinen Fließtext
+      for (const ground of [t.bg, t.fl, t.fl2]) expect(contrast(fg, ground), `${theme} ${ground}`).toBeGreaterThanOrEqual(4.5);
     }
   });
 });

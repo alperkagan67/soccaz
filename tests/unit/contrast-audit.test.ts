@@ -6,10 +6,13 @@ import {
   compositeOver,
   evaluate,
   flattenLayers,
+  clipRects,
   groupEvaluations,
+  intersectRect,
   isLargeText,
   limitFor,
   parseCssColor,
+  planSamples,
   percentile,
   ratio,
   renderProtocol,
@@ -203,5 +206,45 @@ describe("große Messflächen (R-T343 A): kein RangeError", () => {
   it("Float-Werte werden numerisch (nicht als Text) sortiert", () => {
     expect(percentile([10, 9, 100, 1], 100)).toBe(100);
     expect(percentile([10, 9, 100, 1], 0)).toBe(1);
+  });
+});
+
+describe("Messflächen: Zuschnitt und Pixelbudget (R-T348)", () => {
+  const r = (x: number, y: number, w: number, h: number) => ({ x, y, w, h });
+  it("intersectRect: Schnitt, kein Schnitt (auch bloße Berührung) ist null", () => {
+    expect(intersectRect(r(0, 0, 10, 10), r(5, 5, 10, 10))).toEqual(r(5, 5, 5, 5));
+    expect(intersectRect(r(0, 0, 10, 10), r(10, 0, 5, 5))).toBeNull();
+    expect(intersectRect(r(0, 0, 10, 10), r(20, 20, 5, 5))).toBeNull();
+    expect(intersectRect(r(0, 0, 10, 10), r(2, 2, 3, 3))).toEqual(r(2, 2, 3, 3));
+  });
+  it("clipRects: der abgeschnittene Teil (Ellipsis, line-clamp) fällt weg, Reste unter 2 px werden verworfen", () => {
+    const text = [r(0, 0, 300, 20)]; // Text läuft über den Rahmen hinaus
+    const clip = [r(0, 0, 120, 20)]; // overflow:hidden-Behälter
+    expect(clipRects(text, clip)).toEqual([r(0, 0, 120, 20)]);
+    expect(clipRects(text, [r(0, 0, 1, 20)])).toEqual([]); // Rest 1 px breit
+    expect(clipRects(text, [r(500, 0, 50, 20)])).toEqual([]); // ganz außerhalb
+    expect(clipRects([r(0, 0, 1, 1)], [])).toEqual([]); // sr-only (1x1 px)
+    expect(clipRects(text, [])).toEqual(text); // ohne Clip unverändert
+    expect(clipRects([r(0, 0, 100, 20), r(0, 40, 100, 20)], [r(0, 0, 100, 25)])).toEqual([r(0, 0, 100, 20)]); // zweite Zeile liegt außerhalb
+  });
+  it("planSamples: Summe nie über dem Budget, erste und letzte Zeile bei Auswahl dabei, wenige Zeilen unverändert", () => {
+    const rows = (n: number) => Array.from({ length: n }, (_, i) => r(0, i * 20, 100, 18));
+    expect(planSamples([], 2500)).toEqual({ rects: [], perRect: 0 });
+    expect(planSamples(rows(1), 2500)).toEqual({ rects: rows(1), perRect: 2500 });
+    const few = planSamples(rows(5), 2500);
+    expect(few.rects).toHaveLength(5);
+    expect(few.perRect).toBe(500);
+    for (const n of [124, 125, 126, 500, 5000]) {
+      const p = planSamples(rows(n), 2500);
+      expect(p.rects.length * p.perRect, `n=${n}`).toBeLessThanOrEqual(2500);
+      expect(p.perRect).toBeGreaterThanOrEqual(20);
+      if (n > 125) {
+        expect(p.rects).toHaveLength(125);
+        expect(p.rects[0]).toEqual(rows(n)[0]);
+        expect(p.rects[124]).toEqual(rows(n)[n - 1]);
+        expect(new Set(p.rects.map((x) => x.y)).size).toBe(125); // gleichmäßig, ohne Doppelte
+      }
+    }
+    expect(planSamples(rows(3), 10)).toEqual({ rects: [], perRect: 0 }); // Budget kleiner als ein Mindestanteil
   });
 });
