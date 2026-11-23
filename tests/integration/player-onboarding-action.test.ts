@@ -102,7 +102,8 @@ describe("completeOnboardingAction: unter 16 (Rechtsaussage unveraendert)", () =
 describe("completeOnboardingAction: Fehleingaben schreiben nichts und loeschen kein Konto", () => {
   it("Zukunftsdatum, vor 1900, unmögliches Datum: Feldfehler am Geburtsdatum, Konto bleibt, nicht eingerichtet, keine Abmeldung", async () => {
     const u = await fresh("pobf");
-    for (const bad of ["2099-01-01", "1899-12-31", "2020-02-31", "abc", ""]) {
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    for (const bad of ["2099-01-01", tomorrow, "1899-12-31", "2020-02-31", "abc", ""]) {
       const res = await completeOnboardingAction(undefined, form({ birthDate: bad }));
       expect(res?.fieldErrors?.birthDate, bad).toBeTruthy();
     }
@@ -128,6 +129,31 @@ describe("completeOnboardingAction: Fehleingaben schreiben nichts und loeschen k
     const r = await row(u.id);
     expect(r.role).toBe("player");
     expect(r.isOwner).toBe(false);
+  });
+});
+
+describe("completeOnboardingAction: gleichzeitige Absendungen", () => {
+  it("zweimal gleichzeitig (gueltig): genau EIN Audit, Zeitpunkte nur einmal gesetzt, das Konto bleibt", async () => {
+    const u = await fresh("pobr");
+    const res = await Promise.allSettled([completeOnboardingAction(undefined, form()), completeOnboardingAction(undefined, form({ name: "Zweiter Versuch" }))]);
+    expect(res.every((r) => r.status === "rejected" && String(r.reason).includes("REDIRECT:/app"))).toBe(true);
+    const audits = (await db.select().from(auditLog).where(eq(auditLog.entityId, u.id))).filter((a) => a.action === "user.onboarded");
+    expect(audits).toHaveLength(1);
+    expect(await db.select().from(users).where(eq(users.id, u.id))).toHaveLength(1);
+  });
+
+  it("gueltig und gleichzeitig unter 16 (Datum): ein eingerichtetes Konto wird nicht mehr geloescht, ein geloeschtes nicht eingerichtet (nie beides)", async () => {
+    const u = await fresh("pobq");
+    await Promise.allSettled([completeOnboardingAction(undefined, form()), completeOnboardingAction(undefined, form({ birthDate: yearsAgo(10) }))]);
+    const left = await db.select().from(users).where(eq(users.id, u.id));
+    const audits = (await db.select().from(auditLog).where(eq(auditLog.entityId, u.id))).filter((a) => a.action === "user.onboarded");
+    // entweder eingerichtet (Konto da, genau ein Audit) oder geloescht (kein Audit): nie ein geloeschtes Konto mit Audit oder ein Konto ohne Einrichtung
+    if (left.length === 1) {
+      expect(left[0].onboardedAt).not.toBeNull();
+      expect(audits).toHaveLength(1);
+    } else {
+      expect(audits).toHaveLength(0);
+    }
   });
 });
 

@@ -22,7 +22,6 @@ describe("birthDateError (Fehleingabe soll kein Konto löschen)", () => {
     ["1995-05-05"],
     ["2000-02-29"], // Schaltjahr
     ["2026-11-23"], // heute
-    ["2026-11-24"], // morgen: Toleranz für Zeitzonen
     ["1900-01-01"],
     ["2010-11-23"], // ein echtes Alter unter 16 ist KEIN Feldfehler (das entscheidet die Altersprüfung)
   ])("%s ist ein gültiges Datum", (v) => {
@@ -30,6 +29,7 @@ describe("birthDateError (Fehleingabe soll kein Konto löschen)", () => {
   });
 
   it.each([
+    ["2026-11-24", "morgen (keine Toleranz: sonst würde das Konto gelöscht)"],
     ["2026-11-25", "übermorgen"],
     ["2099-01-01", "Zukunft"],
     ["1899-12-31", "vor 1900"],

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { signOut } from "@/auth";
@@ -35,13 +35,15 @@ export async function completeOnboardingAction(_prev: ActionState, formData: For
   const birth = new Date(`${parsed.input.birthDate}T00:00:00Z`);
   if (!isOldEnough(birth)) {
     // Mindestalter 16: Konto wird gelöscht, das Geburtsdatum wird nie gespeichert.
-    await db.delete(users).where(eq(users.id, user.id));
+    // nur ein noch nicht eingerichtetes Konto: eine zweite, gleichzeitige Absendung darf ein gerade eingerichtetes Konto nicht loeschen
+    const removed = await db.delete(users).where(and(eq(users.id, user.id), isNull(users.onboardedAt))).returning({ id: users.id });
+    if (removed.length === 0) redirect(parsed.input.next);
     await signOut({ redirectTo: "/unter-16" });
     return;
   }
 
   const now = new Date();
-  await db
+  const updated = await db
     .update(users)
     .set({
       name: parsed.input.name,
@@ -51,8 +53,9 @@ export async function completeOnboardingAction(_prev: ActionState, formData: For
       termsAcceptedAt: now,
       onboardedAt: now,
     })
-    .where(eq(users.id, user.id));
-  await audit(user.id, "user.onboarded", "user", user.id);
+    .where(and(eq(users.id, user.id), isNull(users.onboardedAt))) // nur einmal: bei zwei gleichzeitigen Absendungen gewinnt genau eine, die zweite ueberschreibt nichts
+    .returning({ id: users.id });
+  if (updated.length > 0) await audit(user.id, "user.onboarded", "user", user.id);
   redirect(parsed.input.next);
 }
 

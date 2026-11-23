@@ -27,7 +27,7 @@ export const BIRTH_DATE_MISSING = "Bitte gib dein Geburtsdatum an.";
 export const BIRTH_DATE_INVALID = "Bitte gib ein gültiges Geburtsdatum an (nicht in der Zukunft).";
 
 /**
- * Geburtsdatum "JJJJ-MM-TT": ein echtes Kalenderdatum, ab 1900, nicht in der Zukunft (UTC-Tag von heute plus ein Tag Toleranz für Zeitzonen). Vorher nahm das Schema jedes parsbare Datum,
+ * Geburtsdatum "JJJJ-MM-TT": ein echtes Kalenderdatum, ab 1900, nicht in der Zukunft (UTC-Tag von heute, GENAU wie die Altersprüfung `isOldEnough`; eine Toleranz für Zeitzonen würde morgen als gültig durchlassen und dann das Konto löschen). Vorher nahm das Schema jedes parsbare Datum,
  * auch eines in der Zukunft; das ergab ein Alter unter 16 und LÖSCHTE das Konto. Ein Tippfehler soll kein Konto löschen: er wird als Feldfehler gemeldet.
  */
 export function birthDateError(value: string, today: Date = new Date()): string | undefined {
@@ -39,7 +39,7 @@ export function birthDateError(value: string, today: Date = new Date()): string 
   const date = new Date(Date.UTC(y, mo - 1, d));
   if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return BIRTH_DATE_INVALID; // 31.02. und ähnliches
   if (y < MIN_BIRTH_YEAR) return BIRTH_DATE_INVALID;
-  const limit = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + 1);
+  const limit = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
   if (date.getTime() > limit) return BIRTH_DATE_INVALID;
   return undefined;
 }
