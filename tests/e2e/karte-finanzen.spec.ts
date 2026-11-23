@@ -153,12 +153,13 @@ async function scenario(browser: import("@playwright/test").Browser, model: Mode
     expect(await query("select 1 from ledger_entries where match_id = $1 and kind = 'venue_cost'", [matchId]), "Hallenkosten gebucht").toHaveLength(1);
   }
   const cards = adm.locator("dl > div dd");
-  // Einnahmen/Marge der Detailseite entfallen hier: sie summieren playerFinance().netCents (nur wallet-Konten) und zeigen im Kartenmodell 0 (Produktlücke, Backlog 188; Integrationstest finance-card.test.ts it.fails).
-  // Die Übersicht (unten) und die Spieleliste lesen den Erlös korrekt aus revenue (finance-card.test.ts).
+  // Einnahmen aus den Hauptbuch-Konten (012 M6b 1c-iii: eine Rechenstelle für Detailseite, Liste und Übersicht)
+  await expect(cards.nth(0)).toHaveText(euro("80,00 €")); // Einnahmen
   await expect(cards.nth(1)).toHaveText(euro(model === "commission" ? "0,00 €" : "80,00 €")); // Hallenkosten (Provisionsmodell: abgelehnt, nichts gebucht)
+  await expect(cards.nth(2)).toHaveText(euro(model === "commission" ? "80,00 €" : "0,00 €")); // Marge = Einnahmen - Hallenkosten
   await expect(adm.locator('[data-testid^="player-"]')).toHaveCount(10);
-  // Die Spielerkarten zeigen bei Kartenspielen keine Beträge (die Anteilszeile clearing -> revenue hat keinen Nutzer-Bezug) und die Ausnahme-Erstattung über das Guthaben entfällt:
-  // beides ist Teil von 1c-iii (finance.manualRefund per Stripe-Refund, F3); dort kommt der E2E-Test dazu (kein Verlust ohne Ersatz: Backlog 188)
+  // Spielerkarten aus den Abbuchungszeilen (payment_charges): bezahlt 8,00, netto 8,00
+  await expect(adm.getByTestId(`player-${k}h1-${run}@test.local`)).toContainText(euro("netto 8,00 €"));
 
   // Übersicht, CSV, Ausgabenliste
   const month = new Date(Date.now() + 10 * 3_600_000).toISOString().slice(0, 7);

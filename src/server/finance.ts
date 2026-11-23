@@ -147,6 +147,28 @@ export async function overview(period: Period) {
   };
 }
 
+/**
+ * EINE Rechenstelle für Einnahmen, Hallenkosten und Marge je Spiel (012 M6b 1c-iii): Spieleliste und Detailseite lesen beide hier, die Übersicht summiert dieselben Konten.
+ * Einnahmen = Konten revenue + commission netto (Provisionsmodell: nur die Provision, die Hallenmiete auf venue_payable ist durchlaufendes Geld und KEIN Ertrag).
+ * Kontenzuordnung und Einnahmen-Ausweis des Kartenmodells sind VORLÄUFIG (Steuerberater-Liste docs/loop/FEHLT-NOCH.md, "Kontenzuordnung Kartenmodell: Einnahmen-Ausweis"); Beträge sind ganze Cent, keine Rundung hier.
+ */
+export type MatchMoney = { revenueCents: number; costCents: number; marginCents: number; passThroughCents: number };
+export async function matchMoneyOf(matchIds: string[]): Promise<Map<string, MatchMoney>> {
+  const out = new Map<string, MatchMoney>();
+  if (matchIds.length === 0) return out;
+  const rows = rowsOf<{ match_id: string; revenue: number; cost: number; pass: number }>(
+    await db.execute(sql`
+      select match_id,
+        (coalesce(sum(case when credit_account in ('revenue', 'commission') then amount_cents else 0 end), 0) - coalesce(sum(case when debit_account in ('revenue', 'commission') then amount_cents else 0 end), 0))::int as revenue,
+        (coalesce(sum(case when debit_account = 'venue_cost' then amount_cents else 0 end), 0) - coalesce(sum(case when credit_account = 'venue_cost' then amount_cents else 0 end), 0))::int as cost,
+        (coalesce(sum(case when credit_account = 'venue_payable' then amount_cents else 0 end), 0) - coalesce(sum(case when debit_account = 'venue_payable' then amount_cents else 0 end), 0))::int as pass
+      from ledger_entries where match_id in (${sql.join(matchIds.map((id) => sql`${id}::uuid`), sql`, `)}) group by match_id`),
+  );
+  for (const r of rows) out.set(r.match_id, { revenueCents: r.revenue, costCents: r.cost, marginCents: r.revenue - r.cost, passThroughCents: r.pass });
+  for (const id of matchIds) if (!out.has(id)) out.set(id, { revenueCents: 0, costCents: 0, marginCents: 0, passThroughCents: 0 });
+  return out;
+}
+
 export type MatchFinanceRow = {
   id: string;
   startsAt: Date;
@@ -164,12 +186,10 @@ export type MatchFinanceRow = {
 /** Einnahmen, Hallenkosten und Marge je Spiel im Zeitraum (nur Spiele mit Buchungen). */
 export async function listMatchFinance(period: Period): Promise<MatchFinanceRow[]> {
   await connection();
-  const rows = rowsOf<{ id: string; starts_at: Date; status: string; home: string; away: string; price_cents: number | null; final_share_cents: number | null; payers: number; revenue: number; cost: number }>(
+  const rows = rowsOf<{ id: string; starts_at: Date; status: string; home: string; away: string; price_cents: number | null; final_share_cents: number | null; payers: number }>(
     await db.execute(sql`
       select m.id, m.starts_at, m.status, h.name as home, a.name as away, m.price_cents, m.final_share_cents,
-        (select count(*)::int from match_participants p where p.match_id = m.id and p.paid_cents > 0) as payers,
-        (select coalesce(sum(case when l.credit_account in ('revenue', 'commission') then l.amount_cents else 0 end) - sum(case when l.debit_account in ('revenue', 'commission') then l.amount_cents else 0 end), 0)::int from ledger_entries l where l.match_id = m.id) as revenue,
-        (select coalesce(sum(case when l.debit_account = 'venue_cost' then l.amount_cents else 0 end) - sum(case when l.credit_account = 'venue_cost' then l.amount_cents else 0 end), 0)::int from ledger_entries l where l.match_id = m.id) as cost
+        (select count(*)::int from match_participants p where p.match_id = m.id and (p.paid_cents > 0 or p.card_status = 'charged')) as payers
       from matches m
       join teams h on h.id = m.home_team_id
       join teams a on a.id = m.away_team_id
@@ -177,6 +197,7 @@ export async function listMatchFinance(period: Period): Promise<MatchFinanceRow[
         and exists (select 1 from ledger_entries l where l.match_id = m.id)
       order by m.starts_at desc limit 200`),
   );
+  const money = await matchMoneyOf(rows.map((r) => r.id));
   return rows.map((r) => ({
     id: r.id,
     startsAt: new Date(r.starts_at),
@@ -186,9 +207,9 @@ export async function listMatchFinance(period: Period): Promise<MatchFinanceRow[
     priceCents: r.price_cents,
     finalShareCents: r.final_share_cents,
     payers: r.payers,
-    revenueCents: r.revenue,
-    costCents: r.cost,
-    marginCents: r.revenue - r.cost,
+    revenueCents: money.get(r.id)!.revenueCents,
+    costCents: money.get(r.id)!.costCents,
+    marginCents: money.get(r.id)!.marginCents,
   }));
 }
 
@@ -214,39 +235,54 @@ export async function venueCommissionOverview(period: Period): Promise<VenueComm
   return rows.map((r) => ({ venueId: r.id, name: r.name, commissionCents: r.commission, feesCents: r.fees, restCents: r.commission - r.fees, minus: r.commission - r.fees < 0 }));
 }
 
-export type PlayerFinanceRow = { userId: string; name: string; email: string; paidCents: number; refundedCents: number; netCents: number; pendingRefundCents: number; inLobby: boolean; hasPaidNow: boolean };
+export type PlayerFinanceRow = { userId: string; name: string; email: string; paidCents: number; refundedCents: number; netCents: number; walletNetCents: number; cardNetCents: number; pendingRefundCents: number; inLobby: boolean; hasPaidNow: boolean };
 
-/** Wer hat für dieses Spiel bezahlt, wie viel kam zurück, was ist offen. */
+/**
+ * Wer hat für dieses Spiel bezahlt, wie viel kam zurück, was ist offen. Zwei Quellen: das Guthaben-Hauptbuch (Altmodell, wallet-Konten) UND das Kartenmodell:
+ * bezahlt = erfolgreiche Abbuchungen (payment_charges, Zahler = Übernehmer, sonst der Spieler), zurück = erfolgreiche Erstattungen (payment_refunds) dieser Abbuchungen, offen = Erstattung pending.
+ */
 export async function playerFinance(matchId: string): Promise<PlayerFinanceRow[]> {
   await connection();
-  const rows = rowsOf<{ user_id: string; name: string; email: string; paid: number; refunded: number; pending: number | null; in_lobby: boolean; paid_now: number | null }>(
+  const rows = rowsOf<{ user_id: string; name: string; email: string; wallet_paid: number; wallet_refunded: number; card_paid: number; card_refunded: number; pending: number | null; card_pending: number; in_lobby: boolean; paid_now: number | null }>(
     await db.execute(sql`
-      with money as (
+      with wallet as (
         select coalesce(debit_user_id, credit_user_id) as user_id,
           sum(case when debit_account = 'wallet' then amount_cents else 0 end)::int as paid,
           sum(case when credit_account = 'wallet' then amount_cents else 0 end)::int as refunded
         from ledger_entries where match_id = ${matchId} and (debit_account = 'wallet' or credit_account = 'wallet')
         group by 1
+      ), card as (
+        select coalesce(c.payer_user_id, c.user_id) as user_id,
+          sum(case when c.status = 'succeeded' then c.amount_cents else 0 end)::int as paid,
+          coalesce(sum((select coalesce(sum(r.amount_cents), 0) from payment_refunds r where r.charge_id = c.id and r.status = 'succeeded')), 0)::int as refunded,
+          coalesce(sum((select coalesce(sum(r.amount_cents), 0) from payment_refunds r where r.charge_id = c.id and r.status = 'pending')), 0)::int as pending
+        from payment_charges c where c.match_id = ${matchId}
+        group by 1
       )
-      select u.id as user_id, u.name, u.email, coalesce(m.paid, 0) as paid, coalesce(m.refunded, 0) as refunded,
+      select u.id as user_id, u.name, u.email,
+        coalesce(w.paid, 0) as wallet_paid, coalesce(w.refunded, 0) as wallet_refunded,
+        coalesce(k.paid, 0) as card_paid, coalesce(k.refunded, 0) as card_refunded, coalesce(k.pending, 0) as card_pending,
         pr.amount_cents as pending, (p.user_id is not null) as in_lobby, p.paid_cents as paid_now
       from users u
-      left join money m on m.user_id = u.id
+      left join wallet w on w.user_id = u.id
+      left join card k on k.user_id = u.id
       left join pending_refunds pr on pr.match_id = ${matchId} and pr.user_id = u.id
       left join match_participants p on p.match_id = ${matchId} and p.user_id = u.id
-      where m.user_id is not null or p.user_id is not null or pr.user_id is not null
+      where w.user_id is not null or k.user_id is not null or p.user_id is not null or pr.user_id is not null
       order by u.name`),
   );
   return rows.map((r) => ({
     userId: r.user_id,
     name: r.name,
     email: r.email,
-    paidCents: r.paid,
-    refundedCents: r.refunded,
-    netCents: r.paid - r.refunded,
-    pendingRefundCents: r.pending ?? 0,
+    paidCents: r.wallet_paid + r.card_paid,
+    refundedCents: r.wallet_refunded + r.card_refunded,
+    netCents: r.wallet_paid - r.wallet_refunded + r.card_paid - r.card_refunded,
+    walletNetCents: r.wallet_paid - r.wallet_refunded,
+    cardNetCents: r.card_paid - r.card_refunded,
+    pendingRefundCents: (r.pending ?? 0) + r.card_pending,
     inLobby: r.in_lobby,
-    hasPaidNow: (r.paid_now ?? 0) > 0,
+    hasPaidNow: (r.paid_now ?? 0) > 0 || r.card_paid - r.card_refunded > 0, // Guthaben-Anteil bezahlt ODER Kartenabbuchung netto offen (nach voller Erstattung nicht mehr)
   }));
 }
 
