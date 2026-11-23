@@ -115,6 +115,40 @@ test("zwei Teams nehmen gleichzeitig an: genau eines gewinnt", async ({ browser 
   await expect(loser.getByText(/nicht mehr offen/)).toBeVisible();
 });
 
+// Formulare vor der Hydration (Backlog 223/224): Ein Klick auf "Spiel annehmen", bevor die Seite hydriert ist, darf weder verloren gehen noch das Formular als GET mit Query senden. Das Formular hat dafür `action`
+// (Server-Aktion, Progressive Enhancement). Geprüft wird, was der Browser VOR der Hydration tut: er sendet die Felder des vom Server gelieferten Formulars nativ als POST (ohne JavaScript, ohne Hydration). Die Seite
+// selbst erscheint ohne JavaScript nur als "Lädt…" (Suspense), deshalb wird das Server-HTML per Anfrage gelesen und das Absenden nachgestellt.
+test("Spiel annehmen vor der Hydration: das Formular sendet nativ POST an die Server-Aktion, genau eine Annahme", async ({ browser }) => {
+  const a = await (await browser.newContext()).newPage();
+  const b = await (await browser.newContext()).newPage();
+  await newUser(a, "fpa");
+  await newUser(b, "fpb");
+  await createTeam(a, `FP-Heim ${run}`);
+  await createTeam(b, `FP-Gast ${run}`);
+  await createRequest(a, `FP-Heim ${run}`, futureLocal(14));
+  await expect(a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
+  const url = a.url();
+
+  const html = await (await b.context().request.get(url)).text();
+  const at = html.indexOf("Spiel annehmen");
+  expect(at).toBeGreaterThan(0);
+  const form = html.slice(html.lastIndexOf("<form", at), html.indexOf("</form>", at));
+  expect(form).toMatch(/^<form[^>]*\bmethod="POST"/); // nicht GET (Standard ohne action)
+  expect(form).not.toContain("javascript:throw"); // Platzhalter einer Client-Funktion ohne Server-Aktion
+  const fields: Record<string, string> = {};
+  for (const m of form.matchAll(/<input type="hidden" name="([^"]+)"(?: value="([^"]*)")?/g)) fields[m[1]] = (m[2] ?? "").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+  expect(Object.keys(fields).some((k) => k.startsWith("$ACTION_"))).toBe(true); // Kennung der Server-Aktion
+  expect(fields.teamId).toMatch(/^[0-9a-f-]{36}$/);
+
+  // Absenden wie der Browser vor der Hydration: multipart POST an dieselbe Adresse, Weiterleitung zur Lobby
+  const post = await b.context().request.post(url, { multipart: fields });
+  expect(post.url()).toMatch(/\/lobby\/[0-9a-f-]{36}$/);
+  // zweites Absenden (zum Beispiel doppelter Klick): keine zweite Annahme
+  const again = await b.context().request.post(url, { multipart: fields });
+  expect(again.url()).not.toMatch(/\/lobby\//);
+  expect(await again.text()).toMatch(/nicht mehr offen/);
+});
+
 test("Spielsuche zurückziehen und private Suche", async ({ browser }) => {
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();

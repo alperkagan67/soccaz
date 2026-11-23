@@ -5,9 +5,9 @@ import { SubmitButton } from "@/components/FormBits";
 import { useFormAction } from "@/components/useFormAction";
 
 export function AcceptForm({ requestId, teams }: { requestId: string; teams: { id: string; name: string }[] }) {
-  const { state, pending, onSubmit } = useFormAction(acceptRequestAction.bind(null, requestId));
+  const { state, pending, onSubmit, formAction } = useFormAction(acceptRequestAction.bind(null, requestId));
   return (
-    <form onSubmit={onSubmit} className="card space-y-3">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-3">
       <h2 className="font-semibold">Herausforderung annehmen</h2>
       {teams.length > 1 ? (
         <div>
