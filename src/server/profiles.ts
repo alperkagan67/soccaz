@@ -214,12 +214,9 @@ export async function listPlayers(filter: { q?: string; city?: string; page?: nu
 }
 
 /**
- * Kader eines Teams für die Teamseite. Datenschutz: Namen, IDs und Positionen bekommen nur eingeloggte Nutzer (Mitglieder und Fremde);
- * Gäste (`viewerId` null) bekommen nur die Anzahl. Die Auswahl passiert hier im Server, nicht erst in der Oberfläche.
- */
-/**
  * Elo-Werte der Mitglieder OHNE Namen und Kennungen, nur für die Teamwertung (Durchschnitt, erst ab drei Mitgliedern, siehe teamCardFor). Der Aufrufer reduziert sie auf EINE Zahl;
  * die Werte selbst gehen nie in die Seite. Unabhängig vom Betrachter, weil die Teamwertung (wie die Team-Elo) öffentlich ist.
+ * Bekannte Grenze: wer ein Team der Größe drei beobachtet, kann aus Beitritt und Austritt die Wertung der Wechselnden grob zurückrechnen (Teamwertung ist dann die Summe).
  */
 export async function getTeamMemberElos(teamId: string): Promise<number[]> {
   const rows = await db
@@ -230,6 +227,10 @@ export async function getTeamMemberElos(teamId: string): Promise<number[]> {
   return rows.map((r) => r.elo);
 }
 
+/**
+ * Kader eines Teams für die Teamseite. Datenschutz: Namen, IDs, Positionen und die Elo je Mitglied bekommen nur eingeloggte Nutzer (Mitglieder und Fremde);
+ * Gäste (`viewerId` null) bekommen nur die Anzahl. Die Auswahl passiert hier im Server, nicht erst in der Oberfläche.
+ */
 export async function getTeamRosterView(teamId: string, viewerId: string | null) {
   if (!viewerId) {
     // Gäste: nur zählen, die Namen werden gar nicht erst gelesen
