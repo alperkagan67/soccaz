@@ -106,7 +106,7 @@ test("Admin-Formulare vor der Hydration: ActionForm und ui/Form senden nativ POS
   // Je Seite Gruppen von Knopftexten: von jeder Gruppe muss mindestens ein Formular vorhanden sein (die Notabschaltung zeigt je nach Schalterstand "ausschalten" ODER "wieder einschalten")
   const erwartet: [string, string[][]][] = [
     ["/admin/einstellungen", [["Speichern"], ["Rechnungseinstellungen übernehmen"], ["Kartenzahlung ausschalten (Notabschaltung)", "Kartenzahlung wieder einschalten"]]],
-    ["/admin/beweis", [["Uhrenquelle auf Datenbank stellen"]]],
+    ["/admin/beweis", [["Uhrenquelle auf Datenbank stellen", "Beweispflicht einschalten"]]], // je nach Schalterstand: Schritt 1 ODER Schritt 2
   ];
   for (const [pfad, gruppen] of erwartet) {
     const html = await (await page.context().request.get(pfad)).text();
