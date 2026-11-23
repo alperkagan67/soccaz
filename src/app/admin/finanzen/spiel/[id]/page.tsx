@@ -58,7 +58,7 @@ export default async function MatchFinancePage({ params }: PageProps<"/admin/fin
                   {p.pendingRefundCents > 0 && ` · Erstattung ${formatEuro(p.pendingRefundCents)} offen (wartet auf Ersatz)`}
                 </p>
                 {(p.walletNetCents > 0 || p.cardRefundableCents > 0) && (
-                  <ActionForm action={manualRefundAction.bind(null, id, p.userId)} submit="Ausnahme-Erstattung buchen" className="grid grid-cols-[1fr_2fr_auto] items-end gap-2" successText="Erstattet." keepOnSuccess>
+                  <ActionForm action={manualRefundAction.bind(null, id, p.userId)} submit="Ausnahme-Erstattung buchen" className="grid grid-cols-[1fr_2fr_auto] items-end gap-2" successText="Erstattung angefordert." keepOnSuccess>
                     <div>
                       <label className="label" htmlFor={`amt-${p.userId}`}>Betrag</label>
                       <input id={`amt-${p.userId}`} name="amount" className="field" defaultValue={((p.cardRefundableCents > 0 ? p.cardRefundableCents : p.walletNetCents) / 100).toFixed(2).replace(".", ",")} />

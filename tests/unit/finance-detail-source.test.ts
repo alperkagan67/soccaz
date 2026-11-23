@@ -17,4 +17,15 @@ describe("Admin-Finanzen Detailseite: eine Rechenstelle", () => {
     expect(list).toContain("matchMoneyOf(");
     expect(list).not.toMatch(/credit_account in \('revenue', 'commission'\)/);
   });
+  it("manualRefund hält die Sperrreihenfolge Spiel -> Zahlungszeile -> Nutzer (Backlog 144; Deadlock-Zyklus mit der Absage vermeiden)", () => {
+    const start = finance.indexOf("export async function manualRefund");
+    const fn = finance.slice(start, finance.indexOf("\nexport ", start + 10));
+    const game = fn.indexOf(".from(matches)");
+    const charges = fn.indexOf(".from(paymentCharges)");
+    const user = fn.indexOf(".from(users)");
+    expect(game).toBeGreaterThan(-1);
+    expect(game).toBeLessThan(charges);
+    expect(charges).toBeLessThan(user);
+    expect(fn).toMatch(/\.from\(users\)[^;]*\.for\("no key update"\)/); // der Nutzer nur FOR NO KEY UPDATE und zuletzt
+  });
 });

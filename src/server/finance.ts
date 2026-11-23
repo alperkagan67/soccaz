@@ -331,10 +331,11 @@ export async function manualRefund(actorId: string, matchId: string, userId: str
   const text = reason.trim();
   if (text.length < 3) throw new DomainError("Bitte einen Grund angeben.");
   if (!Number.isInteger(cents) || cents <= 0) throw new DomainError("Bitte einen gültigen Betrag angeben.");
-  let sendFor: string | null = null;
+  let sentCharges: string[] = [];
   await db.transaction(async (tx) => {
-    const [lock] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
-    if (!lock) throw new DomainError("Nutzer nicht gefunden.");
+    // Sperrreihenfolge Spiel -> Zahlungszeile -> Nutzer (wie die Absage in refund.ts, Backlog 144): sonst Deadlock-Zyklus mit Absage/Webhook (500 statt Meldung)
+    const [game] = await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchId)).for("update");
+    if (!game) throw new DomainError("Spiel nicht gefunden.");
     // Kartenabbuchungen dieses Zahlers für dieses Spiel (Zahler = Übernehmer, sonst der Spieler)
     const charges = await tx
       .select()
@@ -349,11 +350,24 @@ export async function manualRefund(actorId: string, matchId: string, userId: str
       const total = open.reduce((sum, c) => sum + c.amountCents, 0);
       if (cents !== total) throw new DomainError(`Eine Ausnahme-Erstattung geht nur für die ganze Abbuchung: ${formatEuro(total)} (Teilbeträge sind noch nicht möglich).`);
       for (const c of open) await ensureRefundRow(tx, c, `Ausnahme-Erstattung: ${text}`);
+      // Zahlungsstreit: ensureRefundRow legt bei offenem oder verlorenem Streit eine Zeile cancelled_dispute an, an Stripe geht nichts: klare Ablehnung, die Transaktion rollt zurück (kein Audit, keine Mitteilung)
+      const rows = await tx.select({ status: paymentRefunds.status }).from(paymentRefunds).where(inArray(paymentRefunds.chargeId, open.map((c) => c.id)));
+      if (rows.some((r) => r.status === "cancelled_dispute")) throw new DomainError("Zu dieser Abbuchung läuft oder lief ein Zahlungsstreit: eine Erstattung ist nicht möglich. Bitte den Streit im Bereich Zahlungsstreit klären.");
       await audit(actorId, "payment.manual_refund", "match", matchId, { after: { userId, cents, charges: open.length, reason: text } }, tx);
       await notifyUsers([userId], { type: "payment", title: "Erstattung", body: `Eine Erstattung von ${formatEuro(cents)} auf deine Karte wurde angefordert (${text}).`, url: "/app" }, tx);
-      sendFor = matchId;
+      sentCharges = open.map((c) => c.id);
       return;
     }
+    // Altmodell (Guthaben): Nutzer zuletzt und nur FOR NO KEY UPDATE (nach dem Spiel, Backlog 144)
+    const [lock] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
+    if (!lock) throw new DomainError("Nutzer nicht gefunden.");
+    // Sitzplatz einer Übernahme: bezahlt hat ein anderer, der Zahler bekommt die Erstattung
+    const [covered] = await tx
+      .select({ id: paymentCharges.id })
+      .from(paymentCharges)
+      .where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.status, "succeeded"), eq(paymentCharges.userId, userId), isNotNull(paymentCharges.payerUserId), sql`${paymentCharges.payerUserId} <> ${userId}`))
+      .limit(1);
+    if (covered) throw new DomainError("Dieser Spieler hat nichts bezahlt: sein Platz wurde von einer anderen Person bezahlt (Übernahme). Bitte beim Zahler erstatten.");
     const [net] = rowsOf<{ net: number }>(
       await tx.execute(sql`
         select (coalesce(sum(case when debit_account = 'wallet' and debit_user_id = ${userId} then amount_cents else 0 end), 0)
@@ -365,8 +379,12 @@ export async function manualRefund(actorId: string, matchId: string, userId: str
     await audit(actorId, "wallet.manual_refund", "match", matchId, { after: { userId, cents, reason: text } }, tx);
     await notifyUsers([userId], { type: "payment", title: "Erstattung", body: `${formatEuro(cents)} wurden dir erstattet (${text}).`, url: "/app" }, tx);
   });
-  // Nach dem Commit senden (Stripe-Aufruf nie in der Datenbank-Transaktion); scheitert der Versand, holt der Job runRefunds es nach
-  if (sendFor) await sendPendingRefunds(sendFor).catch(() => undefined);
+  if (sentCharges.length === 0) return;
+  // Nach dem Commit senden (Stripe-Aufruf nie in der Datenbank-Transaktion). sendPendingRefunds versendet bewusst ALLE ausstehenden Erstattungen dieses Spiels (auch eine laufende Absage); scheitert der Versand,
+  // holt der Job runRefunds es nach. Danach den Zustand der Zeile lesen: abgelehnt = klare Meldung (Alarm für Admin 1 besteht), sonst "angefordert" (die Bestätigung kommt von Stripe).
+  await sendPendingRefunds(matchId).catch(() => undefined);
+  const after = await db.select({ status: paymentRefunds.status, code: paymentRefunds.failureCode }).from(paymentRefunds).where(inArray(paymentRefunds.chargeId, sentCharges));
+  if (after.some((r) => r.status === "failed")) throw new DomainError("Stripe hat die Erstattung abgelehnt (Code " + (after.find((r) => r.status === "failed")?.code ?? "unbekannt") + "). Admin 1 klärt sie manuell (Alarm angelegt).");
 }
 
 export async function listExpenses(period: Period) {
