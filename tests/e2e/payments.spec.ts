@@ -21,10 +21,10 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
   await setPlatformSetting("payments_enabled", true);
-  await setPlatformSetting("card_payments_enabled", true); // Kartenmodell (012 M6b): kein Guthaben, Bereit heißt Karte hinterlegt
   await setPlatformSetting("min_paid_players", 8);
 });
 test.afterEach(async ({ browser }) => {
+  await setPlatformSetting("card_payments_enabled", false); // der Schalter gilt nur für den Test, der ihn setzt: jeder Test startet im Standard (AUS)
   await closeContexts(browser);
 });
 test.afterAll(async () => {
@@ -40,6 +40,7 @@ const euro = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\
 
 test("Kartenspiel: Buchungsauftrag, Hallenbuchung und Finanzbereich nach der Abbuchung", async ({ browser, baseURL }) => {
   test.setTimeout(180_000);
+  await setPlatformSetting("card_payments_enabled", true); // Kartenmodell (012 M6b): kein Guthaben, Bereit heißt Karte hinterlegt; Reset im afterEach
   await seedOwner("p4adm"); // Admin 1: Finanzbereich und Preisregeln (Vertrag 009 AC-1); vor der Bestätigung, sonst bekommt er die Benachrichtigung nicht
   const { a, b, matchId, nameA, nameB } = await setupLobby(browser, "p4");
   const teamA = await teamIdByName(nameA);
@@ -197,6 +198,8 @@ test("Berechtigungen im Geldbereich", async ({ browser }) => {
 });
 
 test("Einstellungen: Zahlungen aus macht Spiele kostenlos", async ({ browser }) => {
+  // Annahme dieses Tests: Standard (Kartenmodell AUS). Bei eingeschaltetem Kartenmodell verlangt Bereit eine Karte, auch wenn "Zahlungen" aus sind; geprüft wird hier der Schalter "Zahlungen".
+  await setPlatformSetting("card_payments_enabled", false);
   const { a, matchId } = await setupLobby(browser, "p7");
   await a.goto(`/lobby/${matchId}`);
 
