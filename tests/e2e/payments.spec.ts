@@ -136,7 +136,7 @@ test("Kartenspiel: Buchungsauftrag, Hallenbuchung und Finanzbereich nach der Abb
   await expect(cards.nth(2)).toHaveText(euro("0,00 €")); // Marge
   await expect(adm.locator('[data-testid^="player-"]')).toHaveCount(10);
   // Die Spielerkarten zeigen bei Kartenspielen keine Beträge (die Anteilszeile clearing -> revenue hat keinen Nutzer-Bezug) und die Ausnahme-Erstattung über das Guthaben entfällt:
-  // beides ist Teil von 1c-iii (finance.manualRefund per Stripe-Refund, F3); dort kommt der E2E-Test dazu (kein Verlust ohne Ersatz: Backlog 186)
+  // beides ist Teil von 1c-iii (finance.manualRefund per Stripe-Refund, F3); dort kommt der E2E-Test dazu (kein Verlust ohne Ersatz: Backlog 188)
 
   // Übersicht, CSV, Ausgabenliste
   const month = new Date(Date.now() + 10 * 3_600_000).toISOString().slice(0, 7);
