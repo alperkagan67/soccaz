@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext } from "@playwright/test";
 import { AUDIT_MODE, auditPasses, groupEvaluations, renderProtocol, summarize, type Evaluated } from "../../../src/lib/contrast-audit";
 import { closeTestDb, devLogin } from "../helpers";
 import { measurePage } from "./messen";
@@ -13,10 +13,14 @@ export function registerKontrast(viewport: 390 | 1280) {
   test.setTimeout(300_000);
   const all: Evaluated[] = [];
   const errors: string[] = [];
-  let world: World;
+  let world: World | undefined;
 
   test.beforeAll(async () => {
-    world = await seedWorld(String(viewport));
+    try {
+      world = await seedWorld(String(viewport));
+    } catch (e) {
+      errors.push(`Seeds fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`); // das Protokoll nennt es; 'es wurde nichts gemessen' macht den Lauf rot
+    }
   });
   test.afterAll(async () => {
     await closeTestDb();
@@ -25,16 +29,23 @@ export function registerKontrast(viewport: 390 | 1280) {
   for (const scheme of SCHEMES) {
     for (const role of ROLLEN) {
       test(`Messung ${role}, ${scheme}, ${viewport} px`, async ({ browser }) => {
-        const ctx = await browser.newContext({ viewport: { width: viewport, height: viewport === 390 ? 844 : 900 }, colorScheme: scheme });
-        const page = await ctx.newPage();
+        // Nichts in diesem Test darf den Lauf rot machen (serial: sonst würden alle folgenden Tests, auch das Protokoll, übersprungen): jeder Fehler wird ein Messfehler
+        let ctx: BrowserContext | undefined;
         try {
+          ctx = await browser.newContext({ viewport: { width: viewport, height: viewport === 390 ? 844 : 900 }, colorScheme: scheme });
+          const page = await ctx.newPage();
           if (role !== "gast") {
-            const who = world.players[role];
-            if (!who) throw new Error(`keine Anmeldedaten für ${role}`);
-            await devLogin(page, who.email, who.name);
-            await page.waitForURL((url) => !url.pathname.startsWith("/anmelden"), { timeout: 60_000 });
+            try {
+              const who = world?.players[role];
+              if (!who) throw new Error(`keine Anmeldedaten für ${role}`);
+              await devLogin(page, who.email, who.name);
+              await page.waitForURL((url) => !url.pathname.startsWith("/anmelden"), { timeout: 60_000 });
+            } catch (e) {
+              errors.push(`${role} ${scheme} ${viewport}: Anmeldung fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
+              return; // nächste Rolle
+            }
           }
-          for (const entry of world.pages.filter((p) => p.role === role)) {
+          for (const entry of (world?.pages ?? []).filter((p) => p.role === role)) {
             try {
               await page.goto(entry.path, { waitUntil: "load", timeout: 90_000 });
               const res = await measurePage(page, { page: entry.id, role, scheme, viewport });
@@ -45,10 +56,11 @@ export function registerKontrast(viewport: 390 | 1280) {
               errors.push(`${entry.id} ${scheme} ${viewport}: Seite nicht messbar: ${e instanceof Error ? e.message : String(e)}`);
             }
           }
+        } catch (e) {
+          errors.push(`${role} ${scheme} ${viewport}: Messung abgebrochen: ${e instanceof Error ? e.message : String(e)}`);
         } finally {
-          await ctx.close();
+          await ctx?.close().catch(() => {});
         }
-        expect(true).toBe(true); // Messfehler stehen im Protokoll, sie lassen den Lauf nicht scheitern
       });
     }
   }
@@ -58,6 +70,8 @@ export function registerKontrast(viewport: 390 | 1280) {
     const errBlock = errors.length > 0 ? `\n## Messfehler (${errors.length})\n\n${errors.map((e) => `- ${e}`).join("\n")}\n` : "";
     const full = md + errBlock;
     console.log(`::group::Kontrast-Messprotokoll ${viewport} px (AC-27)\n${full}\n::endgroup::`);
+    // Messfehler sichtbar machen (auch als Warnung), damit sie im Lauf auffallen
+    for (const m of errors.slice(0, 25)) console.log(`::warning title=Kontrast Messfehler ${viewport} px::${m.split(/\s+/).join(" ").slice(0, 300)}`);
     await testInfo.attach(`kontrast-protokoll-${viewport}.md`, { body: full, contentType: "text/markdown" });
     const s = summarize(all);
     testInfo.annotations.push({ type: "kontrast", description: `${s.total} Messpunkte, ${s.fail} durchgefallen, ${s.unlesbar} unlesbar, ${errors.length} Messfehler` });

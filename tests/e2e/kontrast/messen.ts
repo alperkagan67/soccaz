@@ -169,6 +169,26 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
       errors.push(`Text ${describe(el)}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  // ---- Eingabefelder: Text in Feldern (Wert, Auswahl, Platzhalter) ist kein Textknoten, wird hier eigens gemessen
+  const fields = Array.from(document.querySelectorAll("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]), textarea, select")).filter(visible) as HTMLInputElement[];
+  for (const el of fields) {
+    try {
+      const cs = getComputedStyle(el);
+      const b = backdrop(el, false);
+      const fgValue = toRgba(cs.color);
+      const r = pageRect(el);
+      const common = { kind: "text" as const, selector: describe(el), fontSizePx: parseFloat(cs.fontSize), fontWeight: Number(cs.fontWeight) || 400, layers: b.layers, base, needPixel: b.needPixel, rect: r, disabled: el.matches("[disabled]") };
+      if (fgValue) items.push({ ...common, sample: "Eingabetext", fg: withAlpha(fgValue, effOpacity(el)) });
+      const ph = el.getAttribute("placeholder");
+      if (ph && ph.trim()) {
+        const phColor = toRgba(getComputedStyle(el, "::placeholder").color);
+        if (phColor) items.push({ ...common, sample: `Platzhalter: ${ph.trim().slice(0, 25)}`, fg: withAlpha(phColor, effOpacity(el)) });
+        else errors.push(`Platzhalterfarbe nicht lesbar bei ${describe(el)}`);
+      }
+    } catch (e) {
+      errors.push(`Feld ${describe(el)}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   // ---- Zeichen: Rand oder Fläche bedienbarer Elemente gegen den Grund
   const controls = Array.from(document.querySelectorAll("button, a[class*='btn'], input:not([type=hidden]):not([type=checkbox]):not([type=radio]), select, textarea, [role=button]")).filter(visible);
   for (const el of controls) {
