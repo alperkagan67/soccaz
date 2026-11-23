@@ -2,7 +2,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.setConfig({ testTimeout: 60_000 }); // echtes git init, worktree add und Commits je Test: auf langsamen Laufwerken mehr als 5 s
 import { classifyEntry, cmdContainsPath, normalizePath, parseNetstat, parseWorktreeList, removeTree, resolveRoots, run } from "../../scripts/worktree-cleanup.mjs";
 
 // Aufraeumen verwaister Worktree-Ordner (scripts/worktree-cleanup.mjs). ALLE Tests laufen in Verzeichnissen unter os.tmpdir() (echtes git init + git worktree add), nie im echten Repo.
@@ -28,7 +30,9 @@ function world() {
   const known = path.join(root, "bekannt");
   git(["worktree", "add", "-q", known, "-b", "bekannt"], main);
   const fake = { killed: [] as number[], listeners: [] as { port: number; pid: number }[], cmd: {} as Record<number, string> };
+  // Standard: "jetzt" liegt 48 h in der Zukunft, damit frisch angelegte Testordner als alt genug gelten; Alterstests geben now: Date.now() explizit mit
   const deps = (over: Record<string, unknown> = {}) => ({
+    now: Date.now() + 48 * 3600_000,
     git: (args: string[], cwd: string) => git(args, cwd),
     listeners: () => fake.listeners,
     commandLine: (pid: number) => fake.cmd[pid] ?? "",
@@ -131,10 +135,10 @@ describe("Worktree-Aufraeumen: Auswahl", () => {
     const fremd = mk("pr-text-x.md", true);
     const hc = mk("hc-x.txt", true);
     const rollback = mk("rollback-1.mjs", true);
-    const dry = run({ scriptDir: w.scriptDir, apply: false, deps: w.deps() });
+    const dry = run({ scriptDir: w.scriptDir, apply: false, deps: w.deps({ now: Date.now() }) });
     expect(exists(frei)).toBe(true);
     expect(statusOf(dry, "dev-board.log")).toBe("wuerde-loeschen");
-    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
     expect(exists(frei)).toBe(false);
     for (const p of [jung, fremd, hc, rollback]) expect(exists(p)).toBe(true);
     expect(statusOf(res, "apply-a1.mjs")).toBe("unbekannt");
@@ -159,7 +163,7 @@ describe("Worktree-Aufraeumen: Auswahl", () => {
     fs.mkdirSync(sub);
     fs.writeFileSync(path.join(sub, "inner.log"), "i");
     fs.utimesSync(path.join(sub, "inner.log"), alt / 1000, alt / 1000);
-    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
     expect(exists(ziel)).toBe(true);
     expect(fs.lstatSync(path.join(w.root, "dev-link.log")).isSymbolicLink()).toBe(true);
     expect(statusOf(res, "dev-link.log")).toBe("unbekannt");
@@ -172,7 +176,7 @@ describe("Worktree-Aufraeumen: Auswahl", () => {
     fs.mkdirSync(ziel);
     fs.writeFileSync(path.join(ziel, "f.txt"), "f");
     fs.symlinkSync(ziel, path.join(w.root, "verknuepfung"), "junction");
-    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
     expect(statusOf(res, "verknuepfung")).toBe("unbekannt");
     expect(exists(path.join(ziel, "f.txt"))).toBe(true);
   });
@@ -394,7 +398,7 @@ describe("Worktree-Aufraeumen: Snapshot-Rest (Ordner ohne .git)", () => {
     fs.writeFileSync(path.join(ziel, "bleibt.txt"), "x");
     fs.symlinkSync(ziel, path.join(dir, "node_modules"), "junction");
     age(dir);
-    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
     expect(statusOf(res, "snap1")).toBe("geloescht");
     expect(exists(dir)).toBe(false);
     expect(exists(path.join(ziel, "bleibt.txt"))).toBe(true);
@@ -405,7 +409,7 @@ describe("Worktree-Aufraeumen: Snapshot-Rest (Ordner ohne .git)", () => {
     const dir = snapshot(w, "snap2");
     fs.writeFileSync(path.join(dir, "src", "meine-arbeit.ts"), "einzigartig, nie committet");
     age(dir);
-    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
     expect(statusOf(res, "snap2")).toBe("uebersprungen");
     expect(exists(path.join(dir, "src", "meine-arbeit.ts"))).toBe(true);
     expect(res.lines.join(String.fromCharCode(10))).toContain("src/meine-arbeit.ts");
@@ -420,10 +424,10 @@ describe("Worktree-Aufraeumen: Snapshot-Rest (Ordner ohne .git)", () => {
       fs.writeFileSync(p, fs.readFileSync(p, "utf8").split(String.fromCharCode(10)).join(crlf));
     }
     age(dir);
-    expect(statusOf(run({ scriptDir: w.scriptDir, apply: false, deps: w.deps() }), "snap3")).toBe("wuerde-loeschen");
+    expect(statusOf(run({ scriptDir: w.scriptDir, apply: false, deps: w.deps({ now: Date.now() }) }), "snap3")).toBe("wuerde-loeschen");
     fs.writeFileSync(path.join(dir, "src/dir0/file0.ts"), `export const v0 = 99;${crlf}`);
     age(dir);
-    expect(statusOf(run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() }), "snap3")).toBe("uebersprungen");
+    expect(statusOf(run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) }), "snap3")).toBe("uebersprungen");
     expect(exists(dir)).toBe(true);
   });
 
@@ -432,19 +436,19 @@ describe("Worktree-Aufraeumen: Snapshot-Rest (Ordner ohne .git)", () => {
     const dir = snapshot(w, "snap4");
     age(dir);
     fs.utimesSync(path.join(dir, "src/dir1/file1.ts"), Date.now() / 1000, Date.now() / 1000);
-    const jung = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    const jung = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
     expect(statusOf(jung, "snap4")).toBe("uebersprungen");
     expect(jung.lines.join(String.fromCharCode(10))).toContain("juenger als 24 h");
     expect(exists(dir)).toBe(true);
     age(dir);
-    expect(statusOf(run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() }), "snap4")).toBe("geloescht");
+    expect(statusOf(run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) }), "snap4")).toBe("geloescht");
   });
 
   it("weniger als 50 Dateien bleiben, auch wenn alle bekannt sind", () => {
     const w = world();
     const dir = snapshot(w, "snap5", 49);
     age(dir);
-    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
     expect(statusOf(res, "snap5")).toBe("uebersprungen");
     expect(exists(dir)).toBe(true);
   });
@@ -464,6 +468,112 @@ describe("Worktree-Aufraeumen: Snapshot-Rest (Ordner ohne .git)", () => {
     });
     expect(statusOf(res, "snap6")).toBe("uebersprungen");
     expect(exists(dir)).toBe(true);
+  });
+});
+
+describe("Worktree-Aufraeumen: Funde des security-reviewers", () => {
+  it("Gitlink-Ordner, dessen gitdir NOCH EXISTIERT (nur nicht in worktree list), bleibt zur manuellen Pruefung", () => {
+    const w = world();
+    const dir = path.join(w.root, "gitlink-lebt");
+    fs.mkdirSync(dir);
+    const gitdir = path.join(w.tmp, "irgendein-gitdir");
+    fs.mkdirSync(gitdir);
+    fs.writeFileSync(path.join(dir, ".git"), `gitdir: ${gitdir}\n`);
+    fs.writeFileSync(path.join(dir, "arbeit.txt"), "ungepusht");
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    expect(statusOf(res, "gitlink-lebt")).toBe("uebersprungen");
+    expect(exists(path.join(dir, "arbeit.txt"))).toBe(true);
+  });
+
+  it("Mindestalter fuer ALLE Kandidatenarten: junger leerer Ordner, junger Gitlink-Rest und junge node_modules-Verknuepfung bleiben", () => {
+    const w = world();
+    const leer = path.join(w.root, "jung-leer");
+    fs.mkdirSync(leer);
+    const rest = w.orphan("jung-rest");
+    const nm = path.join(w.root, "jung-nm");
+    fs.mkdirSync(nm);
+    const ziel = path.join(w.tmp, "z");
+    fs.mkdirSync(ziel);
+    fs.symlinkSync(ziel, path.join(nm, "node_modules"), "junction");
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
+    for (const n of ["jung-leer", "jung-rest", "jung-nm"]) expect(statusOf(res, n), n).toBe("uebersprungen");
+    expect(exists(leer) && exists(rest) && exists(nm)).toBe(true);
+    // dieselben Ordner 48 h spaeter: weg
+    const spaeter = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    for (const n of ["jung-leer", "jung-rest", "jung-nm"]) expect(statusOf(spaeter, n), n).toBe("geloescht");
+  });
+
+  it("Snapshot: Ausnahmen gelten nur auf oberster Ebene; verschachteltes .git, coverage und *.tsbuildinfo mit eigenem Inhalt halten den Ordner", () => {
+    const w = world();
+    const versteck = [".git/HEAD", "docs/coverage/einzigartig.md", "pkg/x.tsbuildinfo", "pkg/next-env.d.ts"];
+    versteck.forEach((rel, i) => {
+      const dir = path.join(w.root, `versteck${i}`);
+      for (let k = 0; k < 55; k++) {
+        const p = path.join(dir, `src/f${k}.ts`);
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, `export const w${i}x${k} = ${k};\n`);
+        const q = path.join(w.main, `src/w${i}/f${k}.ts`);
+        fs.mkdirSync(path.dirname(q), { recursive: true });
+        fs.writeFileSync(q, `export const w${i}x${k} = ${k};\n`);
+      }
+      const h = path.join(dir, rel.startsWith(".git/") ? "sub/" + rel : rel);
+      fs.mkdirSync(path.dirname(h), { recursive: true });
+      fs.writeFileSync(h, `eigener Inhalt ${i}`);
+      const old = Date.now() - 72 * 3600_000;
+      for (const f of fs.readdirSync(path.join(dir, "src"))) fs.utimesSync(path.join(dir, "src", f), old / 1000, old / 1000);
+      fs.utimesSync(h, old / 1000, old / 1000);
+    });
+    git(["add", "-A"], w.main);
+    git(["commit", "-q", "-m", "v"], w.main);
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    versteck.forEach((_, i) => {
+      expect(statusOf(res, `versteck${i}`), `versteck${i}`).toBe("uebersprungen");
+      expect(exists(path.join(w.root, `versteck${i}`))).toBe(true);
+    });
+  });
+
+  it("Allowlist: Punkte sind maskiert, 'layout', 'workout', 'dev-xlog', 'chkAxcjs' passen NICHT", () => {
+    const w = world();
+    const old = Date.now() - 72 * 3600_000;
+    const namen = ["layout", "workout", "dev-xlog", "chkAxcjs", "mut-xmjs"];
+    for (const n of namen) {
+      fs.writeFileSync(path.join(w.root, n), "x");
+      fs.utimesSync(path.join(w.root, n), old / 1000, old / 1000);
+    }
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ now: Date.now() }) });
+    for (const n of namen) {
+      expect(exists(path.join(w.root, n)), n).toBe(true);
+      expect(statusOf(res, n), n).toBe("unbekannt");
+    }
+  });
+
+  it("Bare-Repo/fremdes common-dir (kein .git-Ordner) wird abgelehnt", () => {
+    const w = world();
+    const bare = path.join(w.tmp, "fremd.git");
+    fs.mkdirSync(bare);
+    expect(() => resolveRoots({ scriptDir: w.scriptDir, git: () => bare })).toThrow(/Bare-Repo/);
+  });
+
+  it("Abbruch beim erneuten Lesen von worktree list mitten im --apply-Lauf: Fehler traegt die bisherigen Zeilen (partial)", () => {
+    const w = world();
+    w.orphan("a-rest");
+    w.orphan("b-rest");
+    let n = 0;
+    const g = (args: string[], cwd: string) => {
+      if (args[0] === "worktree") {
+        n += 1;
+        if (n >= 2) throw new Error("git weg");
+      }
+      return git(args, cwd);
+    };
+    let err: (Error & { partial?: string[] }) | null = null;
+    try {
+      run({ scriptDir: w.scriptDir, apply: true, deps: w.deps({ git: g }) });
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).not.toBeNull();
+    expect(Array.isArray(err!.partial)).toBe(true);
   });
 });
 

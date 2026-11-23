@@ -83,8 +83,8 @@ export function cmdContainsPath(cmd, candidatePath) {
 
 // Allowlist fuer lose Hilfsdateien DIREKT unter worktrees/ (Entscheid t2q); alles andere wird nur als "unbekannt" gelistet, nie geloescht.
 export const FILE_ALLOWLIST = [
-  /^dev-.+.log$/, /^mut-.+.cjs$/, /^mut-.+.mjs$/, /^mutate-.+.mjs$/, /^.+.out$/, /^b[0-9]+.log$/, /^chk.+.cjs$/, /^fk.+.cjs$/, /^guard-.+.txt$/,
-  /^apply-.+.mjs$/, /^add-.+.mjs$/, /^fix-.+.mjs$/, /^run-.+.mjs$/,
+  /^dev-.+\.log$/, /^mut-.+\.cjs$/, /^mut-.+\.mjs$/, /^mutate-.+\.mjs$/, /^.+\.out$/, /^b[0-9]+\.log$/, /^chk.+\.cjs$/, /^fk.+\.cjs$/, /^guard-.+\.txt$/,
+  /^apply-.+\.mjs$/, /^add-.+\.mjs$/, /^fix-.+\.mjs$/, /^run-.+\.mjs$/,
 ];
 export const MIN_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -108,6 +108,31 @@ export const SNAPSHOT_MIN_FILES = 50;
 export const SNAPSHOT_MIN_AGE_MS = 24 * 60 * 60 * 1000;
 const SNAPSHOT_MAX_FILES = 50000;
 const SNAPSHOT_MAX_BYTES = 20 * 1024 * 1024;
+const GENERATED_FILE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** Neueste mtime im Ordner (inkl. Ordner selbst), begrenzt, ohne Verknuepfungen zu betreten, node_modules/.next uebersprungen. Fehler => Infinity (gilt als "zu jung", fail-closed). */
+export function newestMtime(dir, fsx = fs) {
+  try {
+    let newest = fsx.lstatSync(dir).mtimeMs;
+    let seen = 0;
+    const stack = [dir];
+    while (stack.length > 0) {
+      const d = stack.pop();
+      for (const name of fsx.readdirSync(d)) {
+        if (name === "node_modules" || name === ".next") continue;
+        const p = path.join(d, name);
+        const st = fsx.lstatSync(p);
+        if (st.mtimeMs > newest) newest = st.mtimeMs;
+        if (st.isDirectory() && !st.isSymbolicLink()) stack.push(p);
+        seen += 1;
+        if (seen > SNAPSHOT_MAX_FILES) return Number.POSITIVE_INFINITY;
+      }
+    }
+    return newest;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
 const GENERATED_DIRS = new Set(["node_modules", ".next", "test-results", "coverage", ".git"]);
 export function isGeneratedFile(name) {
   return name === "next-env.d.ts" || name.endsWith(".tsbuildinfo");
@@ -121,8 +146,9 @@ export function listSnapshotFiles(dir, fsx = fs) {
   const stack = [dir];
   while (stack.length > 0) {
     const d = stack.pop();
+    const top = d === dir; // Ausnahmen (generierte Ordner/Dateien) gelten NUR auf oberster Ebene; verschachtelt wird alles wie normale Dateien geprueft (kein Versteck)
     for (const name of fsx.readdirSync(d)) {
-      if (GENERATED_DIRS.has(name)) continue;
+      if (top && GENERATED_DIRS.has(name)) continue;
       const p = path.join(d, name);
       const st = fsx.lstatSync(p);
       if (st.isSymbolicLink()) continue;
@@ -134,7 +160,7 @@ export function listSnapshotFiles(dir, fsx = fs) {
       total += 1;
       if (total > SNAPSHOT_MAX_FILES) return null;
       if (st.mtimeMs > newest) newest = st.mtimeMs;
-      if (!isGeneratedFile(name)) files.push(p);
+      if (!(top && isGeneratedFile(name) && st.size <= GENERATED_FILE_MAX_BYTES)) files.push(p);
     }
   }
   return { files, newest };
@@ -275,6 +301,7 @@ export function classifyEntry({ name, root, realRoot, mainRepoReal, known, fsx =
   const count = roughCount(full, fsx);
   const info = `enthaelt ${count >= COUNT_CAP ? `mindestens ${COUNT_CAP}` : count} Dateien (ohne node_modules, .next, .git)`;
 
+  const tooYoung = () => now - newestMtime(full, fsx) <= MIN_AGE_MS;
   let gitSt = null;
   try {
     gitSt = fsx.lstatSync(path.join(full, ".git"));
@@ -292,8 +319,10 @@ export function classifyEntry({ name, root, realRoot, mainRepoReal, known, fsx =
     const m = /^gitdir:\s*(.+)$/m.exec(text);
     if (!m) return { status: "uebersprungen", reason: ".git-Datei ohne gitdir-Zeile (kein Gitlink), bitte manuell pruefen", info };
     const target = path.resolve(full, m[1].trim());
-    const exists = fsx.existsSync(target);
-    return { status: "kandidat", reason: exists ? "Worktree-Rest: Gitlink, gitdir nicht in worktree list" : "Worktree-Rest: Gitlink auf fehlendes gitdir", info };
+    // Nur wenn das gitdir FEHLT (kein Branch/Eintrag mehr): existiert es noch (z. B. gepruneter Eintrag, fremdes Repo), bleibt der Ordner zur manuellen Pruefung
+    if (fsx.existsSync(target)) return { status: "uebersprungen", reason: "Gitlink, gitdir existiert noch (nicht in worktree list), bitte manuell pruefen", info };
+    if (tooYoung()) return { status: "uebersprungen", reason: "Gitlink-Rest, aber juenger als 24 h, bleibt vorerst", info };
+    return { status: "kandidat", reason: "Worktree-Rest: Gitlink auf fehlendes gitdir, aelter als 24 h", info };
   }
   // keine .git: nur leer oder nur eine node_modules-Verknuepfung gilt als Rest
   let names = [];
@@ -302,10 +331,16 @@ export function classifyEntry({ name, root, realRoot, mainRepoReal, known, fsx =
   } catch {
     return { status: "uebersprungen", reason: "Ordner nicht lesbar", info };
   }
-  if (names.length === 0) return { status: "kandidat", reason: "Worktree-Rest: leerer Ordner", info };
+  if (names.length === 0) {
+    if (tooYoung()) return { status: "uebersprungen", reason: "leerer Ordner, aber juenger als 24 h (evtl. gerade angelegt), bleibt vorerst", info };
+    return { status: "kandidat", reason: "Worktree-Rest: leerer Ordner, aelter als 24 h", info };
+  }
   if (names.length === 1 && names[0] === "node_modules") {
     try {
-      if (fsx.lstatSync(path.join(full, "node_modules")).isSymbolicLink()) return { status: "kandidat", reason: "Worktree-Rest: nur eine node_modules-Verknuepfung", info };
+      if (fsx.lstatSync(path.join(full, "node_modules")).isSymbolicLink()) {
+        if (tooYoung()) return { status: "uebersprungen", reason: "nur eine node_modules-Verknuepfung, aber juenger als 24 h, bleibt vorerst", info };
+        return { status: "kandidat", reason: "Worktree-Rest: nur eine node_modules-Verknuepfung, aelter als 24 h", info };
+      }
     } catch {
       /* faellt unten durch */
     }
@@ -379,9 +414,9 @@ export function resolveRoots({ scriptDir, git, fsx = fs }) {
   const commonRaw = git(["rev-parse", "--git-common-dir"], scriptDir).trim();
   if (!commonRaw) throw new Error("git rev-parse --git-common-dir lieferte nichts");
   const common = fsx.realpathSync(path.resolve(scriptDir, commonRaw));
+  if (path.basename(common) !== ".git") throw new Error("git-common-dir ist kein .git-Ordner (Bare-Repo?): Abbruch");
   const mainRepo = path.dirname(common);
   const root = path.join(path.dirname(mainRepo), "worktrees");
-  if (path.basename(root) !== "worktrees") throw new Error("Wurzel heisst nicht worktrees");
   let st;
   try {
     st = fsx.lstatSync(root);
@@ -470,7 +505,13 @@ export function run({ scriptDir, apply, deps }) {
       continue;
     }
     // Wettlauf: vor dem Loeschen die Liste noch einmal lesen
-    known = readKnown({ git: deps.git, mainRepo, platform });
+    try {
+      known = readKnown({ git: deps.git, mainRepo, platform });
+    } catch (e) {
+      // Abbruch mitten im Lauf: bereits Erledigtes bleibt nachvollziehbar (die CLI gibt e.partial aus)
+      e.partial = [...sections.ordner, ...sections.dateien, ...sections.unbekannt];
+      throw e;
+    }
     const again = classifyEntry({ name, root, realRoot, mainRepoReal, known, fsx, platform, blobCheck, now: deps.now ?? Date.now() });
     if (again.status !== "kandidat") {
       add({ name, status: "uebersprungen", label: "UEBERSPRUNG", reason: `Zustand hat sich geaendert: ${again.reason}`, info: again.info });
@@ -533,6 +574,7 @@ function main(argv) {
     for (const l of res.lines) console.log(l);
     return 0;
   } catch (e) {
+    for (const l of e.partial ?? []) console.log(l);
     console.error(`Abbruch, nichts angefasst oder Rest unklar: ${String(e.message).split("\n")[0]}`);
     return 3;
   }
