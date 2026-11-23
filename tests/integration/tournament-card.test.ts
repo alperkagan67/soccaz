@@ -12,6 +12,10 @@ import { paymentCharges } from "@/db/schema";
 import { getTournament } from "@/server/tournaments";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 // 012 M5-3: Turnier im Kartenmodell. "Bereit" = Karte hinterlegt, "Anteil uebernehmen" nur im eigenen Team, nichts wird bezahlt oder abgebucht, das Bracket entsteht nicht.
 
 let hall = ""; // Partnerhalle: im Kartenmodell Pflicht (M5-1)

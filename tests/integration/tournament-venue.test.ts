@@ -9,6 +9,10 @@ import { createTournament, joinAsPlayer, registerTeam, reopenRosters, setOrganiz
 import { listPartnerVenueOptions, setTournamentVenue } from "@/server/tournament-venue";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 // 012 M5-1: Partnerhalle am Turnier (Pflicht im Kartenmodell), Snapshot von Zugang und Provisionssatz beim Fixieren, Halle waehlen nur durch den Veranstalter.
 
 beforeAll(() => setSetting(null, "card_payments_enabled", true));

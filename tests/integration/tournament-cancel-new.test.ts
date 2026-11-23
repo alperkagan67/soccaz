@@ -11,6 +11,10 @@ import { runTournamentCharges } from "@/server/payments/tournament-charge";
 import { setSetting } from "@/server/settings";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 // 012 M5-5 (Review w4/w2): Absage-Berechtigung (Vorschlagsweg), Schalter AUS zur Frist, Absage eines GEBUCHTEN Turniers (Erstattung je Zeile, Summe 0 je tournament_id, Provisions-Storno), Parallelitaet, Loeschsperre.
 
 let provider: FakeProvider;

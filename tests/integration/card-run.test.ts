@@ -11,6 +11,10 @@ import { handleStripeWebhook } from "@/server/payments/webhook";
 import { setSetting } from "@/server/settings";
 import { addPlayer, cleanup, makeMatch, SHARE_ACCOUNT } from "./helpers";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 let provider: FakeProvider;
 beforeAll(async () => {
   await db.delete(stripeEvents).where(like(stripeEvents.eventId, "evt_cr_%"));
