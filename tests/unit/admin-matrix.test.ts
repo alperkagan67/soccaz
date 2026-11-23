@@ -34,6 +34,7 @@ const PAGES: Record<string, Permission> = {
   "finanzen/rechnungen/page.tsx": "finance", // 009 M2: Monatsrechnungen, nur Admin 1
   "finanzen/spiel/[id]/page.tsx": "finance",
   "hallen/page.tsx": "booking",
+  "hallen/anfragen/page.tsx": "booking", // 013 v3 AC-31: Hallen-Anfragen freischalten/ablehnen, Admin 1 und Admin 2
   "ligen/page.tsx": "admin",
   "moderation/page.tsx": "moderation",
   "nutzer/page.tsx": "admin",
@@ -82,6 +83,10 @@ describe("Server-Aktionen mit Wächter", () => {
   it("Hallenbetreiber zuordnen: nur Admin 1 (Vertrag 011 AC-7), Admin 2 sieht nur die Anzeige", () => {
     expect(src("admin-finance-actions.ts")).toMatch(/export async function setVenueManagerAction[\s\S]{0,400}guarded\("owner", "\/admin\/hallen"/);
     expect(readFileSync(path.join(adminDir, "hallen/page.tsx"), "utf8")).toContain('canAssign = canUser(user, "owner")');
+  });
+  it("Hallen-Anfragen freischalten/ablehnen: Admin 1 und Admin 2 (Waechter booking, 013 v3 AC-31)", () => {
+    expect(src("admin-finance-actions.ts")).toMatch(/export async function approveVenueAction[\s\S]{0,300}guarded\("booking", "\/admin\/hallen\/anfragen"/);
+    expect(src("admin-finance-actions.ts")).toMatch(/export async function rejectVenueAction[\s\S]{0,300}guarded\("booking", "\/admin\/hallen\/anfragen"/);
   });
   it("Rolle vergeben: nur Admin 1 (Wächter owner)", () => {
     expect(src("admin-actions.ts")).toContain('"owner"); // nur Admin 1 vergibt Rollen');
