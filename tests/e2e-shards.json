@@ -1,9 +1,10 @@
 {
   "version": 1,
-  "note": "Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf 5 Shards nach gemessener Laufzeit (CI #155, Lauf 45062105668; Schaetzwert 30 s fuer karte-freigabe und karte-lobby). Pflege: neue Spec-Datei hier eintragen (node scripts/e2e-shards.mjs check meldet fehlende/doppelte Eintraege). Ziel je Shard: hoechstens ca. 10 Minuten. wertung-aufdecken.spec.ts liegt in Shard 4 (Shard 1 bekommt halle-onboarding, Shard 3 admin-hallen-anfragen); Laufzeit nach dem ersten CI-Lauf messen.",
+  "note": "Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf 5 Shards nach gemessener Laufzeit (CI #155, Lauf 45062105668; Schaetzwert 30 s fuer karte-freigabe und karte-lobby). Pflege: neue Spec-Datei hier eintragen (node scripts/e2e-shards.mjs check meldet fehlende/doppelte Eintraege). halle-onboarding.spec.ts (013 M2d, Shard 1): Schaetzwert ca. 150 s (5 Tests, 2 davon mit axe je Schritt), nach dem ersten CI-Lauf messen und nachtragen. Ziel je Shard: hoechstens ca. 10 Minuten. wertung-aufdecken.spec.ts liegt in Shard 4; Laufzeit nach dem ersten CI-Lauf messen.",
   "shards": {
     "1": [
       "community2.spec.ts",
+      "halle-onboarding.spec.ts",
       "karte-freigabe.spec.ts",
       "lobby-gast-kosten.spec.ts",
       "privatspiel.spec.ts",
@@ -21,6 +22,7 @@
       "ui-buttons.spec.ts"
     ],
     "3": [
+      "admin-hallen-anfragen.spec.ts",
       "admin-provision.spec.ts",
       "admin-zahlungsstreit.spec.ts",
       "payments.spec.ts",

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { connection } from "next/server";
 import { ActionButton } from "@/components/ActionButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -31,6 +32,12 @@ export default async function HallInquiriesPage() {
       {pendingVenues.map((v) => (
         <p key={v.id} className="card text-sm" data-testid={`venue-${v.status}`}>
           <strong>{v.name}:</strong> {v.status === "requested" ? "Die Anfrage wartet auf Freischaltung. Bis dahin ist die Halle nicht sichtbar und nicht buchbar." : `Die Anfrage wurde abgelehnt: ${v.reason}. Nach einer Änderung könnt ihr sie erneut senden.`}
+          {v.status === "rejected" && (
+            <>
+              {" "}
+              <Link href={`/halle/anfragen?erneut=${v.id}`} className="underline" data-testid="venue-resubmit">Erneut anfragen</Link>
+            </>
+          )}
         </p>
       ))}
       <p className="text-sm text-muted">Zwei Teams haben sich auf einen Termin geeinigt. Bestätigt, wenn die Halle dann frei ist, oder lehnt ab, wenn sie belegt ist. Die Teams wählen danach unter allen freien Hallen.</p>
