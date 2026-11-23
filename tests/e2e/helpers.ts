@@ -18,13 +18,19 @@ export async function onboard(page: Page, birthDate: string) {
   await expect(page).toHaveURL(/\/willkommen/);
   const form = page.getByTestId("assistent");
   const weiter = page.getByTestId("assistent-weiter");
+  // Nach jedem Weiter auf den Schritt warten: bei einem Fehler (z. B. Pflichtfeld) kommt eine klare Meldung "data-schritt", nicht "Checkbox nicht gefunden"
+  const schritt = (n: number) => expect(form).toHaveAttribute("data-schritt", String(n));
   await form.getByLabel("Stadt").selectOption("Gelsenkirchen");
   await weiter.click();
+  await schritt(2);
   await form.getByLabel("Position").selectOption("Angriff");
   await weiter.click();
+  await schritt(3);
   await form.getByLabel("Geburtsdatum").fill(birthDate);
   await weiter.click(); // Zusammenfassung
+  await schritt(4);
   await weiter.click(); // Abschluss
+  await schritt(5);
   await form.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Los geht's" }).click();
 }

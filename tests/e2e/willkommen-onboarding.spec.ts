@@ -195,6 +195,7 @@ test("Backlog 224: vor der Hydration ist der Ablauf gesperrt, ein Klick oder Ent
   await expect(page.getByTestId("assistent-laedt")).toBeAttached();
   await weiter(page).click({ force: true, timeout: 5_000 }).catch(() => {});
   await form(page).getByLabel(/^Anzeigename/).press("Enter", { timeout: 5_000 }).catch(() => {});
+  // BEWUSSTE feste Wartezeit (negative Prüfung): es gibt kein Ereignis, auf das man warten könnte, wenn NICHTS passieren soll; eine Sekunde reicht für eine nativ ausgelöste Navigation
   await page.waitForTimeout(1_000);
   expect(page.url()).toBe(urlBefore); // kein GET mit Query
   expect(page.url()).not.toContain("?name=");
