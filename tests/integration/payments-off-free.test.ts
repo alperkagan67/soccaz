@@ -299,5 +299,8 @@ describe("Zusage der Halle: Erinnerung laeuft auch bei Zahlungen AUS", () => {
     const notes = await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Halle hat noch nicht zugesagt")));
     expect(notes.length).toBe(1);
     expect(notes[0].url).toBe(`/turniere/${t.id}`);
+    await runCardCharges(); // Idempotenz im Job: zweiter Lauf, dieselbe Stufe, keine zweite Mitteilung
+    expect((await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Halle hat noch nicht zugesagt")))).length).toBe(1);
+    expect(await db.select().from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id))).toHaveLength(0); // kein Geldpfad
   });
 });
