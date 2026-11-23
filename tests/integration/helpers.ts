@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Pool } from "pg";
 import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
@@ -111,4 +111,19 @@ export const SHARE_ACCOUNT = process.env.TEST_LEDGER_MODEL === "commission" ? "v
 export async function answerHall(userId: string, matchId: string, venueId: string, accept: boolean, opts: Omit<HallAnswerOpts, "round"> & { round?: number | null } = {}) {
   const round = opts.round === undefined ? await currentRoundOf(db, matchId) : opts.round;
   return answerHallRequest(userId, matchId, venueId, accept, { ...opts, round });
+}
+
+/**
+ * Fixture für den bezahlten Zustand OHNE Guthaben (012 M6b): setzt paid_cents/paid_at des Platzes auf den aktuellen Anteil (wie nach einer Abbuchung).
+ * Ersetzt den Weg über payShare (Guthaben, entfernt). Kein Hauptbuch-Eintrag; wer den Geldweg prüfen will, nutzt die Karten-Tests (charge/refund).
+ */
+export async function seedShare(userId: string, matchId: string, cents?: number) {
+  const { ensurePrice, shareToCharge } = await import("@/server/wallet");
+  const [match] = await db.select().from(matches).where(eq(matches.id, matchId));
+  let amount = cents;
+  if (amount === undefined) {
+    const { priceCents } = await db.transaction((tx) => ensurePrice(tx, match));
+    amount = priceCents ? await shareToCharge(db, match, priceCents) : 0;
+  }
+  await db.update(matchParticipants).set({ paidCents: amount, paidAt: new Date() }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
 }

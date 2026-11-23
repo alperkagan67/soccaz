@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, devLogin, futureLocal, newUser, onboard, run } from "./helpers";
-import { callJob, fundWallet, query, setMatchTimes, setPlatformSetting, userIdByEmail, walletBalanceOf, seedShare } from "./helpers-db";
+import { callJob, query, seedCardReady, setMatchTimes, setPlatformSetting, userIdByEmail } from "./helpers-db";
 
 test.setTimeout(180_000);
 
@@ -270,6 +270,7 @@ test("Privatspiel: Teilen per WhatsApp enthält den Einladungslink, nur der Vera
 test("Privatspiel: sinkt die Spielerzahl, bleibt der Platz der anderen bestehen (die Nachzahl-Oberfläche entfällt mit 012 M6a, die Server-Logik prüfen die Integrationstests)", async ({ browser }) => {
   test.setTimeout(240_000);
   await setPlatformSetting("payments_enabled", true);
+  await setPlatformSetting("card_payments_enabled", true); // Kartenmodell (012 M6b): kein Guthaben, Bereit heißt Karte hinterlegt
   try {
     const org = await (await browser.newContext()).newPage();
     await newUser(org, "pgdue");
@@ -292,13 +293,12 @@ test("Privatspiel: sinkt die Spielerzahl, bleibt der Platz der anderen bestehen 
       await expect(p).toHaveURL(new RegExp(`/lobby/${matchId}$`), { timeout: 40_000 });
       others.push({ key, p });
     }
-    for (const key of ["pgdue", "pgdue1", "pgdue2", "pgdue3"]) await fundWallet(await userIdByEmail(`${key}-${run}@test.local`), 5000);
     await org.reload();
     await org.getByRole("button", { name: "Zufällig einteilen" }).click();
     await expect.poll(async () => (await query("select 1 from match_participants where match_id = $1 and team_id is null", [matchId])).length).toBe(0);
 
-    // alle vier zahlen 100 / 4 = 25,00 Euro (Seed statt Bezahlen-Knopf)
-    for (const key of ["pgdue", "pgdue1", "pgdue2", "pgdue3"]) await seedShare(matchId, await userIdByEmail(`${key}-${run}@test.local`), 2500);
+    // alle vier hinterlegen eine Karte (Seed); abgebucht wird erst zur Frist
+    for (const key of ["pgdue", "pgdue1", "pgdue2", "pgdue3"]) await seedCardReady(matchId, await userIdByEmail(`${key}-${run}@test.local`));
 
     // einer geht: 3 Spieler, der Anteil steigt auf 33,34 Euro, die anderen zahlen 8,34 Euro nach
     const leaver = others[2].p;
@@ -308,6 +308,7 @@ test("Privatspiel: sinkt die Spielerzahl, bleibt der Platz der anderen bestehen 
     // die Anzeige „Anteil jetzt X, noch Y zu zahlen“ und der Nachzahl-Knopf sind mit 012 M6a entfallen; die Nachzahlung selbst deckt tests/integration/privategame.test.ts ab
   } finally {
     await setPlatformSetting("payments_enabled", false);
+    await setPlatformSetting("card_payments_enabled", false);
   }
 });
 
@@ -317,9 +318,10 @@ test("Privatspiel: sinkt die Spielerzahl, bleibt der Platz der anderen bestehen 
  */
 const slow = expect.configure({ timeout: 30_000 });
 
-test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle zahlen, Bereit, Preis fest, nicht öffentlich (AC-15)", async ({ browser }) => {
+test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle hinterlegen eine Karte, Bereit, Preis fest, nicht öffentlich (AC-15)", async ({ browser }) => {
   test.setTimeout(600_000);
   await setPlatformSetting("payments_enabled", true);
+  await setPlatformSetting("card_payments_enabled", true); // Kartenmodell (012 M6b): kein Guthaben, Bereit heißt Karte hinterlegt
   try {
     const org = await (await browser.newContext()).newPage();
     await newUser(org, "pgfull");
@@ -353,18 +355,17 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
       players.push({ key: `pgfull${i}`, page });
     }
     const everyone = [{ key: "pgfull", page: org }, ...players];
-    for (const p of everyone) await fundWallet(await userIdByEmail(`${p.key}-${run}@test.local`), 3000);
     await slow.poll(async () => (await query("select 1 from match_participants where match_id = $1", [matchId])).length).toBe(10);
 
-    // Einteilung, dann zahlt jeder seinen Anteil (Miete geteilt durch 10 = 10,00 €)
+    // Einteilung, dann hinterlegt jeder eine Karte (Seed; Anteil = Miete geteilt durch 10 = 10,00 €, abgebucht wird erst später)
     org.on("dialog", (d) => void d.accept());
     await org.reload();
     await org.getByRole("button", { name: "Zufällig einteilen" }).click();
     await slow.poll(async () => (await query("select 1 from match_participants where match_id = $1 and team_id is null", [matchId])).length).toBe(0);
-    for (const p of everyone) await seedShare(matchId, await userIdByEmail(`${p.key}-${run}@test.local`), 1000); // Seed statt Bezahlen-Knopf (012 M6a)
-    const paid = await query<{ paid_cents: number }>("select paid_cents from match_participants where match_id = $1", [matchId]);
-    expect(paid).toHaveLength(10);
-    expect(paid.every((r) => r.paid_cents === 1000)).toBe(true);
+    for (const p of everyone) await seedCardReady(matchId, await userIdByEmail(`${p.key}-${run}@test.local`));
+    const seats = await query<{ card_status: string; paid_cents: number }>("select card_status, paid_cents from match_participants where match_id = $1", [matchId]);
+    expect(seats).toHaveLength(10);
+    expect(seats.every((r) => r.card_status === "card_ready" && r.paid_cents === 0)).toBe(true); // Karte da, vor der Abbuchung nichts bezahlt
     expect((await query<{ final_share_cents: number | null }>("select final_share_cents from matches where id = $1", [matchId]))[0].final_share_cents).toBeNull(); // vor dem zweiten Bereit ist der Preis noch nicht fest
 
     // alle machen sich bereit; der Veranstalter ist Captain beider Teams und bestätigt für beide
@@ -381,11 +382,10 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
     const done = (await query<{ h: Date | null; a: Date | null }>("select home_final_at as h, away_final_at as a from matches where id = $1", [matchId]))[0];
     expect(done.h).not.toBeNull();
     expect(done.a).not.toBeNull();
-    expect((await query<{ n: number }>("select coalesce(sum(paid_cents), 0)::int as n from match_participants where match_id = $1", [matchId]))[0].n).toBe(10_000); // die Miete ist gedeckt
+    expect((await query<{ f: number }>("select final_share_cents as f from matches where id = $1", [matchId]))[0].f).toBe(1000); // Anteil 100 € / 10, die zehn Anteile decken die Miete
     // nach der Bestätigung beider Captains steht die Spielübersicht mit allen Infos offen
     await org.goto(`/lobby/${matchId}/uebersicht`);
     await slow(org.getByText(`E2E Gesamthalle ${run}`).first()).toBeVisible();
-    expect(await walletBalanceOf(await userIdByEmail(`pgfull-${run}@test.local`))).toBe(2000);
 
     // nicht öffentlich: nicht in der Suche, Fremde sehen Fehlerseiten wie bei einem nicht vorhandenen Spiel, nicht in der Rangliste
     const anon = await (await browser.newContext()).newPage();
@@ -407,12 +407,14 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
     await slow(anon.getByText("Team Blau")).toHaveCount(0);
   } finally {
     await setPlatformSetting("payments_enabled", false);
+    await setPlatformSetting("card_payments_enabled", false);
   }
 });
 
-test("Privatspiel ohne volle Miete: zur 48-h-Frist vor Anstoß wird abgesagt, alle Zahlenden bekommen ihren Anteil zurück, der Veranstalter trägt nichts (AC-9/AC-15)", async ({ browser, baseURL }) => {
+test("Privatspiel ohne volle Miete: zur 48-h-Frist vor Anstoß wird abgesagt (nicht alle haben eine Karte, nicht bestätigt), es wird nichts abgebucht, der Veranstalter trägt nichts (AC-9/AC-15)", async ({ browser, baseURL }) => {
   test.setTimeout(300_000);
   await setPlatformSetting("payments_enabled", true);
+  await setPlatformSetting("card_payments_enabled", true); // Kartenmodell (012 M6b): kein Guthaben, Bereit heißt Karte hinterlegt
   try {
     const org = await (await browser.newContext()).newPage();
     await newUser(org, "pgcov");
@@ -436,18 +438,14 @@ test("Privatspiel ohne volle Miete: zur 48-h-Frist vor Anstoß wird abgesagt, al
       others.push({ key, page });
     }
     const everyone = [{ key: "pgcov", page: org }, ...others];
-    for (const p of everyone) await fundWallet(await userIdByEmail(`${p.key}-${run}@test.local`), 5000);
     org.on("dialog", (d) => void d.accept());
     await org.reload();
     await org.getByRole("button", { name: "Zufällig einteilen" }).click();
     await slow.poll(async () => (await query("select 1 from match_participants where match_id = $1 and team_id is null", [matchId])).length).toBe(0);
 
-    // nur der Veranstalter und ein Spieler zahlen (2 x 25,00 = 50,00 € von 100,00 €), zwei zahlen nicht
+    // nur der Veranstalter und ein Spieler haben eine Karte hinterlegt (Seed), zwei nicht; die Captains bestätigen nicht
     const payers = [everyone[0], everyone[1]];
-    for (const p of payers) {
-      await seedShare(matchId, await userIdByEmail(`${p.key}-${run}@test.local`), 2500); // Seed statt Bezahlen-Knopf (012 M6a)
-      expect(await walletBalanceOf(await userIdByEmail(`${p.key}-${run}@test.local`))).toBe(2500);
-    }
+    for (const p of payers) await seedCardReady(matchId, await userIdByEmail(`${p.key}-${run}@test.local`));
 
     // Vor der Frist (Anstoß in 60 Stunden, angelegt vor 100 Stunden) passiert nichts, die Lobby bleibt offen
     await setMatchTimes(matchId, 60, 100);
@@ -458,11 +456,13 @@ test("Privatspiel ohne volle Miete: zur 48-h-Frist vor Anstoß wird abgesagt, al
     await callJob(baseURL!, "lobby-deadlines");
     await slow.poll(async () => (await query<{ status: string }>("select status from matches where id = $1", [matchId]))[0].status).toBe("cancelled");
 
-    // alle Zahlenden haben ihren Anteil zurück, der Veranstalter hat nichts verloren
-    for (const p of everyone) expect(await walletBalanceOf(await userIdByEmail(`${p.key}-${run}@test.local`)), p.key).toBe(5000);
+    // es wurde nichts abgebucht, also gibt es nichts zu erstatten: keine Abbuchungszeilen, keine Hauptbuch-Zeilen, der Veranstalter trägt nichts
+    expect(await query("select 1 from payment_charges where match_id = $1", [matchId])).toHaveLength(0);
+    expect(await query("select 1 from ledger_entries where match_id = $1", [matchId])).toHaveLength(0);
     await payers[1].page.reload();
     await slow(payers[1].page.getByText("Dieses Spiel wurde abgesagt.")).toBeVisible();
   } finally {
     await setPlatformSetting("payments_enabled", false);
+    await setPlatformSetting("card_payments_enabled", false);
   }
 });
