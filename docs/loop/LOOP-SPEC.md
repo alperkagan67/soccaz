@@ -131,7 +131,7 @@
   2. Kurzen Plan schreiben (Superpowers `writing-plans`), Plan im Task-Bericht referenzieren
   3. **TDD:** Zuerst Test(s) für die Kriterien schreiben → rot → implementieren → grün
   4. `/goal` setzen (Bedingung nach Abschnitt 4)
-  5. Commit(s) auf dem Task-Branch; Worker pushen nie, den PR-Branch pusht der Task Manager (CLAUDE.md, Konventionen)
+  5. Commit(s) auf dem Task-Branch; Push: CLAUDE.md, Konventionen
   6. Bericht an Task Manager im Protokollformat (Abschnitt 8), **mit Belegen**: Befehl + Ergebnis
 - **Superpowers-Abgrenzung:** Worker nutzen `writing-plans`, `test-driven-development`, `verification-before-completion`, `systematic-debugging`. Sie nutzen **nicht** `brainstorming` (der Vertrag existiert schon), **nicht** `using-git-worktrees` (Worktrees verwaltet der Task Manager) und **nicht** `subagent-driven-development` (Parallelisierung macht Herdr). Die genauen Skill-Namen nach der Installation per `/skills` prüfen und hier korrigieren. Superpowers lädt sich beim Sessionstart automatisch; der Worker-Prompt muss die Abgrenzung deshalb ausdrücklich nennen.
 
@@ -156,7 +156,7 @@
 
 ### Phase 8 – Merge
 - **Merge-Regel:** siehe CLAUDE.md, Merge-Regel (wer mergt, Voraussetzungen, Ausnahmen, Aufräumen).
-- **Merge-Ablauf (Begründung):** Ein Merge auf veraltetem Stand kann `main` rot machen, obwohl der PR grün war; darum `gh pr update-branch` vor dem Merge und die CI von `main` nach jeder Serie. Die frühere Grenze „ein CI-Lauf pro 30 Minuten“ ist überholt (seit die Browser-Tests in 5 Teilen laufen, rund 10 Minuten); es gilt: höchstens 2 PRs mit disjunkten Dateien gleichzeitig in der CI, Doku-PRs immer parallel. Zwei grüne Läufe auf verschiedenen SHAs ohne Rerun sind nur für Zahlungs-, Auth-, Migrations- und Beweisprotokoll-PRs sowie PRs mit Flake in den letzten 7 Tagen nötig, sonst genügen ein grüner Lauf auf aktuellem `main`-Stand und die Reviews. Meldungen über Merge oder Schließen nennen `gh pr view <nr> --json state,mergedAt,mergeCommit` als Beleg.
+- **Merge-Ablauf (Begründung):** Ein Merge auf veraltetem Stand kann `main` rot machen, obwohl der PR grün war; darum `update-branch` vor dem Merge und die CI von `main` nach jeder Serie. „Ein CI-Lauf pro 30 Minuten“ ist überholt, seit die Browser-Tests in 5 Teilen rund 10 Minuten laufen. Die geltenden Regeln (2 PRs gleichzeitig, wann zwei grüne Läufe nötig sind, Belegpflicht) stehen in CLAUDE.md, Merge-Regel.
 
 ### Phase 9 – Retro (Compounding)
 - **Wer:** Task Manager entwirft, Orchestrator kürzt, Nutzer sieht es im PR
@@ -367,7 +367,7 @@ Mehrere Schichten, weil jede einzelne Lücken hat:
 5. **Git-Identität:** `user.email` = noreply-Adresse (repo-lokal), auch in jedem Worktree prüfen.
 6. **Öffentliches Repo:** Vor jedem Commit Geheimnis-Check (keine Tokens, Passwörter, E-Mails, lokalen Pfade).
 7. **Schutzdateien:** `scripts/ci-gate.mjs`, `tests/integration/db-guard.ts`, `tests/e2e/helpers.ts` und `tests/e2e/global-teardown.ts` bestimmen, was als „grün“ oder „sicher“ gilt; Änderungen daran sind wie `.github/` `NEEDS-USER` (CLAUDE.md, Merge-Regel). Agenten lockern ihre eigenen Schutzregeln nicht.
-8. **Messungen auf CI-Runnern** (Leistung, Kontrast) laufen im Meldemodus und sind nie hart gating; Notschalter- und Sicherheitsmitteilungen sind nicht abschaltbar.
+8. **Messungen auf CI-Runnern:** Meldemodus, Kontrastmessung gating erst, wenn der Vertrag sie verbindlich macht (CLAUDE.md, Stolperfallen).
 
 ---
 
@@ -456,9 +456,9 @@ Jede Etappe = eigener Task mit eigenem Check. Writer und Reviewer verschieden.
 
 - **Stille Standardversionen pinnen (20):** Bibliotheken, deren Standardwert Verhalten außerhalb unseres Codes festlegt (API-Version, Protokoll, Verschlüsselung, Zeitzone), werden VOR dem Bump explizit auf den bisher wirksamen Wert gepinnt; ein Test vergleicht Pin und Standardwert der installierten Bibliothek und wird bei einem Bump ohne bewusste Entscheidung rot (Muster `tests/unit/stripe-api-version.test.ts`). Anlass: Der Dependabot-Bump von stripe-node hätte die Stripe-API-Version still gewechselt.
 - **Lockfile nur Zielpakete (21):** Ein Abhängigkeits-PR ändert im Lockfile nur die Zielpakete und ihre eigenen Abhängigkeiten; Versionen und Integritäten werden vorher gegen den Dependabot-Stand oder `origin/main` verglichen, Plattformfelder (`libc`, `cpu`, `os`) und unbeteiligte Einträge bleiben wie auf `origin/main`; der PR-Text nennt die Zahl der geänderten Einträge. Anlass: Ein unter Windows erzeugtes Lockfile wich vom Linux-Lockfile ab.
-- **Dependabot (19):** kein Merge ohne OK des Orchestrators; Dependabot schließt seine PRs selbst (nie von Hand schließen); Major-Sprünge nur als eigener Task; Actions-Bumps (`.github/`) sind `NEEDS-USER` und werden gesammelt.
+- **Dependabot (19):** Regeln in CLAUDE.md, Merge-Regel.
 - **Keine Installation durch Agenten:** Skills, Plugins, MCP-Server und Pakete installiert kein Agent selbst; Vorschläge mit Quelle, Version, Dateiliste und Risiko gehen an den Nutzer (globale Regel).
-- **Node** mindestens 22.13 (`.nvmrc`, `engines`, `scripts/check-node.mjs`).
+- **Node-Mindestversion:** CLAUDE.md, Konventionen.
 
 ---
 
