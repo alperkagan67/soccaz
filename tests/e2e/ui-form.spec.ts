@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitHydrated } from "./flows";
 
 // M2-3a: Tastatur, Fokus, Fehler am Feld und Breite von Form/Field/DateTimeField auf der Showcase /dev/komponenten (keine Datenbank, kein Login).
 
@@ -6,6 +7,8 @@ async function open(page: Page, scheme: "dark" | "light" = "dark") {
   await page.emulateMedia({ colorScheme: scheme });
   await page.goto("/dev/komponenten", { timeout: 90_000 });
   await expect(page.getByTestId("form-demo")).toBeVisible({ timeout: 60_000 });
+  // vor der Hydration rendert die Showcase action als javascript:throw (Client-Funktion statt Server-Aktion): erst nach der Hydration bedienen (Flake-Klasse Backlog 223)
+  await waitHydrated(page.getByTestId("form-demo").getByRole("button", { name: "Speichern" }));
 }
 
 const demo = (page: Page) => page.getByTestId("form-demo");

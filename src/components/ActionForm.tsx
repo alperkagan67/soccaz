@@ -26,7 +26,7 @@ export function ActionForm({
   keepOnSuccess?: boolean;
   danger?: boolean;
 }) {
-  const { state, pending, onSubmit } = useFormAction(action);
+  const { state, pending, onSubmit, formAction } = useFormAction(action);
   const ref = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function ActionForm({
   }, [state, keepOnSuccess]);
 
   return (
-    <form ref={ref} onSubmit={onSubmit} className={className}>
+    <form ref={ref} action={formAction} onSubmit={onSubmit} className={className}>
       {children}
       <button className={`btn ${danger ? "btn-danger" : "btn-primary"} w-full disabled:opacity-60`} disabled={pending}>
         {pending ? "Bitte warten…" : submit}

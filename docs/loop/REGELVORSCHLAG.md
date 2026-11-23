@@ -359,6 +359,16 @@ Wer ändert: `AGENTS-SETUP.md` (Rolle Writer) und `CLAUDE.md` (Stolperfallen, Sp
 
 **Status:** offen (Sammelkandidat, noch kein Regel-PR).
 
+## 30. Worktree-Aufräumen per Skript; Hilfsdateien im Scratchpad
+
+Anlass: Nach Merges blieben Worktree-Reste liegen (gesperrte Ordner, die sich nicht entfernen ließen: „Invalid argument“, meist ein Prozess oder eine Shell im Ordner), und Hilfs- und Scratch-Dateien der Worker (`apply-*.mjs`, `a?-*.txt` u. ä.) lagen direkt unter `worktrees/` neben den Worktrees. Das Aufräumen war Handarbeit mit dem Risiko, etwas Falsches zu löschen.
+
+Vorschlag: (a) Der Task Manager führt nach jedem Merge ein Worktree-Aufräum-Skript aus: zuerst ein Trockenlauf (zeigt, was entfernt würde), danach `--apply`. Entfernt werden nur Worktree-Reste (Worktrees gemergter PR-Branches nach `gh pr view` = MERGED und Freigabe des Workers) und Hilfsdateien einer festen Allowlist, nie Nutzerinhalt. Gesperrte Ordner stehen in der Meldung des Task Managers (Name, Grund, wer beenden muss). Das Skript ist ein eigener PR (Reviewer: w4, R-T362). (b) Worker legen Hilfs- und Scratch-Dateien im Scratchpad ab, **nie** direkt unter `worktrees/`; `AGENTS-SETUP.md` 3a bekommt den Satz.
+
+Wer ändert: `AGENTS-SETUP.md` (3a: Task Manager und Worker), `CLAUDE.md` (Konventionen, ein Halbsatz); Regel-PR (Nutzer mergt). Sammelkandidat, nächster Regel-PR (Entscheid t2q: JA).
+
+**Status:** offen (Sammelkandidat, noch kein Regel-PR).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.

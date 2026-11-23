@@ -8,14 +8,10 @@ import { describe, expect, it } from "vitest";
 // darf nur kleiner werden (ein Eintrag ohne Verstoß lässt den Test rot werden: dann streichen).
 const root = join(__dirname, "..", "..", "src");
 
-/** Datei -> Grund (Welle laut docs/loop/BACKLOG.md 224). Client-Handler brauchen JavaScript ohnehin (Welle 5: Knopf bis zur Hydration gesperrt + method=post). */
+/** Datei -> Grund. Nur noch Client-Handler-Formulare mit eigener Sperre (Welle 5: LobbyClient und MatchClient sperren ihren Knopf per useHydrated und haben method=post; Assistent und CardForm bleiben bewusst nicht erzwungen). Die Liste darf nur kleiner werden. */
 export const EXCEPTIONS: Record<string, string> = {
-  "components/ActionForm.tsx": "Welle 4 (Bausteine, 29 Verwendungen)",
-  "components/ui/Form.tsx": "Welle 4 (Bausteine)",
-  "components/ui/Assistent.tsx": "Welle 5 (Client-Handler)",
-  "app/lobby/[id]/CardForm.tsx": "Welle 5 (Client-Handler, Stripe Elements)",
-  "app/lobby/[id]/LobbyClient.tsx": "Welle 5 (Client-Handler)",
-  "app/spiele/[id]/MatchClient.tsx": "Welle 5 (Client-Handler)",
+  "components/ui/Assistent.tsx": "bewusst nicht erzwungen: eigene Sperre (`bereit`: fieldset disabled und Knopf disabled bis der Baustein im Browser aktiv ist, #272); Client-Handler ohne Server-Aktion",
+  "app/lobby/[id]/CardForm.tsx": "bewusst nicht erzwungen: Zahlung (Stripe Elements) wird nicht angefasst; der Knopf ist serverseitig gesperrt (`disabled={!stripe || busy}`), bis Stripe im Browser geladen ist, Enter löst bei gesperrtem Standardknopf keine Absendung aus",
 };
 
 function files(dir: string): string[] {
@@ -26,13 +22,13 @@ function files(dir: string): string[] {
 }
 
 /** Öffnende <form ...>-Tags samt Attributen; `>` in {...} oder Anführungszeichen zählt nicht als Ende (onSubmit={(e) => {...}}). */
-export function formTags(src: string): string[] {
+export function formTags(src: string, names = "form"): string[] {
   const out: string[] = [];
-  const re = /<form(?=[\s>])/g;
+  const re = new RegExp(`<(?:${names})(?=[\\s>])`, "g");
   for (let m = re.exec(src); m; m = re.exec(src)) {
     let depth = 0;
     let quote = "";
-    let i = m.index + 5;
+    let i = m.index + m[0].length;
     for (; i < src.length; i++) {
       const c = src[i];
       if (quote) {
@@ -126,5 +122,54 @@ describe("useFormAction bekommt nie eine Inline-Closure", () => {
     expect(INLINE_CLOSURE.test("useFormAction(createTeamAction)")).toBe(false);
     expect(INLINE_CLOSURE.test("useFormAction(joinTeamAction.bind(null, token))")).toBe(false);
     expect(INLINE_CLOSURE.test("export function useFormAction(action: (prev: ActionState) => void)")).toBe(false);
+  });
+});
+
+// Welle 4: ActionForm und ui/Form bekommen die Aktion als Prop. Jeder Aufrufer muss eine Server-Aktions-Referenz übergeben (importierte Aktion oder `.bind(null, …)`), keine Pfeilfunktion und kein `function`.
+// Geprüft wird je JSX-Tag (Klammern und Anführungszeichen beachtet: ein `=>` in einer früheren Prop beendet den Tag nicht), auch an den Wrappern, die `action` nur weiterreichen.
+export const ACTION_TAGS = "ActionForm|Form|EvidenceSwitchForm|HallDeclineForm|ApplyForm";
+export const CLOSURE_PROP = /(?<![-\w])action=\{\s*(async\s*)?(\(|function\b)/;
+// Eine lokale Variable `action`, die als Funktion definiert ist (`const action = async (…) =>`), wäre ebenfalls keine Referenz.
+export const LOCAL_ACTION_FUNCTION = /\b(const|let)\s+action\s*=\s*(async\s*)?(\(|function\b)/;
+
+describe("ActionForm, Form und ihre Wrapper bekommen keine Inline-Closure als action", () => {
+  const alle = (dir: string): string[] =>
+    readdirSync(dir).flatMap((n) => {
+      const p = join(dir, n);
+      return statSync(p).isDirectory() ? alle(p) : p.endsWith(".tsx") ? [p] : [];
+    });
+  const rel = (f: string) => relative(root, f).split("\\").join("/");
+
+  it("kein Aufrufer in src übergibt eine Pfeilfunktion oder function als action", () => {
+    const treffer = alle(root)
+      .filter((f) => formTags(readFileSync(f, "utf8"), ACTION_TAGS).some((tag) => CLOSURE_PROP.test(tag)))
+      .map(rel);
+    expect(treffer).toEqual([]);
+  });
+
+  it("keine lokale Funktion namens action in Dateien mit ActionForm oder Form", () => {
+    const treffer = alle(root)
+      .filter((f) => {
+        const s = readFileSync(f, "utf8");
+        return formTags(s, ACTION_TAGS).length > 0 && LOCAL_ACTION_FUNCTION.test(s);
+      })
+      .map(rel);
+    expect(treffer).toEqual([]);
+  });
+
+  it("die drei Wrapper (EvidenceSwitchForm, HallDeclineForm, ApplyForm) werden mit bind oder Referenz aufgerufen", () => {
+    const aufrufe = alle(root).flatMap((f) => formTags(readFileSync(f, "utf8"), "EvidenceSwitchForm|HallDeclineForm|ApplyForm"));
+    expect(aufrufe.length).toBeGreaterThanOrEqual(3);
+    for (const tag of aufrufe) expect(tag).toMatch(/(?<![-\w])action=\{\s*[A-Za-z_][\w.]*(\.bind\(|\})/);
+  });
+
+  it("Gegenprobe: erkennt Closures auch nach einem `=>` in einer früheren Prop, lässt Referenzen und bind zu", () => {
+    const tags = (s: string) => formTags(s, ACTION_TAGS)[0];
+    expect(CLOSURE_PROP.test(tags('<ActionForm action={async () => { x(); }} submit="Ok">'))).toBe(true);
+    expect(CLOSURE_PROP.test(tags('<Form onDone={() => done()} action={(p, f) => y(p, f)} submitLabel="Ok">'))).toBe(true); // früheres => verdeckt nichts
+    expect(CLOSURE_PROP.test(tags('<ActionForm action={savePlatformSettingsAction} submit="Speichern">'))).toBe(false);
+    expect(CLOSURE_PROP.test(tags('<ActionForm onDone={() => done()} action={setCardSwitchAction.bind(null, true)} submit="Ein">'))).toBe(false);
+    expect(LOCAL_ACTION_FUNCTION.test("const action = async (p: A, f: B) => ok();")).toBe(true);
+    expect(LOCAL_ACTION_FUNCTION.test("const action = switchEvidenceAction.bind(null, step);")).toBe(false);
   });
 });
