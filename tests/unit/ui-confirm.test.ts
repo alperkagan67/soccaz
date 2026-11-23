@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -120,5 +122,53 @@ describe("ConfirmDialog (M2-3b)", () => {
     expect(d).toContain('type="checkbox"');
     expect(d).toContain('type="text"');
     expect(d).toMatch(/<button[^>]*disabled=""[^>]*>Spieler entfernen<\/button>/);
+  });
+});
+
+describe("ConfirmDialog mit Textfeld (field, Hallen-Anfragen)", () => {
+  const field = { label: "Grund der Ablehnung", minLength: 3, maxLength: 200, hint: "Pflicht, 3 bis 200 Zeichen." };
+
+  it("Textarea mit Beschriftung (label[for] = id), maxlength, Pflicht und Hinweis, Zähler als Text mit Mindestangabe", () => {
+    const d = dialog(html({ field }));
+    const forId = /<label for="([^"]+)"[^>]*>Grund der Ablehnung<\/label>/.exec(d)?.[1];
+    expect(forId).toBeTruthy();
+    expect(d).toMatch(new RegExp(`<textarea id="${forId}"[^>]*data-role="field"`));
+    expect(d).toMatch(/<textarea[^>]*maxLength="200"/);
+    expect(d).toMatch(/<textarea[^>]*aria-required="true"/);
+    expect(d).toContain("Pflicht, 3 bis 200 Zeichen.");
+    expect(d).toMatch(/data-testid="confirm-field-count"[^>]*>0 von 200 Zeichen \(mindestens 3\)</);
+  });
+
+  it("die Textarea verweist auf Hinweis und Zähler (aria-describedby), nicht auf einen nicht vorhandenen Fehler", () => {
+    const d = dialog(html({ field }));
+    const described = /<textarea[^>]*aria-describedby="([^"]*)"/.exec(d)?.[1] ?? "";
+    expect(described).toContain("-field-hint");
+    expect(described).toContain("-field-count");
+    expect(described).not.toContain("-error");
+    expect(d).not.toMatch(/<textarea[^>]*aria-invalid/);
+  });
+
+  it("Bestätigung bleibt gesperrt, bis die Mindestlänge erreicht ist (Ausgangszustand leer = gesperrt)", () => {
+    expect(dialog(html({ field }))).toMatch(/<button[^>]*disabled=""[^>]*>Spieler entfernen<\/button>/);
+  });
+
+  it("ohne field: keine Textarea, kein Zähler", () => {
+    const d = dialog(html());
+    expect(d).not.toContain("<textarea");
+    expect(d).not.toContain("confirm-field");
+  });
+
+  it("danger mit Feld bleibt ein Gefahrendialog (Rahmen, Symbol, Bestätigung als danger)", () => {
+    const d = dialog(html({ field, danger: true }));
+    expect(d).toContain("border-2 border-danger");
+    expect(d).toContain("<textarea");
+  });
+
+  it("Quelltext: Startfokus mit Feld ist das Feld, dokumentiert (Doku-Kommentar und Auswahl vor danger); Fokus nach Erfolg geht an focusAfterSuccessAction", () => {
+    const src = readFileSync(path.resolve(import.meta.dirname, "../../src/components/ui/ConfirmDialog.tsx"), "utf8");
+    expect(src).toContain("STARTFOKUS mit Feld ist das Feld");
+    expect(src).toMatch(/const start = field \? '\[data-role="field"\]' : danger \?/);
+    expect(src).toMatch(/succeeded\.current && focusAfterSuccessAction \? focusAfterSuccessAction\(\) : null/);
+    expect(src).toMatch(/\(target \?\? opener\.current\)\?\.focus\(\)/);
   });
 });

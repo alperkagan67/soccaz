@@ -21,6 +21,7 @@
       "ui-buttons.spec.ts"
     ],
     "3": [
+      "admin-hallen-anfragen.spec.ts",
       "admin-provision.spec.ts",
       "admin-zahlungsstreit.spec.ts",
       "payments.spec.ts",
