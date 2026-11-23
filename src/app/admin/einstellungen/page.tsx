@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { ActionForm } from "@/components/ActionForm";
 import { activeProvider } from "@/server/payments";
 import { requirePermission } from "@/server/session";
-import { saveInvoiceSettingsAction, savePlatformSettingsAction } from "@/server/admin-finance-actions";
+import { saveInvoiceSettingsAction, savePlatformSettingsAction, setCardSwitchAction } from "@/server/admin-finance-actions";
+import { formatDateTime } from "@/lib/time";
+import { getCardSwitch } from "@/server/payment-switch";
 import { getSetting, minPaidPlayers, paymentsEnabled } from "@/server/settings";
 
 export const metadata: Metadata = { title: "Admin: Einstellungen" };
@@ -11,6 +13,7 @@ export default async function SettingsAdminPage() {
   await requirePermission("owner", "/admin/einstellungen");
   const [enabled, minPaid, emergency, vatMode, vatNote] = await Promise.all([paymentsEnabled(), minPaidPlayers(), getSetting<string>("emergency_phone", ""), getSetting<string | number>("vat_mode", ""), getSetting<string>("vat_note", "")]);
   const provider = activeProvider();
+  const cardSwitch = await getCardSwitch();
 
   return (
     <div className="space-y-4">
@@ -37,6 +40,42 @@ export default async function SettingsAdminPage() {
           <p className="mt-1 text-xs text-muted">Steht in der Spielübersicht beider Teams, falls am Spieltag etwas schiefgeht.</p>
         </div>
       </ActionForm>
+      <section className="card space-y-3" aria-labelledby="card-switch-title" data-testid="card-switch">
+        <h2 id="card-switch-title" className="font-semibold">Notabschaltung Kartenzahlung</h2>
+        <p className="text-sm" data-testid="card-switch-state">
+          Die Kartenzahlung ist <strong>{cardSwitch.enabled ? "EIN" : "AUS"}</strong>
+          {cardSwitch.neverSwitched ? " (Standard, noch nie geschaltet)" : cardSwitch.since ? ` seit ${formatDateTime(cardSwitch.since)} Uhr` : ""}.
+        </p>
+        {cardSwitch.enabled ? (
+          <ActionForm action={setCardSwitchAction.bind(null, false)} submit="Kartenzahlung ausschalten (Notabschaltung)" danger successText="Kartenzahlung ausgeschaltet." keepOnSuccess>
+            <p className="text-sm text-muted" data-testid="card-switch-consequence-off">
+              Folgen: Neue Bezahlungen werden pausiert, Turniere frieren ein, Alarm nach 6 Stunden. Bestehende bezahlte Plätze bleiben unverändert, fällige Abbuchungen warten. Es gibt keinen Ersatzweg für die Zahlung, und nichts wird kostenlos.
+            </p>
+            <div>
+              <label className="label" htmlFor="card-off-reason">Grund (3 bis 200 Zeichen, wird protokolliert)</label>
+              <textarea id="card-off-reason" name="reason" className="field" rows={2} minLength={3} maxLength={200} required />
+            </div>
+            <label className="flex items-start gap-3 text-sm">
+              <input type="checkbox" name="confirm" required className="mt-1 size-5 accent-accent" />
+              <span>Ich habe die Folgen gelesen und schalte die Kartenzahlung aus.</span>
+            </label>
+          </ActionForm>
+        ) : (
+          <ActionForm action={setCardSwitchAction.bind(null, true)} submit="Kartenzahlung wieder einschalten" successText="Kartenzahlung eingeschaltet." keepOnSuccess>
+            <p className="text-sm text-muted" data-testid="card-switch-consequence-on">
+              Folgen: Fällige Abbuchungen laufen nach, eingefrorene Turniere werden fortgesetzt. Vorher prüfen: Webhook, Schlüssel und offene Fälle (GO-LIVE G8-012/G9-012).
+            </p>
+            <div>
+              <label className="label" htmlFor="card-on-reason">Grund (3 bis 200 Zeichen, wird protokolliert)</label>
+              <textarea id="card-on-reason" name="reason" className="field" rows={2} minLength={3} maxLength={200} required />
+            </div>
+            <label className="flex items-start gap-3 text-sm">
+              <input type="checkbox" name="confirm" required className="mt-1 size-5 accent-accent" />
+              <span>Ich habe die Folgen gelesen und schalte die Kartenzahlung ein.</span>
+            </label>
+          </ActionForm>
+        )}
+      </section>
       <ActionForm action={saveInvoiceSettingsAction} submit="Rechnungseinstellungen übernehmen" keepOnSuccess>
         <h2 className="font-semibold">Rechnungen an die Hallen</h2>
         <div>

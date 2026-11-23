@@ -11,6 +11,7 @@ import { requirePermission } from "./session";
 import { setSetting } from "./settings";
 import { DomainError } from "./teams";
 import { addPriceRule, createVenue, listVenues, setVenueManager, setVenueVerified, updateVenue } from "./venues";
+import { setCardSwitch } from "./payment-switch";
 import { revokeVenueAccess } from "./venue-access";
 import { approveVenue, rejectVenue } from "./venue-approval";
 
@@ -170,6 +171,13 @@ export async function addPriceRuleAction(venueId: string | null, _prev: ActionSt
 }
 
 // --- Einstellungen (Plattform-Admin) ---
+
+/** Notschalter Kartenzahlung: nur Admin 1 (Waechter owner, die Funktion prueft zusaetzlich is_owner); Grund und Bestaetigung der Folgen Pflicht. */
+export async function setCardSwitchAction(enabled: boolean, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guarded("owner", "/admin/einstellungen", async (actor) => {
+    await setCardSwitch(actor, enabled, text(fd, "reason"), fd.get("confirm") === "on");
+  });
+}
 
 export async function savePlatformSettingsAction(_prev: ActionState, fd: FormData): Promise<ActionState> {
   const minPaid = Number(text(fd, "minPaid"));
