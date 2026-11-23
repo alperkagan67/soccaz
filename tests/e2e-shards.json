@@ -1,9 +1,10 @@
 {
   "version": 1,
-  "note": "Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf 5 Shards nach gemessener Laufzeit (CI #155, Lauf 45062105668; Schaetzwert 30 s fuer karte-freigabe und karte-lobby). Pflege: neue Spec-Datei hier eintragen (node scripts/e2e-shards.mjs check meldet fehlende/doppelte Eintraege). Ziel je Shard: hoechstens ca. 10 Minuten.",
+  "note": "Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf 5 Shards nach gemessener Laufzeit (CI #155, Lauf 45062105668; Schaetzwert 30 s fuer karte-freigabe und karte-lobby). Pflege: neue Spec-Datei hier eintragen (node scripts/e2e-shards.mjs check meldet fehlende/doppelte Eintraege). halle-onboarding.spec.ts (013 M2d, Shard 1): Schaetzwert ca. 150 s (5 Tests, 2 davon mit axe je Schritt), nach dem ersten CI-Lauf messen und nachtragen. Ziel je Shard: hoechstens ca. 10 Minuten.",
   "shards": {
     "1": [
       "community2.spec.ts",
+      "halle-onboarding.spec.ts",
       "karte-freigabe.spec.ts",
       "lobby-gast-kosten.spec.ts",
       "privatspiel.spec.ts",

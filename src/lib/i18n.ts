@@ -98,6 +98,9 @@ const de = {
   "ui.assistent.stepDone": "erledigt",
   "ui.assistent.stepCurrent": "aktueller Schritt",
   "ui.assistent.stepOpen": "offen",
+  // ENTWURF, rechtlich NICHT geprüft (Rechtsliste/FEHLT-NOCH, Anwalt, blockiert Go-live). Schlüssel und Version (TERMS_VERSION in venue-onboarding.ts) gehen in das Protokoll: den Wortlaut nie still ändern, sondern Schlüssel und Version erhöhen.
+  "hallen.onboarding.terms.entwurf": "Mit der Anfrage bestätigst du: Du bist berechtigt, diese Halle anzumelden. Deine Angaben stimmen. Die Halle ist erst nach der Freischaltung durch Soccaz sichtbar und buchbar; Soccaz kann die Anfrage ablehnen. Für gebuchte Spiele berechnet Soccaz eine Provision auf die Hallenmiete (Satz siehe oben). Die endgültigen Bedingungen werden vor dem Start der Plattform ergänzt.",
+  "hallen.onboarding.terms.draftNote": "ENTWURF, rechtlich noch nicht geprüft",
   // ENTWURF, Rechtstext durch Anwalt (GO-LIVE G2-012). Wortlaut UNVERÄNDERLICH: gespeichert wird der Schlüssel samt Zustimmungszeitpunkt (match_participants.cover_mandate_text). Eine neue Fassung bekommt einen neuen Schlüssel (v2), dieser bleibt unverändert.
   "cover.mandate.v1.entwurf": "Ich erlaube Soccaz, zusätzlich zu meinem eigenen Anteil den Anteil des genannten Mitspielers zur Frist von meiner hinterlegten Karte abzubuchen (Mindestbetrag 0,50 EUR je Posten). Scheitert dieser Zusatzposten, verfällt nur der Platz des Mitspielers; ich verliere nur diesen Posten. Ich kann innerhalb des Fensters eine andere Karte hinterlegen, dann wird einmal erneut versucht. Bis zur Frist kann ich die Übernahme in der Lobby zurücknehmen. (Entwurf, Rechtstext durch Anwalt)",
 } as const;
@@ -193,6 +196,9 @@ const en: Record<MessageKey, string> = {
   "ui.assistent.stepDone": "done",
   "ui.assistent.stepCurrent": "current step",
   "ui.assistent.stepOpen": "open",
+  // DRAFT, legal text to be set by a lawyer (blocks go-live). Never change the wording silently: raise the key and the version.
+  "hallen.onboarding.terms.entwurf": "By sending this request you confirm: you are entitled to register this venue. Your details are correct. The venue is visible and bookable only after Soccaz has approved it; Soccaz may reject the request. For booked games Soccaz charges a commission on the venue rent (rate shown above). The final terms will be added before the platform launches.",
+  "hallen.onboarding.terms.draftNote": "DRAFT, not yet checked legally",
   // DRAFT, legal text to be set by a lawyer (GO-LIVE G2-012). Wording is IMMUTABLE: the key and the time of consent are stored. A new version gets a new key (v2).
   "cover.mandate.v1.entwurf": "I allow Soccaz to additionally charge the named teammate's share to my stored card at the deadline, on top of my own share (minimum amount EUR 0.50 per item). If this additional item fails, only the teammate's place lapses; I lose only this item. I can store another card within the window, and the charge is then tried once more. Until the deadline I can take the takeover back in the lobby. (Draft, legal text by a lawyer)",
 };
