@@ -175,6 +175,15 @@ describe("EIN: Anteil und Fixierung (Gegenstück zum Guthaben-Neumodell)", () =>
     }
   });
 
+  it("14 Spieler im Teamspiel: Anteil = Preis ÷ 14 aufgerundet (12000 / 14 -> 858), kein Deckel bei 12", async () => {
+    const g = await game(72, 14, 12_000);
+    expect(await teamShareNow(db, await reloadMatch(g.match.id), 12_000)).toBe(858); // vor dem Fixieren: die laufende Neuberechnung (Deckel 12 ergäbe 1000)
+    await cardsAll(g);
+    await readyAll(g);
+    await bothCaptains(g);
+    expect((await reloadMatch(g.match.id)).finalShareCents).toBe(858); // Deckel 12 ergäbe 1000
+  });
+
   it("das zweite Bereit fixiert genau einmal, auch bei parallelen Bestätigungen; es entsteht kein Ledger-Eintrag und niemand zahlt", async () => {
     const g = await game(72, 10, 8000);
     await cardsAll(g);

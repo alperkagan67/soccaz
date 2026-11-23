@@ -21,7 +21,7 @@ import { teamCard } from "@/server/cards";
 import { setSetting } from "@/server/settings";
 import { runChargesIfDue } from "@/server/payments/charge-trigger";
 import { ledgerEntries } from "@/db/schema-finance";
-import { fixShare, privateListLocked } from "@/server/wallet";
+import { fixShare, privateListLocked, shareToCharge } from "@/server/wallet";
 import { cleanup, makeMatch, makeUser, reloadMatch, seedShare } from "./helpers";
 
 // Die Events-Route fragt die Sitzung ab (Cookies gibt es im Test nicht): getCurrentUser liefert hier die Person, die der Test gerade spielt.
@@ -909,5 +909,27 @@ describe("Privatspiel im Kartenmodell (Gegenstücke zu AC-4, AC-6, AC-8)", () =>
     for (const p of g.players.filter((x) => x.id !== a.id && x.id !== b.id)) await setReady(p.id, g.match.id, true);
     await finalConfirm(g.organizer.id, g.match.id);
     expect((await reloadMatch(g.match.id)).finalShareCents).toBe(1500); // 12000 / 8
+  });
+
+  // R-T334: Gegenstück zu "Anteil = Miete ÷ eingeteilte Spieler (KEIN Deckel bei 12)" und "14 Spieler: kein Deckel bei 12": MEHR als 12 Spieler, Anteil literal
+  it("14 Spieler: Anteil = Miete ÷ 14 aufgerundet (12000 / 14 = 857,14 -> 858), kein Deckel bei 12 und kein Mindestwert; beim zweiten Bereit fixiert, nichts bezahlt", async () => {
+    const g = await game(13, { rentCents: 12_000, maxPlayers: 14 });
+    expect(g.players).toHaveLength(14);
+    await randomSplit(g.organizer.id, g.match.id);
+    await giveCards(g.match.id);
+    for (const p of g.players) await setReady(p.id, g.match.id, true);
+    await finalConfirm(g.organizer.id, g.match.id);
+    expect((await reloadMatch(g.match.id)).finalShareCents).toBe(858); // Deckel 12 ergäbe 1000, Mindestzahl 8 / Deckel 12 wären 1500 bzw. 1000
+    for (const p of g.players) expect((await seat(g.match.id, p.id)).paidCents).toBe(0);
+  });
+
+  // R-T334: Gegenstück zu den entfernten "Abrechnung ohne zweites Bereit: Privatspiel rechnet nie mit Mindestzahl 8/Deckel 12, sondern mit Miete ÷ eingeteilte Spieler" (die laufende Neuberechnung vor dem Fixieren)
+  it("laufender Anteil vor dem Fixieren: Miete ÷ eingeteilte Spieler, nie mit Mindestzahl 8 und nie mit Deckel 12 (6 Spieler: 2000, 14 Spieler: 858)", async () => {
+    const six = await game(5, { rentCents: 12_000 });
+    await randomSplit(six.organizer.id, six.match.id);
+    expect(await shareToCharge(db, await reloadMatch(six.match.id), 12_000)).toBe(2000); // Mindestzahl 8 ergäbe 1500
+    const fourteen = await game(13, { rentCents: 12_000, maxPlayers: 14 });
+    await randomSplit(fourteen.organizer.id, fourteen.match.id);
+    expect(await shareToCharge(db, await reloadMatch(fourteen.match.id), 12_000)).toBe(858); // Deckel 12 ergäbe 1000
   });
 });
