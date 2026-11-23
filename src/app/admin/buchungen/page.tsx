@@ -28,7 +28,7 @@ export default async function BookingsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">Hallen-Buchungen</h1>
-      <p className="text-sm text-muted">Bestätigte und bezahlte Spiele brauchen eine Halle. Buche sie per Telefon, Mail oder Webseite und trage hier Halle, Status und Nachweis ein. Die Kosten buchst du unter Finanzen.</p>
+      <p className="text-sm text-muted">Bestätigte Spiele brauchen eine Halle. Buche sie per Telefon, Mail oder Webseite und trage hier Halle, Status und Nachweis ein. Die Kosten buchst du unter Finanzen.</p>
 
       {jobs.length === 0 ? (
         <p className="card text-muted">Keine offenen Buchungsaufträge.</p>
