@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { useHydrated } from "@/components/useHydrated";
 import {
   assignSubstituteAction,
   unassignParticipantAction,
@@ -138,6 +139,7 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
 
 export function VenueForm({ matchId, venue }: { matchId: string; venue: string }) {
   const { error, pending, run } = useRun();
+  const hydrated = useHydrated(); // Klick vor der Hydration wäre ein GET mit dem Feld in der Adresse
   const [value, setValue] = useState(venue);
   const [dirty, setDirty] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -151,6 +153,7 @@ export function VenueForm({ matchId, venue }: { matchId: string; venue: string }
 
   return (
     <form
+      method="post"
       className="space-y-2"
       onSubmit={(e) => {
         e.preventDefault();
@@ -168,7 +171,7 @@ export function VenueForm({ matchId, venue }: { matchId: string; venue: string }
       <label className="label" htmlFor="venue">Ort / Halle</label>
       <div className="flex gap-2">
         <input id="venue" value={value} onChange={(e) => { setValue(e.target.value); setDirty(true); }} maxLength={120} className="field" placeholder="z. B. Soccerhalle Buer, Hauptstr. 1" />
-        <button className="btn btn-ghost" disabled={pending}>{pending ? "…" : "Speichern"}</button>
+        <button className="btn btn-ghost" disabled={pending || !hydrated} data-testid="venue-save">{pending ? "…" : "Speichern"}</button>
       </div>
       {saved && !error && <p className="text-xs text-accent-fg">Gespeichert.</p>}
       <ErrorText message={error} />
@@ -222,6 +225,7 @@ export function CancelForm({ matchId }: { matchId: string }) {
   }
   return (
     <form
+      method="post"
       className="card space-y-2"
       onSubmit={(e) => {
         e.preventDefault();

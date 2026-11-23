@@ -8,14 +8,12 @@ import { describe, expect, it } from "vitest";
 // darf nur kleiner werden (ein Eintrag ohne Verstoß lässt den Test rot werden: dann streichen).
 const root = join(__dirname, "..", "..", "src");
 
-/** Datei -> Grund (Welle laut docs/loop/BACKLOG.md 224). Client-Handler brauchen JavaScript ohnehin (Welle 5: Knopf bis zur Hydration gesperrt + method=post). */
+/** Datei -> Grund. Nur noch Client-Handler-Formulare mit eigener Sperre (Welle 5: LobbyClient und MatchClient sperren ihren Knopf per useHydrated und haben method=post; Assistent und CardForm bleiben bewusst nicht erzwungen). Die Liste darf nur kleiner werden. */
 export const EXCEPTIONS: Record<string, string> = {
   "components/ActionForm.tsx": "Welle 4 (Bausteine, 29 Verwendungen)",
   "components/ui/Form.tsx": "Welle 4 (Bausteine)",
-  "components/ui/Assistent.tsx": "Welle 5 (Client-Handler)",
-  "app/lobby/[id]/CardForm.tsx": "Welle 5 (Client-Handler, Stripe Elements)",
-  "app/lobby/[id]/LobbyClient.tsx": "Welle 5 (Client-Handler)",
-  "app/spiele/[id]/MatchClient.tsx": "Welle 5 (Client-Handler)",
+  "components/ui/Assistent.tsx": "bewusst nicht erzwungen: eigene Sperre (`bereit`: fieldset disabled und Knopf disabled bis der Baustein im Browser aktiv ist, #272); Client-Handler ohne Server-Aktion",
+  "app/lobby/[id]/CardForm.tsx": "bewusst nicht erzwungen: Zahlung (Stripe Elements) wird nicht angefasst; der Knopf ist serverseitig gesperrt (`disabled={!stripe || busy}`), bis Stripe im Browser geladen ist, Enter löst bei gesperrtem Standardknopf keine Absendung aus",
 };
 
 function files(dir: string): string[] {
