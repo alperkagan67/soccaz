@@ -20,7 +20,7 @@ export type VenueInput = {
   isPartner?: boolean;
 };
 
-function clean(input: VenueInput): VenueInput {
+export function cleanVenueInput(input: VenueInput): VenueInput {
   const name = input.name.trim();
   const city = input.city.trim();
   if (name.length < 2 || name.length > 80) throw new DomainError("Der Name braucht 2 bis 80 Zeichen.");
@@ -30,7 +30,7 @@ function clean(input: VenueInput): VenueInput {
 
 export async function listVenues(includeInactive = true) {
   await connection();
-  return db.select().from(venues).where(includeInactive ? undefined : eq(venues.active, true)).orderBy(asc(venues.city), asc(venues.name));
+  return db.select().from(venues).where(includeInactive ? undefined : and(eq(venues.active, true), eq(venues.approvalStatus, "approved"))).orderBy(asc(venues.city), asc(venues.name));
 }
 
 /**
@@ -46,7 +46,7 @@ export async function setVenueManager(actorId: string, venueId: string, email: s
 }
 
 export async function createVenue(actorId: string, input: VenueInput) {
-  const v = clean(input);
+  const v = cleanVenueInput(input);
   const [row] = await db
     .insert(venues)
     .values({ commissionPercent: (await defaultCommissionPercent()).toFixed(2), name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false })
@@ -56,16 +56,20 @@ export async function createVenue(actorId: string, input: VenueInput) {
 }
 
 export async function updateVenue(actorId: string, id: string, input: VenueInput & { active?: boolean }) {
-  const v = clean(input);
-  const [before] = await db.select().from(venues).where(eq(venues.id, id));
-  if (!before) throw new DomainError("Halle nicht gefunden.");
-  const [row] = await db
-    .update(venues)
-    .set({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false, active: input.active ?? before.active })
-    .where(eq(venues.id, id))
-    .returning();
-  await audit(actorId, "venue.update", "venue", id, { before, after: row });
-  return row;
+  const v = cleanVenueInput(input);
+  // In einer Transaktion mit Zeilensperre (wie die Freischaltung): sonst koennte eine Freischaltung dazwischen ein veraltetes active = false zurueckschreiben (approved, aber unsichtbar)
+  return db.transaction(async (tx) => {
+    const [before] = await tx.select().from(venues).where(eq(venues.id, id)).for("update");
+    if (!before) throw new DomainError("Halle nicht gefunden.");
+    if (input.active === true && before.approvalStatus !== "approved") throw new DomainError("Diese Halle ist noch nicht freigeschaltet (Anfrage offen oder abgelehnt)."); // active nur durch die Freischaltung
+    const [row] = await tx
+      .update(venues)
+      .set({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false, active: input.active ?? before.active })
+      .where(eq(venues.id, id))
+      .returning();
+    await audit(actorId, "venue.update", "venue", id, { before, after: row }, tx);
+    return row;
+  });
 }
 
 /** Admin hat die Angaben einer Halle (Buchbarkeit, Adresse, Preis) geprüft. Ungeprüfte Hallen kommen im Veto nach den geprüften. */
@@ -108,7 +112,7 @@ export async function listPublicVenues(city?: string) {
     sql`select v.id, v.name, v.city, v.address, v.surface, v.has_showers, v.has_parking, v.is_partner,
           (select round(avg(c.rating)::numeric, 1)::text from comments c where c.target_type = 'venue' and c.target_id = v.id and c.status = 'visible') as avg,
           (select count(*)::int from comments c where c.target_type = 'venue' and c.target_id = v.id and c.status = 'visible') as n
-        from venues v where v.active ${city ? sql`and v.city = ${city}` : sql``} order by v.is_partner desc, v.city, v.name`,
+        from venues v where v.active and v.approval_status = 'approved' ${city ? sql`and v.city = ${city}` : sql``} order by v.is_partner desc, v.city, v.name`,
   );
   return rows.rows;
 }
@@ -116,7 +120,7 @@ export async function listPublicVenues(city?: string) {
 export async function getPublicVenue(id: string) {
   await connection();
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
-  const [v] = await db.select().from(venues).where(and(eq(venues.id, id), eq(venues.active, true)));
+  const [v] = await db.select().from(venues).where(and(eq(venues.id, id), eq(venues.active, true), eq(venues.approvalStatus, "approved")));
   if (!v) return null;
   const [r] = (await db.execute<{ avg: string | null; n: number }>(sql`select round(avg(rating)::numeric, 1)::text as avg, count(*)::int as n from comments where target_type = 'venue' and target_id = ${id} and status = 'visible'`)).rows;
   return { venue: { id: v.id, name: v.name, city: v.city, address: v.address, surface: v.surface, hasShowers: v.hasShowers, hasParking: v.hasParking, isPartner: v.isPartner }, avg: r.avg, n: r.n };

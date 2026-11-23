@@ -3,7 +3,7 @@
 Stand: 2026-11-23 · Verfasser: worker-2 · Status: Plan, Bau erst nach den Voraussetzungen unten.
 Plan: `docs/design/g25-009-db-rollenmodell.md` (v5); Rollenskripte: `scripts/db-roles.sql`, `scripts/db-roles.mjs`, `scripts/db-owner.mjs`; Betrieb: `docs/BETRIEB.md`. Entscheide: `docs/loop/A2-ENTSCHEID.md`; Spike: `docs/loop/A2-ANBIETER-SPIKE.md`.
 
-Stand: main = 541ba97 (A1 #180 gemergt, Journal endet bei 0055). **Nummern-Regel:** 0056 ist von 012 M6b belegt; A2 nimmt beim Bau die dann naechste freie Nummer (Journal auf origin/main pruefen, main vor dem Generieren mergen, strikt seriell, nie vorab reservieren).
+Stand: main = 541ba97 (A1 #180 gemergt, Journal endet bei 0055). **Nummern-Regel:** 0056 gehört der Hallen-Freischaltung (013 AC-31, `0056_venue_approval`); A2 nimmt beim Bau die dann naechste freie Nummer (Journal auf origin/main pruefen, main vor dem Generieren mergen, strikt seriell, nie vorab reservieren).
 
 Basis: Plan v5 (docs/design/g25-009-db-rollenmodell.md, Abschnitte 3, 4, 5, 8, 10), Funde 4/5 aus dem Code-Plan soccaz_ops (Plan-Review R-T272). Main: Journal endet bei 0055 (A1). A2 braucht **eine** Migration (Nummer siehe Nummern-Regel; im Plan `NNNN_...`).
 
