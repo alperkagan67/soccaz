@@ -1,7 +1,6 @@
 import { clearCoversInvolving } from "./payments/cover-clear";
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { auditLog, matchParticipants, matches, paymentCharges } from "@/db/schema";
-import { pendingRefunds } from "@/db/schema-finance";
 import { joinClosedByTime, leaveClosedByTime } from "@/lib/deadlines";
 import { MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
 import { reservationFor, shareCents } from "@/lib/money";
@@ -97,8 +96,9 @@ export async function joinClosed(tx: Pick<Tx, "select">, match: DeadlineFields, 
   if (match.kind !== "private" || !privateListLocked(match)) return false;
   if (match.finalShareCents === null) return false;
   if (!match.priceCents || !(await paymentsEnabled(tx as Tx))) return false;
-  const [open] = await tx.select({ userId: pendingRefunds.userId }).from(pendingRefunds).where(eq(pendingRefunds.matchId, match.id)).limit(1);
-  return !open;
+  // Altspiel-Pfad (legacy, Guthaben): Der Ersatz-Beitritt unter 48 Stunden hing an offenen Erstattungsansprüchen (pending_refunds). Diese Ansprüche entstehen seit 012 M6b nicht mehr
+  // und Altspiele sind geschlossen (F2): die Liste bleibt hier zu. Die Lesestelle auf pending_refunds ist damit entfernt (die Tabelle selbst fällt mit PR 2 aus der Nutzung).
+  return true;
 }
 
 /** Sind Austritt und Rauswurf gesperrt? Neue Regel: ab 48 Stunden vor Anstoß (bei Anlage unter 48 Stunden von Anfang an) und nach der Abrechnung. */

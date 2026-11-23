@@ -317,6 +317,27 @@ describe("Spielerzahl ändert sich vor dem Fixieren (T53, AC-5, AC-6)", () => {
       expect((await trialBalance()).balanced).toBe(true);
     }));
 
+it("AC-6: Wer weder Captain noch Veranstalter ist, kann niemanden rauswerfen oder einteilen; Rauswurf nur durch den Captain (Geld bewegt die Lobby seit 012 M6b nicht mehr)", () =>
+    withPayments(async () => {
+      const { organizer, match, token, players } = await prepare(8); // 9 eingeteilte Spieler, ein zehnter Platz bleibt für den Wartenden
+      const stranger = await makeUser("pvfremd");
+      const outsider = await makeUser("pvwait");
+      await joinPrivateGame(outsider.id, token); // wartet auf Einteilung
+      const [normal, victim] = [players[1], players[2]];
+      for (const p of players) await seedShare(p.id, match.id);
+      await setReady(victim.id, match.id, true);
+      for (const actor of [stranger, normal]) {
+        await expect(removeParticipant(actor.id, match.id, victim.id)).rejects.toThrow(/Berechtigung/);
+        await expect(removeParticipant(actor.id, match.id, outsider.id)).rejects.toThrow(/Berechtigung/);
+        await expect(unassignParticipant(actor.id, match.id, normal.id)).rejects.toThrow(/Veranstalter/);
+        await expect(randomSplit(actor.id, match.id)).rejects.toThrow(/Veranstalter|Berechtigung/);
+        await expect(assignSubstitute(actor.id, match.id, outsider.id, match.homeTeamId)).rejects.toThrow(/Admins/);
+      }
+      expect(await paidOf(match.id, victim.id)).toBe(1334);
+      await removeParticipant(organizer.id, match.id, victim.id); // der Captain darf
+      expect((await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, victim.id))))).toHaveLength(0);
+    }));
+
   it("AC-5 parallele Austritte: jeder wird genau einmal erstattet, der Anteil gilt für die endgültige Zahl (8 Spieler: 1500)", () =>
     withPayments(async () => {
       const { match, players } = await prepare(9);
@@ -368,6 +389,64 @@ describe("Austritt nach dem Fixieren und Sperre in den letzten 48 Stunden (T54, 
     if (payNow) await seedShare(sub.id, g.match.id);
     return sub;
   };
+
+  const paidNow = async (matchId: string, userId: string) => (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId))))[0]?.paidCents;
+
+  it("AC-8: weniger als 48 Stunden vor Anstoß werden Austritt und Rauswurf abgelehnt (nach dem Fixieren); Bereit bleibt möglich", () =>
+    withPayments(async () => {
+      const g = await fixed(9, 12); // zwölf Plätze, zehn belegt: nur die Sperre kann einen Beitritt verhindern
+      await setStart(g.match.id, 24);
+      const [a, b] = [g.players[8], g.players[9]];
+      await expect(leaveLobby(a.id, g.match.id)).rejects.toThrow(/48 Stunden/);
+      await expect(removeParticipant(g.organizer.id, g.match.id, b.id)).rejects.toThrow(/48 Stunden/);
+      expect(await seatedIds(g.match.id)).toHaveLength(10);
+      expect(await paidNow(g.match.id, a.id)).toBe(1200); // der bezahlte Anteil bleibt
+      await setReady(a.id, g.match.id, false);
+      await setReady(a.id, g.match.id, true);
+      const late = await makeUser("pvlate");
+      await expect(joinPrivateGame(late.id, g.token)).rejects.toThrow(/gesperrt/); // niemand Fremdes kommt hinein, solange kein Platz frei ist
+    }));
+
+  it("AC-8: auch vor dem Fixieren sind Austritt und Rauswurf unter 48 Stunden gesperrt; der Beitritt per Link bleibt dort möglich (Schalter)", () =>
+    withPayments(async () => {
+      const g = await game(5, { rentCents: 12_000, startsAt: hours(24) }); // kurzfristig angelegt: alle sind per Link beigetreten
+      expect(g.players).toHaveLength(6);
+      await randomSplit(g.organizer.id, g.match.id);
+      const [a, b] = [g.players[4], g.players[5]];
+      await seedShare(a.id, g.match.id);
+      await expect(leaveLobby(a.id, g.match.id)).rejects.toThrow(/48 Stunden/);
+      await expect(removeParticipant(g.organizer.id, g.match.id, b.id)).rejects.toThrow(/48 Stunden/);
+      expect(await seatedIds(g.match.id)).toHaveLength(6);
+      const newcomer = await makeUser("pvnew");
+      await expect(joinPrivateGame(newcomer.id, g.token)).resolves.toMatchObject({ already: false });
+    }));
+
+  it("AC-8 (Altspiel-Pfad nach 012 M6b): nach dem Austritt und unter 48 Stunden bleibt die Liste zu, auch für einen Ersatz (der Ersatz-Beitritt hing an Guthaben-Erstattungsansprüchen, die es nicht mehr gibt)", () =>
+    withPayments(async () => {
+      const g = await fixed(9, 12);
+      await leaveLobby(g.players[9].id, g.match.id);
+      await setStart(g.match.id, 24); // jetzt unter 48 Stunden
+      await expect(leaveLobby(g.players[8].id, g.match.id)).rejects.toThrow(/48 Stunden/);
+      const stranger = await makeUser("pvstr");
+      await expect(joinPrivateGame(stranger.id, g.token)).rejects.toThrow(/gesperrt/);
+      expect(await seatedIds(g.match.id)).toHaveLength(9);
+    }));
+
+  it("AC-4: Anteil = Miete ÷ eingeteilte Spieler; das zweite Bereit fixiert Preis und Spielerzahl genau einmal, auch bei parallelen Aufrufen; ein späterer Austritt ändert den Anteil nicht", () =>
+    withPayments(async () => {
+      const g = await fixed(); // 10 eingeteilte Spieler: 12000 / 10 = 1200, Bereit beider Seiten, Veranstalter bestätigt
+      const m = await reloadMatch(g.match.id);
+      expect(m.finalShareCents).toBe(1200);
+      expect(m.homeFinalAt).not.toBeNull();
+      expect(m.awayFinalAt).not.toBeNull();
+      await Promise.allSettled([finalConfirm(g.organizer.id, g.match.id), finalConfirm(g.organizer.id, g.match.id)]);
+      await leaveLobby(g.players[9].id, g.match.id);
+      await finalConfirm(g.organizer.id, g.match.id);
+      const after = await reloadMatch(g.match.id);
+      expect(after.finalShareCents).toBe(1200); // mit 9 Spielern wäre es 1334: der Preis wird nur einmal fixiert
+      expect(after.settledAt).toBeNull();
+      for (const p of g.players.slice(0, 9)) expect(await paidNow(g.match.id, p.id)).toBe(1200);
+    }));
 
   it("Teamspiel und Turnier bleiben unverändert: die 48-Stunden-Sperre gilt nur für Privatspiele", () => {
     expect(privateListLocked({ kind: "private", startsAt: hours(24) })).toBe(true);

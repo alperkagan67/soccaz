@@ -397,6 +397,7 @@ export function leaveLobby(userId: string, matchId: string) {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (!(await findParticipant(tx, matchId, userId))) throw new DomainError("Du bist nicht in dieser Lobby.");
     if (await leaveClosed(tx, match, now)) throw new DomainError(LIST_LOCKED);
+    await auditSkippedRefund(tx, matchId, userId, userId); // bezahlter Anteil ohne Erstattungsweg: protokollieren
     await onParticipantLeaves(tx, match, userId);
     const me = await findParticipant(tx, matchId, userId);
     // Wertung bei kurzfristigem Austritt: nur Altspiele und Lobbys ohne Zahlungen; mit der neuen Frist-Regel sind Austritte unter 48 Stunden gesperrt (Backlog 10)
@@ -552,6 +553,7 @@ export function removeParticipant(actorId: string, matchId: string, targetUserId
       (target.teamId ? await isAdminOf(tx, actorId, target.teamId) : await canManageMatch(tx, actorId, match));
     if (!allowed) throw new DomainError("Dazu hast du keine Berechtigung.");
     if (await leaveClosed(tx, match, now)) throw new DomainError(LIST_LOCKED);
+    await auditSkippedRefund(tx, matchId, actorId, targetUserId);
     await onParticipantLeaves(tx, match, targetUserId);
     await tx
       .delete(matchParticipants)
@@ -570,6 +572,16 @@ export function cancelMatch(actorId: string, matchId: string, reason: string) {
   });
 }
 
+/** Protokolliert bezahlte Anteile ohne Erstattungsweg (Anzahl und Summe, keine Personendaten): Eintrag wallet.refund_skipped. */
+export async function auditSkippedRefund(tx: Tx, matchId: string, actorId: string | null, onlyUserId?: string) {
+  const rows = await tx
+    .select({ paid: matchParticipants.paidCents })
+    .from(matchParticipants)
+    .where(and(eq(matchParticipants.matchId, matchId), sql`${matchParticipants.paidCents} > 0`, onlyUserId ? eq(matchParticipants.userId, onlyUserId) : sql`true`));
+  if (rows.length === 0) return;
+  await audit(actorId, "wallet.refund_skipped", "match", matchId, { after: { participants: rows.length, amountCents: rows.reduce((sum, r) => sum + r.paid, 0), note: "keine Guthaben-Erstattung mehr (012 M6b): manuell klären" } }, tx);
+}
+
 /** Sagt ein Spiel ab, protokolliert es und informiert alle Beteiligten. Wird auch von der automatischen Absage genutzt. */
 export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | null, reason: string, opts: { afterRefund?: boolean } = {}) {
   // Gibt es Abbuchungszeilen, wurde (oder wird gleich) von Karten abgebucht. Eine Absage würde still stornieren, ohne das Geld per Stripe zu erstatten
@@ -577,6 +589,9 @@ export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | n
   // Einzige Ausnahme: der Erstattungs-Ablauf (refund.ts) ruft mit afterRefund auf, NACHDEM jede Abbuchung erstattet ist (finalizeCancel). Absage von Hand: nur Admin 1 über adminCancelMatch.
   if (!opts.afterRefund && (await hasChargeRows(tx, match.id))) throw new DomainError("Für dieses Spiel hat die Abbuchung begonnen: Absage und Erstattung folgen erst mit der Karten-Erstattung. Bitte kontaktiere den Support.");
   await tx.update(matches).set({ status: "cancelled", cancelReason: reason }).where(eq(matches.id, match.id)); // der Grund bleibt am Spiel (Anzeige in der Lobby); der Erstattungspfad (refund.ts) hat denselben Text schon gesetzt
+  // 012 M6b: Es gibt keine Guthaben-Erstattung mehr. Steht bei einem Spiel OHNE Abbuchungszeilen noch bezahltes Geld (Altspiel, F2-Skript nicht gelaufen), wird das protokolliert (ohne Personendaten),
+  // damit Admin 1 es klärt; nichts wird still verschluckt. Der Kartenweg (Erstattung per Stripe, afterRefund) ist davon nicht betroffen.
+  if (!opts.afterRefund) await auditSkippedRefund(tx, match.id, actorId);
   await reverseCommission(tx, match.id); // Vertrag 009 M2 (Entscheid t9 P7): Absage -> Provision ganz storniert (ein ausgeloester 10er-Bonus bleibt)
   await withdrawBookingJob(tx, match.id);
   await audit(actorId, "match.cancel", "match", match.id, { before: { status: match.status }, after: { status: "cancelled", reason } }, tx);
