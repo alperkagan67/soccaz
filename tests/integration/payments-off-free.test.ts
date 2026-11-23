@@ -242,9 +242,9 @@ describe("Gratis fixiertes Spiel nach dem Wiedereinschalten", () => {
 });
 
 describe("Turnier mit Preis, Preis wird bei Zahlungen AUS fixiert", () => {
-  it("bekommt Halle, Zugangs-Snapshot und Provisionssatz (Kartenfluss, eingefroren), wird nicht kostenlos; bei AN/AN dasselbe, bei Karte AUS: wie bisher ohne Snapshot", async () => {
+  it("bekommt Halle, Zugangs-Snapshot und Provisionssatz (Kartenfluss, eingefroren), wird nicht kostenlos; bei AN/AN dasselbe, bei Zahlungen AN + Karte AUS (Pause, Entscheid D): ebenfalls eingefroren MIT Snapshot (frueher ohne; Fix Frist-Job PR B), Bereit gesperrt", async () => {
     const [v] = await db.insert(venues).values({ name: `E2E Halle POF ${Date.now()}`, city: "Essen", isPartner: true, active: true }).returning();
-    for (const [payments, card, snapshot] of [[false, true, true], [true, true, true], [true, false, false]] as const) {
+    for (const [payments, card, snapshot] of [[false, true, true], [true, true, true], [true, false, true]] as const) {
       await switches(true, true); // anlegen (Halle Pflicht bei Karte EIN)
       const admin = await makeUser("tadmin", "admin");
       const o = await makeUser("org");
@@ -267,8 +267,8 @@ describe("Turnier mit Preis, Preis wird bei Zahlungen AUS fixiert", () => {
       expect(row.status).toBe("payment");
       expect(row.finalShareCents).toBeGreaterThan(0);
       expect(row.venueAccessRequiredSnapshot !== null).toBe(snapshot);
-      if (!payments && card) {
-        // pausiert: Bereit ist gesperrt (die Guthaben-Zahlung gibt es seit 012 M6b nicht mehr), es entsteht kein paid_cents und keine Abbuchungszeile
+      if (payments !== card) {
+        // pausiert (Zahlungen AUS oder Karte AUS): Bereit ist gesperrt (die Guthaben-Zahlung gibt es seit 012 M6b nicht mehr), es entsteht kein paid_cents und keine Abbuchungszeile
         const [cap] = await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).limit(1);
         await expect(setPaidReady(cap.captainId!, t.id)).rejects.toThrow(/pausiert/);
         expect((await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id))).every((p) => p.paidCents === 0)).toBe(true);
