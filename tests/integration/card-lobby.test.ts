@@ -161,6 +161,45 @@ describe("EIN: AC-3 Spielerzahl ändert sich, keine Geldbewegung", () => {
   });
 });
 
+// 012 M6b Kartenfixture Paket 3: Gegenstücke zu wallet.test.ts "AC-1 Betrag = Preis ÷ eingeteilte Spieler (min_paid_players ohne Wirkung)", "wenige Spieler: mindestens ÷ 4" und
+// "AC-3 zweites Bereit fixiert, auch bei parallelen Aufrufen" über den ECHTEN Fixierpfad (setReady + finalConfirm) im Kartenmodell.
+describe("EIN: Anteil und Fixierung (Gegenstück zum Guthaben-Neumodell)", () => {
+  it("Anteil = Preis ÷ eingeteilte Spieler, aufgerundet: kein Deckel bei 12, keine Mindestzahl 8 (Einstellung min_paid_players ohne Wirkung), mindestens durch 4 geteilt", async () => {
+    await setSetting(null, "min_paid_players", 12);
+    try {
+      const g = await game(72, 10, 12_000);
+      await cardsAll(g);
+      await readyAll(g);
+      await bothCaptains(g);
+      expect((await reloadMatch(g.match.id)).finalShareCents).toBe(1200); // Altmodell mit Mindestzahl 12 wäre 1000, mit Mindestzahl 8 wäre es 1500
+
+      const g12 = await game(72, 12, 12_000);
+      await cardsAll(g12);
+      await readyAll(g12);
+      await bothCaptains(g12);
+      expect((await reloadMatch(g12.match.id)).finalShareCents).toBe(1000);
+
+      const few = await game(72, 2, 8000); // 2 eingeteilt: 8000 ÷ 4
+      expect(await teamShareNow(db, await reloadMatch(few.match.id), 8000)).toBe(2000);
+    } finally {
+      await setSetting(null, "min_paid_players", 8);
+    }
+  });
+
+  it("das zweite Bereit fixiert genau einmal, auch bei parallelen Bestätigungen; es entsteht kein Ledger-Eintrag und niemand zahlt", async () => {
+    const g = await game(72, 10, 8000);
+    await cardsAll(g);
+    await readyAll(g);
+    await Promise.all([finalConfirm(g.adminA.id, g.match.id), finalConfirm(g.adminB.id, g.match.id), finalConfirm(g.adminA.id, g.match.id), finalConfirm(g.adminB.id, g.match.id)]);
+    const m = await reloadMatch(g.match.id);
+    expect(m.finalShareCents).toBe(800);
+    expect(m.homeFinalAt && m.awayFinalAt).toBeTruthy();
+    expect(m.settledAt).toBeNull();
+    expect((await ledgerOf(g.match.id, g.ids)).filter((e) => e.matchId === g.match.id)).toHaveLength(0);
+    expect((await seat(g.match.id, g.adminA.id)).paidCents).toBe(0);
+  });
+});
+
 describe("Umschalten Aus -> Ein im laufenden Betrieb: bezahlte Spiele bleiben im Guthabenmodell", () => {
   const sw = (on: boolean) => setSetting(null, "card_payments_enabled", on);
   const refunds = async (g: Game) => (await ledgerOf(g.match.id, g.ids)).filter((e) => e.kind === "refund");
