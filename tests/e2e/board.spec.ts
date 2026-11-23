@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
+import { acceptChallenge } from "./flows";
 import { query } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
@@ -122,7 +123,6 @@ test("Spielsuche mit festem Termin steht mit Nummer, Kader und Herausfordern öf
   await newUser(b, "bsb");
   await createTeam(b, `Board Gegner ${run}`);
   await b.goto(`/suche/${requestId}`);
-  await b.getByRole("button", { name: "Spiel annehmen" }).click();
-  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
+  await acceptChallenge(b);
   await expect(b.getByTestId("game-number").filter({ hasText: "Spiel #" })).toContainText(`Spiel #${number}`);
 });

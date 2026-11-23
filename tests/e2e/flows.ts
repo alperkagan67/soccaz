@@ -1,4 +1,4 @@
-import { expect, type Browser, type Page } from "@playwright/test";
+import { expect, type Browser, type Locator, type Page } from "@playwright/test";
 import { createTeam, futureLocal, matchIdFromUrl, newUser, run } from "./helpers";
 
 /** Zwei Teams, A sucht, B nimmt an. Gibt beide Seiten (jeweils in der Lobby), die Match-ID und die Teamnamen zurück. */
@@ -35,6 +35,21 @@ export async function acceptChallenge(page: Page) {
     if (!/\/lobby\/[0-9a-f-]{36}$/.test(page.url())) await page.getByRole("button", { name: "Spiel annehmen" }).click({ timeout: 3_000 });
     await expect(page).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 4_000 });
   }).toPass({ timeout: 25_000 });
+}
+
+/**
+ * Wartet, bis React das Element übernommen hat (Hydration). Vor der Hydration löst ein Klick auf einen Absenden-Knopf das native Absenden aus (GET, Seite lädt neu) und die Server-Aktion läuft nie.
+ * Keine Wiederholung des Klicks: für Stellen, an denen ein zweiter Klick das Ergebnis verfälschen würde (gleichzeitiger Doppelklick, Erwartung "nicht mehr offen").
+ */
+export async function waitHydrated(target: Locator) {
+  // 20 s: Kaltstart des Dev-Servers; geprüft wird der Knopf UND sein Formular (bei zeitgeteilter Hydration kann der Knopf vor dem Formular übernommen sein)
+  await expect(target).toBeVisible({ timeout: 20_000 });
+  await expect
+    .poll(() => target.evaluate((el) => {
+      const hydrated = (x: Element | null) => x === null || Object.keys(x).some((k) => k.startsWith("__reactProps"));
+      return hydrated(el) && hydrated(el.closest("form"));
+    }), { timeout: 20_000 })
+    .toBe(true);
 }
 
 export async function clickWhenReady(page: Page, name: string | RegExp) {
