@@ -239,7 +239,8 @@ export async function fixShare(tx: Tx, match: MatchRow): Promise<void> {
     .where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
   if (seated.length === 0) return;
   // Zahlungen AUS bei eingeschaltetem Kartenschalter: das Spiel ist kostenlos, der Anteil wird als 0 fixiert (sonst waere es "abrechnungsgebunden" und würde abgebucht).
-  const freeByPaymentsOff = isDeadlineModel(match) && (await cardPaymentsEnabled(tx)) && !(await paymentsEnabled(tx)) && !(await isChargeBound(tx, match.id));
+  const [moneyIn] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), gt(matchParticipants.paidCents, 0))).limit(1); // Guthaben im Spiel: Guthabenmodell, nie gratis fixieren
+  const freeByPaymentsOff = isDeadlineModel(match) && !moneyIn && (await cardPaymentsEnabled(tx)) && !(await paymentsEnabled(tx)) && !(await isChargeBound(tx, match.id));
   const share = freeByPaymentsOff ? 0 : shareCents(priceCents, shareDivisor(match, seated.length));
   // Kartenmodell: nur Preis und Spielerzahl festschreiben; nichts prüfen, nichts erstatten (abgebucht wird mit M2)
   const pay = !(await cardModeActive(tx, match)) && (await paymentsEnabled(tx));

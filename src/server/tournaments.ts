@@ -17,7 +17,7 @@ import { getSetting } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
-import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
+import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardFlowPaused, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
 import { notifyHolderOnFix } from "./tournament-holders";
@@ -354,7 +354,7 @@ async function maybeFixPrice(tx: Tx, t: T) {
   const everyone = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
   const share = fresh.totalCents !== null ? finalSharePerPlayer(fresh.totalCents, everyone.length) : fresh.entryFeeCents;
   // Kartenmodell: ohne Partnerhalle wird der Preis nicht fixiert (die Abbuchung geht an die Halle, Provision und Zusage haengen an ihr)
-  const cardMode = await tournamentCardMode(tx, t.id);
+  const cardMode = (await tournamentCardMode(tx, t.id)) || (await tournamentCardFlowPaused(tx, t.id)); // Zahlungen AUS: Turnier mit Preis bleibt im Kartenfluss, eingefroren (nie still gratis)
   if (cardMode && !fresh.venueId) throw new DomainError("Für dieses Turnier ist noch keine Partnerhalle gewählt. Der Veranstalter muss zuerst eine Halle wählen.");
   await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
   if (cardMode && fresh.venueId) {

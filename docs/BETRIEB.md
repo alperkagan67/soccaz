@@ -153,6 +153,8 @@ Die Einzelheiten stehen oben; hier die Reihenfolge für Worker-Worktrees. Nur Na
 
 Der Schalter wirkt nicht rückwirkend auf bezahlte Plätze.
 
+**Ertragsverzicht:** Ein bei AUS bestätigtes Spiel ist mit Anteil 0 fixiert und bleibt auch nach dem Wiedereinschalten kostenlos (keine Abbuchung, keine Provision). Das ist gewollt und entgeht dem Ertrag; vor dem Ausschalten in Produktion bedenken (siehe GO-LIVE-AUDIT). Ein Spiel mit Guthaben im Spiel (`paid_cents > 0`) wird nie gratis fixiert. **Turniere:** Ein bei AUS angelegtes oder fixiertes Turnier mit Preis bekommt beim Fixieren Halle, Zugangs-Snapshot und Provisionssatz (Kartenfluss) und ist damit eingefroren (Alarm ab 6 Stunden, keine Abbuchung, keine Absage); es wird nie still kostenlos. Das Anlegen verlangt bei eingeschaltetem Kartenschalter weiterhin eine Partnerhalle.
+
 ## Hallen-Buchung
 
 Sobald ein bezahltes Spiel bestätigt ist, entsteht im Admin-Bereich unter **Buchungen** ein Auftrag. Es gibt noch keinen automatischen Buchungs-Agenten: Die Halle wird per Telefon, Mail oder Webseite gebucht und im Auftrag eingetragen. Für einen späteren Agenten gibt es die Schnittstelle `src/server/booking-agent.ts`.

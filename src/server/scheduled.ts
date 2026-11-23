@@ -55,11 +55,12 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
   const pay = await paymentsEnabled();
   let cancelled = 0;
   for (const m of lobbies) {
-    if (isDeadlineModel(m) && (pay || (await isChargeBound(db, m.id)))) continue; // Zahlungen AUS: nur noch abrechnungsgebundene Spiele folgen der Frist-Regel; // neue Frist-Regel: 48-h-Schließung und 1-h-Abbruch (closeLobbiesAtDeadline), nicht mehr die 24-h-Prüfung
+    if (pay && isDeadlineModel(m)) continue; // neue Frist-Regel: 48-h-Schließung und 1-h-Abbruch (closeLobbiesAtDeadline), nicht mehr die 24-h-Prüfung
     if (lobbyDeadline(m.startsAt, m.createdAt).getTime() > now.getTime()) continue;
     await db.transaction(async (tx) => {
       const [fresh] = await tx.select().from(matches).where(eq(matches.id, m.id)).for("update");
       if (!fresh || fresh.status !== "lobby") return;
+      if (isDeadlineModel(fresh) && (await isChargeBound(tx, fresh.id))) return; // abrechnungsgebunden (auch bei Zahlungen AUS): folgt der Frist-Regel, nicht der 24-h-Pruefung (unter der Spielsperre gelesen)
       if (await hasChargeRows(tx, fresh.id)) return; // Abbuchung angelaufen: der Job storniert nie (Erstattung auf die Karte = M3)
       await cancelMatchTx(tx, fresh, null, "Zu wenige bereite Spieler bis zur Frist.");
       await tx.execute(sql`select pg_notify('lobby', ${m.id})`);

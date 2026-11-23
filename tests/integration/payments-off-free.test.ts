@@ -2,15 +2,17 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, matchParticipants, paymentCharges, paymentRefunds } from "@/db/schema";
+import { teamMembers } from "@/db/schema";
+import { venues } from "@/db/schema-finance";
 import { tournaments } from "@/db/schema-league";
-import { frozenTournaments } from "@/server/tournaments";
+import { createTournament, frozenTournaments, joinAsPlayer, registerTeam, setOrganizer, setRosterComplete } from "@/server/tournaments";
 import { tournamentCardMode } from "@/server/tournament-card";
 import { chargeEligibility } from "@/server/payments/charge-run";
 import { finalConfirm, setReady, teamComplete } from "@/server/lobby";
 import { cancelUnderfilledLobbies, closeLobbiesAtDeadline } from "@/server/scheduled";
 import { setSetting } from "@/server/settings";
 import { cardModeActive } from "@/server/wallet";
-import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeTeam, makeUser, reloadMatch } from "./helpers";
 
 const nid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 12)}`;
 
@@ -160,8 +162,8 @@ describe("Zahlungen AUS: Frist-Job schliesst nur abrechnungsgebundene Spiele", (
 });
 
 // Turniere: "Zahlungen AUS" macht ein Turnier mit Preis NICHT kostenlos; es bleibt eingefroren (Alarm), die Bezahlphase laeuft nicht still weiter.
+const DAY = 86_400_000;
 describe("Turniere: payments_enabled x card_payments_enabled", () => {
-  const DAY = 86_400_000;
   async function tournament(totalCents: number) {
     const org = await makeUser("orgpof");
     const [t] = await db
@@ -204,5 +206,66 @@ describe("Zahlungen AUS: 24-h-Pruefung (cancelUnderfilledLobbies) laesst abrechn
     await switches(false, true);
     await cancelUnderfilledLobbies();
     expect((await reloadMatch(bound.match.id)).status).not.toBe("cancelled");
+  });
+});
+
+describe("Sicherheits-Review: Guthaben im Spiel wird bei AUS nie gratis fixiert", () => {
+  it("Spiel mit bezahltem Platz (paid_cents > 0), Zahlungen AUS + Karte AN, beide Captains bestaetigen: Anteil bleibt der Preisanteil, nicht 0", async () => {
+    const g = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
+    const all = [g.adminA, g.adminB];
+    while (all.length < 10) all.push(await addPlayer(g.match.id, all.length % 2 === 0 ? g.home.id : g.away.id));
+    await db.update(matchParticipants).set({ paidCents: 800 }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.adminA.id)));
+    await switches(false, true);
+    for (const p of all) await setReady(p.id, g.match.id, true);
+    await finalConfirm(g.adminA.id, g.match.id);
+    await finalConfirm(g.adminB.id, g.match.id);
+    expect((await reloadMatch(g.match.id)).finalShareCents).toBe(800);
+  });
+});
+
+describe("Gratis fixiertes Spiel nach dem Wiedereinschalten", () => {
+  it("bleibt kostenlos: der Frist-Job sagt es nicht ab und bucht nichts (Ertragsverzicht, bewusst)", async () => {
+    const g = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
+    const all = [g.adminA, g.adminB];
+    while (all.length < 10) all.push(await addPlayer(g.match.id, all.length % 2 === 0 ? g.home.id : g.away.id));
+    await switches(false, true);
+    for (const p of all) await setReady(p.id, g.match.id, true);
+    await finalConfirm(g.adminA.id, g.match.id);
+    await finalConfirm(g.adminB.id, g.match.id);
+    await db.update(matches).set({ startsAt: new Date(Date.now() + 30 * 60_000), createdAt: new Date(Date.now() - 80 * 3_600_000) }).where(eq(matches.id, g.match.id));
+    await switches(true, true);
+    await closeLobbiesAtDeadline();
+    expect((await reloadMatch(g.match.id)).status).not.toBe("cancelled");
+    expect(await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id))).toHaveLength(0);
+  });
+});
+
+describe("Turnier mit Preis, Preis wird bei Zahlungen AUS fixiert", () => {
+  it("bekommt Halle, Zugangs-Snapshot und Provisionssatz (Kartenfluss, eingefroren), wird nicht kostenlos; bei AN/AN dasselbe, bei Karte AUS: wie bisher ohne Snapshot", async () => {
+    const [v] = await db.insert(venues).values({ name: `E2E Halle POF ${Date.now()}`, city: "Essen", isPartner: true, active: true }).returning();
+    for (const [payments, card, snapshot] of [[false, true, true], [true, true, true], [true, false, false]] as const) {
+      await switches(true, true); // anlegen (Halle Pflicht bei Karte EIN)
+      const admin = await makeUser("tadmin", "admin");
+      const o = await makeUser("org");
+      await setOrganizer(admin.id, o.id, true);
+      const T0 = Date.now();
+      const t = await createTournament(o.id, { name: nid("POF-Preis"), city: "Essen", startsAt: new Date(T0 + 5 * DAY), registrationDeadline: new Date(T0 + 3 * DAY), maxTeams: 4, durationMin: 120, hourlyCents: 8000, venueId: v.id });
+      await switches(payments, card);
+      for (let i = 0; i < t.maxTeams; i++) {
+        const captain = await makeUser("cap");
+        const team = await makeTeam(captain.id, "Turnier");
+        await registerTeam(captain.id, t.id, team.id);
+        for (let k = 1; k < 4; k++) {
+          const p = await makeUser("pl");
+          await db.insert(teamMembers).values({ teamId: team.id, userId: p.id, role: "player" });
+          await joinAsPlayer(p.id, t.id, team.id);
+        }
+        await setRosterComplete(captain.id, t.id, true);
+      }
+      const [row] = await db.select().from(tournaments).where(eq(tournaments.id, t.id));
+      expect(row.status).toBe("payment");
+      expect(row.finalShareCents).toBeGreaterThan(0);
+      expect(row.venueAccessRequiredSnapshot !== null).toBe(snapshot);
+    }
   });
 });
