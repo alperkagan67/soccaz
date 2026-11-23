@@ -17,13 +17,13 @@ async function Sponsors() {
   if (list.length === 0) return null;
   return (
     <section className="space-y-2" aria-label={t("home.partners")}>
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">{t("home.partners")}</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">{t("home.partners")}</h2>
       <ul className="flex flex-wrap gap-2">
         {list.map((s) => (
           <li key={s.id}>
             <a href={`/api/sponsor/${s.id}`} rel="sponsored noopener" target="_blank" className="card block !py-2 text-sm hover:border-accent/50">
               <span className="font-semibold">{s.name}</span>
-              {s.tagline && <span className="block text-xs text-muted">{s.tagline}</span>}
+              {s.tagline && <span className="block text-sm text-muted">{s.tagline}</span>}
             </a>
           </li>
         ))}
@@ -44,18 +44,18 @@ export default async function Home() {
         <Image src="/brand/socca-reel-main.jpg" alt="" fill priority sizes="100vw" className="-z-10 object-cover opacity-60" />
         <div className="hero-scrim flex flex-col gap-3 p-5 pt-24 sm:p-8 sm:pt-28">
           <Image src="/brand/socca-logo.jpeg" alt="" width={56} height={56} className="rounded-lg" />
-          <h1 className="text-3xl font-extrabold leading-tight sm:text-5xl">
+          <h1 className="text-4xl font-extrabold leading-tight">
             {t("home.title1")}<br />
             <span className="text-accent-fg">{t("home.title2")}</span>
           </h1>
           <p className="max-w-md text-muted">{t("home.lead")}</p>
+          {/* Eine Hauptaktion (AC-30 b): Angemeldete gehen weiter zu Meine Spiele, Gäste starten. Alles andere ist ruhig (ghost); "Lobby aufmachen" steht in der Karte Teamspiel. */}
           <div className="flex flex-wrap gap-2">
-            <Link href={user ? "/app/teams/neu" : "/anmelden"} className="btn btn-primary">
-              {user ? t("home.createTeam") : t("home.start")}
+            <Link href={user ? "/app" : "/anmelden"} className="btn btn-primary" data-testid="home-main-action">
+              {user ? t("home.continue") : t("home.start")}
             </Link>
-            <Link href="/matchmaking" className="btn btn-ghost">{t("home.matchmaking")}</Link>
+            {user && <Link href="/app/teams/neu" className="btn btn-ghost">{t("home.createTeam")}</Link>}
             <Link href="/suche" className="btn btn-ghost">{t("home.viewRequests")}</Link>
-            <Link href="/spiele" className="btn btn-ghost">{t("home.livescore")}</Link>
           </div>
         </div>
       </section>

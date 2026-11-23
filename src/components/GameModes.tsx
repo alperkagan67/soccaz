@@ -10,18 +10,18 @@ export function GameModes({ signedIn }: { signedIn: boolean }) {
         <div className={card} data-testid="mode-team">
           <h3 className="font-bold">Teamspiel</h3>
           <p className="flex-1 text-sm text-muted">Dein Team gegen ein anderes Team. Der Captain öffnet eine Lobby, die für alle sichtbar ist, ein anderes Team tritt an.</p>
-          <Link href="/matchmaking" className="btn btn-primary">Lobby aufmachen</Link>
+          <Link href="/matchmaking" className="btn btn-ghost">Lobby aufmachen</Link>
           <Link href="/suche" className="btn btn-ghost">Offene Lobbys ansehen</Link>
         </div>
         <div className={card} data-testid="mode-private">
           <h3 className="font-bold">Privatspiel</h3>
           <p className="flex-1 text-sm text-muted">Für deine Freundesgruppe: nicht öffentlich, nur per Einladungslink, ohne Rangliste. Du teilst die Spieler in zwei Teams ein.</p>
-          <Link href={signedIn ? "/app/privatspiel/neu" : "/anmelden?next=/app/privatspiel/neu"} className="btn btn-primary">Privatspiel anlegen</Link>
+          <Link href={signedIn ? "/app/privatspiel/neu" : "/anmelden?next=/app/privatspiel/neu"} className="btn btn-ghost">Privatspiel anlegen</Link>
         </div>
         <div className={card} data-testid="mode-tournament">
           <h3 className="font-bold">Turnier</h3>
           <p className="flex-1 text-sm text-muted">Mehrere Teams, K.-o.-System, Eintritt pro Spieler. Turniere sind privat und laufen über einen Einladungslink des Veranstalters.</p>
-          <Link href="/turniere" className="btn btn-primary">Turniere ansehen</Link>
+          <Link href="/turniere" className="btn btn-ghost">Turniere ansehen</Link>
           <Link href={signedIn ? "/app/turniere/neu" : "/anmelden?next=/app/turniere/neu"} className="btn btn-ghost">Turnier veranstalten</Link>
         </div>
       </div>

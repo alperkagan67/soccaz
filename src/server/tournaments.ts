@@ -895,6 +895,19 @@ export async function listTournaments(filter: { city?: string; viewerId?: string
     .limit(50);
 }
 
+/**
+ * Ist der Nutzer Captain (Team-Admin) eines Teams? Nur für die ANZEIGE der Anmelden-Handlung in der Turnierliste. Angemeldet wird allein in `registerTeam`: dort prüft der Server Team-Admin und offene Anmeldung (nicht diese Funktion).
+ */
+export async function isCaptainOfAnyTeam(userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), isNull(teams.archivedAt)))
+    .limit(1);
+  return Boolean(row);
+}
+
 export async function myTournaments(userId: string) {
   return db.select({ id: tournaments.id, name: tournaments.name, status: tournaments.status, startsOn: tournaments.startsOn }).from(tournaments).where(eq(tournaments.organizerId, userId)).orderBy(desc(tournaments.createdAt)).limit(30);
 }
