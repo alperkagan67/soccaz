@@ -9,7 +9,7 @@ export function RatingReveal({ data }: { data: RatingRevealData }) {
   return (
     <section aria-labelledby="rating-reveal-title" data-testid="rating-reveal" data-tier-change={change} className="card space-y-3">
       <h2 id="rating-reveal-title" className="font-heading text-lg font-semibold">
-        Deine Wertung
+        Deine Wertung nach diesem Spiel
       </h2>
       <PlayerCard data={data.card} className="mx-auto" />
       <p data-testid="rating-reveal-text" className="text-center text-sm">

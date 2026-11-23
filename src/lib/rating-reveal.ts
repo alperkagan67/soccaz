@@ -13,14 +13,14 @@ export function ratingDelta(before: RevealSide, after: RevealSide): number {
   return after.rating - before.rating;
 }
 
-/** "Wertung 52 -> 55 (+3), Stufe Rasen" plus bei Stufenwechsel "Aufstieg: Kreide -> Rasen" bzw. "Abstieg: ...". Nie nur Farbe, nie nur Animation. */
+/** "Wertung 52 -> 55 (+3), Stufe Rasen"; Aufstieg: dazu ". Aufstieg: Kreide -> Rasen"; Stufe gesunken (ruhiger Wortlaut): "Wertung 55 -> 54 (-1), Stufe jetzt: Kreide (vorher Rasen)". Nie nur Farbe, nie nur Animation. */
 export function revealText(before: RevealSide, after: RevealSide): string {
   const d = ratingDelta(before, after);
   const sign = d > 0 ? `+${d}` : d < 0 ? `−${Math.abs(d)}` : "±0";
-  const base = `Wertung ${before.rating} → ${after.rating} (${sign}), Stufe ${TIER_LABELS[after.tier]}`;
+  const head = `Wertung ${before.rating} → ${after.rating} (${sign})`;
   const change = tierChange(before.tier, after.tier);
-  if (change === "up") return `${base}. Aufstieg: ${TIER_LABELS[before.tier]} → ${TIER_LABELS[after.tier]}`;
-  if (change === "down") return `${base}. Abstieg: ${TIER_LABELS[before.tier]} → ${TIER_LABELS[after.tier]}`;
-  return base;
+  if (change === "up") return `${head}, Stufe ${TIER_LABELS[after.tier]}. Aufstieg: ${TIER_LABELS[before.tier]} → ${TIER_LABELS[after.tier]}`;
+  if (change === "down") return `${head}, Stufe jetzt: ${TIER_LABELS[after.tier]} (vorher ${TIER_LABELS[before.tier]})`;
+  return `${head}, Stufe ${TIER_LABELS[after.tier]}`;
 }
 

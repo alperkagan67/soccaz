@@ -18,9 +18,10 @@ describe("revealText", () => {
     expect(revealText(side(1000), side(1000))).toBe("Wertung 50 → 50 (±0), Stufe Kreide");
   });
 
-  it("Aufstieg und Abstieg stehen im Text (Wort, nicht nur Pfeil oder Farbe)", () => {
+  it("Aufstieg steht als Wort im Text, eine gesunkene Stufe ruhig als \"Stufe jetzt: X (vorher Y)\" ohne das Wort Abstieg", () => {
     expect(revealText(side(1032), side(1040))).toBe("Wertung 54 → 55 (+1), Stufe Rasen. Aufstieg: Kreide → Rasen");
-    expect(revealText(side(1040), side(1032))).toBe("Wertung 55 → 54 (−1), Stufe Kreide. Abstieg: Rasen → Kreide");
+    expect(revealText(side(1040), side(1032))).toBe("Wertung 55 → 54 (−1), Stufe jetzt: Kreide (vorher Rasen)");
+    expect(revealText(side(1040), side(1032))).not.toMatch(/Abstieg/);
   });
 
   it("an jeder Stufenschwelle (55/70/80/90): eine Wertung darunter = Kreide/Rasen/Flutlicht/Pokal, ab der Schwelle die höhere Stufe", () => {
@@ -41,7 +42,7 @@ describe("RatingReveal (Markup)", () => {
   const html = renderToStaticMarkup(createElement(RatingReveal, { data }));
 
   it("zeigt Überschrift, die Karte und den Text mit alter und neuer Wertung ohne jede Animation und ohne Script", () => {
-    expect(html).toContain("Deine Wertung");
+    expect(html).toContain("Deine Wertung nach diesem Spiel");
     expect(html).toContain('data-testid="player-card"');
     expect(html).toContain("Wertung 50 → 61 (+11), Stufe Rasen. Aufstieg: Kreide → Rasen");
     expect(html).toContain('data-tier-change="up"');

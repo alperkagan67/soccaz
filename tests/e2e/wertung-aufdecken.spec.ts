@@ -39,7 +39,7 @@ test("Spieler sieht nach dem bestätigten Ergebnis NUR seine Wertungsänderung, 
   await anon.goto(`/spiele/${matchId}`);
   await expect(anon.getByText(`3 : 1`).first()).toBeVisible();
   await expect(anon.getByTestId("rating-reveal")).toHaveCount(0);
-  expect(await anon.content()).not.toContain("Deine Wertung");
+  expect(await anon.content()).not.toContain("Deine Wertung nach diesem Spiel");
 
   // Spieler: sieht Karte und Text, nur die eigene Änderung
   const sp = await (await browser.newContext()).newPage();
