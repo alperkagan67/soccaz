@@ -78,6 +78,18 @@ export async function hasChargeRows(tx: Pick<Tx, "select">, matchId: string): Pr
   return Boolean(row);
 }
 
+/** Altspiele (legacy_share_model) sind stillgelegt (012 M6b 1c-ii a-1): kein Fixieren, kein Abrechnen, kein Bezahlen mehr vom Guthaben. Erstattungen und Absagen bleiben moeglich (Geld geht nur zurueck). */
+export const LEGACY_STILLGELEGT = "Dieses Spiel stammt aus dem alten Zahlungsmodell und kann nicht mehr fixiert oder abgerechnet werden. Bitte kontaktiere den Support.";
+
+/** Altspiel bei eingeschalteten Zahlungen: hier wuerde Geld im Guthabenmodell bewegt (reservieren, fixieren, abrechnen). Bei Zahlungen AUS bewegt sich nichts (kostenlos). */
+export async function legacyMoneyBlocked(tx: Pick<Tx, "select">, match: Pick<MatchRow, "legacyShareModel">): Promise<boolean> {
+  return match.legacyShareModel && (await paymentsEnabled(tx as Tx));
+}
+
+export async function assertNotLegacyMoney(tx: Pick<Tx, "select">, match: Pick<MatchRow, "legacyShareModel">): Promise<void> {
+  if (await legacyMoneyBlocked(tx, match)) throw new DomainError(LEGACY_STILLGELEGT);
+}
+
 export const CHARGES_LOCKED = "Die Abbuchung für dieses Spiel hat begonnen: Die Teilnehmerliste ist gesperrt. Bitte kontaktiere den Support.";
 
 type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel" | "schedulingOpen" | "vetoStatus">;
@@ -193,6 +205,7 @@ export async function privateShareNow(tx: Pick<Tx, "select">, match: Pick<MatchR
 /** Buchung des Anteils beim Bereitmachen. Läuft nur, wenn Zahlungen eingeschaltet sind und der Spieler noch nicht bezahlt hat. */
 export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Promise<void> {
   if (!(await paymentsEnabled(tx))) return;
+  await assertNotLegacyMoney(tx, match); // Altspiel: stillgelegt
   if (await cardModeActive(tx, match)) return; // Kartenmodell: nichts reservieren, nichts vom Guthaben buchen
   const [p] = await tx
     .select({ paidCents: matchParticipants.paidCents })
@@ -229,6 +242,7 @@ export async function reserveShare(tx: Tx, match: MatchRow, userId: string): Pro
  */
 export async function fixShare(tx: Tx, match: MatchRow): Promise<void> {
   if (!usesFixedShareModel(match)) return;
+  await assertNotLegacyMoney(tx, match); // Altspiel (Privatspiel des alten Modells): kann nicht fixieren
   const [current] = await tx.select({ finalShareCents: matches.finalShareCents }).from(matches).where(eq(matches.id, match.id));
   if (!current || current.finalShareCents !== null) return; // schon fixiert
 
@@ -381,6 +395,7 @@ export async function refundOnCancel(tx: Tx, match: MatchRow, actorId: string | 
  */
 export async function settleMatch(tx: Tx, match: MatchRow): Promise<boolean> {
   if (!(await paymentsEnabled(tx)) || match.settledAt || match.status !== "confirmed") return false;
+  if (await legacyMoneyBlocked(tx, match)) return false; // Altspiel: stillgelegt, nie abrechnen (Job und Aufrufer duerfen nicht werfen; Alarm "Nicht abgerechnet" bleibt)
   const { priceCents, match: m } = await ensurePrice(tx, match);
   const payers = await tx
     .select({ userId: matchParticipants.userId, paidCents: matchParticipants.paidCents })

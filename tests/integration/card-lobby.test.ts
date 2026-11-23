@@ -313,13 +313,14 @@ describe("Schalter und Rückwärtsverträglichkeit", () => {
     expect(await walletBalance(db, g.adminA.id)).toBe(3000 - 1143);
   });
 
-  it("Altspiel bleibt auch bei eingeschaltetem Kartenmodell beim Guthaben (Reservierung, bezahlt vor Bereit)", async () => {
+  it("Altspiel ist auch bei eingeschaltetem Kartenmodell stillgelegt (1c-ii a-1): Bezahlen vom Guthaben und Bestaetigen werden abgewiesen, nichts gebucht", async () => {
     const m = await makeMatch({ legacy: true, hoursAhead: 72 });
     await fund(m.adminA.id, 3000);
-    await expect(setReady(m.adminA.id, m.match.id, true)).rejects.toThrow(/zahle zuerst/);
-    await payShare(m.adminA.id, m.match.id);
-    await setReady(m.adminA.id, m.match.id, true);
-    expect((await seat(m.match.id, m.adminA.id)).paidCents).toBeGreaterThan(0);
+    await expect(setReady(m.adminA.id, m.match.id, true)).rejects.toThrow(/zahle zuerst/); // Bereit braucht weiter die Zahlung, die es nicht mehr gibt
+    await expect(payShare(m.adminA.id, m.match.id)).rejects.toThrow(/alten Zahlungsmodell/);
+    await expect(finalConfirm(m.adminA.id, m.match.id)).rejects.toThrow(/alten Zahlungsmodell/);
+    expect((await seat(m.match.id, m.adminA.id)).paidCents).toBe(0);
+    expect(await walletBalance(db, m.adminA.id)).toBe(3000);
   });
 });
 

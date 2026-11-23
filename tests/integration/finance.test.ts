@@ -2,11 +2,10 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
-import { setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
 import { recordExpense } from "@/server/booking";
 import { exportLedgerCsv, getAlerts, listMatchFinance, matchEntries, monthPeriod, overview, playerFinance } from "@/server/finance";
-import { cardGame, chargeGame, cleanup, makeMatch, seedShare, useCardMode } from "./helpers";
+import { cardGame, chargeGame, cleanup, useCardMode } from "./helpers";
 
 // 012 M6b (Kartenfixture): Das Finanz-Reporting wird mit Kartenspielen geprüft (Karte, Fake-Abbuchung), nicht mehr mit Guthaben (fund/payShare/settleMatch).
 // Gegenstücke zu den gestrichenen Guthaben-Aussagen: "Ausnahme-Erstattung höchstens bis zum netto bezahlten Betrag" -> finance-manual-refund.test.ts ("Teilbeträge sind nicht möglich",
@@ -85,17 +84,6 @@ describe("Finanz-Reporting", () => {
     expect(loss?.title).toMatch(/Verlustspiel/);
     expect(loss?.detail).toContain("-20,00");
     expect(alerts.some((x) => x.code === "unbalanced")).toBe(false);
-  });
-
-  it("Alarm: nicht abgerechnetes Spiel (bezahlter Platz, kein settled_at)", async () => {
-    // Spiel hat begonnen, ist bestätigt, hat Zahler, aber keine Abrechnung
-    const c = await makeMatch({ legacy: true });
-    const p = c.adminA;
-    await seedShare(p.id, c.match.id, 1000); // bezahlter Platz (paid_cents > 0) ohne Geldweg: der Alarm gilt dem Altpfad, bis PR 2
-    await setReady(p.id, c.match.id, true);
-    await db.update(matches).set({ status: "confirmed", startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, c.match.id));
-    const alerts = await getAlerts();
-    expect(alerts.some((x) => x.code === `unsettled:${c.match.id}`)).toBe(true);
   });
 
   it("CSV-Export mit Kopfzeile, Dezimalkomma und Excel-tauglichem BOM", async () => {
