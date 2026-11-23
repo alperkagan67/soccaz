@@ -149,6 +149,7 @@ Die Einzelheiten stehen oben; hier die Reihenfolge für Worker-Worktrees. Nur Na
 | Spiel mit begonnener Abrechnung (Abbuchungs- oder Erstattungszeilen, fixierter Anteil > 0, Platz `charge_pending`/`charged`) | bleibt unverändert im Kartenmodell: Abbuchung, Nachzahlfenster, Erstattung und Frist-Regel laufen weiter (`isChargeBound`); kein Geld verschwindet, keine Doppelbelastung |
 | Spiel mit Karte, aber ohne Abrechnung | friert nicht ein (eine hinterlegte Karte allein bindet nicht) |
 | Turnier mit Preis | wird NICHT kostenlos: bleibt eingefroren (wie bei Karte AUS): keine Abbuchung, keine Absage durch das Nachzahlfenster, Alarm für Admin 1 ab 6 Stunden (`tournamentPaymentsActive`) |
+| Zusage der Halle (Turnier) | unabhängig von Zahlungen: die Erinnerung 24 h/6 h vor der Frist (`notifyHallConfirmReminders`) läuft auch bei AUS und bei eingefrorenen Turnieren; Zusage = Buchungsbedingung |
 | Wiedereinschalten (`payments_enabled` EIN) | Spiele ohne Karte, nicht fixiert, kehren ins Kartenmodell zurück: Karten nachholen, sonst Absage zur Frist (nichts abgebucht, kein Geldverlust); kostenlos fixierte Spiele bleiben kostenlos |
 
 Der Schalter wirkt nicht rückwirkend auf bezahlte Plätze.

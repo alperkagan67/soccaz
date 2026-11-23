@@ -2,8 +2,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, matchParticipants, paymentCharges, paymentRefunds } from "@/db/schema";
-import { teamMembers } from "@/db/schema";
-import { venues } from "@/db/schema-finance";
+import { notifications, teamMembers } from "@/db/schema";
+import { runCardCharges } from "@/server/payments/charge-trigger";
+import { venueAccess, venues } from "@/db/schema-finance";
 import { tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { createTournament, frozenTournaments, joinAsPlayer, payEntry, payForTeam, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
 import { tournamentCardMode } from "@/server/tournament-card";
@@ -269,12 +270,34 @@ describe("Turnier mit Preis, Preis wird bei Zahlungen AUS fixiert", () => {
       if (!payments && card) {
         // pausiert: Guthaben-Zahlung und Bereit sind gesperrt, es entsteht kein paid_cents und keine Abbuchungszeile
         const [cap] = await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).limit(1);
-        await expect(payEntry(cap.captainId, t.id)).rejects.toThrow(/pausiert/);
-        await expect(payForTeam(cap.captainId, t.id)).rejects.toThrow(/pausiert/);
-        await expect(setPaidReady(cap.captainId, t.id)).rejects.toThrow(/pausiert/);
+        await expect(payEntry(cap.captainId!, t.id)).rejects.toThrow(/pausiert/);
+        await expect(payForTeam(cap.captainId!, t.id)).rejects.toThrow(/pausiert/);
+        await expect(setPaidReady(cap.captainId!, t.id)).rejects.toThrow(/pausiert/);
         expect((await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id))).every((p) => p.paidCents === 0)).toBe(true);
         expect(await db.select().from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id))).toHaveLength(0);
       }
     }
+  });
+});
+
+describe("Zusage der Halle: Erinnerung laeuft auch bei Zahlungen AUS", () => {
+  it("Turnier mit Zugangs-Snapshot, Frist in 20 h, Halle hat nicht zugesagt: der Job (runCardCharges) erinnert bei payments AUS, Karte AN (eingefroren)", async () => {
+    const org = await makeUser("orgz");
+    const boss = await makeUser("bossz");
+    const [v] = await db.insert(venues).values({ name: `E2E Halle POFZ ${Date.now()}`, city: "Essen", isPartner: true, active: true }).returning();
+    await db.insert(venueAccess).values({ venueId: v.id, userId: boss.id, status: "active", assignedAt: new Date() });
+    const startsAt = new Date(Date.now() + 68 * 3_600_000); // Frist = Start minus 48 h = in 20 h
+    const [t] = await db
+      .insert(tournaments)
+      .values({
+        organizerId: org.id, name: nid("POFZ-Cup"), city: "Essen", startsOn: startsAt.toISOString().slice(0, 10), format: "knockout", maxTeams: 4, totalCents: 16000, hourlyCents: 8000, durationMin: 120,
+        status: "payment", registrationDeadline: new Date(Date.now() + 3_600_000), startsAt, isPrivate: false, venueId: v.id, venueAccessRequiredSnapshot: true, commissionPercentSnapshot: "10.00", finalShareCents: 1000,
+      } as typeof tournaments.$inferInsert)
+      .returning();
+    await switches(false, true);
+    await runCardCharges();
+    const notes = await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Halle hat noch nicht zugesagt")));
+    expect(notes.length).toBe(1);
+    expect(notes[0].url).toBe(`/turniere/${t.id}`);
   });
 });
