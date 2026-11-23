@@ -6,6 +6,7 @@ import { users } from "@/db/schema";
 import { settings } from "@/db/schema-finance";
 import { isOwner } from "@/lib/roles";
 import { audit } from "./audit";
+import { notifyResumedGames } from "./pause-notify";
 import { bookingStaffIds } from "./booking";
 import { notifyUsers } from "./notifications";
 import { DomainError } from "./teams";
@@ -71,5 +72,13 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
     );
   } catch (error) {
     console.error("setCardSwitch: Mitteilung an den Buchungsstab fehlgeschlagen", error instanceof Error ? error.name : "Fehler");
+  }
+  // Mitteilung "Bezahlung ist wieder moeglich, neue Frist" an die betroffenen Spiele: NACH dem Commit, best effort, eigener Fangblock (ein Fehler verhindert das Einschalten nie)
+  if (enabled) {
+    try {
+      await notifyResumedGames(new Date());
+    } catch (error) {
+      console.error("setCardSwitch: Mitteilung zur neuen Frist fehlgeschlagen", error instanceof Error ? error.name : "Fehler");
+    }
   }
 }

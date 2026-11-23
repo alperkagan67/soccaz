@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, like, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles, remindersSent, stripeEvents } from "@/db/schema";
+import { auditLog, matchParticipants, matches, notifications, paymentCharges, paymentProfiles, remindersSent, stripeEvents } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { fixDeadline } from "@/lib/deadlines";
 import { FakeProvider } from "@/server/payments/fake";
@@ -184,7 +184,12 @@ describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauc
     const t = new Date(start.getTime() - 30 * MIN); // Abbruchfrist (1 h vor Anstoss) laengst erreicht
     await pauseAndResume(new Date(t.getTime() - 30 * MIN)); // Karenzende = Anstoss + 1 h
     await closeLobbiesAtDeadline(t);
-    expect((await stateOf(g.match.id)).status).toBe("cancelled");
+    const m = await stateOf(g.match.id);
+    expect(m.status).toBe("cancelled");
+    // nie eine stille Absage: der Grund am Spiel und die Mitteilung an die Spieler nennen die Pause und die Erstattung
+    expect(m.cancelReason).toMatch(/Bezahlung war pausiert/);
+    const notes = await db.select().from(notifications).where(and(eq(notifications.userId, g.adminA.id), eq(notifications.type, "match.cancelled")));
+    expect(notes.some((n) => /Bezahlung war pausiert.*Erstattung folgt/.test(n.body))).toBe(true);
   });
 
   it("mehrere Einschaltungen: massgeblich ist die LETZTE (alt vor 5 h, neu vor 30 min -> Karenz gilt)", async () => {
@@ -206,5 +211,6 @@ describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauc
     await pauseAndResume(new Date(t.getTime() - 5 * 3_600_000));
     await closeLobbiesAtDeadline(t);
     expect((await stateOf(g.match.id)).status).toBe("cancelled");
+    expect((await stateOf(g.match.id)).cancelReason).not.toMatch(/pausiert/); // regulaere Absage: der Pausen-Text nur, wenn die Pause die Karenz verhindert hat
   });
 });
