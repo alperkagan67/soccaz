@@ -12,8 +12,15 @@ import { tournamentPlayers, tournamentTeams, tournaments } from "../src/db/schem
 import { creditWallet } from "../src/server/ledger";
 import { createTeam } from "../src/server/teams";
 import { joinAsPlayer, payEntry, registerTeam, setRosterComplete } from "../src/server/tournaments";
+import { assertSeedAllowed } from "./lib/seed-guard";
 
-if (!["127.0.0.1", "localhost"].includes(new URL(process.env.DATABASE_URL!).hostname)) throw new Error("Nur gegen eine lokale Datenbank.");
+// Schutz wie bei den anderen Seed-Skripten (Backlog 56): nur localhost:5433 mit soccav2 oder soccaz_w1 bis soccaz_w4, keine Query-Parameter.
+try {
+  assertSeedAllowed({ nodeEnv: process.env.NODE_ENV, databaseUrl: process.env.DATABASE_URL });
+} catch (e) {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+}
 
 const NAMES = ["Kevin Brandt", "Murat Yilmaz", "Jonas Keller", "Emre Demir", "Lukas Vogt", "Can Aydin", "Tim Hartmann", "Deniz Kaya", "Ali Öztürk", "Felix Neumann", "Yusuf Arslan", "Ben Schulz", "Omar Haddad", "Paul Richter", "Hakan Çelik", "Nico Braun"];
 const TEAMS = [
