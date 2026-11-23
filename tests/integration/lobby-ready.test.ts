@@ -29,6 +29,8 @@ describe("setReady und Zahlung", () => {
     const p = await addPlayer(m.match.id, m.home.id);
 
     await expect(setReady(p.id, m.match.id, true)).rejects.toThrow("Bitte zahle zuerst deinen Anteil");
+    // 012 M6a: Der Bezahlen-Knopf (Guthaben) ist aus der Oberfläche entfernt; die Meldung muss darauf hinweisen statt in eine Sackgasse zu führen
+    await expect(setReady(p.id, m.match.id, true)).rejects.toThrow(/Support/);
     expect(await readyAt(m.match.id, p.id)).toBeNull();
 
     await fund(p.id, 2000);

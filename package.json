@@ -21,7 +21,7 @@
     "@stripe/react-stripe-js": "7.0.1",
     "@stripe/stripe-js": "10.2.0",
     "drizzle-orm": "^0.45.4",
-    "next": "16.4.2",
+    "next": "16.4.6",
     "next-auth": "^5.0.0-beta.32",
     "pg": "^8.23.1",
     "pg-boss": "^11.1.2",

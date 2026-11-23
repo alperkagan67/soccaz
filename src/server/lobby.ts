@@ -446,7 +446,7 @@ export function setReady(userId: string, matchId: string, ready: boolean) {
     if (ready && (await cardModeActive(tx, match))) {
       // Kartenmodell: "Bereit" heißt "Karte hinterlegt" (Vertrag 012, AC-2); es wird nichts bezahlt
       if (match.priceCents !== 0 && me.cardStatus !== "card_ready") throw new DomainError("Bitte hinterlege zuerst eine Karte.");
-    } else if (ready && (await paymentsEnabled(tx)) && match.priceCents !== 0 && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil.");
+    } else if (ready && (await paymentsEnabled(tx)) && match.priceCents !== 0 && me.paidCents <= 0) throw new DomainError("Bitte zahle zuerst deinen Anteil. Das Aufladen von Guthaben gibt es nicht mehr: Bitte melde dich beim Support.");
     await tx
       .update(matchParticipants)
       .set({ readyAt: ready ? new Date() : null })

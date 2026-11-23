@@ -28,21 +28,22 @@ test("Admin: Zugriff nur mit Berechtigung", async ({ browser }) => {
   await expect(player).toHaveURL(/\/app$/);
   await expect(player.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
 
-  // Admin 2 (role admin ohne is_owner): Übersicht, Nutzer, Protokoll, Moderation; KEINE Finanzen, Codes, Einstellungen (Vertrag 009 AC-1)
+  // Admin 2 (role admin ohne is_owner): Übersicht, Nutzer, Protokoll, Moderation; KEINE Finanzen, Einstellungen (Vertrag 009 AC-1)
   const admin = await adminPage(browser, "ad1a");
   const nav = (p: import("@playwright/test").Page) => p.getByRole("navigation", { name: "Admin-Bereich" });
   await expect(nav(admin).getByRole("link", { name: "Nutzer" })).toBeVisible();
   await expect(nav(admin).getByRole("link", { name: "Protokoll" })).toBeVisible();
   await expect(nav(admin).getByRole("link", { name: "Moderation" })).toBeVisible();
-  for (const name of ["Finanzen", "Codes", "Einstellungen"]) await expect(nav(admin).getByRole("link", { name })).toHaveCount(0);
-  for (const url of ["/admin/finanzen", "/admin/codes", "/admin/einstellungen"]) {
+  for (const name of ["Finanzen", "Einstellungen"]) await expect(nav(admin).getByRole("link", { name })).toHaveCount(0);
+  for (const url of ["/admin/finanzen", "/admin/einstellungen"]) {
     await admin.goto(url);
     await expect(admin).toHaveURL(/\/app$/);
   }
 
-  // Admin 1 (role admin mit is_owner): zusätzlich Finanzen, Codes, Einstellungen
+  // Admin 1 (role admin mit is_owner): zusätzlich Finanzen, Einstellungen
   const owner = await adminPage(browser, "ad1o", "/admin", true);
-  for (const name of ["Nutzer", "Protokoll", "Finanzen", "Codes", "Einstellungen"]) await expect(nav(owner).getByRole("link", { name })).toBeVisible();
+  for (const name of ["Nutzer", "Protokoll", "Finanzen", "Einstellungen"]) await expect(nav(owner).getByRole("link", { name })).toBeVisible();
+  await expect(nav(owner).getByRole("link", { name: "Codes" })).toHaveCount(0); // Rabattcodes entfallen (012 M6a)
   await owner.goto("/admin/einstellungen");
   await expect(owner).toHaveURL(/\/admin\/einstellungen/);
 });

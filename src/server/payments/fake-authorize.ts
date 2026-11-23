@@ -26,3 +26,27 @@ export async function fakeAuthorizeCore(userId: string, matchId: string, outcome
   await handleStripeWebhook(e.rawBody, e.signature); // der echte Weg: Signaturpruefung, applyChargeInTx
   return {};
 }
+
+/**
+ * Kern der Fake-Freigabe fuer eine TURNIER-Zeile (012-Rest PR B, Backlog 143): wie fakeAuthorizeCore, aber ueber payment_charges.tournament_id. Nur die eigene Zeile des Zahlers
+ * (Variante B: der Zahler, nicht der Platz) im Zustand requires_action mit authentication_required; die Metadaten tragen tournamentId und userId, NIE matchId; die Zahlung geht ueber
+ * handleStripeWebhook (Signaturpruefung, applyTournamentCharge), der Kern bucht nie selbst. Die Sperren (assertNoFakeInProduction, fakeCardAllowed) liegen in der Server-Aktion.
+ */
+export async function fakeAuthorizeTournamentCore(userId: string, tournamentId: string, outcome: "ok" | "fail"): Promise<{ error?: string }> {
+  const provider = await getPaymentProvider();
+  if (provider.name !== "fake") return { error: "Nicht verfügbar." };
+  const NONE = "Für diese Zahlung ist gerade keine Freigabe möglich.";
+  if (typeof tournamentId !== "string" || !UUID.test(tournamentId)) return { error: NONE };
+  const [row] = await db
+    .select({ owner: paymentCharges.userId, pi: paymentCharges.paymentIntentId, amount: paymentCharges.amountCents, status: paymentCharges.status, code: paymentCharges.failureCode })
+    .from(paymentCharges)
+    .where(and(eq(paymentCharges.tournamentId, tournamentId), sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${userId}`, eq(paymentCharges.status, "requires_action")))
+    .orderBy(paymentCharges.createdAt, paymentCharges.id) // eindeutig: bei mehreren offenen Zeilen (eigene + uebernommene) zuerst die aelteste
+    .limit(1);
+  const [profile] = await db.select({ customer: paymentProfiles.stripeCustomerId }).from(paymentProfiles).where(eq(paymentProfiles.userId, userId));
+  if (!row || row.status !== "requires_action" || row.code !== "authentication_required" || !row.pi || !profile) return { error: NONE };
+  const object = { id: row.pi, amount: row.amount, currency: "eur", customer: profile.customer, metadata: { tournamentId, userId: row.owner }, ...(outcome === "fail" ? { last_payment_error: { code: "payment_intent_authentication_failure" } } : {}) };
+  const e = (provider as unknown as FakeProvider).signEvent({ id: `evt_fakeauth_t_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`, type: outcome === "ok" ? "payment_intent.succeeded" : "payment_intent.payment_failed", object });
+  await handleStripeWebhook(e.rawBody, e.signature); // der echte Weg: Signaturpruefung, applyTournamentCharge
+  return {};
+}

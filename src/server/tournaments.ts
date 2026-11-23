@@ -566,6 +566,8 @@ async function completeKo(tx: Tx, t: T, tm: TmRow, winner: string) {
 }
 
 /** Finalizer: Ein Turnierspiel ist gespielt. Eintragen, Sieger weiterführen. Bei Gleichstand entscheidet der Veranstalter das Siebenmeterschießen. */
+// SPERRREIHENFOLGE: der Aufrufer haelt schon das SPIEL; hier kommt das TURNIER dazu (Spiel -> Turnier). Das ist die einzige erlaubte Rueckrichtung, weil die Absage ihre Spiele mit NOWAIT sperrt und unter
+// der Turniersperre nie wartet (lockTournamentGames); siehe docs/BETRIEB.md.
 export async function advanceFromMatch(tx: Tx, matchId: string): Promise<void> {
   const [tm] = await tx.select().from(tournamentMatches).where(eq(tournamentMatches.matchId, matchId));
   if (!tm || tm.scoreA !== null) return;
@@ -621,6 +623,15 @@ async function settle(tx: Tx, t: T) {
 
 /** Absagen: Alle bezahlten Eintritte gehen vollständig aufs Guthaben der Spieler zurück. Nur möglich, solange noch kein Spiel gespielt ist. */
 export async function cancelTournament(userId: string, tournamentId: string) {
+  try {
+    return await cancelTournamentOnce(userId, tournamentId);
+  } catch (error) {
+    await noteBusy(error); // Protokoll NACH dem Rollback
+    throw error;
+  }
+}
+
+async function cancelTournamentOnce(userId: string, tournamentId: string) {
   const proposed = await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann absagen.");
@@ -646,12 +657,66 @@ export async function cancelTournament(userId: string, tournamentId: string) {
   if (proposed) throw new DomainError("Nach der ersten Abbuchung kann nur Admin 1 das Turnier absagen. Dein Absagevorschlag ist gespeichert.");
 }
 
+/** Das Turnier ist gerade in Bearbeitung (ein Spiel ist gesperrt): die Absage/Loeschung wartet nie, sondern meldet das und wird wiederholt (Job: naechster Lauf). */
+export class TournamentBusyError extends DomainError {
+  constructor(message: string, readonly tournamentId: string | null = null) {
+    super(message);
+  }
+}
+
+const isLockNotAvailable = (e: unknown): boolean => (e as { code?: string })?.code === "55P03" || (e as { cause?: { code?: string } })?.cause?.code === "55P03";
+const BUSY_BACKOFF_MS = [50, 100, 200];
+
+/** Protokoll NACH dem Rollback (eigene Verbindung, ohne Personendaten): das Turnier war beschaeftigt (Backlog 144). Nie werfen. */
+export async function noteBusy(error: unknown): Promise<void> {
+  if (!(error instanceof TournamentBusyError) || !error.tournamentId) return;
+  try {
+    await audit(null, "tournament.cancel_busy", "tournament", error.tournamentId, {}, db);
+  } catch {
+    /* das Protokoll ist Zugabe */
+  }
+}
+
+/**
+ * SPERRREIHENFOLGE (Backlog 144, docs/BETRIEB.md): Halle -> Zugang -> TURNIER -> SPIEL -> Zahlungszeile -> Nutzer. Wer das Turnier haelt und Spiele braucht (Absage, Kontoloeschung), darf auf ein Spiel NIE warten:
+ * Pfade, die ein Spiel zuerst halten (Ergebnis-Finalizer advanceFromMatch: Spiel -> Turnier), liefen sonst in einen Zyklus (Postgres-Deadlock 40P01). Darum: die Spiele sortiert mit NOWAIT sperren, bei gesperrtem
+ * Spiel bis zu dreimal kurz wiederholen (50/100/200 ms, je im Savepoint, die Transaktion bleibt benutzbar), danach TournamentBusyError ("bitte gleich noch einmal"; der Job versucht es im naechsten Lauf, nie
+ * stilles Auslassen). Das Protokoll (noteBusy) schreibt der Aufrufer NACH dem Rollback.
+ */
+export async function lockGamesNoWait(tx: Tx, gameIds: string[], tournamentId: string | null = null): Promise<string[]> {
+  const ids = [...new Set(gameIds)].sort();
+  if (ids.length === 0) return ids;
+  for (let attempt = 0; attempt <= BUSY_BACKOFF_MS.length; attempt++) {
+    try {
+      await tx.transaction(async (sp) => {
+        await sp.select({ id: matches.id }).from(matches).where(inArray(matches.id, ids)).orderBy(matches.id).for("update", { noWait: true });
+      });
+      return ids;
+    } catch (error) {
+      if (!isLockNotAvailable(error)) throw error;
+      if (attempt < BUSY_BACKOFF_MS.length) {
+        await new Promise((r) => setTimeout(r, BUSY_BACKOFF_MS[attempt]));
+        continue;
+      }
+      throw new TournamentBusyError("Das Turnier ist gerade in Bearbeitung. Bitte gleich noch einmal versuchen.", tournamentId);
+    }
+  }
+  return ids;
+}
+
+/** Die Spiele eines Turniers sortiert und ohne Warten sperren (siehe lockGamesNoWait). */
+export async function lockTournamentGames(tx: Tx, tournamentId: string): Promise<string[]> {
+  const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
+  return lockGamesNoWait(tx, games.map((g) => g.matchId!).filter(Boolean), tournamentId);
+}
+
 /** Sagt ein Turnier unter der Turniersperre ab und erstattet alle Eintritte (feste Schlüssel, genau einmal). `actorId` null = Job. */
 async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: (card: boolean) => string) {
   const tournamentId = t.id;
   if (t.status === "finished" || t.status === "cancelled") throw new DomainError("Das Turnier ist schon beendet oder abgesagt.");
   const played = await tx.select({ id: tournamentMatches.id }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.scoreA))).limit(1);
   if (played.length > 0) throw new DomainError("Es gibt schon Ergebnisse. Bitte wende dich an die Plattform.");
+  const gameIds = await lockTournamentGames(tx, tournamentId); // K1: Spiele sortiert und OHNE Warten sperren, VOR allen Erstattungs-/Zahlungsschreibungen (Sperrreihenfolge, Backlog 144)
   const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
   // Kartenmodell (M5-5): Erstattungszeilen fuer alle erfolgreichen Abbuchungen, Provisions-Storno im selben Schritt; sonst (Altmodell) Erstattung aufs Guthaben
   const card = (await hasTournamentChargeRows(tx, tournamentId)) || (await tournamentCardMode(tx, tournamentId));
@@ -681,8 +746,6 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
       /* Zugabe */
     }
   }
-  const games = await tx.select({ matchId: tournamentMatches.matchId }).from(tournamentMatches).where(and(eq(tournamentMatches.tournamentId, tournamentId), isNotNull(tournamentMatches.matchId)));
-  const gameIds = games.map((g) => g.matchId!).filter(Boolean);
   if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
   await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
   await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));
@@ -722,6 +785,7 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
       });
     } catch (error) {
       console.error("closeTournamentsAtDeadline: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+      await noteBusy(error);
     }
   }
   return cancelled;
@@ -753,6 +817,7 @@ export async function cancelTournamentsAfterWindow(now: Date = new Date()): Prom
       });
     } catch (error) {
       console.error("cancelTournamentsAfterWindow: Fehler bei Turnier", c.id, error instanceof Error ? error.name : "Fehler");
+      await noteBusy(error);
     }
   }
   return cancelled;
