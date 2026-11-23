@@ -132,6 +132,11 @@ curl -X POST -H "x-job-secret: $JOB_SECRET" https://deine-domain/api/jobs/send-r
 
 Hinweise: Das Buchungsjournal ist unveränderlich (Datenbank-Trigger). Korrekturen sind Gegenbuchungen. Die Zahlungsgebühr wird beim Verbuchen **geschätzt** (Einstellung oben); die echten Gebühren stehen im Stripe-Dashboard und sollten monatlich abgeglichen werden.
 
+### Schalter in Dev und Test (Schalter-Flip)
+
+- **Produktion bleibt `payments_enabled` AUS und `card_payments_enabled` AUS** (Standardwerte, keine Migration). Die Dev-Seeds (`scripts/seed-demo.mjs`, `scripts/lib/seed-frontend-data.ts`; `node scripts/worktree.mjs create` ruft `seed-demo.mjs`) schalten beide Schalter in der **lokalen** Datenbank EIN (idempotent, Audit-Zeile je Änderung, nur hinter `seed-guard`: `localhost:5433`, `soccav2` oder `soccaz_w1` bis `soccaz_w4`, nie `NODE_ENV=production`). Mit `PAYMENTS_FAKE=1` im Dev-Server gibt es die Karte ohne Stripe. Gratis testen: auf `/admin/einstellungen` `payments_enabled` ausschalten (nicht den Kartenschalter: **Zahlungen AN + Karte AUS = pausiert**, siehe 2c).
+- **Automatisierte Tests starten und enden im Standard AUS/AUS:** jede Integrationsdatei setzt vor dem Start beide Schalter zurück (`tests/integration/setup.ts`), das Aufräumen (`tests/cleanup.ts`, auch nach den E2E-Tests) setzt beide zurück, und der E2E-`globalSetup` (`tests/e2e/global-setup.ts`) setzt sie vor den Specs zurück (nur lokale Datenbank). Folge: nach einem Testlauf steht die lokale Datenbank wieder auf AUS/AUS; wer weiter von Hand im Kartenmodell arbeiten will, führt `node --env-file=.env.local scripts/seed-demo.mjs` erneut aus (idempotent) oder schaltet auf der Admin-Seite um. Specs und Tests, die das Kartenmodell brauchen, setzen ihre Schalter pro Test selbst und stellen sie zurück (Regel 23).
+
 ### Lokale Entwicklung mit Stripe-Testmodus (Kurzfassung)
 
 Die Einzelheiten stehen oben; hier die Reihenfolge für Worker-Worktrees. Nur Namen, nie Werte.
@@ -186,6 +191,13 @@ Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert�
 **Rückgängig (Rollback):** Code auf den vorherigen Stand zurück; Admin 1 lässt sich ohne Datenverlust abgeben (`is_owner = false`). Die Spalte `is_owner` und der Teilindex `users_one_owner` bleiben ungenutzt stehen (Datenbankänderungen sind nur vorwärts, vorher sichern).
 
 **Prüfung der Migration** (lokal, Wegwerf-Datenbanken, löscht sie danach): `node --env-file=.env.local scripts/migrate-check.mjs` (frische Datenbank mit allen Migrationen in einem Lauf und bestehende Datenbank mit Daten).
+
+## Hallen-Anfragen freischalten (013 v3, AC-31, Migration 0056)
+
+- Eine Halle aus der Anfrage ("Anfrage senden", Hallen-Onboarding M2d) wird im Status `requested` angelegt (inaktiv, keine Partnerhalle, Standard-Provision) und bekommt für den Anfragenden einen aktiven Betreiber-Zugang. **Sichtbar und buchbar ist sie erst nach der Freischaltung** durch Admin 1 oder Admin 2 unter `/admin/hallen/anfragen` (Freischalten, oder Ablehnen mit Grund, 3 bis 200 Zeichen). Der Betreiber bekommt eine Mitteilung; unter `/halle` sieht er den Status. Nach einer Ablehnung kann er die Anfrage nach einer Änderung erneut senden (keine Sperrfrist), die Historie bleibt im Eingriffsprotokoll (`venue.requested/approved/rejected`, IDs und Grund, keine Personendaten).
+- Der Server prüft überall: jeder Leser (Hallenliste, Detail, Sitemap, Termin-Auswahl, Hallen-Veto, Turnier-Partnerhalle) filtert auf `approval_status = approved` zusätzlich zu `active`; beim Zuordnen einer Halle (Buchungsauftrag, Turnier) antwortet eine nicht freigegebene Halle wie eine unbekannte ID (kein Existenz-Leck). `updateVenue` aktiviert eine angefragte oder abgelehnte Halle nie.
+- **Entwickler-Datenbanken mit einem früheren Stand von 0056:** Die Migration 0056 wurde vor dem Merge überarbeitet (erst ohne, dann mit dem CHECK `venues_requested_inactive_chk`). Eine Worker-Datenbank, die einen früheren Stand schon angewendet hat (z. B. `soccaz_w1` bis `soccaz_w4`), muss VOR dem Update `drizzle/down/0056_down.sql` ausführen UND den Eintrag `0056_venue_approval` aus `drizzle.__drizzle_migrations` löschen (der neueste Eintrag), oder die Datenbank neu anlegen (`node scripts/worktree.mjs remove`/`create`). Sonst scheitert `npm run db:migrate` (Spalten existieren schon) oder der CHECK fehlt. Produktion ist nicht betroffen (die Migration wurde dort nie angewendet).
+- Bestehende Hallen (Altbestand, OpenStreetMap-Import, Admin-Anlage) sind `approved` und unverändert sichtbar (Standardwert der Migration, kein Backfill nötig). **Rollback:** erst den Code zurückrollen, dann `drizzle/down/0056_down.sql` im Wartungsfenster (rein additiv).
 
 ## Hallenbetreiber: Zugang je Halle (Vertrag 011 M1, nur Admin 1)
 

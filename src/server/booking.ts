@@ -32,7 +32,7 @@ export function canTransition(from: BookingStatus, to: BookingStatus): boolean {
 }
 
 /** Empfänger der Buchungsaufgaben: alle NICHT GESPERRTEN Plattform-Admins (die Teilrolle booking entfällt mit Vertrag 009 M1). */
-async function bookingStaffIds(tx: Pick<typeof db, "select">): Promise<string[]> {
+export async function bookingStaffIds(tx: Pick<typeof db, "select">): Promise<string[]> {
   const rows = await tx.select({ id: users.id }).from(users).where(and(inArray(users.role, ["admin"]), isNull(users.bannedAt)));
   return rows.map((r) => r.id);
 }
@@ -119,6 +119,11 @@ export async function updateBookingJob(actorId: string, jobId: string, patch: Bo
     const next = patch.status ?? job.status;
     if (!canTransition(job.status, next)) throw new DomainError("Dieser Statuswechsel ist nicht erlaubt.");
     const venueId = patch.venueId === undefined ? job.venueId : patch.venueId;
+    if (patch.venueId) {
+      // Zuordnung nur zu freigeschalteten Hallen; unbekannt und nicht freigeschaltet liefern dieselbe Antwort (kein Existenz-Leck, AC-31)
+      const known = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(patch.venueId) ? (await tx.select({ approvalStatus: venues.approvalStatus }).from(venues).where(eq(venues.id, patch.venueId)))[0] : undefined;
+      if (!known || known.approvalStatus !== "approved") throw new DomainError("Halle nicht gefunden.");
+    }
     if ((next === "booked" || next === "confirmed") && !venueId) throw new DomainError("Bitte zuerst eine Halle auswählen.");
     if (patch.proofUrl && !/^https?:\/\//.test(patch.proofUrl)) throw new DomainError("Der Nachweis muss ein Link sein (http oder https).");
 
@@ -136,7 +141,7 @@ export async function updateBookingJob(actorId: string, jobId: string, patch: Bo
 
     if (venueId && (next === "booked" || next === "confirmed")) {
       const [venue] = await tx.select().from(venues).where(eq(venues.id, venueId));
-      if (!venue) throw new DomainError("Halle nicht gefunden.");
+      if (!venue || venue.approvalStatus !== "approved") throw new DomainError("Halle nicht gefunden."); // nicht freigeschaltete Halle: wie eine unbekannte ID (kein Existenz-Leck, AC-31)
       const [m] = await tx.select().from(matches).where(eq(matches.id, job.matchId)).for("update");
       const [rule] = await tx
         .select({ costCents: priceRules.costCents })

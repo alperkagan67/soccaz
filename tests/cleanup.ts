@@ -71,6 +71,7 @@ export async function cleanupTestData(pool: Pool) {
       "delete from teams where id in (select id from _tt)",
       "delete from users where id in (select id from _tu)",
       "update settings set value = 'false'::jsonb where key = 'payments_enabled'",
+      "update settings set value = 'false'::jsonb where key = 'card_payments_enabled'", // Leck-Fix (Schalter-Flip): auch der Kartenschalter geht nach jeder Datei zurueck auf den Produktionsstandard
       "update settings set value = '8'::jsonb where key = 'min_paid_players'",
     ];
     // Neuverkettung der Beweiskette nur gegen eine erlaubte lokale Datenbank und nie produktiv (Review R-T224)

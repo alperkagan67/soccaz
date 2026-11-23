@@ -2,6 +2,7 @@ import Link from "next/link";
 import { can, canUser, type Permission } from "@/lib/roles";
 import { countOpenDisputes } from "@/server/payments/dispute-admin";
 import { requirePermission } from "@/server/session";
+import { countVenueRequests } from "@/server/venue-approval";
 
 const NAV: { href: string; label: string; permission: Permission }[] = [
   { href: "/admin", label: "Übersicht", permission: "dashboard" },
@@ -23,6 +24,7 @@ const NAV: { href: string; label: string; permission: Permission }[] = [
 
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
   const user = await requirePermission("dashboard");
+  const openVenueRequests = canUser(user, "booking") ? await countVenueRequests() : 0; // offene Hallen-Anfragen (013 v3 AC-31)
   const openDisputes = can(user.role, "admin") ? await countOpenDisputes() : 0; // Hinweis in der Navigation (nur fuer die Berechtigung admin)
   return (
     <div className="space-y-4">
@@ -30,6 +32,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
         {NAV.filter((n) => canUser(user, n.permission)).map((n) => (
           <Link key={n.href} href={n.href} className="rounded-md px-3 py-1.5 text-muted hover:bg-panel hover:text-ink">
             {n.label}
+            {n.href === "/admin/hallen" && openVenueRequests > 0 && <span className="ml-1 rounded-full bg-ink px-1.5 py-0.5 text-xs text-bg" data-testid="open-venue-requests">{openVenueRequests}<span className="sr-only"> offene Hallen-Anfragen</span></span>}
             {n.href === "/admin/zahlungsstreit" && openDisputes > 0 && <span className="ml-1 rounded-full bg-ink px-1.5 py-0.5 text-xs text-bg" data-testid="open-disputes-badge">{openDisputes}</span>}
           </Link>
         ))}
