@@ -6,7 +6,7 @@ import { notifications, teamMembers } from "@/db/schema";
 import { runCardCharges } from "@/server/payments/charge-trigger";
 import { venueAccess, venues } from "@/db/schema-finance";
 import { tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
-import { createTournament, frozenTournaments, joinAsPlayer, payEntry, payForTeam, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
+import { createTournament, frozenTournaments, joinAsPlayer,  registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
 import { tournamentCardMode } from "@/server/tournament-card";
 import { chargeEligibility } from "@/server/payments/charge-run";
 import { finalConfirm, setReady, teamComplete } from "@/server/lobby";
@@ -268,10 +268,8 @@ describe("Turnier mit Preis, Preis wird bei Zahlungen AUS fixiert", () => {
       expect(row.finalShareCents).toBeGreaterThan(0);
       expect(row.venueAccessRequiredSnapshot !== null).toBe(snapshot);
       if (!payments && card) {
-        // pausiert: Guthaben-Zahlung und Bereit sind gesperrt, es entsteht kein paid_cents und keine Abbuchungszeile
+        // pausiert: Bereit ist gesperrt (die Guthaben-Zahlung gibt es seit 012 M6b nicht mehr), es entsteht kein paid_cents und keine Abbuchungszeile
         const [cap] = await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).limit(1);
-        await expect(payEntry(cap.captainId!, t.id)).rejects.toThrow(/pausiert/);
-        await expect(payForTeam(cap.captainId!, t.id)).rejects.toThrow(/pausiert/);
         await expect(setPaidReady(cap.captainId!, t.id)).rejects.toThrow(/pausiert/);
         expect((await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id))).every((p) => p.paidCents === 0)).toBe(true);
         expect(await db.select().from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id))).toHaveLength(0);

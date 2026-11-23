@@ -11,7 +11,7 @@ import { trialBalance, walletBalance } from "@/server/ledger";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runTournamentCharges } from "@/server/payments/tournament-charge";
-import { confirmResult, submitResult } from "@/server/results";
+import { confirmResult, decideResult, disputeResult, submitResult } from "@/server/results";
 import { setSetting } from "@/server/settings";
 import { cancelTournament, closeTournamentsAtDeadline, closeWithJoinedTeams, createTournament, decideShootout, getTournament, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setDrawRandom, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "@/server/tournaments";
 import { takeOverTournamentShare } from "@/server/tournament-card";
@@ -612,5 +612,145 @@ describe("Turnier im Kartenmodell: Auslosung und Freilose", () => {
     const freilos = new Set(semis.flatMap((r) => [r.teamA, r.teamB]).filter((x): x is string => Boolean(x) && !inFirst.has(x as string)));
     expect(freilos.size).toBe(3);
     expect([...inFirst, ...freilos].sort()).toEqual(squads.map((s) => s.team.id).sort());
+  });
+});
+
+// --- b2-ii: Ergebnisrechte im Kartenturnier (Gegenstücke zu 4 Altpfad-Tests aus tournament.test.ts, deren Thema nicht das Guthaben ist, deren Aufbau aber payAll nutzte) ---
+describe("Turnier im Kartenmodell: Ergebnisrechte des Veranstalters", () => {
+  const openSemi = async (tid: string) => {
+    const m = (await bracketRows(tid)).find((r) => r.stage === "ko:4" && r.matchId)!;
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m.matchId!));
+    return m;
+  };
+  const openSemis = async (tid: string) => {
+    const rows = (await bracketRows(tid)).filter((r) => r.stage === "ko:4" && r.matchId).sort((a, b) => a.slot - b.slot);
+    for (const m of rows) await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m.matchId!));
+    return rows;
+  };
+  const scoreOf = async (id: string) => (await db.select().from(tournamentMatches).where(eq(tournamentMatches.id, id)))[0].scoreA;
+
+  it("Veranstalter (weder Team-Admin noch Plattform-Admin) trägt direkt ein, Sieger rückt auf; Fremde und andere Veranstalter werden abgewiesen", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningCardTournament(o);
+    const m = await openSemi(t.id);
+    const stranger = await makeUser("fremd");
+    const otherOrg = await organizer();
+    await expect(submitResult(stranger.id, m.matchId!, 2, 1)).rejects.toThrow(/Team-Admins/);
+    await expect(submitResult(otherOrg.id, m.matchId!, 2, 1)).rejects.toThrow(/Team-Admins/);
+    await expect(decideResult(stranger.id, m.matchId!, 2, 1, "ich bestimme")).rejects.toThrow(/entscheiden/);
+    await expect(decideResult(otherOrg.id, m.matchId!, 2, 1, "ich bestimme")).rejects.toThrow(/entscheiden/);
+    expect(await scoreOf(m.id)).toBeNull();
+    await submitResult(o.id, m.matchId!, 2, 1);
+    expect(await scoreOf(m.id)).toBe(2);
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("played");
+    const final = (await bracketRows(t.id)).find((r) => r.stage === "ko:2")!;
+    expect([final.teamA, final.teamB]).toContain(m.teamA);
+    expect(squads.length).toBe(4);
+  });
+
+  it("Streit: Veranstalter entscheidet, Fremde nicht; Plattform-Admin bleibt Fallback", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningCardTournament(o);
+    const captains = new Map(squads.map((s) => [s.team.id, s.captain]));
+    const m = await openSemi(t.id);
+    await submitResult(captains.get(m.teamA!)!.id, m.matchId!, 3, 0);
+    await disputeResult(captains.get(m.teamB!)!.id, m.matchId!, "stimmt nicht");
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("disputed");
+    const stranger = await makeUser("fremd");
+    await expect(decideResult(stranger.id, m.matchId!, 0, 3, "ich entscheide")).rejects.toThrow(/entscheiden/);
+    await decideResult(o.id, m.matchId!, 1, 2, "Schiedsrichterbericht");
+    expect((await bracketRows(t.id)).find((r) => r.id === m.id)).toMatchObject({ scoreA: 1, scoreB: 2 });
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).toBe("played");
+    const m2 = (await bracketRows(t.id)).find((r) => r.stage === "ko:4" && r.matchId && r.scoreA === null)!;
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m2.matchId!));
+    const admin = await makeUser("padmin", "admin");
+    await decideResult(admin.id, m2.matchId!, 2, 2, "Admin");
+    expect((await bracketRows(t.id)).find((r) => r.id === m2.id)).toMatchObject({ scoreA: 2, scoreB: 2 });
+  });
+
+  it("Randfall: Ist der Veranstalter zugleich Team-Admin eines beteiligten Teams, gilt er in diesem Spiel nur als dieses Team (Gegenpartei bestätigt, kein Selbst-Bestätigen, keine Selbst-Entscheidung)", async () => {
+    const o = await organizer();
+    const { t, squads } = await runningCardTournament(o);
+    const captains = new Map(squads.map((s) => [s.team.id, s.captain]));
+    const m = await openSemi(t.id);
+    await db.insert(teamMembers).values({ teamId: m.teamA!, userId: o.id, role: "admin" });
+    await submitResult(o.id, m.matchId!, 5, 0);
+    expect((await bracketRows(t.id)).find((r) => r.id === m.id)!.scoreA).toBeNull();
+    expect((await db.select().from(matches).where(eq(matches.id, m.matchId!)))[0].status).not.toBe("played");
+    await expect(confirmResult(o.id, m.matchId!)).rejects.toThrow(/andere Team/);
+    await expect(decideResult(o.id, m.matchId!, 5, 0, "in eigener Sache")).rejects.toThrow(/entscheiden/);
+    await confirmResult(captains.get(m.teamB!)!.id, m.matchId!);
+    expect((await bracketRows(t.id)).find((r) => r.id === m.id)).toMatchObject({ scoreA: 5, scoreB: 0 });
+  });
+
+  for (const via of ["Teammitglied", "Turnier-Kader"] as const) {
+    it(`Veranstalter nur als ${via} (ohne Admin-Rolle) eines beteiligten Teams: kein endgültiges Ergebnis, keine Entscheidung; anderes Spiel bleibt erlaubt`, async () => {
+      const o = await organizer();
+      const { t } = await runningCardTournament(o);
+      const [mine, other] = await openSemis(t.id);
+      if (via === "Teammitglied") await db.insert(teamMembers).values({ teamId: mine.teamA!, userId: o.id, role: "player" });
+      else await db.insert(tournamentPlayers).values({ tournamentId: t.id, teamId: mine.teamA!, userId: o.id });
+      await expect(submitResult(o.id, mine.matchId!, 2, 1)).rejects.toThrow(/Team-Admins/);
+      await expect(decideResult(o.id, mine.matchId!, 2, 1, "in eigener Sache")).rejects.toThrow(/entscheiden/);
+      expect(await scoreOf(mine.id)).toBeNull();
+      expect((await db.select().from(matches).where(eq(matches.id, mine.matchId!)))[0].status).not.toBe("played");
+      await submitResult(o.id, other.matchId!, 2, 1);
+      expect(await scoreOf(other.id)).toBe(2);
+      const admin = await makeUser("padmin", "admin");
+      await decideResult(admin.id, mine.matchId!, 1, 0, "Admin");
+      expect(await scoreOf(mine.id)).toBe(1);
+    });
+  }
+});
+
+// --- b2-ii: Altgeld (paid_cents > 0 aus dem früheren Guthabenmodell) wird nicht mehr erstattet/ausgezahlt, sondern nur protokolliert ---
+describe("Turnier: Altgeld wird nur protokolliert (012 M6b b2-ii)", () => {
+  const auditsOf = async (tid: string, action: string) => (await db.select().from(auditLog).where(and(eq(auditLog.entity, "tournament"), eq(auditLog.entityId, tid), eq(auditLog.action, action))));
+
+  it("Austritt eines Spielers mit Altgeld: nichts wird aufs Guthaben gebucht, 'tournament.refund_skipped' hält Betrag und Grund ohne Personendaten fest; Bereit des Teams entfällt", async () => {
+    const o = await organizer();
+    const t = await createTournament(o.id, { ...base, venueId: hall });
+    const s = await squad(t.id, 3, false);
+    const extra = await makeUser("pl");
+    await db.insert(teamMembers).values({ teamId: s.team.id, userId: extra.id, role: "player" });
+    await joinAsPlayer(extra.id, t.id, s.team.id);
+    await db.update(tournamentPlayers).set({ paidCents: 1000, paidAt: new Date() }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, extra.id)));
+    const before = await walletBalance(db, extra.id);
+    const entriesBefore = (await db.select().from(ledgerEntries).where(eq(ledgerEntries.tournamentId, t.id))).length;
+    await leavePlayer(extra.id, t.id, extra.id);
+    expect(await walletBalance(db, extra.id)).toBe(before); // kein Guthaben mehr
+    expect((await db.select().from(ledgerEntries).where(eq(ledgerEntries.tournamentId, t.id))).length).toBe(entriesBefore);
+    const rows = await auditsOf(t.id, "tournament.refund_skipped");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].after).toMatchObject({ amountCents: 1000 });
+    const text = JSON.stringify(rows[0]);
+    expect(text).not.toContain(extra.id); // keine Personendaten im Protokoll
+    expect(text).not.toContain(s.captain.id);
+  });
+
+  it("Abschluss mit Altgeld: keine Auszahlung an den Veranstalter, keine Provisionsbuchung; 'tournament.settle_skipped' mit Summe; settled_at gesetzt; Hauptbuch ausgeglichen", async () => {
+    const o = await organizer();
+    const { t, squads, players } = await runningCardTournament(o);
+    const captains = new Map(squads.map((s) => [s.team.id, s.captain]));
+    // Altgeld simulieren: Karten-Abrechnung zurücknehmen und einem Spieler 5 Euro Altgeld geben
+    await db.update(tournaments).set({ settledAt: null }).where(eq(tournaments.id, t.id));
+    await db.update(tournamentPlayers).set({ paidCents: 500 }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, players[0].id)));
+    const orgBefore = await walletBalance(db, o.id);
+    const ledgerBefore = (await db.select().from(ledgerEntries).where(eq(ledgerEntries.tournamentId, t.id))).length;
+    const rows = await bracketRows(t.id);
+    const semis = rows.filter((r) => r.stage === "ko:4").sort((x, y) => x.slot - y.slot);
+    await play(semis[0], 3, 1, captains);
+    await play(semis[1], 2, 0, captains);
+    const final = (await bracketRows(t.id)).find((r) => r.stage === "ko:2")!;
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, final.matchId!));
+    await play(final, 1, 0, captains);
+    expect((await statusOf(t.id)).status).toBe("finished");
+    expect((await statusOf(t.id)).settledAt).not.toBeNull();
+    expect(await walletBalance(db, o.id)).toBe(orgBefore); // kein Preisgeld
+    expect((await db.select().from(ledgerEntries).where(eq(ledgerEntries.tournamentId, t.id))).length).toBe(ledgerBefore); // keine neue Buchung
+    const skipped = await auditsOf(t.id, "tournament.settle_skipped");
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0].after).toMatchObject({ totalCents: 500 });
+    expect((await trialBalance()).balanced).toBe(true);
   });
 });
