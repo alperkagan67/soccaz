@@ -55,15 +55,17 @@ export async function readLegacyBalances(pool: Pool): Promise<GuardFindings> {
          from payments p`,
     );
     const mp = await q.query<{ n: number; c: number; h: number }>(
-      `select count(*) filter (where m.status in ('lobby', 'confirmed') and m.settled_at is null)::int as n,
-              coalesce(sum(p.paid_cents) filter (where m.status in ('lobby', 'confirmed') and m.settled_at is null), 0)::int as c,
-              count(*) filter (where not (m.status in ('lobby', 'confirmed') and m.settled_at is null))::int as h
+      // Info (historisch) sind NUR abgerechnete Zeilen (Spiel: settled_at gesetzt; Turnier: status finished). JEDE andere Zeile mit paid_cents > 0 ist ein Befund, auch abgesagte:
+      // refundOnCancel und die Turnier-Absage setzen paid_cents beim Erstatten auf 0, eine Absage mit paid_cents > 0 ist also eine NICHT erstattete Zahlung (Review w4/security).
+      `select count(*) filter (where m.settled_at is null)::int as n,
+              coalesce(sum(p.paid_cents) filter (where m.settled_at is null), 0)::int as c,
+              count(*) filter (where m.settled_at is not null)::int as h
          from match_participants p join matches m on m.id = p.match_id where p.paid_cents > 0`,
     );
     const tp = await q.query<{ n: number; c: number; h: number }>(
-      `select count(*) filter (where t.status not in ('finished', 'cancelled'))::int as n,
-              coalesce(sum(p.paid_cents) filter (where t.status not in ('finished', 'cancelled')), 0)::int as c,
-              count(*) filter (where t.status in ('finished', 'cancelled'))::int as h
+      `select count(*) filter (where t.status <> 'finished')::int as n,
+              coalesce(sum(p.paid_cents) filter (where t.status <> 'finished'), 0)::int as c,
+              count(*) filter (where t.status = 'finished')::int as h
          from tournament_players p join tournaments t on t.id = p.tournament_id where p.paid_cents > 0`,
     );
     const pr = await q.query<{ n: number; c: number }>("select count(*)::int as n, coalesce(sum(amount_cents), 0)::int as c from pending_refunds");
@@ -101,8 +103,8 @@ export function evaluateGuard(f: GuardFindings): { ok: boolean; lines: string[] 
   if (f.walletUnassignedCents !== 0) lines.push(`Guthaben-Buchungen ohne Nutzerbezug: ${f.walletUnassignedCents} Cent (Gesamtsumme der wallet-Konten weicht von der Summe der Nutzersalden ab)`);
   if (f.paymentsPending !== 0) lines.push(`Alte Aufladungen im Status pending (payments): ${f.paymentsPending}`);
   if (f.paymentsUnbooked !== 0) lines.push(`Erfolgreiche Aufladungen ohne Hauptbucheintrag (payments): ${f.paymentsUnbooked}`);
-  if (f.matchPaidRows !== 0 || f.matchPaidCents !== 0) lines.push(`Offene bezahlte Spielplätze (paid_cents > 0): ${f.matchPaidRows} Plätze, ${f.matchPaidCents} Cent`);
-  if (f.tournamentPaidRows !== 0 || f.tournamentPaidCents !== 0) lines.push(`Offene bezahlte Turnierplätze (paid_cents > 0): ${f.tournamentPaidRows} Plätze, ${f.tournamentPaidCents} Cent`);
+  if (f.matchPaidRows !== 0 || f.matchPaidCents !== 0) lines.push(`Nicht abgerechnete bezahlte Spielplätze (auch abgesagte) (paid_cents > 0): ${f.matchPaidRows} Plätze, ${f.matchPaidCents} Cent`);
+  if (f.tournamentPaidRows !== 0 || f.tournamentPaidCents !== 0) lines.push(`Nicht beendete bezahlte Turnierplätze (auch abgesagte) (paid_cents > 0): ${f.tournamentPaidRows} Plätze, ${f.tournamentPaidCents} Cent`);
   if (f.pendingRefundRows !== 0 || f.pendingRefundCents !== 0) lines.push(`Offene Erstattungen (pending_refunds): ${f.pendingRefundRows} Zeilen, ${f.pendingRefundCents} Cent`);
   if (f.legacyGames !== 0 || f.legacyManual !== 0) lines.push(`Offene Altspiele mit Guthabenzahlung (F2): ${f.legacyGames} schließbar, ${f.legacyManual} manuell`);
   return { ok: lines.length === 0, lines };

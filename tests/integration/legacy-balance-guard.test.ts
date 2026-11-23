@@ -88,39 +88,62 @@ describe("Salden-Guard: lesen und zaehlen", () => {
 });
 
 describe("Salden-Guard: offene gegen historische Zeilen, alte Aufladungen (Review w4)", () => {
-  it("abgerechnetes/abgesagtes Spiel und beendetes Turnier mit paid_cents zaehlen NUR als Info, nicht als Befund; offene Plaetze zaehlen", async () => {
+  it("Spiele: nur ABGERECHNETE Spiele (settled_at) sind Info; jedes nicht abgerechnete (lobby, confirmed, played, disputed, cancelled) mit paid_cents ist Befund", async () => {
     const base = await readLegacyBalances(pool);
-    const done = await makeMatch({});
-    await db.update(matchParticipants).set({ paidCents: 200 }).where(eq(matchParticipants.matchId, done.match.id));
-    await db.update(matches).set({ status: "played", settledAt: new Date() }).where(eq(matches.id, done.match.id));
-    const cancelled = await makeMatch({});
-    await db.update(matchParticipants).set({ paidCents: 200 }).where(eq(matchParticipants.matchId, cancelled.match.id));
-    await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, cancelled.match.id));
-    const n1 = (await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, done.match.id))).length + (await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, cancelled.match.id))).length;
+    const seatsOf = async (id: string) => (await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, id))).length;
+    const mk = async (status: "lobby" | "confirmed" | "played" | "disputed" | "cancelled", settled: boolean) => {
+      const g = await makeMatch({});
+      await db.update(matchParticipants).set({ paidCents: 200 }).where(eq(matchParticipants.matchId, g.match.id));
+      await db.update(matches).set({ status, settledAt: settled ? new Date() : null }).where(eq(matches.id, g.match.id));
+      return seatsOf(g.match.id);
+    };
+    // 1) abgerechnet (played + settled): nur Info
+    const nHist = await mk("played", true);
     let f = await readLegacyBalances(pool);
-    expect(f.matchPaidRows).toBe(base.matchPaidRows); // offen unveraendert
+    expect(f.matchPaidRows).toBe(base.matchPaidRows);
     expect(f.matchPaidCents).toBe(base.matchPaidCents);
-    expect(f.matchPaidHistRows).toBe(base.matchPaidHistRows + n1);
+    expect(f.matchPaidHistRows).toBe(base.matchPaidHistRows + nHist);
     expect(historyInfo(f)).not.toBeNull();
+    // 2) played ohne settled_at, 3) disputed ohne settled_at, 4) cancelled mit paid_cents (Anomalie: nicht erstattet): jeweils Befund
+    let expectedRows = base.matchPaidRows;
+    let expectedCents = base.matchPaidCents;
+    for (const [status, settled] of [["lobby", false], ["confirmed", false], ["played", false], ["disputed", false], ["cancelled", false]] as const) {
+      const seats = await mk(status, settled);
+      expectedRows += seats;
+      expectedCents += 200 * seats;
+      f = await readLegacyBalances(pool);
+      expect(f.matchPaidRows).toBe(expectedRows);
+      expect(f.matchPaidCents).toBe(expectedCents);
+      expect(evaluateGuard(f).ok).toBe(false);
+    }
+    expect(f.matchPaidHistRows).toBe(base.matchPaidHistRows + nHist); // die Befunde sind nicht historisch
 
     const org = await makeUser("hto");
     const cap = await makeUser("htc");
     const team = await makeTeam(cap.id, "HistTeam");
-    const mk = async (status: "finished" | "payment") => {
+    const mkT = async (status: "finished" | "payment" | "cancelled") => {
       const [t] = await db.insert(tournaments).values({ organizerId: org.id, name: `Hist-Cup ${status} ${Date.now()}`, city: "Essen", startsOn: new Date(Date.now() + 6 * 86_400_000).toISOString().slice(0, 10), format: "knockout", maxTeams: 4, durationMin: 120, status } as typeof tournaments.$inferInsert).returning();
       return t;
     };
-    const fin = await mk("finished");
+    const fin = await mkT("finished");
     const cap2 = await makeUser("htd");
     await db.insert(tournamentPlayers).values({ tournamentId: fin.id, teamId: team.id, userId: cap.id, paidCents: 900 });
     f = await readLegacyBalances(pool);
     expect(f.tournamentPaidRows).toBe(base.tournamentPaidRows);
     expect(f.tournamentPaidHistRows).toBe(base.tournamentPaidHistRows + 1);
-    const open = await mk("payment");
+    const open = await mkT("payment");
     await db.insert(tournamentPlayers).values({ tournamentId: open.id, teamId: team.id, userId: cap2.id, paidCents: 400 });
     f = await readLegacyBalances(pool);
     expect(f.tournamentPaidRows).toBe(base.tournamentPaidRows + 1);
     expect(f.tournamentPaidCents).toBe(base.tournamentPaidCents + 400);
+    // abgesagtes Turnier mit paid_cents: nicht erstattete Zahlung = Befund (nicht Info)
+    const cap3 = await makeUser("hte");
+    const canc = await mkT("cancelled");
+    await db.insert(tournamentPlayers).values({ tournamentId: canc.id, teamId: team.id, userId: cap3.id, paidCents: 300 });
+    f = await readLegacyBalances(pool);
+    expect(f.tournamentPaidRows).toBe(base.tournamentPaidRows + 2);
+    expect(f.tournamentPaidCents).toBe(base.tournamentPaidCents + 700);
+    expect(f.tournamentPaidHistRows).toBe(base.tournamentPaidHistRows + 1); // nur das beendete Turnier ist Info
   });
 
   it("payments: pending und erfolgreich ohne Hauptbucheintrag werden gezaehlt; mit Hauptbucheintrag (topup) nicht", async () => {
