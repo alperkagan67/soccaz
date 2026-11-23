@@ -36,7 +36,7 @@ Impressum und Datenschutzerklärung zeigen `OPERATOR_NAME`, `OPERATOR_ADDRESS` u
 
 ## Turniere und Veranstalter
 
-Turniere dürfen nur freigeschaltete Veranstalter anlegen (Admin, Nutzer, „Als Turnier-Veranstalter freischalten“). Startgelder liegen bis zum Turnierende auf dem Konto `tournament`. Die Provision (Standard 10 Prozent) steht in der Tabelle `settings` unter `tournament_commission_percent`.
+Turniere dürfen nur freigeschaltete Veranstalter anlegen (Admin, Nutzer, „Als Turnier-Veranstalter freischalten“). Startgelder liegen bis zum Turnierende auf dem Konto `tournament`. Die Provision (Standard 10 Prozent) steht in der Tabelle `settings` unter `tournament_commission_percent`. **Turniere mit Preis laufen nur im Kartenmodell** (`card_payments_enabled` AN, Partnerhalle): es gibt kein Guthaben mehr; bei ausgeschaltetem Kartenschalter bleibt ein Turnier mit Preis in der Zahlungsphase stehen und wird in der Absagefrist abgesagt (nur Gratis-Turniere laufen weiter). Altgeld aus der früheren Guthaben-Zeit wird nicht ausgezahlt oder erstattet, sondern als `tournament.refund_skipped` / `tournament.settle_skipped` im Audit protokolliert (mit interner Spieler-ID, ohne Name/E-Mail); Admin 1 klärt es manuell.
 
 ## Monatsjob
 

@@ -12,8 +12,6 @@ import {
   closeWithJoinedAction,
   joinAsPlayerAction,
   leavePlayerAction,
-  payEntryAction,
-  payForTeamAction,
   reopenRostersAction,
   setPaidReadyAction,
   setRosterCompleteAction,
@@ -218,12 +216,6 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                     <span className={`text-xs font-semibold ${team.ready ? "text-accent-fg" : "text-muted"}`}>{inPayment && team.paidReady ? "✓ Bereit" : team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
                   </div>
                   <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{priceFixed && !free && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>
-                  {mine && inPayment && !free && team.dueCents > 0 && (
-                    <div className="space-y-1 rounded-lg border border-line p-2" data-testid="captain-pay-box">
-                      <ActionButton action={payForTeamAction.bind(null, t.id, undefined)} label={`Als Captain für alle offenen Spieler bezahlen (${formatEuro(team.dueCents)})`} className="btn btn-primary w-full" />
-                      <p className="text-xs text-muted">Oder jeder Spieler zahlt für sich, oder du zahlst unten für einzelne Spieler.</p>
-                    </div>
-                  )}
                   {mine && inPayment && team.dueCents === 0 && team.cardMissing === 0 && team.players.length > 0 && !team.paidReady && (
                     <div className="space-y-1" data-testid="paid-ready-box">
                       <ActionButton action={setPaidReadyAction.bind(null, t.id)} label="Bereit" className="btn btn-primary w-full" />
@@ -242,7 +234,6 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                         </span>
                         <span className="flex items-center gap-2">
                           {team.showLights && <PlayerLight light={lightOf(team.ready, p.paid || (free && inPayment))} />}
-                          {inPayment && !data.cardMode && (mine || (v?.myTeamId === team.teamId && p.userId !== user?.id)) && !free && !p.paid && <ActionButton action={payForTeamAction.bind(null, t.id, p.userId)} label="Ich zahle für ihn" className="btn btn-ghost !min-h-8 !px-2 text-xs" />}
                           {inRegistration && !p.isCaptain && (mine || manage) && <ActionButton action={leavePlayerAction.bind(null, t.id, p.userId)} label="Entfernen" confirm="Spieler aus dem Kader nehmen?" />}
                         </span>
                       </li>
@@ -291,13 +282,6 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             needsAuthorization={Boolean(user) && inPayment && (await hasOpenTournamentAuthorization(user!.id, t.id))}
           />
         )}
-        {v && v.myTeamId && inPayment && !free && !data.cardMode && !v.iPaid && (
-          <section className="card space-y-2" data-testid="pay-entry">
-            <p className="text-sm">Dein Anteil: <strong>{formatEuro(v.myDueCents)}</strong> (Hallenkosten {formatEuro(pricing.totalCents ?? 0)} durch {pricing.players} Spieler). Du kannst selbst zahlen, oder dein Captain zahlt für dich. Bei Absage bekommst du alles zurück.</p>
-            <ActionButton action={payEntryAction.bind(null, t.id)} label={`${formatEuro(v.myDueCents)} Anteil bezahlen`} className="btn btn-primary w-full" />
-          </section>
-        )}
-        {v && v.myTeamId && inPayment && !free && !data.cardMode && v.iPaid && <p className="text-sm text-accent-fg" data-testid="paid-note">Dein Anteil ist bezahlt.</p>}
       </section>
 
       {!data.bracketVisible && (inRegistration || inPayment) && (
