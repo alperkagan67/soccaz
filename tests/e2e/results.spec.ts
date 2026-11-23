@@ -152,3 +152,26 @@ test("Job-Schnittstelle ist geschützt", async ({ baseURL }) => {
   const wrong = await fetch(`${baseURL}/api/jobs/auto-confirm-results`, { method: "POST", headers: { "x-job-secret": "falsch" } });
   expect(wrong.status).toBe(403);
 });
+
+// Welle 5 (Formulare vor der Hydration, Backlog 224): Formulare mit eigenem Client-Handler (kein action) sperren ihren Absende-Knopf bis zur Hydration und haben method="post": ein Klick davor sendet nie ein GET mit den
+// Feldern (Hallenfeld, Torstände). Geprüft: das Server-HTML hat den Knopf gesperrt und das Formular mit method="POST"; im Browser WIRD der Knopf nach der Hydration bedienbar (kein dauerhaft gesperrter Zustand).
+// Grenze: ohne JavaScript bleibt der Knopf gesperrt (kein Datenleck, aber auch keine Aktion).
+test("Hallenfeld und Ergebnis melden: Knopf bis zur Hydration gesperrt, method=post, danach bedienbar", async ({ browser }) => {
+  const { a, matchId } = await setupLobby(browser, "fw5");
+  const sperre = async (pfad: string, testid: string) => {
+    const html = await (await a.context().request.get(pfad)).text();
+    const knopf = new RegExp(`<button[^>]*data-testid="${testid}"[^>]*>`).exec(html)?.[0] ?? "";
+    expect(knopf, `${pfad}: Knopf ${testid}`).not.toBe("");
+    expect(knopf, `${pfad}: Knopf ${testid} vor der Hydration gesperrt`).toMatch(/\sdisabled(=|\s|>)/);
+    const form = html.slice(html.lastIndexOf("<form", html.indexOf(knopf)), html.indexOf(knopf));
+    expect(form, `${pfad}: Formular`).toMatch(/^<form[^>]*\bmethod="post"/i); // React schreibt method so, wie es im Quelltext steht
+  };
+  await sperre(`/lobby/${matchId}`, "venue-save");
+  await a.goto(`/lobby/${matchId}`);
+  await expect(a.getByTestId("venue-save")).toBeEnabled({ timeout: 30_000 }); // nach der Hydration bedienbar
+
+  await startMatchNow(matchId);
+  await sperre(`/spiele/${matchId}`, "result-submit");
+  await a.goto(`/spiele/${matchId}`);
+  await expect(a.getByTestId("result-submit")).toBeEnabled({ timeout: 30_000 });
+});

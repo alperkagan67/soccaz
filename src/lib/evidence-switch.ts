@@ -15,6 +15,7 @@ export const SWITCH_TEXTS = {
   clockNotReady: "Die Anwendung prüft Fristen noch nicht mit der Datenbankzeit. Die Uhrenquelle kann noch nicht umgestellt werden.",
   unknown: "Diese Einstellung gibt es nicht.",
   technical: "Das hat nicht geklappt. Bitte versuche es noch einmal.",
+  opsUnavailable: "Die Verbindung für Änderungen am Beweisprotokoll ist gerade nicht erreichbar. Bitte informiere den Betreiber der Plattform; es wurde nichts geändert.",
 } as const;
 
 export function isSwitchStep(value: unknown): value is SwitchStep {

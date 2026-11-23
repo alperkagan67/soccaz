@@ -74,7 +74,7 @@ export default function KomponentenPage() {
               <StatusBadge status="ok" label="Karte hinterlegt" />
               <StatusBadge status="warn" label="Zahlung ausstehend" />
               <StatusBadge status="danger" label="Abbuchung fehlgeschlagen" />
-              <StatusBadge status="info" label="Findet statt" />
+              <StatusBadge status="info" label="Angesetzt" />
               <StatusBadge status="neutral" label="Offen" />
               <StatusBadge viewer="third" thirdLabel="Dabei" />
             </div>
