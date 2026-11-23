@@ -1258,4 +1258,47 @@ describe("Privatspiel im Kartenmodell (Gegenstücke zu AC-4, AC-6, AC-8)", () =>
     expect(after.homeFinalAt).toBeNull();
     expect(after.awayFinalAt).toBeNull();
   });
+
+  // Paket 4 (Kartenfixture): Gegenstück zu "AC-3: mit aktiven Zahlungen lehnt der Server das Bereit des Captains ab, solange ein Teamspieler nicht bezahlt hat" (Privatspiel, Karte statt Zahlung)
+  it("AC-3: das Bereit des Captains wird abgelehnt, solange ein Teamspieler keine Karte hat; auch ein bereiter Spieler, dessen Karte weg ist, blockiert; danach gelingt es", async () => {
+    const { organizer, match, players } = await game(9, { rentCents: 12_000 });
+    await randomSplit(organizer.id, match.id);
+    const [late, ...others] = players.slice().reverse();
+    for (const p of others) {
+      await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, p.id)));
+      await setReady(p.id, match.id, true);
+    }
+    await expect(setReady(late.id, match.id, true)).rejects.toThrow(/Karte/);
+    await expect(finalConfirm(organizer.id, match.id)).rejects.toThrow(/Karte|bereit/);
+    expect((await reloadMatch(match.id)).homeFinalAt).toBeNull();
+    await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, late.id)));
+    await setReady(late.id, match.id, true);
+    // ein bereiter Spieler verliert danach die Karte: die Prüfung steht im Server, nicht nur in der Oberfläche
+    const victim = others[0];
+    await db.update(matchParticipants).set({ cardStatus: "none" }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, victim.id)));
+    await expect(finalConfirm(organizer.id, match.id)).rejects.toThrow(/Karte|bereit/);
+    await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, victim.id)));
+    await finalConfirm(organizer.id, match.id);
+    const m = await reloadMatch(match.id);
+    expect(m.homeFinalAt).not.toBeNull();
+    expect(m.awayFinalAt).not.toBeNull();
+  });
+
+  // Paket 4: Gegenstück zu "AC-5 parallele Austritte: jeder wird genau einmal erstattet, der Anteil gilt für die endgültige Zahl (8 Spieler: 1500)"
+  it("AC-5: parallele Austritte: beide gehen genau einmal, es gibt nichts zu erstatten, der Anteil gilt für die endgültige Zahl (8 Spieler: 1500)", async () => {
+    const g = await fixedCard(); // 10 Spieler, 12000 / 10 = 1200 fixiert
+    // je einer aus jedem Team (beide Teams behalten mindestens 4 Spieler), der Veranstalter bleibt
+    const seats = await Promise.all(g.players.slice(1).map(async (p) => ({ p, teamId: (await seat(g.match.id, p.id)).teamId })));
+    const a = seats.find((x) => x.teamId === g.match.homeTeamId)!.p;
+    const b = seats.find((x) => x.teamId === g.match.awayTeamId)!.p;
+    const res = await Promise.allSettled([leaveLobby(a.id, g.match.id), leaveLobby(b.id, g.match.id)]);
+    expect(res.every((r) => r.status === "fulfilled")).toBe(true);
+    expect(await seatedIds(g.match.id)).toHaveLength(8);
+    const m = await reloadMatch(g.match.id);
+    expect(m.finalShareCents).toBeNull(); // Festschreibung aufgehoben
+    expect(await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, g.match.id))).toHaveLength(0); // nichts bezahlt, nichts erstattet
+    for (const p of g.players.filter((x) => x.id !== a.id && x.id !== b.id)) await setReady(p.id, g.match.id, true);
+    await finalConfirm(g.organizer.id, g.match.id);
+    expect((await reloadMatch(g.match.id)).finalShareCents).toBe(1500); // 12000 / 8
+  });
 });
