@@ -18,7 +18,8 @@ export type NotificationType =
   | "result.final"
   | "admin.task"
   | "payment"
-  | "system";
+  | "system"
+  | "system.critical";
 
 /** Beschreibung jeder Benachrichtigungsart: Anzeigename, ob zusätzlich eine E-Mail rausgeht, ob sie abschaltbar ist. */
 export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email: boolean; optional: boolean }> = {
@@ -42,6 +43,8 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email
   "admin.task": { label: "Neue Aufgabe für Admins", email: false, optional: true },
   payment: { label: "Zahlungen", email: true, optional: false },
   system: { label: "Wichtige Hinweise", email: true, optional: false },
+  // Sicherheitsrelevante Hinweise an Admins (z. B. Notschalter Kartenzahlung): NICHT abschaltbar, nur In-App (E-Mail erst mit dem Mail-Dienst, FEHLT-NOCH)
+  "system.critical": { label: "Kritische Hinweise für Admins", email: false, optional: false },
 };
 
 export function isOptionalType(type: string): boolean {

@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { and, eq, like } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db } from "@/db";
-import { auditLog, matchParticipants, notifications, teamMembers, users } from "@/db/schema";
+import { auditLog, matchParticipants, notificationPrefs, notifications, teamMembers, users } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { settings } from "@/db/schema-finance";
 import { tournaments } from "@/db/schema-league";
@@ -10,6 +10,7 @@ import { getAlerts } from "@/server/finance";
 import { joinLobby, setReady } from "@/server/lobby";
 import { cardPaymentsEnabled, paymentsEnabled, setSetting, tournamentPaymentsActive } from "@/server/settings";
 import { frozenTournaments } from "@/server/tournaments";
+import { notifyUsers } from "@/server/notifications";
 import { getCardSwitch, setCardSwitch } from "@/server/payment-switch";
 import { cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -214,7 +215,7 @@ describe("Mitteilung an den Buchungsstab beim Umschalten", () => {
     await setCardSwitch(o.id, false, reason, true);
     const off = await noteTo(admin2.id, /Kartenzahlung ausgeschaltet/);
     expect(off).toHaveLength(1);
-    expect(off[0]).toMatchObject({ type: "admin.task", url: "/admin/finanzen" }); // Alarmliste: Admin 2 hat keinen Zugriff auf /admin/einstellungen
+    expect(off[0]).toMatchObject({ type: "system.critical", url: "/admin/finanzen" }); // Alarmliste: Admin 2 hat keinen Zugriff auf /admin/einstellungen
     expect(`${off[0].title} ${off[0].body}`).not.toContain("4711");
     expect(`${off[0].title} ${off[0].body}`).not.toContain(o.id);
     expect(await noteTo(o.id, /Kartenzahlung/)).toHaveLength(0); // der Akteur selbst nicht
@@ -222,6 +223,19 @@ describe("Mitteilung an den Buchungsstab beim Umschalten", () => {
     expect(await noteTo(player.id, /Kartenzahlung/)).toHaveLength(0);
     await setCardSwitch(o.id, true, "Stoerung behoben, alles geprueft", true);
     expect(await noteTo(admin2.id, /Kartenzahlung eingeschaltet/)).toHaveLength(1);
+  });
+
+  it("nicht abschaltbar: ein Admin, der admin.task (und den Typ selbst) abgeschaltet hat, bekommt die Notschalter-Mitteilung trotzdem; eine admin.task-Mitteilung bleibt fuer ihn stumm (Gegenprobe)", async () => {
+    const o = await owner();
+    const admin2 = await makeUser("swnq", "admin");
+    await db.insert(notificationPrefs).values({ userId: admin2.id, disabledTypes: ["admin.task", "system.critical", "payment"] });
+    await setCardSwitch(o.id, false, "Abschaltbarkeit pruefen: aus", true);
+    expect(await noteTo(admin2.id, /Kartenzahlung ausgeschaltet/)).toHaveLength(1);
+    // Gegenprobe: ein optionaler Typ wird von denselben Einstellungen unterdrueckt
+    const sent = await notifyUsers([admin2.id], { type: "admin.task", title: "Probe optional", body: "Probe", url: "/admin" });
+    expect(sent).toBe(0);
+    expect(await noteTo(admin2.id, /Probe optional/)).toHaveLength(0);
+    await setCardSwitch(o.id, true, "Abschaltbarkeit pruefen: ein", true);
   });
 
   it("Notschalter-Garantie: scheitert die Mitteilung, bleibt das Umschalten mit Audit bestehen (die Mitteilung laeuft nach dem Commit, best effort)", async () => {

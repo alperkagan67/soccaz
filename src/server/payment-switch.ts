@@ -64,8 +64,8 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
     await notifyUsers(
       await bookingStaffIds(db),
       enabled
-        ? { type: "admin.task", title: "Kartenzahlung eingeschaltet", body: "Die Kartenzahlung wurde eingeschaltet. Fällige Abbuchungen laufen nach.", url: "/admin/finanzen" }
-        : { type: "admin.task", title: "Kartenzahlung ausgeschaltet", body: "Die Kartenzahlung wurde ausgeschaltet (Notabschaltung): neue Bezahlungen sind pausiert.", url: "/admin/finanzen" },
+        ? { type: "system.critical", title: "Kartenzahlung eingeschaltet", body: "Die Kartenzahlung wurde eingeschaltet. Fällige Abbuchungen laufen nach.", url: "/admin/finanzen" }
+        : { type: "system.critical", title: "Kartenzahlung ausgeschaltet", body: "Die Kartenzahlung wurde ausgeschaltet (Notabschaltung): neue Bezahlungen sind pausiert.", url: "/admin/finanzen" },
       db,
       actorId,
     );
