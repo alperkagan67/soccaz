@@ -6,10 +6,10 @@ import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
 
 export function TournamentForm({ min, defaultCity, standardHourly, commission, partnerVenues }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number; partnerVenues: { id: string; label: string }[] | null }) {
-  const { state, pending, onSubmit } = useFormAction(createTournamentAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(createTournamentAction);
   const fe = state?.fieldErrors ?? {};
   return (
-    <form onSubmit={onSubmit} className="card space-y-4">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-4">
       <div>
         <label className="label" htmlFor="name">Name des Turniers</label>
         <input id="name" name="name" className="field" required minLength={3} maxLength={80} placeholder="Ramadan-Cup" />

@@ -9,12 +9,12 @@ import { useFormAction } from "@/components/useFormAction";
 type TeamOption = { id: string; name: string; city: string; strength: number };
 
 export function RequestForm({ teams, min, target }: { teams: TeamOption[]; min: string; target?: { id: string; name: string; city: string; strength: number } }) {
-  const { state, pending, onSubmit } = useFormAction(createRequestAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(createRequestAction);
   const fe = state?.fieldErrors ?? {};
   const ownTeams = target ? teams.filter((t) => t.id !== target.id) : teams;
 
   return (
-    <form onSubmit={onSubmit} className="card space-y-4">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-4">
       {target && (
         <>
           <input type="hidden" name="targetTeamId" value={target.id} />

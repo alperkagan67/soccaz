@@ -7,11 +7,11 @@ import { CITIES } from "@/lib/validation";
 import { createPrivateGameAction } from "@/server/privategame-actions";
 
 export function PrivateGameForm({ min, defaultCity }: { min: string; defaultCity: string | null }) {
-  const { state, pending, onSubmit } = useFormAction(createPrivateGameAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(createPrivateGameAction);
   const [rentMode, setRentMode] = useState<"" | "amount" | "free">(""); // bewusst keine Vorauswahl: Miete oder "kostenlos" muss gewählt werden
   const fe = state?.fieldErrors ?? {};
   return (
-    <form onSubmit={onSubmit} className="card space-y-4">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor="startsAt">Anstoß (Datum und Uhrzeit)</label>

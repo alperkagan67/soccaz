@@ -199,6 +199,29 @@ test("Spiel annehmen mit Teamwahl: nach einem Fehler bleibt die gewählte Mannsc
   await expect(team).toHaveValue(chosen);
 });
 
+// Welle 3 (Formulare vor der Hydration, Backlog 224): die Inhaltsformulare (Beitrag, Team gründen, Spielsuche, Privatspiel) senden vor der Hydration nativ POST an die Server-Aktion, nie GET mit den Feldern in der Adresse.
+test("Inhaltsformulare vor der Hydration: Server-HTML mit method=POST und Server-Aktions-Feldern", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await newUser(page, "fw3");
+  await createTeam(page, `FW3 ${run}`); // Spielsuche und Privatspiel brauchen ein Team
+  const seiten: [string, string][] = [
+    ["/mitspieler", "Eintragen"],
+    ["/app/teams/neu", "Team gründen"],
+    ["/app/suche/neu", "Spielsuche erstellen"],
+    ["/app/privatspiel/neu", "Privatspiel anlegen"],
+  ];
+  for (const [pfad, knopf] of seiten) {
+    const html = await (await page.context().request.get(pfad)).text();
+    const formen = [...html.matchAll(/<form[^>]*>[\s\S]*?<\/form>/g)].map((m) => m[0]).filter((f) => f.includes(`>${knopf}</button>`));
+    expect(formen.length, `${pfad}: Formular mit "${knopf}"`).toBeGreaterThan(0);
+    for (const f of formen) {
+      expect(f.slice(0, f.indexOf(">") + 1), pfad).toMatch(/\bmethod="POST"/);
+      expect(f, pfad).toContain('name="$ACTION_');
+      expect(f, pfad).not.toContain("javascript:throw");
+    }
+  }
+});
+
 test("Spielsuche zurückziehen und private Suche", async ({ browser }) => {
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();

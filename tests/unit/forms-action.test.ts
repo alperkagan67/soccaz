@@ -10,14 +10,6 @@ const root = join(__dirname, "..", "..", "src");
 
 /** Datei -> Grund (Welle laut docs/loop/BACKLOG.md 224). Client-Handler brauchen JavaScript ohnehin (Welle 5: Knopf bis zur Hydration gesperrt + method=post). */
 export const EXCEPTIONS: Record<string, string> = {
-  "app/mitspieler/PostForm.tsx": "Welle 3 (Inhalte)",
-  "components/CommentForm.tsx": "Welle 3 (Inhalte)",
-  "app/app/teams/neu/TeamForm.tsx": "Welle 3 (Inhalte)",
-  "app/app/suche/neu/RequestForm.tsx": "Welle 3 (Inhalte)",
-  "app/app/privatspiel/neu/PrivateGameForm.tsx": "Welle 3 (Inhalte)",
-  "app/app/turniere/neu/TournamentForm.tsx": "Welle 3 (Inhalte)",
-  "app/turniere/[id]/RegisterForm.tsx": "Welle 3 (Inhalte)",
-  "app/einladung/[token]/JoinForm.tsx": "Welle 3 (Inline-Closure: joinTeamAction per bind)",
   "components/ActionForm.tsx": "Welle 4 (Bausteine, 29 Verwendungen)",
   "components/ui/Form.tsx": "Welle 4 (Bausteine)",
   "components/ui/Assistent.tsx": "Welle 5 (Client-Handler)",
@@ -108,5 +100,31 @@ describe("Formulare mit onSubmit brauchen action oder method=post (Progressive E
     expect(violates('<form method="post" onSubmit={onSubmit}>', "const ok = useHydrated();")).toBe(false); // Welle 5: Knopf bis zur Hydration gesperrt
     expect(violates('<form data-action="x" onSubmit={onSubmit}>')).toBe(true); // data-action zählt nicht
     expect(violates('<form className="card">')).toBe(false);
+  });
+});
+
+// Inline-Closure statt Server-Aktions-Referenz: `useFormAction(() => ...)` rendert trotz `action={formAction}` `javascript:throw ...` ins action-Attribut (vor der Hydration passiert beim Absenden nichts Brauchbares).
+// Erlaubt sind nur Referenzen (`useFormAction(meineAktion)` oder `meineAktion.bind(null, id)`).
+export const INLINE_CLOSURE = /useFormAction\(\s*(async\s*)?(\(|function\b)/;
+
+describe("useFormAction bekommt nie eine Inline-Closure", () => {
+  const alle = (dir: string): string[] =>
+    readdirSync(dir).flatMap((n) => {
+      const p = join(dir, n);
+      return statSync(p).isDirectory() ? alle(p) : /\.tsx?$/.test(p) ? [p] : [];
+    });
+
+  it("kein Aufruf in src mit Pfeilfunktion oder function", () => {
+    const treffer = alle(root).filter((f) => INLINE_CLOSURE.test(readFileSync(f, "utf8"))).map((f) => relative(root, f).split("\\").join("/"));
+    expect(treffer).toEqual([]);
+  });
+
+  it("Gegenprobe: erkennt Closures, lässt Referenzen und bind zu", () => {
+    expect(INLINE_CLOSURE.test("useFormAction(() => joinTeamAction(token))")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction( async (p, f) => x(p, f))")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction(function (p, f) { return x(p, f); })")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction(createTeamAction)")).toBe(false);
+    expect(INLINE_CLOSURE.test("useFormAction(joinTeamAction.bind(null, token))")).toBe(false);
+    expect(INLINE_CLOSURE.test("export function useFormAction(action: (prev: ActionState) => void)")).toBe(false);
   });
 });

@@ -7,13 +7,13 @@ import { CITIES } from "@/lib/validation";
 import { closePostAction, createPostAction, requestPlayerAction } from "@/server/freeplayers-actions";
 
 export function PostForm({ defaultCity, min }: { defaultCity: string | null; min: string }) {
-  const { state, pending, onSubmit } = useFormAction(createPostAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(createPostAction);
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state?.ok) ref.current?.reset();
   }, [state]);
   return (
-    <form ref={ref} onSubmit={onSubmit} className="card space-y-3">
+    <form ref={ref} action={formAction} onSubmit={onSubmit} className="card space-y-3">
       <h2 className="font-semibold">Ich suche ein Spiel</h2>
       <div className="grid grid-cols-2 gap-3">
         <div>
