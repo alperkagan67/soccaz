@@ -6,7 +6,8 @@
 // Hallenbetreiber (angemeldet, ohne Admin-Recht am Team) = namenfrei: Wertung, Stufe, Position, aber weder Name noch Initialen (Initialen wären ein Teil des Namens).
 // Der Kartenstatus (Zahlung) gehört NICHT auf die Karte: dafür gilt die getrennte Matrix in card-visibility.ts.
 import { TEAM_COLORS, textOn } from "./color";
-import { ratingFromElo, tierFromRating, type Tier } from "./rating";
+import { initialsOf } from "./guest-roster";
+import { TIER_LABELS, ratingFromElo, tierFromRating, type Tier } from "./rating";
 import { effectiveColorKey } from "./team-color";
 
 /** Wertung und Stufe kommen aus rating.ts (w2); hier eingespritzt, damit dieses Modul nicht von der Reihenfolge der PRs abhängt. */
@@ -39,12 +40,21 @@ export type PlayerCardData =
   | { kind: "full"; initials: string; name: string; rating: number; tier: Tier; position: string | null; colorKey: string }
   | { kind: "nameless"; rating: number; tier: Tier; position: string | null; colorKey: string };
 
-/** Initialen aus dem Namen: erste Buchstaben der ersten zwei Wörter, groß; ohne Namen ein Fragezeichen. */
-export function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts.slice(0, 2).map((p) => Array.from(p)[0].toUpperCase()).join("");
+/**
+ * Die Wertungs-Sicht eines Kartenobjekts, oder null (fail-closed): nur "full" und "nameless" MIT endlicher Wertung und bekannter Stufe zählen (Object.hasOwn: "constructor" und "__proto__" sind keine Stufe).
+ * Alles andere (leer, null, JSON ohne kind, unbekannte Art, full ohne Wertung) liefert null und wird von Karte und Zeile wie die neutrale Sicht gerendert.
+ */
+export function ratedCard(data: unknown): Extract<PlayerCardData, { kind: "full" | "nameless" }> | null {
+  if (!data || typeof data !== "object") return null;
+  const d = data as { kind?: unknown; rating?: unknown; tier?: unknown };
+  if (d.kind !== "full" && d.kind !== "nameless") return null;
+  if (typeof d.rating !== "number" || !Number.isFinite(d.rating)) return null;
+  if (typeof d.tier !== "string" || !Object.hasOwn(TIER_LABELS, d.tier)) return null;
+  return data as Extract<PlayerCardData, { kind: "full" | "nameless" }>;
 }
+
+/** Initialen: EINE Regel für Karten, Zeilen und Gast-Ansichten (guest-roster.ts, Graphem-sicher: erster und letzter Namensteil, ohne Namen ein Fragezeichen). */
+export { initialsOf };
 
 /** Das Datenobjekt der Spielerkarte für diesen Betrachter. Gast: neutral; Hallenbetreiber: namenlos; sonst voll. */
 export function playerCardFor(viewer: CardViewer, person: CardPerson, rating: RatingApi = RATING): PlayerCardData {

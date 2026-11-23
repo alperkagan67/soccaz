@@ -8,12 +8,14 @@
   --panel: #1b2a23;
   --panel-2: #24362d;
   --line: #3a5043;
+  --control-line: #6f8a7c; /* Rand von Bedienelementen (Felder, ruhige Knöpfe): mindestens 3:1 gegen Grund, Fläche und Feldgrund (AC-27); --line bleibt Trennlinie */
   --ink: #eef4f0;
   --muted: #a3b5ab;
   --rim: #cfe0d6;
   --accent: #ff6a1f;
   --accent-ink: #1d0a00;
-  --accent-fg: #ff6a1f; /* Orange als Schrift/Strich auf Grund und Fläche */
+  --accent-fg: #ff6e24; /* Orange als Schrift/Strich auf Grund, Fläche und Feldgrund (mindestens 4,5:1 auch auf panel-2) */
+  --accent-text: #ff8f57; /* Orange als Schrift auf der Tönung --accent-soft (mindestens 4,5:1 auf allen Flächen) */
   --accent-soft: rgba(255, 106, 31, 0.14);
   --card-yellow: #f2c200; /* Gelbe und Rote Karte im Spiel: Sportdaten, keine Oberflächenfarbe */
   --card-red: #c8102e;
@@ -71,12 +73,14 @@
     --panel: #f1f5f2;
     --panel-2: #e3eae5;
     --line: #b3c2b9;
+    --control-line: #6b7f73;
     --ink: #12201a;
     --muted: #4a5a51;
     --rim: #12201a;
     --accent: #c2410c;
     --accent-ink: #ffffff;
     --accent-fg: #b23a0a;
+    --accent-text: #9a3412;
     --accent-soft: rgba(194, 65, 12, 0.12);
     --ok: #0f5f2c;
     --ok-ink: #ffffff;
@@ -100,12 +104,14 @@
   --panel: #1b2a23;
   --panel-2: #24362d;
   --line: #3a5043;
+  --control-line: #6f8a7c;
   --ink: #eef4f0;
   --muted: #a3b5ab;
   --rim: #cfe0d6;
   --accent: #ff6a1f;
   --accent-ink: #1d0a00;
-  --accent-fg: #ff6a1f;
+  --accent-fg: #ff6e24;
+  --accent-text: #ff8f57;
   --accent-soft: rgba(255, 106, 31, 0.14);
   --ok: #4ade80;
   --ok-ink: #0b1118;
@@ -128,12 +134,14 @@
   --color-panel: var(--panel);
   --color-panel2: var(--panel-2);
   --color-line: var(--line);
+  --color-control-line: var(--control-line);
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-rim: var(--rim);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-accent-fg: var(--accent-fg);
+  --color-accent-text: var(--accent-text);
   --color-accent-soft: var(--accent-soft);
   --color-ok: var(--ok);
   --color-ok-ink: var(--ok-ink);
@@ -196,7 +204,7 @@ h1, h2, h3 {
 .btn:active { transform: translateY(1px); }
 .btn-primary { background: var(--accent); color: var(--accent-ink); }
 .btn-primary:hover { filter: brightness(1.08); }
-.btn-ghost { background: transparent; border-color: var(--line); color: var(--ink); }
+.btn-ghost { background: transparent; border-color: var(--control-line); color: var(--ink); }
 .btn-ghost:hover { border-color: var(--accent); }
 .btn-danger { background: transparent; border: 2px solid var(--ink); color: var(--ink); }
 
@@ -205,10 +213,14 @@ h1, h2, h3 {
   min-height: 44px;
   padding: 0.6rem 0.8rem;
   background: var(--panel-2);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-line);
   border-radius: 10px;
   color: var(--ink);
 }
+/* Platzhalter: --muted statt der Tailwind-Vorgabe (currentcolor zu 50 %), mindestens 4,5:1 auf dem Feldgrund (AC-27). Unlayered: schlägt die Utility-Schicht. */
+::placeholder { color: var(--muted); opacity: 1; }
+/* Orange als Schrift auf der Tönung --accent-soft (Plaketten, Zähler, Kopf der aktuellen Spiele): --accent-text, mindestens 4,5:1 (AC-27). Ohne TSX-Änderung für Element UND Nachfahren. */
+.bg-accent-soft.text-accent-fg, .bg-accent-soft .text-accent-fg { color: var(--accent-text); }
 .field:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 0.3rem; }
@@ -221,4 +233,35 @@ h1, h2, h3 {
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+}
+
+/* Karten-Aufdecken und Aufstieg (Vertrag 013 v3, AC-20 bis AC-23; Bausteine src/components/RevealMotion.tsx, Markup RatingReveal).
+   Animiert wird NUR transform und opacity (AC-22); kein Glow in diesem Schritt (kommt mit dem Umbau auf Richtung F). will-change steht nur auf .is-animating und fällt mit dem letzten animationend weg.
+   Tokens wie in DESIGN.md (dur-reveal, dur-reduced, ease-out); tests/unit/reveal-motion-css.test.ts gleicht sie ab. */
+:root {
+  --dur-reveal: 600ms;
+  --dur-reduced: 120ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes reveal-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes reveal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes promote-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.reveal-motion.is-animating .reveal-card { animation: reveal-in var(--dur-reveal) var(--ease-out) both; will-change: transform, opacity; }
+.reveal-motion[data-celebrate="true"] [data-testid="player-card-tier"] { animation: promote-pop var(--dur-reveal) var(--ease-out) var(--dur-reveal) both; }
+.reveal-motion.is-animating [data-testid="player-card-tier"] { will-change: transform; }
+/* AC-23: Die globale Regel oben schaltet jede Animation ab. Für das Aufdecken gilt eine gezielte Ausnahme (nach der globalen Regel, höhere Spezifität, ebenfalls !important):
+   nur Einblenden über opacity in --dur-reduced (unter 150 ms), keine Bewegung; der Chip-Pop entfällt, der Chip steht sofort da. Alle Informationen bleiben (sie stehen als Text im Markup). */
+@media (prefers-reduced-motion: reduce) {
+  .reveal-motion.is-animating .reveal-card { animation: reveal-fade var(--dur-reduced) linear both !important; will-change: opacity; }
+  .reveal-motion[data-celebrate="true"] [data-testid="player-card-tier"] { animation: none !important; }
 }

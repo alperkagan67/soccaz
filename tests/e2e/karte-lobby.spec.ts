@@ -57,7 +57,7 @@ test("Kartenmodell: ohne Karte rot mit Wort, Testkarte hinterlegen, grün mit Wo
 });
 
 test("Kartenmodell pro Spiel: liegt schon Geld im Spiel (bezahlter Platz), bleibt die Lobby im Guthaben-Modell", async ({ browser }) => {
-  const { a, matchId } = await setupLobby(browser, "km");
+  const { a, matchId } = await setupLobby(browser, "kmps"); // eigener Schluessel: "km" ergab kma-<Lauf>@test.local wie community2.spec.ts (gleicher Worker, gleicher Lauf-Schluessel)
   await query("update match_participants set paid_cents = 100 where match_id = $1", [matchId]);
   await a.goto(`/lobby/${matchId}`);
   await expect(a.getByTestId("card-form")).toHaveCount(0);
