@@ -6,6 +6,7 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 FROM base AS deps
+# Hier liegen nur package.json und das Lockfile: .npmrc (engine-strict) und scripts/check-node.mjs fehlen in dieser Stufe, es gibt bewusst kein preinstall; node:22-alpine ist die neueste 22er (>= 22.13).
 COPY package.json package-lock.json ./
 RUN npm ci
 
