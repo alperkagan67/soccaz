@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { and, eq, like } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db } from "@/db";
-import { auditLog, matchParticipants, teamMembers, users } from "@/db/schema";
+import { auditLog, matchParticipants, notificationPrefs, notifications, teamMembers, users } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { settings } from "@/db/schema-finance";
 import { tournaments } from "@/db/schema-league";
@@ -10,6 +10,7 @@ import { getAlerts } from "@/server/finance";
 import { joinLobby, setReady } from "@/server/lobby";
 import { cardPaymentsEnabled, paymentsEnabled, setSetting, tournamentPaymentsActive } from "@/server/settings";
 import { frozenTournaments } from "@/server/tournaments";
+import { notifyUsers } from "@/server/notifications";
 import { getCardSwitch, setCardSwitch } from "@/server/payment-switch";
 import { cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -23,6 +24,18 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+// Die Mitteilung darf den Notschalter nie scheitern lassen: ein Test schaltet notifyUsers auf "wirft" (nur ueber diesen Schalter, sonst echter Pfad)
+const probed: unknown[] = [];
+const failNotify: { on: boolean; probe: (() => Promise<unknown>) | null } = { on: false, probe: null }; // probe: liest beim Aufruf den Schalter ueber eine ANDERE Verbindung (Beleg: die Mitteilung laeuft nach dem Commit)
+vi.mock("@/server/notifications", async (importOriginal) => {
+  const m = await importOriginal<typeof import("@/server/notifications")>();
+  return { ...m, notifyUsers: async (...args: Parameters<typeof m.notifyUsers>) => {
+      if (failNotify.probe) probed.push(await failNotify.probe());
+      if (failNotify.on) throw new Error("boom");
+      return m.notifyUsers(...args);
+    },
+  };
+});
 import { setCardSwitchAction } from "@/server/admin-finance-actions";
 
 beforeEach(async () => {
@@ -186,5 +199,93 @@ describe("Kernversprechen: Zahlungen AN + Karte AUS (pausiert)", () => {
     expect(seat.paidCents).toBe(0);
     expect((await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id))).length).toBe(ledgerBefore);
     expect((await getAlerts()).some((a) => a.code === "card:switch-off")).toBe(true);
+  });
+});
+
+const noteTo = async (userId: string, title: RegExp) => (await db.select().from(notifications).where(eq(notifications.userId, userId))).filter((n) => title.test(n.title));
+
+describe("Mitteilung an den Buchungsstab beim Umschalten", () => {
+  it("Ausschalten und Einschalten: Admin 2 bekommt je eine Mitteilung (admin.task, ohne Grund und Namen), der Akteur, ein gesperrter Admin und ein Spieler nicht", async () => {
+    const o = await owner();
+    const admin2 = await makeUser("swn2", "admin");
+    const banned = await makeUser("swnb", "admin");
+    await db.update(users).set({ bannedAt: new Date() }).where(eq(users.id, banned.id));
+    const player = await makeUser("swnp");
+    const reason = "Geheimer Grund Stripe 4711";
+    await setCardSwitch(o.id, false, reason, true);
+    const off = await noteTo(admin2.id, /Kartenzahlung ausgeschaltet/);
+    expect(off).toHaveLength(1);
+    expect(off[0]).toMatchObject({ type: "system.critical", url: "/admin/finanzen" }); // Alarmliste: Admin 2 hat keinen Zugriff auf /admin/einstellungen
+    expect(`${off[0].title} ${off[0].body}`).not.toContain("4711");
+    expect(`${off[0].title} ${off[0].body}`).not.toContain(o.id);
+    expect(await noteTo(o.id, /Kartenzahlung/)).toHaveLength(0); // der Akteur selbst nicht
+    expect(await noteTo(banned.id, /Kartenzahlung/)).toHaveLength(0);
+    expect(await noteTo(player.id, /Kartenzahlung/)).toHaveLength(0);
+    await setCardSwitch(o.id, true, "Stoerung behoben, alles geprueft", true);
+    expect(await noteTo(admin2.id, /Kartenzahlung eingeschaltet/)).toHaveLength(1);
+  });
+
+  it("nicht abschaltbar: ein Admin, der admin.task (und den Typ selbst) abgeschaltet hat, bekommt die Notschalter-Mitteilung trotzdem; eine admin.task-Mitteilung bleibt fuer ihn stumm (Gegenprobe)", async () => {
+    const o = await owner();
+    const admin2 = await makeUser("swnq", "admin");
+    await db.insert(notificationPrefs).values({ userId: admin2.id, disabledTypes: ["admin.task", "system.critical", "payment"] });
+    await setCardSwitch(o.id, false, "Abschaltbarkeit pruefen: aus", true);
+    expect(await noteTo(admin2.id, /Kartenzahlung ausgeschaltet/)).toHaveLength(1);
+    // Gegenprobe: ein optionaler Typ wird von denselben Einstellungen unterdrueckt
+    const sent = await notifyUsers([admin2.id], { type: "admin.task", title: "Probe optional", body: "Probe", url: "/admin" });
+    expect(sent).toBe(0);
+    expect(await noteTo(admin2.id, /Probe optional/)).toHaveLength(0);
+    await setCardSwitch(o.id, true, "Abschaltbarkeit pruefen: ein", true);
+  });
+
+  it("Notschalter-Garantie: scheitert die Mitteilung, bleibt das Umschalten mit Audit bestehen (die Mitteilung laeuft nach dem Commit, best effort)", async () => {
+    const o = await owner();
+    const n0 = (await switchAudits()).length;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    failNotify.on = true;
+    try {
+      await setCardSwitch(o.id, false, "Notabschaltung trotz Mitteilungsfehler", true);
+    } finally {
+      failNotify.on = false;
+      logged.mockRestore();
+    }
+    expect(await cardPaymentsEnabled()).toBe(false);
+    expect((await switchAudits()).length).toBe(n0 + 1);
+    await setCardSwitch(o.id, true, "Wieder an nach dem Mitteilungstest", true);
+  });
+
+  it("Reihenfolge: die Mitteilung laeuft NACH dem Commit (beim Aufruf sieht eine andere Verbindung schon den neuen Schalterwert)", async () => {
+    const o = await owner();
+    probed.length = 0;
+    failNotify.probe = () => cardPaymentsEnabled();
+    try {
+      await setCardSwitch(o.id, false, "Reihenfolge pruefen: ausschalten", true);
+      await setCardSwitch(o.id, true, "Reihenfolge pruefen: einschalten", true);
+    } finally {
+      failNotify.probe = null;
+    }
+    expect(probed).toEqual([false, true]); // vor dem Commit saehe die andere Verbindung noch den alten Wert (true, false)
+  });
+
+  it("eine abgewiesene Umschaltung (Admin 2 versucht es, Pflichtangabe fehlt) verschickt nichts", async () => {
+    const o = await owner();
+    const admin2 = await makeUser("swn3", "admin");
+    const before = (await noteTo(admin2.id, /Kartenzahlung/)).length;
+    await expect(setCardSwitch(admin2.id, false, "Notfall wegen Stoerung", true)).rejects.toThrow(/nur Admin 1/);
+    await expect(setCardSwitch(o.id, false, "x", true)).rejects.toThrow(/Grund/);
+    expect((await noteTo(admin2.id, /Kartenzahlung/)).length).toBe(before);
+  });
+});
+
+describe("Einstellung mit unerwartetem Wert (von Hand gesetzt)", () => {
+  it("steht dort kein true/false, kommt eine klare Meldung (SQL pruefen) statt 'jemand anderes hat geaendert'; nichts wird geaendert, kein Audit", async () => {
+    const o = await owner();
+    await db.update(settings).set({ value: "on" }).where(eq(settings.key, "card_payments_enabled"));
+    const n0 = (await switchAudits()).length;
+    await expect(setCardSwitch(o.id, false, "Notfall wegen Stoerung", true)).rejects.toThrow(/unerwarteten Wert.*SQL/);
+    await expect(setCardSwitch(o.id, true, "Wieder einschalten bitte", true)).rejects.toThrow(/unerwarteten Wert/);
+    expect((await db.select().from(settings).where(eq(settings.key, "card_payments_enabled")))[0].value).toBe("on");
+    expect((await switchAudits()).length).toBe(n0);
+    await setSetting(null, "card_payments_enabled", true); // Aufraeumen: wieder ein Boolean
   });
 });

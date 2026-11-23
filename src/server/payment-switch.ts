@@ -6,6 +6,8 @@ import { users } from "@/db/schema";
 import { settings } from "@/db/schema-finance";
 import { isOwner } from "@/lib/roles";
 import { audit } from "./audit";
+import { bookingStaffIds } from "./booking";
+import { notifyUsers } from "./notifications";
 import { DomainError } from "./teams";
 
 // Notschalter Kartenzahlung (t2q/t2s): `card_payments_enabled` AUS = Zahlungen PAUSIERT (Entscheid D): nicht kostenlos; Beitritt moeglich, "Bereit" gesperrt (Support-Hinweis; der neutrale Text kommt mit 1c-ii-b), Turniere "Zahlungen sind gerade pausiert"; faellige Abbuchungen warten, Turniere frieren ein (Alarm nach 6 Stunden), bestehende bezahlte Plaetze bleiben. NUR Admin 1 darf schalten (die Funktion prueft das selbst).
@@ -38,6 +40,8 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
     if (!a || a.bannedAt || !isOwner(a)) throw new DomainError("Das darf nur Admin 1.");
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"card-switch"}))`); // die Zeile kann fehlen: Sperre unabhaengig davon
     const [row] = await tx.select({ value: settings.value, updatedAt: settings.updatedAt }).from(settings).where(eq(settings.key, CARD_SWITCH_KEY));
+    // Steht in der Einstellung etwas anderes als true/false (von Hand gesetzt), wuerde der Vergleich unten nie treffen: klare Meldung statt "jemand anderes hat geaendert"
+    if (row && typeof row.value !== "boolean") throw new DomainError("Die Einstellung hat einen unerwarteten Wert (kein Ja/Nein). Bitte per SQL prüfen und auf true oder false setzen.");
     const current = row?.value === true;
     if (current === enabled) throw new DomainError(enabled ? "Die Kartenzahlung ist schon eingeschaltet." : "Die Kartenzahlung ist schon ausgeschaltet.");
     // Compare-and-set (zweite Schicht neben dem Lock): geschrieben wird nur, wenn der Wert seit dem Lesen unveraendert ist (Vergleich auf value; updated_at taugt nicht: Mikrosekunden gehen beim Lesen verloren) bzw. die Zeile noch fehlt
@@ -54,4 +58,18 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
       tx,
     );
   });
+  // Mitteilung an den Buchungsstab (Admin 1 und Admin 2, nicht gesperrt), den Akteur ausgenommen: ohne Personendaten, ohne Grund im Klartext. Der Link fuehrt zur Alarmliste (/admin/finanzen, Admin 1 UND Admin 2 lesen sie; /admin/einstellungen waere nur fuer Admin 1 offen). NACH dem Commit und best effort: ein Fehler hier
+  // darf den Notschalter nie zurueckrollen (Schalten und Audit sind schon sicher; die Alarmliste zeigt den Zustand ohnehin).
+  try {
+    await notifyUsers(
+      await bookingStaffIds(db),
+      enabled
+        ? { type: "system.critical", title: "Kartenzahlung eingeschaltet", body: "Die Kartenzahlung wurde eingeschaltet. Fällige Abbuchungen laufen nach.", url: "/admin/finanzen" }
+        : { type: "system.critical", title: "Kartenzahlung ausgeschaltet", body: "Die Kartenzahlung wurde ausgeschaltet (Notabschaltung): neue Bezahlungen sind pausiert.", url: "/admin/finanzen" },
+      db,
+      actorId,
+    );
+  } catch (error) {
+    console.error("setCardSwitch: Mitteilung an den Buchungsstab fehlgeschlagen", error instanceof Error ? error.name : "Fehler");
+  }
 }
