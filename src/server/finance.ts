@@ -9,6 +9,8 @@ import { expenses, ledgerEntries } from "@/db/schema-finance";
 import { euroForCsv, toCsv } from "@/lib/csv";
 import { formatEuro } from "@/lib/money";
 import { audit } from "./audit";
+import { ensureRefundRow } from "./payments/charge";
+import { sendPendingRefunds } from "./payments/refund";
 import { creditWallet, totalWalletLiability, trialBalance } from "./ledger";
 import { notifyUsers } from "./notifications";
 import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
@@ -235,7 +237,7 @@ export async function venueCommissionOverview(period: Period): Promise<VenueComm
   return rows.map((r) => ({ venueId: r.id, name: r.name, commissionCents: r.commission, feesCents: r.fees, restCents: r.commission - r.fees, minus: r.commission - r.fees < 0 }));
 }
 
-export type PlayerFinanceRow = { userId: string; name: string; email: string; paidCents: number; refundedCents: number; netCents: number; walletNetCents: number; cardNetCents: number; pendingRefundCents: number; inLobby: boolean; hasPaidNow: boolean };
+export type PlayerFinanceRow = { userId: string; name: string; email: string; paidCents: number; refundedCents: number; netCents: number; walletNetCents: number; cardNetCents: number; cardRefundableCents: number; pendingRefundCents: number; inLobby: boolean; hasPaidNow: boolean };
 
 /**
  * Wer hat für dieses Spiel bezahlt, wie viel kam zurück, was ist offen. Zwei Quellen: das Guthaben-Hauptbuch (Altmodell, wallet-Konten) UND das Kartenmodell:
@@ -243,7 +245,7 @@ export type PlayerFinanceRow = { userId: string; name: string; email: string; pa
  */
 export async function playerFinance(matchId: string): Promise<PlayerFinanceRow[]> {
   await connection();
-  const rows = rowsOf<{ user_id: string; name: string; email: string; wallet_paid: number; wallet_refunded: number; card_paid: number; card_refunded: number; pending: number | null; card_pending: number; in_lobby: boolean; paid_now: number | null }>(
+  const rows = rowsOf<{ user_id: string; name: string; email: string; wallet_paid: number; wallet_refunded: number; card_paid: number; card_refunded: number; pending: number | null; card_pending: number; card_open: number; in_lobby: boolean; paid_now: number | null }>(
     await db.execute(sql`
       with wallet as (
         select coalesce(debit_user_id, credit_user_id) as user_id,
@@ -255,13 +257,14 @@ export async function playerFinance(matchId: string): Promise<PlayerFinanceRow[]
         select coalesce(c.payer_user_id, c.user_id) as user_id,
           sum(case when c.status = 'succeeded' then c.amount_cents else 0 end)::int as paid,
           coalesce(sum((select coalesce(sum(r.amount_cents), 0) from payment_refunds r where r.charge_id = c.id and r.status = 'succeeded')), 0)::int as refunded,
-          coalesce(sum((select coalesce(sum(r.amount_cents), 0) from payment_refunds r where r.charge_id = c.id and r.status = 'pending')), 0)::int as pending
+          coalesce(sum((select coalesce(sum(r.amount_cents), 0) from payment_refunds r where r.charge_id = c.id and r.status = 'pending')), 0)::int as pending,
+          coalesce(sum(case when c.status = 'succeeded' and not exists (select 1 from payment_refunds r where r.charge_id = c.id) then c.amount_cents else 0 end), 0)::int as open
         from payment_charges c where c.match_id = ${matchId}
         group by 1
       )
       select u.id as user_id, u.name, u.email,
         coalesce(w.paid, 0) as wallet_paid, coalesce(w.refunded, 0) as wallet_refunded,
-        coalesce(k.paid, 0) as card_paid, coalesce(k.refunded, 0) as card_refunded, coalesce(k.pending, 0) as card_pending,
+        coalesce(k.paid, 0) as card_paid, coalesce(k.refunded, 0) as card_refunded, coalesce(k.pending, 0) as card_pending, coalesce(k.open, 0) as card_open,
         pr.amount_cents as pending, (p.user_id is not null) as in_lobby, p.paid_cents as paid_now
       from users u
       left join wallet w on w.user_id = u.id
@@ -280,6 +283,7 @@ export async function playerFinance(matchId: string): Promise<PlayerFinanceRow[]
     netCents: r.wallet_paid - r.wallet_refunded + r.card_paid - r.card_refunded,
     walletNetCents: r.wallet_paid - r.wallet_refunded,
     cardNetCents: r.card_paid - r.card_refunded,
+    cardRefundableCents: r.card_open,
     pendingRefundCents: (r.pending ?? 0) + r.card_pending,
     inLobby: r.in_lobby,
     hasPaidNow: (r.paid_now ?? 0) > 0 || r.card_paid - r.card_refunded > 0, // Guthaben-Anteil bezahlt ODER Kartenabbuchung netto offen (nach voller Erstattung nicht mehr)
@@ -316,14 +320,40 @@ export async function matchHeader(matchId: string) {
   return r ? { id: r.id, startsAt: new Date(r.starts_at), status: r.status, home: r.home, away: r.away, priceCents: r.price_cents, costCents: r.cost_cents, finalShareCents: r.final_share_cents, settledAt: r.settled_at ? new Date(r.settled_at) : null } : null;
 }
 
-/** Ausnahme-Erstattung durch Finanz (z. B. kurzfristige Absage aus gutem Grund). Höchstens der Betrag, den die Person für dieses Spiel netto bezahlt hat. */
+/**
+ * Ausnahme-Erstattung durch Finanz (z. B. kurzfristige Absage aus gutem Grund).
+ * Kartenspiel (012 M6b 1c-iii): erstattet wird die GANZE Abbuchung des Zahlers auf die Karte (payment_refunds, Stripe-Refund über die bestehende Erstattungs-Pipeline; Rückbuchung im Hauptbuch erst
+ * mit der Bestätigung). Teilbeträge gibt es noch nicht: der Index payment_refunds_charge_idx erlaubt je Abbuchung nur EINE Erstattung (Teilbeträge brauchen eine Schemaänderung, eigene Backlog-Zeile).
+ * Eine zweite Erstattung derselben Abbuchung wird mit klarer Meldung abgelehnt; scheitert Stripe, bleibt die Zeile failed und erscheint als Alarm für Admin 1 (kein Guthaben-Fallback).
+ * Altmodell (Guthaben, nur bis 1c-ii): höchstens der netto bezahlte Betrag, Gutschrift aufs Guthaben.
+ */
 export async function manualRefund(actorId: string, matchId: string, userId: string, cents: number, reason: string) {
   const text = reason.trim();
   if (text.length < 3) throw new DomainError("Bitte einen Grund angeben.");
   if (!Number.isInteger(cents) || cents <= 0) throw new DomainError("Bitte einen gültigen Betrag angeben.");
+  let sendFor: string | null = null;
   await db.transaction(async (tx) => {
     const [lock] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("update");
     if (!lock) throw new DomainError("Nutzer nicht gefunden.");
+    // Kartenabbuchungen dieses Zahlers für dieses Spiel (Zahler = Übernehmer, sonst der Spieler)
+    const charges = await tx
+      .select()
+      .from(paymentCharges)
+      .where(and(eq(paymentCharges.matchId, matchId), eq(paymentCharges.status, "succeeded"), sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${userId}`))
+      .for("update");
+    if (charges.length > 0) {
+      const existing = await tx.select({ chargeId: paymentRefunds.chargeId }).from(paymentRefunds).where(inArray(paymentRefunds.chargeId, charges.map((c) => c.id)));
+      const done = new Set(existing.map((r) => r.chargeId));
+      const open = charges.filter((c) => !done.has(c.id));
+      if (open.length === 0) throw new DomainError("Für diese Abbuchung gibt es schon eine Erstattung (angefordert, erfolgreich oder fehlgeschlagen). Eine zweite Erstattung wird nicht angelegt; bei einer fehlgeschlagenen klärt Admin 1 sie manuell.");
+      const total = open.reduce((sum, c) => sum + c.amountCents, 0);
+      if (cents !== total) throw new DomainError(`Eine Ausnahme-Erstattung geht nur für die ganze Abbuchung: ${formatEuro(total)} (Teilbeträge sind noch nicht möglich).`);
+      for (const c of open) await ensureRefundRow(tx, c, `Ausnahme-Erstattung: ${text}`);
+      await audit(actorId, "payment.manual_refund", "match", matchId, { after: { userId, cents, charges: open.length, reason: text } }, tx);
+      await notifyUsers([userId], { type: "payment", title: "Erstattung", body: `Eine Erstattung von ${formatEuro(cents)} auf deine Karte wurde angefordert (${text}).`, url: "/app" }, tx);
+      sendFor = matchId;
+      return;
+    }
     const [net] = rowsOf<{ net: number }>(
       await tx.execute(sql`
         select (coalesce(sum(case when debit_account = 'wallet' and debit_user_id = ${userId} then amount_cents else 0 end), 0)
@@ -335,6 +365,8 @@ export async function manualRefund(actorId: string, matchId: string, userId: str
     await audit(actorId, "wallet.manual_refund", "match", matchId, { after: { userId, cents, reason: text } }, tx);
     await notifyUsers([userId], { type: "payment", title: "Erstattung", body: `${formatEuro(cents)} wurden dir erstattet (${text}).`, url: "/app" }, tx);
   });
+  // Nach dem Commit senden (Stripe-Aufruf nie in der Datenbank-Transaktion); scheitert der Versand, holt der Job runRefunds es nach
+  if (sendFor) await sendPendingRefunds(sendFor).catch(() => undefined);
 }
 
 export async function listExpenses(period: Period) {

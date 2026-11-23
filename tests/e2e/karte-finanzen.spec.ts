@@ -160,6 +160,15 @@ async function scenario(browser: import("@playwright/test").Browser, model: Mode
   await expect(adm.locator('[data-testid^="player-"]')).toHaveCount(10);
   // Spielerkarten aus den Abbuchungszeilen (payment_charges): bezahlt 8,00, netto 8,00
   await expect(adm.getByTestId(`player-${k}h1-${run}@test.local`)).toContainText(euro("netto 8,00 €"));
+  // Ausnahme-Erstattung auf die Karte (Stripe, GANZE Abbuchung; PAYMENTS_FAKE im Server): das Formular ist mit 8,00 € vorbelegt, Teilbeträge gibt es nicht
+  const card = adm.getByTestId(`player-${k}h1-${run}@test.local`);
+  await expect(card.getByLabel("Betrag")).toHaveValue("8,00");
+  const refundBtn = card.getByRole("button", { name: "Ausnahme-Erstattung buchen" });
+  await expect.poll(() => refundBtn.evaluate((el) => Object.keys(el).some((k2) => k2.startsWith("__reactProps")))).toBe(true); // erst nach der Hydration bedienen (Flake-Muster aus #202)
+  await card.getByLabel("Grund").fill("Verletzung vor dem Spiel");
+  await refundBtn.click();
+  await expect(adm.getByTestId(`player-${k}h1-${run}@test.local`)).toContainText(euro("netto 0,00 €"), { timeout: 15_000 });
+  expect(await query<{ status: string; amount_cents: number }>("select r.status, r.amount_cents from payment_refunds r join users u on u.id = r.user_id where r.match_id = $1 and u.email = $2", [matchId, `${k}h1-${run}@test.local`])).toEqual([{ status: "succeeded", amount_cents: share }]);
 
   // Übersicht, CSV, Ausgabenliste
   const month = new Date(Date.now() + 10 * 3_600_000).toISOString().slice(0, 7);
