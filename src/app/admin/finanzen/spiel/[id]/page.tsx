@@ -57,11 +57,11 @@ export default async function MatchFinancePage({ params }: PageProps<"/admin/fin
                   {p.inLobby ? (p.hasPaidNow ? "In der Lobby, Anteil bezahlt" : "In der Lobby, offen") : "Nicht mehr in der Lobby"}
                   {p.pendingRefundCents > 0 && ` · Erstattung ${formatEuro(p.pendingRefundCents)} offen (wartet auf Ersatz)`}
                 </p>
-                {p.walletNetCents > 0 && ( // Guthaben-Altmodell; die Ausnahme-Erstattung per Stripe für Kartenzahlungen folgt in 1c-iii Etappe b
-                  <ActionForm action={manualRefundAction.bind(null, id, p.userId)} submit="Ausnahme-Erstattung buchen" className="grid grid-cols-[1fr_2fr_auto] items-end gap-2" successText="Erstattet." keepOnSuccess>
+                {(p.walletNetCents > 0 || p.cardRefundableCents > 0) && (
+                  <ActionForm action={manualRefundAction.bind(null, id, p.userId)} submit="Ausnahme-Erstattung buchen" className="grid grid-cols-[1fr_2fr_auto] items-end gap-2" successText="Erstattung angefordert." keepOnSuccess>
                     <div>
                       <label className="label" htmlFor={`amt-${p.userId}`}>Betrag</label>
-                      <input id={`amt-${p.userId}`} name="amount" className="field" defaultValue={(p.walletNetCents / 100).toFixed(2).replace(".", ",")} />
+                      <input id={`amt-${p.userId}`} name="amount" className="field" defaultValue={((p.cardRefundableCents > 0 ? p.cardRefundableCents : p.walletNetCents) / 100).toFixed(2).replace(".", ",")} />
                     </div>
                     <div>
                       <label className="label" htmlFor={`why-${p.userId}`}>Grund</label>

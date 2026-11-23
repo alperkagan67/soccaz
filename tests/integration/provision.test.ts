@@ -389,7 +389,7 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     await expect(recordExpense(g.admin.id, { matchId: g.match.id, kind: "other", amountCents: 100 })).resolves.toBeTruthy(); // andere Ausgaben bleiben möglich
   });
 
-  it("Punkt 2: Guthaben-Pfade bleiben auf revenue (Hin UND Zurück), Ausnahme-Erstattung berührt venue_payable nie; Kartenzahler ist nicht ausnahme-erstattbar", async () => {
+  it("Punkt 2: Guthaben-Pfade bleiben auf revenue (Hin UND Zurück), Ausnahme-Erstattung berührt venue_payable nie; Kartenzahler: nur die ganze Abbuchung per Stripe, nie ins Guthaben", async () => {
     const v = await venue();
     // Guthaben-Spiel im Provisionsmodell: Zahlung wallet -> revenue, Ausnahme-Erstattung revenue -> wallet
     const w = await makeMatch({ legacy: true, priceCents: 4000, costCents: 4000, ledgerModel: "commission" });
@@ -413,10 +413,12 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     expect((await entries(w.match.id)).some((x) => x.creditAccount === "venue_payable" || x.debitAccount === "venue_payable")).toBe(false);
     expect((await trialBalance()).balanced).toBe(true);
 
-    // Kartenzahler: kein Guthaben-Eintrag, also netto 0: die Ausnahme-Erstattung ist abgelehnt und kann nie aus revenue/venue_payable ins Guthaben buchen
+    // Kartenzahler (012 M6b 1c-iii, F3): kein Guthaben-Eintrag; die Ausnahme-Erstattung geht nur für die GANZE Abbuchung und per Stripe auf die Karte, ein Teilbetrag wird abgelehnt
+    // und nichts bucht je aus revenue/venue_payable ins Guthaben (vorher: abgelehnt mit "höchstens 0,00")
     const g = await game(v.id);
     await runCharges(g.match.id);
-    await expect(manualRefund(g.admin.id, g.match.id, g.adminA.id, 100, "Test")).rejects.toThrow(/höchstens 0,00/);
+    await expect(manualRefund(g.admin.id, g.match.id, g.adminA.id, 100, "Test")).rejects.toThrow(/ganze Abbuchung/);
+    expect(await walletBalance(db, g.adminA.id)).toBe(0);
   });
 
   it("Punkt 3 (C4): matches.ledger_model ist unveränderlich; nur die Wartungsausnahme darf es ändern", async () => {
