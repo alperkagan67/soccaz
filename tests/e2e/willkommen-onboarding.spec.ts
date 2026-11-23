@@ -190,7 +190,9 @@ test("Backlog 224: vor der Hydration ist der Ablauf gesperrt, ein Klick oder Ent
   await page.context().route("**/_next/static/**", (route) => (route.request().resourceType() === "script" ? route.abort() : route.continue()));
   await page.goto("/willkommen");
   const urlBefore = page.url();
-  await expect(page.getByTestId("assistent-felder")).toBeDisabled();
+  // toBeDisabled gilt in Playwright nur für Formularsteuerelemente (und deren Nachfahren eines gesperrten fieldset), nicht für das fieldset selbst: darum das Attribut UND ein Feld darin und der Weiter-Knopf
+  await expect(page.getByTestId("assistent-felder")).toHaveAttribute("disabled", "");
+  await expect(form(page).getByLabel(/^Anzeigename/)).toBeDisabled();
   await expect(weiter(page)).toBeDisabled();
   await expect(page.getByTestId("assistent-laedt")).toBeAttached();
   await weiter(page).click({ force: true, timeout: 5_000 }).catch(() => {});
