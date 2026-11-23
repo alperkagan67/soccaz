@@ -1,45 +1,45 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
-import { creditWallet, walletBalance } from "@/server/ledger";
-import { payShare, setReady } from "@/server/lobby";
+import { setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
 import { recordExpense } from "@/server/booking";
-import { exportLedgerCsv, getAlerts, listMatchFinance, manualRefund, matchEntries, monthPeriod, overview, playerFinance } from "@/server/finance";
-import { settleMatch } from "@/server/wallet";
-import { addPlayer, cleanup, makeMatch, reloadMatch } from "./helpers";
+import { exportLedgerCsv, getAlerts, listMatchFinance, matchEntries, monthPeriod, overview, playerFinance } from "@/server/finance";
+import { cardGame, chargeGame, cleanup, makeMatch, seedShare, useCardMode } from "./helpers";
 
+// 012 M6b (Kartenfixture): Das Finanz-Reporting wird mit Kartenspielen geprüft (Karte, Fake-Abbuchung), nicht mehr mit Guthaben (fund/payShare/settleMatch).
+// Gegenstücke zu den gestrichenen Guthaben-Aussagen: "Ausnahme-Erstattung höchstens bis zum netto bezahlten Betrag" -> finance-manual-refund.test.ts ("Teilbeträge sind nicht möglich",
+// "erstattet die ganze Abbuchung"; Grund-Pflicht dort mit Grund-Text); Aufladungen/Restguthaben (topups, liability) gibt es im Kartenpfad nicht: unten als 0 festgehalten.
 let base: Awaited<ReturnType<typeof overview>>;
+let mode: Awaited<ReturnType<typeof useCardMode>>;
 const wide = { from: new Date("2020-01-01"), to: new Date("2100-01-01") };
-const key = () => `f-${Math.random().toString(36).slice(2)}`;
-const fund = (userId: string, cents: number) => creditWallet(db, userId, { from: "clearing", amountCents: cents, kind: "topup", idempotencyKey: key() });
 
+/** Kartenspiel mit 10 Spielern, Abbuchung durch (Anteil = Preis ÷ 10), abgerechnet bei der Abbuchung. */
 async function settledMatch(priceCents: number) {
-  const m = await makeMatch({ legacy: true, priceCents, costCents: priceCents });
-  const players = [m.adminA, m.adminB];
-  for (let i = 0; i < 4; i++) players.push(await addPlayer(m.match.id, m.home.id), await addPlayer(m.match.id, m.away.id));
-  for (const p of players) {
-    await fund(p.id, 2000);
-    await payShare(p.id, m.match.id);
-    await setReady(p.id, m.match.id, true);
-  }
-  await db.transaction(async (tx) => settleMatch(tx, await reloadMatch(m.match.id)));
-  return { ...m, players };
+  const m = await cardGame({ n: 10, price: priceCents });
+  await chargeGame(m);
+  return { ...m, players: m.all };
 }
 
 beforeAll(async () => {
   await cleanup(); // sauberer Stand: keine Testdaten aus früheren Läufen
-  await setSetting(null, "payments_enabled", true);
   await setSetting(null, "min_paid_players", 8);
   base = await overview(wide); // echte Entwicklungsdaten (z. B. eine Test-Aufladung) bleiben unberührt und zählen nicht mit
+});
+// Schalter pro Test (Regel 23)
+beforeEach(async () => {
+  mode = await useCardMode();
+});
+afterEach(async () => {
+  await mode.restore();
 });
 afterAll(cleanup);
 
 describe("Finanz-Reporting", () => {
   let a: Awaited<ReturnType<typeof settledMatch>>;
 
-  it("Spiel mit 10 Zahlern: Einnahmen gleich Hallenpreis, mit Hallenkosten Marge 0", async () => {
+  it("Kartenspiel mit 10 Zahlern: Einnahmen gleich Hallenpreis, mit Hallenkosten Marge 0", async () => {
     a = await settledMatch(8000);
     await recordExpense(a.adminA.id, { matchId: a.match.id, kind: "venue", amountCents: 8000, note: "Hallenmiete" });
 
@@ -47,9 +47,9 @@ describe("Finanz-Reporting", () => {
     expect(o.revenueCents - base.revenueCents).toBe(8000);
     expect(o.venueCostCents - base.venueCostCents).toBe(8000);
     expect(o.marginCents - base.marginCents).toBe(0);
-    expect(o.topupsCents - base.topupsCents).toBe(20_000);
-    expect(o.refundsCents - base.refundsCents).toBe(2000); // 10 x 2,00 EUR Abrechnungsdifferenz
-    expect(o.liabilityCents - base.liabilityCents).toBe(12_000); // 10 x 12,00 EUR Restguthaben
+    expect(o.topupsCents - base.topupsCents).toBe(0); // Kartenpfad: keine Aufladung
+    expect(o.refundsCents - base.refundsCents).toBe(0); // keine Abrechnungsdifferenz, der Anteil wird genau abgebucht
+    expect(o.liabilityCents - base.liabilityCents).toBe(0); // kein Restguthaben
     expect(o.feesCents).toBe(0);
     expect(o.promoCents).toBe(0);
   });
@@ -60,32 +60,20 @@ describe("Finanz-Reporting", () => {
     expect(rows[0]).toMatchObject({ id: a.match.id, payers: 10, revenueCents: 8000, costCents: 8000, marginCents: 0, finalShareCents: 800, priceCents: 8000 });
   });
 
-  it("je Spieler: bezahlt, zurück, netto", async () => {
+  it("je Spieler: abgebucht, zurück, netto", async () => {
     const players = await playerFinance(a.match.id);
     expect(players).toHaveLength(10);
     for (const p of players) {
-      expect(p.paidCents).toBe(1000);
-      expect(p.refundedCents).toBe(200);
+      expect(p.paidCents).toBe(800);
+      expect(p.refundedCents).toBe(0);
       expect(p.netCents).toBe(800);
       expect(p.pendingRefundCents).toBe(0);
       expect(p.hasPaidNow).toBe(true);
     }
     const entries = await matchEntries(a.match.id);
     expect(entries.filter((e) => e.kind === "match_share")).toHaveLength(10);
-    expect(entries.filter((e) => e.kind === "refund")).toHaveLength(10);
+    expect(entries.filter((e) => e.kind === "refund")).toHaveLength(0);
     expect(entries.filter((e) => e.kind === "venue_cost")).toHaveLength(1);
-  });
-
-  it("Ausnahme-Erstattung höchstens bis zum netto bezahlten Betrag", async () => {
-    const p = a.players[2];
-    const before = await walletBalance(db, p.id);
-    await expect(manualRefund(a.adminA.id, a.match.id, p.id, 801, "zu viel")).rejects.toThrow(/höchstens 8,00/);
-    await expect(manualRefund(a.adminA.id, a.match.id, p.id, 100, "x")).rejects.toThrow(/Grund/);
-    await manualRefund(a.adminA.id, a.match.id, p.id, 800, "Verletzung vor dem Spiel");
-    expect(await walletBalance(db, p.id)).toBe(before + 800);
-    await expect(manualRefund(a.adminA.id, a.match.id, p.id, 1, "nochmal")).rejects.toThrow(/höchstens 0,00/);
-    const pf = (await playerFinance(a.match.id)).find((x) => x.userId === p.id)!;
-    expect(pf.netCents).toBe(0);
   });
 
   it("Verlustspiel löst einen Alarm aus (Hallenkosten höher als Einnahmen)", async () => {
@@ -99,12 +87,11 @@ describe("Finanz-Reporting", () => {
     expect(alerts.some((x) => x.code === "unbalanced")).toBe(false);
   });
 
-  it("Alarm: negatives Guthaben und nicht abgerechnetes Spiel", async () => {
+  it("Alarm: nicht abgerechnetes Spiel (bezahlter Platz, kein settled_at)", async () => {
     // Spiel hat begonnen, ist bestätigt, hat Zahler, aber keine Abrechnung
     const c = await makeMatch({ legacy: true });
     const p = c.adminA;
-    await fund(p.id, 2000);
-    await payShare(p.id, c.match.id);
+    await seedShare(p.id, c.match.id, 1000); // bezahlter Platz (paid_cents > 0) ohne Geldweg: der Alarm gilt dem Altpfad, bis PR 2
     await setReady(p.id, c.match.id, true);
     await db.update(matches).set({ status: "confirmed", startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, c.match.id));
     const alerts = await getAlerts();
@@ -116,7 +103,7 @@ describe("Finanz-Reporting", () => {
     expect(csv.startsWith("﻿Datum;Buchungs-ID;Art;Soll;Haben;Betrag EUR;Spiel;Zahlungs-ID;Nutzer;Grund")).toBe(true);
     const lines = csv.trim().split("\r\n");
     expect(lines.length).toBeGreaterThan(20);
-    expect(csv).toMatch(/;10,00;/);
+    expect(csv).toMatch(/;8,00;/);
     expect(csv).toContain("venue_cost");
   });
 
