@@ -87,6 +87,17 @@ describe("Anfrage: nicht freigegebene Halle ist unsichtbar und nicht buchbar", (
 });
 
 describe("Freischaltung und Ablehnung", () => {
+  it("eine ID, die keine UUID ist: approveVenue und rejectVenue antworten 'Halle nicht gefunden' (kein DB-Typfehler); das Recht wird VOR der ID geprueft", async () => {
+    const admin = await makeUser("vadm", "admin");
+    const player = await makeUser("vpl");
+    for (const bad of ["abc", "123", "' or 1=1 --", "00000000-0000-0000-0000-00000000000z", ""]) {
+      await expect(approveVenue(admin.id, bad)).rejects.toThrow(/Halle nicht gefunden/);
+      await expect(rejectVenue(admin.id, bad, "Grund ist hier egal")).rejects.toThrow(/Halle nicht gefunden/);
+    }
+    await expect(approveVenue(player.id, "abc")).rejects.toThrow(/nur Admin 1 oder Admin 2/); // ohne Recht: Rechte-Meldung, kein Hinweis auf die ID
+    await expect(approveVenue(admin.id, UNKNOWN)).rejects.toThrow(/Halle nicht gefunden/); // gueltige, unbekannte UUID: dieselbe Antwort
+  });
+
   it("Freischalten durch Admin 2: Halle wird aktiv, sichtbar und buchbar; Betreiber bekommt eine Mitteilung; Audit ohne Personendaten", async () => {
     const { operator, v } = await requested();
     const admin2 = await makeUser("vadm", "admin");

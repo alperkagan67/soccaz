@@ -9,6 +9,8 @@ import { parseStreamUrl } from "@/lib/stream";
 import { formatDateTime } from "@/lib/time";
 import { PHASE_LABEL } from "@/lib/result-rules";
 import { listMatchPhotos } from "@/server/media";
+import { RatingReveal } from "@/components/RatingReveal";
+import { getRatingReveal } from "@/server/rating-reveal";
 import { canViewMatch, getMatchPage } from "@/server/results";
 import { getCurrentUser } from "@/server/session";
 import { ScoreDialog } from "@/app/lobby/[id]/uebersicht/ScoreDialog";
@@ -39,6 +41,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const goalsFromEvents = live;
   const host = ((await headers()).get("host") ?? "localhost").split(":")[0];
   const stream = match.streamUrl ? parseStreamUrl(match.streamUrl, host) : null;
+  const reveal = user ? await getRatingReveal(match.id, user.id) : null; // nur die eigene Wertungsänderung, nur nach einem bestätigten Ergebnis (AC-20, AC-17)
   const photos = (await listMatchPhotos(match.id)).map((p) => ({ id: p.id, mine: p.ownerId === user?.id }));
 
   return (
@@ -76,6 +79,8 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
           </p>
         )}
       </header>
+
+      {reveal && <RatingReveal data={reveal} />}
 
       {stream && <StreamEmbed provider={stream.provider} embedUrl={stream.embedUrl} />}
       {v?.canManage && match.status !== "cancelled" && <StreamForm matchId={match.id} current={match.streamUrl} />}

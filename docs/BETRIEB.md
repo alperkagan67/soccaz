@@ -176,7 +176,7 @@ Spalten: **P AUS** = Zahlungen AUS (Gratis) | **K AN** = Zahlungen AN + Karte AN
   5. Wenn möglich eine Testabbuchung (kleiner Betrag, Testkonto) und Erstattung.
   6. Einschalten; danach der Alarm `card:switch-off` ist weg und die Anzeige steht auf EIN.
   7. Betroffene informieren (Turnierveranstalter, Teams mit eingefrorenen Turnieren, Support).
-  Es nimmt niemand Betroffene automatisch in Kenntnis: Das Umschalten benachrichtigt nur über die Alarmliste (Backlog 210).
+  Betroffene (Spieler, Turnierveranstalter) werden nicht automatisch informiert (Backlog 210). Der Buchungsstab (Admin 1 und Admin 2, nicht gesperrt, der Akteur selbst ausgenommen) bekommt bei jedem Umschalten eine Mitteilung "Kartenzahlung ausgeschaltet" bzw. "eingeschaltet" (Typ `system.critical`: nicht abschaltbar, nur In-App, ohne Grund und ohne Namen; Link `/admin/finanzen`) zusätzlich zum Alarm. Steht in der Einstellung etwas anderes als `true`/`false`, meldet die Oberfläche "unerwarteten Wert … per SQL prüfen" und ändert nichts (dann den Wert mit dem Statement oben auf einen Boolean setzen).
 - **Go-live-Reihenfolge:** Die Karte (`card_payments_enabled`) muss VOR oder MIT den Zahlungen (`payments_enabled`) eingeschaltet werden. Sonst gilt sofort "Zahlungen AN + Karte AUS" = pausiert, mit dem Alarm `card:switch-off` und gesperrtem "Bereit". Zahlungen AUS bleibt der Gratis-/Testbetrieb.
 - Restfenster: ein Netzaufruf, der Millisekunden vor dem Umlegen gestartet wurde, geht noch raus und wird normal verbucht.
 
