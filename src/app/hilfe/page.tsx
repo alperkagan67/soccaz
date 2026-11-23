@@ -61,7 +61,7 @@ export default async function HelpPage() {
           <p className="text-xs">Die Hallenliste stammt zunächst aus OpenStreetMap und ist nicht geprüft: Ob eine Halle frei und buchbar ist und was sie kostet, bestätigt die Buchung. Fehlt eine Halle, schreib uns über die Kontaktseite.</p>
         </Q>
         <Q q="Was ist die Lobby?">
-          <p>Die Seite zu eurem Spiel. Dort trägt sich jeder Spieler ein und klickt „Bereit“. Fünf Spieler pro Team plus ein Ersatz. Sind in beiden Teams genug Spieler bereit, ist das Spiel bestätigt. Klappt das nicht, sagen wir es 24 Stunden vorher automatisch ab.</p>
+          <p>Die Seite zu eurem Spiel. Dort trägt sich jeder Spieler ein und klickt „Bereit“. Fünf Spieler pro Team plus ein Ersatz. Sind in beiden Teams genug Spieler bereit, findet das Spiel statt. Der Preis steht fest, sobald beide Captains bestätigt haben. Klappt das nicht, sagen wir es 24 Stunden vorher automatisch ab.</p>
         </Q>
         <Q q="Was ist, wenn bei uns jemand fehlt?">
           <p>Ist die Lobby öffentlich, können sich fremde Spieler als Ersatz eintragen. Ein Team-Admin weist sie dem Team zu. Auf der Seite „Mitspieler gesucht“ tragen sich Spieler für einen Tag ein, die Lust auf ein Spiel haben.</p>

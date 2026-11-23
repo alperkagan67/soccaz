@@ -252,3 +252,9 @@ Nicht Rechtstext, aber mit denselben Wörtern (Hilfe, Abschnitt „Geld und Guth
 - `docs/design/umbauplan-013.md`, Abschnitt 5, Punkt 7 („Wann gilt ein Spiel als bestätigt?“), M2 (`begriffe.md`).
 - Verträge 007 (Rollen, Teamfarbe), 008 (Captain, Bereit, Frist), 011 (Zusage der Halle), 012 (Kartenmodell, M6a/M6b), 013 (AC-7, AC-14).
 - Code: `src/server/lobby.ts`, `src/lib/lobby-rules.ts`, `src/server/results.ts`, `src/server/payments/charge-run.ts`, `src/server/mygame.ts`.
+
+## Umgesetzt in 013 M3 PR 1 (Texte)
+
+- „Letzte Bestätigung der Captains“ heißt jetzt „Preis steht fest, sobald beide Captains bestätigen“, der Knopf „Ja, mein Team ist komplett: Preis bestätigen“.
+- Lobby-Hinweis: „Findet statt, sobald in beiden Teams mindestens 4 bereit sind.“; Meine Spiele: „Findet statt (Preis folgt)“.
+- Benachrichtigung `match.confirmed` (Typ-ID unverändert): „Spiel findet statt“; Hilfe-Text angepasst. „bestätigt“ bleibt nur für „Ergebnis bestätigt“ und den Captain-Knopf „Preis bestätigen“.

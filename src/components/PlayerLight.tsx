@@ -2,7 +2,7 @@ import { CARD_LEGEND, cardView, type CardViewStatus } from "@/lib/card-view";
 
 /**
  * Ampel pro Spieler in der Lobby:
- *  rot = in der Lobby (noch nicht bereit), orange = bereit und Anteil bezahlt (Spiel noch nicht bestätigt), grün = Spiel bestätigt.
+ *  rot = in der Lobby (noch nicht bereit), orange = bereit und Anteil bezahlt (Spiel findet noch nicht statt), grün = Spiel findet statt.
  * Sind Zahlungen noch aus, heißt orange nur „bereit“.
  */
 export type Light = "red" | "orange" | "green";

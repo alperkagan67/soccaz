@@ -33,7 +33,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email
   "team.joined": { label: "Neues Mitglied in deinem Team", email: false, optional: true },
   "lobby.joined": { label: "Spieler tritt der Lobby bei", email: false, optional: true },
   "lobby.substitute": { label: "Ersatzspieler wartet auf Zuweisung", email: false, optional: true },
-  "match.confirmed": { label: "Spiel bestätigt", email: true, optional: true },
+  "match.confirmed": { label: "Spiel findet statt", email: true, optional: true },
   "match.cancelled": { label: "Spiel abgesagt", email: true, optional: false },
   "match.reminder": { label: "Erinnerung vor dem Anstoß", email: false, optional: true },
   "result.confirm": { label: "Ergebnis zur Bestätigung", email: true, optional: false },
