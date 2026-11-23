@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { matchEvents, matchParticipants, matchResults, matches, teamMembers, teams, users } from "@/db/schema";
 import { playerStats, ratingHistory, teamStats, userBadges, userReliability } from "@/db/schema-community";
 import { reliabilityPercent } from "@/lib/badges";
-import { ELO_MIN_GAMES_FOR_RANKING } from "@/lib/elo";
+import { ELO_MIN_GAMES_FOR_RANKING, ELO_START } from "@/lib/elo";
 import type { Role } from "@/lib/roles";
 
 /** Elo-Verlauf einer Person oder eines Teams: Startwert plus Wert nach jedem der letzten Spiele (älteste zuerst). */
@@ -217,16 +217,30 @@ export async function listPlayers(filter: { q?: string; city?: string; page?: nu
  * Kader eines Teams für die Teamseite. Datenschutz: Namen, IDs und Positionen bekommen nur eingeloggte Nutzer (Mitglieder und Fremde);
  * Gäste (`viewerId` null) bekommen nur die Anzahl. Die Auswahl passiert hier im Server, nicht erst in der Oberfläche.
  */
+/**
+ * Elo-Werte der Mitglieder OHNE Namen und Kennungen, nur für die Teamwertung (Durchschnitt, erst ab drei Mitgliedern, siehe teamCardFor). Der Aufrufer reduziert sie auf EINE Zahl;
+ * die Werte selbst gehen nie in die Seite. Unabhängig vom Betrachter, weil die Teamwertung (wie die Team-Elo) öffentlich ist.
+ */
+export async function getTeamMemberElos(teamId: string): Promise<number[]> {
+  const rows = await db
+    .select({ elo: sql<number>`coalesce(${playerStats.elo}, ${ELO_START})`.mapWith(Number) })
+    .from(teamMembers)
+    .leftJoin(playerStats, eq(playerStats.userId, teamMembers.userId))
+    .where(eq(teamMembers.teamId, teamId));
+  return rows.map((r) => r.elo);
+}
+
 export async function getTeamRosterView(teamId: string, viewerId: string | null) {
   if (!viewerId) {
     // Gäste: nur zählen, die Namen werden gar nicht erst gelesen
     const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(teamMembers).where(eq(teamMembers.teamId, teamId));
-    return { count: n, members: [] as { userId: string; name: string; position: string | null; role: "admin" | "player"; isVerifiedPro: boolean }[] };
+    return { count: n, members: [] as { userId: string; name: string; position: string | null; role: "admin" | "player"; isVerifiedPro: boolean; elo: number }[] };
   }
   const list = await db
-    .select({ userId: users.id, name: users.name, position: users.position, role: teamMembers.role, isVerifiedPro: users.isVerifiedPro })
+    .select({ userId: users.id, name: users.name, position: users.position, role: teamMembers.role, isVerifiedPro: users.isVerifiedPro, elo: sql<number>`coalesce(${playerStats.elo}, ${ELO_START})`.mapWith(Number) })
     .from(teamMembers)
     .innerJoin(users, eq(users.id, teamMembers.userId))
+    .leftJoin(playerStats, eq(playerStats.userId, users.id))
     .where(eq(teamMembers.teamId, teamId))
     .orderBy(teamMembers.role, teamMembers.joinedAt);
   return { count: list.length, members: list };

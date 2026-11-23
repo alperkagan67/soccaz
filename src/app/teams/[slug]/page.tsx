@@ -7,9 +7,13 @@ import { ChallengeNow } from "@/components/ChallengeNow";
 import { ImageUpload } from "@/components/ImageUpload";
 import { FormChips, Sparkline } from "@/components/Sparkline";
 import { StatTile } from "@/components/Stats";
+import { PlayerRow } from "@/components/PlayerRow";
+import { TeamCard } from "@/components/TeamCard";
 import { TeamColorDot } from "@/components/TeamColor";
+import { RATING, cardViewerFor, playerCardFor, teamCardFor } from "@/lib/player-card";
+import { isPlatformAdmin } from "@/lib/roles";
 import { formatDate, formatDateTime } from "@/lib/time";
-import { getTeamProfile, getTeamRosterView } from "@/server/profiles";
+import { getTeamMemberElos, getTeamProfile, getTeamRosterView } from "@/server/profiles";
 import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 import { leaguesOfTeam } from "@/server/leagues";
@@ -59,6 +63,9 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   const [roster, leagues, jerseys] = await Promise.all([getTeamRosterView(team.id, user?.id ?? null), leaguesOfTeam(team.id), sponsorsOfTeam(team.id)]);
   const members = roster.members;
   const admin = user ? await isTeamAdmin(user.id, team.id) : false;
+  // Karten und Zeilen: die Sichtbarkeit entscheidet der Server (playerCardFor), Gäste bekommen weiter KEINE Namen und KEINE Wertung (getTeamRosterView liest für sie nichts); die Teamwertung ist nur eine Zahl
+  const viewer = cardViewerFor({ userId: user?.id ?? null, hallOperator: false, participant: user ? members.some((m) => m.userId === user.id) : false, teamAdmin: admin, platformAdmin: isPlatformAdmin(user) });
+  const teamCard = teamCardFor({ name: team.name, slug: team.slug, color: team.color ?? null, memberElos: await getTeamMemberElos(team.id) }, RATING);
   const isMyTeam = myTeams.some((t) => t.id === team.id); // das eigene Team kann man nicht herausfordern
   const canChallenge = !isMyTeam && myTeams.length > 0;
 
@@ -76,6 +83,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         </p>
         {team.bio && <p className="whitespace-pre-line pt-1 text-sm" data-testid="bio">{team.bio}</p>}
         <FormChips form={profile.form} />
+        <TeamCard data={teamCard} className="mt-3" />
         {!admin && !canChallenge && user === null && (
           <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${team.slug}`)}`} className="text-sm text-accent-fg underline">
             Anmelden, um dieses Team herauszufordern
@@ -190,21 +198,22 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
             <Link href={`/anmelden?next=${encodeURIComponent(`/teams/${team.slug}`)}`} className="text-accent-fg underline">Anmelden</Link>
           </p>
         )}
-        <ul className="space-y-2">
-          {members.map((m) => (
-            <li key={m.userId} className="card space-y-2" data-testid="member">
-              <div className="flex items-center justify-between gap-2">
-                <Link href={`/spieler/${m.userId}`} className="min-w-0 hover:text-accent-fg">
-                  <span className="font-semibold">{m.name}</span>
-                  {m.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
-                  <span className="block text-sm text-muted">{m.position ?? "Position offen"}</span>
-                </Link>
-                {m.role === "admin" && <span className="text-xs text-muted">Team-Admin</span>}
-              </div>
-              {admin && <MemberControls teamId={team.id} userId={m.userId} isAdmin={m.role === "admin"} isSelf={m.userId === user?.id} />}
-            </li>
-          ))}
-        </ul>
+        {members.length > 0 && (
+          // EIN Rahmen um die Liste, die Zeilen haben keinen eigenen (AC-30 c: keine Karte in der Karte)
+          <ul className="card divide-y divide-line" data-testid="roster">
+            {members.map((m) => (
+              <li key={m.userId} className="space-y-2 py-3 first:pt-0 last:pb-0" data-testid="member">
+                <PlayerRow
+                  data={playerCardFor(viewer, { name: m.name, elo: m.elo, position: m.position, teamColor: team.color ?? null, teamSlug: team.slug }, RATING)}
+                  href={`/spieler/${m.userId}`}
+                  badges={m.isVerifiedPro ? <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs font-normal text-accent-fg">Profi</span> : null}
+                  trailing={m.role === "admin" ? <span className="text-xs text-muted">Team-Admin</span> : null}
+                />
+                {admin && <MemberControls teamId={team.id} userId={m.userId} isAdmin={m.role === "admin"} isSelf={m.userId === user?.id} />}
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {admin && <TeamSettings teamId={team.id} slug={team.slug} color={team.color ?? null} name={team.name} city={team.city} strength={team.strength} bio={team.bio ?? null} />}
