@@ -10,9 +10,6 @@ const root = join(__dirname, "..", "..", "src");
 
 /** Datei -> Grund (Welle laut docs/loop/BACKLOG.md 224). Client-Handler brauchen JavaScript ohnehin (Welle 5: Knopf bis zur Hydration gesperrt + method=post). */
 export const EXCEPTIONS: Record<string, string> = {
-  "app/app/einstellungen/PrefsForm.tsx": "Welle 2 (Konto und Profil)",
-  "app/app/einstellungen/ProfileForm.tsx": "Welle 2 (Konto und Profil)",
-  "app/willkommen/OnboardingForm.tsx": "Welle 2 (Konto und Profil)",
   "app/mitspieler/PostForm.tsx": "Welle 3 (Inhalte)",
   "components/CommentForm.tsx": "Welle 3 (Inhalte)",
   "app/app/teams/neu/TeamForm.tsx": "Welle 3 (Inhalte)",
@@ -73,6 +70,23 @@ describe("Formulare mit onSubmit brauchen action oder method=post (Progressive E
 
   it("die Ausnahmeliste enthält nur noch Dateien mit Verstoß (nach einer Welle streichen)", () => {
     expect(Object.keys(EXCEPTIONS).filter((f) => !bad.includes(f))).toEqual([]);
+  });
+
+  it("Welle 2: kein Formular mit personenbezogenen Feldern (Geburtsdatum, E-Mail, Telefon, IBAN, Spitzname, Bio, Lieblingsverein, Rückennummer) ohne action; OnboardingForm ist mit dem Spieler-Onboarding PR 2 (#272) entfallen", () => {
+    const pii = /name="[^"]*(mail|phone|iban|birth|street|address|postal|zip|bio|nick|club|shirt)[^"]*"/i; // Teilstrings: Name/Stadt/Position sind kein Personenbezug im engeren Sinn (werden im selben Absenden mit abgedeckt)
+    const leaky = all.filter((f) => bad.includes(f.rel) && pii.test(f.src)).map((f) => f.rel);
+    expect(leaky).toEqual([]);
+  });
+
+  it("Welle 2: ProfileForm (Profil und Konto löschen) und PrefsForm haben action={formAction} und onSubmit an jedem Formular", () => {
+    for (const f of ["app/app/einstellungen/ProfileForm.tsx", "app/app/einstellungen/PrefsForm.tsx"]) {
+      const tags = formTags(readFileSync(join(root, f), "utf8"));
+      expect(tags.length, f).toBeGreaterThan(0);
+      for (const tag of tags) {
+        expect(tag, f).toMatch(/action=\{formAction\}/);
+        expect(tag, f).toMatch(/onSubmit=\{onSubmit\}/);
+      }
+    }
   });
 
   it("Pilot: AcceptForm (Spiel annehmen) hat action={formAction} und onSubmit", () => {
