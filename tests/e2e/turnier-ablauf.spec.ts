@@ -175,7 +175,7 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, K
     .poll(async () => {
       await callJob(baseURL!, "card-charges");
       return (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length;
-    }, { timeout: 60_000 })
+    }, { timeout: 60_000, intervals: [1000, 2000] })
     .toBe(3);
   expect((await query<{ n: number }>("select count(*)::int as n from payment_charges where tournament_id = $1 and status = 'succeeded'", [tid]))[0].n, "alle 16 Plätze abgebucht").toBe(16);
   await caps[3].page.reload();
