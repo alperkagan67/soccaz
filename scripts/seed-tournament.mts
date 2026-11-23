@@ -7,11 +7,10 @@
 // Ohne Turnier-ID gilt das neueste Turnier.
 import { and, asc, eq, ne } from "drizzle-orm";
 import { db } from "../src/db";
-import { teamMembers, users } from "../src/db/schema";
+import { paymentProfiles, teamMembers, users } from "../src/db/schema";
 import { tournamentPlayers, tournamentTeams, tournaments } from "../src/db/schema-league";
-import { creditWallet } from "../src/server/ledger";
 import { createTeam } from "../src/server/teams";
-import { joinAsPlayer, payEntry, registerTeam, setRosterComplete } from "../src/server/tournaments";
+import { joinAsPlayer, registerTeam, setRosterComplete } from "../src/server/tournaments";
 import { assertSeedAllowed } from "./lib/seed-guard";
 
 // Schutz wie bei den anderen Seed-Skripten (Backlog 56): nur localhost:5433 mit soccav2 oder soccaz_w1 bis soccaz_w4, keine Query-Parameter.
@@ -96,8 +95,7 @@ if (mode === "fill") {
   const skip = new Set((unpaidWanted > 0 ? demo.slice(-unpaidWanted) : []).map((p) => p.userId));
   for (const p of demo) {
     if (skip.has(p.userId)) continue;
-    await db.transaction((tx) => creditWallet(tx, p.userId, { from: "clearing", amountCents: Math.max(share * 2, 2000), kind: "topup", idempotencyKey: `turnierfill-topup:${tag}:${p.userId}` }));
-    await payEntry(p.userId, t.id);
+    await db.insert(paymentProfiles).values({ userId: p.userId, stripeCustomerId: `cus_turnierfill_${tag}_${p.userId}`, paymentMethodId: `pm_turnierfill_${p.userId}` }).onConflictDoNothing();
   }
   const rows = await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
   console.log(`Preis pro Spieler ${(share / 100).toFixed(2)} €: ${rows.filter((r) => r.paidCents >= share).length} von ${rows.length} bezahlt, ${rows.filter((r) => r.paidCents < share).length} offen.`);

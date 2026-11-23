@@ -6,12 +6,11 @@ import { auditLog, matchParticipants, matchResults, matches, notifications, paym
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLead } from "@/lib/deadlines";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
-import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, planSchedule, koWinner, knockout, shareRange, standings, drawGroups, groupName, splitEntryFees, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
+import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, planSchedule, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
 import { audit } from "./audit";
-import { creditWallet, debitWallet, post } from "./ledger";
 import { notifyUsers, teamAdminIds } from "./notifications";
 import { getSetting } from "./settings";
 import { DomainError } from "./teams";
@@ -201,14 +200,17 @@ type PlayerRow = typeof tournamentPlayers.$inferSelect;
 
 async function refundPlayer(tx: Tx, t: T, p: PlayerRow, reason: string) {
   if (p.paidCents > 0) {
-    // Wird eine Zahlung erstattet, ist das Team nicht mehr vollständig bezahlt: "Bereit" gilt nicht mehr
+    // 012 M6b b2-ii: Es gibt kein Guthaben mehr. Altgeld (paid_cents > 0 aus dem früheren Guthabenmodell) wird NICHT erstattet, sondern protokolliert (Anzahl/Betrag, ohne Personendaten),
+    // damit Admin 1 es klärt. Das Team ist dann nicht mehr vollständig: "Bereit" gilt nicht mehr. Karten-Abbuchungen erstattet allein der Kartenpfad (tournament-refund.ts).
     await tx.update(tournamentTeams).set({ paidReadyAt: null }).where(and(eq(tournamentTeams.tournamentId, t.id), eq(tournamentTeams.teamId, p.teamId)));
-    // Die Erstattung geht an den, der gezahlt hat: der Spieler selbst oder der Captain, der für das Team gezahlt hat
-    await creditWallet(tx, p.paidBy ?? p.userId, { from: "tournament", amountCents: p.paidCents, kind: "tournament_refund", tournamentId: t.id, idempotencyKey: `tournament-refund:${t.id}:${p.userId}:${p.joinedAt.getTime()}:${p.paidAt?.getTime() ?? 0}`, reason: `${reason}: ${t.name}` });
+    // Je Spieler, Bezahlzeitpunkt und Anlass nur EIN Eintrag (Wiederholung schreibt nicht doppelt). userId/paidBy sind interne IDs, kein Name und keine E-Mail: der Anspruch bleibt zuordenbar, auch wenn die Zeile gleich gelöscht/genullt wird.
+    const claimKey = `${p.userId}:${p.paidAt?.getTime() ?? 0}:${reason}`;
+    const [seen] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, "tournament.refund_skipped"), eq(auditLog.entity, "tournament"), eq(auditLog.entityId, t.id), sql`${auditLog.after}->>'claimKey' = ${claimKey}`)).limit(1);
+    if (!seen) await audit(null, "tournament.refund_skipped", "tournament", t.id, { after: { claimKey, userId: p.userId, paidBy: p.paidBy, teamId: p.teamId, paidAt: p.paidAt, amountCents: p.paidCents, reason, note: "keine Guthaben-Erstattung mehr (012 M6b): manuell klären" } }, tx);
   }
 }
 
-/** Spieler verlässt den Turnier-Kader (oder der Captain/Veranstalter entfernt ihn). Bezahlter Eintritt geht aufs Guthaben zurück. */
+/** Spieler verlässt den Turnier-Kader (oder der Captain/Veranstalter entfernt ihn). Altgeld (früheres Guthabenmodell) wird nur protokolliert (refundPlayer). */
 export async function leavePlayer(actorId: string, tournamentId: string, targetUserId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
@@ -224,62 +226,6 @@ export async function leavePlayer(actorId: string, tournamentId: string, targetU
     await refundPlayer(tx, t, p, "Rückerstattung Eintritt");
     await unlockTeam(tx, tournamentId, p.teamId);
     await audit(actorId, "tournament.leave", "tournament", tournamentId, { after: { userId: targetUserId } }, tx);
-  });
-}
-
-/** Jeder Spieler zahlt seinen Anteil selbst vom Guthaben (erst wenn der Preis feststeht). Doppelklick oder zweite Anfrage buchen nicht doppelt. */
-export async function payEntry(userId: string, tournamentId: string) {
-  await db.transaction(async (tx) => {
-    const t = await lockTournament(tx, tournamentId);
-    if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
-    if (await tournamentPayBlocked(tx, t)) throw new DomainError(PAYMENTS_PAUSED);
-    if (await tournamentCardMode(tx, tournamentId)) throw new DomainError("Im Kartenmodell wird dein Anteil zur Frist von deiner Karte abgebucht. Hinterlege deine Karte.");
-    const [p] = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId))).for("update");
-    if (!p) throw new DomainError("Du bist nicht im Turnier-Kader.");
-    const share = shareOf(t);
-    if (share === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
-    if (p.paidCents >= share) throw new DomainError("Du hast schon bezahlt.");
-    const booked = await debitWallet(tx, userId, { to: "tournament", amountCents: share - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${userId}:${p.joinedAt.getTime()}:${t.priceRound}`, reason: `Anteil Hallenkosten ${t.name}`, actorId: userId });
-    if (!booked.created) throw new DomainError("Dieser Anteil ist schon gebucht.");
-    await tx.update(tournamentPlayers).set({ paidCents: share, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
-    await audit(userId, "tournament.pay", "tournament", tournamentId, { after: { cents: share } }, tx);
-    await maybeGenerateBracket(tx, t);
-  });
-}
-
-/**
- * Zahlung für andere im eigenen Team. Der Captain zahlt für alle offenen Spieler seines Teams oder für einen einzelnen (`targetUserId`);
- * jeder andere Spieler im Kader darf nur für einen einzelnen Teamkollegen zahlen (`targetUserId` ist Pflicht). Nie für Spieler fremder Teams.
- * Alles oder nichts: reicht das Guthaben nicht, wird nichts gebucht. Der Buchungsschlüssel hängt nicht vom Zahler ab,
- * eine zweite Zahlung für denselben Spieler wird daher abgewiesen. Die Erstattung geht an den Zahler (`paidBy`).
- */
-export async function payForTeam(userId: string, tournamentId: string, targetUserId?: string) {
-  await db.transaction(async (tx) => {
-    const t = await lockTournament(tx, tournamentId);
-    if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
-    if (await tournamentPayBlocked(tx, t)) throw new DomainError(PAYMENTS_PAUSED);
-    if (await tournamentCardMode(tx, tournamentId)) throw new DomainError("Im Kartenmodell wird dein Anteil zur Frist von deiner Karte abgebucht. Hinterlege deine Karte.");
-    const [captainEntry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
-    let teamId = captainEntry?.teamId;
-    if (!captainEntry) {
-      if (!targetUserId) throw new DomainError("Nur der Captain eines angemeldeten Teams kann für alle Spieler bezahlen.");
-      const [me] = await tx.select({ teamId: tournamentPlayers.teamId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
-      if (!me) throw new DomainError("Nur Spieler im Kader können für Teamkollegen bezahlen.");
-      teamId = me.teamId;
-    }
-    const share = shareOf(t);
-    if (share === 0) throw new DomainError("Dieses Turnier ist kostenlos.");
-    const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId!))).for("update");
-    if (targetUserId && !players.some((p) => p.userId === targetUserId)) throw new DomainError("Dieser Spieler ist nicht in deinem Team.");
-    const open = players.filter((p) => p.paidCents < share && (!targetUserId || p.userId === targetUserId));
-    if (open.length === 0) throw new DomainError(targetUserId ? "Dieser Spieler hat schon bezahlt." : "Euer Team ist schon komplett bezahlt.");
-    for (const p of open) {
-      const booked = await debitWallet(tx, userId, { to: "tournament", amountCents: share - p.paidCents, kind: "tournament_entry", tournamentId, idempotencyKey: `tournament-entry:${tournamentId}:${p.userId}:${p.joinedAt.getTime()}:${t.priceRound}`, reason: userId === p.userId ? `Anteil Hallenkosten ${t.name}` : `Anteil Hallenkosten (bezahlt für Teamkollegen) ${t.name}`, actorId: userId });
-      if (!booked.created) throw new DomainError("Dieser Anteil ist schon gebucht.");
-      await tx.update(tournamentPlayers).set({ paidCents: share, paidAt: new Date(), paidBy: userId }).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, p.userId)));
-    }
-    await audit(userId, "tournament.payteam", "tournament", tournamentId, { after: { players: open.length, single: Boolean(targetUserId) } }, tx);
-    await maybeGenerateBracket(tx, t);
   });
 }
 
@@ -396,8 +342,8 @@ export async function reopenRosters(userId: string, tournamentId: string) {
     await tx.update(tournamentTeams).set({ readyAt: null, paidReadyAt: null }).where(eq(tournamentTeams.tournamentId, tournamentId));
     // beim Wiederoeffnen werden Zugangs- und Provisions-Snapshot verworfen; sie werden beim naechsten Fixieren neu eingefroren. Die Zusage der Halle bleibt (sie gilt fuer die Halle, nicht fuer den Preis).
     await tx.update(tournaments).set({ status: "registration", finalShareCents: null, venueAccessRequiredSnapshot: null, commissionPercentSnapshot: null }).where(eq(tournaments.id, tournamentId));
-    await notifyUsers([...new Set(players.map((p) => p.userId)), ...new Set(players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])))], { type: "system", title: "Kader wieder offen", body: `${t.name}: Der Veranstalter hat die Kader wieder geöffnet. Bereits gezahlte Anteile wurden erstattet, der Preis wird neu berechnet.`, url: `/turniere/${tournamentId}` }, tx);
-    await audit(userId, "tournament.reopen", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length } }, tx);
+    await notifyUsers([...new Set(players.map((p) => p.userId)), ...new Set(players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])))], { type: "system", title: "Kader wieder offen", body: `${t.name}: Der Veranstalter hat die Kader wieder geöffnet. ${players.some((p) => p.paidCents > 0) ? "Für Eintritte aus der früheren Guthaben-Zeit meldet sich die Plattform bei dir." : "Es war noch nichts abgebucht."} Der Preis wird neu berechnet.`, url: `/turniere/${tournamentId}` }, tx);
+    await audit(userId, "tournament.reopen", "tournament", tournamentId, { after: { refundSkipped: players.filter((p) => p.paidCents > 0).length } }, tx);
   });
 }
 
@@ -416,7 +362,7 @@ export async function withdrawTeam(userId: string, tournamentId: string, teamId:
     await tx.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
     await tx.delete(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
     if (manager && entry.captainId !== userId) {
-      await notifyUsers(await teamAdminIds(tx, teamId), { type: "system", title: "Team aus dem Turnier genommen", body: `Der Veranstalter hat euer Team aus ${t.name} genommen. Bezahlte Eintritte wurden erstattet.`, url: `/turniere/${tournamentId}` }, tx);
+      await notifyUsers(await teamAdminIds(tx, teamId), { type: "system", title: "Team aus dem Turnier genommen", body: `Der Veranstalter hat euer Team aus ${t.name} genommen. ${players.some((p) => p.paidCents > 0) ? "Für Eintritte aus der früheren Guthaben-Zeit meldet sich die Plattform." : "Es war nichts abgebucht."}`, url: `/turniere/${tournamentId}` }, tx);
     }
     await audit(userId, "tournament.withdraw", "tournament", tournamentId, { after: { teamId } }, tx);
   });
@@ -615,19 +561,20 @@ async function finishTournament(tx: Tx, t: T, winnerId: string) {
   }
 }
 
-/** Zahlt den Veranstalter aus (Eintritte abzüglich Provision) und verbucht die Provision als Umsatz. Genau einmal pro Turnier. */
+/**
+ * Schließt die Abrechnung ab (genau einmal pro Turnier). Kartenmodell: schon bei der Abbuchung gebucht (settled_at), es gibt KEINE Veranstalter-Auszahlung (Preisgeld stillgelegt, 012 M6b F4).
+ * Altgeld aus dem Guthabenmodell (paid_cents > 0) wird nicht ausgezahlt, sondern nur protokolliert (tournament.settle_skipped, ohne Personendaten); nichts wird gebucht.
+ */
 async function settle(tx: Tx, t: T) {
   const [cur] = await tx.select({ settledAt: tournaments.settledAt }).from(tournaments).where(eq(tournaments.id, t.id));
-  if (cur?.settledAt) return; // Kartenmodell: schon bei der Abbuchung gebucht (settled_at), es gibt keine Veranstalter-Auszahlung; Altmodell: genau einmal
+  if (cur?.settledAt) return;
   const [{ total }] = await tx.select({ total: sql<number>`coalesce(sum(${tournamentPlayers.paidCents}), 0)`.mapWith(Number) }).from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id));
-  const { commission, payout } = splitEntryFees(total, await commissionPercent(tx));
-  if (payout > 0) await creditWallet(tx, t.organizerId, { from: "tournament", amountCents: payout, kind: "tournament_payout", tournamentId: t.id, idempotencyKey: `tournament-payout:${t.id}`, reason: `Auszahlung Eintritte ${t.name}` });
-  if (commission > 0) await post(tx, { debit: { account: "tournament" }, credit: { account: "revenue" }, amountCents: commission, kind: "tournament_commission", tournamentId: t.id, idempotencyKey: `tournament-commission:${t.id}`, reason: `Provision ${t.name}` });
+  if (total > 0) await audit(null, "tournament.settle_skipped", "tournament", t.id, { after: { totalCents: total, note: "Altgeld nicht ausgezahlt (Preisgeld stillgelegt, 012 M6b): manuell klären" } }, tx);
   await tx.update(tournaments).set({ settledAt: new Date() }).where(eq(tournaments.id, t.id));
-  await audit(null, "tournament.settle", "tournament", t.id, { after: { total, commission, payout } }, tx);
+  await audit(null, "tournament.settle", "tournament", t.id, { after: { total } }, tx);
 }
 
-/** Absagen: Alle bezahlten Eintritte gehen vollständig aufs Guthaben der Spieler zurück. Nur möglich, solange noch kein Spiel gespielt ist. */
+/** Absagen: Abgebuchte Anteile gehen per Karte zurück (Kartenpfad); Altgeld wird nur protokolliert. Nur möglich, solange noch kein Spiel gespielt ist. */
 export async function cancelTournament(userId: string, tournamentId: string) {
   try {
     return await cancelTournamentOnce(userId, tournamentId);
@@ -724,7 +671,7 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
   if (played.length > 0) throw new DomainError("Es gibt schon Ergebnisse. Bitte wende dich an die Plattform.");
   const gameIds = await lockTournamentGames(tx, tournamentId); // K1: Spiele sortiert und OHNE Warten sperren, VOR allen Erstattungs-/Zahlungsschreibungen (Sperrreihenfolge, Backlog 144)
   const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
-  // Kartenmodell (M5-5): Erstattungszeilen fuer alle erfolgreichen Abbuchungen, Provisions-Storno im selben Schritt; sonst (Altmodell) Erstattung aufs Guthaben
+  // Kartenmodell (M5-5): Erstattungszeilen fuer alle erfolgreichen Abbuchungen, Provisions-Storno im selben Schritt; sonst nur Protokoll für Altgeld (kein Guthaben mehr)
   const card = (await hasTournamentChargeRows(tx, tournamentId)) || (await tournamentCardMode(tx, tournamentId));
   let refundedCards = 0;
   const payerIds: string[] = [];
@@ -732,6 +679,7 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
     const r = await prepareCardCancel(tx, t, new Date());
     refundedCards = r.refunded;
     payerIds.push(...r.payerIds);
+    for (const p of players) if (p.paidCents > 0) await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier (Altgeld)"); // Mischzustand: Altgeld neben Kartenabbuchungen nicht still lassen
   } else {
     for (const p of players) {
       await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
@@ -740,7 +688,7 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
   const reason = cause ? cause(card) : null;
   const body = card
     ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${refundedCards > 0 ? "Bereits abgebuchte Anteile werden auf die Karte erstattet." : "Es wurde nichts von deiner Karte abgebucht."}`
-    : `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${players.some((p) => p.paidCents > 0) ? "Dein Eintritt wurde vollständig erstattet." : "Es wurde nichts bezahlt."}`;
+    : `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${players.some((p) => p.paidCents > 0) ? "Für bereits bezahlte Eintritte aus der früheren Guthaben-Zeit meldet sich die Plattform bei dir." : "Es wurde nichts bezahlt."}`;
   await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), ...payerIds, t.organizerId])], { type: "system", title: "Turnier abgesagt", body, url: `/turniere/${tournamentId}` }, tx);
   // Entscheid t2q (Plan 19.14): wurde das Turnier ohne Zusage der Halle abgesagt, erfahren die Zugangsinhaber der Halle es (ohne Namen Dritter; Savepoint, ein Fehler kippt die Absage nie)
   if (t.venueId && !t.venueConfirmedAt && t.venueAccessRequiredSnapshot === true) {
@@ -755,7 +703,7 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
   if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
   await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
   await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));
-  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: card ? refundedCards : players.filter((p) => p.paidCents > 0).length, card, byJob: actorId === null } }, tx);
+  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: card ? refundedCards : 0, refundSkipped: players.filter((p) => p.paidCents > 0).length, card, byJob: actorId === null } }, tx);
 }
 
 /**

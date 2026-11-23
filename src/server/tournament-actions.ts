@@ -5,20 +5,18 @@ import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/validation";
 import { parseEuro } from "@/lib/money";
 import { parseBerlinLocal } from "@/lib/time";
-import { InsufficientFunds } from "./ledger";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
 import { setTournamentVenue } from "./tournament-venue";
 import { triggerTournamentChargesInBackground } from "./payments/tournament-charge";
 import { isPlatformAdmin } from "@/lib/roles";
 import { releaseTournamentCover, takeOverTournamentShare } from "./tournament-card";
-import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, payEntry, payForTeam, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
+import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
     await fn();
   } catch (error) {
-    if (error instanceof InsufficientFunds) return { error: error.message, needsTopupCents: error.neededCents - error.balanceCents };
     if (error instanceof DomainError) return { error: error.message };
     throw error;
   }
@@ -96,13 +94,6 @@ export async function releaseTournamentCoverAction(tournamentId: string): Promis
   });
 }
 
-export async function payEntryAction(tournamentId: string): Promise<ActionState> {
-  return touch(tournamentId, (uid) => payEntry(uid, tournamentId));
-}
-/** Der Captain zahlt für alle offenen Spieler seines Teams oder nur für einen. */
-export async function payForTeamAction(tournamentId: string, targetUserId?: string): Promise<ActionState> {
-  return touch(tournamentId, (uid) => payForTeam(uid, tournamentId, targetUserId));
-}
 /** Der Captain meldet: Mein Team ist vollzählig (oder nimmt es zurück). */
 export async function setRosterCompleteAction(tournamentId: string, complete: boolean): Promise<ActionState> {
   return touch(tournamentId, (uid) => setRosterComplete(uid, tournamentId, complete));
