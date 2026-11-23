@@ -426,13 +426,18 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     const noPartner = await mk({ partner: false, percent: "0" });
     const withRate = await mk({ partner: true, percent: "12" });
     const codes = async () => (await getAlerts()).map((a) => a.code);
-    let c = await codes();
-    expect(c).toContain(`commission-unset:${unset.id}`);
-    expect(c).not.toContain(`commission-unset:${noPartner.id}`);
-    expect(c).not.toContain(`commission-unset:${withRate.id}`);
-    await setVenueCommission(owner.id, unset.id, { percent: 0, bonusEnabled: false, reason: "bewusst 0" });
-    c = await codes();
-    expect(c).not.toContain(`commission-unset:${unset.id}`);
+    try {
+      let c = await codes();
+      expect(c).toContain(`commission-unset:${unset.id}`);
+      expect(c).not.toContain(`commission-unset:${noPartner.id}`);
+      expect(c).not.toContain(`commission-unset:${withRate.id}`);
+      await setVenueCommission(owner.id, unset.id, { percent: 0, bonusEnabled: false, reason: "bewusst 0" });
+      c = await codes();
+      expect(c).not.toContain(`commission-unset:${unset.id}`);
+    } finally {
+      // Aufräumen: die Hallen dieses Tests liegen sonst für immer in der Datenbank; getAlerts zeigt höchstens 20 solcher Alarme, ab der 21. Halle fände der Test seine eigene nicht mehr
+      for (const v of [unset, noPartner, withRate]) await db.delete(venues).where(eq(venues.id, v.id)).catch(() => undefined);
+    }
   });
 
   // 012 M6b Kartenfixture: Der Mischfall "ein Spieler zahlt per Guthaben" gibt es nicht mehr (Guthabenpfad weg). Der Kern bleibt: hat ein eingeteilter Spieler weder Karte noch Übernehmer,
