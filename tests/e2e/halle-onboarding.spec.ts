@@ -228,6 +228,8 @@ test("Erneute Anfrage: Vorbelegung aus der abgelehnten Halle (ohne Kontakt), eig
   // der angefangene neue Antrag liegt weiter unter seiner eigenen Kennung
   await page.goto("/halle/anfragen");
   await page.waitForLoadState("networkidle");
+  await schritt(page, 2); // der Entwurf wird an der Stelle wiederhergestellt, an der er verlassen wurde (Schritt 2)
+  await zurueck(page).click();
   await expect(form(page).getByLabel(/Name der Halle/)).toHaveValue("Anderer Entwurf");
 });
 
