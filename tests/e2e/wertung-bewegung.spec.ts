@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts } from "./helpers";
-import { RECORD_ANIMATIONS, login, seedPlayedWithRatings } from "./helpers-wertung";
+import { RECORD_ANIMATIONS, cssMs, login, seedPlayedWithRatings } from "./helpers-wertung";
 
 // Vertrag 013 v3, AC-20 (Aufstieg nur einmal, Merker im Browser) und AC-23 (reduzierte Bewegung: nur Einblenden unter 150 ms, alle Informationen bleiben).
 test.describe.configure({ mode: "serial" });
@@ -55,11 +55,10 @@ test("Reduzierte Bewegung: nur Einblenden (reveal-fade, unter 150 ms), kein Aufd
   await expect.poll(() => names(page, "end")).toEqual(["reveal-fade"]);
   const all = await anims(page);
   expect(all.map((a) => a.name).filter((n) => n !== "reveal-fade")).toEqual([]); // weder reveal-in (Bewegung) noch promote-pop
-  const start = all.find((a) => a.type === "start")!;
-  const end = all.find((a) => a.type === "end")!;
-  expect(end.t - start.t).toBeLessThan(150 + 80); // 120 ms Dauer plus Taktungenauigkeit; die Dauer selbst prüft der CSS-Unit-Test (< 150 ms)
+  // Die Laufzeit selbst wird nicht gemessen (hängt vom Runner ab): das Token im AUSGELIEFERTEN CSS (der Optimierer schreibt 120ms als .12s) muss unter 150 ms liegen, und die laufende Animation nutzt es
   const dur = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--dur-reduced").trim());
-  expect(parseInt(dur, 10)).toBeLessThan(150);
+  expect(cssMs(dur), `--dur-reduced im ausgelieferten CSS: "${dur}"`).toBeLessThan(150);
+  expect(cssMs(dur)).toBeGreaterThan(0);
   // alle Informationen bleiben
   await expect(page.getByTestId("rating-reveal-text")).toContainText("Wertung 50 → 61 (+11), Stufe Rasen. Aufstieg: Kreide → Rasen");
   await expect(page.getByTestId("player-card-tier")).toContainText("Rasen");

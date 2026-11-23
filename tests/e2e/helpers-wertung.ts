@@ -7,6 +7,13 @@ export async function login(page: Page, email: string, name: string) {
   await page.waitForURL((url) => !url.pathname.startsWith("/anmelden"));
 }
 
+/** CSS-Zeitwert in Millisekunden ("120ms", ".12s", "0.6s"): der Optimierer des ausgelieferten CSS schreibt 120ms als .12s, parseInt wäre NaN. */
+export function cssMs(value: string): number {
+  const m = /^\s*(-?\d*\.?\d+)(ms|s)\s*$/.exec(value);
+  if (!m) return Number.NaN;
+  return m[2] === "s" ? Math.round(parseFloat(m[1]) * 1000) : parseFloat(m[1]);
+}
+
 /** Ein gespieltes, bestätigtes Spiel 3:1 mit zwei Spielern und je einer Verlaufszeile (nach 1000 -> 1090: Aufstieg Kreide -> Rasen; Gegner 1000 -> 910: Stufe bleibt). */
 export async function seedPlayedWithRatings(tag: string) {
   const starName = `Aufsteiger ${tag} ${run}`;

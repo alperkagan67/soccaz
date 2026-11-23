@@ -90,3 +90,23 @@ describe("Dauer-Tokens (DESIGN.md)", () => {
     expect(design).toMatch(/\|\s*`dur-reduced`\s*\|\s*120 ms/);
   });
 });
+
+describe("Auslieferung (Tailwind/Lightning-CSS)", () => {
+  it("die drei Tokens und die Reduced-Motion-Ausnahme stehen im AUSGELIEFERTEN (optimierten) CSS; Zeiten dürfen als .12s statt 120ms erscheinen und bleiben < 150 ms bzw. 600 ms", async () => {
+    const { compile, optimize } = await import("@tailwindcss/node");
+    const built = (await compile(css, { base: root, onDependency() {} })).build([]);
+    const out = optimize(built, { minify: true }).code;
+    const ms = (v: string) => {
+      const m = /^\s*(-?\d*\.?\d+)(ms|s)\s*$/.exec(v);
+      return m ? (m[2] === "s" ? Math.round(parseFloat(m[1]) * 1000) : parseFloat(m[1])) : Number.NaN;
+    };
+    const value = (name: string) => new RegExp(`--${name}:([^;}]+)`).exec(out)?.[1];
+    expect(ms(value("dur-reduced")!)).toBe(120);
+    expect(ms(value("dur-reveal")!)).toBe(600);
+    expect(value("ease-out")).toContain("cubic-bezier");
+    expect(out).toMatch(/@keyframes reveal-fade/);
+    // der Optimierer ordnet Deklarationen um (will-change vor animation): nur die Bestandteile prüfen
+    expect(out).toMatch(/prefers-reduced-motion:reduce\)\{\.reveal-motion\.is-animating \.reveal-card\{[^}]*animation:reveal-fade var\(--dur-reduced\)[^}]*!important/);
+    expect(out).toMatch(/prefers-reduced-motion:reduce\)\{[^@]*player-card-tier\]\{animation:none!important/);
+  });
+});

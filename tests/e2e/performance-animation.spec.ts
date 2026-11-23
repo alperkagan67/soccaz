@@ -6,6 +6,7 @@ import { RECORD_ANIMATIONS, login, seedPlayedWithRatings } from "./helpers-wertu
 // im Mittel mindestens 55 fps, Interaktion nach Tippen unter 200 ms; höchstens 6 gleichzeitig animierte Elemente. Läuft nur in der CI (Trace und Video als Artefakt).
 test.describe.configure({ mode: "serial" });
 test.setTimeout(180_000);
+test.use({ trace: "on" }); // Trace als Artefakt (CI); der Runner startet und beendet ihn selbst, KEIN manuelles ctx.tracing.start (sonst: Tracing has been already started)
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
 });
@@ -26,7 +27,6 @@ test("Aufdecken und Aufstieg am Handy (390 px, 4-fach CPU-Drosselung): keine Lon
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, recordVideo: { dir: testInfo.outputPath("video"), size: { width: 390, height: 844 } } });
   await ctx.addInitScript(RECORD_ANIMATIONS);
   await ctx.addInitScript(OBSERVE);
-  await ctx.tracing.start({ screenshots: true, snapshots: true });
   const page = await ctx.newPage();
   await login(page, g.starEmail, g.starName);
   await page.goto("/app");
@@ -62,8 +62,6 @@ test("Aufdecken und Aufstieg am Handy (390 px, 4-fach CPU-Drosselung): keine Lon
   expect(slowTaps, "Interaktion nach Tippen unter 200 ms").toEqual([]);
   expect(data.perf.maxAnimations).toBeLessThanOrEqual(6);
 
-  await ctx.tracing.stop({ path: testInfo.outputPath("trace.zip") });
-  await testInfo.attach("trace.zip", { path: testInfo.outputPath("trace.zip"), contentType: "application/zip" });
   const video = page.video();
   await ctx.close();
   if (video) await testInfo.attach("aufdecken.webm", { path: await video.path(), contentType: "video/webm" });
