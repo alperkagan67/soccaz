@@ -87,3 +87,29 @@ describe("Formulare mit onSubmit brauchen action oder method=post (Progressive E
     expect(violates('<form className="card">')).toBe(false);
   });
 });
+
+// Inline-Closure statt Server-Aktions-Referenz: `useFormAction(() => ...)` rendert trotz `action={formAction}` `javascript:throw ...` ins action-Attribut (vor der Hydration passiert beim Absenden nichts Brauchbares).
+// Erlaubt sind nur Referenzen (`useFormAction(meineAktion)` oder `meineAktion.bind(null, id)`).
+export const INLINE_CLOSURE = /useFormAction\(\s*(async\s*)?(\(|function\b)/;
+
+describe("useFormAction bekommt nie eine Inline-Closure", () => {
+  const alle = (dir: string): string[] =>
+    readdirSync(dir).flatMap((n) => {
+      const p = join(dir, n);
+      return statSync(p).isDirectory() ? alle(p) : /\.tsx?$/.test(p) ? [p] : [];
+    });
+
+  it("kein Aufruf in src mit Pfeilfunktion oder function", () => {
+    const treffer = alle(root).filter((f) => INLINE_CLOSURE.test(readFileSync(f, "utf8"))).map((f) => relative(root, f).split("\\").join("/"));
+    expect(treffer).toEqual([]);
+  });
+
+  it("Gegenprobe: erkennt Closures, lässt Referenzen und bind zu", () => {
+    expect(INLINE_CLOSURE.test("useFormAction(() => joinTeamAction(token))")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction( async (p, f) => x(p, f))")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction(function (p, f) { return x(p, f); })")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction(createTeamAction)")).toBe(false);
+    expect(INLINE_CLOSURE.test("useFormAction(joinTeamAction.bind(null, token))")).toBe(false);
+    expect(INLINE_CLOSURE.test("export function useFormAction(action: (prev: ActionState) => void)")).toBe(false);
+  });
+});
