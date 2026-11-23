@@ -9,12 +9,10 @@ import { query, seedCardPlayer, seedCardReady, seedCharged, seedOwner, setLedger
 test.skip(process.env.PAYMENTS_FAKE !== "1", "braucht PAYMENTS_FAKE=1 (nur Tests)");
 test.describe.configure({ mode: "serial" });
 
-test.beforeAll(async () => {
-  await setPlatformSetting("payments_enabled", true);
-  await setPlatformSetting("card_payments_enabled", true);
-  await setPlatformSetting("min_paid_players", 8);
-});
+// Regel 23: der Schalterzustand gehört zum Test: jedes Szenario setzt ihn selbst (scenario) und setzt ihn im afterEach zurück
 test.afterEach(async ({ browser }) => {
+  await setPlatformSetting("payments_enabled", false);
+  await setPlatformSetting("card_payments_enabled", false);
   await closeContexts(browser);
 });
 test.afterAll(async () => {
@@ -44,6 +42,9 @@ async function withDiagnostics(ctx: { matchId?: string }, run: () => Promise<voi
 }
 
 async function scenario(browser: import("@playwright/test").Browser, model: Model, k: string, ctx: { matchId?: string }) {
+  await setPlatformSetting("payments_enabled", true); // Zahlungen AN UND Kartenmodell AN (sonst gilt das Spiel als kostenlos)
+  await setPlatformSetting("card_payments_enabled", true);
+  await setPlatformSetting("min_paid_players", 8);
   await seedOwner(`${k}adm`); // Admin 1: Finanzbereich und Preisregeln (Vertrag 009 AC-1); vor der Bestätigung, sonst bekommt er die Benachrichtigung nicht
   const { a, b, matchId, nameA, nameB } = await setupLobby(browser, k);
   ctx.matchId = matchId;
