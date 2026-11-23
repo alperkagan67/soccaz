@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 import { OPS_CONNECT_TIMEOUT_MS, OPS_POOL_MAX, opsConnection } from "@/db/ops";
 import { errorCodeOf, isOpsUnreachable } from "@/lib/ops-errors";
@@ -47,19 +48,33 @@ describe("Importeure und Sperre", () => {
     expect(hits.sort()).toEqual(["src/server/evidence-admin.ts", "src/server/veto.ts"]);
   });
 
-  it("die zwei Aufrufer nutzen den Ops-Pool fuer ihre Funktion und nicht mehr den Hauptpool", () => {
-    expect(read("src/server/evidence-admin.ts")).toMatch(/opsDb\(\)\.execute\(sql`select evidence_set_setting\(/);
-    expect(read("src/server/evidence-admin.ts")).not.toMatch(/\bdb\.execute\(sql`select evidence_set_setting/);
-    expect(read("src/server/veto.ts")).toMatch(/opsDb\(\)\.transaction\(\(tx\) => tx\.execute\(sql`select evidence_late_attempt\(/);
-    expect(read("src/server/veto.ts")).not.toMatch(/\bdb\.transaction\(\(tx\) => tx\.execute\(sql`select evidence_late_attempt/);
+  it("die zwei Aufrufer nutzen NUR die engen Ops-Funktionen; der rohe Zugang (opsDb) ist nicht exportiert und die Funktionen laufen ueber ihn, nie ueber den Hauptpool", () => {
+    expect(read("src/server/evidence-admin.ts")).toMatch(/await callEvidenceSetSetting\(plan\.key, plan\.value, actorId, plan\.reason\)/);
+    expect(read("src/server/evidence-admin.ts")).not.toMatch(/evidence_set_setting\(\$\{/); // kein eigenes SQL mehr
+    expect(read("src/server/veto.ts")).toMatch(/await callEvidenceLateAttempt\(matchId, venueId, userId\)/);
+    expect(read("src/server/veto.ts")).not.toMatch(/select evidence_late_attempt\(/);
+    const ops = read("src/db/ops.ts");
+    expect(ops).not.toMatch(/export function opsDb/); // nur die zwei engen Funktionen sind aussen sichtbar
+    expect(ops).toMatch(/export async function callEvidenceSetSetting/);
+    expect(ops).toMatch(/export async function callEvidenceLateAttempt/);
+    expect(ops).toMatch(/await opsDb\(\)\.execute\(sql`select evidence_set_setting\(/);
+    expect(ops).toMatch(/await opsDb\(\)\.transaction\(\(tx\) => tx\.execute\(sql`select evidence_late_attempt\(/);
   });
 
-  it("ESLint sperrt den Import ausser fuer die drei Dateien (statisch und dynamisch)", () => {
-    const cfg = read("eslint.config.mjs");
-    expect(cfg).toMatch(/ignores: \["src\/server\/evidence-write\.ts", "src\/db\/ops\.ts", "src\/server\/evidence-admin\.ts", "src\/server\/veto\.ts"\]/);
-    expect(cfg).toContain('"@/db/ops"');
-    expect(cfg).toMatch(/ImportExpression\[source\.value=\/db\.ops\/\]/);
-  });
+  it("ESLint sperrt den Import des Ops-Pools (statisch und dynamisch) ausser in evidence-admin.ts und veto.ts (ESLint-API, nicht der Konfigurationstext)", async () => {
+    const eslint = new ESLint({ cwd: root });
+    const lint = async (file: string, code: string) => (await eslint.lintText(code, { filePath: path.join(root, file) }))[0].messages.filter((m) => m.severity === 2);
+    const staticImport = 'import { callEvidenceLateAttempt } from "@/db/ops";\nexport const x = callEvidenceLateAttempt;\n';
+    const dynamicImport = 'export const z = () => import("@/db/ops");\n';
+    expect((await lint("src/server/x.ts", staticImport)).map((m) => m.ruleId)).toContain("no-restricted-imports");
+    expect((await lint("src/server/x.ts", dynamicImport)).map((m) => m.ruleId)).toContain("no-restricted-syntax");
+    expect((await lint("src/app/page.tsx", staticImport)).map((m) => m.ruleId)).toContain("no-restricted-imports");
+    for (const ok of ["src/server/veto.ts", "src/server/evidence-admin.ts"]) expect(await lint(ok, staticImport), ok).toEqual([]);
+    // die evidence-write-Sperre bleibt fuer alle ausser evidence-write.ts bestehen (auch in den zwei erlaubten Dateien)
+    const ew = 'import { recordEvidence } from "./evidence-write";\nexport const y = recordEvidence;\n';
+    expect((await lint("src/server/veto.ts", ew)).map((m) => m.ruleId)).toContain("no-restricted-imports");
+    expect((await lint("src/server/x.ts", ew)).map((m) => m.ruleId)).toContain("no-restricted-imports");
+  }, 60_000);
 
   it("Fehler nicht still: beide Aufrufer melden einen nicht nutzbaren Ops-Zugang (reportOpsFailure) und der Schalter zeigt den Betreibertext", () => {
     expect(read("src/server/evidence-admin.ts")).toMatch(/isOpsUnreachable\(error\)[\s\S]{0,120}reportOpsFailure\("switchEvidence", error\)[\s\S]{0,120}SWITCH_TEXTS\.opsUnavailable/);

@@ -55,6 +55,7 @@ beforeAll(async () => {
   await scratch.query(`create function public.evidence_set_setting(p_key text, p_value text, p_actor uuid, p_reason text) returns void as $$ select $$ language sql`);
   await scratch.query(`create function public.evidence_late_attempt(p_match uuid, p_venue uuid, p_actor uuid) returns boolean as $$ select true $$ language sql`);
   await scratch.query(`create function public.evidence_write(p_x text) returns void as $$ select $$ language sql`);
+  await scratch.query(`revoke usage on schema public from public`); // gehaertete Datenbank (wie die lokalen Cluster): ohne USAGE findet eine Rolle die Funktionen nicht; die Migration muss ops USAGE geben
 });
 afterAll(async () => {
   if (scratch) await scratch.end().catch(() => null);
@@ -69,6 +70,7 @@ afterAll(async () => {
 describe("Migration 0058: GRANT fuer soccaz_ops", () => {
   it("nur GRANT, kein REVOKE (verhaltensneutral bis A2); Rollenteil mit Existenzpruefung statt EXCEPTION-Verschlucken", () => {
     const code = up.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n"); // ohne Kommentare
+    expect(up).toMatch(/GRANT USAGE ON SCHEMA public TO soccaz_ops/);
     expect(up).toMatch(/GRANT EXECUTE ON FUNCTION public\.evidence_set_setting\(text, text, uuid, text\) TO soccaz_ops/);
     expect(up).toMatch(/GRANT EXECUTE ON FUNCTION public\.evidence_late_attempt\(uuid, uuid, uuid\) TO soccaz_ops/);
     expect(code).not.toMatch(/\bREVOKE\b/i); // der Entzug gehoert in die A2-Migration (sonst scheitert jede Verbindung, die nicht als Eigentuemer laeuft)
@@ -93,6 +95,7 @@ describe("Migration 0058: GRANT fuer soccaz_ops", () => {
 
 describe("EXECUTE-Grenze nach dem Entzug (A2-Anweisungen)", () => {
   it("soccaz_app scheitert mit insufficient_privilege (42501) auf die Funktion, soccaz_ops ist erfolgreich, evidence_write ist fuer keinen von beiden direkt aufrufbar", async () => {
+    await scratch.query(`grant usage on schema public to soccaz_app`); // die App-Rolle bekommt USAGE mit der A2-Whitelist: hier, damit ihr Scheitern am EXECUTE und nicht am Schema liegt
     for (const s of A2_REVOKE) await scratch.query(s);
     await scratch.query(`revoke execute on function public.evidence_write(text) from public`); // Trigger-only (Plan Abschnitt 5)
     const setCall = `select evidence_set_setting('k', 'v', gen_random_uuid(), 'grund')`;
@@ -116,5 +119,44 @@ describe("EXECUTE-Grenze nach dem Entzug (A2-Anweisungen)", () => {
     expect(await canExecute("soccaz_ops", FN_LATE)).toBe(false);
     await scratch.query(up); // wieder herstellen
     expect(await canExecute("soccaz_ops", FN_SET)).toBe(true);
+  });
+});
+
+// REIHENFOLGE-FALLE (w4 R-T361, dokumentiert): solange die echten Funktionen SECURITY INVOKER sind (bis A2), kann soccaz_ops mit EXECUTE trotzdem nichts: der Aufruf scheitert mit 42501 an den Tabellen.
+// Deshalb DATABASE_URL_OPS erst im selben Release wie A2 setzen (BETRIEB, GO-LIVE-AUDIT G25-009). NACH A2 (Definer) dreht sich dieser Test um: der Aufruf gelingt (dann hier die Erwartung umkehren).
+describe("Reihenfolge-Falle: ops + echte INVOKER-Funktion scheitert (bis A2)", () => {
+  const dbName = decodeURIComponent(base.pathname.replace(/^\//, ""));
+  const pw = randomBytes(12).toString("hex");
+  let adm: pg.Client;
+  beforeAll(async () => {
+    if (!dbUrlAllowed(base.toString())) throw new Error("nur lokale Datenbank");
+    await setupRoles({ url: base.toString(), apply: true, allowDatabase: dbName, env: { DB_PASSWORD_OPS: pw } });
+    adm = new pg.Client({ connectionString: base.toString() });
+    await adm.connect();
+    await adm.query(`grant usage on schema public to soccaz_ops`); // wie Migration 0058; hier unabhaengig davon, ob die Rolle beim Migrieren schon da war
+    await adm.query(`grant execute on function public.evidence_set_setting(text, text, uuid, text) to soccaz_ops`);
+  });
+  afterAll(async () => {
+    if (adm) {
+      await adm.query("alter role soccaz_ops password null").catch(() => null);
+      await adm.query("revoke usage on schema public from soccaz_ops").catch(() => null);
+      await adm.query("revoke execute on function public.evidence_set_setting(text, text, uuid, text) from soccaz_ops").catch(() => null);
+      await adm.end().catch(() => null);
+    }
+  });
+
+  it("EXECUTE ist da, der Aufruf scheitert trotzdem mit insufficient_privilege (Tabellenrecht), es wird nichts geschrieben", async () => {
+    const u = new URL(base);
+    u.username = "soccaz_ops";
+    u.password = pw;
+    const c = new pg.Client({ connectionString: u.toString() });
+    await c.connect();
+    try {
+      await expect(c.query(`select evidence_set_setting('evidence_cutover_at', '', gen_random_uuid(), 'grund fuer den test')`)).rejects.toMatchObject({ code: "42501" });
+    } finally {
+      await c.end();
+    }
+    const n = (await adm.query(`select count(*)::int as n from audit_log where action = 'evidence_setting' and after->>'reason' = 'grund fuer den test'`)).rows[0].n;
+    expect(n).toBe(0);
   });
 });

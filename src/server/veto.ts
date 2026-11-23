@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { opsDb } from "@/db/ops";
+import { callEvidenceLateAttempt } from "@/db/ops";
 import { isOpsUnreachable } from "@/lib/ops-errors";
 import { matches, teamMembers } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
@@ -150,8 +150,7 @@ export async function answerHallRequest(userId: string, matchId: string, venueId
 export async function recordLateAttempt(userId: string, matchId: string, venueId: string): Promise<boolean> {
   if (!(await hasVenueAccess(venueId, userId))) return false; // erste Stufe: kein Versuch ohne Zugang
   try {
-    const res = await opsDb().transaction((tx) => tx.execute(sql`select evidence_late_attempt(${matchId}::uuid, ${venueId}::uuid, ${userId}::uuid) as ok`)); // Ops-Pool (soccaz_ops), G25-009 B
-    return Boolean(rowsOf<{ ok: boolean }>(res)[0]?.ok);
+    return await callEvidenceLateAttempt(matchId, venueId, userId); // Ops-Pool (soccaz_ops), G25-009 B
   } catch (error) {
     if (isOpsUnreachable(error)) await reportOpsFailure("recordLateAttempt", error); // Ops-Zugang nicht nutzbar: nicht still, der Versuch wird NICHT geschrieben, die Antwort bleibt "zu spaet" (Plan Abschnitt 5)
     else console.error("recordLateAttempt:", (error as { code?: string }).code ?? "Fehler"); // nie die Datenbankmeldung ausgeben

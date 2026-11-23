@@ -1,6 +1,6 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { opsDb } from "@/db/ops";
+import { callEvidenceSetSetting } from "@/db/ops";
 import { isOpsUnreachable } from "@/lib/ops-errors";
 import { users } from "@/db/schema";
 import { settings } from "@/db/schema-finance";
@@ -42,7 +42,7 @@ export async function switchEvidence(actorId: string, step: unknown, reason: str
   const plan = planSwitch(step, await readRaw(), reason);
   if (plan.kind === "invalid") throw new DomainError(plan.error);
   try {
-    await opsDb().execute(sql`select evidence_set_setting(${plan.key}, ${plan.value}, ${actorId}::uuid, ${plan.reason})`); // Ops-Pool (soccaz_ops), G25-009 B
+    await callEvidenceSetSetting(plan.key, plan.value, actorId, plan.reason); // Ops-Pool (soccaz_ops), G25-009 B
   } catch (error) {
     if (isOpsUnreachable(error)) {
       await reportOpsFailure("switchEvidence", error);

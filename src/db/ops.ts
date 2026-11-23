@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { db } from "./index";
@@ -27,8 +28,8 @@ const g = globalThis as unknown as { opsPool?: Pool; opsWarned?: boolean };
 type OpsDb = ReturnType<typeof drizzle>;
 let cached: { key: string; db: OpsDb } | null = null;
 
-/** Der Ops-Zugang (Drizzle ueber den Ops-Pool, sonst der Hauptpool). Nur fuer die zwei Funktionen oben. */
-export function opsDb(env: Record<string, string | undefined> = process.env): OpsDb | typeof db {
+/** Der Ops-Zugang (Drizzle ueber den Ops-Pool, sonst der Hauptpool). NICHT exportiert: nach aussen gibt es nur die zwei engen Funktionen unten (kleine Missbrauchsflaeche). */
+function opsDb(env: Record<string, string | undefined> = process.env): OpsDb | typeof db {
   const c = opsConnection(env);
   if (c.kind === "main") {
     if (c.warn && !g.opsWarned) {
@@ -52,4 +53,16 @@ export async function resetOpsPoolForTests(): Promise<void> {
   const p = g.opsPool;
   g.opsPool = undefined;
   await p?.end().catch(() => null);
+}
+
+/** evidence_set_setting ueber den Ops-Pool (Admin-Schalter der Beweispflicht). Akteur = Sitzung, nie Formulardaten. Fehler werden NICHT verschluckt (der Aufrufer meldet sie). */
+export async function callEvidenceSetSetting(key: string, value: string, actorId: string, reason: string): Promise<void> {
+  await opsDb().execute(sql`select evidence_set_setting(${key}, ${value}, ${actorId}::uuid, ${reason})`);
+}
+
+/** evidence_late_attempt ueber den Ops-Pool in einer KURZEN EIGENEN Transaktion (haelt den globalen Zaehler nur Millisekunden). Liefert, ob der Versuch geschrieben wurde. Fehler werden NICHT verschluckt. */
+export async function callEvidenceLateAttempt(matchId: string, venueId: string, userId: string): Promise<boolean> {
+  const res = await opsDb().transaction((tx) => tx.execute(sql`select evidence_late_attempt(${matchId}::uuid, ${venueId}::uuid, ${userId}::uuid) as ok`));
+  const rows = ((res as unknown as { rows?: { ok: boolean }[] }).rows ?? (res as unknown as { ok: boolean }[])) as { ok: boolean }[];
+  return Boolean(rows[0]?.ok);
 }
