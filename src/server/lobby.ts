@@ -626,6 +626,7 @@ export async function myMatches(userId: string) {
   const rows = await db
     .select({
       id: matches.id,
+      kind: matches.kind, // Teamspiel, Privatspiel oder Turnierspiel (Gruppen auf /app)
       startsAt: matches.startsAt,
       status: matches.status,
       durationMin: matches.durationMin,
