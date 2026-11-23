@@ -6,7 +6,7 @@ import { ledgerEntries } from "@/db/schema-finance";
 import { fixDeadline } from "@/lib/deadlines";
 import { audit } from "@/server/audit";
 import { deleteAccount } from "@/server/account";
-import { creditWallet } from "@/server/ledger";
+import { post } from "@/server/ledger";
 import { mergeTeams } from "@/server/admin";
 import { createCardSetup } from "@/server/payments/card-setup";
 import { applyStoredCard } from "@/server/payments/stored-card";
@@ -527,7 +527,7 @@ describe("T104b: Bestätigungen bleiben, Nachholen, Zusammenführen, Konto, Kart
       await tx.select({ id: users.id }).from(users).where(eq(users.id, user.id)).for("update"); // wie finance.manualRefund
       userLocked();
       await gate; // deleteAccount hält jetzt die Spielsperre und wartet auf die Nutzerzeile
-      await creditWallet(tx, user.id, { from: "revenue", amountCents: 100, kind: "refund", matchId: g.match.id, idempotencyKey: `mr-${Math.random().toString(36).slice(2)}` }); // FK Key-Share auf das Spiel
+      await post(tx, { debit: { account: "revenue" }, credit: { account: "wallet", userId: user.id }, amountCents: 100, kind: "refund", matchId: g.match.id, idempotencyKey: `mr-${Math.random().toString(36).slice(2)}` }); // FK Key-Share auf das Spiel
     });
     await gotUser;
     const del = deleteAccount(user.id).then(
