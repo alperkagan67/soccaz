@@ -3,7 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, matchParticipants, paymentCharges, paymentRefunds } from "@/db/schema";
 import { chargeEligibility } from "@/server/payments/charge-run";
-import { setReady, teamComplete } from "@/server/lobby";
+import { finalConfirm, setReady, teamComplete } from "@/server/lobby";
+import { closeLobbiesAtDeadline } from "@/server/scheduled";
 import { setSetting } from "@/server/settings";
 import { cardModeActive } from "@/server/wallet";
 import { addPlayer, cleanup, makeMatch, reloadMatch } from "./helpers";
@@ -114,5 +115,43 @@ describe("Zahlungen AUS + Karte AN: neue Beitritte und Bereit sind kostenlos", (
       expect(await cardModeActive(db, await reloadMatch(g.match.id))).toBe(true);
     }
     expect((await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id))).length).toBe(before);
+  });
+});
+
+describe("Zahlungen AUS + Karte AN: Bestaetigen der Captains (Anteil fixieren) bleibt kostenlos", () => {
+  it("beide Captains bestaetigen ohne Karten: Anteil wird als kostenlos (0) fixiert, Spiel bleibt kostenlos, auch nach AN keine Abbuchung", async () => {
+    const g = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
+    const all = [g.adminA, g.adminB];
+    while (all.length < 10) all.push(await addPlayer(g.match.id, all.length % 2 === 0 ? g.home.id : g.away.id));
+    await switches(false, true);
+    for (const p of all) await setReady(p.id, g.match.id, true); // ohne Karte
+    await finalConfirm(g.adminA.id, g.match.id);
+    await finalConfirm(g.adminB.id, g.match.id);
+    const fixed = await reloadMatch(g.match.id);
+    expect(fixed.finalShareCents).toBe(0); // kostenlos fixiert, nicht 8000/10: sonst waere das Spiel "abrechnungsgebunden" und wuerde abgebucht
+    expect(await cardModeActive(db, fixed)).toBe(false);
+    await switches(true, true); // Wiedereinschalten: wirkt nicht rueckwirkend
+    expect((await chargeEligibility(db as never, await reloadMatch(g.match.id), new Date())).amountCents).toBeNull();
+    expect(await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id))).toHaveLength(0);
+  });
+});
+
+describe("Zahlungen AUS: Frist-Job schliesst nur abrechnungsgebundene Spiele", () => {
+  it("kostenloses (offenes) Spiel kurz vor Anstoss wird bei AUS nicht vom Frist-Job abgesagt; bei AN schon (Gegenprobe)", async () => {
+    const g = await makeMatch({ hoursAhead: 0.5, priceCents: 8000, costCents: 8000 });
+    await switches(false, true);
+    await closeLobbiesAtDeadline();
+    expect((await reloadMatch(g.match.id)).status).not.toBe("cancelled");
+    await switches(true, true);
+    await closeLobbiesAtDeadline();
+    expect((await reloadMatch(g.match.id)).status).toBe("cancelled");
+  });
+
+  it("abrechnungsgebundenes Spiel (Preis fixiert) folgt der Frist-Regel auch bei AUS: nicht abbuchungsbereit = Absage wie bei AN", async () => {
+    const g = await makeMatch({ hoursAhead: 0.5, priceCents: 8000, costCents: 8000 });
+    await db.update(matches).set({ finalShareCents: 800 }).where(eq(matches.id, g.match.id));
+    await switches(false, true);
+    await closeLobbiesAtDeadline();
+    expect((await reloadMatch(g.match.id)).status).toBe("cancelled");
   });
 });
