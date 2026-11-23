@@ -4,8 +4,8 @@ import { closeTestDb, devLogin } from "../helpers";
 import { measurePage } from "./messen";
 import { ROLLEN, seedWorld, type World } from "./seiten";
 
-// AC-27 (Vertrag 013 v3): Kontrastmessung des gerenderten Zustands, hell und dunkel, eine Breite je Spec (390 oder 1280). Umfang und Rollen: Konstanten UMFANG und ROLLEN in seiten.ts. Phase 1 (AUDIT_MODE "report"): das Protokoll steht im Job-Log
-// (Block ::group::), Verstöße erscheinen als Warnung; der Test bleibt grün. Verbindlich (Test schlägt fehl) erst nach M2c: AUDIT_MODE in src/lib/contrast-audit.ts umstellen.
+// AC-27 (Vertrag 013 v3): Kontrastmessung des gerenderten Zustands, hell und dunkel, eine Breite je Spec (390 oder 1280). Umfang und Rollen: Konstanten UMFANG und ROLLEN in seiten.ts. Das Protokoll steht im Job-Log
+// (Block ::group::), Verstöße erscheinen als Warnung. Seit dem main-Lauf zu 23b67ab gilt AUDIT_MODE "enforce" (src/lib/contrast-audit.ts): jeder Verstoß und jeder unlesbare Punkt lässt den Protokoll-Test fehlschlagen.
 const SCHEMES = ["dark", "light"] as const;
 
 export function registerKontrast(viewport: 390 | 1280) {

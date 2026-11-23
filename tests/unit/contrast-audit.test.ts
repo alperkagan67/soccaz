@@ -156,7 +156,7 @@ describe("Gruppierung, Zusammenfassung, Modus, Protokoll", () => {
     expect(summarize(list)).toEqual({ total: 4, ok: 2, fail: 1, ausgenommen: 1, unlesbar: 0 });
   });
   it("Baseline meldet nur (Test grün), verbindlich schlägt jede Unterschreitung und jeder unlesbare Punkt an", () => {
-    expect(AUDIT_MODE).toBe("report"); // Phase 1; das Umschalten auf "enforce" ist eine bewusste Änderung (nach M2c)
+    expect(AUDIT_MODE).toBe("enforce"); // verbindlich seit dem main-Lauf zu 23b67ab (0 Verstöße); ein Zurück auf "report" ist eine bewusste Änderung
     expect(auditPasses(list, "report")).toBe(true);
     expect(auditPasses(list, "enforce")).toBe(false);
     expect(auditPasses([list[0], list[1]], "enforce")).toBe(true);

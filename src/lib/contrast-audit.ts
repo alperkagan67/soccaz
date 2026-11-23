@@ -3,9 +3,9 @@
 // Grenzen (WCAG 2.2): normaler Text 4,5:1; großer Text (>= 24 px oder >= 18,66 px und Gewicht >= 700) 3:1; Zeichen (Rand/Symbol von Bedienelementen) und Fokusring 3:1.
 import { contrast } from "./color";
 
-/** Phase 1 (Baseline) meldet nur (Protokoll im Job-Log, Test grün); mit `enforce` schlägt der Test bei einer Unterschreitung fehl (verbindlich nach M2c). Der Umschalter ist diese eine Konstante. */
+/** `report` meldet nur (Protokoll im Job-Log, Test grün); `enforce` lässt den Test bei einer Unterschreitung oder einem unlesbaren Punkt fehlschlagen. Seit dem main-Lauf zu 23b67ab (0 Verstöße bei 390 und 1280 px, nach M2c) gilt `enforce`. Der Umschalter ist diese eine Konstante. */
 export type AuditMode = "report" | "enforce";
-export const AUDIT_MODE: AuditMode = "report";
+export const AUDIT_MODE: AuditMode = "enforce";
 
 export const LIMITS = { text: 4.5, largeText: 3, nonText: 3, focus: 3 } as const;
 export type MeasureKind = "text" | "non-text" | "focus";
