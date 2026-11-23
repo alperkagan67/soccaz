@@ -219,6 +219,22 @@ Vorschlag: Eine Merge- oder Schließmeldung nennt `state`, `mergedAt` und `merge
 
 Wer ändert: CLAUDE.md (Abschnitt Merge-Regel) und AGENTS-SETUP.md; Regel-PR (Nutzer mergt).
 
+## 20. Bibliotheken mit stiller Standardversion vor dem Bump pinnen, mit Test
+
+Anlass (2026-11-23): stripe-node sendet bei jedem Aufruf den Header `Stripe-Version`; ohne eigene Option gilt die Standardversion der Bibliothek. Der Dependabot-Bump 23.1.0 → 23.2.0 (#193) hätte die API-Version still von `2026-10-28.endive` auf `2026-11-18.endive` gewechselt, ohne dass ein Test oder Review es zeigt. Die Option ist nur für die jeweils neueste Version typisiert (`LatestApiVersion`), der Pin war also erst vor dem Bump ohne Cast möglich (#196).
+
+Vorschlag: Bibliotheken, deren Standardwert Verhalten außerhalb unseres Codes festlegt (API-Version, Protokoll, Verschlüsselung, Zeitzone), werden VOR dem Bump explizit auf den bisher wirksamen Wert gepinnt. Ein Test vergleicht Pin und Standardwert der installierten Bibliothek und wird bei einem Bump ohne bewusste Entscheidung rot (Muster `tests/unit/stripe-api-version.test.ts`); ein Wechsel des Pins ist ein eigener Entscheid mit Nachweis.
+
+Wer ändert: AGENTS-SETUP.md (Abschnitt Abhängigkeiten) und LOOP-SPEC Abschnitt 14; Regel-PR (Nutzer mergt).
+
+## 21. Abhängigkeits-PRs: Lockfile auf die Zielpakete beschränken, gegen Dependabot oder `origin/main` vergleichen
+
+Anlass (2026-11-23): Der Sammel-PR für #172/#179/#189 wurde viermal neu zugeschnitten (Dependabot-Gruppen und Ignore-Regeln änderten sich währenddessen). Ein unter Windows erzeugtes Lockfile wich ab: `libc`-Felder der `@next/swc`-Linux-Einträge fielen weg, sechs verschachtelte WASI-Pakete fehlten gegenüber dem Linux-Lockfile von Dependabot.
+
+Vorschlag: Ein Abhängigkeits-PR ändert im Lockfile nur die Zielpakete und ihre eigenen Abhängigkeiten. Vor dem Commit werden Versionen und Integritäten je Paket gegen den Dependabot-Stand (oder `origin/main`) verglichen; Plattformfelder (`libc`, `cpu`, `os`) und nicht betroffene Einträge bleiben wie auf `origin/main`. Der PR-Text nennt die Zahl der geänderten Lockfile-Einträge und die Liste ohne Fremdpakete.
+
+Wer ändert: AGENTS-SETUP.md (Rolle Writer) und die PR-Vorlage (Zeile „Lockfile-Diff nur für …“); Regel-PR (Nutzer mergt).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.
