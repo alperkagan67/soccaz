@@ -37,9 +37,10 @@ describe("Konstanten", () => {
     for (const l of [ZP.cardSave, ZP.cardChange, ZP.cardUseStored]) expect(l.endsWith("und Abbuchung erlauben"), l).toBe(true); // Mandat: Erlaubnis, jetzt wird nichts abgebucht
   });
 
-  it("Betragszeile nur mit vorhandenem Betrag, sonst ohne", () => {
-    expect(betragszeile("8,00 €")).toBe("Danach wird dein Anteil von 8,00 € zur Frist abgebucht.");
-    expect(betragszeile(null)).toBe("Danach wird dein Anteil zur Frist abgebucht.");
+  it("Betragszeile: fest nach dem zweiten Bereit, vorher voraussichtlich (aendert sich mit der Spielerzahl), ohne Betrag neutral", () => {
+    expect(betragszeile("8,00 €", true)).toBe("Danach wird dein Anteil von 8,00 € zur Frist abgebucht.");
+    expect(betragszeile("8,00 €", false)).toBe("Aktuell 8,00 €: der Anteil ändert sich, bis beide Captains den Preis bestätigen. Abgebucht wird erst zur Frist.");
+    expect(betragszeile(null, false)).toBe("Dein Anteil steht noch nicht fest. Er wird erst zur Frist abgebucht.");
   });
 });
 
@@ -55,20 +56,44 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
   const code = (t: string) => t.split("\n").filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l)).join("\n"); // Kommentarzeilen zaehlen nicht
   // alte Beschriftungen als Literal (mit Anfuehrungszeichen bzw. als Attributwert): ausser in der Konstanten-Datei darf keines mehr stehen
   const STREU = ['"Ich bin bereit"', '"Nicht mehr bereit"', '"Karte hinterlegen"', '"Karte ändern"', '"Karte für diese Lobby nutzen"', 'label="Bereit"', 'confirmLabel="Anteil übernehmen"', '>Andere Karte hinterlegen<', '"Zahlung freigeben"', 'label: "Anteil übernehmen"'];
-  it("kein Streutext in src (ausser der Konstanten-Datei)", () => {
+  // Zeichenketten in jeder Anfuehrungsart (" ' `) und JSX-Attributwerte: die Formel oder die Beschriftungen der Zahlungsknoepfe dort sind verboten (ausser in der Konstanten-Datei, Kommentare zaehlen nicht)
+  const LITERAL = /(["'`])((?:(?!\1)[^\n\\]|\\.)*)\1/g;
+  const VERBOTEN = [/zahlungspflichtig/i, /ich bin bereit/i, /abbuchung erlauben/i, /^Bereit$/, /^nicht mehr bereit$/i, /^karte (hinterlegen|ändern)$/i, /^karte für diese lobby nutzen$/i, /^anteil übernehmen$/i, /^zahlung freigeben$/i];
+  const ALLOWED_STATUS_WORDS = ["src/components/PlayerLight.tsx", "src/server/tournaments.ts"]; // Statusworte (Ampel "Bereit", Anzeige), keine Zahlungsknoepfe
+  it("kein Streutext in src: keine Zeichenkette (alle Anfuehrungsarten) mit Formel oder Knopf-Beschriftung ausser in der Konstanten-Datei", () => {
     const hits: string[] = [];
-    for (const f of [...walk("src/app"), ...walk("src/components")]) {
-      if (f.startsWith("src/app/dev/")) continue; // Entwickler-Vorschau der Bausteine, keine Produktseite
-      const text = code(read(f));
-      for (const s of STREU) if (text.includes(s)) hits.push(`${f}: ${s}`);
+    for (const f of [...walk("src/app"), ...walk("src/components"), ...walk("src/server"), ...walk("src/lib")]) {
+      if (ALLOWED_STATUS_WORDS.includes(f)) continue; // "Bereit" als Statuswort einer Ampel/Anzeige, kein Knopf
+      if (f.startsWith("src/app/dev/") || f === "src/lib/zahlungspflicht-texte.ts" || f === "src/lib/i18n.ts") continue; // Entwickler-Vorschau, Konstanten-Datei, Uebersetzungstabelle (eigener Rechtsentwurf, cover.mandate)
+      for (const m of code(read(f)).matchAll(LITERAL)) if (VERBOTEN.some((r) => r.test(m[2]))) hits.push(`${f}: ${m[0].slice(0, 60)}`);
     }
     expect(hits).toEqual([]);
+  });
+
+  it("die Sperre erkennt Umgehungen (einfache Anfuehrungszeichen, Template, Grossschreibung, neues Label mit der Formel)", () => {
+    for (const sample of ["const a = 'Ich bin bereit';", "const b = `Bereit`;", "const c = \"Karte hinterlegen\";", "const d = 'Weiter - zahlungspflichtig zusagen';", "const e = \"ICH BIN BEREIT\";"]) {
+      const hit = [...sample.matchAll(LITERAL)].some((m) => VERBOTEN.some((r) => r.test(m[2])));
+      expect(hit, sample).toBe(true);
+    }
+    expect([...'const x = "Alle sind bereit";'.matchAll(LITERAL)].some((m) => VERBOTEN.some((r) => r.test(m[2])))).toBe(false); // normaler Satz bleibt erlaubt
   });
 
   it("die Komponenten importieren die Konstanten (Lobby, Karte, Anteil uebernehmen, Turnier)", () => {
     for (const f of ["src/app/lobby/[id]/LobbyClient.tsx", "src/app/lobby/[id]/CardForm.tsx", "src/app/lobby/[id]/CoverShare.tsx", "src/app/turniere/[id]/TournamentCard.tsx", "src/app/turniere/[id]/page.tsx", "src/app/lobby/[id]/AuthorizeButton.tsx"]) {
       expect(read(f), f).toContain('from "@/lib/zahlungspflicht-texte"');
     }
+  });
+
+  it("Turnier: im pausierten Kartenfluss keine Formel und ein Hinweis, der die Pause nennt; Anteil uebernehmen zeigt den Betrag, wo er vorliegt (dieselbe Rechnung wie die Abbuchung)", () => {
+    const page = read("src/app/turniere/[id]/page.tsx");
+    expect(page).toContain("data.cardMode && !free && !data.paymentsPaused ? ZP.tournamentReady : ZP.tournamentReadyFree");
+    expect(page).toContain("data.paymentsPaused ? ZP.tournamentReadyPause");
+    expect(page).toContain("chargeAmount(pricing.totalCents ?? null, pricing.shareCents)");
+    expect(read("src/app/turniere/[id]/TournamentCard.tsx")).toContain("consequence={coverAmounts ? coverConsequence(m.name, coverAmounts) : undefined}");
+    expect(ZP.tournamentReadyPause).toContain("pausiert");
+    const lobby = read("src/app/lobby/[id]/page.tsx");
+    expect(lobby).toContain("shareDivisor(match, assignedCount)"); // Betrag der Lobby: dieselbe Funktion wie die Abbuchung (nicht dupliziert)
+    expect(lobby).toContain("chargeAmount(payments.priceCents");
   });
 
   it("Barrierefreiheit: kein abweichendes aria-label an den Zahlungsknoepfen (Knopfname = sichtbarer Text)", () => {
@@ -84,28 +109,45 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
   });
 });
 
-describe("Lobby: Ich bin bereit", () => {
-  const card = (shareCents: number | null) => ({ ready: true, mandateText: "Mandat", fake: false, shareCents, stored: null, failure: null });
-  const render = async (c: ReturnType<typeof card> | null) => {
+describe("Lobby: Ich bin bereit (Formen wie die Seite sie liefert: shareCents ist nie 0, sondern null bei Preis 0/null oder niemand eingeteilt)", () => {
+  type Card = { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; priceCents: number | null; estimateCents: number | null; estimateFixed: boolean; stored: null; failure: null };
+  const card = (o: Partial<Card>): Card => ({ ready: true, mandateText: "Mandat", fake: false, shareCents: null, priceCents: null, estimateCents: null, estimateFixed: false, stored: null, failure: null, ...o });
+  const render = async (c: Card | null) => {
     const { MyActions } = await import("../../src/app/lobby/[id]/LobbyClient");
     return renderToStaticMarkup(createElement(MyActions, { matchId: "m", mode: "participant", ready: false, hasTeam: true, card: c }));
   };
 
-  it("im Kartenmodell mit Anteil: Knopf mit der Formel und Betragszeile", async () => {
-    const m = await render(card(800));
+  it("Preis > 0, Anteil noch nicht fixiert: Formel und 'Aktuell ...' mit dem Betrag der Abbuchungsrechnung", async () => {
+    const m = await render(card({ priceCents: 6000, shareCents: 600, estimateCents: 1500, estimateFixed: false }));
     expect(m).toContain(`>${ZP.gameReady}<`);
-    expect(m).toContain("Danach wird dein Anteil von 8,00");
-    expect(m).toContain("zur Frist abgebucht.");
+    expect(m).toContain("Aktuell 15,00");
+    expect(m).toContain("bis beide Captains den Preis bestätigen");
+    expect(m).not.toContain("wird dein Anteil von"); // nie \"wird abgebucht: X\" vor dem Festpreis (card-hint und Betragszeile)
   });
 
-  it("Anteil noch unbekannt: Formel, Betragszeile ohne Betrag", async () => {
-    const m = await render(card(null));
+  it("Preis > 0, Anteil fixiert (zweites Bereit): Formel und fester Betrag", async () => {
+    const m = await render(card({ priceCents: 6000, shareCents: 600, estimateCents: 1500, estimateFixed: true }));
     expect(m).toContain(`>${ZP.gameReady}<`);
-    expect(m).toContain(`>${betragszeile(null)}<`);
+    expect(m).toContain("Danach wird dein Anteil von 15,00");
+    expect(m).not.toContain("Aktuell");
   });
 
-  it("ohne Zahlungspflicht (kein Kartenmodell, kostenloses Spiel): schlichter Text, keine Betragszeile", async () => {
-    for (const c of [null, card(0)]) {
+  it("Preis > 0, noch niemand eingeteilt (Betrag unbekannt): Formel, neutrale Zeile ohne Betrag", async () => {
+    const m = await render(card({ priceCents: 6000, shareCents: null, estimateCents: null }));
+    expect(m).toContain(`>${ZP.gameReady}<`);
+    expect(m).toContain(betragszeile(null, false));
+  });
+
+  it("GRATISSPIEL im Kartenmodell (Preis 0, shareCents null wie in der Produktion): schlichter Text, KEINE Formel, keine Abbuchungs-Zusage", async () => {
+    const m = await render(card({ priceCents: 0, shareCents: null, estimateCents: null }));
+    expect(m).toContain(`>${ZP.gameReadyFree}<`);
+    expect(m).not.toContain("zahlungspflichtig");
+    expect(m).not.toContain("ready-amount");
+    expect(m).not.toContain("abgebucht");
+  });
+
+  it("Preis noch nicht bekannt (null): schlichter Text, keine Zusage; ohne Kartenmodell (card null) ebenso", async () => {
+    for (const c of [card({ priceCents: null }), null]) {
       const m = await render(c);
       expect(m).toContain(`>${ZP.gameReadyFree}<`);
       expect(m).not.toContain("zahlungspflichtig");

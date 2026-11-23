@@ -58,13 +58,13 @@ type MyActionsProps = {
   /** Nur gesetzt, wenn Zahlungen eingeschaltet sind. */
   /** Wie viele Spieler des eigenen Teams haben schon bezahlt? Bereit geht erst, wenn alle bezahlt haben. */
   /** Nur im Kartenmodell (Schalter card_payments_enabled EIN): Karte hinterlegen, Vertrag 012. */
-  card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; stored: { brand: string | null; last4: string } | null; failure?: { text: string; until: string | null; expired: boolean; authorize?: boolean } | null } | null;
+  card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; priceCents: number | null; estimateCents: number | null; estimateFixed: boolean; stored: { brand: string | null; last4: string } | null; failure?: { text: string; until: string | null; expired: boolean; authorize?: boolean } | null } | null;
 };
 
 export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProps) {
   const { error, pending, run } = useRun();
   const busy = pending ? "opacity-60" : "";
-  const payable = Boolean(card) && card?.shareCents !== 0; // Zahlungspflicht nur im Kartenmodell und bei einem Anteil ungleich 0 (kostenlose Spiele: schlichter Text)
+  const payable = Boolean(card) && card?.priceCents != null && card.priceCents > 0; // Zahlungspflicht nur im Kartenmodell UND bei einem Preis > 0: kostenlos (0) und noch kein Preis (null) bekommen den schlichten Text, nie die Formel
 
   return (
     <div className="card space-y-3">
@@ -96,12 +96,12 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
               {card && !card.ready && !card.failure && (
                 <>
                   <p className="text-sm text-muted" data-testid="card-hint">
-                    Schritt 1: Karte hinterlegen.{card.shareCents !== null ? ` Dein Anteil von ${formatEuro(card.shareCents)} wird zur Frist abgebucht.` : " Dein Anteil wird zur Frist abgebucht."} Bis dahin wird nichts abgebucht.
+                    {payable ? <>Schritt 1: Karte hinterlegen. {betragszeile(card.estimateCents != null ? formatEuro(card.estimateCents) : null, card.estimateFixed)} Bis dahin wird nichts abgebucht.</> : "Dieses Spiel ist kostenlos oder der Preis steht noch nicht fest. Es wird nichts abgebucht."}
                   </p>
                   <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={card.stored} />
                 </>
               )}
-              {card?.ready && <p className="text-sm text-accent-fg" data-testid="card-ready-text">Deine Karte ist hinterlegt. Dein Anteil wird zur Frist abgebucht.</p>}
+              {card?.ready && <p className="text-sm text-accent-fg" data-testid="card-ready-text">Deine Karte ist hinterlegt.{payable ? " Dein Anteil wird zur Frist abgebucht." : ""}</p>}
               <button
                 className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`}
                 disabled={pending || (!ready && Boolean(card && !card.ready))}
@@ -109,7 +109,7 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
               >
                 {ready ? ZP.gameNotReady : payable ? ZP.gameReady : ZP.gameReadyFree}
               </button>
-              {!ready && payable && <p className="text-xs text-muted" data-testid="ready-amount">{betragszeile(card?.shareCents != null ? formatEuro(card.shareCents) : null)}</p>}
+              {!ready && payable && <p className="text-xs text-muted" data-testid="ready-amount">{betragszeile(card?.estimateCents != null ? formatEuro(card.estimateCents) : null, Boolean(card?.estimateFixed))}</p>}
             </>
           ) : (
             <p className="text-sm text-muted">Du wartest auf die Zuweisung durch einen Team-Admin.</p>

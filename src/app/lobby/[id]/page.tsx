@@ -17,7 +17,7 @@ import { fakeCardAllowed } from "@/server/payments/mode";
 import { getCoverView } from "@/server/payments/cover-view";
 import { chargeAmount } from "@/server/payments/charge-run";
 import { DEFAULT_LOCALE, translate } from "@/lib/i18n";
-import { cardModeActive } from "@/server/wallet";
+import { cardModeActive, shareDivisor } from "@/server/wallet";
 import { cardView } from "@/lib/card-view";
 import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/server/payments/card-status";
 import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
@@ -87,6 +87,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
   const assignedCount = participants.filter((p) => p.teamId).length;
   const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
+  // Betrag unter "Ich bin bereit": DIESELBE Rechnung wie die Abbuchung (shareDivisor/chargeAmount, mindestens 0,50 EUR); fest erst mit dem zweiten Bereit (finalShareCents), vorher voraussichtlich
+  const estimateFixed = match.finalShareCents !== null && match.finalShareCents !== undefined;
+  const estimateCents = cardOn && payments.priceCents && payments.priceCents > 0 ? (estimateFixed ? chargeAmount(payments.priceCents, match.finalShareCents ?? null) : assignedCount > 0 ? chargeAmount(payments.priceCents, shareCents(payments.priceCents, shareDivisor(match, assignedCount))) : null) : null;
   const myFinalTeamId = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null; // Team, für das der Betrachter bestätigen darf
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
   // "Anteil übernehmen" (012 M3c-3b): was wer sieht, entscheidet der SERVER je Betrachter (cover-view.ts, Plan Abschnitt 3 bis 5); die Namen kommen aus der Lobby-Liste
@@ -317,7 +320,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
-          card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, stored: storedCard, failure: myFailure } : null}
+          card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, priceCents: payments.priceCents ?? null, estimateCents, estimateFixed, stored: storedCard, failure: myFailure } : null}
         />
       )}
 

@@ -32,9 +32,21 @@ export const ZP = {
   /** Bank-Freigabe (3-D-Secure) einer bestehenden Zahlung: kein eigener Vertragsschluss, Text unverändert. */
   authorize: "Zahlung freigeben",
   /** Mittelbare Knöpfe (keine Abbuchung ohne Karte, Mandat und Bereit): Hinweiszeile statt Knopftext. */
+  /** Turnier, Hinweis unter "Bereit" im pausierten Kartenfluss: die Pause nicht verschweigen. */
+  tournamentReadyPause: "Zahlungen sind gerade pausiert: Bereit ist erst nach der Pause möglich.",
   hintLater: "Spielst du mit Bezahlung, brauchst du danach eine Karte. Dein Anteil wird erst zur Frist abgebucht, bis dahin nicht.",
   hintOrganizer: "Jeder Spieler zahlt seinen eigenen Anteil per Karte, abgebucht wird erst zur Frist.",
 } as const;
 
-/** Betragszeile unter dem Knopf: nur wo der Betrag ohne Logikänderung vorliegt (Lobby: card.shareCents). */
-export const betragszeile = (betragText: string | null) => (betragText ? `Danach wird dein Anteil von ${betragText} zur Frist abgebucht.` : "Danach wird dein Anteil zur Frist abgebucht.");
+/**
+ * Betragszeile unter dem Knopf: nur wo der Betrag ohne Logikänderung vorliegt (Lobby: dieselbe Rechnung wie die Abbuchung, Seite berechnet sie mit shareDivisor und chargeAmount).
+ * `fest` = Anteil ist mit dem zweiten Bereit fixiert; vorher nur aktuell (der Anteil ändert sich, bis beide Captains den Preis bestätigen; mindestens 0,50 Euro je Abbuchung). Wortlaut nach w4 R-T365: nie "wird abgebucht: X" vor dem Festpreis.
+ */
+export const betragszeile = (betragText: string | null, fest: boolean) =>
+  betragText === null
+    ? "Dein Anteil steht noch nicht fest. Er wird erst zur Frist abgebucht."
+    : fest
+      ? `Danach wird dein Anteil von ${betragText} zur Frist abgebucht.`
+      : `Aktuell ${betragText}: der Anteil ändert sich, bis beide Captains den Preis bestätigen. Abgebucht wird erst zur Frist.`;
+
+/** Turnier, Hinweis unter "Bereit" im pausierten Kartenfluss (Zahlungen pausiert): die Pause nicht verschweigen. */

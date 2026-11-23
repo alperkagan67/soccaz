@@ -8,7 +8,7 @@ import { CardForm } from "@/app/lobby/[id]/CardForm";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { coverDialogBody } from "@/lib/cover-text";
+import { coverConsequence, coverDialogBody, type CoverAmounts } from "@/lib/cover-text";
 import { fakeTournamentCardAction } from "@/server/payments/fake-card-actions";
 import { releaseTournamentCoverAction, takeOverTournamentShareAction } from "@/server/tournament-actions";
 import { ZP } from "@/lib/zahlungspflicht-texte";
@@ -25,6 +25,7 @@ export function TournamentCard({
   coveringName,
   canCover,
   needsAuthorization = false,
+  coverAmounts = null,
 }: {
   tournamentId: string;
   hasOwnCard: boolean;
@@ -35,6 +36,8 @@ export function TournamentCard({
   coveringName: string | null;
   canCover: boolean;
   needsAuthorization?: boolean;
+  /** Betrag für den Dialog "Anteil übernehmen": nur wenn der Preis feststeht (dieselbe Rechnung wie die Abbuchung); sonst ohne Betrag. */
+  coverAmounts?: CoverAmounts | null;
 }) {
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
@@ -67,6 +70,7 @@ export function TournamentCard({
                   trigger={{ label: ZP.coverTrigger, variant: "secondary", size: "sm" }}
                   title={`Anteil von ${m.name} übernehmen?`}
                   body={coverDialogBody(m.name)}
+                  consequence={coverAmounts ? coverConsequence(m.name, coverAmounts) : undefined}
                   confirmLabel={ZP.coverConfirm}
                   consent={{ label: coverMandateText }}
                   onConfirmAction={async ({ consent }) => (await takeOverTournamentShareAction(tournamentId, m.userId, consent)) ?? { ok: true }}
