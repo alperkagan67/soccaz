@@ -7,12 +7,14 @@ colors:
   panel: "#121a2c"
   panel-2: "#1b2640"
   line: "#31405f"
+  control-line: "#6b7d9c"
   ink: "#f2f6fc"
   muted: "#a8b4cc"
   rim: "#cdd8ec"
   accent: "#ff6a1f"
   accent-ink: "#1d0a00"
   accent-fg: "#ff6a1f"
+  accent-text: "#ff8f57"
   focus: "#9ecbff"
   ok: "#4ade80"
   warn: "#facc15"
@@ -29,12 +31,14 @@ colors-light:
   panel: "#f4f6fb"
   panel-2: "#e9edf6"
   line: "#b8c2d6"
+  control-line: "#6b7a94"
   ink: "#101828"
   muted: "#4a566d"
   rim: "#101828"
   accent: "#c2410c"
   accent-ink: "#ffffff"
   accent-fg: "#b23a0a"
+  accent-text: "#9a3412"
   focus: "#1a44bd"
   ok: "#0f5f2c"
   warn: "#704800"
@@ -117,11 +121,13 @@ components:
 | Gedämpft (`muted`) | `#a8b4cc` | `#4a566d` |
 | Rahmen/Feldlinie (`rim`) | `#cdd8ec` | `#101828` |
 | Linie (`line`, nur Trennlinie, kein Bedienrahmen) | `#31405f` | `#b8c2d6` |
+| Rand von Bedienelementen (`control-line`, Felder und ruhige Knöpfe) | `#6b7d9c` | `#6b7a94` |
 | Leuchtfarbe (`accent`) / Schrift darauf (`accent-ink`) | `#ff6a1f` / `#1d0a00` | `#c2410c` / `#ffffff` |
 | Leuchtfarbe als Schrift/Strich (`accent-fg`) | `#ff6a1f` | `#b23a0a` |
+| Leuchtfarbe als Schrift auf Tönung (`accent-text`, auf `accent-soft`) | `#ff8f57` | `#9a3412` |
 | Fokusring (`focus`) | `#9ecbff` | `#1a44bd` |
 
-Gemessen Dunkel: Tinte auf Fläche 16,0:1, gedämpft auf Fläche 8,3:1, Leuchtfarbe mit Schrift 6,7:1, Leuchtfarbe gegen Fläche 6,1:1, Fokus gegen Fläche 10,3:1. Hell: Tinte auf Fläche 16,4:1, gedämpft 6,8:1, `accent-fg` auf Fläche 5,6:1, Leuchtfarbe mit weißer Schrift 5,2:1. Die Status-Töne (`ok`, `warn`, `danger`, `info`) behalten ihre Werte und werden auch auf den neuen Flächen mit mindestens 4,5:1 geprüft. Das Messprotokoll für alle neuen Flächen (Glow, Verläufe, Teamfarben, Karten, Rollen, 390 und 1280 px, hell und dunkel) ist AC-27 und liegt VOR M3.
+Gemessen Dunkel: Tinte auf Fläche 16,0:1, gedämpft auf Fläche 8,3:1, Leuchtfarbe mit Schrift 6,7:1, Leuchtfarbe gegen Fläche 6,1:1, Fokus gegen Fläche 10,3:1. Hell: Tinte auf Fläche 16,4:1, gedämpft 6,8:1, `accent-fg` auf Fläche 5,6:1, Leuchtfarbe mit weißer Schrift 5,2:1. Die Status-Töne (`ok`, `warn`, `danger`, `info`) behalten ihre Werte und werden auch auf den neuen Flächen mit mindestens 4,5:1 geprüft. **Rand von Bedienelementen und Orange auf Tönung (AC-27, Kontrast-PR):** `control-line` gegen Grund, Fläche und Feldgrund: dunkel 4,59 / 4,16 / 3,60, hell 3,56 / 4,02 / 3,70 (mindestens 3:1; ruhiger als `rim`, das nur für Feldlinien und Rahmen mit hohem Gewicht gilt). `accent-text` auf der Tönung (`accent-soft`: dunkel 0,14, hell 0,12 über Grund, Fläche und Feldgrund) mindestens 5,57:1 dunkel und 5,10:1 hell; der Platzhalter nutzt `muted` (auf dem Feldgrund 7,2:1 dunkel, 6,3:1 hell). Das Messprotokoll für alle neuen Flächen (Glow, Verläufe, Teamfarben, Karten, Rollen, 390 und 1280 px, hell und dunkel) ist AC-27 und liegt VOR M3.
 
 ### Leuchtfarbe und Glow
 
@@ -197,9 +203,17 @@ Seit Vertrag 007 gilt Richtung E, Vertrag 013 baut sie flächendeckend um. Es gi
 | Gedämpft (`muted`) | `#a3b5ab` | `#4a5a51` |
 | Rahmen/Feldlinie (`rim`) | `#cfe0d6` | `#12201a` |
 | Linie (`line`) | `#3a5043` | `#b3c2b9` |
+| Rand von Bedienelementen (`control-line`) | `#6f8a7c` | `#6b7f73` |
 | Orange (`o`) / Schrift darauf (`oi`) | `#ff6a1f` / `#1d0a00` | `#c2410c` / `#ffffff` |
+| Orange als Schrift (`accent-fg`) | `#ff6e24` | `#b23a0a` |
+| Orange als Schrift auf Tönung (`accent-text`, auf `accent-soft`) | `#ff8f57` | `#9a3412` |
 
 Gemessen (WCAG 2.x): Tinte auf Fläche 13,43:1 / 15,30:1, gedämpft auf Fläche 6,96:1 / 6,64:1, Orange mit Schrift 6,69:1 / 5,18:1, Orange gegen Fläche 5,23:1 / 4,71:1. Das helle Orange ist bewusst dunkler als das dunkle, weil `#ff6a1f` auf heller Fläche unter 3:1 fällt.
+
+**Kontrast-PR (AC-27, Befunde 1 bis 4 der Baseline `docs/design/ac27-kontrast-baseline.md`):**
+- **Rand von Bedienelementen** (`.btn-ghost`, `.field`, ruhige Knöpfe): `--control-line` statt `--line` (die Trennlinie war als Rand mit 1,44 bis 2,06:1 zu schwach). Gemessen gegen Grund, Fläche und Feldgrund (schlechteste zählt): dunkel `#6f8a7c` 4,79 / 4,00 / 3,41, hell `#6b7f73` 3,33 / 3,89 / 3,50, jeweils mindestens 3:1 und bewusst ruhig (`--rim` mit ca. 12:1 bleibt Feldlinien und Rahmen mit hohem Gewicht vorbehalten). Karten und Trennlinien behalten `--line`; der Hover-Rand bleibt Orange.
+- **Platzhalter:** `::placeholder { color: var(--muted); opacity: 1 }` (statt der Tailwind-Vorgabe `currentcolor` zu 50 %): auf dem Feldgrund dunkel 5,95:1, hell 5,98:1 (vorher gemessen 4,12 und 3,13).
+- **Orange als Schrift auf Tönung** (`accent-soft`: dunkel 0,14, hell 0,12): `--accent-text` (dunkel `#ff8f57`, hell `#9a3412`) mindestens 4,80:1 dunkel und 4,85:1 hell auf der Tönung über Grund, Fläche und Feldgrund (vorher 3,78 bis 5,26 und 3,98 bis 4,58). Die Regel `.bg-accent-soft.text-accent-fg, .bg-accent-soft .text-accent-fg` setzt es ohne Änderung der Komponenten; `--accent-fg` bleibt für Orange auf Grund und Fläche. Tailwind: `text-accent-text`, `border-control-line`.
 
 #### Teamfarben
 
@@ -219,7 +233,7 @@ Status-Töne (`--ok`, `--warn`, `--danger`, `--info`, Abschnitt „Status“) si
 
 Umgesetzt in `src/app/globals.css` (Vertrag 007, M1). Geprüft von `tests/unit/accent.test.ts`; diese Ausnahmen sind bewusst und kein Verstoß:
 
-- **`--accent-fg`**: Orange als Schrift und Strich. Dunkel `#ff6a1f` (wie `--accent`), hell `#b23a0a`, weil `#c2410c` als kleine Schrift auf dem hellen Grund `#dde5e0` nur 4,03:1 erreicht; `#b23a0a` liegt auf Grund und Fläche bei mindestens 4,5:1. Es ist derselbe Orangeton in dunklerer Stufe, keine zweite Akzentfarbe.
+- **`--accent-fg`**: Orange als Schrift und Strich. Dunkel `#ff6e24` (ein Hauch heller als `--accent` `#ff6a1f`, damit die Schrift auch auf dem Feldgrund `#24362d` 4,58:1 erreicht statt 4,47:1; AC-27), hell `#b23a0a`, weil `#c2410c` als kleine Schrift auf dem hellen Grund `#dde5e0` nur 4,03:1 erreicht; `#b23a0a` liegt auf Grund und Fläche bei mindestens 4,5:1. Es ist derselbe Orangeton in dunklerer Stufe, keine zweite Akzentfarbe.
 - **`--pc-green`, `--pc-cyan`, `--pc-sky`, `--pc-violet`, `--pc-pink`, `--pc-coral`, `--pc-yellow`**: die sieben wählbaren Profilfarben der Spieler (`src/lib/profile-options.ts`). Sie sind Identität, nie Zustand oder Handlung.
 - **`--card-yellow` (`#f2c200`), `--card-red` (`#c8102e`)**: Gelbe und Rote Karte im Spielverlauf. Sportdaten, beide Werte stammen aus der Teamfarben-Palette.
 - **`.force-dark`**: feste dunkle Werte für das Stream-Overlay, unabhängig von der Systemeinstellung.
