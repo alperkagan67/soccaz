@@ -65,6 +65,17 @@ describe("pausiert: der Frist-Job sagt nicht ab", () => {
   });
 });
 
+describe("pausiert: die benannte Ausnahme (Platz mit Guthaben, Altmodell)", () => {
+  it("liegt Guthaben im Spiel (paid_cents > 0), bleibt der alte Pfad: das Spiel wird zur Frist wie bisher abgesagt (und erstattet)", async () => {
+    const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    await db.update(matchParticipants).set({ paidCents: 1000 }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.adminA.id)));
+    await pause();
+    const start = (await stateOf(g.match.id)).startsAt;
+    await closeLobbiesAtDeadline(new Date(fixDeadline(start).getTime() + 60_000));
+    expect((await stateOf(g.match.id)).status).toBe("cancelled");
+  });
+});
+
 describe("pausiert: das Nachzahlfenster gibt keine Plaetze frei und sagt nicht ab", () => {
   it("Kontrolle (Karte AN): Fenster abgelaufen, keine Warteliste: Absage angefordert", async () => {
     const g = await slotGame(provider, { waitlist: 0, realPaid: true });
