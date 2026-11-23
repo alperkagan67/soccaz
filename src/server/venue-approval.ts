@@ -161,6 +161,7 @@ export async function resubmitVenue(userId: string, venueId: string, input: Venu
 async function decide(actorId: string, venueId: string, to: "approved" | "rejected", reason: string | null) {
   await db.transaction(async (tx) => {
     await assertCanDecide(tx, actorId);
+    if (!UUID.test(venueId)) throw new DomainError(NOT_FOUND); // keine UUID: wie eine unbekannte Halle (kein DB-Typfehler), erst NACH der Rechtepruefung
     const [v] = await tx.select({ id: venues.id, status: venues.approvalStatus }).from(venues).where(eq(venues.id, venueId)).for("update");
     if (!v) throw new DomainError(NOT_FOUND);
     if (v.status !== "requested") throw new DomainError(NOT_OPEN);
