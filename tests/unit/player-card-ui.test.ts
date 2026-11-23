@@ -109,7 +109,7 @@ describe("TeamCard (AC-19)", () => {
     expect(out).toContain(`color:${d.textColor}`);
     expect(out).toMatch(/data-testid="team-card-rating"[^>]*>\d+</);
     for (const e of team.memberElos) expect(out).not.toContain(String(e));
-    expect(out).toContain("DW");
+    expect(out).toContain("DK"); // erster und letzter Namensteil ("Die Wilden Kerle"), alt "DW" (C3a: eine Initialen-Regel)
   });
 
   it("kleines Team: keine Zahl, ein Hinweis (die Teamwertung wäre sonst eine Einzelwertung)", () => {
@@ -164,14 +164,14 @@ describe("Stufenfarbe NUR als Chip (AC-30) und Kontrast hell", () => {
   const walk = (dir: string): string[] =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx|css)$/.test(e.name) ? [path.join(dir, e.name)] : []));
 
-  it("tier-style und TIER_COLOR kommen in src/ nur in tier-style.ts und PlayerCard.tsx vor; in PlayerCard.tsx genau einmal als backgroundColor des Chips (data-testid player-card-tier)", () => {
-    const erlaubt = new Set(["src/lib/tier-style.ts", "src/components/PlayerCard.tsx"]);
+  it("tier-style und TIER_COLOR kommen in src/ nur in tier-style.ts und der Chip-Komponente TierChip.tsx vor (PlayerCard und PlayerRow nutzen den Chip, lesen die Farbe nicht selbst); in TierChip.tsx genau einmal als backgroundColor des Chips (data-testid player-card-tier)", () => {
+    const erlaubt = new Set(["src/lib/tier-style.ts", "src/components/TierChip.tsx"]);
     for (const file of walk(path.join(root, "src"))) {
       const rel = path.relative(root, file).split(path.sep).join("/");
       const text = readFileSync(file, "utf8");
       if (/tier-style|TIER_COLOR/.test(text)) expect(erlaubt.has(rel), `${rel} darf die Stufenfarbe nicht lesen`).toBe(true);
     }
-    const card = readFileSync(path.join(root, "src/components/PlayerCard.tsx"), "utf8");
+    const card = readFileSync(path.join(root, "src/components/TierChip.tsx"), "utf8");
     expect(card.match(/\bTIER_COLOR\b/g)).toHaveLength(2); // Import und genau EINE Verwendung (der Chip), egal in welcher Schreibweise
     expect(card.match(/TIER_COLOR\[/g)).toHaveLength(1);
     const chip = /data-testid="player-card-tier"[\s\S]*?style=\{\{[^}]*TIER_COLOR\[[^}]*\}\}/.exec(card);
