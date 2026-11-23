@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, notifications } from "@/db/schema";
+import { auditLog, matchParticipants, matches, notifications, paymentCharges } from "@/db/schema";
 import { cleanup, makeMatch } from "./helpers";
 import { closeLegacyGames, CLOSE_ACTION, CLOSE_REASON } from "../../scripts/lib/close-legacy-games";
 
@@ -82,11 +82,66 @@ describe("close-legacy-games (F2)", () => {
 
   it("Spiel, das zwischen Auswahl und Anwenden schon geschlossen wurde, wird übersprungen (Sperre + erneute Prüfung)", async () => {
     const s = await scenario();
-    const picked = await closeLegacyGames(pool, { only: s.ids });
-    expect(picked.games).toHaveLength(1);
-    await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, s.legacyPaid.match.id)); // jemand anderes war schneller
-    const r = await closeLegacyGames(pool, { apply: true, only: s.ids });
+    // jemand anderes war schneller: nach der Auswahl, vor der Transaktion wird das Spiel abgesagt
+    const r = await closeLegacyGames(pool, { apply: true, only: s.ids, afterSelect: async () => void (await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, s.legacyPaid.match.id))) });
     expect(r.closed).toBe(0);
     expect(await markers(s.ids)).toHaveLength(0);
+  });
+
+  // Review R-F2: Spiele, die cancelMatchTx nicht still absagen wuerde, werden nicht geschlossen, sondern als "manuell" gelistet
+  async function paidLegacy() {
+    const m = await makeMatch({ legacy: true });
+    await db.update(matchParticipants).set({ paidCents: 2000 }).where(eq(matchParticipants.matchId, m.match.id));
+    return m;
+  }
+  const manualCase = async (prepare: (m: Awaited<ReturnType<typeof paidLegacy>>) => Promise<void>, reason: RegExp) => {
+    const m = await paidLegacy();
+    await prepare(m);
+    const dry = await closeLegacyGames(pool, { only: [m.match.id] });
+    expect(dry.games).toHaveLength(0);
+    expect(dry.manual.map((g) => g.matchId)).toEqual([m.match.id]);
+    expect(dry.manual[0].manualReason).toMatch(reason);
+    const r = await closeLegacyGames(pool, { apply: true, only: [m.match.id] });
+    expect(r.closed).toBe(0);
+    expect(await statusOf(m.match.id)).toBe("lobby");
+    expect(await markers([m.match.id])).toHaveLength(0);
+  };
+
+  it("Abbuchungszeile, die erst nach der Auswahl entsteht, verhindert das Schliessen (erneute Pruefung unter der Sperre)", async () => {
+    const m = await paidLegacy();
+    const r = await closeLegacyGames(pool, { apply: true, only: [m.match.id], afterSelect: async () => void (await db.insert(paymentCharges).values({ matchId: m.match.id, userId: m.adminA.id, amountCents: 800, status: "pending", idempotencyKey: `f2late:${m.match.id}` })) });
+    expect(r.closed).toBe(0);
+    expect(await statusOf(m.match.id)).toBe("lobby");
+  });
+
+  it("Altspiel mit Abbuchungszeile (payment_charges) wird nicht geschlossen, sondern als manuell gelistet", async () => {
+    await manualCase(async (m) => {
+      await db.insert(paymentCharges).values({ matchId: m.match.id, userId: m.adminA.id, amountCents: 800, status: "pending", idempotencyKey: `f2:${m.match.id}` });
+    }, /Abbuchung/);
+  });
+
+  it("Altspiel mit Provisionsbuchung im Hauptbuch wird nicht geschlossen (manuell)", async () => {
+    await manualCase(async (m) => {
+      const [le] = (await pool.query("select id from ledger_entries limit 1")).rows;
+      await pool.query("insert into match_commissions (match_id, venue_id, rate_percent, base_cents, commission_cents, ledger_entry_id) select $1, (select id from venues limit 1), 10, 1000, 100, $2", [m.match.id, le.id]);
+    }, /Provision/);
+  });
+
+  it("Altspiel mit offenem Buchungsauftrag wird nicht geschlossen (manuell); ein zurueckgezogener blockiert nicht", async () => {
+    await manualCase(async (m) => {
+      await pool.query("insert into booking_jobs (match_id, status) values ($1, 'open')", [m.match.id]);
+    }, /Buchungsauftrag/);
+    const ok = await paidLegacy();
+    await pool.query("insert into booking_jobs (match_id, status) values ($1, 'withdrawn')", [ok.match.id]);
+    expect((await closeLegacyGames(pool, { only: [ok.match.id] })).games).toHaveLength(1);
+  });
+
+  it("Turnierspiele (kind tournament) werden nie geschlossen", async () => {
+    const m = await paidLegacy();
+    await db.update(matches).set({ kind: "tournament" }).where(eq(matches.id, m.match.id));
+    const r = await closeLegacyGames(pool, { apply: true, only: [m.match.id] });
+    expect(r.games).toHaveLength(0);
+    expect(r.manual).toHaveLength(0);
+    expect(await statusOf(m.match.id)).toBe("lobby");
   });
 });

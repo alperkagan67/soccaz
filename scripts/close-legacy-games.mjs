@@ -28,6 +28,7 @@ try {
   const r = await closeLegacyGames(pool, { apply });
   console.log(`${apply ? "Angewendet" : "Trockenlauf"} auf ${target.host}:${target.port}/${target.database}: ${r.games.length} offene Altspiele mit Guthabenzahlung.`);
   for (const g of r.games) console.log(`  Spiel ${g.number ?? g.matchId} (${g.status}, ${g.startsAt.toISOString()}): ${g.paidParticipants}/${g.participants} Teilnehmer mit Zahlung, ${g.paidCents} Cent im Guthabenmodell`);
+  for (const g of r.manual) console.log(`  MANUELL (nicht geschlossen) Spiel ${g.number ?? g.matchId} (${g.status}): ${g.manualReason}`);
   if (apply) console.log(`Geschlossen: ${r.closed}, Mitteilungen: ${r.notified}. Hauptbuch und Guthaben unverändert.`);
   else if (r.games.length) console.log("Nichts geändert. Mit --apply ausführen, um die Spiele zu schließen.");
 } finally {

@@ -7,21 +7,30 @@ import type { Pool, PoolClient } from "pg";
 export const CLOSE_REASON = "Das Spiel wurde wegen der Umstellung der Zahlung geschlossen.";
 export const CLOSE_ACTION = "legacy.close";
 
-export type LegacyGame = { matchId: string; number: number | null; status: string; startsAt: Date; participants: number; paidParticipants: number; paidCents: number };
-export type CloseResult = { apply: boolean; games: LegacyGame[]; closed: number; notified: number };
+export type LegacyGame = { matchId: string; number: number | null; status: string; startsAt: Date; participants: number; paidParticipants: number; paidCents: number; manualReason: string | null };
+export type CloseResult = { apply: boolean; games: LegacyGame[]; manual: LegacyGame[]; closed: number; notified: number };
 
 type Q = Pick<Pool | PoolClient, "query">;
 
-/** Offene Altspiele mit Guthabenzahlung, ohne bereits geschlossene (Marker legacy.close). */
-export async function selectLegacyGames(q: Q, only?: string[]): Promise<LegacyGame[]> {
-  const { rows } = await q.query<{ id: string; number: number | null; status: string; starts_at: Date; participants: number; paid_participants: number; paid_cents: number }>(
+/**
+ * Kandidaten: offene Altspiele (kind team/private) mit Guthabenzahlung, ohne Marker legacy.close.
+ * manualReason (Review R-F2): Spiele, die cancelMatchTx nicht still absagen wuerde, werden NICHT geschlossen, sondern nur gelistet:
+ * Abbuchungszeilen (payment_charges: Absage nur mit Stripe-Erstattung), Provisionsbuchung (reverseCommission schreibt ins Hauptbuch), offener Buchungsauftrag (withdrawBookingJob).
+ */
+async function candidates(q: Q, only?: string[]): Promise<LegacyGame[]> {
+  const { rows } = await q.query<{ id: string; number: number | null; status: string; starts_at: Date; participants: number; paid_participants: number; paid_cents: number; manual_reason: string | null }>(
     `select m.id, m.number, m.status, m.starts_at,
             count(p.user_id)::int as participants,
             count(*) filter (where p.paid_cents > 0)::int as paid_participants,
-            coalesce(sum(p.paid_cents), 0)::int as paid_cents
+            coalesce(sum(p.paid_cents), 0)::int as paid_cents,
+            case when exists (select 1 from payment_charges c where c.match_id = m.id) then 'Abbuchungszeilen (Stripe-Erstattung noetig)'
+                 when exists (select 1 from match_commissions mc where mc.match_id = m.id and mc.ledger_entry_id is not null) then 'Provisionsbuchung im Hauptbuch'
+                 when exists (select 1 from booking_jobs b where b.match_id = m.id and b.status not in ('withdrawn', 'done')) then 'offener Buchungsauftrag'
+            end as manual_reason
        from matches m
        join match_participants p on p.match_id = m.id
       where m.legacy_share_model = true
+        and m.kind in ('team', 'private')
         and m.status in ('lobby', 'confirmed')
         and ($1::uuid[] is null or m.id = any($1::uuid[]))
         and not exists (select 1 from audit_log a where a.action = '${CLOSE_ACTION}' and a.entity = 'match' and a.entity_id = m.id::text)
@@ -30,25 +39,33 @@ export async function selectLegacyGames(q: Q, only?: string[]): Promise<LegacyGa
       order by m.starts_at, m.id`,
     [only ?? null],
   );
-  return rows.map((r) => ({ matchId: r.id, number: r.number, status: r.status, startsAt: r.starts_at, participants: r.participants, paidParticipants: r.paid_participants, paidCents: r.paid_cents }));
+  return rows.map((r) => ({ matchId: r.id, number: r.number, status: r.status, startsAt: r.starts_at, participants: r.participants, paidParticipants: r.paid_participants, paidCents: r.paid_cents, manualReason: r.manual_reason }));
+}
+
+/** Schliessbare Altspiele (ohne die manuell zu klaerenden). */
+export async function selectLegacyGames(q: Q, only?: string[]): Promise<LegacyGame[]> {
+  return (await candidates(q, only)).filter((g) => !g.manualReason);
 }
 
 /** Trockenlauf (apply = false, Standard): nur Auswahl, keine Schreibzugriffe. apply = true: je Spiel eine Transaktion (Spiel sperren, erneut prüfen, schließen, markieren, mitteilen). */
-export async function closeLegacyGames(pool: Pool, opts: { apply?: boolean; /** nur diese Spiele (Tests); ohne Angabe alle passenden */ only?: string[] } = {}): Promise<CloseResult> {
+export async function closeLegacyGames(pool: Pool, opts: { apply?: boolean; /** nur diese Spiele (Tests); ohne Angabe alle passenden */ only?: string[]; /** nur Tests: laeuft nach der Auswahl, vor den Transaktionen (Wettlauf nachstellen) */ afterSelect?: () => Promise<void> } = {}): Promise<CloseResult> {
   const apply = opts.apply === true;
-  const games = await selectLegacyGames(pool, opts.only);
-  if (!apply) return { apply, games, closed: 0, notified: 0 };
+  const all = await candidates(pool, opts.only);
+  const games = all.filter((g) => !g.manualReason);
+  const manual = all.filter((g) => g.manualReason);
+  if (!apply) return { apply, games, manual, closed: 0, notified: 0 };
 
+  await opts.afterSelect?.();
   let closed = 0;
   let notified = 0;
   for (const g of games) {
     const client = await pool.connect();
     try {
       await client.query("begin");
-      const { rows: locked } = await client.query<{ status: string }>("select status from matches where id = $1 for update", [g.matchId]);
-      const stillOpen = locked[0] && ["lobby", "confirmed"].includes(locked[0].status);
-      const { rows: marked } = await client.query("select 1 from audit_log where action = $1 and entity = 'match' and entity_id = $2", [CLOSE_ACTION, g.matchId]);
-      if (!stillOpen || marked.length > 0) {
+      await client.query("select 1 from matches where id = $1 for update", [g.matchId]);
+      // erneute Pruefung NACH der Sperre (Status, Marker, Abbuchung/Provision/Buchungsauftrag, Summen): dieselbe Abfrage wie die Auswahl
+      const [now] = (await candidates(client, [g.matchId])).filter((c) => !c.manualReason);
+      if (!now) {
         await client.query("rollback");
         continue;
       }
@@ -56,8 +73,8 @@ export async function closeLegacyGames(pool: Pool, opts: { apply?: boolean; /** 
       await client.query("insert into audit_log (actor_id, action, entity, entity_id, before, after) values (null, $1, 'match', $2, $3, $4)", [
         CLOSE_ACTION,
         g.matchId,
-        JSON.stringify({ status: g.status }),
-        JSON.stringify({ status: "cancelled", reason: CLOSE_REASON, participants: g.participants, paidParticipants: g.paidParticipants, paidCents: g.paidCents, ledger: "unchanged" }),
+        JSON.stringify({ status: now.status }),
+        JSON.stringify({ status: "cancelled", reason: CLOSE_REASON, participants: now.participants, paidParticipants: now.paidParticipants, paidCents: now.paidCents, ledger: "unchanged" }),
       ]);
       const ins = await client.query(
         `insert into notifications (user_id, type, title, body, url)
@@ -74,5 +91,5 @@ export async function closeLegacyGames(pool: Pool, opts: { apply?: boolean; /** 
       client.release();
     }
   }
-  return { apply, games, closed, notified };
+  return { apply, games, manual, closed, notified };
 }
