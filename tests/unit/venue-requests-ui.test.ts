@@ -6,6 +6,14 @@ import { describe, expect, it } from "vitest";
 const root = path.resolve(import.meta.dirname, "../..");
 const read = (f: string) => readFileSync(path.join(root, f), "utf8");
 
+describe("Integrationstests laufen seriell (Voraussetzung fuer die Tests, die den CHECK venues_requested_inactive_chk voruebergehend entfernen)", () => {
+  it("vitest.integration.config.mts: fileParallelism aus; CI und Provisionslauf nutzen diese Konfiguration", () => {
+    expect(read("vitest.integration.config.mts")).toMatch(/fileParallelism:\s*false/);
+    expect(read("package.json")).toContain('"test:integration": "vitest run --config vitest.integration.config.mts"');
+    expect(read("scripts/test-commission.mjs")).toMatch(/test:integration|vitest\.integration\.config/);
+  });
+});
+
 describe("Hallen-Anfragen: Admin-Oberflaeche", () => {
   it("/admin/hallen zeigt oben den Link 'Hallen-Anfragen (n offen)' aus countVenueRequests", () => {
     const page = read("src/app/admin/hallen/page.tsx");

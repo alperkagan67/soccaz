@@ -25,10 +25,20 @@ let n = 0;
 const name = (p: string) => `E2E Freigabe ${p} ${Date.now().toString(36)}${++n}`;
 const UNKNOWN = "00000000-0000-4000-8000-000000000000";
 
+const ACTIVE_CHECK = "alter table venues add constraint venues_requested_inactive_chk check (approval_status = 'approved' or active = false)";
+/** Stellt den DB-CHECK her (idempotent): auch nach einem frueheren Abbruch der Fehlzustands-Tests; nicht freigegebene Hallen werden vorher inaktiv gesetzt, sonst scheitert das Anlegen. */
+async function restoreActiveCheck() {
+  await db.execute(sql`update venues set active = false where approval_status <> 'approved'`);
+  await db.execute(sql`alter table venues drop constraint if exists venues_requested_inactive_chk`);
+  await db.execute(sql.raw(ACTIVE_CHECK));
+}
+
 beforeAll(async () => {
+  await restoreActiveCheck(); // Heilung: ein abgebrochener Lauf darf den CHECK nicht fehlen lassen
   await setSetting(null, "card_payments_enabled", true);
 });
 afterAll(async () => {
+  await restoreActiveCheck();
   await setSetting(null, "card_payments_enabled", false);
   await db.execute(sql`delete from venue_access where venue_id in (select id from venues where name like 'E2E Freigabe%')`);
   await cleanup();
@@ -226,9 +236,7 @@ describe("Fehlzustand: angefragte Halle ist aktiv (CHECK entfernt), jeder Leser 
     await db.execute(sql`alter table venues drop constraint if exists venues_requested_inactive_chk`);
   });
   afterAll(async () => {
-    await db.execute(sql`update venues set active = false where approval_status <> 'approved'`);
-    await db.execute(sql`alter table venues drop constraint if exists venues_requested_inactive_chk`);
-    await db.execute(sql`alter table venues add constraint venues_requested_inactive_chk check (approval_status = 'approved' or active = false)`);
+    await restoreActiveCheck(); // in JEDEM Fall (auch nach fehlgeschlagenen Tests)
   });
 
     it("erscheint nirgends: Liste, Detail, Auswahl, Sitemap, Termin-Auswahl, Veto, Turnier-Partnerhalle (auch im Fehlzustand active = true)", async () => {
@@ -271,6 +279,11 @@ describe("Fehlzustand: angefragte Halle ist aktiv (CHECK entfernt), jeder Leser 
 });
 
 describe("DB-Absicherung: aktiv nur wenn freigegeben", () => {
+  it("der CHECK venues_requested_inactive_chk besteht (auch nach den Fehlzustands-Tests davor)", async () => {
+    const r = await db.execute(sql`select count(*)::int as n from pg_constraint where conrelid = 'venues'::regclass and conname = 'venues_requested_inactive_chk'`);
+    expect(((r as unknown as { rows?: { n: number }[] }).rows ?? (r as unknown as { n: number }[]))[0].n).toBe(1);
+  });
+
   it("UPDATE active = true bei einer angefragten oder abgelehnten Halle wird von der Datenbank abgewiesen; bei einer freigegebenen Halle geht es", async () => {
     const { v } = await requested();
     await expect(db.update(venues).set({ active: true }).where(eq(venues.id, v.id))).rejects.toThrow();
