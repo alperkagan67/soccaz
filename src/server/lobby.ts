@@ -19,7 +19,7 @@ import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
 import { triggerChargesInBackground } from "./payments/charge-trigger";
 import { chargeAmount } from "./payments/charge-run";
-import { CHARGES_LOCKED, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { CHARGES_LOCKED, assertNotLegacyMoney, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
@@ -316,6 +316,7 @@ export async function finalConfirm(userId: string, matchId: string) {
   let bothConfirmed = false;
   await mutateLobby(userId, matchId, async (tx, match) => {
     if (match.schedulingOpen || match.vetoStatus === "halls" || match.vetoStatus === "running") throw new DomainError("Erst müssen Uhrzeit und Halle feststehen.");
+    await assertNotLegacyMoney(tx, match); // Altspiel: kann nicht bestaetigen/fixieren (stillgelegt)
     const [admin] = await tx
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
