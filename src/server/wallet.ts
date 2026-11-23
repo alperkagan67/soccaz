@@ -90,6 +90,12 @@ export async function assertNotLegacyMoney(tx: Pick<Tx, "select">, match: Pick<M
   if (await legacyMoneyBlocked(tx, match)) throw new DomainError(LEGACY_STILLGELEGT);
 }
 
+/** Liegt Guthaben (paid_cents > 0, Altmodell) in diesem Spiel? Solche Spiele bleiben in der Pause (Zahlungen AN + Karte AUS) im alten Pfad: Frist-Job und payShare. Unter der Spielsperre des Aufrufers lesen. */
+export async function hasPaidSeat(tx: Pick<Tx, "select">, matchId: string): Promise<boolean> {
+  const [row] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), gt(matchParticipants.paidCents, 0))).limit(1);
+  return Boolean(row);
+}
+
 export const CHARGES_LOCKED = "Die Abbuchung für dieses Spiel hat begonnen: Die Teilnehmerliste ist gesperrt. Bitte kontaktiere den Support.";
 
 type DeadlineFields = Pick<MatchRow, "id" | "kind" | "startsAt" | "createdAt" | "settledAt" | "finalShareCents" | "priceCents" | "legacyShareModel" | "schedulingOpen" | "vetoStatus">;

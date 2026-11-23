@@ -212,4 +212,12 @@ describe("Gegenprobe: neues Modell ist nicht stillgelegt, aber in der Pause gibt
     expect((await seatOf(m.match.id, m.adminA.id)).paidCents).toBe(0);
     expect(await walletBalance(db, m.adminA.id)).toBe(before);
   });
+
+  it("Guthaben im Platz (paid_cents > 0, Altmodell): payShare geht in der Pause weiter (alter Pfad, wie der Frist-Job), sonst koennte der Zweite weder zahlen noch wuerde die Absage verhindert", async () => {
+    const m = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
+    await seedShare(m.adminB.id, m.match.id, 800); // ein Platz mit Guthaben
+    await fund(m.adminA.id, 3000);
+    await payShare(m.adminA.id, m.match.id);
+    expect((await seatOf(m.match.id, m.adminA.id)).paidCents).toBeGreaterThan(0);
+  });
 });

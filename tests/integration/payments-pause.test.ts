@@ -187,6 +187,18 @@ describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauc
     expect((await stateOf(g.match.id)).status).toBe("cancelled");
   });
 
+  it("mehrere Einschaltungen: massgeblich ist die LETZTE (alt vor 5 h, neu vor 30 min -> Karenz gilt)", async () => {
+    const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const start = (await stateOf(g.match.id)).startsAt;
+    const t = new Date(fixDeadline(start).getTime() + 60_000);
+    await pauseAndResume(new Date(t.getTime() - 5 * 3_600_000)); // erstes Einschalten: lange her
+    await setCardSwitch(owner!.id, false, "Zweite Notabschaltung wegen Stoerung", true);
+    await setCardSwitch(owner!.id, true, "Zweite Stoerung behoben, geprueft", true);
+    await db.execute(sql`update audit_log set at = ${new Date(t.getTime() - 30 * MIN)} where action = 'card_switch.on' and entity_id = 'card_payments_enabled' and at < ${new Date(t.getTime() - 10 * 3_600_000)}`); // nur die neue Zeile
+    expect(await closeLobbiesAtDeadline(t)).toBe(0);
+    expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
+  });
+
   it("ein altes Einschalten (laenger als 2 Stunden her) verschiebt nichts: regulaere Absage", async () => {
     const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
     const start = (await stateOf(g.match.id)).startsAt;

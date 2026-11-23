@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, invites, matchParticipants, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
 import { abortDeadline, dueReminders, dueWithGrace, fixDeadline, hasLongLead, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
@@ -6,7 +6,7 @@ import { users } from "@/db/schema";
 import { payments } from "@/db/schema-finance";
 import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
-import { cardModeActive, hasChargeRows, isChargeBound, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
+import { cardModeActive, hasChargeRows, hasPaidSeat, isChargeBound, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
 import { chargeEligibility } from "./payments/charge-run";
 import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
 import { teamName } from "./names";
@@ -136,12 +136,6 @@ async function dueAfterResume(exec: Pick<typeof db, "select">, due: Date, starts
   if (!row?.at) return due;
   const until = new Date(row.at.getTime() + RESUME_GRACE_MS);
   return until.getTime() < startsAt.getTime() && until.getTime() > due.getTime() ? until : due;
-}
-
-/** Liegt Guthaben (paid_cents > 0, Altmodell) in diesem Spiel? */
-async function hasPaidSeat(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], matchId: string): Promise<boolean> {
-  const [row] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), gt(matchParticipants.paidCents, 0))).limit(1);
-  return Boolean(row);
 }
 
 /** Können wir buchen? Beide Captains bereit, der Preis steht fest und alle eingeteilten Spieler haben ihren Anteil bezahlt (kostenlos: nur "Bereit"). */
