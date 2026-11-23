@@ -22,7 +22,7 @@ import { teamCard } from "@/server/cards";
 import { setSetting } from "@/server/settings";
 import { ledgerEntries, pendingRefunds } from "@/db/schema-finance";
 import { fixShare, privateListLocked, settleMatch } from "@/server/wallet";
-import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch, seedShare } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
 
 // Die Events-Route fragt die Sitzung ab (Cookies gibt es im Test nicht): getCurrentUser liefert hier die Person, die der Test gerade spielt.
 const session = vi.hoisted(() => ({ user: null as { id: string; role: "player" | "admin" } | null }));
@@ -648,27 +648,6 @@ describe("Spielerzahl ändert sich vor dem Fixieren (T53, AC-5, AC-6)", () => {
       expect((await trialBalance()).balanced).toBe(true);
     }));
 
-  it("AC-6: Wer weder Captain noch Veranstalter ist, kann niemanden rauswerfen oder einteilen; Rauswurf nur durch den Captain (Geld bewegt die Lobby seit 012 M6b nicht mehr)", () =>
-    withPayments(async () => {
-      const { organizer, match, token, players } = await prepare(8); // 9 eingeteilte Spieler, ein zehnter Platz bleibt für den Wartenden
-      const stranger = await makeUser("pvfremd");
-      const outsider = await makeUser("pvwait");
-      await joinPrivateGame(outsider.id, token); // wartet auf Einteilung
-      const [normal, victim] = [players[1], players[2]];
-      for (const p of players) await seedShare(p.id, match.id);
-      await setReady(victim.id, match.id, true);
-      for (const actor of [stranger, normal]) {
-        await expect(removeParticipant(actor.id, match.id, victim.id)).rejects.toThrow(/Berechtigung/);
-        await expect(removeParticipant(actor.id, match.id, outsider.id)).rejects.toThrow(/Berechtigung/);
-        await expect(unassignParticipant(actor.id, match.id, normal.id)).rejects.toThrow(/Veranstalter/);
-        await expect(randomSplit(actor.id, match.id)).rejects.toThrow(/Veranstalter|Berechtigung/);
-        await expect(assignSubstitute(actor.id, match.id, outsider.id, match.homeTeamId)).rejects.toThrow(/Admins/);
-      }
-      expect(await paidOf(match.id, victim.id)).toBe(1334);
-      await removeParticipant(organizer.id, match.id, victim.id); // der Captain darf
-      expect((await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), eq(matchParticipants.userId, victim.id))))).toHaveLength(0);
-    }));
-
   it("AC-5 parallele Austritte: jeder wird genau einmal erstattet, der Anteil gilt für die endgültige Zahl (8 Spieler: 1500)", () =>
     withPayments(async () => {
       const { match, players } = await prepare(9);
@@ -883,53 +862,6 @@ describe("Austritt nach dem Fixieren und Sperre in den letzten 48 Stunden (T54, 
       const stranger = await makeUser("pvstr");
       await expect(joinPrivateGame(stranger.id, g.token)).rejects.toThrow(/gesperrt/); // der Platz ist wieder besetzt, die Liste gesperrt
       expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  const paidNow = async (matchId: string, userId: string) => (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId))))[0]?.paidCents;
-
-  it("AC-8: weniger als 48 Stunden vor Anstoß werden Austritt und Rauswurf abgelehnt (nach dem Fixieren); Bereit bleibt möglich", () =>
-    withPayments(async () => {
-      const g = await fixed(9, 12); // zwölf Plätze, zehn belegt: nur die Sperre kann einen Beitritt verhindern
-      await setStart(g.match.id, 24);
-      const [a, b] = [g.players[8], g.players[9]];
-      await expect(leaveLobby(a.id, g.match.id)).rejects.toThrow(/48 Stunden/);
-      await expect(removeParticipant(g.organizer.id, g.match.id, b.id)).rejects.toThrow(/48 Stunden/);
-      expect(await seatedIds(g.match.id)).toHaveLength(10);
-      expect(await paidNow(g.match.id, a.id)).toBe(1200); // der bezahlte Anteil bleibt
-      await setReady(a.id, g.match.id, false);
-      await setReady(a.id, g.match.id, true);
-      const late = await makeUser("pvlate");
-      await expect(joinPrivateGame(late.id, g.token)).rejects.toThrow(/gesperrt/); // niemand Fremdes kommt hinein, solange kein Platz frei ist
-    }));
-
-  it("AC-8: auch vor dem Fixieren sind Austritt und Rauswurf unter 48 Stunden gesperrt; der Beitritt per Link bleibt dort möglich (Schalter)", () =>
-    withPayments(async () => {
-      const g = await game(5, { rentCents: 12_000, startsAt: hours(24) }); // kurzfristig angelegt: alle sind per Link beigetreten
-      expect(g.players).toHaveLength(6);
-      await randomSplit(g.organizer.id, g.match.id);
-      const [a, b] = [g.players[4], g.players[5]];
-      await seedShare(a.id, g.match.id);
-      await expect(leaveLobby(a.id, g.match.id)).rejects.toThrow(/48 Stunden/);
-      await expect(removeParticipant(g.organizer.id, g.match.id, b.id)).rejects.toThrow(/48 Stunden/);
-      expect(await seatedIds(g.match.id)).toHaveLength(6);
-      const newcomer = await makeUser("pvnew");
-      await expect(joinPrivateGame(newcomer.id, g.token)).resolves.toMatchObject({ already: false });
-    }));
-
-  it("AC-4: Anteil = Miete ÷ eingeteilte Spieler; das zweite Bereit fixiert Preis und Spielerzahl genau einmal, auch bei parallelen Aufrufen; ein späterer Austritt ändert den Anteil nicht", () =>
-    withPayments(async () => {
-      const g = await fixed(); // 10 eingeteilte Spieler: 12000 / 10 = 1200, Bereit beider Seiten, Veranstalter bestätigt
-      const m = await reloadMatch(g.match.id);
-      expect(m.finalShareCents).toBe(1200);
-      expect(m.homeFinalAt).not.toBeNull();
-      expect(m.awayFinalAt).not.toBeNull();
-      await Promise.allSettled([finalConfirm(g.organizer.id, g.match.id), finalConfirm(g.organizer.id, g.match.id)]);
-      await leaveLobby(g.players[9].id, g.match.id);
-      await finalConfirm(g.organizer.id, g.match.id);
-      const after = await reloadMatch(g.match.id);
-      expect(after.finalShareCents).toBe(1200); // mit 9 Spielern wäre es 1334: der Preis wird nur einmal fixiert
-      expect(after.settledAt).toBeNull();
-      for (const p of g.players.slice(0, 9)) expect(await paidNow(g.match.id, p.id)).toBe(1200);
     }));
 
   it("Teamspiel und Turnier bleiben unverändert: die 48-Stunden-Sperre gilt nur für Privatspiele", () => {
@@ -1580,5 +1512,100 @@ describe("Neu-Mischen schützt Bezahlte und Bereite einzeln (T58 Review, AC-13)"
 
   it("ohne Zahlungen: Bereite (nicht bezahlt) behalten ihren Platz; nur Bereit schützt sie", async () => {
     await expectProtectedStayPut((matchId, userId) => setReady(userId, matchId, true));
+  });
+});
+
+// 012 M6b PR 1c-i: Kartenmodell-Gegenstücke zu den Guthaben-Tests AC-4, AC-6 und AC-8 (Privatspiel). Schalter AN, Plätze mit hinterlegter Karte (card_ready) und paid_cents = 0:
+// cardModeActive ist wahr, die Lobby bewegt kein Geld. Sie bleiben nach dem Löschen der Altfassungen (1c-ii) als Schutz dieser Regeln bestehen.
+describe("Privatspiel im Kartenmodell (Gegenstücke zu AC-4, AC-6, AC-8)", () => {
+  const hours = (h: number) => new Date(Date.now() + h * 3_600_000);
+  // Anstoß in h Stunden, angelegt vor 100 Stunden: langer Vorlauf, die 48-h-Frist (Liste zu) greift (im Frist-Modell zählt der Vorlauf ab der Anlage)
+  const setStart = (matchId: string, h: number) => db.update(matches).set({ startsAt: hours(h), createdAt: hours(-100) }).where(eq(matches.id, matchId));
+  const seatedIds = async (matchId: string) => (await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, matchId))).filter((x) => x.teamId).map((x) => x.userId);
+  const seat = async (matchId: string, userId: string) => (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId))))[0];
+  const giveCards = (matchId: string) => db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(eq(matchParticipants.matchId, matchId));
+  beforeAll(async () => {
+    await setSetting(null, "payments_enabled", true);
+    await setSetting(null, "card_payments_enabled", true);
+  });
+  afterAll(async () => {
+    await setSetting(null, "payments_enabled", false);
+    await setSetting(null, "card_payments_enabled", false);
+  });
+
+  /** Zehn Spieler (oder `extra + 1`), eingeteilt, alle mit Karte und bereit, der Veranstalter hat bestätigt: Anteil 12000 / 10 = 1200 steht fest. */
+  const fixedCard = async (extra = 9, maxPlayers = 10) => {
+    const g = await game(extra, { rentCents: 12_000, maxPlayers });
+    await randomSplit(g.organizer.id, g.match.id);
+    await giveCards(g.match.id);
+    for (const p of g.players) await setReady(p.id, g.match.id, true);
+    await finalConfirm(g.organizer.id, g.match.id);
+    expect((await reloadMatch(g.match.id)).finalShareCents).toBe(1200);
+    return g;
+  };
+
+  it("AC-6: Wer weder Captain noch Veranstalter ist, kann niemanden rauswerfen oder einteilen; nur der Captain darf (nichts wird bezahlt)", async () => {
+    const g = await game(8, { rentCents: 12_000 }); // 9 eingeteilte Spieler, ein zehnter Platz bleibt für den Wartenden
+    await randomSplit(g.organizer.id, g.match.id);
+    await giveCards(g.match.id);
+    const stranger = await makeUser("pvfremd");
+    const outsider = await makeUser("pvwait");
+    await joinPrivateGame(outsider.id, g.token); // wartet auf Einteilung
+    const [normal, victim] = [g.players[1], g.players[2]];
+    await setReady(victim.id, g.match.id, true);
+    for (const actor of [stranger, normal]) {
+      await expect(removeParticipant(actor.id, g.match.id, victim.id)).rejects.toThrow(/Berechtigung/);
+      await expect(removeParticipant(actor.id, g.match.id, outsider.id)).rejects.toThrow(/Berechtigung/);
+      await expect(unassignParticipant(actor.id, g.match.id, normal.id)).rejects.toThrow(/Veranstalter/);
+      await expect(randomSplit(actor.id, g.match.id)).rejects.toThrow(/Veranstalter|Berechtigung/);
+      await expect(assignSubstitute(actor.id, g.match.id, outsider.id, g.match.homeTeamId)).rejects.toThrow(/Admins/);
+    }
+    expect((await seat(g.match.id, victim.id)).cardStatus).toBe("card_ready");
+    expect((await seat(g.match.id, victim.id)).paidCents).toBe(0);
+    await removeParticipant(g.organizer.id, g.match.id, victim.id); // der Captain darf
+    expect(await seat(g.match.id, victim.id)).toBeUndefined();
+  });
+
+  it("AC-8: weniger als 48 Stunden vor Anstoß werden Austritt und Rauswurf abgelehnt (nach dem Fixieren); Bereit bleibt möglich, Fremde kommen nicht hinein", async () => {
+    const g = await fixedCard(9, 12); // zwölf Plätze, zehn belegt: nur die Sperre kann einen Beitritt verhindern
+    await setStart(g.match.id, 24);
+    const [a, b] = [g.players[8], g.players[9]];
+    await expect(leaveLobby(a.id, g.match.id)).rejects.toThrow(/48 Stunden/);
+    await expect(removeParticipant(g.organizer.id, g.match.id, b.id)).rejects.toThrow(/48 Stunden/);
+    expect(await seatedIds(g.match.id)).toHaveLength(10);
+    expect((await reloadMatch(g.match.id)).finalShareCents).toBe(1200); // der fixierte Anteil bleibt
+    await setReady(a.id, g.match.id, false);
+    await setReady(a.id, g.match.id, true);
+    const late = await makeUser("pvlate");
+    await expect(joinPrivateGame(late.id, g.token)).rejects.toThrow(/gesperrt/);
+  });
+
+  it("AC-8: auch vor dem Fixieren sind Austritt und Rauswurf unter 48 Stunden gesperrt; der Beitritt per Link bleibt dort möglich", async () => {
+    const g = await game(5, { rentCents: 12_000, startsAt: hours(24) }); // kurzfristig angelegt: alle sind per Link beigetreten
+    expect(g.players).toHaveLength(6);
+    await randomSplit(g.organizer.id, g.match.id);
+    await giveCards(g.match.id);
+    const [a, b] = [g.players[4], g.players[5]];
+    await expect(leaveLobby(a.id, g.match.id)).rejects.toThrow(/48 Stunden/);
+    await expect(removeParticipant(g.organizer.id, g.match.id, b.id)).rejects.toThrow(/48 Stunden/);
+    expect(await seatedIds(g.match.id)).toHaveLength(6);
+    const newcomer = await makeUser("pvnew");
+    await expect(joinPrivateGame(newcomer.id, g.token)).resolves.toMatchObject({ already: false });
+  });
+
+  it("AC-4: Anteil = Miete ÷ eingeteilte Spieler, das zweite Bereit fixiert genau einmal (auch parallel); ein Austritt (mehr als 48 Stunden vorher) hebt die Festschreibung auf und setzt Bereit zurück", async () => {
+    const g = await fixedCard(); // 12000 / 10 = 1200
+    const m = await reloadMatch(g.match.id);
+    expect(m.homeFinalAt).not.toBeNull();
+    expect(m.awayFinalAt).not.toBeNull();
+    expect(m.settledAt).toBeNull();
+    await Promise.allSettled([finalConfirm(g.organizer.id, g.match.id), finalConfirm(g.organizer.id, g.match.id)]);
+    expect((await reloadMatch(g.match.id)).finalShareCents).toBe(1200); // weiter genau ein fester Anteil
+    for (const p of g.players) expect((await seat(g.match.id, p.id)).paidCents).toBe(0); // die Lobby hat nichts bezahlt
+    await leaveLobby(g.players[9].id, g.match.id); // Startzeit liegt Tage voraus
+    const after = await reloadMatch(g.match.id);
+    expect(after.finalShareCents).toBeNull(); // mit 9 Spielern gilt ein neuer Anteil (1334), er wird erst beim nächsten zweiten Bereit fixiert
+    expect(after.homeFinalAt).toBeNull();
+    expect(after.awayFinalAt).toBeNull();
   });
 });

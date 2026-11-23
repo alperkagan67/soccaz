@@ -132,13 +132,19 @@ export async function seedCardReady(matchId: string, userId: string) {
 }
 
 /**
- * Endzustand eines per Karte abgebuchten und abgerechneten Spiels (012 M6b: die Abbuchung selbst prüfen card-trigger/card-charge in der Integration; der Browser prüft hier den Admin-Bereich,
- * der diese Zeilen liest): je Spieler Aufladung + Anteil als Hauptbuch-Zeile wallet -> revenue, paid_cents und matches.settled_at gesetzt.
+ * Endzustand eines per Karte abgebuchten und abgerechneten Spiels (012 M6b; die Abbuchung selbst prüfen card-trigger/card-charge in der Integration, der Browser prüft den Admin-Bereich,
+ * der diese Zeilen liest). Wie die echte Abbuchung (charge.ts): Hauptbuch-Zeile clearing -> revenue (Art match_share, ohne Nutzer-Bezug), dazu paid_cents/paid_at und matches.settled_at.
+ * Idempotent gegen eine echte Sofortabbuchung (FakeProvider): ein Spieler mit schon bezahltem Anteil wird übersprungen, settled_at bleibt dann wie gesetzt.
  */
 export async function seedCharged(matchId: string, userIds: string[], shareCents: number) {
   for (const userId of userIds) {
-    await fundWallet(userId, shareCents);
-    await seedShare(matchId, userId, shareCents);
+    const [seat] = await query<{ paid_cents: number }>("select paid_cents from match_participants where match_id = $1 and user_id = $2", [matchId, userId]);
+    if (seat && seat.paid_cents > 0) continue; // schon echt abgebucht
+    await testDb().query("update match_participants set paid_cents = $3, paid_at = now(), card_status = 'charged' where match_id = $1 and user_id = $2", [matchId, userId, shareCents]);
+    await testDb().query(
+      "insert into ledger_entries (debit_account, credit_account, amount_cents, kind, match_id, idempotency_key, reason) values ('clearing', 'revenue', $1, 'match_share', $2, $3, 'E2E Abbuchung Anteil (Karte)')",
+      [shareCents, matchId, "e2e-charge:" + randomUUID()],
+    );
   }
-  await testDb().query("update matches set settled_at = now(), final_share_cents = $2 where id = $1", [matchId, shareCents]);
+  await testDb().query("update matches set settled_at = coalesce(settled_at, now()), final_share_cents = $2 where id = $1", [matchId, shareCents]);
 }

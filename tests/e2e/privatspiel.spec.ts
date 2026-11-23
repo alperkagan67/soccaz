@@ -382,7 +382,7 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
     const done = (await query<{ h: Date | null; a: Date | null }>("select home_final_at as h, away_final_at as a from matches where id = $1", [matchId]))[0];
     expect(done.h).not.toBeNull();
     expect(done.a).not.toBeNull();
-    expect((await query<{ f: number }>("select final_share_cents as f from matches where id = $1", [matchId]))[0].f * 10).toBe(10_000); // die zehn Anteile decken die Miete
+    expect((await query<{ f: number }>("select final_share_cents as f from matches where id = $1", [matchId]))[0].f).toBe(1000); // Anteil 100 € / 10, die zehn Anteile decken die Miete
     // nach der Bestätigung beider Captains steht die Spielübersicht mit allen Infos offen
     await org.goto(`/lobby/${matchId}/uebersicht`);
     await slow(org.getByText(`E2E Gesamthalle ${run}`).first()).toBeVisible();

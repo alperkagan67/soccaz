@@ -38,7 +38,7 @@ const euro = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\
 
 // 012 M6a: Die Tests zu Aufladen, Guthaben-Seite, Rabattcodes und Stripe-Aufladung entfallen mit der Oberfläche (Vertrag 013 AC-14); die Datei wird mit 012 M6b für das Kartenmodell neu geschrieben.
 
-test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ browser, baseURL }) => {
+test("Kartenspiel: Buchungsauftrag, Hallenbuchung und Finanzbereich nach der Abbuchung", async ({ browser, baseURL }) => {
   test.setTimeout(180_000);
   await seedOwner("p4adm"); // Admin 1: Finanzbereich und Preisregeln (Vertrag 009 AC-1); vor der Bestätigung, sonst bekommt er die Benachrichtigung nicht
   const { a, b, matchId, nameA, nameB } = await setupLobby(browser, "p4");
@@ -80,6 +80,8 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   expect((await query<{ f: number | null }>("select final_share_cents as f from matches where id = $1", [matchId]))[0].f).toBe(share);
   // Endzustand nach der Abbuchung seeden (Hauptbuch + settled_at): der Admin-Bereich unten liest diese Zeilen
   await seedCharged(matchId, [adminA, adminB, ...seeded], share);
+  // genau eine Anteilszeile je Spieler (auch wenn nach dem zweiten Bereit eine echte Sofortabbuchung über den FakeProvider gelaufen wäre: seedCharged bucht dann nicht doppelt)
+  expect((await query<{ n: number }>("select count(*)::int as n from ledger_entries where match_id = $1 and kind = 'match_share'", [matchId]))[0].n).toBe(10);
 
   // --- Admin: Buchung
   const adm = await (await browser.newContext()).newPage();
@@ -133,14 +135,8 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   await expect(cards.nth(1)).toHaveText(euro("80,00 €")); // Hallenkosten
   await expect(cards.nth(2)).toHaveText(euro("0,00 €")); // Marge
   await expect(adm.locator('[data-testid^="player-"]')).toHaveCount(10);
-  await expect(adm.getByTestId(`player-${`p4h1-${run}@test.local`}`)).toContainText(euro("netto 8,00 €"));
-
-  // Ausnahme-Erstattung an einen Spieler
-  const card = adm.getByTestId(`player-p4h1-${run}@test.local`);
-  await card.getByLabel("Grund").fill("Verletzung vor dem Spiel");
-  await card.getByRole("button", { name: "Ausnahme-Erstattung buchen" }).click();
-  await expect(adm.getByTestId(`player-p4h1-${run}@test.local`)).toContainText(euro("netto 0,00 €"));
-  expect(await walletBalanceOf(seeded[0])).toBe(share); // Aufladung (Seed) - Anteil + Ausnahme-Erstattung
+  // Die Spielerkarten zeigen bei Kartenspielen keine Beträge (die Anteilszeile clearing -> revenue hat keinen Nutzer-Bezug) und die Ausnahme-Erstattung über das Guthaben entfällt:
+  // beides ist Teil von 1c-iii (finance.manualRefund per Stripe-Refund, F3); dort kommt der E2E-Test dazu (kein Verlust ohne Ersatz: Backlog 186)
 
   // Übersicht, CSV, Ausgabenliste
   const month = new Date(Date.now() + 10 * 3_600_000).toISOString().slice(0, 7);
