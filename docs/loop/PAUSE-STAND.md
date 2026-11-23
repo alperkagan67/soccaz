@@ -1,7 +1,7 @@
 # PAUSE-STAND
 
-Stand: 2026-11-23, nach Doku-Sammel 35 (#241), main = `bcd35e1` (Migrationen bis 0057). Pause-Modus durch den Nutzer (über t2q/t2s). Verfasser: worker-4 (t1b), nach den Meldungen der Worker und dem Zustand der Worktrees; Angaben zu fremden Branches sind gelesen, nicht geprüft. Der Stand vom 2026-11-12 (t9) ist ersetzt.
-Regel für die Pause: KEINE neuen Tasks, KEIN neuer Push oder PR; fertiges ist lokal committet, Halbfertiges als `WIP:`-Commit auf dem lokalen Branch.
+Stand: 2026-11-23, nach Doku-Sammel 36, main = `8480726` (Migrationen bis 0057). **PAUSE BEENDET** (Nutzer/t2q): Node 22.23.5 ist installiert, die npm-Skripte prüfen Node >= 22.13 (#245). Verfasser: worker-4 (t1b); Angaben zu fremden Branches sind gelesen, nicht geprüft.
+Arbeitsregeln wie vor der Pause: Änderungen nur über eigenen Branch und PR, Dev-Server nur nach Speicherregel (höchstens 2, sofort beenden), Port 3100 gehört dem Nutzer, `.env*` nie lesen.
 
 ## 1. Seit dem letzten Stand gemergt (Auszug, einzeln, squash)
 | PR | Inhalt |
@@ -14,13 +14,14 @@ Regel für die Pause: KEINE neuen Tasks, KEIN neuer Push oder PR; fertiges ist l
 | #230 | Schalter-Flip: Dev-Seeds Kartenmodell AN, Tests starten und enden AUS/AUS |
 | #238 | Notschalter Kartenzahlung (Admin 1) |
 | #231, #232, #237, #241 | Doku-Sammel 31 bis 35 (Audit, Backlog bis 210, Regelvorschlag 27, BETRIEB Notabschaltung, Blocker G29-012) |
+| #240, #242 | 013 M2d-2 Hallen-Onboarding (`/halle/anfragen`) und Admin-Anfragen-UI (ConfirmDialog mit Grund-Feld) |
+| #243, #245 | PAUSE-STAND (Stand 2026-11-23) und Node-Mindestversion 22.13 (Hooks, `engine-strict`, README) |
 
 ## 2. Offene PRs
 | PR | Branch | Hash | Stand |
 |---|---|---|---|
 | #198 | `feat/012-m6b-code` | 6515fad (lokal weiter 7444770, 7 Commits voraus) | 012 M6b PR 1a: Guthaben-Altpfad im Code entfernen; lokal liegt der Doppelbelastungs-Schutz in `cardModeActive` (noch nicht gepusht) |
-| #240 | `feat/013-halle-onboarding` | 8a143c7 | 013 M2d-2: Seite `/halle/anfragen`, Assistent, Einstiegslinks, E2E (`halle-onboarding.spec.ts`, Shard 1). Reviews: security OK, w2 R-T335/R-T335b umgesetzt. CI: der strict-mode-Fehler (Stadt-Feld der Vorseite) ist behoben (Felder nur im Assistenten adressiert), CI-Lauf nach dem Fix und Laufzeit Shard 1 ausstehend; nach dem Merge: Audit-Zeile in die nächste Doku-Sammlung |
-| #242 | `feat-venue-requests-ui` | 9e1ef3c | 013 AC-31 UI Admin-Anfragen (w2): ConfirmDialog mit Grund-Feld, Statusbereich, E2E Shard 3. security OK, Review R-T337 (w4) OK mit 3 kleinen Hinweisen |
+| #244 | `dependabot` (actions-Gruppe) | | Bump von 2 GitHub-Actions; fasst `.github/` an: Nutzer mergt (NEEDS-USER) |
 
 ## 3. Worker (Branch | Hash | Stand | nächster Schritt)
 **worker-1**: 012 M6b, Fristjob-Fix
@@ -30,7 +31,7 @@ Regel für die Pause: KEINE neuen Tasks, KEIN neuer Push oder PR; fertiges ist l
 - `feat/012-m6a-guthaben-ui` | ae77b08, 10 voraus | 012 M6a Reste (E2E ohne Bezahlen-Knopf) | prüfen, ob durch #207ff. überholt.
 
 **worker-2**: Admin-Anfragen-UI
-- `feat-venue-requests-ui` | 9e1ef3c | #242 (siehe oben) | Merge nach beiden OK und grüner CI.
+- `feat-venue-requests-ui` | 78b6fbd (gemergt #242) | erledigt | Worktree aufräumen.
 - `feat/seed-admin` | 9cfa78a, 1 voraus | Admin-Seed für die Frontend-Analyse | lokal, kein PR.
 
 **worker-3**: Cards, Kartenfixture
@@ -40,16 +41,16 @@ Regel für die Pause: KEINE neuen Tasks, KEIN neuer Push oder PR; fertiges ist l
 - `feat/m2b-look` (Worktree `docs-analyse-frontend-y1`) | ee2843d, 79 voraus, 5 uncommitted | Look-Stand, **tabu** (Look-Abnahme beim Nutzer).
 
 **worker-4 (t1b)**: Reviewer, Onboarding, Doku
-- `feat/013-halle-onboarding` | 8a143c7 | #240 offen, Arbeitsbaum sauber | auf CI-Lauf warten; keine eigene Nacharbeit offen.
+- `feat/013-halle-onboarding` | 49b6fb2 (gemergt #240) | erledigt | Worktree kann entfernt werden (`git worktree remove`; `worktree.mjs remove` löscht die geteilte Worker-DB, nur verwenden, wenn kein anderer eigener Worktree sie braucht).
 - `docs/sammel-34` | 66cdda5 | ÜBERHOLT durch #241 (Backlog 209 ist in main); Worktree kann entfernt werden.
-- `docs/pause-stand-2` | dieser Stand | Doku-PR nach der Pause.
+- `docs/pause-stand-2` (gemergt #243), `chore/node-version` (gemergt #245), `docs/sammel-34` (überholt): erledigt. Aktuell: `docs/sammel-36` (diese Doku), danach Review Fristjob-Fix (w1) als Reviewer.
 - Alle Reviews bis R-T337 gemeldet (R-T328 bis R-T337: Kartenfixtures, Schalter-Flip, Cards B und C1, Notschalter, Admin-Anfragen-UI).
 
 ## 4. Push-Reihenfolge nach der Pause
 1. **Fristjob-Fix (w1, `feat/pause-fristjob`)**: Go-live-Blocker, zuerst; danach BETRIEB-Tabelle Job × Schalterzustand und die Warnung „Notschalter nicht in Produktion nutzen“ entfernen, G29-012 abhaken.
 2. 1c-ii-b (w1): `settleMatch` raus, Neutraltext.
 3. #198 (012 M6b PR 1a) samt Doppelbelastungs-Schutz.
-4. #240 (Onboarding) und #242 (Admin-Anfragen-UI), unabhängig voneinander, CI je einzeln (höchstens ein Browser-Lauf zur Zeit; Shard 1 und 3 messen).
+4. ~~#240 (Onboarding) und #242 (Admin-Anfragen-UI)~~ gemergt; als Nächstes #244 (Nutzer), Cards C1.
 5. Cards C1, dann C2 und PR B Nachläufer.
 6. Doku-Sammel 36: Audit #240, #242, #198, Fristjob-Fix; Tabelle Job × Schalter.
 Migrationen: Nummer beim Bau, serieller Merge, wer später mergt renummeriert (Journal und Snapshot). Heute main bis 0057; kein Branch trägt eine ungemergte Migration.
@@ -70,6 +71,7 @@ Migrationen: Nummer beim Bau, serieller Merge, wer später mergt renummeriert (J
 
 ## 7. Neustart-Hinweise
 - Nach /clear oder Neustart zuerst diese Datei und `docs/loop/HANDOFF.md` (falls vorhanden) lesen.
+- **Node >= 22.13 (22er)** ist Pflicht (`node -v`, Datei `.nvmrc`): `npm run dev|build|lint|test|test:e2e|test:integration|typecheck|db:migrate` prüfen das vor dem Start; `npx vitest`, `npx eslint`, `npx tsc` laufen ohne Hook. Auf dem Dev-Rechner steht v22.23.5.
 - **Migrationen in der eigenen Worker-DB:** `npm run db:migrate` im jeweiligen Worktree (0056 und 0057 sind neu; Worker-DBs mit einem früheren Stand von 0056 neu aufbauen, siehe `docs/BETRIEB.md`). Vorher `pwd`, `git branch --show-current` und die Ziel-DB prüfen (Regelvorschlag 27); nie in `SoccaV2` (Haupt-DB `soccav2`).
 - **Worktrees:** `node scripts/worktree.mjs create <branch> <worker> --base origin/main --no-seed` bzw. `remove <branch>`; Pfade mit Leerzeichen immer quoten; schreibende Befehle nur hinter `cd … &&`, nie hinter einem `cd`, das fehlschlagen kann.
 - **hc-Adressen:** t2q (Orchestrator), t2r, t2s (Task Manager), t2t, t2v, t2w; lange Texte als Datei senden, nie Backticks oder `$(…)` direkt in doppelte Anführungszeichen.
