@@ -16,10 +16,10 @@ import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
 import { hasLongLead } from "@/lib/deadlines";
 import { recordLateCancel } from "./stats";
-import { paymentsEnabled } from "./settings";
+import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
 import { triggerChargesInBackground } from "./payments/charge-trigger";
 import { chargeAmount } from "./payments/charge-run";
-import { CHARGES_LOCKED, assertNotLegacyMoney, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { CHARGES_LOCKED, assertNotLegacyMoney, hasPaidSeat, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
@@ -432,6 +432,8 @@ export function payShare(userId: string, matchId: string) {
     if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
     if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
     if (match.schedulingOpen || match.vetoStatus === "halls" || match.vetoStatus === "running") throw new DomainError("Bezahlen geht, sobald Uhrzeit und Halle feststehen.");
+    // PAUSE (Entscheid D): Zahlungen AN + Karte AUS: kein Weg ueber das Guthaben (nichts wird gebucht). Altspiele sind ohnehin stillgelegt (assertNotLegacyMoney). Spiele mit Guthaben im Platz (paid_cents > 0) bleiben im alten Pfad, wie beim Frist-Job (sonst koennte der Zweite weder zahlen noch wuerde die Absage verhindert).
+    if (!match.legacyShareModel && (await paymentsEnabled(tx)) && !(await cardPaymentsEnabled(tx)) && !(await hasPaidSeat(tx, matchId))) throw new DomainError("Zahlungen sind gerade pausiert. Bitte versuche es später noch einmal.");
     if (await cardModeActive(tx, match)) throw new DomainError("Bezahlt wird per Karte: Hinterlege eine Karte. Abgebucht wird erst, wenn der Anteil feststeht.");
     await reserveShare(tx, match, userId);
   });
