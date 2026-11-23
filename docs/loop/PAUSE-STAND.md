@@ -1,87 +1,84 @@
 # PAUSE-STAND
 
-Stand: 2026-11-12, ca. 18:10 UTC (Pause-Modus durch den Nutzer, über t9). Geschrieben vom Task Manager.
-Alle vier Worker haben ihren Schritt lokal committet und ruhen. Nichts außer #138 und diesem Doku-PR ist offen oder wird gepusht.
+Stand: 2026-11-23, nach Doku-Sammel 35 (#241), main = `bcd35e1` (Migrationen bis 0057). Pause-Modus durch den Nutzer (über t2q/t2s). Verfasser: worker-4 (t1b), nach den Meldungen der Worker und dem Zustand der Worktrees; Angaben zu fremden Branches sind gelesen, nicht geprüft. Der Stand vom 2026-11-12 (t9) ist ersetzt.
+Regel für die Pause: KEINE neuen Tasks, KEIN neuer Push oder PR; fertiges ist lokal committet, Halbfertiges als `WIP:`-Commit auf dem lokalen Branch.
 
-## 1. Seit dem letzten Bericht gemergt (Auszug, alle einzeln, squash)
+## 1. Seit dem letzten Stand gemergt (Auszug, einzeln, squash)
 | PR | Inhalt |
 |---|---|
-| #124, #125 | Doku 009 (Release-Bedingung E1c+E2, Klarstellung Admin 1) |
-| #126 | 012 M4b-1: Export und Löschung der Kartendaten (Migration 0043) |
-| #127 | Doku-Sammel 5: Backlog 90-113, Go-Live-Audit G2/G22/G23 |
-| #128 | 009 M1 E1a-E1c: Admin 1 (`is_owner`), Admin 2 ohne Finanzen, Teilrollen entfallen (Migrationen 0044, 0045) |
-| #129, #131, #133, #135 | Doku-Sammel: Pläne 012 M5, 009 M2, 011 M1, 013 M3-Vorbereitung; Entscheide t9; Backlog 114-136; CI-Matrix-Vorschlag |
-| #130 | Fix: Betreiber-Zuordnung nur Admin 1 (`setVenueManagerAction` owner) |
-| #132 | 012 M5-2a/2b: `tournament_id` an Zahlungszeilen, `match_id` nullable + XOR (Migrationen 0046, 0047) |
-| #134 | 009 M2: Provision je Halle, 10er-Bonus, Monatsrechnung, USt-Schalter (Migration 0048) |
-| #136 | Doku: Wartungsausnahme und DB-Rollenmodell (G25-009) |
-| #137 | Fix: Gast/Nichtteilnehmer sehen keinen persönlichen Betrag/Kartentext in der Lobby (Payload-Härtung) |
-
-Main-Stand beim Schreiben: 636b6d7 (Migrationen bis 0048 auf main).
+| #207, #205, #209-#218 | 012 M6b: Zahlungen AUS = Gratis im Kartenmodell, Admin-Finanzen im Kartenmodell, Salden-Guard, Turnier ohne Guthabenweg |
+| #222, #233, #236, #239 | 012 M6b Kartenfixtures 1 bis 4 (nur Tests) |
+| #225, #226, #228, #229, #234 | 013 M2c: Wertung aus Elo (`rating.ts`), Baustein `Assistent`, DESIGN.md Richtung F, Karten-Logik (Cards A) und Karten-Komponenten (Cards B) |
+| #227 | 013 AC-31 Hallen-Freischaltung (Migration 0056, DB-CHECK, Admin 1 und 2) |
+| #235 | 013 M2d-1 Hallen-Anfrage Server (Migration 0057 `court_count`, Rate-Limit 5 je Stunde) |
+| #230 | Schalter-Flip: Dev-Seeds Kartenmodell AN, Tests starten und enden AUS/AUS |
+| #238 | Notschalter Kartenzahlung (Admin 1) |
+| #231, #232, #237, #241 | Doku-Sammel 31 bis 35 (Audit, Backlog bis 210, Regelvorschlag 27, BETRIEB Notabschaltung, Blocker G29-012) |
 
 ## 2. Offene PRs
-| PR | Stand |
-|---|---|
-| #138 011 M1 (venue_access, Migration 0049, Einladung, Migrationsbericht, Aufräum-Job R1) | Code- und Security-Review OK (Server, Fix, Nachlauf, Merge-Teil). CI: Typen/Lint/Unit, Integration, Browser 3/4 und 4/4 grün; Browser 1/4 und 2/4 liefen beim Schreiben noch. Merge einzeln, sobald alles grün und CLEAN; danach Worktree/Branch aufräumen (`docs-analyse-frontend-y1` hält `feat/011-m1-nachlauf`). |
-| dieser Doku-PR (PAUSE-STAND) | Doku, Browser-Tests übersprungen. |
+| PR | Branch | Hash | Stand |
+|---|---|---|---|
+| #198 | `feat/012-m6b-code` | 6515fad (lokal weiter 7444770, 7 Commits voraus) | 012 M6b PR 1a: Guthaben-Altpfad im Code entfernen; lokal liegt der Doppelbelastungs-Schutz in `cardModeActive` (noch nicht gepusht) |
+| #240 | `feat/013-halle-onboarding` | 8a143c7 | 013 M2d-2: Seite `/halle/anfragen`, Assistent, Einstiegslinks, E2E (`halle-onboarding.spec.ts`, Shard 1). Reviews: security OK, w2 R-T335/R-T335b umgesetzt. CI: der strict-mode-Fehler (Stadt-Feld der Vorseite) ist behoben (Felder nur im Assistenten adressiert), CI-Lauf nach dem Fix und Laufzeit Shard 1 ausstehend; nach dem Merge: Audit-Zeile in die nächste Doku-Sammlung |
+| #242 | `feat-venue-requests-ui` | 9e1ef3c | 013 AC-31 UI Admin-Anfragen (w2): ConfirmDialog mit Grund-Feld, Statusbereich, E2E Shard 3. security OK, Review R-T337 (w4) OK mit 3 kleinen Hinweisen |
 
-## 3. Worker (Branch | Hash | fertig | offen | nächster Schritt)
-**worker-1 (t17)**: 012 M5 (Turnier auf Karte)
-- `feat/m5-1` | 1e4d046 | M5-1 fertig (Partnerhalle, Zusage-Attrappe, Snapshot), Reviews OK | Rebase-Umbau, Commits VOR M5-3 ordnen | Migration lokal 0049 -> geplant 0050.
-- `feat/m5-3` | 8f45c88 | M5-3 (Kartenmodell Turnier, Übernahme, Sichtbarkeit) fertig, Reviews OK | Rebase-Umbau | lokal 0048/0050 -> geplant 0051.
-- `feat/m5-4` | 5e94615 | M5-4a (Abbuchung zur Frist, Webhook/Streit-Zweig, `venue_payable`, Provision aus Snapshot, Belege, Alarme, Notabschaltung) fertig, Delta-Reviews OK | Rebase auf main (009-M2-Merge 5a12ad4 entfällt) | lokal 0051 -> geplant 0053.
-- `feat/m5-5` | 56f22c0 | ZWISCHENSTAND lauffähig, UNVOLLSTÄNDIG: Absage im Kartenmodell (Erstattungszeilen, Provisions-Storno `commission-reversal:t`, Owner-Regel, Kartentexte, "hängt ohne Zeilen"); Tournament-Tests grün | offen: Fensterablauf-Job, Versand der Turnier-Erstattungen (`refund.ts` turnierfähig, Alarm ersetzen), Wiederholen im Fenster, 3-D-Secure für Turnierzeilen, DSGVO-Löschsperre, Mutationen; Voll-Integration vor Weiterarbeit fahren | keine neue Migration bisher.
-- `docs/012-m5-nachtrag2` | 1d0a0b9 | Plan-Nachträge M5-4a, Plan 3.5 Hallenmiete (P6) | Nachtrag M5-5 offen.
-- Hinweis: w1-DB steht auf Migrationsstand 0051; vor Branchwechsel `db:migrate`/Reset.
+## 3. Worker (Branch | Hash | Stand | nächster Schritt)
+**worker-1**: 012 M6b, Fristjob-Fix
+- `feat/pause-fristjob` | c122190 (= main), 3 Dateien uncommitted | **GO-LIVE-BLOCKER G29-012:** Fix „Pause: Frist-Job sagt nicht ab“ (`closeLobbiesAtDeadline` kennt den Kartenschalter nicht, Spiele ohne Abbuchungszeilen können bei Zahlungen AN + Karte AUS an der Frist abgesagt werden) | als `WIP:`-Commit sichern; Plan: Frist-Job und `cardModeActive`-Pfade bei Karte AUS pausieren; Tests: „pausiert: Frist-Job sagt nicht ab“ (Spiel nahe 48-h-Frist, Karte AUS, bleibt unverändert), Nachzahl-/Übernahmefenster (AC-9) während der Pause, Tabelle Job × Schalterzustand × erwartetes Verhalten für BETRIEB.
+- `feat/1c-ii-b-abrechnung` | c122190 (leer) | 1c-ii-b: `settleMatch` aus dem Fristjob löschen (Backlog 206), neutraler Text „Bezahlung ist gerade nicht möglich“ (Backlog 209) | nach dem Fristjob-Fix.
+- `feat/012-m6b-1c-iii-a` | 34cf6a4, 13 voraus | 1c-iii (a) Nachläufer (hasPaidNow netto, Konsistenztest) | prüfen, ob schon in main enthalten (#205), sonst aufräumen.
+- `feat/012-m6a-guthaben-ui` | ae77b08, 10 voraus | 012 M6a Reste (E2E ohne Bezahlen-Knopf) | prüfen, ob durch #207ff. überholt.
 
-**worker-2 (t1c)**: 009 M3 (Beweisprotokoll, Variante G)
-- `feat/009-m3a` | 9677632 | M3a fertig (Schema, Trigger, `recordEvidence`, `verifyEvidenceChain`, 21 Tests, Security/Code-Delta OK, TRUNCATE-Trigger) | Migration neu als 0052, BETRIEB-Nachtrag `evidence_insert`/`booking_evidence` | lokal 0049_volatile_tomas -> geplant 0052.
-- `feat/009-m3b` | fe248e7 | nur Vorbereitung (M3a + Merge 011-M1), KEIN Haken-Code | Haken in `veto.ts`/`booking.ts`/`venue-access.ts`/`account.ts`: Einträge in der Tx sammeln und am Ende schreiben ODER DB-seitig per DEFERRABLE-Constraint-Trigger (Gegenvorschlag, ENTSCHEID nötig) | lokal 0050 -> geplant 0052.
-- `docs/009-m3-plan` | 9fa5e71 | Plan v3 + Nachträge, noch in keinem PR | in nächsten Doku-PR bündeln.
+**worker-2**: Admin-Anfragen-UI
+- `feat-venue-requests-ui` | 9e1ef3c | #242 (siehe oben) | Merge nach beiden OK und grüner CI.
+- `feat/seed-admin` | 9cfa78a, 1 voraus | Admin-Seed für die Frontend-Analyse | lokal, kein PR.
 
-**worker-3 (t19)**: 011 M1 / Lobby / Look
-- `feat/011-m1-nachlauf` | 537cfe3 (Stand in #138) | 011 M1 komplett, im PR #138.
-- `docs/011-m2-plan` | 2e292f5 | Plan v1 (Entscheidung + Pflicht-Begründung, Beweisprotokoll-Anbindung, Frist/Karenz, 12-h-Regel, Wechsel); Fragen P1-P8, PL1-4, R-M2-1..3 | Review durch anderen Worker, Fragen beantworten lassen; Schnittstelle `appendHallEvidence` ist Annahme.
-- `feat/m2b-look` | e2442b0 | Look Start/`/app`/Lobby, NUTZERPAKET v2 liegt vor | wartet auf Look-Abnahme des Nutzers, Hero-Standbild.
-- `fix/gast-kosten` | 06e7b55 | Fix auf dem Look-Stand | beim Merge von `m2b-look`: main mergen, Konflikt `page.tsx` per "ours" (Look-Stand).
+**worker-3**: Cards, Kartenfixture
+- `feat/013-cards-c1` | cf444bc (Vorgänger 6532afc/b36553e), 3 voraus | Cards C1 (Wertung aufdecken als Text und Karte, `/spiele/[id]`), Review R-T336 umgesetzt (E2E in Shard 4, ruhiger Wortlaut bei gesunkener Stufe, Überschrift „Deine Wertung nach diesem Spiel“) | PR öffnen nach der Pause; danach C2 (Animation, AC-21 bis AC-23) und PR B Nachläufer.
+- `feat/012-m6b-kartenfixture-4` | 7c61099, 11 voraus | Nachtrag zu Paket 4 (R-T334, über 12 Spieler) | prüfen, ob in #239 enthalten.
+- `fix/seed-scripts-guard` | c9db0a3, 5 voraus | Seed-Skript-Wächter | lokal.
+- `feat/m2b-look` (Worktree `docs-analyse-frontend-y1`) | ee2843d, 79 voraus, 5 uncommitted | Look-Stand, **tabu** (Look-Abnahme beim Nutzer).
 
-**worker-4 (t1b)**: Reviewer (ohne eigenen Code)
-- Alle Reviews bis R-T218b gemeldet. Checklisten im Scratchpad: M5, 009 M2, 011 M1, 009 M3, M3b-Vorbereitung, Kontrast-Messprotokoll, Look-Abnahme.
+**worker-4 (t1b)**: Reviewer, Onboarding, Doku
+- `feat/013-halle-onboarding` | 8a143c7 | #240 offen, Arbeitsbaum sauber | auf CI-Lauf warten; keine eigene Nacharbeit offen.
+- `docs/sammel-34` | 66cdda5 | ÜBERHOLT durch #241 (Backlog 209 ist in main); Worktree kann entfernt werden.
+- `docs/pause-stand-2` | dieser Stand | Doku-PR nach der Pause.
+- Alle Reviews bis R-T337 gemeldet (R-T328 bis R-T337: Kartenfixtures, Schalter-Flip, Cards B und C1, Notschalter, Admin-Anfragen-UI).
 
-## 4. Geplante Push-Reihenfolge (Migrationen) und Abhängigkeiten
-Journal-`when` muss in der Nummernreihenfolge STRENG aufsteigend sein, sonst überspringt der Migrator eingeschobene Migrationen still. Je Schritt: main mergen, Nummer neu erzeugen, `db:generate` = "No schema changes", `migrate-check` frisch + bestehend, einzeln pushen, ein Browser-Lauf zur Zeit, CI grün abwarten, einzeln mergen.
+## 4. Push-Reihenfolge nach der Pause
+1. **Fristjob-Fix (w1, `feat/pause-fristjob`)**: Go-live-Blocker, zuerst; danach BETRIEB-Tabelle Job × Schalterzustand und die Warnung „Notschalter nicht in Produktion nutzen“ entfernen, G29-012 abhaken.
+2. 1c-ii-b (w1): `settleMatch` raus, Neutraltext.
+3. #198 (012 M6b PR 1a) samt Doppelbelastungs-Schutz.
+4. #240 (Onboarding) und #242 (Admin-Anfragen-UI), unabhängig voneinander, CI je einzeln (höchstens ein Browser-Lauf zur Zeit; Shard 1 und 3 messen).
+5. Cards C1, dann C2 und PR B Nachläufer.
+6. Doku-Sammel 36: Audit #240, #242, #198, Fristjob-Fix; Tabelle Job × Schalter.
+Migrationen: Nummer beim Bau, serieller Merge, wer später mergt renummeriert (Journal und Snapshot). Heute main bis 0057; kein Branch trägt eine ungemergte Migration.
 
-| Reihenfolge | Inhalt | Migration |
-|---|---|---|
-| 0 (läuft) | #138 011 M1 | 0049 |
-| 1 | M5-1 (Umordnung VOR M5-3) | 0050 |
-| 2 | M5-3 | 0051 |
-| 3 | 009 M3a (Marke im `migrate-check` per `findIndex`; die 4 Prüfungen aus 011 übernehmen, "full - 2" streichen) | 0052 |
-| 4 | M5-4 (braucht M5-1, M5-3, M3a) | 0053 |
-| 5+ | M5-5 (nur falls nötig 0054+), 009 M3b (Haken, Entscheid DEFERRABLE offen) | – |
+## 5. Offene Entscheide
+- **Nachzahlfenster nach langer Pause:** laufen Nachzahl- und Übernahmefristen (AC-9) während der Notabschaltung weiter und sagen Spiele ab, oder wird verlängert? Beleg durch den Fristjob-Test.
+- **Neutraltext 1c-ii-b:** „Bezahlung ist gerade nicht möglich“ bei Zahlungen AN + Karte AUS (Lobby, Bereit, Beitritt), bis dahin Support-Hinweis.
+- **Tabelle Job × Schalterzustand × erwartetes Verhalten** (liefert w1, für BETRIEB).
+- Wortlaut bei sinkender Stufe (umgesetzt „ruhig“, Entscheid t2q bestätigen); `rating_history` je (Spieler, Spiel) eindeutig machen (Backlog).
 
-Weitere Doku-PRs ohne Browser-Tests: `docs/009-m3-plan`, `docs/012-m5-nachtrag2`, `docs/011-m2-plan` (nach Review).
+## 6. Punkte, die nur der Nutzer entscheiden oder tun kann
+- **Anbieter-Spike A2** (Entscheid und Konto).
+- **Regel-PRs 23 bis 27** (`docs/loop/REGELVORSCHLAG.md`; Nutzer mergt, `.claude/` und `.github/` ebenso).
+- **Rechtsliste (`docs/loop/FEHLT-NOCH.md`):** Bedingungstext Hallen-Onboarding (ENTWURF, Anwalt), Partnervertrag Hallen, Markenprüfung Richtung F (Backlog 171), Erstattung und Abschreibung von Guthaben-Ansprüchen, Steuerberater (Kontenzuordnung, USt).
+- **Look-Abnahme M2b / Look-Abnahme 2** (Bilder, Videos, Handy-Prüfung AC-24), Hero-Video-Lizenz.
+- **Aufräumen, das nur der Nutzer kann:** `.playwright-mcp/`, nicht löschbare Review-Worktrees (siehe alter Stand), IDE-tsserver-Prozesse.
+- Port 3100 gehört dem Nutzer (nicht beenden).
 
-## 5. Offene Entscheide beim Nutzer
-- **Look-Abnahme M2b (NUTZERPAKET v2, 8 Punkte):** Look insgesamt; Abschluss-"Anmelden"; Rand ruhiger Knöpfe; test-gebundene Texte mit M3; Hero-Video/Standbild bis Lizenz; Kopfleisten-Betrag 0,00 € und `/app/guthaben` stehen lassen; Kader-Zeilen am Handy; Abnahme trotz ungeprüftem letztem Lobby-Stand und ungemessenem Kontrast (Messung nach dem Ja durch worker-3, Protokoll liegt).
-- **Ausnahme-PRs (Nutzer mergt):** `.claude/`, `.github/`; **PR B** (`.github`-Sammel): CI-Matrix-Lauf der Karten-/Hauptbuch-Suiten mit `TEST_LEDGER_MODEL=commission` (Vorschlag `docs/loop/VORSCHLAG-CI-LEDGER-MATRIX.md`) und `PAYMENTS_FAKE` auch im Playwright-Schritt (damit `karte-*`-Specs in der CI laufen); `tests/e2e/global-teardown.ts` setzt `card_payments_enabled` nicht zurück (Ausnahmeliste).
-- **Regel-PR:** Speicherregel als Zeile in `docs/loop/REGELVORSCHLAG.md`; `axe-core` nur transitiv (Vorschlag: explizite devDependency, Regel 14).
-- **Rechts-/Steuer-Liste (kein Agent entscheidet):** R1 (Aufbewahrung abgelaufener Einladungsadressen, 30 Tage Annahme), R3 (Beweisprotokoll: Aufbewahrung/Löschung/Beweiswert, Personenfelder `evidence_actor`), Ablageort Kopf-Hash (Anwalt), S2 (Nummernjahr), S3 (Gutschrift), E4 (Kontenrahmen), Hero-Video-Lizenz, Datenschutz-Entwurf.
-- **Produkt:** 009 M3b Haken-Design (Sammeln-am-Ende vs. DEFERRABLE-Trigger); Fragen 011 M2 (P1-P8, PL1-4).
-- **Aufräumen, das nur der Nutzer kann (NEEDS-USER):** `.playwright-mcp/`, `worktrees/review-m3c-1c`, `worktrees/review-e1c` (nicht löschbar, "Invalid argument"); IDE-tsserver-Prozesse mit hohem Speicher beenden/neu starten.
+## 7. Neustart-Hinweise
+- Nach /clear oder Neustart zuerst diese Datei und `docs/loop/HANDOFF.md` (falls vorhanden) lesen.
+- **Migrationen in der eigenen Worker-DB:** `npm run db:migrate` im jeweiligen Worktree (0056 und 0057 sind neu; Worker-DBs mit einem früheren Stand von 0056 neu aufbauen, siehe `docs/BETRIEB.md`). Vorher `pwd`, `git branch --show-current` und die Ziel-DB prüfen (Regelvorschlag 27); nie in `SoccaV2` (Haupt-DB `soccav2`).
+- **Worktrees:** `node scripts/worktree.mjs create <branch> <worker> --base origin/main --no-seed` bzw. `remove <branch>`; Pfade mit Leerzeichen immer quoten; schreibende Befehle nur hinter `cd … &&`, nie hinter einem `cd`, das fehlschlagen kann.
+- **hc-Adressen:** t2q (Orchestrator), t2r, t2s (Task Manager), t2t, t2v, t2w; lange Texte als Datei senden, nie Backticks oder `$(…)` direkt in doppelte Anführungszeichen.
+- **Aktuelle Schalterlage:** Produktion `payments_enabled` AUS und `card_payments_enabled` AUS; Dev-Seeds schalten beide EIN, Tests starten und enden AUS/AUS. Notschalter nur Admin 1, **nicht benutzen, bis der Fristjob-Fix gemergt ist** (G29-012).
 
-## 6. Bekannte Risiken und Blockaden
-- **CI:** Browser-Tests laufen derzeit 30+ Minuten je PR (4 Shards); höchstens ein Browser-Lauf zur Zeit; main-Push-CI wird durch spätere Läufe abgebrochen (kein Befund, PR-CI war grün).
-- **DB-Rollenmodell (G25-009, blockiert Go-live):** `socaz.ledger_maintenance`/`socaz.evidence_insert` sind freie Sitzungswerte; getrennte DB-Rollen + REVOKE vor Live.
-- **Attrappen G24-012:** `hallZusageOk`, `venueHasAccess`, `venueCommissionPercent` bis M5-7 (vor Go-live Pflicht).
-- **Schalter `card_payments_enabled`:** in Produktion AUS; Abbuchung, Turnier-Karte und Provision erst mit Gating (Kette M3c, M4, M5, 3-D-Secure, Alarmanzeige).
-- **Video-Lizenz, Stripe-Schlüssel:** Hero-Video-Lizenz ungeklärt; Stripe-Testschlüssel trägt der Nutzer selbst in `.env.local` ein (nie Live-Schlüssel); `.env*` wird nie gelesen.
-- **Offene Backlog-/FEHLT-NOCH-Punkte:** `docs/loop/BACKLOG.md` (90-136+), `docs/loop/FEHLT-NOCH.md`, `docs/loop/GO-LIVE-AUDIT.md` (G18-G25).
-- **Zwei stille Hängerlagen in M5-4a:** "Turnier wartet auf Karten" (Alarm vorhanden), Restfenster Notabschaltung (in `BETRIEB.md`).
-
-## 7. Hinweise zum Neustart
-- Herzschlag neu setzen aus `docs/loop/HERZSCHLAG.md`; nach `/clear` zuerst `docs/loop/HANDOFF.md` bzw. diese Datei lesen.
-- Worker-DBs `soccaz_w1` bis `soccaz_w4`: Migrationsstände weichen ab (w1 auf 0051, ältere 0046/0049 auf anderen Ständen); bei Zweifel mit `node scripts/worktree.mjs` neu anlegen. Alte lokale DBs mit früherem 0049/`venue_access` müssen `venue_access` verwerfen.
-- Ports: Haupt-Dev-Server 3100; Worker 3101 bis 3104; Postgres 5433. Höchstens zwei Dev-Server gleichzeitig, jeder nach Gebrauch beenden; Playwright höchstens `--workers=2` (besser 1) und nur betroffene Specs; Vitest mit Zeitlimit; keine Integrationsläufe parallel.
-- `.env.local` lässt sich nicht in neue Worktrees kopieren (Deny-Regel); `worktree.mjs create` legt sie an.
-- Hauptrepo nie auschecken; Arbeit nur in Worktrees; Aufräumen erst nach `MERGED`-Prüfung, nie in einer Kette mit dem Merge.
+## 8. Speicherregeln (Arbeitsweise, aus den gemerkten Rückmeldungen)
+- Der Orchestrator mergt nie; `NEEDS-USER` (`.claude/`, `.github/`, Regel-PRs) übergeht kein Agent.
+- Aufräumen (Worktrees, Branches) erst, nachdem `gh pr view` den PR als MERGED zeigt; nie in einer Kette mit dem Merge-Check.
+- `gh pr merge` immer als Einzelbefehl, nie mit `&&` verkettet; Merge-Meldung nur mit Beleg (`gh pr view --json state,mergedAt`).
+- Abläufe (Weiterleitung, Format, Reihenfolge) selbst entscheiden und nicht beim Nutzer erfragen; Best Practice, keine Leerläufe, freie Worker sofort mit Vorarbeit einsetzen.
+- Plan-Aussagen immer gegen den Code lesen (R-T313, R-T333); Folgetexte nur mit Beleg.
+- Öffentliches Repo: keine Secrets, keine lokalen Pfade, keine privaten Mails; `.env*` nie lesen oder ausgeben.
