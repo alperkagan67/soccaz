@@ -73,6 +73,7 @@ export const venues = pgTable(
   (t) => [
     check("venues_commission_percent_range", sql`${t.commissionPercent} >= 0 and ${t.commissionPercent} <= 100`),
     check("venues_approval_status_chk", sql`${t.approvalStatus} in ('requested', 'approved', 'rejected')`),
+    check("venues_requested_inactive_chk", sql`${t.approvalStatus} = 'approved' or ${t.active} = false`), // einzige DB-seitige Absicherung: eine angefragte/abgelehnte Halle kann nicht aktiv sein
   ],
 );
 

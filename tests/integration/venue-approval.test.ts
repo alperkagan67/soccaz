@@ -2,16 +2,18 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, like, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, notifications, users } from "@/db/schema";
+import { comments } from "@/db/schema-content";
 import { venueAccess, venues } from "@/db/schema-finance";
 import { matchHallRequests } from "@/db/schema-matchmaking";
 import { createBookingJob, updateBookingJob } from "@/server/booking";
+import { postComment } from "@/server/content";
 import { setSetting } from "@/server/settings";
 import { getScheduling } from "@/server/scheduling";
 import { createTournament, setOrganizer } from "@/server/tournaments";
 import { isPartnerVenue, listPartnerVenueOptions } from "@/server/tournament-venue";
 import { startHallCheck } from "@/server/veto";
 import { getPublicVenue, listPublicVenues, listVenues, updateVenue } from "@/server/venues";
-import { approveVenue, countVenueRequests, listRejectedVenues, listVenueRequests, myPendingVenues, rejectVenue, requestVenue, resubmitVenue } from "@/server/venue-approval";
+import { MAX_OPEN_REQUESTS, approveVenue, countVenueRequests, listRejectedVenues, listVenueRequests, myPendingVenues, rejectVenue, requestVenue, resubmitVenue } from "@/server/venue-approval";
 import sitemap from "@/app/sitemap";
 import { cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -57,44 +59,6 @@ describe("Anfrage: nicht freigegebene Halle ist unsichtbar und nicht buchbar", (
     expect(access).toHaveLength(1);
     expect(access[0]).toMatchObject({ userId: operator.id, status: "active" });
     expect((await db.select().from(venues).where(eq(venues.name, input.name))).length).toBe(1);
-  });
-
-  it("erscheint nirgends: Liste, Detail, Auswahl, Sitemap, Termin-Auswahl, Veto, Turnier-Partnerhalle (auch im Fehlzustand active = true)", async () => {
-    const { v } = await requested();
-    await forceActive(v.id);
-    expect(await publicIds()).not.toContain(v.id);
-    expect(await getPublicVenue(v.id)).toBeNull();
-    expect((await listVenues(false)).map((x) => x.id)).not.toContain(v.id);
-    expect((await sitemap()).some((e) => e.url.endsWith(`/hallen/${v.id}`))).toBe(false);
-    const sched = await getScheduling({ id: UNKNOWN, schedulingOpen: true, schedulingDeadline: null, timeWindows: null }, CITY);
-    expect(sched?.venues.map((x) => x.id)).not.toContain(v.id);
-    expect((await listPartnerVenueOptions())?.map((x) => x.id)).not.toContain(v.id);
-    expect(await isPartnerVenue(db, v.id)).toBe(false);
-    // Veto: die Halle kommt nicht in den Pool
-    const m = await makeMatch({ hoursAhead: 100 });
-    await db.transaction((tx) => startHallCheck(tx, m.match, CITY));
-    expect((await db.select().from(matchHallRequests).where(eq(matchHallRequests.matchId, m.match.id))).map((r) => r.venueId)).not.toContain(v.id);
-  });
-
-  it("nicht buchbar: Fremd-ID per POST liefert dieselbe Antwort wie eine unbekannte ID (Turnier-Partnerhalle, Buchungsauftrag), kein Existenz-Leck", async () => {
-    const { v } = await requested();
-    await forceActive(v.id);
-    const org = await makeUser("vorg");
-    const admin = await makeUser("vadm", "admin");
-    await setOrganizer(admin.id, org.id, true);
-    const base = { name: "Freigabe-Cup", city: CITY, startsAt: new Date(Date.now() + 5 * 86_400_000), registrationDeadline: new Date(Date.now() + 3 * 86_400_000), maxTeams: 4, durationMin: 120, hourlyCents: 8000 };
-    const asUnknown = await createTournament(org.id, { ...base, venueId: UNKNOWN }).then(() => "ok", (e: Error) => e.message);
-    const asRequested = await createTournament(org.id, { ...base, venueId: v.id }).then(() => "ok", (e: Error) => e.message);
-    expect(asRequested).not.toBe("ok");
-    expect(asRequested).toBe(asUnknown);
-    const m = await makeMatch({ hoursAhead: 100 });
-    const job = await db.transaction((tx) => createBookingJob(tx, m.match));
-    await updateBookingJob(admin.id, job!.id, { status: "in_progress" });
-    const asUnknownBook = await updateBookingJob(admin.id, job!.id, { status: "booked", venueId: UNKNOWN }).then(() => "ok", (e: Error) => e.message);
-    const asRequestedBook = await updateBookingJob(admin.id, job!.id, { status: "booked", venueId: v.id }).then(() => "ok", (e: Error) => e.message);
-    expect(asRequestedBook).not.toBe("ok");
-    expect(asRequestedBook).toBe(asUnknownBook);
-    expect((await statusOf(v.id)).approvalStatus).toBe("requested");
   });
 
   it("Admin kann eine angefragte Halle nicht ueber updateVenue aktivieren (active nur durch die Freischaltung)", async () => {
@@ -252,5 +216,128 @@ describe("Admin-Hinweise: Zahl offener Anfragen und abgelehnte Anfragen", () => 
     expect(rows.map((r) => r.id)).not.toContain(ok.id);
     expect(rows.find((r) => r.id === no.id)).toMatchObject({ name: no.name, reason: "Adresse unklar" });
     expect(rows.find((r) => r.id === no.id)?.decidedAt).not.toBeNull();
+  });
+});
+
+// Fehlzustand (Leser-Filter einzeln pruefbar): DB-CHECK venues_requested_inactive_chk voruebergehend entfernen, damit eine angefragte Halle aktiv gesetzt werden kann. Die Tests laufen nacheinander
+// (fileParallelism aus); afterAll setzt alle nicht freigegebenen Hallen wieder inaktiv und stellt den CHECK wieder her.
+describe("Fehlzustand: angefragte Halle ist aktiv (CHECK entfernt), jeder Leser filtert trotzdem", () => {
+  beforeAll(async () => {
+    await db.execute(sql`alter table venues drop constraint if exists venues_requested_inactive_chk`);
+  });
+  afterAll(async () => {
+    await db.execute(sql`update venues set active = false where approval_status <> 'approved'`);
+    await db.execute(sql`alter table venues drop constraint if exists venues_requested_inactive_chk`);
+    await db.execute(sql`alter table venues add constraint venues_requested_inactive_chk check (approval_status = 'approved' or active = false)`);
+  });
+
+    it("erscheint nirgends: Liste, Detail, Auswahl, Sitemap, Termin-Auswahl, Veto, Turnier-Partnerhalle (auch im Fehlzustand active = true)", async () => {
+      const { v } = await requested();
+      await forceActive(v.id);
+      expect(await publicIds()).not.toContain(v.id);
+      expect(await getPublicVenue(v.id)).toBeNull();
+      expect((await listVenues(false)).map((x) => x.id)).not.toContain(v.id);
+      expect((await sitemap()).some((e) => e.url.endsWith(`/hallen/${v.id}`))).toBe(false);
+      const sched = await getScheduling({ id: UNKNOWN, schedulingOpen: true, schedulingDeadline: null, timeWindows: null }, CITY);
+      expect(sched?.venues.map((x) => x.id)).not.toContain(v.id);
+      expect((await listPartnerVenueOptions())?.map((x) => x.id)).not.toContain(v.id);
+      expect(await isPartnerVenue(db, v.id)).toBe(false);
+      // Veto: die Halle kommt nicht in den Pool
+      const m = await makeMatch({ hoursAhead: 100 });
+      await db.transaction((tx) => startHallCheck(tx, m.match, CITY));
+      expect((await db.select().from(matchHallRequests).where(eq(matchHallRequests.matchId, m.match.id))).map((r) => r.venueId)).not.toContain(v.id);
+    });
+
+    it("nicht buchbar: Fremd-ID per POST liefert dieselbe Antwort wie eine unbekannte ID (Turnier-Partnerhalle, Buchungsauftrag), kein Existenz-Leck", async () => {
+      const { v } = await requested();
+      await forceActive(v.id);
+      const org = await makeUser("vorg");
+      const admin = await makeUser("vadm", "admin");
+      await setOrganizer(admin.id, org.id, true);
+      const base = { name: "Freigabe-Cup", city: CITY, startsAt: new Date(Date.now() + 5 * 86_400_000), registrationDeadline: new Date(Date.now() + 3 * 86_400_000), maxTeams: 4, durationMin: 120, hourlyCents: 8000 };
+      const asUnknown = await createTournament(org.id, { ...base, venueId: UNKNOWN }).then(() => "ok", (e: Error) => e.message);
+      const asRequested = await createTournament(org.id, { ...base, venueId: v.id }).then(() => "ok", (e: Error) => e.message);
+      expect(asRequested).not.toBe("ok");
+      expect(asRequested).toBe(asUnknown);
+      const m = await makeMatch({ hoursAhead: 100 });
+      const job = await db.transaction((tx) => createBookingJob(tx, m.match));
+      await updateBookingJob(admin.id, job!.id, { status: "in_progress" });
+      const asUnknownBook = await updateBookingJob(admin.id, job!.id, { status: "booked", venueId: UNKNOWN }).then(() => "ok", (e: Error) => e.message);
+      const asRequestedBook = await updateBookingJob(admin.id, job!.id, { status: "booked", venueId: v.id }).then(() => "ok", (e: Error) => e.message);
+      expect(asRequestedBook).not.toBe("ok");
+      expect(asRequestedBook).toBe(asUnknownBook);
+      expect((await statusOf(v.id)).approvalStatus).toBe("requested");
+    });
+});
+
+describe("DB-Absicherung: aktiv nur wenn freigegeben", () => {
+  it("UPDATE active = true bei einer angefragten oder abgelehnten Halle wird von der Datenbank abgewiesen; bei einer freigegebenen Halle geht es", async () => {
+    const { v } = await requested();
+    await expect(db.update(venues).set({ active: true }).where(eq(venues.id, v.id))).rejects.toThrow();
+    const admin = await makeUser("vadm", "admin");
+    await rejectVenue(admin.id, v.id, "Adresse unklar");
+    await expect(db.update(venues).set({ active: true }).where(eq(venues.id, v.id))).rejects.toThrow();
+    const ok = (await requested()).v;
+    await approveVenue(admin.id, ok.id);
+    await db.update(venues).set({ active: false }).where(eq(venues.id, ok.id));
+    await db.update(venues).set({ active: true }).where(eq(venues.id, ok.id));
+    expect((await statusOf(ok.id)).active).toBe(true);
+  });
+});
+
+describe("Sicherheits-Review: Bewertungen, requestVenue, updateVenue", () => {
+  it("Bewertung (comments) fuer eine angefragte oder abgelehnte Halle: dieselbe Antwort wie bei einer unbekannten ID, nichts gespeichert; nach Freischaltung moeglich", async () => {
+    const { v } = await requested();
+    const author = await makeUser("vrev");
+    await db.update(users).set({ onboardedAt: new Date() }).where(eq(users.id, author.id));
+    await db.execute(sql`insert into player_stats (user_id, matches) values (${author.id}, 1) on conflict (user_id) do update set matches = 1`);
+    const input = { body: "Gute Halle", rating: 5 };
+    const asUnknown = await postComment(author.id, { targetType: "venue", targetId: UNKNOWN, ...input }).then(() => "ok", (e: Error) => e.message);
+    const asRequested = await postComment(author.id, { targetType: "venue", targetId: v.id, ...input }).then(() => "ok", (e: Error) => e.message);
+    expect(asUnknown).not.toBe("ok");
+    expect(asRequested).toBe(asUnknown);
+    expect((await db.select().from(comments).where(eq(comments.targetId, v.id))).length).toBe(0);
+    const admin = await makeUser("vadm", "admin");
+    await approveVenue(admin.id, v.id);
+    await postComment(author.id, { targetType: "venue", targetId: v.id, ...input });
+    expect((await db.select().from(comments).where(eq(comments.targetId, v.id))).length).toBe(1);
+  });
+
+  it("requestVenue: Obergrenze offener Anfragen je Nutzer, Admin-Konten ausgeschlossen, parallele Doppelklicks legen genau eine Halle an", async () => {
+    const op = await makeUser("vcap");
+    for (let i = 0; i < MAX_OPEN_REQUESTS; i++) await requestVenue(op.id, { name: name(`cap${i}`), city: CITY });
+    await expect(requestVenue(op.id, { name: name("cap-x"), city: CITY })).rejects.toThrow(/offene Hallen-Anfragen/);
+    const same = { name: name("cap0b"), city: CITY };
+    const other = await makeUser("vcap2");
+    const results = await Promise.all(Array.from({ length: 8 }, () => requestVenue(other.id, same))); // Doppelklick/Wettlauf: 8 gleichzeitige Anfragen
+    expect(new Set(results.map((r) => r.id)).size).toBe(1);
+    expect((await db.select().from(venues).where(eq(venues.name, same.name))).length).toBe(1);
+    const admin = await makeUser("vadm", "admin");
+    await expect(requestVenue(admin.id, { name: name("adm"), city: CITY })).rejects.toThrow(/Admin-Konto/);
+    // nach einer Entscheidung ist wieder Platz
+    const a2 = await makeUser("vadm", "admin");
+    const firstOpen = (await db.select().from(venues).where(eq(venues.approvalStatus, "requested"))).find((h) => h.managerUserId === op.id)!;
+    await rejectVenue(a2.id, firstOpen.id, "Doppelt angelegt");
+    await requestVenue(op.id, { name: name("cap-again"), city: CITY });
+  });
+
+  it("Ablehnungsgrund: Steuerzeichen und Zeilenumbrueche werden bereinigt", async () => {
+    const { v } = await requested();
+    const admin = await makeUser("vadm", "admin");
+    await rejectVenue(admin.id, v.id, "Adresse\nunklar\u0000 bitte\r\npruefen");
+    const reason = (await statusOf(v.id)).approvalReason!;
+    expect(reason).not.toMatch(/[\u0000-\u001F]/);
+    expect(reason).toContain("Adresse unklar");
+  });
+
+  it("updateVenue (Zeilensperre): eine parallele Freischaltung wird nicht durch ein veraltetes active = false ueberschrieben", async () => {
+    const { v } = await requested();
+    const admin = await makeUser("vadm", "admin");
+    const res = await Promise.allSettled([approveVenue(admin.id, v.id), updateVenue(admin.id, v.id, { name: v.name, city: v.city })]);
+    expect(res[0].status).toBe("fulfilled");
+    const row = await statusOf(v.id);
+    expect(row.approvalStatus).toBe("approved");
+    // Ergebnis ist konsistent: freigegeben UND aktiv, egal in welcher Reihenfolge (updateVenue schreibt active nur aus der gesperrten Zeile)
+    expect(row.active).toBe(true);
   });
 });

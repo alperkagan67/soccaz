@@ -1,9 +1,9 @@
-import { and, asc, count, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { venueAccess, venues } from "@/db/schema-finance";
-import { canUser } from "@/lib/roles";
+import { canUser, isPlatformAdmin } from "@/lib/roles";
 import { audit } from "./audit";
 import { bookingStaffIds } from "./booking";
 import { defaultCommissionPercent } from "./commission";
@@ -13,16 +13,21 @@ import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { cleanVenueInput, type VenueInput } from "./venues";
 
-// Freischaltung von Hallen (Vertrag 013 v3, AC-31): Eine Halle aus der Anfrage ("Anfrage senden") ist "requested" und inaktiv (zweiter Riegel: Pruefung venues_requested_inactive_chk);
+// Freischaltung von Hallen (Vertrag 013 v3, AC-31): Eine Halle aus der Anfrage ("Anfrage senden") ist "requested" und inaktiv (DB-seitig abgesichert durch venues_requested_inactive_chk: aktiv nur wenn freigegeben);
 // nur Admin 1 und Admin 2 (Permission booking) schalten frei oder lehnen ab. Der Server prueft: jeder Leser filtert auf approval_status = 'approved' (siehe grep-Liste im PR),
 // und beim Zuordnen einer Halle (Fremd-ID per POST) kommt dieselbe Antwort wie bei einer unbekannten ID ("nicht gefunden", kein Existenz-Leck).
-// Protokoll: audit_log (venue.requested/approved/rejected) mit IDs und Grund, keine Personendaten. SPERRREIHENFOLGE: Halle zuerst (FOR UPDATE), wie venue-access.
+// Protokoll: audit_log (venue.requested/approved/rejected) mit IDs und Grund. Das Freitextfeld "contact" der Halle kann eine E-Mail/Telefonnummer enthalten und ist fuer Admin 1 und Admin 2 sichtbar (bestaetigt); Audit und Mitteilungen enthalten es nie. SPERRREIHENFOLGE: Halle zuerst (FOR UPDATE), wie venue-access.
+
+/** Hoechstens so viele offene Anfragen je Nutzer (Missbrauchsgrenze). */
+export const MAX_OPEN_REQUESTS = 3;
 
 export const NOT_FOUND = "Halle nicht gefunden.";
 const NOT_OPEN = "Diese Halle ist keine offene Anfrage.";
 
+const stripControl = (x: string) => x.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/ {2,}/g, " "); // Steuerzeichen und Zeilenumbrueche raus (Grund steht in Mitteilung und Audit)
+
 function cleanReason(reason: string): string {
-  const r = reason.trim();
+  const r = stripControl(reason).trim();
   if (r.length < 3 || r.length > 200) throw new DomainError("Bitte gib einen Grund an (3 bis 200 Zeichen).");
   return r;
 }
@@ -46,10 +51,16 @@ export async function requestVenue(userId: string, input: VenueInput) {
   const v = cleanVenueInput(input);
   const commission = (await defaultCommissionPercent()).toFixed(2);
   return db.transaction(async (tx) => {
-    const [u] = await tx.select({ id: users.id, bannedAt: users.bannedAt }).from(users).where(eq(users.id, userId));
+    // Sperre je Nutzer (Advisory-Lock, bis zum Ende der Transaktion): Doppelklick und parallele Anfragen laufen nacheinander, Pruefung und Anlage sind atomar
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"venue-request:" + userId}))`);
+    const [u] = await tx.select({ id: users.id, bannedAt: users.bannedAt, role: users.role }).from(users).where(eq(users.id, userId));
     if (!u || u.bannedAt) throw new DomainError("Bitte melde dich an.");
-    const open = await tx.select().from(venues).where(and(eq(venues.name, v.name), eq(venues.city, v.city), eq(venues.approvalStatus, "requested")));
-    for (const h of open) if (await hasVenueAccess(h.id, userId, tx)) return h; // Doppelklick: dieselbe offene Anfrage desselben Betreibers
+    if (isPlatformAdmin(u)) throw new DomainError("Mit einem Admin-Konto kann keine Halle angefragt werden."); // wie inviteVenueManager: ein Admin ist nie Betreiber
+    const mine = [];
+    for (const h of await tx.select().from(venues).where(eq(venues.approvalStatus, "requested"))) if (await hasVenueAccess(h.id, userId, tx)) mine.push(h);
+    const same = mine.find((h) => h.name === v.name && h.city === v.city);
+    if (same) return same; // Doppelklick: dieselbe offene Anfrage desselben Betreibers
+    if (mine.length >= MAX_OPEN_REQUESTS) throw new DomainError(`Du hast schon ${MAX_OPEN_REQUESTS} offene Hallen-Anfragen. Bitte warte auf die Entscheidung.`);
     const now = new Date();
     const [row] = await tx
       .insert(venues)

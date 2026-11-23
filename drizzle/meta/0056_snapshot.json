@@ -1,5 +1,5 @@
 {
-  "id": "f3de1a9a-15db-4703-aabc-4780dbef74f4",
+  "id": "37b4ae1b-c974-4b2a-98a2-366b6efcd97a",
   "prevId": "9d219b68-c396-4d07-98b7-dd8e9d3d7ab6",
   "version": "7",
   "dialect": "postgresql",
@@ -5806,6 +5806,10 @@
         "venues_approval_status_chk": {
           "name": "venues_approval_status_chk",
           "value": "\"venues\".\"approval_status\" in ('requested', 'approved', 'rejected')"
+        },
+        "venues_requested_inactive_chk": {
+          "name": "venues_requested_inactive_chk",
+          "value": "\"venues\".\"approval_status\" = 'approved' or \"venues\".\"active\" = false"
         }
       },
       "isRLSEnabled": false

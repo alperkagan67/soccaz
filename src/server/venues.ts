@@ -57,16 +57,19 @@ export async function createVenue(actorId: string, input: VenueInput) {
 
 export async function updateVenue(actorId: string, id: string, input: VenueInput & { active?: boolean }) {
   const v = cleanVenueInput(input);
-  const [before] = await db.select().from(venues).where(eq(venues.id, id));
-  if (!before) throw new DomainError("Halle nicht gefunden.");
-  if (input.active === true && before.approvalStatus !== "approved") throw new DomainError("Diese Halle ist noch nicht freigeschaltet (Anfrage offen oder abgelehnt)."); // active nur durch die Freischaltung
-  const [row] = await db
-    .update(venues)
-    .set({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false, active: input.active ?? before.active })
-    .where(eq(venues.id, id))
-    .returning();
-  await audit(actorId, "venue.update", "venue", id, { before, after: row });
-  return row;
+  // In einer Transaktion mit Zeilensperre (wie die Freischaltung): sonst koennte eine Freischaltung dazwischen ein veraltetes active = false zurueckschreiben (approved, aber unsichtbar)
+  return db.transaction(async (tx) => {
+    const [before] = await tx.select().from(venues).where(eq(venues.id, id)).for("update");
+    if (!before) throw new DomainError("Halle nicht gefunden.");
+    if (input.active === true && before.approvalStatus !== "approved") throw new DomainError("Diese Halle ist noch nicht freigeschaltet (Anfrage offen oder abgelehnt)."); // active nur durch die Freischaltung
+    const [row] = await tx
+      .update(venues)
+      .set({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: v.isPartner ?? false, active: input.active ?? before.active })
+      .where(eq(venues.id, id))
+      .returning();
+    await audit(actorId, "venue.update", "venue", id, { before, after: row }, tx);
+    return row;
+  });
 }
 
 /** Admin hat die Angaben einer Halle (Buchbarkeit, Adresse, Preis) geprüft. Ungeprüfte Hallen kommen im Veto nach den geprüften. */
