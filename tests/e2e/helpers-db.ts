@@ -117,3 +117,28 @@ export async function seedShare(matchId: string, userId: string, cents: number) 
 export async function teamIdBySlugLike(namePart: string): Promise<string> {
   return (await query<{ id: string }>("select id from teams where name like $1 order by created_at desc limit 1", [`%${namePart}%`]))[0].id;
 }
+
+/** Kartenmodell (012): Spieler im Team und im Spiel, mit hinterlegter Karte (card_ready) und bereit, OHNE bezahlten Anteil (paid_cents = 0). */
+export async function seedCardPlayer(matchId: string, teamId: string, tag: string): Promise<string> {
+  const userId = await seedUserRole(tag, "player", `Spieler ${tag}`);
+  await testDb().query("insert into team_members (team_id, user_id, role) values ($1, $2, 'player')", [teamId, userId]);
+  await testDb().query("insert into match_participants (match_id, user_id, team_id, ready_at, card_status) values ($1, $2, $3, now(), 'card_ready')", [matchId, userId, teamId]);
+  return userId;
+}
+
+/** Kartenmodell: der bestehende Teilnehmer hat eine Karte hinterlegt (card_ready), ohne bezahlten Anteil. */
+export async function seedCardReady(matchId: string, userId: string) {
+  await testDb().query("update match_participants set card_status = 'card_ready' where match_id = $1 and user_id = $2", [matchId, userId]);
+}
+
+/**
+ * Endzustand eines per Karte abgebuchten und abgerechneten Spiels (012 M6b: die Abbuchung selbst prüfen card-trigger/card-charge in der Integration; der Browser prüft hier den Admin-Bereich,
+ * der diese Zeilen liest): je Spieler Aufladung + Anteil als Hauptbuch-Zeile wallet -> revenue, paid_cents und matches.settled_at gesetzt.
+ */
+export async function seedCharged(matchId: string, userIds: string[], shareCents: number) {
+  for (const userId of userIds) {
+    await fundWallet(userId, shareCents);
+    await seedShare(matchId, userId, shareCents);
+  }
+  await testDb().query("update matches set settled_at = now(), final_share_cents = $2 where id = $1", [matchId, shareCents]);
+}

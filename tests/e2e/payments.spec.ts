@@ -4,11 +4,11 @@ import { setupLobby } from "./flows";
 import { closeContexts, closeTestDb, devLogin, newUser, run } from "./helpers";
 import {
   callJob,
-  fundWallet,
   query,
   seedOwner,
-  seedPaidPlayer,
-  seedShare,
+  seedCardPlayer,
+  seedCardReady,
+  seedCharged,
   seedAdmin,
   setMatchTimes,
   setPlatformSetting,
@@ -21,6 +21,7 @@ test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
   await setPlatformSetting("payments_enabled", true);
+  await setPlatformSetting("card_payments_enabled", true); // Kartenmodell (012 M6b): kein Guthaben, Bereit heißt Karte hinterlegt
   await setPlatformSetting("min_paid_players", 8);
 });
 test.afterEach(async ({ browser }) => {
@@ -28,6 +29,7 @@ test.afterEach(async ({ browser }) => {
 });
 test.afterAll(async () => {
   await setPlatformSetting("payments_enabled", false);
+  await setPlatformSetting("card_payments_enabled", false);
   await closeTestDb();
 });
 
@@ -47,16 +49,14 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
 
   // Neues Modell (008): 10 eingeteilte Spieler (4 je Team vorbezahlt + 2 Team-Admins) -> Anteil = shareCents(80,00 €, 10) = 8,00 €.
   const share = shareCents(8000, 10);
-  // 4 Spieler je Team haben schon bezahlt; die beiden Team-Admins ebenfalls (Seed: den Bezahlen-Knopf gibt es seit 012 M6a nicht mehr), dann nur noch der Bereit-Klick
+  // Kartenmodell: 4 Spieler je Team haben eine Karte und sind bereit (nichts bezahlt); die beiden Team-Admins hinterlegen ihre Karte (Seed) und drücken dann nur noch "Ich bin bereit"
   const seeded: string[] = [];
   for (let i = 1; i <= 4; i++) {
-    seeded.push(await seedPaidPlayer(matchId, teamA, `p4h${i}`, share));
-    seeded.push(await seedPaidPlayer(matchId, teamB, `p4g${i}`, share));
+    seeded.push(await seedCardPlayer(matchId, teamA, `p4h${i}`));
+    seeded.push(await seedCardPlayer(matchId, teamB, `p4g${i}`));
   }
-  await fundWallet(adminA, 2000);
-  await fundWallet(adminB, 2000);
-  await seedShare(matchId, adminA, share);
-  await seedShare(matchId, adminB, share);
+  await seedCardReady(matchId, adminA);
+  await seedCardReady(matchId, adminB);
   await a.goto(`/lobby/${matchId}`);
   await b.goto(`/lobby/${matchId}`);
   await a.getByRole("button", { name: "Ich bin bereit" }).click();
@@ -73,16 +73,13 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   await b.reload();
   await b.getByRole("button", { name: "Ja, mein Team ist komplett: Spiel bestätigen" }).click();
   await expect.poll(async () => (await query<{ f: number | null; s: Date | null }>("select final_share_cents as f, settled_at as s from matches where id = $1", [matchId]))[0]).toMatchObject({ f: share, s: null });
-  // Gebucht (abgerechnet) wird bei Anlage mit mindestens 48 Stunden Vorlauf zur Frist (Anstoß minus 48 Stunden): 80 EUR durch 10 Zahler, nichts zurückzuzahlen.
-  // Die Zeit wird in der Datenbank gesetzt: Anstoß in 47 Stunden, angelegt vor 100 Stunden.
+  // Zur 48-h-Frist (Anstoß in 47 Stunden, angelegt vor 100 Stunden) wird ein abbuchungsbereites Kartenspiel NICHT abgesagt; abgerechnet wird es von der Karten-Abbuchung (Integration: card-trigger, card-charge)
   await setMatchTimes(matchId, 47, 100);
   await callJob(baseURL!, "lobby-deadlines");
-  await expect.poll(async () => (await query<{ s: Date | null }>("select settled_at as s from matches where id = $1", [matchId]))[0].s).not.toBeNull();
-  expect((await query<{ s: string }>("select status as s from matches where id = $1", [matchId]))[0].s).toBe("confirmed"); // gebucht, nicht abgesagt
-  // Nach dem Bestätigen beider Captains zeigt die Lobby die Kosten nicht mehr (die Übersicht steht offen): der abgerechnete Anteil steht in der Datenbank
+  expect((await query<{ s: string }>("select status as s from matches where id = $1", [matchId]))[0].s).toBe("confirmed"); // nicht abgesagt
   expect((await query<{ f: number | null }>("select final_share_cents as f from matches where id = $1", [matchId]))[0].f).toBe(share);
-  expect(await walletBalanceOf(adminA)).toBe(2000 - share);
-  for (const id of seeded) expect(await walletBalanceOf(id)).toBe(2000 - share);
+  // Endzustand nach der Abbuchung seeden (Hauptbuch + settled_at): der Admin-Bereich unten liest diese Zeilen
+  await seedCharged(matchId, [adminA, adminB, ...seeded], share);
 
   // --- Admin: Buchung
   const adm = await (await browser.newContext()).newPage();
@@ -143,7 +140,7 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   await card.getByLabel("Grund").fill("Verletzung vor dem Spiel");
   await card.getByRole("button", { name: "Ausnahme-Erstattung buchen" }).click();
   await expect(adm.getByTestId(`player-p4h1-${run}@test.local`)).toContainText(euro("netto 0,00 €"));
-  expect(await walletBalanceOf(seeded[0])).toBe(2000);
+  expect(await walletBalanceOf(seeded[0])).toBe(share); // Aufladung (Seed) - Anteil + Ausnahme-Erstattung
 
   // Übersicht, CSV, Ausgabenliste
   const month = new Date(Date.now() + 10 * 3_600_000).toISOString().slice(0, 7);
