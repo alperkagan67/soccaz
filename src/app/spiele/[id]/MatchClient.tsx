@@ -110,6 +110,7 @@ export function SubmitResultForm({ matchId, home, away, homeScore, awayScore }: 
   return (
     <form
       method="post"
+      aria-busy={!hydrated || undefined}
       className="card space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
@@ -129,7 +130,7 @@ export function SubmitResultForm({ matchId, home, away, homeScore, awayScore }: 
         </div>
       </div>
       <p className="text-xs text-muted">Das andere Team bestätigt das Ergebnis. Antwortet es 48 Stunden nicht, gilt es automatisch.</p>
-      <button className="btn btn-primary w-full disabled:opacity-60" disabled={pending || !hydrated} data-testid="result-submit">{pending ? "Bitte warten…" : "Ergebnis melden"}</button>
+      <button className={`btn btn-primary w-full ${pending ? "disabled:opacity-60" : ""}`} disabled={pending || !hydrated} data-testid="result-submit">{pending ? "Bitte warten…" : "Ergebnis melden"}</button>
       <ErrorText message={error} />
     </form>
   );
@@ -182,6 +183,7 @@ export function DecidePanel({ matchId, home, away, homeScore, awayScore, dispute
   return (
     <form
       method="post"
+      aria-busy={!hydrated || undefined}
       className="card space-y-3 border-ink"
       onSubmit={(e) => {
         e.preventDefault();
@@ -203,7 +205,7 @@ export function DecidePanel({ matchId, home, away, homeScore, awayScore, dispute
       </div>
       <label className="label" htmlFor="decide-reason">Begründung (Pflicht, wird protokolliert)</label>
       <input id="decide-reason" value={reason} onChange={(e) => setReason(e.target.value)} required minLength={3} className="field" />
-      <button className="btn btn-danger w-full disabled:opacity-60" disabled={pending || !hydrated} data-testid="decide-submit">Endgültig entscheiden</button>
+      <button className={`btn btn-danger w-full ${pending ? "disabled:opacity-60" : ""}`} disabled={pending || !hydrated} data-testid="decide-submit">Endgültig entscheiden</button>
       <ErrorText message={error} />
     </form>
   );

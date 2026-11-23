@@ -154,6 +154,7 @@ export function VenueForm({ matchId, venue }: { matchId: string; venue: string }
   return (
     <form
       method="post"
+      aria-busy={!hydrated || undefined}
       className="space-y-2"
       onSubmit={(e) => {
         e.preventDefault();

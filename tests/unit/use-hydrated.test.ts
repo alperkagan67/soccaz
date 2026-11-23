@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -13,6 +14,24 @@ describe("useHydrated", () => {
 
   it("im Browser true: Client-Snapshot ist true (kein DOM in dieser Testumgebung; die Hydration belegt das E2E: der Knopf wird bedienbar)", () => {
     const src = readFileSync("src/components/useHydrated.ts", "utf8");
-    expect(src).toMatch(/useSyncExternalStore\(noop, \(\) => true, \(\) => false\)/); // (subscribe, Client-Snapshot, Server-Snapshot)
+    const aufruf = /useSyncExternalStore\((.*)\);/.exec(src)?.[1] ?? "";
+    const [subscribe, clientSnapshot, serverSnapshot] = aufruf.split(",").map((x) => x.trim()); // (subscribe, getSnapshot, getServerSnapshot)
+    expect(subscribe, "subscribe").toBe("noop");
+    expect(clientSnapshot, "Client-Snapshot (Mutation () => false muss rot werden)").toBe("() => true");
+    expect(serverSnapshot, "Server-Snapshot").toBe("() => false");
+  });
+
+  it("alle Absende-Knöpfe der Client-Handler-Formulare sind bis zur Hydration gesperrt (venue-save, result-submit, decide-submit)", () => {
+    const dateien: [string, string][] = [
+      ["src/app/lobby/[id]/LobbyClient.tsx", "venue-save"],
+      ["src/app/spiele/[id]/MatchClient.tsx", "result-submit"],
+      ["src/app/spiele/[id]/MatchClient.tsx", "decide-submit"],
+    ];
+    for (const [datei, testid] of dateien) {
+      const src = readFileSync(join(process.cwd(), datei), "utf8");
+      const knopf = new RegExp(`<button[^>]*data-testid="${testid}"[^>]*>`).exec(src)?.[0] ?? "";
+      expect(knopf, `${datei}: ${testid}`).toMatch(/disabled=\{[^}]*!hydrated[^}]*\}/);
+      expect(src, datei).toMatch(/aria-busy=\{!hydrated \|\| undefined\}/);
+    }
   });
 });
