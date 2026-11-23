@@ -1,3 +1,5 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
 import { clipRects, evaluate, planSamples, type Evaluated, type RawMeasurement, type Rect } from "../../../src/lib/contrast-audit";
 
@@ -23,6 +25,8 @@ type Item = {
   layers: string[];
   base: string;
   needPixel: boolean;
+  /** Das Element liegt in einem Vorfahren mit position fixed oder sticky (Kopfzeile, untere Leiste): sein Grund ist die Leiste selbst und wird mit ihr gemessen. */
+  inFixed?: boolean;
   /** Bei Text: die Zeilenrechtecke des TEXTES (Range über die Textknoten), nie das Rechteck des ganzen Elements; sonst das Elementrechteck. */
   rects: Rect[];
   /** Clip-Rechtecke (Innenfläche) der Vorfahren mit overflow ungleich visible: der Text wird in Node darauf zugeschnitten (truncate, ellipsis, line-clamp, Scrollbereiche). */
@@ -134,6 +138,13 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     return out;
   };
   /** Hintergrundschichten (unten zuerst) und ob ein Bild/Verlauf oder ein überlappendes Element dahinter liegt. */
+  function inFixedBar(el: Element): boolean {
+    for (let e: Element | null = el; e; e = e.parentElement) {
+      const p = getComputedStyle(e).position;
+      if (p === "fixed" || p === "sticky") return true;
+    }
+    return false;
+  }
   function backdrop(el: Element, startAtParent: boolean): { layers: string[]; needPixel: boolean } {
     const layers: string[] = [];
     let needPixel = false;
@@ -191,6 +202,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         layers: b.layers,
         base,
         needPixel: b.needPixel || rects.some((rc) => overlapped(el, rc)),
+        inFixed: inFixedBar(el),
         rects,
         clips: clipsOf(el),
         disabled: el.closest("[disabled], [aria-disabled='true']") !== null,
@@ -325,6 +337,34 @@ async function samplePixels(args: { b64: string; rects: Rect[][]; per: number[] 
 
 export type PageResult = { evaluated: Evaluated[]; errors: string[]; counts: { text: number; nonText: number; focus: number; pixel: number } };
 
+/**
+ * Debug-Ablage der Pixelprobe (nur mit KONTRAST_DEBUG_DIR): je durchgefallenem Pixel-Messpunkt ein Ausschnitt des Bildschirms MIT Text (Rand 12 px) und eine JSON-Datei mit Selektor, Rechtecken, Vordergrund und den
+ * Pixelwerten der Probe (hellstes und dunkelstes Pixel, Zahl). So lässt sich entscheiden, ob ein Verstoß echt ist oder ein Artefakt der Probe.
+ */
+async function dumpDebug(page: Page, meta: PageMeta, list: { it: Item; e: Evaluated; pixels: number[] | undefined }[]): Promise<void> {
+  const dir = process.env.KONTRAST_DEBUG_DIR;
+  if (!dir || list.length === 0) return;
+  try {
+    mkdirSync(dir, { recursive: true });
+    let n = 0;
+    for (const { it, e, pixels } of list) {
+      n++;
+      const name = `${meta.page}-${meta.scheme}-${meta.viewport}-${n}`;
+      const xs = it.rects.map((r) => r.x), ys = it.rects.map((r) => r.y);
+      const x0 = Math.max(0, Math.min(...xs) - 12), y0 = Math.max(0, Math.min(...ys) - 12);
+      const x1 = Math.max(...it.rects.map((r) => r.x + r.w)) + 12, y1 = Math.max(...it.rects.map((r) => r.y + r.h)) + 12;
+      await page.screenshot({ path: join(dir, `${name}.png`), fullPage: true, clip: { x: x0, y: y0, width: Math.max(1, x1 - x0), height: Math.max(1, y1 - y0) } }).catch(() => {});
+      const px: number[][] = [];
+      for (let i = 0; pixels && i + 2 < pixels.length; i += 3) px.push([pixels[i], pixels[i + 1], pixels[i + 2]]);
+      const lum = (p: number[]) => p[0] * 0.2126 + p[1] * 0.7152 + p[2] * 0.0722;
+      const sorted = [...px].sort((a, b) => lum(a) - lum(b));
+      writeFileSync(join(dir, `${name}.json`), JSON.stringify({ selector: it.selector, sample: it.sample, fg: it.fg, ratio: e.ratio, fgHex: e.fgHex, bgHex: e.bgHex, rects: it.rects, clips: it.clips, layers: it.layers, base: it.base, pixelCount: px.length, darkest: sorted.slice(0, 5), lightest: sorted.slice(-5), median: sorted[Math.floor(sorted.length / 2)] }, null, 1));
+    }
+  } catch {
+    /* Debug darf nie messen oder scheitern */
+  }
+}
+
 /** Misst die aktuell geladene Seite (Farbschema und Breite sind schon eingestellt). Wirft nie: Fehler stehen in `errors`. */
 export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Promise<PageResult> {
   const errors: string[] = [];
@@ -351,17 +391,46 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
     let pixelsByIdx = new Map<number, number[]>();
     if (needIdx.length > 0) {
       try {
-        // Text unsichtbar schalten, damit nur der Grund gemessen wird (ein Screenshot je Seite)
-        const style = await page.addStyleTag({ content: "*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;caret-color:transparent!important}" });
-        const png = await page.screenshot({ fullPage: true, animations: "disabled" });
+        // Text unsichtbar schalten, damit nur der Grund gemessen wird. Feste und klebende Leisten (untere Leiste, Kopfzeile) und die Dev-Anzeige von Next liegen im Ganzseiten-Bild an der Stelle des ERSTEN Bildschirms
+        // und decken dort Text darunter ab (Artefakt, kein Befund: beim Scrollen ist der Text frei). Darum zwei Bilder: A ohne diese Leisten für Text außerhalb der Leisten, B mit Leisten für Text in den Leisten.
+        const style = await page.addStyleTag({ content: "*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;caret-color:transparent!important}nextjs-portal,[data-nextjs-toast],[data-nextjs-dev-tools-button]{display:none!important}" });
+        const pngBar = needIdx.some((i) => items[i].inFixed) ? await page.screenshot({ fullPage: true, animations: "disabled" }) : null;
+        const hidden = await page.evaluate(() => {
+          const out: HTMLElement[] = [];
+          for (const el of Array.from(document.body.querySelectorAll("*")) as HTMLElement[]) {
+            const p = getComputedStyle(el).position;
+            if (p === "fixed" || p === "sticky") {
+              el.setAttribute("data-kt-fixed", el.style.visibility || "-");
+              el.style.setProperty("visibility", "hidden", "important");
+              out.push(el);
+            }
+          }
+          return out.length;
+        });
+        const pngFree = hidden > 0 || !pngBar ? await page.screenshot({ fullPage: true, animations: "disabled" }) : pngBar;
+        await page.evaluate(() => {
+          for (const el of Array.from(document.querySelectorAll("[data-kt-fixed]")) as HTMLElement[]) {
+            const v = el.getAttribute("data-kt-fixed");
+            if (v === "-") el.style.removeProperty("visibility");
+            else el.style.setProperty("visibility", v ?? "");
+            el.removeAttribute("data-kt-fixed");
+          }
+        });
         await style.evaluate((n) => (n as HTMLElement).remove());
         const plans = needIdx.map((i) => planSamples(items[i].rects, MAX_PIXELS));
-        const sampled = await page.evaluate(samplePixels, { b64: png.toString("base64"), rects: plans.map((pl) => pl.rects), per: plans.map((pl) => pl.perRect) });
-        pixelsByIdx = new Map(needIdx.map((i, k) => [i, sampled[k]]));
+        const sampled: number[][] = new Array(needIdx.length);
+        for (const [bar, shot] of [[true, pngBar], [false, pngFree]] as const) {
+          const ks = needIdx.map((_, k) => k).filter((k) => Boolean(items[needIdx[k]].inFixed) === bar);
+          if (ks.length === 0 || !shot) continue;
+          const part = await page.evaluate(samplePixels, { b64: shot.toString("base64"), rects: ks.map((k) => plans[k].rects), per: ks.map((k) => plans[k].perRect) });
+          ks.forEach((k, j) => (sampled[k] = part[j]));
+        }
+        pixelsByIdx = new Map(needIdx.map((i, k) => [i, sampled[k] ?? []]));
       } catch (e) {
         errors.push(`Pixelmessung fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
+    const debug: { it: Item; e: Evaluated; pixels: number[] | undefined }[] = [];
     items.forEach((it, i) => {
       const pixels = pixelsByIdx.get(i);
       const raw: RawMeasurement = {
@@ -381,8 +450,10 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         return;
       }
       const e = evaluate(raw);
+      if (e.status === "fail" && it.needPixel) debug.push({ it, e, pixels });
       evaluated.push(it.note ? { ...e, note: [e.note, it.note].filter(Boolean).join("; ") } : e);
     });
+    await dumpDebug(page, meta, debug); // nur mit KONTRAST_DEBUG_DIR (lokal oder als CI-Artefakt), nie im Repo
     return {
       evaluated,
       errors,
