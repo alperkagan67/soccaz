@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { evaluate, type Evaluated, type RawMeasurement } from "../../../src/lib/contrast-audit";
+import { clipRects, evaluate, planSamples, type Evaluated, type RawMeasurement, type Rect } from "../../../src/lib/contrast-audit";
 
 // AC-27 (Vertrag 013 v3): Browserschicht der Kontrastmessung. Sie sammelt NUR Rohdaten aus dem gerenderten Zustand (getComputedStyle, Pixel); gerechnet und bewertet wird im
 // reinen Kern src/lib/contrast-audit.ts. Regeln aus Review R-T343 (B bis E):
@@ -13,8 +13,6 @@ export const MAX_PIXELS = 2500;
 
 export type PageMeta = { page: string; role: string; scheme: "light" | "dark"; viewport: number };
 
-type Rect = { x: number; y: number; w: number; h: number };
-
 type Item = {
   kind: RawMeasurement["kind"];
   selector: string;
@@ -27,6 +25,8 @@ type Item = {
   needPixel: boolean;
   /** Bei Text: die Zeilenrechtecke des TEXTES (Range über die Textknoten), nie das Rechteck des ganzen Elements; sonst das Elementrechteck. */
   rects: Rect[];
+  /** Clip-Rechtecke (Innenfläche) der Vorfahren mit overflow ungleich visible: der Text wird in Node darauf zugeschnitten (truncate, ellipsis, line-clamp, Scrollbereiche). */
+  clips: Rect[];
   disabled: boolean;
   note?: string;
 };
@@ -121,6 +121,18 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     }
     return out;
   };
+  /** Innenflächen aller Vorfahren (und des Elements selbst), die ihren Inhalt abschneiden (overflow ungleich visible); Inline-Elemente und body/html bleiben außen vor. */
+  const clipsOf = (el: Element): Rect[] => {
+    const out: Rect[] = [];
+    for (let e: Element | null = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      const cs = getComputedStyle(e);
+      if ((cs.overflowX === "visible" && cs.overflowY === "visible") || cs.display === "inline") continue;
+      const r = e.getBoundingClientRect();
+      const h = e as HTMLElement;
+      out.push({ x: r.left + h.clientLeft + window.scrollX, y: r.top + h.clientTop + window.scrollY, w: h.clientWidth, h: h.clientHeight });
+    }
+    return out;
+  };
   /** Hintergrundschichten (unten zuerst) und ob ein Bild/Verlauf oder ein überlappendes Element dahinter liegt. */
   function backdrop(el: Element, startAtParent: boolean): { layers: string[]; needPixel: boolean } {
     const layers: string[] = [];
@@ -178,8 +190,9 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         fg: fg ? withAlpha(fg, effOpacity(el)) : cs.color,
         layers: b.layers,
         base,
-        needPixel: b.needPixel || overlapped(el, rects[0]),
+        needPixel: b.needPixel || rects.some((rc) => overlapped(el, rc)),
         rects,
+        clips: clipsOf(el),
         disabled: el.closest("[disabled], [aria-disabled='true']") !== null,
         note: cs.textShadow !== "none" ? "Textschatten vorhanden (nicht eingerechnet)" : undefined,
       });
@@ -195,7 +208,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
       const b = backdrop(el, false);
       const fgValue = toRgba(cs.color);
       const r = pageRect(el);
-      const common = { kind: "text" as const, selector: describe(el), fontSizePx: parseFloat(cs.fontSize), fontWeight: Number(cs.fontWeight) || 400, layers: b.layers, base, needPixel: b.needPixel, rects: [r], disabled: el.matches("[disabled]") };
+      const common = { kind: "text" as const, selector: describe(el), fontSizePx: parseFloat(cs.fontSize), fontWeight: Number(cs.fontWeight) || 400, layers: b.layers, base, needPixel: b.needPixel, rects: [r], clips: [] as Rect[], disabled: el.matches("[disabled]") };
       if (fgValue) items.push({ ...common, sample: "Eingabetext", fg: withAlpha(fgValue, effOpacity(el)) });
       const ph = el.getAttribute("placeholder");
       if (ph && ph.trim()) {
@@ -238,6 +251,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         base,
         needPixel: false,
         rects: [pageRect(el)],
+        clips: [],
         disabled: el.matches("[disabled], [aria-disabled='true']"),
         note: ground.needPixel ? "Grund hat Bild/Verlauf: Stapel nur angenähert" : undefined,
       });
@@ -267,6 +281,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         base,
         needPixel: false,
         rects: [pageRect(el)],
+        clips: [],
         disabled: false,
         note: ring ? (w < 2 ? "Ring unter 2 px" : undefined) : "Fokus über box-shadow o. Ä. wird hier nicht erkannt",
       });
@@ -279,7 +294,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
 }
 
 /** Läuft IM Browser: liest aus einem Screenshot (PNG als Base64) je Rechteck ein Raster von höchstens `max` Pixeln. */
-async function samplePixels(args: { b64: string; rects: Rect[][]; max: number }): Promise<number[][]> {
+async function samplePixels(args: { b64: string; rects: Rect[][]; per: number[] }): Promise<number[][]> {
   const img = new Image();
   img.src = `data:image/png;base64,${args.b64}`;
   await img.decode();
@@ -289,10 +304,10 @@ async function samplePixels(args: { b64: string; rects: Rect[][]; max: number })
   const g = cv.getContext("2d", { willReadFrequently: true });
   if (!g) return args.rects.map(() => []);
   g.drawImage(img, 0, 0);
-  // je Messpunkt höchstens `max` Pixel, gleichmäßig auf die Zeilenrechtecke des Textes verteilt
-  return args.rects.map((list) => {
+  // je Messpunkt und Zeilenrechteck höchstens `per[k]` Pixel (das Budget plant planSamples in Node: Summe nie über dem Höchstwert)
+  return args.rects.map((list, k) => {
     const out: number[] = [];
-    const budget = Math.max(20, Math.floor(args.max / Math.max(1, list.length)));
+    const budget = Math.max(1, args.per[k] ?? 1);
     for (const r of list) {
       const x0 = Math.max(0, Math.floor(r.x));
       const y0 = Math.max(0, Math.floor(r.y));
@@ -326,8 +341,12 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         }
       }
     });
-    const { items, errors: inPageErrors } = await page.evaluate(collectInPage, maxFocus);
-    errors.push(...inPageErrors);
+    const collected = await page.evaluate(collectInPage, maxFocus);
+    errors.push(...collected.errors);
+    // Text auf die sichtbaren Bereiche zuschneiden (abgeschnittene Teile von truncate/ellipsis/line-clamp gehören dem Nachbarn); ohne Rest gibt es nichts zu messen
+    const items = collected.items
+      .map((it) => (it.kind === "text" ? { ...it, rects: clipRects(it.rects, it.clips) } : it))
+      .filter((it) => it.rects.length > 0);
     const needIdx = items.map((it, i) => (it.needPixel ? i : -1)).filter((i) => i >= 0);
     let pixelsByIdx = new Map<number, number[]>();
     if (needIdx.length > 0) {
@@ -336,7 +355,8 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         const style = await page.addStyleTag({ content: "*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;caret-color:transparent!important}" });
         const png = await page.screenshot({ fullPage: true, animations: "disabled" });
         await style.evaluate((n) => (n as HTMLElement).remove());
-        const sampled = await page.evaluate(samplePixels, { b64: png.toString("base64"), rects: needIdx.map((i) => items[i].rects), max: MAX_PIXELS });
+        const plans = needIdx.map((i) => planSamples(items[i].rects, MAX_PIXELS));
+        const sampled = await page.evaluate(samplePixels, { b64: png.toString("base64"), rects: plans.map((pl) => pl.rects), per: plans.map((pl) => pl.perRect) });
         pixelsByIdx = new Map(needIdx.map((i, k) => [i, sampled[k]]));
       } catch (e) {
         errors.push(`Pixelmessung fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
