@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
+import { ledgerEntries } from "@/db/schema-finance";
 import { setSetting } from "@/server/settings";
 import { recordExpense } from "@/server/booking";
 import { exportLedgerCsv, getAlerts, listMatchFinance, matchEntries, monthPeriod, overview, playerFinance } from "@/server/finance";
@@ -97,6 +98,19 @@ describe("Finanz-Reporting", () => {
     await manualRefund(m.adminB.id, m.match.id, p.id, 800, "Verletzung vor dem Spiel");
     expect(await walletBalance(db, p.id)).toBe(before + 800);
     await expect(manualRefund(m.adminB.id, m.match.id, p.id, 1, "nochmal")).rejects.toThrow(/höchstens 0,00/);
+  });
+
+  // w4-Hinweis 2 (R-T328): die Invariante "Ausnahme-Erstattung berührt venue_payable nie" bleibt bis PR 2 (Guthabenzweig im Provisionsmodell, mit Halle)
+  it("Ausnahme-Erstattung im Provisionsmodell (ledgerModel commission mit Halle, Guthabenzweig): Zahlung und Rückbuchung laufen über revenue und wallet, nie über venue_payable", async () => {
+    const m = await makeMatch({ priceCents: 8000, costCents: 8000, ledgerModel: "commission" });
+    const p = m.adminA;
+    await db.transaction((tx) => creditWallet(tx, p.id, { from: "bank", amountCents: 2000, kind: "adjustment", idempotencyKey: `fin-fund-c-${p.id}` }));
+    await db.transaction((tx) => debitWallet(tx, p.id, { to: "revenue", amountCents: 800, kind: "match_share", matchId: m.match.id, idempotencyKey: `fin-share-c-${p.id}`, reason: "Startgebühr (Altzahlung)", actorId: p.id }));
+    await seedShare(p.id, m.match.id, 800);
+    await manualRefund(m.adminB.id, m.match.id, p.id, 300, "Teil-Erstattung");
+    const entries = await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id));
+    expect(entries.filter((e) => e.kind === "refund")).toHaveLength(1);
+    expect(entries.some((e) => e.debitAccount === "venue_payable" || e.creditAccount === "venue_payable")).toBe(false);
   });
 
   it("Verlustspiel löst einen Alarm aus (Hallenkosten höher als Einnahmen)", async () => {
