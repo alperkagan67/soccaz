@@ -11,12 +11,12 @@ import { acceptChallenge, challengeTeam } from "@/server/challenges";
 import { finalConfirm, joinLobby, leaveLobby, removeParticipant, setReady } from "@/server/lobby";
 import { assertMinLead } from "@/server/min-lead";
 import { createPrivateGame, joinPrivateGame } from "@/server/privategame";
-import { cancelUnderfilledLobbies, closeLobbiesAtDeadline } from "@/server/scheduled";
+import { cancelUnderfilledLobbies, closeLobbiesAtDeadline, settleDueMatches } from "@/server/scheduled";
 import { proposeOption, voteOption } from "@/server/scheduling";
 import { setSetting } from "@/server/settings";
 import { banHall } from "@/server/veto";
 import { leaveClosed } from "@/server/wallet";
-import { addPlayer, cleanup, grantVenueAccess, makeMatch, makeTeam, makeUser, reloadMatch, answerHall } from "./helpers";
+import { addPlayer, cleanup, grantVenueAccess, makeMatch, makeTeam, makeUser, reloadMatch, answerHall, seedShare } from "./helpers";
 
 beforeAll(async () => {
   await setSetting(null, "payments_enabled", true);
@@ -369,6 +369,34 @@ describe("Frist-Regel im Kartenmodell (Ersatz der Guthaben-Fristtests)", () => {
     const m = await reloadMatch(g.match.id);
     expect(m.status).not.toBe("cancelled");
     expect(m.settledAt).toBeNull(); // in der Lobby wird nichts mehr gebucht
+  });
+
+  // R-T328 A (w2/w4): Gegenstücke zu "die alte 24-h-Prüfung sagt neue Spiele nicht mehr ab" und "settleDueMatches fasst neue Spiele beim Anstoß nicht an" mit einer NICHT bereiten Lobby
+  // bzw. einem bestätigten, nicht abgerechneten Kartenspiel (die Ersatztests oben nutzten ein abbuchungsbereites Spiel und fingen die Zeilen "isDeadlineModel -> continue" in scheduled.ts nicht).
+  it("die alte 24-h-Prüfung sagt neue Spiele nicht mehr ab: eine Lobby mit Karten, aber ohne Bereit wird von der Frist-Regel (48 h) abgesagt, nicht von der 24-h-Prüfung; vorher nicht, genau einmal", async () => {
+    const g = await teamGame(72);
+    await giveCards(g); // Karten da, aber niemand bereit
+    const start = await startOf(g.match.id);
+    await cancelUnderfilledLobbies(new Date(start.getTime() - 60 * H)); // vor jeder Frist: nichts
+    expect(await statusOf(g.match.id)).not.toBe("cancelled");
+    // 23 h vor Anstoß: die alte 24-h-Frist ist erreicht UND die 48-h-Frist längst vorbei. Abgesagt wird mit dem Grund der NEUEN Regel (die alte Prüfung schreibt "Zu wenige bereite Spieler bis zur Frist")
+    await cancelUnderfilledLobbies(new Date(start.getTime() - 23 * H));
+    const m = await reloadMatch(g.match.id);
+    expect(m.status).toBe("cancelled");
+    expect(m.cancelReason).toMatch(/48 Stunden/);
+    expect(m.cancelReason).not.toMatch(/Zu wenige bereite Spieler/);
+    await cancelUnderfilledLobbies(new Date(start.getTime() - 22 * H)); // zweiter Lauf: keine zweite Absage
+    expect(await cancelAudits(g.match.id)).toHaveLength(1);
+    await noLedger(g.match.id);
+  });
+
+  it("settleDueMatches fasst neue Spiele beim Anstoß nicht an: ein bestätigtes, voll 'bezahltes' (Altgeld-Fixture) Spiel wird nicht abgerechnet (gebucht wird bei der Abbuchung, nicht beim Anstoß)", async () => {
+    const g = await teamGame(72);
+    for (const p of g.all) await seedShare(p.id, g.match.id, 800); // Summe der Anteile = Preis: die alte Abrechnung KÖNNTE buchen
+    await db.update(matches).set({ status: "confirmed" }).where(eq(matches.id, g.match.id));
+    const start = await startOf(g.match.id);
+    expect(await settleDueMatches(new Date(start.getTime() + 60_000))).toBe(0);
+    expect((await reloadMatch(g.match.id)).settledAt).toBeNull();
   });
 
   it("Termin erst nachträglich festgelegt (Terminwahl): der Vorlauf zählt ab der Terminfestlegung, nicht ab der Anlage", async () => {
