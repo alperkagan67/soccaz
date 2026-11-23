@@ -12,7 +12,7 @@ export function TeamCard({ data, className = "" }: { data: TeamCardData; classNa
       className={`flex min-h-24 w-full max-w-xs items-center gap-3 rounded-2xl border border-rim p-3 ${className}`}
       style={{ backgroundColor: data.hex, color: data.textColor }}
     >
-      <span aria-hidden="true" className="grid size-14 shrink-0 place-items-center rounded-xl border text-xl font-bold tracking-wide" style={{ borderColor: data.textColor }}>
+      <span aria-hidden="true" className="grid size-14 shrink-0 place-items-center rounded-xl border text-lg font-bold tracking-wide" style={{ borderColor: data.textColor }}>
         {data.initials}
       </span>
       <div className="min-w-0 flex-1">
