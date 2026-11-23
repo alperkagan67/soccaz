@@ -6,9 +6,8 @@ import { db } from "@/db";
 import { matchParticipants, matches } from "@/db/schema";
 import { payments, pendingRefunds } from "@/db/schema-finance";
 import { tournamentPlayers, tournaments } from "@/db/schema-league";
-import { creditWallet } from "@/server/ledger";
 import { evaluateGuard, historyInfo, readLegacyBalances } from "../../scripts/lib/legacy-balance-guard";
-import { cleanup, makeMatch, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeMatch, makeTeam, makeUser, seedWalletBalance } from "./helpers";
 
 // Salden-Guard (012 M6b 1c-ii-b): liest rein lesend, zaehlt jeden Befund. Die Test-DB kann Seed-Daten enthalten: geprueft werden DIFFERENZEN zum Ausgangszustand.
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 3 });
@@ -34,7 +33,7 @@ describe("Salden-Guard: lesen und zaehlen", () => {
 
     // 1) Guthaben-Saldo
     const u = await makeUser("gw");
-    await creditWallet(db, u.id, { from: "clearing", amountCents: 500, kind: "topup", idempotencyKey: `lbg-${Math.random().toString(36).slice(2)}` });
+    await seedWalletBalance(u.id, 500, { from: "clearing", kind: "topup" });
     let f = await readLegacyBalances(pool);
     expect(f.walletUsers).toBe(base.walletUsers + 1);
     expect(f.walletNetCents).toBe(base.walletNetCents + 500);
@@ -70,7 +69,7 @@ describe("Salden-Guard: lesen und zaehlen", () => {
 
   it("Skript: Ausgang 1 bei Befund, Meldung ohne E-Mail-Adressen und ohne Nutzernamen; Ausgang 0 nur bei erfuelltem Guard", async () => {
     const u = await makeUser("gs");
-    await creditWallet(db, u.id, { from: "clearing", amountCents: 250, kind: "topup", idempotencyKey: `lbg-s-${Math.random().toString(36).slice(2)}` });
+    await seedWalletBalance(u.id, 250, { from: "clearing", kind: "topup" });
     let code = 0;
     let out = "";
     try {
@@ -156,7 +155,7 @@ describe("Salden-Guard: offene gegen historische Zeilen, alte Aufladungen (Revie
     expect(f.paymentsPending).toBe(base.paymentsPending + 1);
     expect(f.paymentsUnbooked).toBe(base.paymentsUnbooked + 1);
     // Hauptbucheintrag (topup) zur erfolgreichen Zahlung: nicht mehr ungebucht
-    await creditWallet(db, u.id, { from: "clearing", amountCents: 1000, kind: "topup", paymentId: ok.id, idempotencyKey: `lbg-pay-book-${Math.random().toString(36).slice(2)}` });
+    await seedWalletBalance(u.id, 1000, { from: "clearing", kind: "topup", paymentId: ok.id });
     f = await readLegacyBalances(pool);
     expect(f.paymentsUnbooked).toBe(base.paymentsUnbooked);
     expect(f.paymentsPending).toBe(base.paymentsPending + 1);
