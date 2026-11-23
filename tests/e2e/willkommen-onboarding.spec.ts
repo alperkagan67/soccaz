@@ -12,7 +12,8 @@ test.describe.configure({ mode: "serial" });
 
 const AXE = join(process.cwd(), "node_modules", "axe-core", "axe.min.js");
 const VIEWPORTS = { handy: { width: 390, height: 844 }, desktop: { width: 1280, height: 900 } } as const;
-const DRAFT = "assistent:spieler-onboarding";
+/** Entwurfsschlüssel je Konto (assistent:spieler-onboarding:<Nutzer-ID>). */
+const draftKey = async (email: string) => `assistent:spieler-onboarding:${(await userRow(email)).id}`;
 
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
@@ -93,6 +94,7 @@ for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
     expect(await axeViolations(page), "Schritt 4").toEqual([]);
 
     // Neuladen: der Entwurf bleibt (Name, Stadt, Position), das Geburtsdatum und die Zustimmung NICHT
+    const DRAFT = await draftKey(email);
     const draft = await page.evaluate((k) => window.sessionStorage.getItem(k) ?? "", DRAFT);
     expect(draft).toContain("Essen");
     expect(draft).not.toContain("1995-05-05");
@@ -159,6 +161,7 @@ test("Rücksprungziel: ?next= wird nach dem Einrichten benutzt, ein fremdes Ziel
 
 test("Unter 16: das Konto wird gelöscht, Weiterleitung nach /unter-16, das Geburtsdatum bleibt nirgends stehen", async ({ browser }) => {
   const { page, email } = await freshUser(browser, "wk5");
+  const DRAFT = await draftKey(email); // vor dem Löschen des Kontos bestimmen
   await expect(weiter(page)).toBeEnabled({ timeout: 60_000 });
   await form(page).getByLabel(/^Stadt/).selectOption("Essen");
   await weiter(page).click();

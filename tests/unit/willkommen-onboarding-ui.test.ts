@@ -101,17 +101,23 @@ describe("Inhalt der Schritte", () => {
 
 describe("Baustein und Seite", () => {
   it("die Seite im SSR (vor der Hydration): Schritt 1 sichtbar, Felder und Weiter gesperrt (Backlog 224), Entwurfsschlüssel eigen", () => {
-    const m = renderToStaticMarkup(createElement(PlayerOnboarding, { defaultName: "Alex", next: "/app", abschlussAction: async () => undefined }));
+    const m = renderToStaticMarkup(createElement(PlayerOnboarding, { defaultName: "Alex", next: "/app", userId: "u-1", abschlussAction: async () => undefined }));
     expect(m).toContain("Schritt 1 von 5");
     expect(m).toMatch(/<fieldset[^>]*disabled/);
     expect(m).toContain('data-testid="assistent-laedt"');
     expect(m).toContain('value="Alex"');
   });
 
+  it("Entwurfsschlüssel je Konto: zwei Nutzer im selben Browser teilen sich keinen Entwurf", () => {
+    const root = path.resolve(import.meta.dirname, "../..");
+    const src = readFileSync(path.join(root, "src/app/willkommen/PlayerOnboarding.tsx"), "utf8");
+    expect(src).toContain("id={`${PLAYER_ONBOARDING_ID}:${userId}`}");
+  });
+
   it("Quelltext: page.tsx reicht die Server-Aktion als Prop, das alte einseitige Formular ist weg", () => {
     const root = path.resolve(import.meta.dirname, "../..");
     const page = readFileSync(path.join(root, "src/app/willkommen/page.tsx"), "utf8");
-    expect(page).toContain("<PlayerOnboarding defaultName={user.name} next={next} abschlussAction={completeOnboardingAction} />");
+    expect(page).toContain("<PlayerOnboarding defaultName={user.name} next={next} userId={user.id} abschlussAction={completeOnboardingAction} />");
     expect(page).not.toContain("OnboardingForm");
     expect(() => readFileSync(path.join(root, "src/app/willkommen/OnboardingForm.tsx"), "utf8")).toThrow();
   });

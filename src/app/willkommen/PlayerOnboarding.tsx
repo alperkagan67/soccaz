@@ -120,10 +120,11 @@ export function buildPlayerSteps(): readonly AssistentSchritt[] {
 
 const STEPS = buildPlayerSteps();
 
-export function PlayerOnboarding({ defaultName, next, abschlussAction }: { defaultName: string; next: string; abschlussAction: (prev: ActionState, formData: FormData) => Promise<ActionState> }) {
+/** `userId`: Teil des Entwurfsschlüssels, damit auf einem geteilten Gerät ein zweiter Nutzer den Entwurf (Name, Stadt, Position) des ersten nie sieht oder als Anzeigename übernimmt. */
+export function PlayerOnboarding({ defaultName, next, userId, abschlussAction }: { defaultName: string; next: string; userId: string; abschlussAction: (prev: ActionState, formData: FormData) => Promise<ActionState> }) {
   return (
     <Assistent
-      id={PLAYER_ONBOARDING_ID}
+      id={`${PLAYER_ONBOARDING_ID}:${userId}`}
       titel="Willkommen"
       schritte={STEPS}
       anfangswerte={{ name: defaultName, next }}
