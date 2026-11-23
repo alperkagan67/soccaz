@@ -203,7 +203,10 @@ async function refundPlayer(tx: Tx, t: T, p: PlayerRow, reason: string) {
     // 012 M6b b2-ii: Es gibt kein Guthaben mehr. Altgeld (paid_cents > 0 aus dem früheren Guthabenmodell) wird NICHT erstattet, sondern protokolliert (Anzahl/Betrag, ohne Personendaten),
     // damit Admin 1 es klärt. Das Team ist dann nicht mehr vollständig: "Bereit" gilt nicht mehr. Karten-Abbuchungen erstattet allein der Kartenpfad (tournament-refund.ts).
     await tx.update(tournamentTeams).set({ paidReadyAt: null }).where(and(eq(tournamentTeams.tournamentId, t.id), eq(tournamentTeams.teamId, p.teamId)));
-    await audit(null, "tournament.refund_skipped", "tournament", t.id, { after: { amountCents: p.paidCents, reason, note: "keine Guthaben-Erstattung mehr (012 M6b): manuell klären" } }, tx);
+    // Je Spieler, Bezahlzeitpunkt und Anlass nur EIN Eintrag (Wiederholung schreibt nicht doppelt). userId/paidBy sind interne IDs, kein Name und keine E-Mail: der Anspruch bleibt zuordenbar, auch wenn die Zeile gleich gelöscht/genullt wird.
+    const claimKey = `${p.userId}:${p.paidAt?.getTime() ?? 0}:${reason}`;
+    const [seen] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, "tournament.refund_skipped"), eq(auditLog.entity, "tournament"), eq(auditLog.entityId, t.id), sql`${auditLog.after}->>'claimKey' = ${claimKey}`)).limit(1);
+    if (!seen) await audit(null, "tournament.refund_skipped", "tournament", t.id, { after: { claimKey, userId: p.userId, paidBy: p.paidBy, teamId: p.teamId, paidAt: p.paidAt, amountCents: p.paidCents, reason, note: "keine Guthaben-Erstattung mehr (012 M6b): manuell klären" } }, tx);
   }
 }
 
@@ -336,8 +339,8 @@ export async function reopenRosters(userId: string, tournamentId: string) {
     await tx.update(tournamentTeams).set({ readyAt: null, paidReadyAt: null }).where(eq(tournamentTeams.tournamentId, tournamentId));
     // beim Wiederoeffnen werden Zugangs- und Provisions-Snapshot verworfen; sie werden beim naechsten Fixieren neu eingefroren. Die Zusage der Halle bleibt (sie gilt fuer die Halle, nicht fuer den Preis).
     await tx.update(tournaments).set({ status: "registration", finalShareCents: null, venueAccessRequiredSnapshot: null, commissionPercentSnapshot: null }).where(eq(tournaments.id, tournamentId));
-    await notifyUsers([...new Set(players.map((p) => p.userId)), ...new Set(players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])))], { type: "system", title: "Kader wieder offen", body: `${t.name}: Der Veranstalter hat die Kader wieder geöffnet. Bereits gezahlte Anteile wurden erstattet, der Preis wird neu berechnet.`, url: `/turniere/${tournamentId}` }, tx);
-    await audit(userId, "tournament.reopen", "tournament", tournamentId, { after: { refunded: players.filter((p) => p.paidCents > 0).length } }, tx);
+    await notifyUsers([...new Set(players.map((p) => p.userId)), ...new Set(players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])))], { type: "system", title: "Kader wieder offen", body: `${t.name}: Der Veranstalter hat die Kader wieder geöffnet. ${players.some((p) => p.paidCents > 0) ? "Für Eintritte aus der früheren Guthaben-Zeit meldet sich die Plattform bei dir." : "Es war noch nichts abgebucht."} Der Preis wird neu berechnet.`, url: `/turniere/${tournamentId}` }, tx);
+    await audit(userId, "tournament.reopen", "tournament", tournamentId, { after: { refundSkipped: players.filter((p) => p.paidCents > 0).length } }, tx);
   });
 }
 
@@ -356,7 +359,7 @@ export async function withdrawTeam(userId: string, tournamentId: string, teamId:
     await tx.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
     await tx.delete(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, teamId)));
     if (manager && entry.captainId !== userId) {
-      await notifyUsers(await teamAdminIds(tx, teamId), { type: "system", title: "Team aus dem Turnier genommen", body: `Der Veranstalter hat euer Team aus ${t.name} genommen. Bezahlte Eintritte wurden erstattet.`, url: `/turniere/${tournamentId}` }, tx);
+      await notifyUsers(await teamAdminIds(tx, teamId), { type: "system", title: "Team aus dem Turnier genommen", body: `Der Veranstalter hat euer Team aus ${t.name} genommen. ${players.some((p) => p.paidCents > 0) ? "Für Eintritte aus der früheren Guthaben-Zeit meldet sich die Plattform." : "Es war nichts abgebucht."}`, url: `/turniere/${tournamentId}` }, tx);
     }
     await audit(userId, "tournament.withdraw", "tournament", tournamentId, { after: { teamId } }, tx);
   });
@@ -673,6 +676,7 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
     const r = await prepareCardCancel(tx, t, new Date());
     refundedCards = r.refunded;
     payerIds.push(...r.payerIds);
+    for (const p of players) if (p.paidCents > 0) await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier (Altgeld)"); // Mischzustand: Altgeld neben Kartenabbuchungen nicht still lassen
   } else {
     for (const p of players) {
       await refundPlayer(tx, t, p, "Rückerstattung abgesagtes Turnier");
@@ -696,7 +700,7 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
   if (gameIds.length) await tx.update(matches).set({ status: "cancelled" }).where(inArray(matches.id, gameIds));
   await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
   await tx.update(tournaments).set({ status: "cancelled" }).where(eq(tournaments.id, tournamentId));
-  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: card ? refundedCards : players.filter((p) => p.paidCents > 0).length, card, byJob: actorId === null } }, tx);
+  await audit(actorId, "tournament.cancel", "tournament", tournamentId, { after: { refunded: card ? refundedCards : 0, refundSkipped: players.filter((p) => p.paidCents > 0).length, card, byJob: actorId === null } }, tx);
 }
 
 /**

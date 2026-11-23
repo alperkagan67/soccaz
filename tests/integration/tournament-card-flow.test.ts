@@ -1,11 +1,12 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles, paymentRefunds, teamMembers } from "@/db/schema";
+import { auditLog, notifications, matchParticipants, matches, paymentCharges, paymentProfiles, paymentRefunds, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { ledgerEntries, venues } from "@/db/schema-finance";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, fixDeadline } from "@/lib/deadlines";
+import { cancelUnderfilledLobbies } from "@/server/scheduled";
 import { sendPendingTournamentRefunds } from "@/server/payments/tournament-refund";
 import { trialBalance, walletBalance } from "@/server/ledger";
 import { FakeProvider } from "@/server/payments/fake";
@@ -722,10 +723,57 @@ describe("Turnier: Altgeld wird nur protokolliert (012 M6b b2-ii)", () => {
     expect((await db.select().from(ledgerEntries).where(eq(ledgerEntries.tournamentId, t.id))).length).toBe(entriesBefore);
     const rows = await auditsOf(t.id, "tournament.refund_skipped");
     expect(rows).toHaveLength(1);
-    expect(rows[0].after).toMatchObject({ amountCents: 1000 });
+    expect(rows[0].after).toMatchObject({ amountCents: 1000, userId: extra.id }); // Anspruch bleibt nach dem Löschen der Zeile zuordenbar (interne ID, kein Name/keine E-Mail)
     const text = JSON.stringify(rows[0]);
-    expect(text).not.toContain(extra.id); // keine Personendaten im Protokoll
-    expect(text).not.toContain(s.captain.id);
+    expect(text).not.toContain("@");
+  });
+
+  it("Anspruch nach Abmeldung des Teams und nach Wiederöffnen zuordenbar: je Spieler mit Altgeld ein Eintrag mit userId und paidBy, bevor Zeile gelöscht/genullt wird", async () => {
+    const o = await organizer();
+    const t = await createTournament(o.id, { ...base, venueId: hall });
+    const s = await squad(t.id, 3, false);
+    const payer = await makeUser("zahler");
+    await db.update(tournamentPlayers).set({ paidCents: 700, paidAt: new Date(), paidBy: payer.id }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, s.players[1].id)));
+    await withdrawTeam(s.captain.id, t.id, s.team.id);
+    let rows = await auditsOf(t.id, "tournament.refund_skipped");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].after).toMatchObject({ userId: s.players[1].id, paidBy: payer.id, amountCents: 700 });
+
+    const o2 = await organizer();
+    const { t: t2, players } = await cardTournament(o2);
+    await db.update(tournamentPlayers).set({ paidCents: 300, paidAt: new Date(), paidBy: players[2].id }).where(and(eq(tournamentPlayers.tournamentId, t2.id), eq(tournamentPlayers.userId, players[3].id)));
+    await reopenRosters(o2.id, t2.id);
+    rows = await auditsOf(t2.id, "tournament.refund_skipped");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].after).toMatchObject({ userId: players[3].id, paidBy: players[2].id, amountCents: 300 });
+    expect((await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t2.id))).every((p) => p.paidCents === 0)).toBe(true); // genullt, Anspruch steht im Protokoll
+    const reopen = await auditsOf(t2.id, "tournament.reopen");
+    expect(reopen[0].after).toMatchObject({ refundSkipped: 1 }); // Altgeld zählt nicht als erstattet
+  });
+
+  it("Absage im Mischzustand (Kartenabbuchung vorhanden, ein Spieler mit Altgeld): Kartenzweig erstattet die Abbuchungen UND protokolliert das Altgeld, Meldung behauptet keine Guthaben-Erstattung", async () => {
+    const o = await organizer();
+    const { t, players } = await runningCardTournament(o);
+    await db.update(tournamentPlayers).set({ paidCents: 400, paidAt: new Date(2026, 0, 2) }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, players[0].id)));
+    await cancelTournament(owner.id, t.id); // nach der ersten Abbuchung sagt nur Admin 1 ab (AC-21)
+    const rows = await auditsOf(t.id, "tournament.refund_skipped");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].after).toMatchObject({ userId: players[0].id, amountCents: 400 });
+    expect((await auditsOf(t.id, "tournament.cancel"))[0].after).toMatchObject({ refundSkipped: 1 });
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+  });
+
+  it("Idempotenz: derselbe Anspruch (Spieler, Bezahlzeitpunkt, Anlass) wird nur einmal protokolliert, auch wenn das Öffnen wiederholt wird", async () => {
+    const o = await organizer();
+    const { t, players } = await cardTournament(o);
+    const paidAt = new Date(2026, 0, 3);
+    for (let n = 0; n < 2; n++) {
+      await db.update(tournamentPlayers).set({ paidCents: 250, paidAt }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, players[1].id)));
+      await reopenRosters(o.id, t.id);
+      // wieder in die Zahlungsphase: alle Teams melden erneut vollzählig
+      for (const e of await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id))) await setRosterComplete(e.captainId!, t.id, true);
+    }
+    expect(await auditsOf(t.id, "tournament.refund_skipped")).toHaveLength(1);
   });
 
   it("Abschluss mit Altgeld: keine Auszahlung an den Veranstalter, keine Provisionsbuchung; 'tournament.settle_skipped' mit Summe; settled_at gesetzt; Hauptbuch ausgeglichen", async () => {
@@ -752,5 +800,73 @@ describe("Turnier: Altgeld wird nur protokolliert (012 M6b b2-ii)", () => {
     expect(skipped).toHaveLength(1);
     expect(skipped[0].after).toMatchObject({ totalCents: 500 });
     expect((await trialBalance()).balanced).toBe(true);
+  });
+});
+
+// --- b2-ii (R-T320 B): Gegenstücke zu fünf Fristen-Tests aus tournament.test.ts, deren Aufbau über das Guthaben lief ---
+describe("Turnier im Kartenmodell: Fristen-Gegenstücke", () => {
+  const hours = (n: number) => new Date(Date.now() + n * 3_600_000);
+
+  it("Gegenstück zu 'Karenz: Steht der Preis erst kurz vor der Frist fest, gilt die Frist frühestens 12 Stunden danach'", async () => {
+    const o = await organizer();
+    const start = hours(49);
+    const t = await createTournament(o.id, { ...base, venueId: hall, startsAt: start, registrationDeadline: new Date(start.getTime() - 48 * 3_600_000) });
+    for (let i = 0; i < t.maxTeams; i++) await squad(t.id, 4); // Preis steht jetzt fest
+    expect((await statusOf(t.id)).status).toBe("payment");
+    await closeTournamentsAtDeadline(new Date(fixDeadline(start).getTime() + 3_600_000)); // 48-h-Frist eine Stunde her, die Karenz läuft noch
+    expect((await statusOf(t.id)).status).toBe("payment");
+    await closeTournamentsAtDeadline(new Date(Date.now() + 12 * 3_600_000 + 5000));
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+  });
+
+  it("Gegenstück zu 'AC-14: weniger als 48 Stunden Vorlauf': sobald alle Karten da und alle bereit sind, wird sofort abgebucht (Bracket), danach sagt auch der 1-h-Job nicht mehr ab", async () => {
+    const o = await organizer();
+    const t = await createTournament(o.id, { ...base, venueId: hall, startsAt: hours(20), registrationDeadline: hours(10) });
+    const squads: Squad[] = [];
+    for (let i = 0; i < t.maxTeams; i++) squads.push(await squad(t.id, 4));
+    await giveCards(squads.flatMap((x) => x.players));
+    for (const x of squads.slice(0, 3)) await setPaidReady(x.captain.id, t.id);
+    expect((await charge(t.id)).reason).toBe("not_ready");
+    expect((await statusOf(t.id)).bracketGeneratedAt).toBeNull();
+    await setPaidReady(squads[3].captain.id, t.id);
+    await charge(t.id);
+    const done = await statusOf(t.id);
+    expect(done.status).toBe("running");
+    expect(done.bracketGeneratedAt).not.toBeNull();
+    await closeTournamentsAtDeadline(new Date(abortDeadline(done.startsAt!).getTime() + 60_000));
+    expect((await statusOf(t.id)).status).toBe("running");
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Gegenstück zu 'AC-11: ein Turnier, das zur Frist noch in der Anmeldung steht, fällt aus; ein Turnier mit Bracket nie'", async () => {
+    const o = await organizer();
+    const open = await createTournament(o.id, { ...base, venueId: hall });
+    await squad(open.id, 4);
+    await squad(open.id, 3, false);
+    const { t: booked } = await runningCardTournament(o);
+    await closeTournamentsAtDeadline(new Date(fixDeadline((await statusOf(open.id)).startsAt!).getTime() + 1000));
+    expect((await statusOf(open.id)).status).toBe("cancelled");
+    expect((await statusOf(booked.id)).status).toBe("running");
+  });
+
+  it("Gegenstück zu 'Empfänger der Absage': Veranstalter, Zahler (paidBy) und Spieler bekommen die Absage je genau einmal", async () => {
+    const o = await organizer();
+    const { t, players } = await cardTournament(o);
+    const payer = await makeUser("paidby");
+    await db.update(tournamentPlayers).set({ paidBy: payer.id }).where(and(eq(tournamentPlayers.tournamentId, t.id), eq(tournamentPlayers.userId, players[0].id)));
+    await closeTournamentsAtDeadline(fixDeadline((await statusOf(t.id)).startsAt!));
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+    const got = async (userId: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.title, "Turnier abgesagt"), eq(notifications.url, `/turniere/${t.id}`)))).length;
+    expect(await got(o.id)).toBe(1);
+    expect(await got(payer.id)).toBe(1);
+    for (const pl of players) expect(await got(pl.id), "Spieler genau einmal (nicht doppelt als Zahler)").toBe(1);
+  });
+
+  it("Cron-Einbindung (guthabenunabhängig, erhalten): der Job lobby-deadlines (cancelUnderfilledLobbies) ruft die Turnier-Frist auf", async () => {
+    const o = await organizer();
+    const { t } = await cardTournament(o);
+    const n = await cancelUnderfilledLobbies(fixDeadline((await statusOf(t.id)).startsAt!));
+    expect(n).toBeGreaterThanOrEqual(1);
+    expect((await statusOf(t.id)).status).toBe("cancelled");
   });
 });
