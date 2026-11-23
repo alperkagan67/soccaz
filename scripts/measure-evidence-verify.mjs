@@ -3,10 +3,11 @@
 // Aufruf: node scripts/measure-evidence-verify.mjs [Zeilen=100000]   (1 000 000 nur, wenn die Messung bei 100 000 unklar ist; DATABASE_URL aus .env.local, wird nie ausgegeben)
 import { spawnSync } from "node:child_process";
 import pg from "pg";
+import { assertLocalDbUrl, loadLocalEnv } from "./lib/db-url-guard.mjs";
 
-process.loadEnvFile(".env.local");
-const base = new URL(process.env.DATABASE_URL);
-if (!["localhost", "127.0.0.1"].includes(base.hostname) || base.search || base.hash) throw new Error("nur lokale DB");
+loadLocalEnv();
+assertLocalDbUrl(process.env.DATABASE_URL, "measure-evidence-verify"); // VOR jeder Verbindung (Query/Fragment/Leerraum/Parser-Gegenprobe)
+const base = new URL(/** @type {string} */ (process.env.DATABASE_URL));
 const N = Number(process.argv[2] ?? 100_000);
 if (!Number.isInteger(N) || N < 1000 || N > 1_000_000) throw new Error("Zeilen zwischen 1000 und 1000000");
 const name = `soccaz_measure_verify_${process.pid}`;

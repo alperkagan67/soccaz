@@ -7,10 +7,11 @@
 // Zeitlimit: Gesamtlauf bricht nach 15 Minuten ab.
 import { spawnSync } from "node:child_process";
 import pg from "pg";
+import { assertLocalDbUrl, loadLocalEnv } from "./lib/db-url-guard.mjs";
 
-process.loadEnvFile(".env.local");
-const base = new URL(process.env.DATABASE_URL);
-if (!["localhost", "127.0.0.1"].includes(base.hostname) || base.search || base.hash) throw new Error("nur lokale DB");
+loadLocalEnv();
+assertLocalDbUrl(process.env.DATABASE_URL, "measure-evidence"); // VOR jeder Verbindung (Query/Fragment/Leerraum/Parser-Gegenprobe)
+const base = new URL(/** @type {string} */ (process.env.DATABASE_URL));
 const MAX = Number(process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : 1_000_000);
 const SKIP_BIG = process.argv.includes("--skip-big");
 const name = `soccaz_measure_evidence_${process.pid}`; // mit Prozess-ID: nie dieselbe Datenbank wie ein anderer Lauf

@@ -4,11 +4,13 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import pg from "pg";
+import { assertWorkerDatabase, loadLocalEnv } from "./lib/db-url-guard.mjs";
 
-process.loadEnvFile(".env.local");
-const url = new URL(process.env.DATABASE_URL);
+loadLocalEnv();
+assertWorkerDatabase(process.env.DATABASE_URL, "mutation-evidence"); // VOR jeder Verbindung: lokal, ohne Query/Fragment/Leerraum, nur soccaz_w1..w4
+const url = new URL(/** @type {string} */ (process.env.DATABASE_URL));
 const dbName = url.pathname.slice(1);
-if (!["localhost", "127.0.0.1"].includes(url.hostname) || dbName === "soccav2" || !/^soccaz_w\d$/.test(dbName)) throw new Error("nur Worker-Datenbank soccaz_w1..w4");
+if (dbName === "soccav2" || !/^soccaz_w\d$/.test(dbName)) throw new Error("nur Worker-Datenbank soccaz_w1..w4");
 
 const PFX = "soc" + "az."; // Präfix der Sitzungswerte nicht als Literal (maintenance-guard-Test)
 const TEXT_DELETE = "    await tx.execute(sql`delete from booking_evidence_reason_text where evidence_id in (select evidence_id from evidence_actor where user_id = ${userId})`);\n";
