@@ -243,7 +243,7 @@ export async function fixShare(tx: Tx, match: MatchRow): Promise<void> {
   const freeByPaymentsOff = isDeadlineModel(match) && !moneyIn && (await cardPaymentsEnabled(tx)) && !(await paymentsEnabled(tx)) && !(await isChargeBound(tx, match.id));
   const share = freeByPaymentsOff ? 0 : shareCents(priceCents, shareDivisor(match, seated.length));
   // Kartenmodell: nur Preis und Spielerzahl festschreiben; nichts prüfen, nichts erstatten (abgebucht wird mit M2)
-  const pay = !(await cardModeActive(tx, match)) && (await paymentsEnabled(tx));
+  const pay = Boolean(moneyIn) || (!(await cardModeActive(tx, match)) && (await paymentsEnabled(tx))); // Guthaben im Spiel: wie im Guthabenmodell pruefen und erstatten, auch bei Zahlungen AUS
   if (pay && share > 0) {
     const short = seated.filter((p) => p.paidCents < share).length;
     if (short > 0) throw new DomainError(`Der Anteil wäre ${formatEuro(share)} pro Spieler (${seated.length} Spieler), ${short} Spieler haben weniger bezahlt. Die Spielerzahl muss sich ändern oder die betroffenen Spieler treten neu bei.`);

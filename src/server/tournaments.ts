@@ -17,7 +17,7 @@ import { getSetting } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
-import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardFlowPaused, tournamentCardMode, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
+import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardFlowPaused, tournamentCardMode, tournamentPayBlocked, PAYMENTS_PAUSED, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
 import { notifyHolderOnFix } from "./tournament-holders";
@@ -232,6 +232,7 @@ export async function payEntry(userId: string, tournamentId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
+    if (await tournamentPayBlocked(tx, t)) throw new DomainError(PAYMENTS_PAUSED);
     if (await tournamentCardMode(tx, tournamentId)) throw new DomainError("Im Kartenmodell wird dein Anteil zur Frist von deiner Karte abgebucht. Hinterlege deine Karte.");
     const [p] = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId))).for("update");
     if (!p) throw new DomainError("Du bist nicht im Turnier-Kader.");
@@ -256,6 +257,7 @@ export async function payForTeam(userId: string, tournamentId: string, targetUse
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!paymentOpen(t)) throw new DomainError("Bezahlen geht, sobald alle Teams vollzählig sind und der Preis pro Spieler feststeht.");
+    if (await tournamentPayBlocked(tx, t)) throw new DomainError(PAYMENTS_PAUSED);
     if (await tournamentCardMode(tx, tournamentId)) throw new DomainError("Im Kartenmodell wird dein Anteil zur Frist von deiner Karte abgebucht. Hinterlege deine Karte.");
     const [captainEntry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
     let teamId = captainEntry?.teamId;
@@ -300,6 +302,7 @@ export async function setPaidReady(userId: string, tournamentId: string) {
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!paymentOpen(t)) throw new DomainError("Bereit geht erst in der Zahlungsphase, bevor das Bracket steht.");
+    if (await tournamentPayBlocked(tx, t)) throw new DomainError(PAYMENTS_PAUSED);
     const [entry] = await tx.select().from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.captainId, userId)));
     if (!entry) throw new DomainError("Nur der Captain eines angemeldeten Teams kann Bereit drücken.");
     if (await tournamentCardMode(tx, tournamentId)) {
@@ -1002,7 +1005,8 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const share = shareOf(t);
   const priceFixed = t.finalShareCents !== null;
   // Kartenmodell (012 M5-3): Ampel = Karte hinterlegt (oder Anteil uebernommen), nichts wird bezahlt. Der Server entscheidet die Sichtbarkeit je Betrachter (Plan v3, Matrix).
-  const cardMode = (t.status === "registration" || t.status === "payment") && (await tournamentCardMode(db, t.id));
+  const payBlocked = (t.status === "registration" || t.status === "payment") && (await tournamentPayBlocked(db, t)); // Zahlungen AUS: kein Guthaben-Bezahlknopf, Kartenansicht
+  const cardMode = (t.status === "registration" || t.status === "payment") && ((await tournamentCardMode(db, t.id)) || payBlocked);
   const cards = cardMode ? await getTournamentCardDisplays(t.id, { id: viewer?.id ?? null, platformAdmin: isPlatformAdmin(viewer ? { role: viewer.role as Role } : null) }) : null;
   // gedeckt = Karte hinterlegt ODER Anteil uebernommen; die Captain-Sicht liefert bei Uebernahme {status: "none", covered: true} (Markierung), das zaehlt als gedeckt
   const cardOk = (userId: string) => cards?.[userId]?.status === "card_ready" || cards?.[userId]?.covered === true;
@@ -1064,6 +1068,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
       commissionPercent: await commissionPercent(),
     },
     cardMode,
+    paymentsPaused: payBlocked,
     registrationOpen: open,
     deadlinePassed: deadlinePassed(t),
     bracketVisible,

@@ -34,6 +34,21 @@ export async function tournamentCardFlowPaused(tx: Pick<Tx, "select">, tournamen
   return tournamentCardEligible(tx, tournamentId);
 }
 
+/**
+ * Zahlungen sind fuer dieses Turnier pausiert (Zahlungen AUS bzw. Kartenschalter AUS bei bereits fixiertem Kartenfluss): Weder Guthaben-Zahlung noch Bereit sind moeglich
+ * (sonst entstuende paid_cents am Kartenfluss, an Halle, Zusage und Provision vorbei, und nach dem Wiedereinschalten eine Doppelbelastung). Turniere mit Guthaben im Turnier
+ * (paid_cents > 0, Altmodell) bleiben davon ausgenommen. Unter der Turniersperre des Aufrufers lesen.
+ */
+export async function tournamentPayBlocked(tx: Pick<Tx, "select">, t: { id: string; venueAccessRequiredSnapshot: boolean | null }): Promise<boolean> {
+  if (await tournamentPaymentsActive(tx as Tx)) return false; // Kartenfluss aktiv: tournamentCardMode entscheidet
+  if (await tournamentCardFlowPaused(tx, t.id)) return true;
+  if (t.venueAccessRequiredSnapshot === null) return false;
+  const [paid] = await tx.select({ userId: tournamentPlayers.userId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), gt(tournamentPlayers.paidCents, 0))).limit(1);
+  return !paid;
+}
+
+export const PAYMENTS_PAUSED = "Zahlungen sind gerade pausiert.";
+
 async function tournamentCardEligible(tx: Pick<Tx, "select">, tournamentId: string): Promise<boolean> {
   // Kostenlose Turniere (Hallenkosten 0 bzw. Anteil 0) haben nichts abzubuchen: sie laufen wie bisher (Bereit ohne Karte, Bracket sofort), sonst haengen sie im Kartenmodell fest (Security-Review M5-3).
   const [t] = await tx.select({ totalCents: tournaments.totalCents, finalShareCents: tournaments.finalShareCents, entryFeeCents: tournaments.entryFeeCents }).from(tournaments).where(eq(tournaments.id, tournamentId));

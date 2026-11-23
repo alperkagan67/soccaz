@@ -195,6 +195,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       <section className="space-y-3" data-testid="tournament-lobby">
         <h2 className="text-lg font-semibold">Turnier-Lobby ({teams.length} von {t.maxTeams} Teams)</h2>
         {/* Kartenmodell: Gaeste und Spieler ohne Bezug zum Turnier sehen nur die Anzahl und den Status (Entscheid t9) */}
+        {data.paymentsPaused && <p className="text-sm text-muted" data-testid="payments-paused">Zahlungen sind gerade pausiert. Abgebucht wird erst, wenn sie wieder eingeschaltet sind.</p>}
         {data.cardMode && !(v?.isOrganizer || v?.myTeamId) && <p className="text-sm text-muted" data-testid="teams-count">Teams angemeldet: {teams.length} · {STATUS[t.status]}</p>}
         {(inRegistration || inPayment) && !(data.cardMode && !(v?.isOrganizer || v?.myTeamId)) && (
           <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" data-testid="tournament-legend">

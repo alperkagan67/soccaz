@@ -4,8 +4,8 @@ import { db } from "@/db";
 import { matches, matchParticipants, paymentCharges, paymentRefunds } from "@/db/schema";
 import { teamMembers } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
-import { tournaments } from "@/db/schema-league";
-import { createTournament, frozenTournaments, joinAsPlayer, registerTeam, setOrganizer, setRosterComplete } from "@/server/tournaments";
+import { tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
+import { createTournament, frozenTournaments, joinAsPlayer, payEntry, payForTeam, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
 import { tournamentCardMode } from "@/server/tournament-card";
 import { chargeEligibility } from "@/server/payments/charge-run";
 import { finalConfirm, setReady, teamComplete } from "@/server/lobby";
@@ -210,7 +210,7 @@ describe("Zahlungen AUS: 24-h-Pruefung (cancelUnderfilledLobbies) laesst abrechn
 });
 
 describe("Sicherheits-Review: Guthaben im Spiel wird bei AUS nie gratis fixiert", () => {
-  it("Spiel mit bezahltem Platz (paid_cents > 0), Zahlungen AUS + Karte AN, beide Captains bestaetigen: Anteil bleibt der Preisanteil, nicht 0", async () => {
+  it("Spiel mit einem bezahlten Platz (paid_cents > 0) und neun unbezahlten, Zahlungen AUS + Karte AN: Bestaetigen wird abgelehnt (Unterdeckung wie im Guthabenmodell), nichts fixiert", async () => {
     const g = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
     const all = [g.adminA, g.adminB];
     while (all.length < 10) all.push(await addPlayer(g.match.id, all.length % 2 === 0 ? g.home.id : g.away.id));
@@ -218,8 +218,8 @@ describe("Sicherheits-Review: Guthaben im Spiel wird bei AUS nie gratis fixiert"
     await switches(false, true);
     for (const p of all) await setReady(p.id, g.match.id, true);
     await finalConfirm(g.adminA.id, g.match.id);
-    await finalConfirm(g.adminB.id, g.match.id);
-    expect((await reloadMatch(g.match.id)).finalShareCents).toBe(800);
+    await expect(finalConfirm(g.adminB.id, g.match.id)).rejects.toThrow(/weniger bezahlt/);
+    expect((await reloadMatch(g.match.id)).finalShareCents).toBeNull();
   });
 });
 
@@ -266,6 +266,15 @@ describe("Turnier mit Preis, Preis wird bei Zahlungen AUS fixiert", () => {
       expect(row.status).toBe("payment");
       expect(row.finalShareCents).toBeGreaterThan(0);
       expect(row.venueAccessRequiredSnapshot !== null).toBe(snapshot);
+      if (!payments && card) {
+        // pausiert: Guthaben-Zahlung und Bereit sind gesperrt, es entsteht kein paid_cents und keine Abbuchungszeile
+        const [cap] = await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id)).limit(1);
+        await expect(payEntry(cap.captainId, t.id)).rejects.toThrow(/pausiert/);
+        await expect(payForTeam(cap.captainId, t.id)).rejects.toThrow(/pausiert/);
+        await expect(setPaidReady(cap.captainId, t.id)).rejects.toThrow(/pausiert/);
+        expect((await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id))).every((p) => p.paidCents === 0)).toBe(true);
+        expect(await db.select().from(paymentCharges).where(eq(paymentCharges.tournamentId, t.id))).toHaveLength(0);
+      }
     }
   });
 });
