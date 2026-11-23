@@ -98,7 +98,7 @@ async function scenario(browser: import("@playwright/test").Browser, model: Mode
   const adm = await (await browser.newContext()).newPage();
   await devLogin(adm, `${k}adm-${run}@test.local`, `Admin ${k}adm`, "/admin/hallen");
   await idle(adm);
-  const venueName = `E2E Halle ${run}`;
+  const venueName = `E2E Halle ${k} ${run}`;
   // erst bedienen, wenn React das Formular übernommen hat: vor der Hydration löst der Klick das native Absenden aus (Seite lädt neu, Eingaben weg, keine Halle angelegt);
   // die Hallenseite ist durch Provision/Betreiber-Zugang (009 M2, 011 M1) größer geworden und hydratisiert unter CI-Last später
   const create = adm.getByRole("button", { name: "Halle anlegen" });
