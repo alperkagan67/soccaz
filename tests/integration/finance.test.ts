@@ -16,7 +16,7 @@ const key = () => `f-${Math.random().toString(36).slice(2)}`;
 const fund = (userId: string, cents: number) => creditWallet(db, userId, { from: "clearing", amountCents: cents, kind: "topup", idempotencyKey: key() });
 
 async function settledMatch(priceCents: number) {
-  const m = await makeMatch({ legacy: true, priceCents, costCents: priceCents });
+  const m = await makeMatch({ priceCents, costCents: priceCents }); // neues Guthabenmodell (Altspiele sind stillgelegt, 1c-ii a-1)
   const players = [m.adminA, m.adminB];
   for (let i = 0; i < 4; i++) players.push(await addPlayer(m.match.id, m.home.id), await addPlayer(m.match.id, m.away.id));
   for (const p of players) {
@@ -38,41 +38,42 @@ afterAll(cleanup);
 
 describe("Finanz-Reporting", () => {
   let a: Awaited<ReturnType<typeof settledMatch>>;
-
-  it("Spiel mit 10 Zahlern: Einnahmen gleich Hallenpreis, mit Hallenkosten Marge 0", async () => {
+  beforeAll(async () => {
     a = await settledMatch(8000);
-    await recordExpense(a.adminA.id, { matchId: a.match.id, kind: "venue", amountCents: 8000, note: "Hallenmiete" });
+  });
 
+  // Wiederhergestellt auf dem NEUEN Guthabenmodell (Anteil = Preis ÷ Spielerzahl, keine Reservierung/Rueckzahlung): gleiche Pruefungen wie vor a-1, Zahlen angepasst.
+  it("Spiel mit 10 Zahlern: Einnahmen gleich Hallenpreis, mit Hallenkosten Marge 0", async () => {
+    await recordExpense(a.adminA.id, { matchId: a.match.id, kind: "venue", amountCents: 8000, note: "Hallenmiete" });
     const o = await overview(wide);
     expect(o.revenueCents - base.revenueCents).toBe(8000);
     expect(o.venueCostCents - base.venueCostCents).toBe(8000);
     expect(o.marginCents - base.marginCents).toBe(0);
     expect(o.topupsCents - base.topupsCents).toBe(20_000);
-    expect(o.refundsCents - base.refundsCents).toBe(2000); // 10 x 2,00 EUR Abrechnungsdifferenz
-    expect(o.liabilityCents - base.liabilityCents).toBe(12_000); // 10 x 12,00 EUR Restguthaben
+    expect(o.refundsCents - base.refundsCents).toBe(0); // neues Modell: jeder zahlt gleich den endgueltigen Anteil, keine Abrechnungsdifferenz
+    expect(o.liabilityCents - base.liabilityCents).toBe(12_000); // 10 x 12,00 EUR Restguthaben (20,00 - 8,00)
     expect(o.feesCents).toBe(0);
     expect(o.promoCents).toBe(0);
   });
 
   it("Spieleliste zeigt Zahler, Einnahmen, Kosten und Marge", async () => {
-    const rows = (await listMatchFinance(wide)).filter((x) => x.id === a.match.id); // echte Entwicklungsdaten zählen nicht mit
+    const rows = (await listMatchFinance(wide)).filter((x) => x.id === a.match.id);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: a.match.id, payers: 10, revenueCents: 8000, costCents: 8000, marginCents: 0, finalShareCents: 800, priceCents: 8000 });
+    expect(rows[0]).toMatchObject({ id: a.match.id, payers: 10, revenueCents: 8000, costCents: 8000, marginCents: 0, priceCents: 8000 });
   });
 
   it("je Spieler: bezahlt, zurück, netto", async () => {
     const players = await playerFinance(a.match.id);
     expect(players).toHaveLength(10);
     for (const p of players) {
-      expect(p.paidCents).toBe(1000);
-      expect(p.refundedCents).toBe(200);
+      expect(p.paidCents).toBe(800);
+      expect(p.refundedCents).toBe(0);
       expect(p.netCents).toBe(800);
       expect(p.pendingRefundCents).toBe(0);
       expect(p.hasPaidNow).toBe(true);
     }
     const entries = await matchEntries(a.match.id);
     expect(entries.filter((e) => e.kind === "match_share")).toHaveLength(10);
-    expect(entries.filter((e) => e.kind === "refund")).toHaveLength(10);
     expect(entries.filter((e) => e.kind === "venue_cost")).toHaveLength(1);
   });
 
@@ -99,24 +100,12 @@ describe("Finanz-Reporting", () => {
     expect(alerts.some((x) => x.code === "unbalanced")).toBe(false);
   });
 
-  it("Alarm: negatives Guthaben und nicht abgerechnetes Spiel", async () => {
-    // Spiel hat begonnen, ist bestätigt, hat Zahler, aber keine Abrechnung
-    const c = await makeMatch({ legacy: true });
-    const p = c.adminA;
-    await fund(p.id, 2000);
-    await payShare(p.id, c.match.id);
-    await setReady(p.id, c.match.id, true);
-    await db.update(matches).set({ status: "confirmed", startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, c.match.id));
-    const alerts = await getAlerts();
-    expect(alerts.some((x) => x.code === `unsettled:${c.match.id}`)).toBe(true);
-  });
-
   it("CSV-Export mit Kopfzeile, Dezimalkomma und Excel-tauglichem BOM", async () => {
     const csv = await exportLedgerCsv(wide);
-    expect(csv.startsWith("﻿Datum;Buchungs-ID;Art;Soll;Haben;Betrag EUR;Spiel;Zahlungs-ID;Nutzer;Grund")).toBe(true);
+    expect(csv.startsWith("\uFEFFDatum;Buchungs-ID;Art;Soll;Haben;Betrag EUR;Spiel;Zahlungs-ID;Nutzer;Grund")).toBe(true);
     const lines = csv.trim().split("\r\n");
     expect(lines.length).toBeGreaterThan(20);
-    expect(csv).toMatch(/;10,00;/);
+    expect(csv).toMatch(/;8,00;/);
     expect(csv).toContain("venue_cost");
   });
 

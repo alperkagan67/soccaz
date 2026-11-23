@@ -19,7 +19,7 @@ import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
 import { triggerChargesInBackground } from "./payments/charge-trigger";
 import { chargeAmount } from "./payments/charge-run";
-import { CHARGES_LOCKED, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { CHARGES_LOCKED, assertNotLegacyMoney, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
@@ -245,7 +245,7 @@ async function evaluateConfirmation(tx: Tx, match: MatchRow, actorId: string) {
     await tx.update(matches).set({ status: next }).where(eq(matches.id, match.id));
     await audit(actorId, "match.status", "match", match.id, { before: { status: current.status }, after: { status: next } }, tx);
     if (next === "confirmed") {
-      if (await paymentsEnabled(tx)) await createBookingJob(tx, match);
+      await createBookingJob(tx, match); // Reservierung der Halle: unabhaengig von Guthaben und von "Zahlungen aus" (Entscheid t2q, 1c-ii)
       await notifyUsers(
         await matchParticipantIds(tx, match.id),
         { type: "match.confirmed", title: "Spiel bestätigt", body: `Das Spiel ${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} findet statt.`, url: `/lobby/${match.id}` },
@@ -316,6 +316,7 @@ export async function finalConfirm(userId: string, matchId: string) {
   let bothConfirmed = false;
   await mutateLobby(userId, matchId, async (tx, match) => {
     if (match.schedulingOpen || match.vetoStatus === "halls" || match.vetoStatus === "running") throw new DomainError("Erst müssen Uhrzeit und Halle feststehen.");
+    await assertNotLegacyMoney(tx, match); // Altspiel: kann nicht bestaetigen/fixieren (stillgelegt)
     const [admin] = await tx
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)

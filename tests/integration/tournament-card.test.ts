@@ -5,7 +5,7 @@ import { paymentProfiles, teamMembers } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { setSetting } from "@/server/settings";
-import { createTournament, joinAsPlayer, leavePlayer, payEntry, payForTeam, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
+import { createTournament, joinAsPlayer, leavePlayer,  registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
 import { getTournamentCardDisplays, releaseTournamentCover, takeOverTournamentShare, tournamentCardMode, tournamentTeamCardsReady } from "@/server/tournament-card";
 import { exportCardData } from "@/server/account";
 import { paymentCharges } from "@/db/schema";
@@ -76,11 +76,9 @@ const playerOf = async (tid: string, userId: string) => (await db.select().from(
 const MANDATE = true;
 
 describe("M5-3: Kartenmodell im Turnier", () => {
-  it("der Preis steht fest, aber bezahlen mit Guthaben ist im Kartenmodell nicht moeglich (payEntry, payForTeam)", async () => {
+  it("der Preis steht fest, und Spieler haben noch nichts bezahlt (kein Guthabenweg mehr, 012 M6b)", async () => {
     const { t, squads } = await paymentPhase();
     expect((await stateOf(t.id)).status).toBe("payment");
-    await expect(payEntry(squads[0].players[1].id, t.id)).rejects.toThrow(/Karte/);
-    await expect(payForTeam(squads[0].captain.id, t.id)).rejects.toThrow(/Karte/);
     expect((await playerOf(t.id, squads[0].players[1].id)).paidCents).toBe(0);
   });
 

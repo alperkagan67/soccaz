@@ -47,7 +47,7 @@ export async function createBookingJob(tx: Tx, match: MatchRow) {
     {
       type: "admin.task",
       title: "Halle buchen",
-      body: `${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} ist bestätigt und bezahlt. Bitte die Halle buchen.`,
+      body: `${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} ist bestätigt. Bitte die Halle buchen.`,
       url: "/admin/buchungen",
     },
     tx,

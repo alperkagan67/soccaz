@@ -261,6 +261,22 @@ Vorschlag: Wer einen Test schreibt, der einen Hintergrundlauf auslösen kann (`v
 
 Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer, Abschnitt Tests); Regel-PR (Nutzer mergt).
 
+## 25. Änderung eines Plattform-Schalters: ALLE Tests und Specs mit dem Schalter per grep in EINEM PR gegenlesen
+
+Anlass: 012 M6b „Zahlungen AUS = Gratis“ (#207): die Bedeutung von `payments_enabled` änderte sich; 8 E2E-Specs (`karte-*`, `turnier-*`, `lobby-gast-kosten`) und 15 Integrationstests liefen mit dem bisherigen Standard AUS und kippten ins Gratis-Verhalten. Gefunden wurde das erst in der CI statt lokal (lokal vermeidbar), im Vorlauf ohne die Anpassung 70 Fehlschläge in 15 Integrationsdateien.
+
+Vorschlag: Wer die Bedeutung eines Schalters (`settings`, z. B. `payments_enabled`, `card_payments_enabled`) ändert, sucht VOR dem Push per `git grep` über `src`, `tests/integration`, `tests/e2e` und `scripts` JEDE Stelle, die den Schalter liest oder setzt, trägt die Liste in den PR-Text ein (Datei, Stelle, Entscheid: unverändert, angepasst, neu) und führt ALLE betroffenen Integrationsdateien einzeln lokal und die betroffenen E2E-Specs im Gegenlauf der CI aus. Dateien, die den Schalter nicht setzen, aber von seinem Standardwert abhängen (Test läuft mit AUS, braucht EIN), gehören auf dieselbe Liste. Reviewer prüfen die Liste gegen ihren eigenen `git grep` (Plan-Aussagen nie ungeprüft übernehmen). Ergänzt Regelvorschlag 22 (Vorbedingungen) und 23 (Schalter pro Test).
+
+Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer); Regel-PR (Nutzer mergt).
+
+## 26. Skript- und CLI-Tests müssen ohne `.env.local` laufen; Einheit von Testhilfen prüfen
+
+Anlass: Salden-Guard (`scripts/legacy-balance-guard.mjs`): der Skript-Test lief lokal grün (`.env.local` vorhanden), in der CI rot, weil dort keine `.env.local` liegt und das Skript über `--env-file` startete. Zweiter Anlass #212: `futureLocal(6)` bedeutet 6 TAGE, nicht 6 Stunden; ein Test setzte „kurzer Vorlauf“ voraus und lief deshalb in die falsche Frist.
+
+Vorschlag: (1) Ein Test, der ein Skript oder eine CLI als Kindprozess startet (`execFileSync(process.execPath, ["scripts/..."])`), gibt die Umgebung (`DATABASE_URL` u. a.) ausdrücklich weiter und startet ohne `--env-file`; der Test muss in einer sauberen CI-Umgebung ohne `.env.local` grün sein (Gegenprobe lokal: Datei kurz umbenennen, nicht lesen oder ausgeben). Das Skript selbst darf `--env-file` im Betriebsaufruf nennen, der Test darf davon nicht abhängen. (2) Testhilfen mit Zeitangaben (`futureLocal`, `setMatchTimes`) haben die Einheit im Namen oder im Kommentar (Tage, Stunden); wer sie nutzt, prüft die Einheit im Quelltext der Hilfe, nicht aus dem Gedächtnis, und assertiert den gemeinten Zustand (z. B. Anstoß in 6 Stunden) hart im Test. Ergänzt Regelvorschlag 23, 24 und 25.
+
+Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer, Abschnitt Tests); Regel-PR (Nutzer mergt).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.

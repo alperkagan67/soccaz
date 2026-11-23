@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles } from "@/db/schema";
 import { ledgerEntries, matchCommissions, venues } from "@/db/schema-finance";
 import { bookCommission, reverseCommission, setVenueCommission } from "@/server/commission";
-import { post, trialBalance } from "@/server/ledger";
+import { debitWallet, post, trialBalance } from "@/server/ledger";
 import { runCharges } from "@/server/payments/charge-run";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
@@ -13,10 +13,9 @@ import { setSetting } from "@/server/settings";
 import { recordExpense } from "@/server/booking";
 import { getAlerts, manualRefund } from "@/server/finance";
 import { creditWallet, walletBalance } from "@/server/ledger";
-import { payShare } from "@/server/lobby";
 import { createPrivateGame } from "@/server/privategame";
 import { createVenue } from "@/server/venues";
-import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeUser, seedShare } from "./helpers";
 
 // Vertrag 009 M2 (Entscheide t9: S1 Variante A, P1 kumulierbar, P2/P6 Hallenmiete, P3 Bonus bleibt, P4 ab Einführung, P7 Absage storniert ganz).
 // Die Server-Aktion läuft mit der ECHTEN Sitzungsprüfung; nur die Anmeldung und die Weiterleitung sind ersetzt.
@@ -389,7 +388,7 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     await expect(recordExpense(g.admin.id, { matchId: g.match.id, kind: "other", amountCents: 100 })).resolves.toBeTruthy(); // andere Ausgaben bleiben möglich
   });
 
-  it("Punkt 2: Guthaben-Pfade bleiben auf revenue (Hin UND Zurück), Ausnahme-Erstattung berührt venue_payable nie; Kartenzahler ist nicht ausnahme-erstattbar", async () => {
+  it("Punkt 2: Guthaben-Pfade bleiben auf revenue (Hin UND Zurück), Ausnahme-Erstattung berührt venue_payable nie; Kartenzahler: nur die ganze Abbuchung per Stripe, nie ins Guthaben", async () => {
     const v = await venue();
     // Guthaben-Spiel im Provisionsmodell: Zahlung wallet -> revenue, Ausnahme-Erstattung revenue -> wallet
     const w = await makeMatch({ legacy: true, priceCents: 4000, costCents: 4000, ledgerModel: "commission" });
@@ -398,7 +397,9 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     await db.transaction((tx) => creditWallet(tx, payer.id, { from: "bank", amountCents: 5000, kind: "adjustment", idempotencyKey: nid("fund") }));
     await setSetting(null, "payments_enabled", true);
     try {
-      await payShare(payer.id, w.match.id);
+      // Altspiele sind stillgelegt (1c-ii a-1): kein payShare mehr; die urspruengliche Zahlung (wallet -> revenue, Art match_share) wird direkt gebucht
+      await db.transaction((tx) => debitWallet(tx, payer.id, { to: "revenue", amountCents: 500, kind: "match_share", matchId: w.match.id, idempotencyKey: nid("seed-share"), reason: "Startgebühr (Reservierung)", actorId: payer.id }));
+      await seedShare(payer.id, w.match.id, 500);
     } finally {
       await setSetting(null, "payments_enabled", false);
     }
@@ -413,10 +414,12 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     expect((await entries(w.match.id)).some((x) => x.creditAccount === "venue_payable" || x.debitAccount === "venue_payable")).toBe(false);
     expect((await trialBalance()).balanced).toBe(true);
 
-    // Kartenzahler: kein Guthaben-Eintrag, also netto 0: die Ausnahme-Erstattung ist abgelehnt und kann nie aus revenue/venue_payable ins Guthaben buchen
+    // Kartenzahler (012 M6b 1c-iii, F3): kein Guthaben-Eintrag; die Ausnahme-Erstattung geht nur für die GANZE Abbuchung und per Stripe auf die Karte, ein Teilbetrag wird abgelehnt
+    // und nichts bucht je aus revenue/venue_payable ins Guthaben (vorher: abgelehnt mit "höchstens 0,00")
     const g = await game(v.id);
     await runCharges(g.match.id);
-    await expect(manualRefund(g.admin.id, g.match.id, g.adminA.id, 100, "Test")).rejects.toThrow(/höchstens 0,00/);
+    await expect(manualRefund(g.admin.id, g.match.id, g.adminA.id, 100, "Test")).rejects.toThrow(/ganze Abbuchung/);
+    expect(await walletBalance(db, g.adminA.id)).toBe(0);
   });
 
   it("Punkt 3 (C4): matches.ledger_model ist unveränderlich; nur die Wartungsausnahme darf es ändern", async () => {

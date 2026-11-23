@@ -345,34 +345,6 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
     }
   });
 
-  // Hinweis zum Guard: Wirksam ist die Vorabprüfung in fixShare (`final_share_cents !== null` -> return). Das zusätzliche
-  // `AND final_share_cents IS NULL` im UPDATE ist nur eine zweite Absicherung unter dem Spiel-Lock; entfernt man NUR diese Bedingung, ist der
-  // Mutant äquivalent (kein Test kann rot werden). Dieser Test erschlägt die Mutation "Vorabprüfung entfernen".
-  it("der Preis bleibt fest: Austritt und erneutes Bestätigen ändern den Anteil nicht (Guard: nur einmal fixieren)", async () => {
-    await setSetting(null, "payments_enabled", true);
-    try {
-      const { organizer, match, players } = await prepare(9, {}, true);
-      for (const p of players) await payShare(p.id, match.id);
-      for (const p of players) await setReady(p.id, match.id, true);
-      await finalConfirm(organizer.id, match.id);
-      expect((await reloadMatch(match.id)).finalShareCents).toBe(1200);
-      // Ein Spieler tritt aus (rechtzeitig; nach dem Fixieren gibt es das Geld erst gegen Ersatz zurück), der Captain bestätigt erneut.
-      // Mit 9 Spielern wäre der Anteil 1334; fest bleibt aber 1200 (der Preis wird nur einmal fixiert), und das Bereit gelingt.
-      const leaver = players[9];
-      await leaveLobby(leaver.id, match.id);
-      await finalConfirm(organizer.id, match.id);
-      const m = await reloadMatch(match.id);
-      expect(m.finalShareCents).toBe(1200);
-      expect(m.homeFinalAt).not.toBeNull();
-      expect(m.awayFinalAt).not.toBeNull();
-      expect(await balances(players.slice(0, 9))).toEqual(players.slice(0, 9).map(() => 3000 - 1200));
-      expect(await walletBalance(db, leaver.id)).toBe(3000 - 1200); // nach dem Fixieren: erst bei Ersatzzahlung erstattet (T54)
-      expect((await trialBalance()).balanced).toBe(true);
-    } finally {
-      await setSetting(null, "payments_enabled", false);
-    }
-  });
-
   it("hat jemand weniger als den Anteil bezahlt, wird das zweite Bereit mit klarer Meldung abgelehnt; es wird nichts fixiert", async () => {
     await setSetting(null, "payments_enabled", true);
     try {
@@ -469,30 +441,6 @@ describe("Preis fixieren beim zweiten Bereit (T52, AC-4)", () => {
       await db.transaction(async (tx) => fixShare(tx, await reloadMatch(match.id)));
       expect((await reloadMatch(match.id)).finalShareCents).toBeNull();
       expect(await balances(players)).toEqual(before); // fixShare selbst erstattet bei einem Teamspiel nichts
-    } finally {
-      await setSetting(null, "payments_enabled", false);
-    }
-  });
-
-  it("Ersatzspieler, der nach dem Fixieren zahlt, bucht den festen Anteil (nicht den aktuellen Wert)", async () => {
-    await setSetting(null, "payments_enabled", true);
-    try {
-      const { organizer, match, token, players } = await prepare(9, {}, true);
-      for (const p of players) await payShare(p.id, match.id);
-      for (const p of players) await setReady(p.id, match.id, true);
-      await finalConfirm(organizer.id, match.id);
-      expect((await reloadMatch(match.id)).finalShareCents).toBe(1200);
-      // je Team einer geht (5/5 wird 4/4, 8 eingeteilt), ein Ersatz kommt: 9 eingeteilt, aktueller Wert wäre 1334
-      const seated = await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, match.id));
-      const leavers = [match.homeTeamId, match.awayTeamId].map((t) => seated.find((p) => p.teamId === t && p.userId !== organizer.id)!.userId);
-      for (const id of leavers) await leaveLobby(id, match.id);
-      const sub = await makeUser("pvsub");
-      await joinPrivateGame(sub.id, token);
-      await fund(sub.id, 3000);
-      await randomSplit(organizer.id, match.id);
-      await payShare(sub.id, match.id);
-      expect(await walletBalance(db, sub.id)).toBe(3000 - 1200);
-      expect((await trialBalance()).balanced).toBe(true);
     } finally {
       await setSetting(null, "payments_enabled", false);
     }
@@ -725,116 +673,6 @@ describe("Austritt nach dem Fixieren und Sperre in den letzten 48 Stunden (T54, 
     return sub;
   };
 
-  it("AC-7: Austritt nach dem Fixieren bleibt ohne Ersatz ohne Erstattung; Ersatz zahlt den gleichen Anteil, dann bekommt der Aussteiger genau einmal sein Geld", () =>
-    withPayments(async () => {
-      const g = await fixed();
-      const leaver = g.players[9];
-      const others = g.players.slice(0, 9);
-      await leaveLobby(leaver.id, g.match.id);
-      // ohne Ersatz: kein Geld zurück, Anspruch vorgemerkt, Anteil und Bereit unverändert
-      expect(await balance(leaver.id)).toBe(3000 - 1200);
-      expect(await pendingOf(g.match.id)).toMatchObject([{ userId: leaver.id, amountCents: 1200 }]);
-      let m = await reloadMatch(g.match.id);
-      expect(m.finalShareCents).toBe(1200);
-      expect(m.homeFinalAt).not.toBeNull();
-      expect(m.awayFinalAt).not.toBeNull();
-      expect(await seatedIds(g.match.id)).toHaveLength(9);
-      for (const o of others) expect(await balance(o.id)).toBe(3000 - 1200);
-
-      // Ersatz zahlt den gleichen Anteil: jetzt (und erst jetzt) kommt das Geld zurück
-      const sub = await substitute(g, false);
-      expect(await balance(leaver.id)).toBe(3000 - 1200); // der Beitritt allein löst nichts aus
-      await payShare(sub.id, g.match.id);
-      expect(await balance(sub.id)).toBe(3000 - 1200);
-      expect(await balance(leaver.id)).toBe(3000);
-      expect(await pendingOf(g.match.id)).toHaveLength(0);
-      m = await reloadMatch(g.match.id);
-      expect(m.finalShareCents).toBe(1200);
-      expect(m.homeFinalAt).not.toBeNull();
-      // nochmal zahlen: keine zweite Buchung, keine zweite Erstattung
-      await expect(payShare(sub.id, g.match.id)).resolves.toBeUndefined();
-      expect(await balance(sub.id)).toBe(3000 - 1200);
-      expect(await balance(leaver.id)).toBe(3000);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  it("AC-7: mehrere Aussteiger und mehrere Ersatzspieler werden der Reihe nach bedient (ein Anspruch je Ersatzzahlung)", () =>
-    withPayments(async () => {
-      const g = await fixed();
-      const [first, second] = [g.players[8], g.players[9]];
-      await leaveLobby(first.id, g.match.id);
-      await leaveLobby(second.id, g.match.id);
-      expect((await pendingOf(g.match.id)).map((r) => r.userId).sort()).toEqual([first.id, second.id].sort());
-      const sub1 = await substitute(g);
-      expect(await pendingOf(g.match.id)).toHaveLength(1); // genau ein Anspruch ist beglichen
-      expect([await balance(first.id), await balance(second.id)].filter((b) => b === 3000)).toHaveLength(1);
-      const sub2 = await substitute(g);
-      expect(await pendingOf(g.match.id)).toHaveLength(0);
-      expect(await balance(first.id)).toBe(3000);
-      expect(await balance(second.id)).toBe(3000);
-      expect(await balance(sub1.id)).toBe(3000 - 1200);
-      expect(await balance(sub2.id)).toBe(3000 - 1200);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  it("AC-7: parallele Ersatzzahlungen erstatten jeden Aussteiger genau einmal (Lock, Idempotenz)", () =>
-    withPayments(async () => {
-      const g = await fixed();
-      const leavers = [g.players[8], g.players[9]];
-      for (const l of leavers) await leaveLobby(l.id, g.match.id);
-      const subs = [await substitute(g, false), await substitute(g, false)];
-      // beide Ersatzspieler zahlen gleichzeitig, jeder doppelt
-      await Promise.allSettled(subs.flatMap((sub) => [payShare(sub.id, g.match.id), payShare(sub.id, g.match.id)]));
-      for (const l of leavers) expect(await balance(l.id)).toBe(3000);
-      for (const sub of subs) expect(await balance(sub.id)).toBe(3000 - 1200);
-      expect(await pendingOf(g.match.id)).toHaveLength(0);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  it("AC-7: Rauswurf nach dem Fixieren verhält sich wie der Austritt (Erstattung erst bei Ersatz)", () =>
-    withPayments(async () => {
-      const g = await fixed();
-      const victim = g.players[9];
-      await removeParticipant(g.organizer.id, g.match.id, victim.id);
-      expect(await balance(victim.id)).toBe(3000 - 1200);
-      expect(await pendingOf(g.match.id)).toHaveLength(1);
-      await substitute(g);
-      expect(await balance(victim.id)).toBe(3000);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  it("AC-7: Absage ohne Ersatz erstattet auch den Aussteiger (genau einmal)", () =>
-    withPayments(async () => {
-      const g = await fixed();
-      const leaver = g.players[9];
-      await leaveLobby(leaver.id, g.match.id);
-      await cancelMatch(g.organizer.id, g.match.id, "Halle fällt aus");
-      expect(await balance(leaver.id)).toBe(3000);
-      expect(await pendingOf(g.match.id)).toHaveLength(0);
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  it("AC-8: weniger als 48 Stunden vor Anstoß werden Austritt und Rauswurf abgelehnt (nach dem Fixieren); Zahlen und Bereit bleiben möglich", () =>
-    withPayments(async () => {
-      const g = await fixed(9, 12); // zwölf Plätze, zehn belegt: nur die Sperre kann einen Beitritt verhindern
-      await setStart(g.match.id, 24);
-      const [a, b] = [g.players[8], g.players[9]];
-      await expect(leaveLobby(a.id, g.match.id)).rejects.toThrow(/48 Stunden/);
-      await expect(removeParticipant(g.organizer.id, g.match.id, b.id)).rejects.toThrow(/48 Stunden/);
-      expect(await seatedIds(g.match.id)).toHaveLength(10);
-      expect(await pendingOf(g.match.id)).toHaveLength(0);
-      expect(await balance(a.id)).toBe(3000 - 1200); // keine Erstattung
-      // Bereit zurücknehmen und wieder setzen geht weiter
-      await setReady(a.id, g.match.id, false);
-      await setReady(a.id, g.match.id, true);
-      await expect(payShare(a.id, g.match.id)).resolves.toBeUndefined(); // schon bezahlt: nichts passiert, kein Fehler
-      expect(await balance(a.id)).toBe(3000 - 1200);
-      // niemand Fremdes kommt neu hinein, solange kein Platz frei ist
-      const late = await makeUser("pvlate");
-      await expect(joinPrivateGame(late.id, g.token)).rejects.toThrow(/gesperrt/);
-    }));
-
   it("AC-8: auch vor dem Fixieren sind Austritt und Rauswurf unter 48 Stunden gesperrt; der Beitritt per Link bleibt dort möglich (Schalter)", () =>
     withPayments(async () => {
       const g = await game(5, { rentCents: 12_000, startsAt: hours(24) }); // kurzfristig angelegt: alle sind per Link beigetreten
@@ -848,21 +686,6 @@ describe("Austritt nach dem Fixieren und Sperre in den letzten 48 Stunden (T54, 
       expect(await seatedIds(g.match.id)).toHaveLength(6);
       const newcomer = await makeUser("pvnew");
       await expect(joinPrivateGame(newcomer.id, g.token)).resolves.toMatchObject({ already: false });
-    }));
-
-  it("AC-8: nach dem Austritt (mehr als 48 Stunden vorher) darf unter 48 Stunden ein Ersatz beitreten und löst die Erstattung aus; ein weiterer Austritt ist dann gesperrt", () =>
-    withPayments(async () => {
-      const g = await fixed(9, 12);
-      const leaver = g.players[9];
-      await leaveLobby(leaver.id, g.match.id);
-      await setStart(g.match.id, 24); // jetzt unter 48 Stunden
-      await expect(leaveLobby(g.players[8].id, g.match.id)).rejects.toThrow(/48 Stunden/); // kein weiterer Austritt
-      const sub = await substitute(g); // Ersatz tritt per Link bei und zahlt
-      expect(await balance(sub.id)).toBe(3000 - 1200);
-      expect(await balance(leaver.id)).toBe(3000);
-      const stranger = await makeUser("pvstr");
-      await expect(joinPrivateGame(stranger.id, g.token)).rejects.toThrow(/gesperrt/); // der Platz ist wieder besetzt, die Liste gesperrt
-      expect((await trialBalance()).balanced).toBe(true);
     }));
 
   it("Teamspiel und Turnier bleiben unverändert: die 48-Stunden-Sperre gilt nur für Privatspiele", () => {
@@ -908,68 +731,6 @@ describe("Mietprüfung vor Anstoß (T55, AC-9)", () => {
     expect(rentCheckAt(new Date("2026-01-01T10:20:00Z"), created).toISOString()).toBe("2026-01-01T10:20:00.000Z"); // nie nach dem Anstoß
   });
 
-  it("nicht gedeckt: Absage, alle bekommen ihren Anteil zurück, auch ein Aussteiger mit offenem Anspruch; Hauptbuch ausgeglichen; zweiter Lauf tut nichts", () =>
-    withPayments(async () => {
-      const g = await rentGame(10);
-      for (const p of g.players) await setReady(p.id, g.match.id, true);
-      await finalConfirm(g.organizer.id, g.match.id);
-      expect((await reloadMatch(g.match.id)).finalShareCents).toBe(1200);
-      const leaver = g.players[9];
-      await leaveLobby(leaver.id, g.match.id); // Anspruch offen, gezahlt sind jetzt nur noch 9 x 1200 = 10800 < 12000
-      expect(await balance(leaver.id)).toBe(3000 - 1200);
-      const m = await reloadMatch(g.match.id);
-      const due = new Date(checkTime(m).getTime() + 60_000);
-
-      await cancelUncoveredPrivateGames(due);
-      expect(await statusOf(g.match.id)).toBe("cancelled");
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000); // alle, auch der Aussteiger
-      expect(await db.select().from(pendingRefunds).where(eq(pendingRefunds.matchId, g.match.id))).toHaveLength(0);
-      expect((await trialBalance()).balanced).toBe(true);
-
-      // zweiter Lauf: nichts passiert, nichts wird doppelt erstattet
-      await cancelUncoveredPrivateGames(due);
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  it("gedeckt: Das bestätigte Spiel bleibt unverändert (keine Absage, kein Reset)", () =>
-    withPayments(async () => {
-      const g = await rentGame(10);
-      for (const p of g.players) await setReady(p.id, g.match.id, true);
-      await finalConfirm(g.organizer.id, g.match.id);
-      const before = await reloadMatch(g.match.id);
-      expect(before.status).toBe("confirmed");
-      const due = new Date(checkTime(before).getTime() + 60_000);
-      await cancelUncoveredPrivateGames(due);
-      const after = await reloadMatch(g.match.id);
-      expect(after).toMatchObject({ status: "confirmed", finalShareCents: 1200 });
-      expect(after.homeFinalAt).not.toBeNull();
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000 - 1200);
-    }));
-
-  it("Gezählt wird der tatsächlich gezahlte Betrag, nicht die Zahl der Bereiten: ein Unterzahler macht die Miete ungedeckt", () =>
-    withPayments(async () => {
-      const g = await rentGame(10); // 10 x 1200 = 12000 = Miete
-      for (const p of g.players) await setReady(p.id, g.match.id, true);
-      const due = new Date(checkTime(await reloadMatch(g.match.id)).getTime() + 60_000);
-      // einer hat nur 600 gezahlt (z. B. Anteil nach Neuberechnung nicht ausgeglichen), blieb aber bereit
-      await db.update(matchParticipants).set({ paidCents: 600 }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.players[3].id)));
-      await cancelUncoveredPrivateGames(due);
-      expect(await statusOf(g.match.id)).toBe("cancelled");
-    }));
-
-  it("Zeitpunkt bei langem Vorlauf: vor Anstoß minus 24 Stunden wird nicht geprüft, danach schon", () =>
-    withPayments(async () => {
-      const g = await rentGame(3); // nur 3 von 10 haben gezahlt
-      const m = await reloadMatch(g.match.id);
-      await cancelUncoveredPrivateGames(new Date(m.startsAt.getTime() - 25 * 3_600_000));
-      expect(await statusOf(g.match.id)).not.toBe("cancelled");
-      await cancelUncoveredPrivateGames(new Date(m.startsAt.getTime() - 23 * 3_600_000));
-      expect(await statusOf(g.match.id)).toBe("cancelled");
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
   it("Log bei Fehlern enthält weder Meldung noch Parameter: nur Name und SQLSTATE", () => {
     const userId = "11111111-2222-3333-4444-555555555555";
     const dbError = new Error(`Failed query: update "match_participants" set ... params: ${userId},12000,Team Rot`, { cause: { code: "40P01" } });
@@ -982,46 +743,6 @@ describe("Mietprüfung vor Anstoß (T55, AC-9)", () => {
     expect(safeErrorLog(new Error(`geheim ${userId}`))).toBe("Error"); // ohne SQLSTATE nur der Name
     expect(safeErrorLog("kein Error-Objekt")).toBe("Fehler");
   });
-
-  it("Mindest-Zahlfrist: ein Spiel mit 1 Stunde 5 Minuten Vorlauf wird nicht vor Anlage plus 30 Minuten abgesagt, danach schon", () =>
-    withPayments(async () => {
-      const g = await rentGame(2, { startsAt: new Date(Date.now() + 65 * 60_000) });
-      const m = await reloadMatch(g.match.id);
-      await cancelUncoveredPrivateGames(new Date(m.createdAt.getTime() + 20 * 60_000)); // Frist-Zeitpunkt (Anstoß minus 1 h) wäre schon 5 Minuten nach der Anlage
-      expect(await statusOf(g.match.id)).not.toBe("cancelled");
-      await cancelUncoveredPrivateGames(new Date(m.createdAt.getTime() + 31 * 60_000));
-      expect(await statusOf(g.match.id)).toBe("cancelled");
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000);
-    }));
-
-  it("Job-Pfad: cancelUnderfilledLobbies sagt ein bestätigtes, aber ungedecktes Privatspiel ab und zählt es mit", () =>
-    withPayments(async () => {
-      const g = await rentGame(10);
-      for (const p of g.players) await setReady(p.id, g.match.id, true);
-      await finalConfirm(g.organizer.id, g.match.id);
-      await leaveLobby(g.players[9].id, g.match.id); // Anspruch offen, gezahlt sind nur noch 10800 < 12000, das Spiel bleibt bestätigt
-      const m = await reloadMatch(g.match.id);
-      expect(m.status).toBe("confirmed"); // die Regel für unbestätigte Lobbys greift hier nicht
-      const cancelled = await cancelUnderfilledLobbies(new Date(rentCheckAt(m.startsAt, m.createdAt).getTime() + 60_000));
-      expect(cancelled).toBeGreaterThanOrEqual(1);
-      expect(await statusOf(g.match.id)).toBe("cancelled");
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  it("Kurzvorlauf: ein Spiel, das weniger als 24 Stunden vor Anstoß angelegt wurde, wird nicht sofort abgesagt, aber 1 Stunde vor Anstoß geprüft", () =>
-    withPayments(async () => {
-      const g = await rentGame(2, { startsAt: hours(10) }); // Vorlauf bei Anlage 10 Stunden
-      const m = await reloadMatch(g.match.id);
-      await cancelUncoveredPrivateGames(); // jetzt: weniger als 24 h bis Anstoß, trotzdem keine Absage
-      expect(await statusOf(g.match.id)).not.toBe("cancelled");
-      await cancelUncoveredPrivateGames(new Date(m.startsAt.getTime() - 2 * 3_600_000));
-      expect(await statusOf(g.match.id)).not.toBe("cancelled");
-      await cancelUncoveredPrivateGames(new Date(m.startsAt.getTime() - 30 * 60_000));
-      expect(await statusOf(g.match.id)).toBe("cancelled");
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
 
   it("kostenlos (Miete 0) und ohne aktive Zahlungen wird nie abgesagt", async () => {
     await withPayments(async () => {
@@ -1036,86 +757,6 @@ describe("Mietprüfung vor Anstoß (T55, AC-9)", () => {
     expect(await cancelUncoveredPrivateGames(new Date(m2.startsAt.getTime() - 30 * 60_000))).toBe(0); // Zahlungen aus: der Lauf tut gar nichts
     expect(await statusOf(paidGame.match.id)).not.toBe("cancelled");
   });
-
-  it("parallele Läufe sagen ein Spiel genau einmal ab und erstatten genau einmal", () =>
-    withPayments(async () => {
-      const g = await rentGame(4);
-      const m = await reloadMatch(g.match.id);
-      const due = new Date(m.startsAt.getTime() - 23 * 3_600_000);
-      await Promise.all([cancelUncoveredPrivateGames(due), cancelUncoveredPrivateGames(due), cancelUncoveredPrivateGames(due)]);
-      expect(await statusOf(g.match.id)).toBe("cancelled");
-      for (const p of g.players) expect(await balance(p.id)).toBe(3000); // genau einmal erstattet, nicht mehrfach
-      expect(await db.select().from(auditLog).where(and(eq(auditLog.entity, "match"), eq(auditLog.entityId, g.match.id), eq(auditLog.action, "match.cancel")))).toHaveLength(1); // genau eine Absage
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-});
-
-describe("Erstattung nach erneutem Austritt (T54-Nachtrag: Schlüssel mit createdAt)", () => {
-  const withPayments = async (fn: () => Promise<void>) => {
-    await setSetting(null, "payments_enabled", true);
-    try {
-      await fn();
-    } finally {
-      await setSetting(null, "payments_enabled", false);
-    }
-  };
-
-  it("Privatspiel: Aussteiger, Ersatz zahlt, Aussteiger tritt neu bei, zahlt, tritt erneut aus, zweiter Ersatz zahlt -> zweite Erstattung kommt an", () =>
-    withPayments(async () => {
-      const g = await game(9, { rentCents: 12_000, maxPlayers: 12 }, true); // Altspiel, zwölf Plätze: der Aussteiger kann neu beitreten
-      await randomSplit(g.organizer.id, g.match.id);
-      for (const p of g.players) await fund(p.id, 3000);
-      for (const p of g.players) await payShare(p.id, g.match.id);
-      for (const p of g.players) await setReady(p.id, g.match.id, true);
-      await finalConfirm(g.organizer.id, g.match.id);
-      const p = g.players[9];
-      const sub = async () => {
-        const s = await makeUser("pvs2");
-        await joinPrivateGame(s.id, g.token);
-        await fund(s.id, 3000);
-        await randomSplit(g.organizer.id, g.match.id);
-        await payShare(s.id, g.match.id);
-        return s;
-      };
-      await leaveLobby(p.id, g.match.id);
-      await sub();
-      expect(await walletBalance(db, p.id)).toBe(3000); // erste Erstattung
-      // P tritt über den Link neu bei, wird eingeteilt, zahlt und tritt noch einmal aus
-      await joinPrivateGame(p.id, g.token);
-      await randomSplit(g.organizer.id, g.match.id);
-      await payShare(p.id, g.match.id);
-      expect(await walletBalance(db, p.id)).toBe(3000 - 1200);
-      await leaveLobby(p.id, g.match.id);
-      expect(await walletBalance(db, p.id)).toBe(3000 - 1200);
-      await sub();
-      expect(await walletBalance(db, p.id)).toBe(3000); // zweite Erstattung kommt an
-      expect(await db.select().from(pendingRefunds).where(eq(pendingRefunds.matchId, g.match.id))).toHaveLength(0);
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
-
-  it("Teamspiel (weniger als 24 Stunden vor Anstoß): gleiche Abfolge, die zweite Erstattung kommt an", () =>
-    withPayments(async () => {
-      const m = await makeMatch({ legacy: true, hoursAhead: 10 });
-      const leaver = await addPlayer(m.match.id, m.home.id);
-      await fund(leaver.id, 2000);
-      await payShare(leaver.id, m.match.id);
-      await leaveLobby(leaver.id, m.match.id);
-      const subPays = async () => {
-        const s = await addPlayer(m.match.id, m.home.id);
-        await fund(s.id, 2000);
-        await payShare(s.id, m.match.id);
-      };
-      await subPays();
-      expect(await walletBalance(db, leaver.id)).toBe(2000);
-      await joinLobby(leaver.id, m.match.id); // Mitglied des Teams, tritt neu bei
-      await payShare(leaver.id, m.match.id);
-      expect(await walletBalance(db, leaver.id)).toBe(1000);
-      await leaveLobby(leaver.id, m.match.id);
-      expect(await walletBalance(db, leaver.id)).toBe(1000); // wieder keine Erstattung ohne Ersatz
-      await subPays();
-      expect(await walletBalance(db, leaver.id)).toBe(2000); // zweite Erstattung
-      expect((await trialBalance()).balanced).toBe(true);
-    }));
 });
 
 describe("Kein Zugriff auf Privatspiele für Unbeteiligte (T57, AC-12)", () => {

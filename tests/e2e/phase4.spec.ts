@@ -1,11 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, devLogin, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
-import { query, seedAdmin } from "./helpers-db";
+import { callJob, diagnoseTournamentCharges, query, seedAdmin, seedCardProfile, seedPartnerVenue, setPlatformSetting } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(180_000);
 
+// Regel 23: der Schalterzustand gehört zum Test (der Turnier-Test setzt Zahlungen UND Kartenmodell AN), Reset nach jedem Test
 test.afterEach(async ({ browser }) => {
+  await setPlatformSetting("payments_enabled", false);
+  await setPlatformSetting("card_payments_enabled", false);
   await closeContexts(browser);
 });
 
@@ -120,7 +123,8 @@ test("Profi-Tag: bewerben, auslosen, Spiel entsteht", async ({ browser }) => {
   await expect(applicant.getByText("Ihr habt gewonnen: Profi-Tag")).toBeVisible();
 });
 
-test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach Zahlung, Bracket erst am Ende, Sieger rücken weiter", async ({ browser }) => {
+test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Karten, Abbuchung, Bracket erst am Ende, Sieger rücken weiter", async ({ browser, baseURL }) => {
+  test.skip(process.env.PAYMENTS_FAKE !== "1", "braucht PAYMENTS_FAKE=1 (nur Tests): Kartenabbuchung über den FakeProvider");
   test.setTimeout(300_000);
   const admin = await adminPage(browser, "tn-adm");
   const org = await (await browser.newContext()).newPage();
@@ -183,10 +187,8 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   const teamIds = new Map<string, string>();
   for (const c of caps) teamIds.set(c.team, (await query<{ id: string }>("select id from teams where name = $1", [c.team]))[0].id);
   const { seedUser, addTeamMember } = await import("./helpers");
-  const { fundWallet } = await import("./helpers-db");
   const players = new Map<string, string[]>();
   for (const c of caps) {
-    await fundWallet(c.id, 4000); // die Captains zahlen später für ihr Team
     const ids: string[] = [c.id];
     for (let i = 1; i <= 3; i++) {
       const uid = await seedUser(`${c.team.split(" ")[1]}p${i}`);
@@ -197,7 +199,6 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   }
   const t1 = caps[0];
   const p1id = players.get(t1.team)![1];
-  await fundWallet(p1id, 1000); // Spieler 1 zahlt später selbst
   const p1email = (await query<{ email: string }>("select email from users where id = $1", [p1id]))[0].email;
   const p1 = await (await browser.newContext()).newPage();
   await devLogin(p1, p1email, "Spieler Eins", `/turniere/${tid}?t=${link.split("?t=")[1]}`);
@@ -209,6 +210,13 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
       await query("insert into tournament_players (tournament_id, team_id, user_id) values ($1, $2, $3) on conflict do nothing", [tid, teamIds.get(c.team), uid]);
     }
   }
+
+  // Kartenmodell AN, Partnerhalle gewählt, jeder Spieler hat eine Karte (Seed); noch keine Abbuchung
+  await setPlatformSetting("payments_enabled", true);
+  await setPlatformSetting("card_payments_enabled", true);
+  await query("update tournaments set venue_id = $1 where id = $2", [await seedPartnerVenue(`Phase4 Halle ${run}`), tid]);
+  for (const ids of players.values()) for (const uid of ids) await seedCardProfile(uid);
+  expect(await query("select 1 from payment_charges where tournament_id = $1", [tid]), "Ausgangszustand: noch keine Abbuchung").toHaveLength(0);
 
   // Preis steht erst fest, wenn ALLE Teams vollzählig melden: vorher gibt es keinen Preis und kein Bracket
   for (const [i, c] of caps.entries()) {
@@ -226,24 +234,21 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
   await expect(caps[0].page.getByTestId("final-share")).toContainText("10,00"); // 160 Euro durch 16 Spieler, automatisch
   expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // noch kein Bracket
 
-  // Zahlung: Spieler 1 zahlt selbst, Captain 3 zahlt erst für einen einzelnen Spieler, die übrigen Captains für alle offenen
-  await p1.reload();
-  await p1.getByRole("button", { name: /Anteil bezahlen/ }).click();
-  await expect(p1.getByTestId("paid-note")).toBeVisible({ timeout: 20_000 });
-  const t3 = caps[2];
-  await t3.page.reload();
-  await t3.page.getByTestId("tournament-team").filter({ hasText: t3.team }).getByRole("button", { name: "Ich zahle für ihn" }).first().click();
-  await expect.poll(async () => (await query<{ n: number }>("select count(*)::int as n from tournament_players where tournament_id = $1 and team_id = $2 and paid_by = $3", [tid, teamIds.get(t3.team), t3.id]))[0].n).toBe(1);
+  // Karten: alle Teams haben ihre Karten (Bereit-Block des Captains), nichts ist bezahlt, das Bracket bleibt verborgen
   for (const c of caps) {
     await c.page.reload();
     await c.page.waitForLoadState("networkidle");
-    await expect(c.page.getByTestId("bracket-hidden")).toBeVisible(); // solange jemand nicht bezahlt hat, bleibt das Bracket verborgen
-    await c.page.getByRole("button", { name: /Als Captain für alle offenen Spieler bezahlen/ }).click();
-    await expect(c.page.getByTestId("captain-pay-box")).toHaveCount(0, { timeout: 20_000 });
-    expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // auch voll bezahlt: noch kein Bracket, solange niemand "Bereit" gedrückt hat
+    await expect(c.page.getByTestId("bracket-hidden")).toBeVisible();
+    // Captain-Ansicht (Kartenmodell): alle Karten da => der Bereit-Block mit dem Hinweistext erscheint (team-cards-state sieht nur der Veranstalter)
+    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team }).getByTestId("paid-ready-box")).toContainText("Alle in eurem Team haben eine Karte hinterlegt");
+    expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // Karten da, aber noch nicht bereit
   }
+  expect(await query("select 1 from payment_charges where tournament_id = $1", [tid]), "vor dem letzten Bereit wird nichts abgebucht").toHaveLength(0);
+  // Der Termin liegt laut Formular 6 TAGE voraus (futureLocal(6) = Tage): langer Vorlauf, die Abbuchung wäre erst zur 48-h-Frist fällig (Grund "not_due", CI #212). Für den Test kurzer Vorlauf: Beginn in 6 Stunden, Anmeldeschluss in 4 Stunden
+  // (die Anlage liegt Minuten zurück, also gilt der kurze Vorlauf): beim letzten Bereit ist die Abbuchung sofort fällig.
+  await query("update tournaments set starts_at = now() + interval '6 hours', registration_deadline = now() + interval '4 hours' where id = $1", [tid]);
 
-  // Bereit gibt es erst nach voller Zahlung; das Bracket entsteht erst, wenn das letzte Team bereit ist
+  // Bereit gibt es erst mit allen Karten; die Abbuchung und das Bracket kommen erst, wenn das letzte Team bereit ist
   for (const [i, c] of caps.entries()) {
     await c.page.reload();
     await c.page.waitForLoadState("networkidle");
@@ -252,7 +257,20 @@ test("Turnier: privat per Link, Captains, Eintritt pro Spieler, Bereit nur nach 
     await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-paid-ready", "true", { timeout: 20_000 });
     if (i < 3) expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
   }
-  await expect.poll(async () => (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length, { timeout: 20_000 }).toBe(3);
+  // das letzte Bereit löst die Abbuchung im Hintergrund aus (nach der Anpassung oben: Anstoß in 6 h = kurzer Vorlauf = sofort fällig); der Job card-charges holt nach, falls der Hintergrundlauf hängt
+  try {
+    await expect
+    .poll(async () => {
+      await callJob(baseURL!, "card-charges");
+      return (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length;
+    }, { timeout: 60_000, intervals: [1000, 2000] })
+    .toBe(3);
+  } catch (error) {
+    // Diagnose für die CI: welche Bedingung der Abbuchung fehlt (Anhang ohne Personendaten)
+    await test.info().attach("turnier-abbuchung-diagnose", { body: JSON.stringify(await diagnoseTournamentCharges(tid), null, 2), contentType: "application/json" });
+    throw error;
+  }
+  expect((await query<{ n: number }>("select count(*)::int as n from payment_charges where tournament_id = $1 and status = 'succeeded'", [tid]))[0].n, "alle 16 Plätze abgebucht").toBe(16);
   await caps[3].page.reload();
   await expect(caps[3].page.getByRole("heading", { name: "Halbfinale" })).toBeVisible({ timeout: 20_000 });
   await expect(caps[3].page.getByTestId("dashboard")).toBeVisible();
