@@ -58,14 +58,14 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
       tx,
     );
   });
-  // Mitteilung an den Buchungsstab (Admin 1 und Admin 2, nicht gesperrt), den Akteur ausgenommen: ohne Personendaten, ohne Grund im Klartext. NACH dem Commit und best effort: ein Fehler hier
+  // Mitteilung an den Buchungsstab (Admin 1 und Admin 2, nicht gesperrt), den Akteur ausgenommen: ohne Personendaten, ohne Grund im Klartext. Der Link fuehrt zur Alarmliste (/admin/finanzen, Admin 1 UND Admin 2 lesen sie; /admin/einstellungen waere nur fuer Admin 1 offen). NACH dem Commit und best effort: ein Fehler hier
   // darf den Notschalter nie zurueckrollen (Schalten und Audit sind schon sicher; die Alarmliste zeigt den Zustand ohnehin).
   try {
     await notifyUsers(
       await bookingStaffIds(db),
       enabled
-        ? { type: "admin.task", title: "Kartenzahlung eingeschaltet", body: "Die Kartenzahlung wurde eingeschaltet. Fällige Abbuchungen laufen nach.", url: "/admin/einstellungen" }
-        : { type: "admin.task", title: "Kartenzahlung ausgeschaltet", body: "Die Kartenzahlung wurde ausgeschaltet (Notabschaltung): neue Bezahlungen sind pausiert.", url: "/admin/einstellungen" },
+        ? { type: "admin.task", title: "Kartenzahlung eingeschaltet", body: "Die Kartenzahlung wurde eingeschaltet. Fällige Abbuchungen laufen nach.", url: "/admin/finanzen" }
+        : { type: "admin.task", title: "Kartenzahlung ausgeschaltet", body: "Die Kartenzahlung wurde ausgeschaltet (Notabschaltung): neue Bezahlungen sind pausiert.", url: "/admin/finanzen" },
       db,
       actorId,
     );

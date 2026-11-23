@@ -24,10 +24,16 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 // Die Mitteilung darf den Notschalter nie scheitern lassen: ein Test schaltet notifyUsers auf "wirft" (nur ueber diesen Schalter, sonst echter Pfad)
-const failNotify = { on: false };
+const probed: unknown[] = [];
+const failNotify: { on: boolean; probe: (() => Promise<unknown>) | null } = { on: false, probe: null }; // probe: liest beim Aufruf den Schalter ueber eine ANDERE Verbindung (Beleg: die Mitteilung laeuft nach dem Commit)
 vi.mock("@/server/notifications", async (importOriginal) => {
   const m = await importOriginal<typeof import("@/server/notifications")>();
-  return { ...m, notifyUsers: (...args: Parameters<typeof m.notifyUsers>) => (failNotify.on ? Promise.reject(new Error("boom")) : m.notifyUsers(...args)) };
+  return { ...m, notifyUsers: async (...args: Parameters<typeof m.notifyUsers>) => {
+      if (failNotify.probe) probed.push(await failNotify.probe());
+      if (failNotify.on) throw new Error("boom");
+      return m.notifyUsers(...args);
+    },
+  };
 });
 import { setCardSwitchAction } from "@/server/admin-finance-actions";
 
@@ -208,7 +214,7 @@ describe("Mitteilung an den Buchungsstab beim Umschalten", () => {
     await setCardSwitch(o.id, false, reason, true);
     const off = await noteTo(admin2.id, /Kartenzahlung ausgeschaltet/);
     expect(off).toHaveLength(1);
-    expect(off[0]).toMatchObject({ type: "admin.task", url: "/admin/einstellungen" });
+    expect(off[0]).toMatchObject({ type: "admin.task", url: "/admin/finanzen" }); // Alarmliste: Admin 2 hat keinen Zugriff auf /admin/einstellungen
     expect(`${off[0].title} ${off[0].body}`).not.toContain("4711");
     expect(`${off[0].title} ${off[0].body}`).not.toContain(o.id);
     expect(await noteTo(o.id, /Kartenzahlung/)).toHaveLength(0); // der Akteur selbst nicht
@@ -232,6 +238,19 @@ describe("Mitteilung an den Buchungsstab beim Umschalten", () => {
     expect(await cardPaymentsEnabled()).toBe(false);
     expect((await switchAudits()).length).toBe(n0 + 1);
     await setCardSwitch(o.id, true, "Wieder an nach dem Mitteilungstest", true);
+  });
+
+  it("Reihenfolge: die Mitteilung laeuft NACH dem Commit (beim Aufruf sieht eine andere Verbindung schon den neuen Schalterwert)", async () => {
+    const o = await owner();
+    probed.length = 0;
+    failNotify.probe = () => cardPaymentsEnabled();
+    try {
+      await setCardSwitch(o.id, false, "Reihenfolge pruefen: ausschalten", true);
+      await setCardSwitch(o.id, true, "Reihenfolge pruefen: einschalten", true);
+    } finally {
+      failNotify.probe = null;
+    }
+    expect(probed).toEqual([false, true]); // vor dem Commit saehe die andere Verbindung noch den alten Wert (true, false)
   });
 
   it("eine abgewiesene Umschaltung (Admin 2 versucht es, Pflichtangabe fehlt) verschickt nichts", async () => {
