@@ -52,4 +52,14 @@ describe("alter Stripe-Webhook (Aufladung entfernt)", () => {
     await post(later, signed(later));
     expect(auditMock).toHaveBeenCalledTimes(1);
   });
+  it("kaputtes JSON mit gültiger Signatur: 400, kein Eintrag", async () => {
+    const body = "{kein json";
+    expect((await post(body, signed(body))).status).toBe(400);
+    expect(auditMock).not.toHaveBeenCalled();
+  });
+  it("Protokollschreiben schlägt fehl: 500 (Stripe wiederholt die Zustellung), nicht still 200", async () => {
+    auditMock.mockRejectedValueOnce(new Error("db weg"));
+    const body = JSON.stringify({ id: "evt_6", type: "checkout.session.completed", data: { object: { amount_total: 500, currency: "eur", payment_status: "paid" } } });
+    await expect(post(body, signed(body))).rejects.toThrow("db weg");
+  });
 });
