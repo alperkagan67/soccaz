@@ -15,8 +15,18 @@ const DEAD = "postgres://soccaz_ops:nicht-echt@127.0.0.1:1/soccaz_nicht_da";
 const before = process.env.DATABASE_URL_OPS;
 const opsAudits = async () => await db.select().from(auditLog).where(eq(auditLog.action, "evidence.ops_unavailable"));
 
+/** Zustand der Beweis-Einstellungen auf die Vorgabe (aus / js) zuruecksetzen: ein frueherer Lauf (auch eine Mutation) darf den Test nicht beeinflussen. */
+async function resetEvidenceState() {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('socaz.ledger_maintenance', 'on', true)`);
+    await tx.execute(sql`update settings set value = to_jsonb('off'::text) where key = 'evidence_enforcement'`);
+    await tx.execute(sql`update settings set value = to_jsonb('js'::text) where key = 'evidence_clock_source'`);
+  });
+}
+
 beforeEach(async () => {
   await cleanup();
+  await resetEvidenceState();
   await db.execute(sql`delete from audit_log where action = 'evidence.ops_unavailable'`);
   process.env.DATABASE_URL_OPS = DEAD;
   await resetOpsPoolForTests();
@@ -27,6 +37,7 @@ afterEach(async () => {
   await resetOpsPoolForTests();
 });
 afterAll(async () => {
+  await resetEvidenceState();
   await db.execute(sql`delete from audit_log where action = 'evidence.ops_unavailable'`);
   await cleanup();
 });
