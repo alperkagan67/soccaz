@@ -8,6 +8,7 @@ import { tsImport } from "tsx/esm/api";
 // Schutz wie bei den anderen Seed-Skripten (scripts/lib/seed-guard.ts, Backlog 56): nur localhost:5433 mit soccav2 oder soccaz_w1 bis soccaz_w4, keine
 // Query-Parameter (?host= würde den Hostnamen umgehen). tsx lädt die TypeScript-Datei, damit es nur EINE Regel gibt (Aufruf bleibt: node scripts/seed-demo.mjs).
 const { assertSeedAllowed } = await tsImport("./lib/seed-guard.ts", import.meta.url);
+const { enableCardModel } = await tsImport("./lib/seed-switches.ts", import.meta.url);
 try {
   assertSeedAllowed({ nodeEnv: process.env.NODE_ENV, databaseUrl: process.env.DATABASE_URL });
 } catch (e) {
@@ -57,5 +58,8 @@ for (let i = 1; i <= 4; i++) {
 }
 await team("demo-alpha", "Demo Alpha", 3, a, aPlayers);
 await team("demo-bravo", "Demo Bravo", 3, b, bPlayers);
+// Schalter-Flip: Dev schaltet Zahlungen UND Kartenmodell EIN (nur hinter seed-guard; Produktion bleibt AUS/AUS). Mit PAYMENTS_FAKE=1 im Dev-Server gibt es die Karte ohne Stripe.
+const switched = await enableCardModel(pool);
+if (switched.length) console.log(`Schalter eingeschaltet: ${switched.join(", ")} (Kartenmodell, nur lokal).`);
 console.log("Fertig: Teams 'Demo Alpha' (Admin demo-a@soccav2.local) und 'Demo Bravo' (Admin demo-b@soccav2.local), je 5 Spieler.");
 await pool.end();
