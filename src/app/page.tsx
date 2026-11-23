@@ -40,17 +40,9 @@ export default async function Home() {
       {user?.onboardedAt && <MyGames userId={user.id} />}
 
       <section className="relative isolate flex min-h-[30rem] flex-col justify-end overflow-hidden rounded-2xl border border-line sm:min-h-[26rem]">
-        <video
-          className="absolute inset-0 -z-10 h-full w-full object-cover opacity-60"
-          src="/videos/socca-reel-main.mp4"
-          poster="/brand/socca-reel-main.jpg"
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="none"
-        />
-        <div className="flex flex-col gap-3 bg-gradient-to-t from-bg via-bg/60 to-transparent p-5 pt-24 sm:p-8 sm:pt-28">
+        {/* Standbild statt Video bis zur Lizenzklärung (Entscheid Nutzer, 013 M2c). Die Datei /videos/socca-reel-main.mp4 bleibt in public/, wird aber nicht mehr eingebunden. Die Höhe der Fläche ist fest (min-h am section): kein Layoutsprung. */}
+        <Image src="/brand/socca-reel-main.jpg" alt="" fill priority sizes="100vw" className="-z-10 object-cover opacity-60" />
+        <div className="hero-scrim flex flex-col gap-3 p-5 pt-24 sm:p-8 sm:pt-28">
           <Image src="/brand/socca-logo.jpeg" alt="" width={56} height={56} className="rounded-lg" />
           <h1 className="text-3xl font-extrabold leading-tight sm:text-5xl">
             {t("home.title1")}<br />
