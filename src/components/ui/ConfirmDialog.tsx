@@ -22,13 +22,21 @@ export type ConfirmDialogProps = {
   /** Standard „Abbrechen“. */
   cancelLabel?: string;
   /** Läuft nach „Bestätigen“ (Server-Aktion, vom Server gereicht, oder Client-Funktion; der Name endet auf Action, weil Next so serialisierbare Props prüft). Ein `error` im Ergebnis (oder eine Ausnahme) bleibt im Dialog sichtbar; sonst schließt er. */
-  onConfirmAction: (info: { consent: boolean }) => Promise<ActionState> | ActionState | void;
+  onConfirmAction: (info: { consent: boolean; value: string }) => Promise<ActionState> | ActionState | void;
   /** Unumkehrbar: Rahmen und Symbol, Abbrechen hat den Startfokus. */
   danger?: boolean;
   /** Wort, das getippt werden muss, bevor bestätigt werden kann (z. B. LÖSCHEN). */
   confirmText?: string;
   /** Zustimmung mit Kästchen (z. B. Mandatszusatz): die Bestätigung bleibt gesperrt, bis es angehakt ist. Der Text kommt von der Seite (Rechtstext nie fest in der Komponente). `onConfirmAction` bekommt `{ consent: true }`. */
   consent?: { label: string };
+  /**
+   * Freies Textfeld im Dialog (z. B. Pflichtgrund einer Ablehnung): Zähler „x von max Zeichen“, die Bestätigung bleibt gesperrt, bis `minLength` erreicht ist (der Server prüft trotzdem),
+   * ein Fehler der Aktion steht am Feld (aria-invalid, aria-describedby). `onConfirmAction` bekommt den getrimmten Text als `value`.
+   * STARTFOKUS mit Feld ist das Feld (auch bei `danger`; Abbrechen bleibt per Tab und Escape erreichbar); ohne Feld gilt wie bisher: bei `danger` Abbrechen.
+   */
+  field?: { label: string; minLength: number; maxLength: number; hint?: string };
+  /** Nach einem ERFOLG geht der Fokus hierhin statt zum öffnenden Knopf (der Eintrag kann nach der Aktion weg sein). Abbrechen und Fehler geben den Fokus weiter an den öffnenden Knopf. */
+  focusAfterSuccessAction?: () => HTMLElement | null;
 };
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
@@ -40,7 +48,7 @@ function errorText(result: ActionState | void): string | undefined {
   return fields.length > 0 ? fields.join(" ") : undefined;
 }
 
-export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel, cancelLabel, onConfirmAction, danger = false, confirmText, consent }: ConfirmDialogProps) {
+export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel, cancelLabel, onConfirmAction, danger = false, confirmText, consent, field, focusAfterSuccessAction }: ConfirmDialogProps) {
   const id = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -48,8 +56,11 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
   const [error, setError] = useState<string>();
   const [typed, setTyped] = useState("");
   const [agreed, setAgreed] = useState(false);
-  const t = (key: MessageKey, vars?: Record<string, string>) => translate(DEFAULT_LOCALE, key, vars);
-  const mayConfirm = (!confirmText || typed.trim() === confirmText) && (!consent || agreed);
+  const [value, setValue] = useState("");
+  const succeeded = useRef(false);
+  const t = (key: MessageKey, vars?: Record<string, string | number>) => translate(DEFAULT_LOCALE, key, vars);
+  const trimmedLength = value.trim().length;
+  const mayConfirm = (!confirmText || typed.trim() === confirmText) && (!consent || agreed) && (!field || trimmedLength >= field.minLength);
 
   function open(target: HTMLElement) {
     const dialog = dialogRef.current;
@@ -58,9 +69,11 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
     setError(undefined);
     setTyped("");
     setAgreed(false);
+    setValue("");
+    succeeded.current = false;
     dialog.showModal();
-    // Startfokus: bei `danger` Abbrechen (die sichere Wahl), mit Bestätigungswort das Eingabefeld, sonst die Bestätigung
-    const start = danger ? '[data-role="cancel"]' : confirmText ? "input[type=text]" : consent ? "input[type=checkbox]" : '[data-role="confirm"]'; // die gesperrte Bestätigung nähme keinen Fokus
+    // Startfokus: mit Textfeld das Feld, sonst bei `danger` Abbrechen (die sichere Wahl), mit Bestätigungswort das Eingabefeld, sonst die Bestätigung
+    const start = field ? '[data-role="field"]' : danger ?'[data-role="cancel"]' : confirmText ? "input[type=text]" : consent ? "input[type=checkbox]" : '[data-role="confirm"]'; // die gesperrte Bestätigung nähme keinen Fokus
     dialog.querySelector<HTMLElement>(start)?.focus();
   }
 
@@ -73,9 +86,12 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
     setPending(true);
     setError(undefined);
     try {
-      const message = errorText(await onConfirmAction({ consent: Boolean(consent) && agreed }));
+      const message = errorText(await onConfirmAction({ consent: Boolean(consent) && agreed, value: value.trim() }));
       if (message) setError(message);
-      else close();
+      else {
+        succeeded.current = true; // der Fokus geht danach an `focusAfterSuccessAction` (falls gesetzt), nicht an den öffnenden Knopf
+        close();
+      }
     } catch {
       setError(t("ui.confirmFailed"));
     } finally {
@@ -114,9 +130,13 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
         onCancel={(e) => {
           if (pending) e.preventDefault();
         }}
-        // Vormerkung M3: Ist der Auslöser nach der Aktion nicht mehr im DOM (Weiterleitung, Eintrag entfernt), scheitert diese Fokus-Rückgabe still;
-        // die Seite muss dann selbst einen sinnvollen Fokus setzen (z. B. auf die Überschrift der Liste).
-        onClose={() => opener.current?.focus()}
+        // Ist der Auslöser nach der Aktion nicht mehr im DOM (Weiterleitung, Eintrag entfernt), scheitert die Fokus-Rückgabe still:
+        // dann setzt die Seite über `focusAfterSuccessAction` einen sinnvollen Fokus (z. B. auf die Statusmeldung der Liste). Abbrechen und Fehler geben den Fokus an den Auslöser zurück.
+        onClose={() => {
+          const target = succeeded.current && focusAfterSuccessAction ? focusAfterSuccessAction() : null;
+          succeeded.current = false;
+          (target ?? opener.current)?.focus();
+        }}
         onKeyDown={onKeyDown}
         className={`m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl bg-panel p-0 text-ink backdrop:bg-black/70 ${danger ? "border-2 border-danger" : "border border-line"}`}
         data-testid="confirm-dialog"
@@ -156,8 +176,37 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
               />
             </div>
           )}
+          {field && (
+            <div className="space-y-1" data-testid="confirm-field">
+              <label htmlFor={`${id}-field`} className="block text-sm font-semibold">
+                {field.label}
+              </label>
+              {field.hint && (
+                <p id={`${id}-field-hint`} className="text-sm text-muted">
+                  {field.hint}
+                </p>
+              )}
+              <textarea
+                id={`${id}-field`}
+                data-role="field"
+                rows={3}
+                value={value}
+                maxLength={field.maxLength}
+                onChange={(e) => setValue(e.target.value)}
+                aria-required="true"
+                aria-invalid={error ? true : undefined}
+                aria-describedby={[field.hint ? `${id}-field-hint` : null, `${id}-field-count`, error ? `${id}-error` : null].filter(Boolean).join(" ")}
+                autoComplete="off"
+                className={FIELD_CONTROL}
+              />
+              <p id={`${id}-field-count`} className="text-sm text-muted" data-testid="confirm-field-count">
+                {t("ui.confirmCount", { n: value.length, max: field.maxLength })}
+                {trimmedLength < field.minLength ? ` ${t("ui.confirmMinimum", { min: field.minLength })}` : ""}
+              </p>
+            </div>
+          )}
           {error && (
-            <p className="error" role="alert">
+            <p id={`${id}-error`} className="error" role="alert">
               {error}
             </p>
           )}
