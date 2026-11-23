@@ -1,6 +1,6 @@
 # PAUSE-STAND
 
-Stand: 2026-11-23 (Abend), main = `15f330f` (Migrationen bis 0057). **PAUSE-MODUS** (Nutzer, via t2q): keine neuen Tasks, nichts Unfertiges pushen; Abschluss siehe Abschnitt 3. Verfasser: worker-4 (t1b); Angaben zu fremden Branches sind aus `gh pr list` und `git worktree list` gelesen, nicht im Code geprüft.
+Stand: 2026-11-23 (Abend), main = `9a2bfc0` (nach #261 Fristjob PR B, #267 Hero `23b67ab`, #268 PAUSE-STAND `1a9849e`) (Migrationen bis 0057). **PAUSE-MODUS** (Nutzer, via t2q): keine neuen Tasks, nichts Unfertiges pushen; Abschluss siehe Abschnitt 3. Verfasser: worker-4 (t1b); Angaben zu fremden Branches sind aus `gh pr list` und `git worktree list` gelesen, nicht im Code geprüft.
 Es gelten die Regeln aus dem Regel-PR #258 (`CLAUDE.md`, `AGENTS-SETUP.md` 2.5/3a/3b, `docs/loop/LOOP-SPEC.md` Abschnitt 14): Änderungen nur über eigenen Branch und PR, Worktrees nur über `worktree.mjs create`, Dev-Server nur nach Speicherregel (höchstens 2, sofort beenden), Port 3100 gehört dem Nutzer, `.env*` nie lesen.
 
 ## 1. Seit dem letzten Stand gemergt (einzeln, squash)
@@ -18,15 +18,15 @@ Es gelten die Regeln aus dem Regel-PR #258 (`CLAUDE.md`, `AGENTS-SETUP.md` 2.5/3
 ## 2. Offene PRs
 | PR | Branch | Hash | Stand |
 |---|---|---|---|
-| #261 | `feat/pause-karenz-b` (w1) | b745cb5 | **Fristjob PR B (G29-012 Turniere):** Karenz über alle Pausen, Mitteilung, Alarm; Lauf 1 von 2 (zwei grüne Läufe nötig: Zahlungs-PR); Reviews R-T346c/d REVIEW-OK, R-T353 (E2E-Hilfe) REVIEW-OK. Nach dem Merge: G29-012 Turnier-Haken in `GO-LIVE-AUDIT.md`, Audit-Zeile |
+| #261 | `feat/pause-karenz-b` (w1) | 9a2bfc0 | **GEMERGT** (21:15 UTC): Fristjob PR B, G29-012 ganz abgehakt (Turnier-Haken in `GO-LIVE-AUDIT.md`); Notschalter für Spiele und Turniere benutzbar |
 | #263 | `feat-spieler-onboarding-server` | 480e86a | Spieler-Onboarding PR 1 (Server-Prüfung `player-onboarding.ts`, Aktion, Guard); Lauf 1 grün, 2. Lauf offen |
-| #267 | `feat/m2c-hero` (w3) | 86fcac0 | 013 M2c Hero: Standbild statt Video, Scrim hell 94 %/88 %; R-T351 REVIEW-OK (3 Hinweise: dunkel unverändert, Verlaufsposition ungemessen, tsc-Aussage). Danach AC-27 `enforce` |
+| #267 | `feat/m2c-hero` (w3) | 23b67ab | **GEMERGT**: Hero Standbild und Scrim; danach AC-27 `enforce`, sobald der main-Lauf 0 Verstöße zeigt |
 | #198 | `feat/012-m6b-code` | 6515fad (lokal 7444770, 7 voraus) | Altstand 012 M6b PR 1a: Guthaben-Altpfad im Code entfernen; lokal liegt der Doppelbelastungs-Schutz; **prüfen, ob durch #207ff. überholt, sonst schließen** |
 
 ## 3. Worker (Branch | Hash | Stand | nächster Schritt)
 Ein Worktree gehört dem Worker, der ihn anlegte; Entfernen nur mit `git worktree remove` nach Freigabe (nicht `worktree.mjs remove`, es löscht die geteilte Worker-DB).
 
-**worker-4 (t1b)** (Reviewer, Doku, kleine Bauten): alles gemergt oder lokal committet, **nichts Unfertiges**; Worktrees `docs-regel-pr`, `ci-shard-rebalance-2`, `test-ac27-rest`, `docs-sammel-39` bis `-41`, `docs-herzschlag-30min` sind weg; Worktree dieser Datei: `docs-pause-stand-3`. Der Dev-Server auf 3104 ist laut `netstat` nicht mehr aktiv. Reviews bis R-T353 gemeldet (R-T346c/d, R-T348 bis R-T353). Offene Folgearbeit (nur nach „weiter“): Enforce-PR AC-27, Folge-PR G29-012-Turnier-Haken nach #261.
+**worker-4 (t1b)** (Reviewer, Doku, kleine Bauten): alles gemergt oder lokal committet, **nichts Unfertiges**; Worktrees `docs-regel-pr`, `ci-shard-rebalance-2`, `test-ac27-rest`, `docs-sammel-39` bis `-41`, `docs-herzschlag-30min` sind weg; Worktree dieser Datei: `docs-pause-stand-3`. **Korrektur:** Dev-Server auf Port 3101 (PID 27364) und 3104 (PID 23588) laufen weiter (die frühere Angabe „nicht mehr aktiv“ war falsch: `netstat` ist deutsch, der Zustand heißt ABHÖREN, nicht LISTEN); der Nutzer beendet sie. Reviews bis R-T353 gemeldet (R-T346c/d, R-T348 bis R-T353). Offene Folgearbeit (nur nach „weiter“): Enforce-PR AC-27, Folge-PR G29-012-Turnier-Haken nach #261.
 **worker-1**: `feat/pause-karenz-b` b745cb5 (#261); lokal ältere Branches `feat/1c-ii-b-abrechnung` c122190 (leer, Backlog 206/209), `feat/012-m6b-1c-iii-a` 34cf6a4, `feat/012-m6a-guthaben-ui` ae77b08, `feat/012-m6b-code` 7444770: prüfen, ob überholt, sonst aufräumen.
 **worker-2**: `feat/seed-admin` 9cfa78a (Admin-Seed für die Frontend-Analyse, lokal, kein PR). Autor von #263 (Onboarding PR 1): w2, Review w4, security OK.
 **worker-3**: `feat/m2c-hero` 86fcac0 (#267); `fix/seed-scripts-guard` c9db0a3 (lokal); `feat/m2b-look` (Worktree `docs-analyse-frontend-y1`) ee2843d, **tabu** (Look-Abnahme beim Nutzer, Referenz für den 94-%-/88-%-Scrim).
@@ -47,7 +47,7 @@ Migrationen: Nummer beim Bau, serieller Merge, wer später mergt renummeriert (J
 - Backlog 217/218/221 (Marker aufräumen, Limit 200 und Test mit 11 Pausen, Nachreview-Beobachtungen PR B).
 
 ## 6. Punkte, die nur der Nutzer entscheiden oder tun kann
-- **Dev-Server auf 3101 und 3104 beenden** (laut netstat zuletzt nicht mehr aktiv, prüfen; mein Beenden verweigerte der Klassifizierer) und den Worktree `test-ac27-rest` (falls noch vorhanden) mit `git worktree remove` entfernen; Port 3100 gehört dem Nutzer.
+- **Dev-Server auf 3101 und 3104 beenden** (**laufen weiter**: 3101 PID 27364, 3104 PID 23588; `netstat` ist deutsch, Zustand ABHÖREN; mein Beenden verweigerte der Klassifizierer) und den Worktree `test-ac27-rest` (falls noch vorhanden) mit `git worktree remove` entfernen; Port 3100 gehört dem Nutzer.
 - **Anbieter-Spike A2** (Entscheid und Konto); **Stripe-Bump** erst nach M6b (stille API-Version, `docs/loop/LOOP-SPEC.md` Abschnitt 14); Dependabot-Regeln siehe `CLAUDE.md`, Merge-Regel.
 - **Rechtsliste (`docs/loop/FEHLT-NOCH.md`):** Bedingungstext Hallen-Onboarding (ENTWURF, Anwalt), Partnervertrag Hallen, Markenprüfung Richtung F (Backlog 171), Mindestalter und Zeitzone (Backlog 214), Erstattung und Abschreibung von Guthaben, Hero-Video-Lizenz (Backlog 222).
 - **Look-Abnahme M2b / Look-Abnahme 2** (Bilder, Videos, Handy-Prüfung AC-24); Branch `feat/m2b-look` bleibt Referenz.
