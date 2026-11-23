@@ -203,6 +203,22 @@ Vorschlag: Abnahme-Worktree und -Port werden in `docs/loop/` benannt (eine Zeile
 
 Wer ändert: Regel-PR (Nutzer mergt), Abschnitt in `CLAUDE.md` unter „Konventionen“.
 
+## 18. Text- und Oberflächen-Entfernungen: vor dem Push `grep` über ALLE `tests/`
+
+Anlass: 012 M6a brauchte drei CI-Runden (zuerst `account-media`, dann ein `strict mode`-Fehler in `basics`, danach `payments` und `privatspiel` mit dem entfernten Altpfad-Knopf); E2E läuft lokal nicht (Dev-Server tabu), jede Runde kostete rund 10 Minuten.
+
+Vorschlag: Wer einen Knopf, Text, ein Label, eine Testid oder einen Menüeintrag entfernt oder ändert, sucht vor dem Push per `git grep` über das ganze `tests/` (E2E, Integration, Unit) nach jedem geänderten Wort; die Trefferliste steht im PR-Text. Neue oder geänderte Specs: `node scripts/e2e-shards.mjs check`.
+
+Wer ändert: AGENTS-SETUP.md (Rolle Writer) und die PR-Vorlage (Zeile „Treffer-Suche in tests/“); Regel-PR (Nutzer mergt).
+
+## 19. Merge-Meldungen nur mit Beleg; Dependabot schließt seine PRs selbst
+
+Anlass: Meldungen über den Stand von PRs (gemergt, geschlossen, rot) müssen aus `gh pr view` stammen, nicht aus Annahmen; Anlass benannt vom Task Manager (2026-11-23): Meldungen zum Stand einzelner PRs, darunter Dependabot-PRs (#188 wurde von Dependabot geschlossen, Nachfolger #189), sollen nur mit Abfrage-Beleg gelten.
+
+Vorschlag: Eine Merge- oder Schließmeldung nennt `state`, `mergedAt` und `mergeCommit` aus `gh pr view <nr> --json state,mergedAt,mergeCommit` (Befehl und Ergebnis). Dependabot-PRs werden nicht von Hand geschlossen: ändert eine Konfiguration (`ignore`) ihren Status, schließt Dependabot sie selbst; ein Agent mergt keinen Dependabot-PR ohne OK des Orchestrators.
+
+Wer ändert: CLAUDE.md (Abschnitt Merge-Regel) und AGENTS-SETUP.md; Regel-PR (Nutzer mergt).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.
