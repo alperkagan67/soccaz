@@ -3,7 +3,7 @@ import { TEAM_COLORS, contrast } from "@/lib/color";
 import { TEAM_RATING_MIN_MEMBERS, cardViewerFor, initialsOf, playerCardFor, teamCardFor, type CardPerson, type CardViewer, type PlayerCardData, type RatingApi } from "@/lib/player-card";
 
 // Vertrag 013 v3, AC-17 (Sichtbarkeit der Spielerkarte) und AC-19 (Teamkarte, Kontrast). Wertung/Stufe sind hier eine Attrappe mit fester Signatur (rating.ts kommt von w2).
-const rating: RatingApi = { ratingFromElo: (e) => Math.max(0, Math.min(99, Math.round((e - 500) / 20))), tierFor: (r) => (r >= 75 ? "Pokal" : r >= 50 ? "Rasen" : "Kreide") };
+const rating: RatingApi = { ratingFromElo: (e) => Math.max(0, Math.min(99, Math.round((e - 500) / 20))), tierFor: (r) => (r >= 75 ? "pokal" : r >= 50 ? "rasen" : "kreide") };
 const person: CardPerson = { name: "Zorro Quasimodo", elo: 1540, position: "ST", teamColor: "blue", teamSlug: "die-wilden-kerle" }; // Wertung 52, Stufe Rasen
 
 const guest: CardViewer = { kind: "guest" };
@@ -15,16 +15,16 @@ describe("playerCardFor (AC-17): Sichtbarkeit je Betrachter", () => {
     const d = playerCardFor(guest, person, rating);
     expect(d).toEqual({ kind: "neutral", initials: "ZQ", colorKey: "blue" });
     const text = JSON.stringify(d);
-    for (const verboten of ["Zorro", "Quasimodo", "ST", "52", "Rasen", "rating", "tier", "position", "name\"", "1540", "elo"]) expect(text).not.toContain(verboten);
+    for (const verboten of ["Zorro", "Quasimodo", "ST", "52", "rasen", "rating", "tier", "position", "name\"", "1540", "elo"]) expect(text).not.toContain(verboten);
   });
 
   it("angemeldet (Mitspieler, Teamkamerad, Captain/Admin, fremder Nutzer sind auf der Karte gleich): Name, Wertung, Stufe, Position", () => {
-    expect(playerCardFor(member, person, rating)).toEqual({ kind: "full", initials: "ZQ", name: "Zorro Quasimodo", rating: 52, tier: "Rasen", position: "ST", colorKey: "blue" });
+    expect(playerCardFor(member, person, rating)).toEqual({ kind: "full", initials: "ZQ", name: "Zorro Quasimodo", rating: 52, tier: "rasen", position: "ST", colorKey: "blue" });
   });
 
   it("Hallenbetreiber: namenfrei (weder Name noch Initialen), aber Wertung, Stufe und Position", () => {
     const d = playerCardFor(hall, person, rating);
-    expect(d).toEqual({ kind: "nameless", rating: 52, tier: "Rasen", position: "ST", colorKey: "blue" });
+    expect(d).toEqual({ kind: "nameless", rating: 52, tier: "rasen", position: "ST", colorKey: "blue" });
     const text = JSON.stringify(d);
     for (const verboten of ["Zorro", "Quasimodo", "ZQ", '"name"', "initials"]) expect(text).not.toContain(verboten);
   });
@@ -83,7 +83,7 @@ describe("playerCardFor (AC-17): Sichtbarkeit je Betrachter", () => {
 
   it("Wertung folgt der Elo (Startwert 1000 = Wertung der Attrappe), Neuling bekommt eine Wertung und Stufe", () => {
     const d = playerCardFor(member, { ...person, elo: 1000 }, rating);
-    expect(d).toMatchObject({ kind: "full", rating: 25, tier: "Kreide" });
+    expect(d).toMatchObject({ kind: "full", rating: 25, tier: "kreide" });
   });
 });
 

@@ -6,10 +6,14 @@
 // Hallenbetreiber (angemeldet, ohne Admin-Recht am Team) = namenfrei: Wertung, Stufe, Position, aber weder Name noch Initialen (Initialen wären ein Teil des Namens).
 // Der Kartenstatus (Zahlung) gehört NICHT auf die Karte: dafür gilt die getrennte Matrix in card-visibility.ts.
 import { TEAM_COLORS, textOn } from "./color";
+import { ratingFromElo, tierFromRating, type Tier } from "./rating";
 import { effectiveColorKey } from "./team-color";
 
 /** Wertung und Stufe kommen aus rating.ts (w2); hier eingespritzt, damit dieses Modul nicht von der Reihenfolge der PRs abhängt. */
-export type RatingApi = { ratingFromElo: (elo: number) => number; tierFor: (rating: number) => string };
+export type RatingApi = { ratingFromElo: (elo: number) => number; tierFor: (rating: number) => Tier };
+
+/** Die echten Funktionen aus rating.ts (einzige Quelle der Wertung und der Stufen); Tests dürfen eine Attrappe einspritzen. */
+export const RATING: RatingApi = { ratingFromElo, tierFor: tierFromRating };
 
 /**
  * Wer schaut? Diskriminiert und OHNE Voreinstellung: der Aufrufer muss sich entscheiden (cardViewerFor liefert die Sicht aus den Rechten). Unbekannt oder fehlend = Gast (fail-closed, restriktivste Sicht).
@@ -32,8 +36,8 @@ export type CardPerson = { name: string; elo: number; position: string | null; t
 
 export type PlayerCardData =
   | { kind: "neutral"; initials: string; colorKey: string }
-  | { kind: "full"; initials: string; name: string; rating: number; tier: string; position: string | null; colorKey: string }
-  | { kind: "nameless"; rating: number; tier: string; position: string | null; colorKey: string };
+  | { kind: "full"; initials: string; name: string; rating: number; tier: Tier; position: string | null; colorKey: string }
+  | { kind: "nameless"; rating: number; tier: Tier; position: string | null; colorKey: string };
 
 /** Initialen aus dem Namen: erste Buchstaben der ersten zwei Wörter, groß; ohne Namen ein Fragezeichen. */
 export function initialsOf(name: string): string {
@@ -43,7 +47,7 @@ export function initialsOf(name: string): string {
 }
 
 /** Das Datenobjekt der Spielerkarte für diesen Betrachter. Gast: neutral; Hallenbetreiber: namenlos; sonst voll. */
-export function playerCardFor(viewer: CardViewer, person: CardPerson, rating: RatingApi): PlayerCardData {
+export function playerCardFor(viewer: CardViewer, person: CardPerson, rating: RatingApi = RATING): PlayerCardData {
   const colorKey = effectiveColorKey(person.teamColor, person.teamSlug);
   const kind = viewer && typeof viewer === "object" ? viewer.kind : undefined;
   if (kind !== "member" && kind !== "hall") return { kind: "neutral", initials: initialsOf(person.name), colorKey }; // Gast, unbekannt, fehlend: restriktivste Sicht
@@ -62,7 +66,7 @@ export type TeamCardData = { name: string; initials: string; colorKey: string; h
  * Teamkarte: Trikotfarbe als Fläche mit automatischer Textfarbe (AC-19), Wappen-Platzhalter aus Initialen, Teamwertung = Durchschnitt der Mitglieder-Wertungen (nur eine Zahl).
  * Annahme (Matrix "Team-Elo für alle"): die Teamwertung sehen auch Gäste; die Einzelwertungen der Mitglieder nie, deshalb erst ab TEAM_RATING_MIN_MEMBERS Mitgliedern.
  */
-export function teamCardFor(team: { name: string; slug: string; color: string | null; memberElos: readonly number[] }, rating: RatingApi): TeamCardData {
+export function teamCardFor(team: { name: string; slug: string; color: string | null; memberElos: readonly number[] }, rating: RatingApi = RATING): TeamCardData {
   const colorKey = effectiveColorKey(team.color, team.slug);
   const color = TEAM_COLORS.find((c) => c.key === colorKey) ?? TEAM_COLORS[0]; // effectiveColorKey liefert immer einen gültigen Schlüssel; der Rückfall verhindert trotzdem einen Absturz
   const hex = color.hex;
