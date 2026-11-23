@@ -187,6 +187,12 @@ Das Skript ist idempotent (zweiter Aufruf für dasselbe Konto: „Unverändert�
 
 **Prüfung der Migration** (lokal, Wegwerf-Datenbanken, löscht sie danach): `node --env-file=.env.local scripts/migrate-check.mjs` (frische Datenbank mit allen Migrationen in einem Lauf und bestehende Datenbank mit Daten).
 
+## Hallen-Anfragen freischalten (013 v3, AC-31, Migration 0056)
+
+- Eine Halle aus der Anfrage ("Anfrage senden", Hallen-Onboarding M2d) wird im Status `requested` angelegt (inaktiv, keine Partnerhalle, Standard-Provision) und bekommt für den Anfragenden einen aktiven Betreiber-Zugang. **Sichtbar und buchbar ist sie erst nach der Freischaltung** durch Admin 1 oder Admin 2 unter `/admin/hallen/anfragen` (Freischalten, oder Ablehnen mit Grund, 3 bis 200 Zeichen). Der Betreiber bekommt eine Mitteilung; unter `/halle` sieht er den Status. Nach einer Ablehnung kann er die Anfrage nach einer Änderung erneut senden (keine Sperrfrist), die Historie bleibt im Eingriffsprotokoll (`venue.requested/approved/rejected`, IDs und Grund, keine Personendaten).
+- Der Server prüft überall: jeder Leser (Hallenliste, Detail, Sitemap, Termin-Auswahl, Hallen-Veto, Turnier-Partnerhalle) filtert auf `approval_status = approved` zusätzlich zu `active`; beim Zuordnen einer Halle (Buchungsauftrag, Turnier) antwortet eine nicht freigegebene Halle wie eine unbekannte ID (kein Existenz-Leck). `updateVenue` aktiviert eine angefragte oder abgelehnte Halle nie.
+- Bestehende Hallen (Altbestand, OpenStreetMap-Import, Admin-Anlage) sind `approved` und unverändert sichtbar (Standardwert der Migration, kein Backfill nötig). **Rollback:** erst den Code zurückrollen, dann `drizzle/down/0056_down.sql` im Wartungsfenster (rein additiv).
+
 ## Hallenbetreiber: Zugang je Halle (Vertrag 011 M1, nur Admin 1)
 
 - **Einladen:** Admin 1 gibt in `/admin/hallen` die Google-E-Mail des Betreibers für eine Halle frei (Grund wird protokolliert, nur IDs, nie die Adresse). Es wird **keine Mail verschickt**: Der Betreiber meldet sich selbst mit genau dieser Google-Adresse an. Je Halle gibt es höchstens einen Zugang (geteilt mit den Mitarbeitern); eine neue Einladung ersetzt und entzieht den bisherigen Zugang sofort.

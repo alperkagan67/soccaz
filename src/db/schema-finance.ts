@@ -62,9 +62,18 @@ export const venues = pgTable(
   commissionPercent: numeric("commission_percent", { precision: 5, scale: 2 }).notNull().default("0"),
   commissionBonusEnabled: boolean("commission_bonus_enabled").notNull().default(false),
   invoiceEmail: text("invoice_email"), // Adresse für die Monatsrechnung (Vertrag 009 M2); ohne Adresse bleibt die Rechnung im Admin abrufbar
+  // Vertrag 013 v3 AC-31 (Freischaltung): Eine Halle aus der Anfrage ("Anfrage senden") ist "requested" und inaktiv; erst die Freischaltung durch Admin 1/2 setzt "approved" und active. Standard "approved" (Altbestand, Admin-Anlage, Import).
+  approvalStatus: text("approval_status").$type<"requested" | "approved" | "rejected">().notNull().default("approved"),
+  approvalRequestedAt: timestamp("approval_requested_at", { withTimezone: true }),
+  approvalDecidedAt: timestamp("approval_decided_at", { withTimezone: true }),
+  approvalDecidedBy: uuid("approval_decided_by").references(() => users.id, { onDelete: "set null" }),
+  approvalReason: text("approval_reason"), // Grund der Ablehnung (3 bis 200 Zeichen), keine Personendaten
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [check("venues_commission_percent_range", sql`${t.commissionPercent} >= 0 and ${t.commissionPercent} <= 100`)],
+  (t) => [
+    check("venues_commission_percent_range", sql`${t.commissionPercent} >= 0 and ${t.commissionPercent} <= 100`),
+    check("venues_approval_status_chk", sql`${t.approvalStatus} in ('requested', 'approved', 'rejected')`),
+  ],
 );
 
 /**

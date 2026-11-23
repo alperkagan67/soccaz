@@ -12,6 +12,7 @@ import { setSetting } from "./settings";
 import { DomainError } from "./teams";
 import { addPriceRule, createVenue, listVenues, setVenueManager, setVenueVerified, updateVenue } from "./venues";
 import { revokeVenueAccess } from "./venue-access";
+import { approveVenue, rejectVenue } from "./venue-approval";
 
 type Permission = Parameters<typeof requirePermission>[0];
 
@@ -102,6 +103,21 @@ export async function setVenueManagerAction(venueId: string, _prev: ActionState,
   // Hallenbetreiber zuordnen/entziehen: nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht die Zuordnung nur
   return guarded("owner", "/admin/hallen", async (actor) => {
     await setVenueManager(actor, venueId, String(fd.get("email") ?? ""), String(fd.get("reason") ?? "")); // Grund ist Pflicht (Eingriffsprotokoll)
+  });
+}
+
+/** Hallen-Anfrage freischalten (013 v3 AC-31): Admin 1 und Admin 2 (booking); die Funktion prueft das Recht zusaetzlich selbst. */
+export async function approveVenueAction(venueId: string, _prev: ActionState, _fd: FormData): Promise<ActionState> {
+  void _fd;
+  return guarded("booking", "/admin/hallen/anfragen", async (actor) => {
+    await approveVenue(actor, venueId);
+  });
+}
+
+/** Hallen-Anfrage ablehnen, Grund Pflicht (3 bis 200 Zeichen). */
+export async function rejectVenueAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  return guarded("booking", "/admin/hallen/anfragen", async (actor) => {
+    await rejectVenue(actor, venueId, text(fd, "reason"));
   });
 }
 

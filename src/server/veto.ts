@@ -33,7 +33,7 @@ export async function startHallCheck(tx: Tx, match: MatchRow, city: string, now:
   const rows = await tx
     .select({ id: venues.id, name: venues.name, city: venues.city, lat: venues.lat, lng: venues.lng, partner: venues.isPartner, verified: venues.verified })
     .from(venues)
-    .where(eq(venues.active, true));
+    .where(and(eq(venues.active, true), eq(venues.approvalStatus, "approved")));
   const holdersAll = await accessHolders(tx); // Halle mit Zugang (venue_access) muss antworten, ohne Zugang bleibt sie „unmanaged"
   // Frist = min(12 h, Anstoß − 1 h), nie nach dem Anstoß (Entscheid t2q P9). null = Vorlauf höchstens 1 Stunde: kein Antwortfenster, Hallen MIT Zugang bekommen keine Anfrage und fallen aus dem Pool (P11),
   // Hallen ohne Zugang bleiben (unmanaged); bleibt kein Kandidat, gilt der Weg „keine Halle frei, neuer Termin“.
