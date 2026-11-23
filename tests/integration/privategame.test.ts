@@ -759,17 +759,6 @@ describe("Mietprüfung vor Anstoß (T55, AC-9)", () => {
   });
 });
 
-describe("Erstattung nach erneutem Austritt (T54-Nachtrag: Schlüssel mit createdAt)", () => {
-  const withPayments = async (fn: () => Promise<void>) => {
-    await setSetting(null, "payments_enabled", true);
-    try {
-      await fn();
-    } finally {
-      await setSetting(null, "payments_enabled", false);
-    }
-  };
-});
-
 describe("Kein Zugriff auf Privatspiele für Unbeteiligte (T57, AC-12)", () => {
   const live = (id: string) => liveGET(new Request(`http://localhost/api/spiele/${id}/live`), { params: Promise.resolve({ id }) } as never);
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
