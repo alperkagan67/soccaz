@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { addParticipant, closeContexts, devLogin, run, seedUser, testDb } from "./helpers";
 
+/** Anmelden UND abwarten, bis die Sitzung steht (devLogin wartet nicht: ein sofortiges goto bricht die Anmeldung ab und die Seite wäre als Gast geladen). */
+async function login(page: import("@playwright/test").Page, email: string, name: string) {
+  await devLogin(page, email, name);
+  await page.waitForURL((url) => !url.pathname.startsWith("/anmelden"));
+}
+
 // Vertrag 013 v3, AC-20 (Text ohne Animation) und AC-17 (nur die eigene Wertung): nach einem bestätigten Ergebnis zeigt /spiele/[id] dem Spieler seine Wertungsänderung.
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -43,7 +49,7 @@ test("Spieler sieht nach dem bestätigten Ergebnis NUR seine Wertungsänderung, 
 
   // Spieler: sieht Karte und Text, nur die eigene Änderung
   const sp = await (await browser.newContext()).newPage();
-  await devLogin(sp, `rvstar-${run}@test.local`, starName);
+  await login(sp, `rvstar-${run}@test.local`, starName);
   await sp.goto(`/spiele/${matchId}`);
   const reveal = sp.getByTestId("rating-reveal");
   await expect(reveal).toBeVisible();
@@ -62,7 +68,7 @@ test("Spieler sieht nach dem bestätigten Ergebnis NUR seine Wertungsänderung, 
 
   // Gegner: eigene Änderung (Stufe bleibt), nicht die des Siegers
   const rp = await (await browser.newContext()).newPage();
-  await devLogin(rp, `rvrival-${run}@test.local`, rivalName);
+  await login(rp, `rvrival-${run}@test.local`, rivalName);
   await rp.goto(`/spiele/${matchId}`);
   await expect(rp.getByTestId("rating-reveal-text")).toHaveText("Wertung 50 → 39 (−11), Stufe Kreide");
   await expect(rp.getByTestId("rating-reveal")).toHaveAttribute("data-tier-change", "same");
@@ -70,7 +76,7 @@ test("Spieler sieht nach dem bestätigten Ergebnis NUR seine Wertungsänderung, 
 
   // Angemeldeter Fremder (nicht im Spiel): nichts
   const fp = await (await browser.newContext()).newPage();
-  await devLogin(fp, `rvfremd-${run}@test.local`, `Fremder ${run}`);
+  await login(fp, `rvfremd-${run}@test.local`, `Fremder ${run}`);
   await fp.goto(`/spiele/${matchId}`);
   await expect(fp.getByTestId("rating-reveal")).toHaveCount(0);
   expect(stranger).toBeTruthy();
