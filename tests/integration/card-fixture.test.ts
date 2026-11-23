@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, paymentCharges, paymentProfiles } from "@/db/schema";
-import { cardPaymentsEnabled, paymentsEnabled } from "@/server/settings";
+import { cardPaymentsEnabled, paymentsEnabled, setSetting } from "@/server/settings";
 import { cardGame, chargeGame, cleanup, giveCard, makeUser, useCardMode } from "./helpers";
 
 // 012 M6b Kartenfixture: der Helfer selbst ist geprüft (Aufbau, genau eine Abbuchung je Platz, Rückbau der Schalter).
@@ -43,11 +43,19 @@ describe("Kartenfixture", () => {
     expect(seats.every((s) => s.cardStatus === "charged" && s.paidCents === 0)).toBe(true);
   });
 
-  it("useCardMode schaltet beide Schalter an und restore() wieder aus", async () => {
+  it("useCardMode schaltet beide Schalter an; restore() stellt die AUSGANGSWERTE wieder her (auch wenn sie nicht aus waren)", async () => {
     expect(await paymentsEnabled()).toBe(true);
     expect(await cardPaymentsEnabled()).toBe(true);
     await mode.restore();
     expect(await paymentsEnabled()).toBe(false);
     expect(await cardPaymentsEnabled()).toBe(false);
+    // Ausgangslage "payments AN, card AUS" (pausiert, Entscheid D) bleibt nach useCardMode/restore erhalten
+    await setSetting(null, "payments_enabled", true);
+    const m2 = await useCardMode();
+    await m2.restore();
+    expect(await paymentsEnabled()).toBe(true);
+    expect(await cardPaymentsEnabled()).toBe(false);
+    await setSetting(null, "payments_enabled", false);
+    mode = await useCardMode(); // für das afterEach
   });
 });

@@ -2,10 +2,15 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { Pool } from "pg";
 import { db } from "@/db";
-import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
+import { matchParticipants, matches, paymentProfiles, teamMembers, teams, users } from "@/db/schema";
 import { venueAccess, venues } from "@/db/schema-finance";
 import { cleanupTestData } from "../cleanup";
 import { currentRoundOf } from "@/server/evidence";
+import { setReady } from "@/server/lobby";
+import { runCharges } from "@/server/payments/charge-run";
+import { FakeProvider } from "@/server/payments/fake";
+import { setPaymentProviderForTests } from "@/server/payments/provider";
+import { cardPaymentsEnabled, paymentsEnabled, setSetting } from "@/server/settings";
 import { answerHallRequest, type HallAnswerOpts } from "@/server/veto";
 
 const run = randomUUID().slice(0, 8);
@@ -132,12 +137,6 @@ export async function seedShare(userId: string, matchId: string, cents?: number)
 // 012 M6b Kartenfixture: Spiele im KARTENMODELL aufbauen (Karte hinterlegt, Anteil fixiert, Abbuchung mit dem Fake-Provider), statt über das Guthaben (fund/payShare).
 // Regeln: keine Hintergrundläufe (Abbuchung nur über chargeGame, Regel 24), Schalter pro Test (Regel 23: useCardMode im beforeEach, nie nur im beforeAll).
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------
-import { paymentProfiles } from "@/db/schema";
-import { FakeProvider } from "@/server/payments/fake";
-import { setPaymentProviderForTests } from "@/server/payments/provider";
-import { runCharges } from "@/server/payments/charge-run";
-import { setReady } from "@/server/lobby";
-import { setSetting } from "@/server/settings";
 
 let cardSeq = 0;
 const cardId = (p: string) => `${p}_${Date.now().toString(36)}_${++cardSeq}`;
@@ -147,8 +146,9 @@ export async function giveCard(userId: string) {
   await db.insert(paymentProfiles).values({ userId, stripeCustomerId: cardId("cus_fx"), paymentMethodId: cardId("pm_fx") }).onConflictDoNothing();
 }
 
-/** Kartenmodell AN (payments_enabled + card_payments_enabled) mit frischem FakeProvider. Gibt den Provider und den Rückbau zurück (afterEach). */
+/** Kartenmodell AN (payments_enabled + card_payments_enabled) mit frischem FakeProvider. Gibt den Provider und den Rückbau zurück (afterEach); restore() stellt die AUSGANGSWERTE wieder her (Regel 23). */
 export async function useCardMode() {
+  const before = { payments: await paymentsEnabled(), card: await cardPaymentsEnabled() };
   const provider = new FakeProvider();
   setPaymentProviderForTests(provider);
   await setSetting(null, "payments_enabled", true);
@@ -157,8 +157,8 @@ export async function useCardMode() {
     provider,
     async restore() {
       setPaymentProviderForTests(null);
-      await setSetting(null, "card_payments_enabled", false);
-      await setSetting(null, "payments_enabled", false);
+      await setSetting(null, "card_payments_enabled", before.card);
+      await setSetting(null, "payments_enabled", before.payments);
     },
   };
 }
