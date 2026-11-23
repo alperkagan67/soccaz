@@ -2,12 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { signOut } from "@/auth";
 import { isOldEnough } from "@/lib/age";
-import { ActionState, onboardingSchema, requestSchema, teamSchema, zodToState } from "@/lib/validation";
+import { ActionState, requestSchema, teamSchema, zodToState } from "@/lib/validation";
+import { parsePlayerOnboarding, playerWerteAusFormData } from "@/lib/player-onboarding";
 import { parseBerlinLocal } from "@/lib/time";
 import { audit } from "./audit";
 import { requireLoggedIn, requireUser } from "./session";
@@ -23,37 +24,39 @@ import { castMvpVote, markNoShow } from "./stats";
 import { createInvite, createTeam, DomainError, joinWithInvite } from "./teams";
 import { safeInternalPath } from "@/lib/safe-path";
 
-function safeNext(value: FormDataEntryValue | null): string {
-  return safeInternalPath(value);
-}
-
 export async function completeOnboardingAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const user = await requireLoggedIn();
-  const parsed = onboardingSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return zodToState(parsed.error);
+  // Wer schon eingerichtet ist, wird nicht noch einmal eingerichtet: sonst würden Zustimmungs- und Alterszeitpunkt (Nachweis) überschrieben. Die Seite leitet Eingerichtete ohnehin weiter.
+  if (user.onboardedAt) redirect(safeInternalPath(formData.get("next")));
+  // Die Prüfung steht in EINER reinen Funktion (src/lib/player-onboarding.ts), dieselbe wie in der Oberfläche; die Aktion hat keine eigene Feldprüfung.
+  const parsed = parsePlayerOnboarding(playerWerteAusFormData(formData));
+  if (!parsed.ok) return { error: Object.values(parsed.errors)[0], fieldErrors: { ...parsed.errors } };
 
-  const birth = new Date(parsed.data.birthDate);
+  const birth = new Date(`${parsed.input.birthDate}T00:00:00Z`);
   if (!isOldEnough(birth)) {
     // Mindestalter 16: Konto wird gelöscht, das Geburtsdatum wird nie gespeichert.
-    await db.delete(users).where(eq(users.id, user.id));
+    // nur ein noch nicht eingerichtetes Konto: eine zweite, gleichzeitige Absendung darf ein gerade eingerichtetes Konto nicht loeschen
+    const removed = await db.delete(users).where(and(eq(users.id, user.id), isNull(users.onboardedAt))).returning({ id: users.id });
+    if (removed.length === 0) redirect(parsed.input.next);
     await signOut({ redirectTo: "/unter-16" });
     return;
   }
 
   const now = new Date();
-  await db
+  const updated = await db
     .update(users)
     .set({
-      name: parsed.data.name,
-      city: parsed.data.city,
-      position: parsed.data.position,
+      name: parsed.input.name,
+      city: parsed.input.city,
+      position: parsed.input.position,
       ageConfirmedAt: now,
       termsAcceptedAt: now,
       onboardedAt: now,
     })
-    .where(eq(users.id, user.id));
-  await audit(user.id, "user.onboarded", "user", user.id);
-  redirect(safeNext(formData.get("next")));
+    .where(and(eq(users.id, user.id), isNull(users.onboardedAt))) // nur einmal: bei zwei gleichzeitigen Absendungen gewinnt genau eine, die zweite ueberschreibt nichts
+    .returning({ id: users.id });
+  if (updated.length > 0) await audit(user.id, "user.onboarded", "user", user.id);
+  redirect(parsed.input.next);
 }
 
 /**
