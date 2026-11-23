@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -133,4 +133,21 @@ export async function myPendingVenues(userId: string) {
     .from(venues)
     .where(and(inArray(venues.id, ids), ne(venues.approvalStatus, "approved")))
     .orderBy(asc(venues.name));
+}
+
+/** Zahl der offenen Anfragen (Hinweis in der Admin-Navigation und auf /admin/hallen). */
+export async function countVenueRequests(): Promise<number> {
+  await connection();
+  const [r] = await db.select({ n: count() }).from(venues).where(eq(venues.approvalStatus, "requested"));
+  return r.n;
+}
+
+/** Abgelehnte Anfragen (nur Ansicht, neueste zuerst): Name, Stadt, Grund und Zeitpunkt, ohne Betreiber-Angaben. */
+export async function listRejectedVenues() {
+  await connection();
+  return db
+    .select({ id: venues.id, name: venues.name, city: venues.city, reason: venues.approvalReason, decidedAt: venues.approvalDecidedAt })
+    .from(venues)
+    .where(eq(venues.approvalStatus, "rejected"))
+    .orderBy(desc(venues.approvalDecidedAt), asc(venues.id));
 }

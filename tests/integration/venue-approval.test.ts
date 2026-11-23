@@ -11,7 +11,7 @@ import { createTournament, setOrganizer } from "@/server/tournaments";
 import { isPartnerVenue, listPartnerVenueOptions } from "@/server/tournament-venue";
 import { startHallCheck } from "@/server/veto";
 import { getPublicVenue, listPublicVenues, listVenues, updateVenue } from "@/server/venues";
-import { approveVenue, listVenueRequests, myPendingVenues, rejectVenue, requestVenue, resubmitVenue } from "@/server/venue-approval";
+import { approveVenue, countVenueRequests, listRejectedVenues, listVenueRequests, myPendingVenues, rejectVenue, requestVenue, resubmitVenue } from "@/server/venue-approval";
 import sitemap from "@/app/sitemap";
 import { cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -224,5 +224,33 @@ describe("Betreiber-Sicht: eigene Anfrage mit Status", () => {
     await resubmitVenue(operator.id, v.id, { name: v.name, city: CITY, address: "Neu 2" });
     await approveVenue(admin.id, v.id);
     expect(await myPendingVenues(operator.id)).toEqual([]);
+  });
+});
+
+describe("Admin-Hinweise: Zahl offener Anfragen und abgelehnte Anfragen", () => {
+  it("countVenueRequests zaehlt nur offene Anfragen (steigt bei Anfrage, faellt bei Entscheidung)", async () => {
+    const admin = await makeUser("vadm", "admin");
+    const base = await countVenueRequests();
+    const a = (await requested()).v;
+    const b = (await requested()).v;
+    expect(await countVenueRequests()).toBe(base + 2);
+    await approveVenue(admin.id, a.id);
+    await rejectVenue(admin.id, b.id, "Doppelt angelegt");
+    expect(await countVenueRequests()).toBe(base);
+  });
+
+  it("listRejectedVenues zeigt abgelehnte Anfragen mit Grund (neueste zuerst), nie offene oder freigegebene", async () => {
+    const admin = await makeUser("vadm", "admin");
+    const open = (await requested()).v;
+    const ok = (await requested()).v;
+    const no = (await requested()).v;
+    await approveVenue(admin.id, ok.id);
+    await rejectVenue(admin.id, no.id, "Adresse unklar");
+    const rows = await listRejectedVenues();
+    expect(rows.map((r) => r.id)).toContain(no.id);
+    expect(rows.map((r) => r.id)).not.toContain(open.id);
+    expect(rows.map((r) => r.id)).not.toContain(ok.id);
+    expect(rows.find((r) => r.id === no.id)).toMatchObject({ name: no.name, reason: "Adresse unklar" });
+    expect(rows.find((r) => r.id === no.id)?.decidedAt).not.toBeNull();
   });
 });

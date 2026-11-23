@@ -28,6 +28,12 @@ async function guarded(permission: Permission, path: string, fn: (actorId: strin
   return { ok: true };
 }
 
+/** Bei einer Meldung (z. B. "keine offene Anfrage": schon von jemand anderem entschieden) die Seite neu laden lassen, damit die Zeile verschwindet bzw. den neuen Stand zeigt. */
+function refreshOnError(result: ActionState, path: string): ActionState {
+  if (result && "error" in result && result.error) revalidatePath(path);
+  return result;
+}
+
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? "").trim();
 const optional = (fd: FormData, key: string) => text(fd, key) || null;
 const euro = (fd: FormData, key: string) => parseEuro(text(fd, key));
@@ -109,16 +115,16 @@ export async function setVenueManagerAction(venueId: string, _prev: ActionState,
 /** Hallen-Anfrage freischalten (013 v3 AC-31): Admin 1 und Admin 2 (booking); die Funktion prueft das Recht zusaetzlich selbst. */
 export async function approveVenueAction(venueId: string, _prev: ActionState, _fd: FormData): Promise<ActionState> {
   void _fd;
-  return guarded("booking", "/admin/hallen/anfragen", async (actor) => {
+  return refreshOnError(await guarded("booking", "/admin/hallen/anfragen", async (actor) => {
     await approveVenue(actor, venueId);
-  });
+  }), "/admin/hallen/anfragen");
 }
 
 /** Hallen-Anfrage ablehnen, Grund Pflicht (3 bis 200 Zeichen). */
 export async function rejectVenueAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
-  return guarded("booking", "/admin/hallen/anfragen", async (actor) => {
+  return refreshOnError(await guarded("booking", "/admin/hallen/anfragen", async (actor) => {
     await rejectVenue(actor, venueId, text(fd, "reason"));
-  });
+  }), "/admin/hallen/anfragen");
 }
 
 /** Zugang einer Halle entziehen bzw. eine offene Einladung zurückziehen: nur Admin 1, Grund Pflicht, wirkt sofort. */
