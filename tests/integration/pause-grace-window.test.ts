@@ -1,20 +1,19 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges, stripeEvents } from "@/db/schema";
 import { FakeProvider } from "@/server/payments/fake";
 import { retryChargesInWindow } from "@/server/payments/charge-retry";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runSubstitutes } from "@/server/payments/substitute";
-import { setCardSwitch } from "@/server/payment-switch";
 import { setSetting } from "@/server/settings";
-import { cleanup, makeUser } from "./helpers";
+import { cleanup } from "./helpers";
+import { resumeCycle } from "./pause-helpers";
 import { slotGame } from "./slot-helpers";
 
 // Nachzahlfenster (AC-9) nach der Pause: ein Fenster, das in der Pause ablief, gibt den Platz nicht sofort nach dem Wiedereinschalten frei: Untergrenze Wiedereinschalten + 2 Stunden, aber nur vor Anstoss minus 1 Stunde.
 // Reicht die Karenz nicht bis dahin, gilt die bestehende Regel (Platz frei bzw. Absage mit Erstattung).
 let provider: FakeProvider;
-let owner: Awaited<ReturnType<typeof makeUser>> | undefined;
 const H = 3_600_000;
 beforeAll(async () => {
   await db.delete(stripeEvents).where(like(stripeEvents.eventId, "evt_sh_%"));
@@ -35,10 +34,10 @@ afterAll(async () => {
 
 const stateOf = async (id: string) => (await db.select().from(matches).where(eq(matches.id, id)))[0];
 const seatsOf = (id: string) => db.select().from(matchParticipants).where(eq(matchParticipants.matchId, id));
+/** Pause von vor 2 Stunden bis vor 30 Sekunden: das Fensterende (vor 1 Minute) liegt in der Pause. Alte Schalter-Audits werden vorher geloescht (Test-Isolation). */
 async function pauseAndResume() {
-  owner ??= await makeUser("gw", "owner");
-  await setCardSwitch(owner.id, false, "Notabschaltung wegen Stoerung", true);
-  await setCardSwitch(owner.id, true, "Stoerung behoben, alles geprueft", true);
+  await db.execute(sql`delete from audit_log where action like 'card_switch.%' and entity_id = 'card_payments_enabled'`);
+  await resumeCycle(new Date(Date.now() - 30_000), new Date(Date.now() - 2 * H));
 }
 
 describe("Nachzahlfenster: Karenz nach dem Wiedereinschalten", () => {
@@ -64,7 +63,7 @@ describe("Nachzahlfenster: Karenz nach dem Wiedereinschalten", () => {
     expect(res).toMatchObject({ released: 0, exhausted: [] });
     expect((await stateOf(g.match.id)).cancelRequestedAt).toBeNull();
     expect((await seatsOf(g.match.id)).some((s) => s.userId === g.root.id)).toBe(true);
-    const later = await runSubstitutes({ matchId: g.match.id, now: new Date(Date.now() + 2 * H + 5 * 60_000) }); // Karenz vorbei
+    const later = await runSubstitutes({ matchId: g.match.id, now: new Date(Date.now() + 2 * H + 5 * 60_000) }); // Karenz (Einschalten + 2 h) vorbei
     expect(later.exhausted).toContain(g.rootRow.id);
     expect((await stateOf(g.match.id)).cancelRequestedAt).not.toBeNull();
   });

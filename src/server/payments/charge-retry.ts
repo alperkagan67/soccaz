@@ -7,7 +7,7 @@
 //  3  (Netz)  den neuen Versuch sendet derselbe Weg wie der erste (runCharges: Beanspruchen mit Lease, Senden, Verbuchen ueber applyChargeInTx).
 import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
-import { resumeUntil, windowEndAfterResume, windowEndSql } from "../pause-resume";
+import { type ResumeInfo, resumeUntil, windowEndAfterResume, windowEndSql } from "../pause-resume";
 import { db } from "@/db";
 import {
   matchParticipants,
@@ -152,7 +152,7 @@ export async function rotateAttempt(c: Candidate, now: Date): Promise<boolean> {
  * Kartenfehler, laufendes effektives Fenster, Platz card_ready, Spiel offen. Altzeilen (grace_until NULL) sind AUSGESCHLOSSEN: least() ignoriert NULL in Postgres, darum
  * ausdruecklich isNotNull (Review-Fix 2).
  */
-function eligibleFilters(now: Date, until: Date | null) {
+function eligibleFilters(now: Date, until: ResumeInfo | null) {
   return [
     inArray(paymentCharges.status, ["failed", "requires_action"]),
     isNotNull(paymentCharges.graceUntil),

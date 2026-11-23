@@ -8,7 +8,7 @@ import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
 import { cardModeActive, hasChargeRows, hasPaidSeat, isChargeBound, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
 import { chargeEligibility } from "./payments/charge-run";
-import { PAUSE_CANCEL_REASON, lastResumeAt, resumeFloor } from "./pause-resume";
+import { PAUSE_CANCEL_REASON, resumeFloor, resumeUntil } from "./pause-resume";
 import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
 import { teamName } from "./names";
 import { cancelUncoveredPrivateGames } from "./privategame";
@@ -93,12 +93,11 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
     .from(matches)
     .where(and(inArray(matches.kind, ["private", "team"]), eq(matches.legacyShareModel, false), inArray(matches.status, ["lobby", "confirmed"]), sql`${matches.settledAt} is null`, eq(matches.schedulingOpen, false), inArray(matches.vetoStatus, ["none", "done"]), sql`${matches.startsAt} > ${now}`));
   let cancelled = 0;
-  const resumeAt = await lastResumeAt();
+  const preResume = await resumeUntil(); // nur für die Kandidatenauswahl: die Entscheidung liest unter der Spielsperre frisch (Admin kann während des Laufs einschalten)
   for (const c of candidates) {
     const payOpenAt = await leadStart(db, c);
     const due = dueWithGrace(hasLongLead(c.startsAt, payOpenAt) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt), payOpenAt, c.startsAt, c.createdAt);
-    const floored = resumeFloor(due, c.startsAt, resumeAt);
-    if (floored.due.getTime() > now.getTime()) continue;
+    if (resumeFloor(due, c.startsAt, preResume).due.getTime() > now.getTime()) continue;
     try {
       await db.transaction(async (tx) => {
         const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
@@ -107,6 +106,9 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
         // PAUSIERT (Entscheid D: Zahlungen AN + Karte AUS = Notabschaltung): niemand konnte abbuchen, das ist nicht die Schuld der Spieler. Keine Absage, kein Buchen; nach dem Wiedereinschalten
         // gilt die Frist-Regel wieder (Fristen verschieben sich nicht). Spiele mit Guthaben im Platz (paid_cents > 0, Altmodell) bleiben bis 1c-ii-b im alten Pfad.
         if (payOn && !(await cardPaymentsEnabled(tx)) && !(await hasPaidSeat(tx, m.id))) return;
+        // Karenz nach der Pause: UNTER der Spielsperre frisch gelesen (Wiedereinschalten während des Laufs: sonst Absage ohne Karenz)
+        const floored = resumeFloor(due, m.startsAt, await resumeUntil(tx));
+        if (floored.due.getTime() > now.getTime()) return;
         if (!payAndReadyPossible(m)) return; // Zahlen und Bereit sind noch gesperrt (Termin oder Hallen-Veto): keine Absage
         // Kartenspiel (012 M2b-2): Gibt es schon Abbuchungszeilen, storniert der Job NIE (Teil-Erfolg, Nachzahlfenster und Erstattung auf die Karte = M3).
         // Ist das Spiel abbuchungsbereit (beide Captains bereit, Anteil fixiert, alle mit Karte, Miete gedeckt), bucht der Karten-Job (card-charges) ab; auch dann keine Absage.

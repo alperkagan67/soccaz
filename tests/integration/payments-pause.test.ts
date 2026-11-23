@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, like, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, notifications, paymentCharges, paymentProfiles, remindersSent, stripeEvents } from "@/db/schema";
@@ -11,14 +11,30 @@ import { runSubstitutes } from "@/server/payments/substitute";
 import { takeOverShare } from "@/server/payments/cover";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { closeLobbiesAtDeadline, sendMatchReminders } from "@/server/scheduled";
-import { setCardSwitch } from "@/server/payment-switch";
 import { setSetting } from "@/server/settings";
+import { resumeCycle } from "./pause-helpers";
 import { addPlayer, cardGame, cleanup, makeMatch, makeUser } from "./helpers";
 import { nid } from "./slot-helpers";
 import { slotGame } from "./slot-helpers";
 
 // Entscheid D (t2q), Pflicht aus w2-Review (Notschalter): Zahlungen AN + Karte AUS = PAUSIERT. Die Absage-Regeln duerfen in der Pause NICHTS absagen oder Plaetze vergeben, weil niemand
 // abbuchen konnte (die Pause ist nicht die Schuld der Spieler). Erstattungen/Absagen mit bereits abgebuchtem Geld laufen weiter (refund.ts kennt den Schalter nicht).
+const staleOnce = vi.hoisted(() => ({ arm: false, used: false }));
+vi.mock("@/server/pause-resume", async (orig) => {
+  const m = await orig<typeof import("@/server/pause-resume")>();
+  return {
+    ...m,
+    resumeUntil: async (...a: Parameters<typeof m.resumeUntil>) => {
+      if (staleOnce.arm) {
+        staleOnce.arm = false;
+        staleOnce.used = true;
+        return null; // veralteter Vorabwert: der Admin hat noch nicht eingeschaltet
+      }
+      return m.resumeUntil(...a);
+    },
+  };
+});
+
 let provider: FakeProvider;
 beforeAll(async () => {
   await db.delete(stripeEvents).where(like(stripeEvents.eventId, "evt_sh_%"));
@@ -156,61 +172,69 @@ describe("pausiert: Anteil uebernehmen (Cover) ist nicht moeglich", () => {
 
 describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauchen 2 Stunden nach dem Einschalten", () => {
   const MIN = 60_000;
-  let owner: Awaited<ReturnType<typeof makeUser>> | undefined;
-  /** Notschalter AUS und wieder EIN (Audit card_switch.on), danach den Zeitpunkt des Einschaltens auf `at` setzen (die Frist selbst laeuft ueber das `now` des Aufrufs). */
-  async function pauseAndResume(at: Date) {
-    owner ??= await makeUser("kz", "owner"); // Admin 1 gibt es hoechstens einmal je Datenbank
-    await setCardSwitch(owner.id, false, "Notabschaltung wegen Stoerung", true);
-    await setCardSwitch(owner.id, true, "Stoerung behoben, alles geprueft", true);
-    await db.execute(sql`update audit_log set at = ${at} where action = 'card_switch.on' and entity_id = 'card_payments_enabled'`);
+  /** Pause von off bis on (Audit-Zeitpunkte, die Frist laeuft ueber das `now` des Aufrufs); alte Schalter-Audits werden vorher geloescht (Test-Isolation). */
+  async function pause(on: Date, off: Date, keep = false) {
+    if (!keep) await db.execute(sql`delete from audit_log where action like 'card_switch.%' and entity_id = 'card_payments_enabled'`);
+    await resumeCycle(on, off);
   }
+  const dueOf = async (id: string) => fixDeadline((await stateOf(id)).startsAt);
 
   it("Frist in der Pause abgelaufen: nach dem Wiedereinschalten innerhalb von 2 Stunden KEINE Absage, danach die regulaere", async () => {
     const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
-    const start = (await stateOf(g.match.id)).startsAt;
-    const t = new Date(fixDeadline(start).getTime() + 60_000); // Frist ist erreicht
-    await pauseAndResume(new Date(t.getTime() - 30 * MIN)); // eingeschaltet vor 30 Minuten
+    const due = await dueOf(g.match.id);
+    const t = new Date(due.getTime() + 60_000); // Frist ist erreicht
+    await pause(new Date(t.getTime() - 30_000), new Date(t.getTime() - 2 * 3_600_000)); // Pause ueber die Frist hinweg, vor 30 Sekunden eingeschaltet
     expect(await closeLobbiesAtDeadline(t)).toBe(0);
     expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
-    expect(await closeLobbiesAtDeadline(new Date(t.getTime() + 89 * MIN))).toBe(0); // noch vor Einschalten + 2 h
+    expect(await closeLobbiesAtDeadline(new Date(t.getTime() + 110 * MIN))).toBe(0); // noch vor Einschalten + 2 h
     expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
-    await closeLobbiesAtDeadline(new Date(t.getTime() + 91 * MIN)); // Einschalten + 2 h erreicht
+    await closeLobbiesAtDeadline(new Date(t.getTime() + 121 * MIN)); // Einschalten + 2 h erreicht
     expect((await stateOf(g.match.id)).status).toBe("cancelled");
   });
 
-  it("Obergrenze: reicht die Karenz bis zum Anstoss oder darueber, gilt die bestehende Absageregel (Absage mit Erstattung), die Karenz verschiebt nie ueber den Anstoss", async () => {
+  it("Frist VOR der Pause oder NACH dem Wiedereinschalten: keine Karenz (nur Fristen, die in der Pause abliefen)", async () => {
+    const before = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const t = new Date((await dueOf(before.match.id)).getTime() + 60_000);
+    await pause(new Date(t.getTime() + 30 * MIN), new Date(t.getTime() + 10 * MIN)); // Pause beginnt erst NACH der Frist
+    await closeLobbiesAtDeadline(t);
+    expect((await stateOf(before.match.id)).status).toBe("cancelled"); // Frist lag vor der Pause: regulaer
+    const after = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const t2 = new Date((await dueOf(after.match.id)).getTime() + 3 * 3_600_000);
+    await pause(new Date(t2.getTime() - 4 * 3_600_000), new Date(t2.getTime() - 5 * 3_600_000)); // Pause war schon vor der Frist zu Ende
+    await closeLobbiesAtDeadline(t2);
+    expect((await stateOf(after.match.id)).status).toBe("cancelled"); // Frist lag nach dem Wiedereinschalten: regulaer
+  });
+
+  it("Obergrenze: reicht die Karenz bis zum Anstoss oder darueber, gilt die bestehende Absageregel mit Klartext (nie stille Absage), die Karenz verschiebt nie ueber den Anstoss", async () => {
     const g = await cardGame({ hoursAhead: 2, n: 6, confirmed: false });
     const start = (await stateOf(g.match.id)).startsAt;
-    const t = new Date(start.getTime() - 30 * MIN); // Abbruchfrist (1 h vor Anstoss) laengst erreicht
-    await pauseAndResume(new Date(t.getTime() - 30 * MIN)); // Karenzende = Anstoss + 1 h
+    const t = new Date(start.getTime() - 30 * MIN); // Abbruchfrist (1 h vor Anstoss) liegt in der Pause
+    await pause(new Date(t.getTime() - 10 * MIN), new Date(t.getTime() - 2 * 3_600_000)); // Karenzende = Anstoss + 80 min
     await closeLobbiesAtDeadline(t);
     const m = await stateOf(g.match.id);
     expect(m.status).toBe("cancelled");
-    // nie eine stille Absage: der Grund am Spiel und die Mitteilung an die Spieler nennen die Pause und die Erstattung
     expect(m.cancelReason).toMatch(/Bezahlung war pausiert/);
     const notes = await db.select().from(notifications).where(and(eq(notifications.userId, g.adminA.id), eq(notifications.type, "match.cancelled")));
     expect(notes.some((n) => /Bezahlung war pausiert.*Erstattung folgt/.test(n.body))).toBe(true);
   });
 
-  it("mehrere Einschaltungen: massgeblich ist die LETZTE (alt vor 5 h, neu vor 30 min -> Karenz gilt)", async () => {
+  it("mehrere Einschaltungen: massgeblich ist die LETZTE Pause (erste lange her, zweite ueber die Frist hinweg -> Karenz)", async () => {
     const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
-    const start = (await stateOf(g.match.id)).startsAt;
-    const t = new Date(fixDeadline(start).getTime() + 60_000);
-    await pauseAndResume(new Date(t.getTime() - 5 * 3_600_000)); // erstes Einschalten: lange her
-    await setCardSwitch(owner!.id, false, "Zweite Notabschaltung wegen Stoerung", true);
-    await setCardSwitch(owner!.id, true, "Zweite Stoerung behoben, geprueft", true);
-    await db.execute(sql`update audit_log set at = ${new Date(t.getTime() - 30 * MIN)} where action = 'card_switch.on' and entity_id = 'card_payments_enabled' and at < ${new Date(t.getTime() - 10 * 3_600_000)}`); // nur die neue Zeile
+    const t = new Date((await dueOf(g.match.id)).getTime() + 60_000);
+    await pause(new Date(t.getTime() - 5 * 3_600_000), new Date(t.getTime() - 6 * 3_600_000)); // erste Pause: lange vorbei
+    await pause(new Date(t.getTime() - 30_000), new Date(t.getTime() - 2 * 3_600_000), true); // zweite Pause ueber die Frist hinweg
     expect(await closeLobbiesAtDeadline(t)).toBe(0);
     expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
   });
 
-  it("ein altes Einschalten (laenger als 2 Stunden her) verschiebt nichts: regulaere Absage", async () => {
+  it("Einschalten WAEHREND des Laufs (zwischen Kandidatenauswahl und Spielsperre): die Entscheidung liest frisch, keine Absage ohne Karenz", async () => {
     const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
-    const start = (await stateOf(g.match.id)).startsAt;
-    const t = new Date(fixDeadline(start).getTime() + 60_000);
-    await pauseAndResume(new Date(t.getTime() - 5 * 3_600_000));
-    await closeLobbiesAtDeadline(t);
-    expect((await stateOf(g.match.id)).status).toBe("cancelled");
-    expect((await stateOf(g.match.id)).cancelReason).not.toMatch(/pausiert/); // regulaere Absage: der Pausen-Text nur, wenn die Pause die Karenz verhindert hat
+    const t = new Date((await dueOf(g.match.id)).getTime() + 60_000);
+    await db.execute(sql`delete from audit_log where action like 'card_switch.%' and entity_id = 'card_payments_enabled'`);
+    await resumeCycle(new Date(t.getTime() - 30_000), new Date(t.getTime() - 2 * 3_600_000));
+    staleOnce.arm = true; // die ERSTE Lesung des Laufs (Kandidatenauswahl) sieht noch keine Pause (veralteter Vorabwert), die zweite (unter der Spielsperre) schon
+    expect(await closeLobbiesAtDeadline(t)).toBe(0);
+    expect(staleOnce.used).toBe(true);
+    expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
   });
 });

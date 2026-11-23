@@ -19,7 +19,7 @@ import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
 import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardFlowPaused, tournamentCardMode, tournamentPayBlocked, PAYMENTS_PAUSED, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
-import { PAUSE_CANCEL_REASON_TOURNAMENT, lastResumeAt, resumeFloor, resumeUntil, windowEndSql } from "./pause-resume";
+import { PAUSE_CANCEL_REASON_TOURNAMENT, resumeFloor, resumeUntil, windowEndSql } from "./pause-resume";
 import { notifyHolderOnFix } from "./tournament-holders";
 import { venueAccessHolderIds } from "./venue-access-rules";
 import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
@@ -722,19 +722,19 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
     .from(tournaments)
     .where(and(inArray(tournaments.status, ["registration", "payment"]), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`));
   let cancelled = 0;
-  const resumeAt = await lastResumeAt();
+  const preResume = await resumeUntil(); // nur für die Kandidatenauswahl: die Entscheidung liest unter der Turniersperre frisch
   for (const c of candidates) {
     try {
       // Vorprüfung ohne Sperre (billig); die Fälligkeit wird unter der Sperre neu berechnet, denn Preisfestlegung oder wieder geöffnete Kader
       // im Fenster dazwischen verschieben die Karenz
       const pre = await dueOf(db, c);
-      if (!pre || resumeFloor(pre.due, c.startsAt!, resumeAt).due.getTime() > now.getTime()) continue;
+      if (!pre || resumeFloor(pre.due, c.startsAt!, preResume).due.getTime() > now.getTime()) continue;
       await db.transaction(async (tx) => {
         const t = await lockTournament(tx, c.id);
         if ((t.status !== "registration" && t.status !== "payment") || t.bracketGeneratedAt || !t.startsAt || t.startsAt.getTime() <= now.getTime()) return;
         const locked = await dueOf(tx, t);
         if (!locked) return;
-        const floored = resumeFloor(locked.due, t.startsAt, resumeAt); // Karenz nach der Pause: frühestens Wiedereinschalten + 2 Stunden, nie über den Start hinaus
+        const floored = resumeFloor(locked.due, t.startsAt, await resumeUntil(tx)); // Karenz nach der Pause: frühestens Wiedereinschalten + 2 Stunden, nie über den Start hinaus
         if (floored.due.getTime() > now.getTime()) return;
         // Kartenmodell (M5-4): ist abgebucht oder die Abbuchung angelaufen/faellig (alle Teams bereit, Zusage da), faellt das Turnier hier NICHT aus; Fehlschlaege behandelt die Abbuchung (M5-5)
         if (await chargeUnderway(tx, t)) return;

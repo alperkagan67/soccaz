@@ -10,7 +10,7 @@ import { auditLog, matches, paymentCharges, paymentProfiles } from "@/db/schema"
 import { tournaments } from "@/db/schema-league";
 import { tournamentCardMode } from "../tournament-card";
 import { effectiveGraceEnd, graceText } from "@/lib/grace";
-import { resumeUntil, windowEndAfterResume } from "../pause-resume";
+import { type ResumeInfo, resumeUntil, windowEndAfterResume } from "../pause-resume";
 import { audit } from "../audit";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "../settings";
 import { DomainError } from "../teams";
@@ -53,7 +53,7 @@ async function openRow(userId: string, matchId: string, now: Date): Promise<Open
   return null;
 }
 
-function openFrom(r: Row, matchId: string, now: Date, until: Date | null): OpenRow | null {
+function openFrom(r: Row, matchId: string, now: Date, until: ResumeInfo | null): OpenRow | null {
   if (r.status !== "requires_action" || r.failureCode !== "authentication_required") return null;
   if (!["lobby", "confirmed"].includes(r.matchStatus) || r.cancelRequestedAt !== null || r.settledAt !== null || r.startsAt.getTime() <= now.getTime()) return null;
   const end = windowEndAfterResume(effectiveGraceEnd(r.graceUntil, r.startsAt), r.startsAt, until); // mit Karenz nach der Pause
