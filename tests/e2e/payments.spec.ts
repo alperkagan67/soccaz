@@ -126,10 +126,13 @@ test("Kartenspiel: Buchungsauftrag, Hallenbuchung und Finanzbereich nach der Abb
   // --- Admin: Finanzen zum Spiel
   await adm.goto(`/admin/finanzen/spiel/${matchId}`);
   await idle(adm);
+  // erst bedienen, wenn React das Formular übernommen hat (wie bei "Halle anlegen" oben): vor der Hydration löst der Klick das native Absenden aus, die Eingaben sind weg und "Gespeichert." erscheint nie (Flake aus #202)
+  const book = adm.getByRole("button", { name: "Ausgabe buchen" });
+  await expect.poll(() => book.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps")))).toBe(true);
   await adm.getByLabel("Betrag in Euro").fill("80,00");
   await adm.getByLabel("Notiz").fill("Hallenmiete E2E");
-  await adm.getByRole("button", { name: "Ausgabe buchen" }).click();
-  await expect(adm.getByText("Gespeichert.")).toBeVisible();
+  await book.click();
+  await expect(adm.getByText("Gespeichert.")).toBeVisible({ timeout: 15_000 });
   const cards = adm.locator("dl > div dd");
   // Einnahmen/Marge der Detailseite entfallen hier: sie summieren playerFinance().netCents (nur wallet-Konten) und zeigen im Kartenmodell 0 (Produktlücke, Backlog 188; Integrationstest finance-card.test.ts it.fails).
   // Die Übersicht (unten) und die Spieleliste lesen den Erlös korrekt aus revenue (finance-card.test.ts).
