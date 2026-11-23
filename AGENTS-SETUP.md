@@ -209,13 +209,12 @@ Kandidaten aus `docs/loop/REGELVORSCHLAG.md` sind in 2.x, 3a, 3b, CLAUDE.md und 
 
 ## 5. Neustart ab jetzt
 
-- Nach jedem Neustart der Sitzung erneuert der Orchestrator den Herzschlag mit `/loop 15m` und dem Prompt aus `docs/loop/HERZSCHLAG.md`, danach spätestens alle 7 Tage (wiederkehrende Aufgaben laufen ab; der Herzschlag überlebt weder `/clear` noch einen Neustart).
-- Node-Mindestversion: CLAUDE.md, Konventionen.
-
 - Agents/Claude direkt in SoccaV2 starten: `cd "<Projektordner>\Soccaz\SoccaV2"` (Pfad quoten, Leerzeichen).
 - Alle Agents in SoccaV2 starten, damit Skills (`.claude/skills/`), Subagents (`.claude/agents/`), Hooks und `CLAUDE.md` geladen werden. Frühere Sessions per `claude --resume <name>` wieder aufnehmen (Namen wie `worker-1`, vergeben mit `/rename`).
 - Das `HC_TERMINAL_ID`-Labeling bleibt unverändert (Abschnitt 1 und 2).
 - Kontext halten (Spec Abschnitt 10): Orchestrator `/compact` bei ca. 60 %, Task Manager `/compact` nach jedem Auftrag, Worker `/clear` nach jedem Task.
+- Nach jedem Neustart der Sitzung erneuert der Orchestrator den Herzschlag mit `/loop 15m` und dem Prompt aus `docs/loop/HERZSCHLAG.md`, danach spätestens alle 7 Tage (wiederkehrende Aufgaben laufen ab; der Herzschlag überlebt weder `/clear` noch einen Neustart).
+- Node-Mindestversion: CLAUDE.md, Konventionen.
 - Der Stop-Hook (`.claude/settings.json` im Repo) speichert Transkripte nach `SoccaV2/sessions/` (ignoriert, wird nicht committet).
 - Elternordner `Soccaz` (nicht im Repo): enthält `start-v2.ps1`, `start.ps1`, `_tools`, `worktrees/` sowie Altlasten (`socca-main`, `socca-main.zip`, `ANALYSE.md`, npm-install-Logs). Die dortige alte `.claude/` und `sessions/` gehören zum früheren Projektpfad.
 - Die Originale in `Soccaz` heißen nach A15 `AGENTS-SETUP.archiv.md` und `TASKS.archiv.md` (Archiv, nicht mehr pflegen). Maßgeblich ist die `AGENTS-SETUP.md` im Repo (nur per PR ändern); `TASKS.md` liegt lokal in SoccaV2/ und ist nicht versioniert.
