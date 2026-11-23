@@ -175,3 +175,33 @@ describe("Gruppierung, Zusammenfassung, Modus, Protokoll", () => {
     expect(withPipe).not.toContain("## Verstöße"); // nichts durchgefallen: kein Abschnitt
   });
 });
+
+describe("große Messflächen (R-T343 A): kein RangeError", () => {
+  // 200.000 Pixel (r,g,b): 190.000 dunkel, 10.000 hell (5 %): Weiß auf der dunklen Mehrheit besteht, der helle Teil liegt genau im 5. Perzentil
+  const N = 200_000;
+  const pixels = new Array<number>(N * 3);
+  for (let i = 0; i < N; i++) {
+    const light = i >= N - 10_000;
+    pixels[i * 3] = light ? 245 : 20;
+    pixels[i * 3 + 1] = light ? 245 : 30;
+    pixels[i * 3 + 2] = light ? 245 : 25;
+  }
+  it("evaluate wirft bei 200.000 Pixeln nicht; worst ist das schlechteste Pixel, ratio das 5. Perzentil", () => {
+    const r = evaluate({ ...base, fg: "rgb(255, 255, 255)", bg: { method: "pixel", pixels } });
+    expect(r.method).toBe("pixel");
+    expect(r.worst).toBeCloseTo(ratio({ r: 255, g: 255, b: 255 }, { r: 245, g: 245, b: 245 }), 5); // helle Pixel: nahezu Weiß auf Weiß
+    expect(r.worst).toBeLessThan(1.2);
+    expect(r.ratio).toBeGreaterThan(4.5); // das 5. Perzentil liegt noch in der dunklen Mehrheit
+    expect(r.status).toBe("ok");
+  });
+  it("percentile wirft bei sehr vielen Werten nicht und bleibt richtig", () => {
+    const values = Array.from({ length: 500_000 }, (_, i) => i);
+    expect(percentile(values, 0)).toBe(0);
+    expect(percentile(values, 100)).toBe(499_999);
+    expect(percentile(values, 50)).toBeCloseTo(249_999.5, 5);
+  });
+  it("Float-Werte werden numerisch (nicht als Text) sortiert", () => {
+    expect(percentile([10, 9, 100, 1], 100)).toBe(100);
+    expect(percentile([10, 9, 100, 1], 0)).toBe(1);
+  });
+});

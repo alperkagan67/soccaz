@@ -87,7 +87,7 @@ export function limitFor(kind: MeasureKind, sizePx = 16, weight = 400): number {
 /** p-Perzentil (0 bis 100) mit linearer Interpolation; leere Liste: NaN. */
 export function percentile(values: readonly number[], p: number): number {
   if (values.length === 0) return Number.NaN;
-  const sorted = [...values].sort((x, y) => x - y);
+  const sorted = Float64Array.from(values).sort(); // Kopie, numerisch sortiert (kein Spread in Funktionsaufrufe: bei sehr vielen Werten wirft Math.min(...x) einen RangeError)
   const pos = (clamp(p, 0, 100) / 100) * (sorted.length - 1);
   const lo = Math.floor(pos);
   const hi = Math.ceil(pos);
@@ -121,6 +121,13 @@ export type Evaluated = {
   status: "ok" | "fail" | "ausgenommen" | "unlesbar";
   note?: string;
 };
+
+/** Kleinster Wert einer (beliebig langen) Liste; Schleife statt Math.min(...liste), das ab etwa 130.000 Werten einen RangeError wirft (Hero-Fläche 1280 x 400 = 512.000 Pixel). */
+function minOf(values: readonly number[]): number {
+  let m = Number.POSITIVE_INFINITY;
+  for (const v of values) if (v < m) m = v;
+  return m;
+}
 
 /** Verhältnis des Vordergrunds gegen jedes Pixel (der Vordergrund wird zuerst über das Pixel gelegt, falls er Deckkraft < 1 hat). */
 function pixelRatios(fg: Rgba, pixels: readonly number[]): { ratios: number[]; medianBg: Rgb } {
@@ -169,7 +176,7 @@ export function evaluate(m: RawMeasurement): Evaluated {
   if (m.bg.pixels.length < 3) return fail("keine Pixel gelesen");
   const { ratios, medianBg } = pixelRatios(fg, m.bg.pixels);
   const p5 = percentile(ratios, 5);
-  return { raw: m, limit, ratio: p5, worst: Math.min(...ratios), fgHex: toHex(compositeOver(fg, medianBg)), bgHex: toHex(medianBg), method: "pixel", status: p5 >= limit ? "ok" : "fail", note: "Pixel: bewertet wird das 5. Perzentil" };
+  return { raw: m, limit, ratio: p5, worst: minOf(ratios), fgHex: toHex(compositeOver(fg, medianBg)), bgHex: toHex(medianBg), method: "pixel", status: p5 >= limit ? "ok" : "fail", note: "Pixel: bewertet wird das 5. Perzentil" };
 }
 
 export type Group = { key: string; count: number; example: Evaluated; worst: number };
