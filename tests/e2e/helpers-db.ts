@@ -136,16 +136,41 @@ export async function seedCardReady(matchId: string, userId: string) {
  * der diese Zeilen liest). Wie die echte Abbuchung (charge.ts): Hauptbuch-Zeile clearing -> revenue (Art match_share, ohne Nutzer-Bezug), dazu card_status charged (paid_cents bleibt 0) und matches.settled_at.
  * Idempotent gegen eine echte Sofortabbuchung (FakeProvider): ein Platz mit card_status charged wird übersprungen, settled_at bleibt dann wie gesetzt.
  */
-export async function seedCharged(matchId: string, userIds: string[], shareCents: number) {
+export async function seedCharged(matchId: string, userIds: string[], shareCents: number): Promise<number> {
+  let set = 0;
+  // nie still nichts tun: der Ausgangszustand muss "noch nicht abgebucht" sein (sonst verdoppelt der Seed eine echte Abbuchung)
+  const rows = await query<{ n: number }>("select count(*)::int as n from payment_charges where match_id = $1", [matchId]);
+  if (rows[0].n > 0) throw new Error("seedCharged: für dieses Spiel gibt es schon Abbuchungszeilen (echte Abbuchung gelaufen?)");
   for (const userId of userIds) {
-    const [seat] = await query<{ card_status: string }>("select card_status from match_participants where match_id = $1 and user_id = $2", [matchId, userId]);
-    if (seat && seat.card_status === "charged") continue; // schon echt abgebucht
     // wie die echte Abbuchung: der Platz wird charged, paid_cents bleibt 0 ("nur Guthaben"; sonst kippt das Spiel ins Guthabenmodell, siehe card-charge.test.ts)
     await testDb().query("update match_participants set card_status = 'charged' where match_id = $1 and user_id = $2", [matchId, userId]);
+    await testDb().query(
+      "insert into payment_charges (match_id, user_id, amount_cents, status, payment_intent_id, idempotency_key) values ($1, $2, $3, 'succeeded', $4, $5)",
+      [matchId, userId, shareCents, "pi_e2e_" + randomUUID(), `charge:${matchId}:${userId}`],
+    );
     await testDb().query(
       "insert into ledger_entries (debit_account, credit_account, amount_cents, kind, match_id, idempotency_key, reason) values ('clearing', 'revenue', $1, 'match_share', $2, $3, 'E2E Abbuchung Anteil (Karte)')",
       [shareCents, matchId, "e2e-charge:" + randomUUID()],
     );
+    set += 1;
   }
-  await testDb().query("update matches set settled_at = coalesce(settled_at, now()), final_share_cents = $2 where id = $1", [matchId, shareCents]);
+  if (set === 0) throw new Error("seedCharged: kein Platz gesetzt");
+  await testDb().query("update matches set settled_at = now(), final_share_cents = $2 where id = $1", [matchId, shareCents]);
+  return set;
+}
+
+/** Nur Test: stellt ein Spiel auf das Altspiel-Modell (ledger_model legacy, ohne Provision). Die Spalte ist unveränderlich außer mit der Wartungsausnahme (socaz.ledger_maintenance, nur in dieser Transaktion). */
+export async function setLedgerModelLegacy(matchId: string) {
+  const client = await testDb().connect();
+  try {
+    await client.query("begin");
+    await client.query("select set_config('socaz.ledger_maintenance', 'on', true)");
+    await client.query("update matches set ledger_model = 'legacy' where id = $1", [matchId]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
