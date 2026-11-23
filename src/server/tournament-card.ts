@@ -30,7 +30,8 @@ export async function tournamentCardMode(tx: Pick<Tx, "select">, tournamentId: s
  * damit es eingefroren ist und den Alarm ausloest (frozenTournaments), statt unbemerkt im Guthabenpfad zu haengen. Abgebucht wird erst nach dem Wiedereinschalten.
  */
 export async function tournamentCardFlowPaused(tx: Pick<Tx, "select">, tournamentId: string): Promise<boolean> {
-  if (!(await cardPaymentsEnabled(tx as Tx)) || (await paymentsEnabled(tx as Tx))) return false;
+  // pausiert, wenn genau EINER der beiden Schalter aus ist: Zahlungen AUS + Karte AN (nie still gratis) oder Zahlungen AN + Karte AUS (Notabschaltung, Entscheid D: Turniere frieren ein)
+  if ((await cardPaymentsEnabled(tx as Tx)) === (await paymentsEnabled(tx as Tx))) return false;
   return tournamentCardEligible(tx, tournamentId);
 }
 

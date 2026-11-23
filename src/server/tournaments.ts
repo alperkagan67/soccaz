@@ -19,6 +19,7 @@ import { isOwner, isPlatformAdmin, type Role } from "@/lib/roles";
 import { clearTournamentCovers, getTournamentCardDisplays, tournamentAllCardsReady, tournamentCardFlowPaused, tournamentCardMode, tournamentPayBlocked, PAYMENTS_PAUSED, tournamentMissingCards, tournamentTeamCardsReady } from "./tournament-card";
 import { hasTournamentChargeRows, prepareCardCancel } from "./payments/tournament-cancel";
 import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
+import { PAUSE_CANCEL_REASON_TOURNAMENT, lastResumeAt, resumeFloor, resumeUntil, windowEndSql } from "./pause-resume";
 import { notifyHolderOnFix } from "./tournament-holders";
 import { venueAccessHolderIds } from "./venue-access-rules";
 import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
@@ -721,20 +722,23 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
     .from(tournaments)
     .where(and(inArray(tournaments.status, ["registration", "payment"]), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`));
   let cancelled = 0;
+  const resumeAt = await lastResumeAt();
   for (const c of candidates) {
     try {
       // Vorprüfung ohne Sperre (billig); die Fälligkeit wird unter der Sperre neu berechnet, denn Preisfestlegung oder wieder geöffnete Kader
       // im Fenster dazwischen verschieben die Karenz
       const pre = await dueOf(db, c);
-      if (!pre || pre.due.getTime() > now.getTime()) continue;
+      if (!pre || resumeFloor(pre.due, c.startsAt!, resumeAt).due.getTime() > now.getTime()) continue;
       await db.transaction(async (tx) => {
         const t = await lockTournament(tx, c.id);
         if ((t.status !== "registration" && t.status !== "payment") || t.bracketGeneratedAt || !t.startsAt || t.startsAt.getTime() <= now.getTime()) return;
         const locked = await dueOf(tx, t);
-        if (!locked || locked.due.getTime() > now.getTime()) return;
+        if (!locked) return;
+        const floored = resumeFloor(locked.due, t.startsAt, resumeAt); // Karenz nach der Pause: frühestens Wiedereinschalten + 2 Stunden, nie über den Start hinaus
+        if (floored.due.getTime() > now.getTime()) return;
         // Kartenmodell (M5-4): ist abgebucht oder die Abbuchung angelaufen/faellig (alle Teams bereit, Zusage da), faellt das Turnier hier NICHT aus; Fehlschlaege behandelt die Abbuchung (M5-5)
         if (await chargeUnderway(tx, t)) return;
-        await cancelTournamentTx(tx, t, null, (card) => `Zur Frist (${locked.long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, ${card ? "mit Karte" : "bezahlt"} und bereit.`);
+        await cancelTournamentTx(tx, t, null, (card) => floored.capped ? PAUSE_CANCEL_REASON_TOURNAMENT : `Zur Frist (${locked.long ? "48 Stunden" : "1 Stunde"} vor dem Start) waren nicht alle Teams vollzählig, ${card ? "mit Karte" : "bezahlt"} und bereit.`);
         cancelled += 1;
       });
     } catch (error) {
@@ -753,11 +757,12 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
 export async function cancelTournamentsAfterWindow(now: Date = new Date()): Promise<number> {
   if (!(await tournamentPaymentsActive())) return 0; // Schalter AUS: nicht wegen Fenster absagen (Plan 17.2); nach dem Wiedereinschalten laeuft die Pruefung weiter
   const NON_CARD = NON_CARD_CODES;
+  const until = await resumeUntil();
   const expired = (tx: Pick<Tx, "execute">, id: string | null) =>
     tx.execute(sql`select distinct t.id from tournaments t join payment_charges c on c.tournament_id = t.id
       where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null ${id ? sql`and t.id = ${id}` : sql``}
         and c.status in ('failed', 'requires_action') and c.grace_until is not null and c.failure_code is not null and c.failure_code not in (${sql.join(NON_CARD.map((c) => sql`${c}`), sql`, `)})
-        and least(c.grace_until, t.starts_at - interval '1 hour') <= ${now}`);
+        and ${windowEndSql(sql`c.grace_until`, sql`t.starts_at`, until)} <= ${now}`);
   const candidates = (await expired(db, null)).rows as { id: string }[];
   let cancelled = 0;
   for (const c of candidates) {
@@ -833,6 +838,7 @@ async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
   if (!(await tournamentCardMode(tx, t.id))) {
     // Schalter AUS (Plan 17.2): Kartenfluss mit Zeilen oder eingefrorenem Zugangs-Snapshot wird NICHT wegen der Frist abgesagt (die Abschaltung ist keine Schuld der Spieler); bucht nach, sobald der Schalter wieder EIN ist
     if (row) return true;
+    if (await tournamentCardFlowPaused(tx, t.id)) return true; // Pause (Zahlungen AN + Karte AUS) oder Zahlungen AUS bei Karte AN: Turnier mit Preis wird nie wegen der Frist abgesagt, auch ohne Snapshot (Preis in der Pause festgelegt)
     if (t.venueAccessRequiredSnapshot === null || (await tournamentPaymentsActive())) return false;
     const paid = await tx.select({ id: tournamentPlayers.userId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), gt(tournamentPlayers.paidCents, 0))).limit(1);
     return paid.length === 0;

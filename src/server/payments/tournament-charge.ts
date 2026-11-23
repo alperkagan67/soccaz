@@ -16,7 +16,8 @@ import { DomainError } from "../teams";
 import type { Tx } from "../tx";
 import { dueWithGrace, fixDeadline, hasLongLead } from "@/lib/deadlines";
 import { formatEuro } from "@/lib/money";
-import { graceUntil, inGraceWindow, isCardProblemCode, NON_CARD_CODES } from "@/lib/grace";
+import { effectiveGraceEnd, graceUntil, inGraceWindow, isCardProblemCode, NON_CARD_CODES } from "@/lib/grace";
+import { resumeUntil, windowEndAfterResume, windowEndSql } from "../pause-resume";
 import { post } from "../ledger";
 import { notifyUsers } from "../notifications";
 import { issueReceipt } from "../receipts";
@@ -448,7 +449,8 @@ export async function rotateTournamentAttempt(c: RetryCandidate, now: Date): Pro
     if (!(await tournamentCardMode(tx, t.id))) return false;
     const [row] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, c.id)).for("update");
     if (!row || !["failed", "requires_action"].includes(row.status) || row.currentAttempt !== c.attempt) return false;
-    if (!inGraceWindow(row.graceUntil, t.startsAt, now)) return false; // effektives Ende, Altzeilen (null) nie
+    const windowEnd = windowEndAfterResume(effectiveGraceEnd(row.graceUntil, t.startsAt), t.startsAt, await resumeUntil(tx)); // mit Karenz nach der Pause, Altzeilen (null) nie
+    if (windowEnd === null || windowEnd.getTime() <= now.getTime()) return false;
     if (NON_CARD_CODES.includes(row.failureCode ?? "")) return false;
     const payerId = row.payerUserId ?? row.userId;
     const [prof] = await tx.select({ pm: paymentProfiles.paymentMethodId, at: paymentProfiles.updatedAt }).from(paymentProfiles).where(eq(paymentProfiles.userId, payerId)).for("share");
@@ -469,11 +471,12 @@ export async function retryTournamentChargesInWindow(opts: { userId?: string; no
   const now = opts.now ?? new Date();
   const startedAt = Date.now();
   const overBudget = () => opts.budgetMs !== undefined && Date.now() - startedAt >= opts.budgetMs; // Webhook-Pfad: nichts Neues mehr beginnen, der Rest kommt mit dem Job
+  const until = await resumeUntil();
   const rows = await db.execute(sql`
     select c.id, c.tournament_id, c.user_id, c.current_attempt, c.amount_cents, c.payment_intent_id
     from payment_charges c join tournaments t on t.id = c.tournament_id
     where c.status in ('failed', 'requires_action') and c.grace_until is not null
-      and least(c.grace_until, t.starts_at - interval '1 hour') > ${now}
+      and ${windowEndSql(sql`c.grace_until`, sql`t.starts_at`, until)} > ${now}
       and t.status = 'payment' and t.settled_at is null and t.bracket_generated_at is null and t.starts_at > ${now}
       and (c.failure_code is null or c.failure_code not in (${sql.join(NON_CARD_CODES.map((x) => sql`${x}`), sql`, `)}))
       and exists (select 1 from payment_profiles pp where pp.user_id = coalesce(c.payer_user_id, c.user_id) and pp.payment_method_id is not null and pp.updated_at > c.updated_at)

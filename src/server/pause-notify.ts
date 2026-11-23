@@ -1,6 +1,8 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { matches, remindersSent } from "@/db/schema";
+import { auditLog, matches, remindersSent } from "@/db/schema";
+import { tournamentTeams, tournaments } from "@/db/schema-league";
+import { audit } from "./audit";
 import { abortDeadline, dueWithGrace, fixDeadline, hasLongLead } from "@/lib/deadlines";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 import { RESUME_GRACE_MS, lastResumeAt } from "./pause-resume";
@@ -34,6 +36,33 @@ export async function notifyResumedGames(now: Date = new Date()): Promise<number
     if (!mark) continue; // je Spiel und Einschaltung genau einmal
     const ids = [...(await matchParticipantIds(db, m.id)), ...(await teamAdminIds(db, m.homeTeamId)), ...(await teamAdminIds(db, m.awayTeamId))];
     await notifyUsers(ids, { type: "payment", title: "Bezahlung ist wieder möglich", body: `Die Bezahlung läuft wieder. Neue Frist: ${berlinTime(until)}. Bitte hinterlege bis dahin deine Karte.`, url: `/lobby/${m.id}` });
+    notified += 1;
+  }
+  return notified + (await notifyResumedTournaments(now, resumeAt, until));
+}
+
+/**
+ * Turniere (Frist = max(alt, Wiedereinschalten + 2 Stunden), nie über den Start hinaus): Veranstalter und Team-Captains erfahren die neue Frist. Entprellt je Turnier und Einschaltung über einen Audit-Eintrag
+ * (tournament.pause_notified). Dynamischer Import von chargeDueAt gegen den Importkreis (tournaments importiert Zahlungsmodule).
+ */
+async function notifyResumedTournaments(now: Date, resumeAt: Date, until: Date): Promise<number> {
+  const { chargeDueAt } = await import("./tournaments");
+  const rows = await db
+    .select()
+    .from(tournaments)
+    .where(and(inArray(tournaments.status, ["registration", "payment"]), sql`${tournaments.bracketGeneratedAt} is null`, sql`${tournaments.startsAt} > ${now}`));
+  let notified = 0;
+  for (const t of rows) {
+    if (!t.startsAt || until.getTime() >= t.startsAt.getTime()) continue; // die Karenz reicht nicht bis zum Start: Absageregel mit Klartext
+    const due = await chargeDueAt(db, t);
+    if (!due || due.getTime() >= until.getTime()) continue; // nichts verschoben (Altturnier ohne Fristregel oder spätere Frist)
+    const key = String(resumeAt.getTime());
+    const [seen] = await db.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.entity, "tournament"), eq(auditLog.entityId, t.id), eq(auditLog.action, "tournament.pause_notified"), sql`${auditLog.after}->>'resumeAt' = ${key}`)).limit(1);
+    if (seen) continue; // je Turnier und Einschaltung genau einmal
+    await audit(null, "tournament.pause_notified", "tournament", t.id, { after: { resumeAt: key } });
+    const captains = await db.select({ id: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+    const ids = [t.organizerId, ...captains.map((c) => c.id).filter((x): x is string => Boolean(x))];
+    await notifyUsers(ids, { type: "payment", title: "Bezahlung ist wieder möglich", body: `Die Bezahlung läuft wieder. Neue Frist für das Turnier: ${berlinTime(until)}. Bitte stellt bis dahin sicher, dass alle eine Karte hinterlegt haben.`, url: `/turniere/${t.id}` });
     notified += 1;
   }
   return notified;

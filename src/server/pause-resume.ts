@@ -30,6 +30,8 @@ export function resumeFloor(due: Date, limit: Date, resumeAt: Date | null): { du
 /** Klartext der Absage, wenn die Pause die Karenz verhindert hat (nie eine stille Absage). */
 export const PAUSE_CANCEL_REASON = "Die Bezahlung war pausiert, das Spiel kann nicht mehr stattfinden. Alle bekommen ihren Anteil zurück, falls schon etwas bezahlt wurde: Die Erstattung folgt.";
 
+export const PAUSE_CANCEL_REASON_TOURNAMENT = "Die Bezahlung war pausiert, das Turnier kann nicht mehr stattfinden. Alle bekommen ihren Anteil zurück, falls schon etwas bezahlt wurde: Die Erstattung folgt.";
+
 // --- Nachzahlfenster (AC-9) ---
 // Ein Fenster, das in der Pause ablief, gäbe den Platz sofort nach dem Wiedereinschalten frei (trifft dieselben Spieler). Deshalb gilt dieselbe Untergrenze: Wiedereinschalten + 2 Stunden, aber nur, wenn sie
 // vor dem Deckel des Fensters (Anstoß minus 1 Stunde) liegt; sonst bleibt das Fenster, wie es ist (bestehende Regel, mit Erstattung).

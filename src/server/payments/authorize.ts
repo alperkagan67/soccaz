@@ -141,6 +141,7 @@ export async function listOpenAuthorizations(userId: string, now: Date = new Dat
 type TRow = OpenRow & { tournamentId: string };
 
 async function openTournamentRow(userId: string, tournamentId: string, now: Date): Promise<TRow | null> {
+  const resumeEnd = await resumeUntil();
   const rows = await db
     .select({
       id: paymentCharges.id,
@@ -162,7 +163,7 @@ async function openTournamentRow(userId: string, tournamentId: string, now: Date
   for (const r of rows) {
     if (r.status !== "requires_action" || r.failureCode !== "authentication_required" || !r.paymentIntentId || !r.startsAt) continue;
     if (r.tStatus !== "payment" || r.settledAt !== null || r.bracketAt !== null || r.startsAt.getTime() <= now.getTime()) continue;
-    const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
+    const end = windowEndAfterResume(effectiveGraceEnd(r.graceUntil, r.startsAt), r.startsAt, resumeEnd);
     if (end === null || end.getTime() <= now.getTime()) continue;
     return { id: r.id, amountCents: r.amountCents, paymentIntentId: r.paymentIntentId, currentAttempt: r.currentAttempt, graceUntil: r.graceUntil, startsAt: r.startsAt, matchId: "", tournamentId };
   }
