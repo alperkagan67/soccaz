@@ -1,86 +1,69 @@
 # PAUSE-STAND
 
-Stand: 2026-11-23, nach Doku-Sammel 36, main = `8480726` (Migrationen bis 0057). **PAUSE BEENDET** (Nutzer/t2q): Node 22.23.5 ist installiert, die npm-Skripte prüfen Node >= 22.13 (#245). Verfasser: worker-4 (t1b); Angaben zu fremden Branches sind gelesen, nicht geprüft.
-Arbeitsregeln wie vor der Pause: Änderungen nur über eigenen Branch und PR, Dev-Server nur nach Speicherregel (höchstens 2, sofort beenden), Port 3100 gehört dem Nutzer, `.env*` nie lesen.
+Stand: 2026-11-23 (Abend), main = `15f330f` (Migrationen bis 0057). **PAUSE-MODUS** (Nutzer, via t2q): keine neuen Tasks, nichts Unfertiges pushen; Abschluss siehe Abschnitt 3. Verfasser: worker-4 (t1b); Angaben zu fremden Branches sind aus `gh pr list` und `git worktree list` gelesen, nicht im Code geprüft.
+Es gelten die Regeln aus dem Regel-PR #258 (`CLAUDE.md`, `AGENTS-SETUP.md` 2.5/3a/3b, `docs/loop/LOOP-SPEC.md` Abschnitt 14): Änderungen nur über eigenen Branch und PR, Worktrees nur über `worktree.mjs create`, Dev-Server nur nach Speicherregel (höchstens 2, sofort beenden), Port 3100 gehört dem Nutzer, `.env*` nie lesen.
 
-## 1. Seit dem letzten Stand gemergt (Auszug, einzeln, squash)
+## 1. Seit dem letzten Stand gemergt (einzeln, squash)
 | PR | Inhalt |
 |---|---|
-| #207, #205, #209-#218 | 012 M6b: Zahlungen AUS = Gratis im Kartenmodell, Admin-Finanzen im Kartenmodell, Salden-Guard, Turnier ohne Guthabenweg |
-| #222, #233, #236, #239 | 012 M6b Kartenfixtures 1 bis 4 (nur Tests) |
-| #225, #226, #228, #229, #234 | 013 M2c: Wertung aus Elo (`rating.ts`), Baustein `Assistent`, DESIGN.md Richtung F, Karten-Logik (Cards A) und Karten-Komponenten (Cards B) |
-| #227 | 013 AC-31 Hallen-Freischaltung (Migration 0056, DB-CHECK, Admin 1 und 2) |
-| #235 | 013 M2d-1 Hallen-Anfrage Server (Migration 0057 `court_count`, Rate-Limit 5 je Stunde) |
-| #230 | Schalter-Flip: Dev-Seeds Kartenmodell AN, Tests starten und enden AUS/AUS |
-| #238 | Notschalter Kartenzahlung (Admin 1) |
-| #231, #232, #237, #241 | Doku-Sammel 31 bis 35 (Audit, Backlog bis 210, Regelvorschlag 27, BETRIEB Notabschaltung, Blocker G29-012) |
-| #240, #242 | 013 M2d-2 Hallen-Onboarding (`/halle/anfragen`) und Admin-Anfragen-UI (ConfirmDialog mit Grund-Feld) |
-| #243, #245 | PAUSE-STAND (Stand 2026-11-23) und Node-Mindestversion 22.13 (Hooks, `engine-strict`, README) |
+| #247 bis #250 | 013 M2c Cards C1 und C2 (Wertung aufdecken, Aufdeck-Bewegung), Notschalter-Feinschliff (`system.critical`), **G29-012 Spiele-Teil** (Pause: Frist-Job sagt nicht ab, Karenz 2 h; #250) |
+| #251, #253, #256, #262 | 013 AC-27 Kontrastmessung: Rechenkern, Browserschicht (Report-Modus), Textmessung per Range, Messung ohne feste Leisten/Dev-Badge (Rest-Punkte bewiesen als Artefakte) |
+| #255 | 013 M2c Cards C3a: Teamseite mit Zeilen und TeamCard (offen: Backlog 216, G30-013) |
+| #257 | 013 M2c Kontrast-Tokens (Befunde 1 bis 4 behoben) |
+| #258 | **Regel-PR** (Nutzer gemergt): Regeln 1 bis 14, 16 bis 27 |
+| #259 | CI: Browser-Test-Shards neu verteilt (Teil 1 und 4 über 10 Minuten) |
+| #244 | Dependabot: Actions-Gruppe (laut `git log` gemergt, `aabe47d`) |
+| #252, #254, #260, #264 bis #266 | Doku-Sammel 37 bis 41, HERZSCHLAG.md (Verweis statt 30-Minuten-Regel) |
 
 ## 2. Offene PRs
 | PR | Branch | Hash | Stand |
 |---|---|---|---|
-| #198 | `feat/012-m6b-code` | 6515fad (lokal weiter 7444770, 7 Commits voraus) | 012 M6b PR 1a: Guthaben-Altpfad im Code entfernen; lokal liegt der Doppelbelastungs-Schutz in `cardModeActive` (noch nicht gepusht) |
-| #244 | `dependabot` (actions-Gruppe) | | Bump von 2 GitHub-Actions; fasst `.github/` an: Nutzer mergt (NEEDS-USER) |
+| #261 | `feat/pause-karenz-b` (w1) | b745cb5 | **Fristjob PR B (G29-012 Turniere):** Karenz über alle Pausen, Mitteilung, Alarm; Lauf 1 von 2 (zwei grüne Läufe nötig: Zahlungs-PR); Reviews R-T346c/d REVIEW-OK, R-T353 (E2E-Hilfe) REVIEW-OK. Nach dem Merge: G29-012 Turnier-Haken in `GO-LIVE-AUDIT.md`, Audit-Zeile |
+| #263 | `feat-spieler-onboarding-server` | 480e86a | Spieler-Onboarding PR 1 (Server-Prüfung `player-onboarding.ts`, Aktion, Guard); Lauf 1 grün, 2. Lauf offen |
+| #267 | `feat/m2c-hero` (w3) | 86fcac0 | 013 M2c Hero: Standbild statt Video, Scrim hell 94 %/88 %; R-T351 REVIEW-OK (3 Hinweise: dunkel unverändert, Verlaufsposition ungemessen, tsc-Aussage). Danach AC-27 `enforce` |
+| #198 | `feat/012-m6b-code` | 6515fad (lokal 7444770, 7 voraus) | Altstand 012 M6b PR 1a: Guthaben-Altpfad im Code entfernen; lokal liegt der Doppelbelastungs-Schutz; **prüfen, ob durch #207ff. überholt, sonst schließen** |
 
 ## 3. Worker (Branch | Hash | Stand | nächster Schritt)
-**worker-1**: 012 M6b, Fristjob-Fix
-- `feat/pause-fristjob` | c122190 (= main), 3 Dateien uncommitted | **GO-LIVE-BLOCKER G29-012:** Fix „Pause: Frist-Job sagt nicht ab“ (`closeLobbiesAtDeadline` kennt den Kartenschalter nicht, Spiele ohne Abbuchungszeilen können bei Zahlungen AN + Karte AUS an der Frist abgesagt werden) | als `WIP:`-Commit sichern; Plan: Frist-Job und `cardModeActive`-Pfade bei Karte AUS pausieren; Tests: „pausiert: Frist-Job sagt nicht ab“ (Spiel nahe 48-h-Frist, Karte AUS, bleibt unverändert), Nachzahl-/Übernahmefenster (AC-9) während der Pause, Tabelle Job × Schalterzustand × erwartetes Verhalten für BETRIEB.
-- `feat/1c-ii-b-abrechnung` | c122190 (leer) | 1c-ii-b: `settleMatch` aus dem Fristjob löschen (Backlog 206), neutraler Text „Bezahlung ist gerade nicht möglich“ (Backlog 209) | nach dem Fristjob-Fix.
-- `feat/012-m6b-1c-iii-a` | 34cf6a4, 13 voraus | 1c-iii (a) Nachläufer (hasPaidNow netto, Konsistenztest) | prüfen, ob schon in main enthalten (#205), sonst aufräumen.
-- `feat/012-m6a-guthaben-ui` | ae77b08, 10 voraus | 012 M6a Reste (E2E ohne Bezahlen-Knopf) | prüfen, ob durch #207ff. überholt.
+Ein Worktree gehört dem Worker, der ihn anlegte; Entfernen nur mit `git worktree remove` nach Freigabe (nicht `worktree.mjs remove`, es löscht die geteilte Worker-DB).
 
-**worker-2**: Admin-Anfragen-UI
-- `feat-venue-requests-ui` | 78b6fbd (gemergt #242) | erledigt | Worktree aufräumen.
-- `feat/seed-admin` | 9cfa78a, 1 voraus | Admin-Seed für die Frontend-Analyse | lokal, kein PR.
-
-**worker-3**: Cards, Kartenfixture
-- `feat/013-cards-c1` | cf444bc (Vorgänger 6532afc/b36553e), 3 voraus | Cards C1 (Wertung aufdecken als Text und Karte, `/spiele/[id]`), Review R-T336 umgesetzt (E2E in Shard 4, ruhiger Wortlaut bei gesunkener Stufe, Überschrift „Deine Wertung nach diesem Spiel“) | PR öffnen nach der Pause; danach C2 (Animation, AC-21 bis AC-23) und PR B Nachläufer.
-- `feat/012-m6b-kartenfixture-4` | 7c61099, 11 voraus | Nachtrag zu Paket 4 (R-T334, über 12 Spieler) | prüfen, ob in #239 enthalten.
-- `fix/seed-scripts-guard` | c9db0a3, 5 voraus | Seed-Skript-Wächter | lokal.
-- `feat/m2b-look` (Worktree `docs-analyse-frontend-y1`) | ee2843d, 79 voraus, 5 uncommitted | Look-Stand, **tabu** (Look-Abnahme beim Nutzer).
-
-**worker-4 (t1b)**: Reviewer, Onboarding, Doku
-- `feat/013-halle-onboarding` | 49b6fb2 (gemergt #240) | erledigt | Worktree kann entfernt werden (`git worktree remove`; `worktree.mjs remove` löscht die geteilte Worker-DB, nur verwenden, wenn kein anderer eigener Worktree sie braucht).
-- `docs/sammel-34` | 66cdda5 | ÜBERHOLT durch #241 (Backlog 209 ist in main); Worktree kann entfernt werden.
-- `docs/pause-stand-2` (gemergt #243), `chore/node-version` (gemergt #245), `docs/sammel-34` (überholt): erledigt. Aktuell: `docs/sammel-36` (diese Doku), danach Review Fristjob-Fix (w1) als Reviewer.
-- Alle Reviews bis R-T337 gemeldet (R-T328 bis R-T337: Kartenfixtures, Schalter-Flip, Cards B und C1, Notschalter, Admin-Anfragen-UI).
+**worker-4 (t1b)** (Reviewer, Doku, kleine Bauten): alles gemergt oder lokal committet, **nichts Unfertiges**; Worktrees `docs-regel-pr`, `ci-shard-rebalance-2`, `test-ac27-rest`, `docs-sammel-39` bis `-41`, `docs-herzschlag-30min` sind weg; Worktree dieser Datei: `docs-pause-stand-3`. Der Dev-Server auf 3104 ist laut `netstat` nicht mehr aktiv. Reviews bis R-T353 gemeldet (R-T346c/d, R-T348 bis R-T353). Offene Folgearbeit (nur nach „weiter“): Enforce-PR AC-27, Folge-PR G29-012-Turnier-Haken nach #261.
+**worker-1**: `feat/pause-karenz-b` b745cb5 (#261); lokal ältere Branches `feat/1c-ii-b-abrechnung` c122190 (leer, Backlog 206/209), `feat/012-m6b-1c-iii-a` 34cf6a4, `feat/012-m6a-guthaben-ui` ae77b08, `feat/012-m6b-code` 7444770: prüfen, ob überholt, sonst aufräumen.
+**worker-2**: `feat/seed-admin` 9cfa78a (Admin-Seed für die Frontend-Analyse, lokal, kein PR). Autor von #263 (Onboarding PR 1): w2, Review w4, security OK.
+**worker-3**: `feat/m2c-hero` 86fcac0 (#267); `fix/seed-scripts-guard` c9db0a3 (lokal); `feat/m2b-look` (Worktree `docs-analyse-frontend-y1`) ee2843d, **tabu** (Look-Abnahme beim Nutzer, Referenz für den 94-%-/88-%-Scrim).
 
 ## 4. Push-Reihenfolge nach der Pause
-1. **Fristjob-Fix (w1, `feat/pause-fristjob`)**: Go-live-Blocker, zuerst; danach BETRIEB-Tabelle Job × Schalterzustand und die Warnung „Notschalter nicht in Produktion nutzen“ entfernen, G29-012 abhaken.
-2. 1c-ii-b (w1): `settleMatch` raus, Neutraltext.
-3. #198 (012 M6b PR 1a) samt Doppelbelastungs-Schutz.
-4. ~~#240 (Onboarding) und #242 (Admin-Anfragen-UI)~~ gemergt; als Nächstes #244 (Nutzer), Cards C1.
-5. Cards C1, dann C2 und PR B Nachläufer.
-6. Doku-Sammel 36: Audit #240, #242, #198, Fristjob-Fix; Tabelle Job × Schalter.
-Migrationen: Nummer beim Bau, serieller Merge, wer später mergt renummeriert (Journal und Snapshot). Heute main bis 0057; kein Branch trägt eine ungemergte Migration.
+1. #261 (Fristjob PR B, zweiter grüner Lauf) und #263 (zweiter Lauf); danach Audit-Zeilen und G29-012-Turnier-Haken (Doku).
+2. #267 (Hero), danach main-Lauf prüfen (0 Verstöße im Kontrastprotokoll) und **Enforce-PR** (`AUDIT_MODE` `report` -> `enforce` in `src/lib/contrast-audit.ts`, 1 Lauf).
+3. #198 klären (überholt oder zusammenführen), 1c-ii-b (`settleMatch` aus dem Fristjob, Neutraltext, Backlog 206/209).
+4. Nächster Regel-PR (NEEDS-USER) mit Kandidat 28 (Server nur mit Beendigung starten; Formulare mit Progressive Enhancement).
+Migrationen: Nummer beim Bau, serieller Merge, wer später mergt renummeriert (Journal und Snapshot). Heute main bis 0057; kein Branch trägt eine ungemergte Migration (nicht nachgeprüft für #263).
 
 ## 5. Offene Entscheide
-- **Nachzahlfenster nach langer Pause:** laufen Nachzahl- und Übernahmefristen (AC-9) während der Notabschaltung weiter und sagen Spiele ab, oder wird verlängert? Beleg durch den Fristjob-Test.
-- **Neutraltext 1c-ii-b:** „Bezahlung ist gerade nicht möglich“ bei Zahlungen AN + Karte AUS (Lobby, Bereit, Beitritt), bis dahin Support-Hinweis.
-- **Tabelle Job × Schalterzustand × erwartetes Verhalten** (liefert w1, für BETRIEB).
-- Wortlaut bei sinkender Stufe (umgesetzt „ruhig“, Entscheid t2q bestätigen); `rating_history` je (Spieler, Spiel) eindeutig machen (Backlog).
+- **Hero dunkel: Stopp 70 %** (3,68/4,78 selbst bei Weiß) nur, wenn die AC-27-Messung im main-Lauf nach #267 dunkel kippt; sonst „dunkel unverändert“ (Entscheid t2q).
+- **Enforce nach Hero:** erst wenn #267 gemergt und der main-Lauf 0 Verstöße zeigt.
+- **Backlog 223 bis 225** (gemergt mit #266): Flake-Familie „Klick vor Hydration“ (vor Go-live), Formulare ohne JavaScript (Produkt, hoch, in 013 M3), Speicherregel-Praxis; **Kandidat 28** wartet auf den nächsten Regel-PR.
+- **Neutraltext 1c-ii-b** („Bezahlung ist gerade nicht möglich“ bei Zahlungen AN + Karte AUS).
+- Nachzahlfenster nach langer Pause (Karenz für Nachzahlfenster ist in PR B enthalten; Beleg durch den Fristjob-Test).
+- Backlog 217/218/221 (Marker aufräumen, Limit 200 und Test mit 11 Pausen, Nachreview-Beobachtungen PR B).
 
 ## 6. Punkte, die nur der Nutzer entscheiden oder tun kann
-- **Anbieter-Spike A2** (Entscheid und Konto).
-- **Regel-PRs 23 bis 27** (`docs/loop/REGELVORSCHLAG.md`; Nutzer mergt, `.claude/` und `.github/` ebenso).
-- **Rechtsliste (`docs/loop/FEHLT-NOCH.md`):** Bedingungstext Hallen-Onboarding (ENTWURF, Anwalt), Partnervertrag Hallen, Markenprüfung Richtung F (Backlog 171), Erstattung und Abschreibung von Guthaben-Ansprüchen, Steuerberater (Kontenzuordnung, USt).
-- **Look-Abnahme M2b / Look-Abnahme 2** (Bilder, Videos, Handy-Prüfung AC-24), Hero-Video-Lizenz.
-- **Aufräumen, das nur der Nutzer kann:** `.playwright-mcp/`, nicht löschbare Review-Worktrees (siehe alter Stand), IDE-tsserver-Prozesse.
-- Port 3100 gehört dem Nutzer (nicht beenden).
+- **Dev-Server auf 3101 und 3104 beenden** (laut netstat zuletzt nicht mehr aktiv, prüfen; mein Beenden verweigerte der Klassifizierer) und den Worktree `test-ac27-rest` (falls noch vorhanden) mit `git worktree remove` entfernen; Port 3100 gehört dem Nutzer.
+- **Anbieter-Spike A2** (Entscheid und Konto); **Stripe-Bump** erst nach M6b (stille API-Version, `docs/loop/LOOP-SPEC.md` Abschnitt 14); Dependabot-Regeln siehe `CLAUDE.md`, Merge-Regel.
+- **Rechtsliste (`docs/loop/FEHLT-NOCH.md`):** Bedingungstext Hallen-Onboarding (ENTWURF, Anwalt), Partnervertrag Hallen, Markenprüfung Richtung F (Backlog 171), Mindestalter und Zeitzone (Backlog 214), Erstattung und Abschreibung von Guthaben, Hero-Video-Lizenz (Backlog 222).
+- **Look-Abnahme M2b / Look-Abnahme 2** (Bilder, Videos, Handy-Prüfung AC-24); Branch `feat/m2b-look` bleibt Referenz.
+- **package-lock-Drift im Hauptrepo:** im Arbeitsverzeichnis von SoccaV2 steht `package-lock.json` als geändert (uncommittet, nicht von einem Agenten gewollt): prüfen und zurücksetzen oder bewusst committen.
+- **Aufräumen, das nur der Nutzer kann:** `.playwright-mcp/`, nicht löschbare Review-Worktrees, IDE-tsserver-Prozesse.
+- Regel-PRs und Änderungen an `.claude/`/`.github/` (auch Actions-Bumps) mergt der Nutzer.
 
 ## 7. Neustart-Hinweise
-- Nach /clear oder Neustart zuerst diese Datei und `docs/loop/HANDOFF.md` (falls vorhanden) lesen.
-- **Node >= 22.13 (22er)** ist Pflicht (`node -v`, Datei `.nvmrc`): `npm run dev|build|lint|test|test:e2e|test:integration|typecheck|db:migrate` prüfen das vor dem Start; `npx vitest`, `npx eslint`, `npx tsc` laufen ohne Hook. Auf dem Dev-Rechner steht v22.23.5.
-- **Migrationen in der eigenen Worker-DB:** `npm run db:migrate` im jeweiligen Worktree (0056 und 0057 sind neu; Worker-DBs mit einem früheren Stand von 0056 neu aufbauen, siehe `docs/BETRIEB.md`). Vorher `pwd`, `git branch --show-current` und die Ziel-DB prüfen (Regelvorschlag 27); nie in `SoccaV2` (Haupt-DB `soccav2`).
-- **Worktrees:** `node scripts/worktree.mjs create <branch> <worker> --base origin/main --no-seed` bzw. `remove <branch>`; Pfade mit Leerzeichen immer quoten; schreibende Befehle nur hinter `cd … &&`, nie hinter einem `cd`, das fehlschlagen kann.
-- **hc-Adressen:** t2q (Orchestrator), t2r, t2s (Task Manager), t2t, t2v, t2w; lange Texte als Datei senden, nie Backticks oder `$(…)` direkt in doppelte Anführungszeichen.
-- **Aktuelle Schalterlage:** Produktion `payments_enabled` AUS und `card_payments_enabled` AUS; Dev-Seeds schalten beide EIN, Tests starten und enden AUS/AUS. Notschalter nur Admin 1, **nicht benutzen, bis der Fristjob-Fix gemergt ist** (G29-012).
+- Nach /clear oder Neustart zuerst diese Datei und `docs/loop/HANDOFF.md` (falls vorhanden) lesen; danach die Regeln aus #258 (`CLAUDE.md`, `AGENTS-SETUP.md`).
+- **Node >= 22.13 (22er)** ist Pflicht (`node -v`, Datei `.nvmrc`): `npm run dev|build|lint|test|test:e2e|test:integration|typecheck|db:migrate` prüfen das vor dem Start.
+- **Worktrees:** `node scripts/worktree.mjs create <branch> <worker> --base origin/main --no-seed`; Pfade mit Leerzeichen immer quoten; schreibende Befehle nur hinter `cd … &&`, vorher `pwd` und `git branch --show-current` prüfen; Entfernen nur mit `git worktree remove` nach Freigabe.
+- **Migrationen in der eigenen Worker-DB:** `npm run db:migrate` im jeweiligen Worktree.
+- **hc-Adressen** ändern sich nach Neustart (`hc ls --json --label role=<rolle>`); lange Texte als Datei senden, nie Backticks oder Inline-Kommandos in doppelten Anführungszeichen.
+- **Schalterlage:** Produktion `payments_enabled` AUS und `card_payments_enabled` AUS; Dev-Seeds schalten beide EIN, Tests starten und enden AUS/AUS. Notschalter nur Admin 1; **nicht in Produktion benutzen**, bis #261 (Turniere) gemergt und G29-012 ganz abgehakt ist.
 
-## 8. Speicherregeln (Arbeitsweise, aus den gemerkten Rückmeldungen)
-- Der Orchestrator mergt nie; `NEEDS-USER` (`.claude/`, `.github/`, Regel-PRs) übergeht kein Agent.
-- Aufräumen (Worktrees, Branches) erst, nachdem `gh pr view` den PR als MERGED zeigt; nie in einer Kette mit dem Merge-Check.
-- `gh pr merge` immer als Einzelbefehl, nie mit `&&` verkettet; Merge-Meldung nur mit Beleg (`gh pr view --json state,mergedAt`).
-- Abläufe (Weiterleitung, Format, Reihenfolge) selbst entscheiden und nicht beim Nutzer erfragen; Best Practice, keine Leerläufe, freie Worker sofort mit Vorarbeit einsetzen.
-- Plan-Aussagen immer gegen den Code lesen (R-T313, R-T333); Folgetexte nur mit Beleg.
+## 8. Arbeitsweise (aus den gemerkten Rückmeldungen)
+- Der Orchestrator mergt nie; `NEEDS-USER` übergeht kein Agent. Merge-Meldungen nur mit Beleg (`gh pr view --json state,mergedAt,mergeCommit`); `gh pr merge` als Einzelbefehl; Aufräumen erst, wenn der PR als MERGED belegt ist.
+- Abläufe selbst entscheiden, Best Practice, keine Leerläufe; Plan-Aussagen immer gegen den Code lesen.
 - Öffentliches Repo: keine Secrets, keine lokalen Pfade, keine privaten Mails; `.env*` nie lesen oder ausgeben.

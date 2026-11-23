@@ -6,7 +6,8 @@
 //             current_attempt), den abgeschlossenen Versuch in die Historie schreiben und die Zeile auf einen frischen pending-Versuch zuruecksetzen.
 //  3  (Netz)  den neuen Versuch sendet derselbe Weg wie der erste (runCharges: Beanspruchen mit Lease, Senden, Verbuchen ueber applyChargeInTx).
 import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
-import { inGraceWindow, NON_CARD_CODES } from "@/lib/grace";
+import { effectiveGraceEnd, NON_CARD_CODES } from "@/lib/grace";
+import { type ResumeInfo, resumeUntil, windowEndAfterResume, windowEndSql } from "../pause-resume";
 import { db } from "@/db";
 import {
   matchParticipants,
@@ -81,7 +82,8 @@ export async function rotateAttempt(c: Candidate, now: Date): Promise<boolean> {
       row.currentAttempt !== c.attempt
     )
       return false;
-    if (!inGraceWindow(row.graceUntil, game.startsAt, now)) return false; // effektives Ende, Altzeilen (null) nie
+    const windowEnd = windowEndAfterResume(effectiveGraceEnd(row.graceUntil, game.startsAt), game.startsAt, await resumeUntil(tx)); // effektives Ende mit Karenz nach der Pause, Altzeilen (null) nie
+    if (windowEnd === null || windowEnd.getTime() <= now.getTime()) return false;
     if (NON_CARD_CODES.includes(row.failureCode ?? "") || row.slotOf !== null || row.resolution !== null) return false;
     // WESSEN Karte: bei einer Uebernahme (Variante B) die des ZAHLERS (payer_user_id), sonst die des Spielers. Zuerst der Platz des Zahlers (Sperrreihenfolge: nie umgekehrt), dann der des Spielers.
     const payerId = row.payerUserId ?? c.userId;
@@ -150,13 +152,13 @@ export async function rotateAttempt(c: Candidate, now: Date): Promise<boolean> {
  * Kartenfehler, laufendes effektives Fenster, Platz card_ready, Spiel offen. Altzeilen (grace_until NULL) sind AUSGESCHLOSSEN: least() ignoriert NULL in Postgres, darum
  * ausdruecklich isNotNull (Review-Fix 2).
  */
-function eligibleFilters(now: Date) {
+function eligibleFilters(now: Date, until: ResumeInfo | null) {
   return [
     inArray(paymentCharges.status, ["failed", "requires_action"]),
     isNotNull(paymentCharges.graceUntil),
     isNull(paymentCharges.slotOf), // Nachruecker-Zeilen werden nie nachgezahlt (sofort gescheitert)
     isNull(paymentCharges.resolution), // ersetzte Plaetze nie
-    sql`least(${paymentCharges.graceUntil}, ${matches.startsAt} - interval '1 hour') > ${now}`, // effektives Ende: nie nach Anstoss minus 1 h (Punkt 7)
+    sql`${windowEndSql(paymentCharges.graceUntil, matches.startsAt, until)} > ${now}`, // effektives Ende: nie nach Anstoss minus 1 h (Punkt 7), mit Karenz nach der Pause
     // eigener Anteil: Platz des Spielers card_ready; fremder Anteil (Variante B): der Zahler hat NACH dem Fehlschlag eine neue Karte gespeichert (Profil aktualisiert, Zahlungsmittel da)
     or(
       and(isNull(paymentCharges.payerUserId), eq(matchParticipants.cardStatus, "card_ready")),
@@ -200,7 +202,7 @@ const eligibleFrom = () =>
  * Liefert "booked" (Erfolg bei Stripe gefunden und verbucht), "skip" (Runde auslassen) oder "go" (neuer Versuch darf angelegt werden).
  */
 export async function inspectKnownAttempts(c: Candidate, now: Date): Promise<"booked" | "skip" | "go"> {
-  const [cur] = await eligibleFrom().where(and(...eligibleFilters(now), eq(paymentCharges.id, c.id), eq(paymentCharges.currentAttempt, c.attempt)));
+  const [cur] = await eligibleFrom().where(and(...eligibleFilters(now, await resumeUntil()), eq(paymentCharges.id, c.id), eq(paymentCharges.currentAttempt, c.attempt)));
   if (!cur) return "skip";
   return reconcileKnownIntents(c, cur.currentPi);
 }
@@ -246,7 +248,7 @@ export async function retryChargesInWindow(opts: { userId?: string; matchId?: st
   // Begrenzung fuer den Webhook-Pfad (Review PR #107, niedrig): hoechstens `limit` Plaetze und ab `budgetMs` Laufzeit wird nichts Neues mehr begonnen; der Rest bleibt fuer den Job (alle 5 Minuten)
   const startedAt = Date.now();
   const overBudget = () => opts.budgetMs !== undefined && Date.now() - startedAt >= opts.budgetMs;
-  const filters = eligibleFilters(now);
+  const filters = eligibleFilters(now, await resumeUntil());
   // ein Nutzer, der "Karte aendern" gemacht hat: seine eigenen Zeilen UND die Zeilen, die er als Zahler uebernommen hat
   if (opts.userId) filters.push(sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${opts.userId}`);
   if (opts.matchId) filters.push(eq(paymentCharges.matchId, opts.matchId));

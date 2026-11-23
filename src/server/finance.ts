@@ -535,6 +535,11 @@ export async function getAlerts(): Promise<Alert[]> {
         and not exists (select 1 from booking_jobs j where j.match_id = m.id and j.status in ('booked','confirmed','done')) limit 10`),
   );
   for (const m of noJob) alerts.push({ code: `unbooked-hall:${m.id}`, severity: "high", title: `Halle noch nicht gebucht: ${m.home} gegen ${m.away}`, detail: "Das Spiel findet in weniger als 48 Stunden statt.", href: "/admin/buchungen" });
+  // Turnier haengt in der Zahlungsphase, obwohl der Start vorbei ist (z. B. in der Pause bepreist/eingefroren und danach nie wieder angefasst): der Frist-Job nimmt nur Turniere vor dem Start, frozenTournaments ist
+  // nach dem Wiedereinschalten leer. Keine automatische Absage: Admin 1 sagt ab (Erstattung automatisch).
+  const stuckTournaments = await db.execute<{ id: string; name: string }>(sql`select t.id, t.name from tournaments t where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null and t.starts_at is not null and t.starts_at <= ${now}
+    and coalesce(t.total_cents, 1) > 0 and coalesce(t.final_share_cents, 1) > 0`);
+  for (const t of stuckTournaments.rows) alerts.push({ code: `card:tournament-stuck:${t.id}`, severity: "high", title: `Turnier haengt in der Zahlungsphase: ${t.name}`, detail: "Der Start ist vorbei, das Turnier ist weder gebucht noch abgesagt (z. B. nach einer Pause). Bitte pruefen; Absage nur durch Admin 1, die Erstattung laeuft automatisch.", href: `/turniere/${t.id}` });
   // Notabschaltung (Entscheid D): Zahlungen AN, Kartenschalter AUS = pausiert. Der Alarm steht, solange der Zustand besteht (bei Zahlungen AUS ist das Gratis, kein Alarm).
   if ((await paymentsEnabled()) && !(await cardPaymentsEnabled())) {
     const sw = await getCardSwitch();

@@ -98,6 +98,12 @@
   }
 }
 
+/* Scrim im Hero der Startseite (M2c, Kontrast v2.1). Dunkel wie bisher (bg, 60 %, transparent); hell deckender (bg, 94 %, 88 %), damit das Standbild nur noch als Hauch durchscheint und Überschrift (3:1) und Einleitung (4,5:1) halten. Die Werte prüft tests/unit/hero-kontrast.test.ts. */
+.hero-scrim { background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 60%, transparent), transparent); }
+@media (prefers-color-scheme: light) {
+  .hero-scrim { background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 94%, transparent), color-mix(in srgb, var(--bg) 88%, transparent)); }
+}
+
 /* Feste dunkle Fläche, zum Beispiel für das Stream-Overlay (unabhängig von der Systemeinstellung) */
 .force-dark {
   --bg: #0f1914;

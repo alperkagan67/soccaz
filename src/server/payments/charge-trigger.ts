@@ -5,6 +5,7 @@ import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
 import { audit } from "../audit";
+import { notifyResumedGames } from "../pause-notify";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "../settings";
 import { bookOpenFees } from "./charge";
 import { runErasureTasks } from "./erasure";
@@ -103,6 +104,12 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
     touched += await notifyHallConfirmReminders();
   } catch (error) {
     console.error("runCardCharges: Zusage-Erinnerung", error instanceof Error ? error.name : "Fehler");
+  }
+  // Nach der Pause: noch nicht benachrichtigte Spiele/Turniere (Begrenzung der Admin-Aktion, spaet entstandene Faelle) bekommen die neue Frist, solange die Karenz laeuft; entprellt, je Spiel eigener Fehlerfang
+  try {
+    touched += await notifyResumedGames(now);
+  } catch (error) {
+    console.error("runCardCharges: Mitteilung nach der Pause", error instanceof Error ? error.name : "Fehler");
   }
   // Eingefrorene Turniere bei Schalter AUS: Mitteilung an Admin 1 ab 6 h, dann alle 12 h (Backlog 141); keine automatische Absage
   if (!(await tournamentPaymentsActive())) {
