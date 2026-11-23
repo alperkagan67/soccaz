@@ -213,7 +213,7 @@ Wer ändert: AGENTS-SETUP.md (Rolle Writer) und die PR-Vorlage (Zeile „Treffer
 
 ## 19. Merge-Meldungen nur mit Beleg; Dependabot schließt seine PRs selbst
 
-Anlass: Meldungen über den Stand von PRs (gemergt, geschlossen, rot) müssen aus `gh pr view` stammen, nicht aus Annahmen; Anlass benannt vom Task Manager (2026-11-23): Meldungen zum Stand einzelner PRs, darunter Dependabot-PRs (#188 wurde von Dependabot geschlossen, Nachfolger #189), sollen nur mit Abfrage-Beleg gelten.
+Anlass: Meldungen über den Stand von PRs (gemergt, geschlossen, rot) müssen aus `gh pr view` stammen, nicht aus Annahmen; Anlass (2026-11-23): Beim Dependabot-PR #187 (dev-dependencies) wurde ein Merge als erfolgt gemeldet, obwohl `gh pr merge` mit "Base branch was modified" scheiterte und Dependabot den PR vorher selbst geschlossen und durch #189 ersetzt hatte; die falsche Meldung ging über den Orchestrator weiter und musste beim Nutzer korrigiert werden.
 
 Vorschlag: Eine Merge- oder Schließmeldung nennt `state`, `mergedAt` und `mergeCommit` aus `gh pr view <nr> --json state,mergedAt,mergeCommit` (Befehl und Ergebnis). Dependabot-PRs werden nicht von Hand geschlossen: ändert eine Konfiguration (`ignore`) ihren Status, schließt Dependabot sie selbst; ein Agent mergt keinen Dependabot-PR ohne OK des Orchestrators.
 
