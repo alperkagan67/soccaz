@@ -113,18 +113,17 @@ export async function setVenueManagerAction(venueId: string, _prev: ActionState,
   });
 }
 
-/** Hallen-Anfrage freischalten (013 v3 AC-31): Admin 1 und Admin 2 (booking); die Funktion prueft das Recht zusaetzlich selbst. */
-export async function approveVenueAction(venueId: string, _prev: ActionState, _fd: FormData): Promise<ActionState> {
-  void _fd;
+/** Hallen-Anfrage freischalten (013 v3 AC-31): Admin 1 und Admin 2 (booking); die Funktion prueft das Recht zusaetzlich selbst. Aufruf aus dem Dialog der Anfragen-Liste: nur Waechter + dieselbe Server-Funktion, keine zweite Rechtelogik. */
+export async function approveVenueAction(venueId: string): Promise<ActionState> {
   return refreshOnError(await guarded("booking", "/admin/hallen/anfragen", async (actor) => {
     await approveVenue(actor, venueId);
   }), "/admin/hallen/anfragen");
 }
 
-/** Hallen-Anfrage ablehnen, Grund Pflicht (3 bis 200 Zeichen). */
-export async function rejectVenueAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+/** Hallen-Anfrage ablehnen, Grund Pflicht (3 bis 200 Zeichen; die Pruefung macht rejectVenue). */
+export async function rejectVenueAction(venueId: string, reason: string): Promise<ActionState> {
   return refreshOnError(await guarded("booking", "/admin/hallen/anfragen", async (actor) => {
-    await rejectVenue(actor, venueId, text(fd, "reason"));
+    await rejectVenue(actor, venueId, String(reason ?? ""));
   }), "/admin/hallen/anfragen");
 }
 
