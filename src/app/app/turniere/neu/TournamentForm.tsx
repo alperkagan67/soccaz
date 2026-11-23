@@ -75,7 +75,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
       <div className="space-y-1 rounded-lg border border-line p-3 text-xs text-muted" data-testid="fee-explainer">
         <p><strong className="text-ink">Der Eintritt wird automatisch berechnet.</strong> Hallenkosten = Stundenpreis mal Hallenzeit. Sie werden durch <em>alle Spieler</em> des Turniers geteilt.</p>
         <p>Jeder Spieler zahlt beim Beitritt vorab den höchsten möglichen Anteil. Sobald alle Teams da, bezahlt und bereit sind, steht die Spielerzahl fest: Dann wird genau abgerechnet und zu viel Gezahltes sofort erstattet. Bei Absage bekommt jeder alles zurück.</p>
-        <p>Die Gelder liegen bis zum Turnierende auf einem Treuhandkonto. Danach zahlen wir dir den Betrag abzüglich {commission} % Provision auf dein Guthaben aus.</p>
+        <p>Die Gelder liegen bis zum Turnierende auf einem Treuhandkonto. Wie die Auszahlung an dich läuft, klären wir vor dem Turnier mit dir (Provision {commission} %).</p>
       </div>
       <label className="flex items-start gap-3 text-sm">
         <input type="checkbox" name="public" className="mt-1 size-5 accent-accent" />

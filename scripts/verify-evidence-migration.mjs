@@ -9,11 +9,12 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
+import { assertLocalDbUrl, loadLocalEnv } from "./lib/db-url-guard.mjs";
 import { evidenceHash } from "./lib/evidence-chain.mjs";
 
-process.loadEnvFile(".env.local");
-const base = new URL(process.env.DATABASE_URL);
-if (!["localhost", "127.0.0.1"].includes(base.hostname) || base.search || base.hash) throw new Error("nur lokale DB");
+loadLocalEnv();
+assertLocalDbUrl(process.env.DATABASE_URL, "verify-evidence-migration"); // VOR jeder Verbindung (Query/Fragment/Leerraum/Parser-Gegenprobe)
+const base = new URL(/** @type {string} */ (process.env.DATABASE_URL));
 const WRITE_GOLDEN = process.argv.includes("--write-golden");
 const name = `soccaz_verify_evidence_${process.pid}`;
 const adminUrl = new URL(base);

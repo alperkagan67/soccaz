@@ -43,7 +43,7 @@ function ReceiptDocument({ data }: { data: ReceiptData }) {
 
         <Text style={styles.note}>
           Dieser Beleg bestätigt die Zahlung. Er ist keine Rechnung im Sinne des Umsatzsteuergesetzes; der Ausweis der Umsatzsteuer erfolgt nach steuerlicher Klärung des Betreibers.
-          Guthaben verfällt nicht und wird nicht ausgezahlt.
+          Dieser Beleg gehört zu einer früheren Aufladung.
         </Text>
       </Page>
     </Document>

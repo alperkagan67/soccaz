@@ -1,7 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { existsSync } from "node:fs";
-import { formatEuro, shareCents } from "../../src/lib/money";
-import { signStripePayload } from "../../src/lib/stripe-signature";
+import { shareCents } from "../../src/lib/money";
 import { setupLobby } from "./flows";
 import { closeContexts, closeTestDb, devLogin, newUser, run } from "./helpers";
 import {
@@ -10,7 +8,7 @@ import {
   query,
   seedOwner,
   seedPaidPlayer,
-  seedPromo,
+  seedShare,
   seedAdmin,
   setMatchTimes,
   setPlatformSetting,
@@ -35,216 +33,8 @@ test.afterAll(async () => {
 
 const idle = (p: import("@playwright/test").Page) => p.waitForLoadState("networkidle");
 const euro = (text: string) => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s"));
-// Betrag wie in der App formatiert, aber mit normalem Leerzeichen (Playwright normalisiert geschützte Leerzeichen in Namen); euro() macht daraus Whitespace-Muster.
-const eur = (cents: number) => formatEuro(cents).replace(/\s/g, " ");
-const webhookSecret = () => {
-  if (existsSync(".env.local")) process.loadEnvFile(".env.local");
-  return process.env.STRIPE_WEBHOOK_SECRET ?? "";
-};
 
-test("Guthaben: der Rückweg nach der Zahlung führt nie auf eine fremde Adresse", async ({ page }) => {
-  await newUser(page, "rd1");
-  const userId = await userIdByEmail(`rd1-${run}@test.local`);
-  const bs = String.fromCharCode(92);
-  const seed = async (returnTo: string | null) => {
-    const [row] = await query<{ id: string }>(
-      "insert into payments (user_id, provider, amount_cents, status, idempotency_key, return_to, completed_at) values ($1, 'dev', 1000, 'succeeded', $2, $3, now()) returning id",
-      [userId, `e2e-redirect:${Math.random()}`, returnTo],
-    );
-    return row.id;
-  };
-  const backLink = page.getByRole("link", { name: "Zurück zum Spiel" });
-
-  // gespeichertes return_to mit Backslash oder fremdem Host: kein Link
-  for (const bad of [`/${bs}evil.example`, "//evil.example", "https://evil.example"]) {
-    await page.goto(`/app/guthaben?zahlung=${await seed(bad)}&status=ok`);
-    await expect(page.getByTestId("balance")).toBeVisible();
-    await expect(backLink).toHaveCount(0);
-    await expect(page.locator('a[href*="evil"]')).toHaveCount(0);
-  }
-  // ?zurueck mit Backslash bei einer erfolgreichen Zahlung ohne eigenes Ziel: kein Link
-  await page.goto(`/app/guthaben?zahlung=${await seed(null)}&status=ok&zurueck=${encodeURIComponent(`/${bs}evil.example`)}`);
-  await expect(page.getByTestId("balance")).toBeVisible();
-  await expect(backLink).toHaveCount(0);
-  await expect(page.locator('a[href*="evil"]')).toHaveCount(0);
-  // Gegenprobe: ein interner Pfad wird verlinkt
-  await page.goto(`/app/guthaben?zahlung=${await seed("/app/teams")}&status=ok`);
-  await expect(backLink).toHaveAttribute("href", "/app/teams");
-  // ungültiges gespeichertes Ziel, aber gültiges ?zurueck: der Altwert verdeckt das gültige Ziel nicht (Fallback, Backlog 3 / R-T174)
-  await page.goto(`/app/guthaben?zahlung=${await seed("//evil.example")}&status=ok&zurueck=${encodeURIComponent("/app/teams")}`);
-  await expect(backLink).toHaveAttribute("href", "/app/teams");
-  await expect(page.locator('a[href*="evil"]')).toHaveCount(0);
-});
-
-test("Aufladen mit Test-Anbieter, Rabattcode, Verlauf und PDF-Beleg", async ({ page, browser }) => {
-  await newUser(page, "pm1");
-  await page.goto("/app/guthaben");
-  await expect(page.getByTestId("balance")).toHaveText(euro("0,00 €"));
-
-  // Betrag außerhalb des erlaubten Rahmens
-  await page.getByLabel("Betrag in Euro").fill("1");
-  await page.getByRole("button", { name: "Jetzt bezahlen" }).click();
-  await expect(page.getByText(/zwischen 5,00 und 200,00/).first()).toBeVisible();
-
-  // unbekannter Code
-  await page.getByLabel("Betrag in Euro").fill("50");
-  await page.getByLabel("Rabattcode (optional)").fill("GIBTESNICHT");
-  await page.getByLabel("Rabattcode (optional)").blur();
-  await expect(page.getByText("Diesen Code gibt es nicht.")).toBeVisible();
-
-  // gültiger Code: Bonus wird vorab angezeigt
-  const code = `E2E${run}`.toUpperCase();
-  await seedPromo(code, "percent", 10);
-  await page.getByLabel("Rabattcode (optional)").fill(code);
-  await page.getByLabel("Rabattcode (optional)").blur();
-  await expect(page.getByText("Bonus: 5,00 € zusätzlich.")).toBeVisible();
-  await page.getByRole("button", { name: "Jetzt bezahlen" }).click();
-
-  // Test-Zahlungsbildschirm: vor dem Bezahlen noch kein Guthaben
-  await expect(page).toHaveURL(/\/dev\/pay\/[0-9a-f-]{36}$/);
-  const payUrl = page.url();
-  const stranger = await (await browser.newContext()).newPage();
-  await newUser(stranger, "pm1x");
-  await stranger.goto(payUrl); // fremde Zahlung ist nicht erreichbar: 404-Seite, kein Zahlungsknopf
-  await expect(stranger.getByRole("heading", { name: "Seite nicht gefunden" })).toBeVisible();
-  await expect(stranger.getByRole("button", { name: "Zahlung erfolgreich" })).toHaveCount(0);
-  expect(await walletBalanceOf(await userIdByEmail(`pm1-${run}@test.local`))).toBe(0);
-
-  await page.getByRole("button", { name: "Zahlung erfolgreich" }).click();
-  await expect(page).toHaveURL(/\/app\/guthaben\?zahlung=/);
-  await expect(page.getByTestId("payment-status")).toContainText("Zahlung eingegangen");
-  await expect(page.getByTestId("balance")).toHaveText(euro("55,00 €"));
-
-  // Verlauf und Beleg
-  const statement = page.getByTestId("statement");
-  await expect(statement).toContainText("Aufladung");
-  await expect(statement).toContainText(euro("+50,00 €"));
-  await expect(statement).toContainText("Bonus (Rabattcode)");
-  await expect(statement).toContainText(euro("+5,00 €"));
-  const pdfHref = await page.getByRole("link", { name: "PDF" }).first().getAttribute("href");
-  const pdf = await page.request.get(pdfHref!);
-  expect(pdf.status()).toBe(200);
-  expect(pdf.headers()["content-type"]).toBe("application/pdf");
-  expect((await pdf.body()).subarray(0, 4).toString()).toBe("%PDF");
-  expect((await stranger.request.get(pdfHref!)).status()).toBe(404); // fremder Beleg nicht erreichbar
-
-  // derselbe Code ein zweites Mal wird abgelehnt
-  await page.goto("/app/guthaben");
-  await page.getByLabel("Betrag in Euro").fill("20");
-  await page.getByLabel("Rabattcode (optional)").fill(code);
-  await page.getByLabel("Rabattcode (optional)").blur();
-  await expect(page.getByText("Du hast diesen Code schon eingelöst.")).toBeVisible();
-
-  // Abbrechen: nichts wird gutgeschrieben
-  await page.getByLabel("Rabattcode (optional)").fill("");
-  await page.getByRole("button", { name: "Jetzt bezahlen" }).click();
-  await page.getByRole("button", { name: "Abbrechen" }).click();
-  await expect(page.getByTestId("payment-status")).toContainText("nicht abgeschlossen");
-  await expect(page.getByTestId("balance")).toHaveText(euro("55,00 €"));
-});
-
-test("Stripe-Webhook: Signatur, Wiederholung, unbezahlt, Fehlschlag", async ({ page, baseURL }) => {
-  const secret = webhookSecret();
-  expect(secret).not.toBe("");
-  await newUser(page, "pm2");
-  const userId = await userIdByEmail(`pm2-${run}@test.local`);
-
-  const startPayment = async (amount: string) => {
-    await page.goto("/app/guthaben");
-    await page.getByLabel("Betrag in Euro").fill(amount);
-    await page.getByRole("button", { name: "Jetzt bezahlen" }).click();
-    await expect(page).toHaveURL(/\/dev\/pay\//);
-    return page.url().split("/").pop()!;
-  };
-  const post = (body: object, signature: string | null) =>
-    fetch(`${baseURL}/api/webhooks/stripe`, { method: "POST", headers: signature ? { "stripe-signature": signature, "content-type": "application/json" } : { "content-type": "application/json" }, body: JSON.stringify(body) });
-  const signed = (body: object) => signStripePayload(JSON.stringify(body), secret);
-
-  const paymentId = await startPayment("20");
-  const event = { id: "evt_e2e_1", type: "checkout.session.completed", data: { object: { id: `cs_${paymentId}`, client_reference_id: paymentId, payment_status: "paid", metadata: { paymentId } } } };
-
-  // ohne und mit falscher Signatur, mit veränderter Nutzlast
-  expect((await post(event, null)).status).toBe(400);
-  expect((await post(event, signStripePayload(JSON.stringify(event), "falsches-geheimnis"))).status).toBe(400);
-  expect((await post({ ...event, id: "evt_manipuliert" }, signed(event))).status).toBe(400);
-  expect(await walletBalanceOf(userId)).toBe(0);
-
-  // gültig: gutgeschrieben, Wiederholung bucht nichts doppelt
-  expect((await post(event, signed(event))).status).toBe(200);
-  expect(await walletBalanceOf(userId)).toBe(2000);
-  expect((await post(event, signed(event))).status).toBe(200);
-  expect((await post(event, signed(event))).status).toBe(200);
-  expect(await walletBalanceOf(userId)).toBe(2000);
-  const topups = await query<{ n: number }>("select count(*)::int n from ledger_entries where payment_id = $1 and kind = 'topup'", [paymentId]);
-  expect(topups[0].n).toBe(1);
-
-  // verzögerte Zahlart: "completed" ohne Geld ändert nichts, erst die spätere Bestätigung zählt
-  const lateId = await startPayment("30");
-  const unpaid = { id: "evt_e2e_2", type: "checkout.session.completed", data: { object: { id: `cs_${lateId}`, client_reference_id: lateId, payment_status: "unpaid" } } };
-  expect((await post(unpaid, signed(unpaid))).status).toBe(200);
-  expect(await walletBalanceOf(userId)).toBe(2000);
-  const later = { id: "evt_e2e_3", type: "checkout.session.async_payment_succeeded", data: { object: { id: `cs_${lateId}`, client_reference_id: lateId } } };
-  expect((await post(later, signed(later))).status).toBe(200);
-  expect(await walletBalanceOf(userId)).toBe(5000);
-
-  // fehlgeschlagene Zahlung und unbekanntes Ereignis
-  const failId = await startPayment("10");
-  const failed = { id: "evt_e2e_4", type: "checkout.session.async_payment_failed", data: { object: { id: `cs_${failId}`, client_reference_id: failId } } };
-  expect((await post(failed, signed(failed))).status).toBe(200);
-  expect((await query<{ status: string }>("select status from payments where id = $1", [failId]))[0].status).toBe("failed");
-  const other = { id: "evt_e2e_5", type: "customer.created", data: { object: {} } };
-  expect((await post(other, signed(other))).status).toBe(200);
-  expect(await walletBalanceOf(userId)).toBe(5000);
-});
-
-test("Lobby: Anteil beim Bereitmachen, fehlendes Guthaben, Aufladen, Abmelden", async ({ browser }) => {
-  const { a, matchId } = await setupLobby(browser, "p3");
-  const userId = await userIdByEmail(`p3a-${run}@test.local`);
-  // Neues Teamspiel-Modell (Vertrag 008 AC-1, AC-2): Anteil = shareCents(Hallenpreis, eingeteilte Spieler), mindestens 4 Spieler.
-  // Hier sind nur 2 Spieler eingeteilt, gerechnet wird mit 4: 80,00 € / 4 = 20,00 € (früher Reservierung 80,00 € / 8 = 10,00 €).
-  const share = shareCents(8000, 4);
-  await a.goto(`/lobby/${matchId}`);
-
-  // Kosten sind sichtbar
-  const costs = a.getByRole("region", { name: "Kosten" });
-  await expect(costs).toBeVisible();
-  await expect(costs).toContainText(euro("80,00 €"));
-  await expect(costs).toContainText(euro("6,67 €"));
-  await expect(a.getByTestId("pay-hint")).toContainText(euro(eur(share)));
-
-  // ohne Guthaben: nicht bezahlt, Hinweis zum Aufladen
-  await a.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
-  await expect(a.getByText(/Dein Guthaben reicht nicht/)).toBeVisible();
-  await expect(a.getByText("Bereit", { exact: true })).toHaveCount(0);
-  await a.getByRole("link", { name: "Guthaben aufladen" }).click();
-  await expect(a).toHaveURL(new RegExp(`/app/guthaben\\?betrag=${share}&zurueck=`));
-  await expect(a.getByLabel("Betrag in Euro")).toHaveValue(String(share / 100));
-  await a.getByRole("button", { name: "Jetzt bezahlen" }).click();
-  await a.getByRole("button", { name: "Zahlung erfolgreich" }).click();
-  await expect(a.getByTestId("balance")).toHaveText(euro(eur(share)));
-  await a.getByRole("link", { name: "Zurück zum Spiel" }).click();
-  await expect(a).toHaveURL(new RegExp(`/lobby/${matchId}`));
-
-  // jetzt reicht das Guthaben: erst bezahlen, dann bereit
-  await a.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
-  await expect(a.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
-  expect(await walletBalanceOf(userId)).toBe(0);
-  await a.getByRole("button", { name: "Bereit machen" }).click();
-  await expect(a.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
-  expect(await walletBalanceOf(userId)).toBe(0);
-  // zurücknehmen und wieder bereit: kostet nicht doppelt
-  await a.getByRole("button", { name: "Nicht mehr bereit" }).click();
-  await a.getByRole("button", { name: "Bereit machen" }).click();
-  await expect(a.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
-  expect(await walletBalanceOf(userId)).toBe(0);
-
-  // mehr als 24 Stunden vorher abmelden: alles kommt zurück
-  a.once("dialog", (d) => d.accept());
-  await a.getByRole("main").getByRole("button", { name: "Abmelden" }).click();
-  await expect.poll(() => walletBalanceOf(userId)).toBe(share);
-  await a.goto("/app/guthaben");
-  await expect(a.getByTestId("statement")).toContainText("Erstattung");
-});
+// 012 M6a: Die Tests zu Aufladen, Guthaben-Seite, Rabattcodes und Stripe-Aufladung entfallen mit der Oberfläche (Vertrag 013 AC-14); die Datei wird mit 012 M6b für das Kartenmodell neu geschrieben.
 
 test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ browser, baseURL }) => {
   test.setTimeout(180_000);
@@ -257,7 +47,7 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
 
   // Neues Modell (008): 10 eingeteilte Spieler (4 je Team vorbezahlt + 2 Team-Admins) -> Anteil = shareCents(80,00 €, 10) = 8,00 €.
   const share = shareCents(8000, 10);
-  // 4 Spieler je Team haben schon bezahlt, die beiden Team-Admins bezahlen über die Oberfläche
+  // 4 Spieler je Team haben schon bezahlt; die beiden Team-Admins ebenfalls (Seed: den Bezahlen-Knopf gibt es seit 012 M6a nicht mehr), dann nur noch der Bereit-Klick
   const seeded: string[] = [];
   for (let i = 1; i <= 4; i++) {
     seeded.push(await seedPaidPlayer(matchId, teamA, `p4h${i}`, share));
@@ -265,14 +55,12 @@ test("Abrechnung, Buchungsauftrag, Hallenbuchung und Finanzbereich", async ({ br
   }
   await fundWallet(adminA, 2000);
   await fundWallet(adminB, 2000);
+  await seedShare(matchId, adminA, share);
+  await seedShare(matchId, adminB, share);
   await a.goto(`/lobby/${matchId}`);
   await b.goto(`/lobby/${matchId}`);
-  await a.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
-  await expect(a.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
-  await a.getByRole("button", { name: "Bereit machen" }).click();
-  await b.getByRole("button", { name: euro(`${eur(share)} bezahlen`) }).click();
-  await expect(b.getByText("Dein Anteil ist bezahlt.")).toBeVisible();
-  await b.getByRole("button", { name: "Bereit machen" }).click();
+  await a.getByRole("button", { name: "Ich bin bereit" }).click();
+  await b.getByRole("button", { name: "Ich bin bereit" }).click();
   await expect(b.getByTestId("match-status").filter({ hasText: "Bestätigt" })).toBeVisible();
 
   // Der Buchungsauftrag ist entstanden und die Admins wurden informiert
@@ -392,14 +180,14 @@ test("Berechtigungen im Geldbereich", async ({ browser }) => {
   await expect(admin2.getByRole("heading", { name: "Hallen und Preise" })).toBeVisible();
   // Admin 2 darf keine Preise ändern
   await expect(admin2.getByRole("button", { name: "Preisregel hinzufügen" })).toHaveCount(0);
-  for (const url of ["/admin/finanzen", "/admin/codes", "/admin/einstellungen"]) {
+  for (const url of ["/admin/finanzen", "/admin/einstellungen"]) {
     await admin2.goto(url);
     await expect(admin2).toHaveURL(/\/app$/);
   }
 
   await expect(owner.getByRole("heading", { name: "Finanzen" })).toBeVisible();
-  await owner.goto("/admin/codes");
-  await expect(owner.getByRole("heading", { name: "Rabattcodes" })).toBeVisible();
+  await owner.goto("/admin/codes"); // Rabattcodes entfallen (012 M6a): die Seite gibt es nicht mehr
+  await expect(owner.getByRole("heading", { name: "Rabattcodes" })).toHaveCount(0);
   await owner.goto("/admin/einstellungen");
   await expect(owner).toHaveURL(/\/admin\/einstellungen/);
 
@@ -412,54 +200,9 @@ test("Berechtigungen im Geldbereich", async ({ browser }) => {
   await expect(player).toHaveURL(/\/app$/);
 });
 
-test("Rabattcodes im Admin anlegen und verwenden", async ({ browser }) => {
-  await seedOwner("pm6f"); // Codes: nur Admin 1 (Teilrolle finance entfällt, Vertrag 009 v4)
-  const fin = await (await browser.newContext()).newPage();
-  await devLogin(fin, `pm6f-${run}@test.local`, "Admin 1 pm6f", "/admin/codes");
-  await idle(fin);
-  const code = `ADM${run}`.toUpperCase();
-  await fin.getByLabel("Code", { exact: true }).fill(code);
-  await fin.getByLabel("Art", { exact: true }).selectOption("fixed");
-  await fin.getByLabel("Wert (Prozent oder Euro)").fill("3,00");
-  await fin.getByLabel("Gesamtbudget (Euro)").fill("3,00");
-  await fin.getByRole("button", { name: "Code anlegen" }).click();
-  await expect(fin.getByTestId(`promo-${code}`)).toContainText(euro("3,00 €"));
-  await expect(fin.getByTestId(`promo-${code}`)).toContainText("aktiv");
-  // doppelter Code
-  await fin.getByLabel("Code", { exact: true }).fill(code);
-  await fin.getByLabel("Wert (Prozent oder Euro)").fill("10"); // Formular wurde nach Erfolg geleert: wieder Prozent
-  await fin.getByRole("button", { name: "Code anlegen" }).click();
-  await expect(fin.getByText("Diesen Code gibt es schon.")).toBeVisible();
-  await query("update promo_codes set note = 'e2e' where code = $1", [code]);
-
-  // Ein Spieler löst ihn ein: Budget 3,00 reicht für genau eine Einlösung
-  const p1 = await (await browser.newContext()).newPage();
-  const p2 = await (await browser.newContext()).newPage();
-  await newUser(p1, "pm6a");
-  await newUser(p2, "pm6b");
-  for (const [p, expected] of [[p1, "13,00"], [p2, null]] as const) {
-    await p.goto("/app/guthaben");
-    await p.getByLabel("Betrag in Euro").fill("10");
-    await p.getByLabel("Rabattcode (optional)").fill(code);
-    await p.getByLabel("Rabattcode (optional)").blur();
-    if (expected) {
-      await p.getByRole("button", { name: "Jetzt bezahlen" }).click();
-      await p.getByRole("button", { name: "Zahlung erfolgreich" }).click();
-      await expect(p.getByTestId("balance")).toHaveText(euro(`${expected} €`));
-    } else {
-      await expect(p.getByText("Das Budget dieses Codes ist aufgebraucht.")).toBeVisible();
-    }
-  }
-  // deaktivieren
-  await fin.reload();
-  await fin.getByTestId(`promo-${code}`).getByRole("button", { name: "Deaktivieren" }).click();
-  await expect(fin.getByTestId(`promo-${code}`)).toContainText("inaktiv");
-});
-
 test("Einstellungen: Zahlungen aus macht Spiele kostenlos", async ({ browser }) => {
   const { a, matchId } = await setupLobby(browser, "p7");
   await a.goto(`/lobby/${matchId}`);
-  await expect(a.getByRole("region", { name: "Kosten" })).toBeVisible();
 
   await seedOwner("p7adm"); // Einstellungen nur Admin 1 (Vertrag 009 AC-1)
   const adm = await (await browser.newContext()).newPage();
@@ -471,7 +214,6 @@ test("Einstellungen: Zahlungen aus macht Spiele kostenlos", async ({ browser }) 
   await expect(adm.getByText("Gespeichert.")).toBeVisible();
 
   await a.reload();
-  await expect(a.getByRole("region", { name: "Kosten" })).toHaveCount(0);
   await a.getByRole("button", { name: "Ich bin bereit" }).click(); // ohne Zahlung
   await expect(a.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
   expect(await walletBalanceOf(await userIdByEmail(`p7a-${run}@test.local`))).toBe(0);

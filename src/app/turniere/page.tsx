@@ -19,7 +19,7 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
     <div className="space-y-5">
       <header className="space-y-1">
         <h1 className="text-3xl font-bold">Turniere</h1>
-        <p className="text-muted">Öffentliche Turniere und deine eigenen. Private Turniere erreichst du nur über den Einladungslink des Veranstalters. Jeder Spieler zahlt seinen Eintritt selbst vom Guthaben.</p>
+        <p className="text-muted">Öffentliche Turniere und deine eigenen. Private Turniere erreichst du nur über den Einladungslink des Veranstalters. Jeder Spieler zahlt seinen Eintritt selbst.</p>
       </header>
       <form className="flex gap-2">
         <select name="city" defaultValue={city ?? ""} aria-label="Stadt" className="field !w-auto flex-1">

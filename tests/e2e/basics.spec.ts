@@ -25,17 +25,16 @@ test("Startseite erklärt die Plattform in vier Schritten mit Preis und Zahlen",
   await expect(page.getByRole("heading", { name: "Kontakt" })).toBeVisible();
 });
 
-test("Guthaben ist immer erreichbar, auch wenn Zahlungen noch aus sind", async ({ browser }) => {
+test("Kein Guthaben: weder Karte, noch Betrag in der Kopfleiste; /app/guthaben leitet auf Mein Bereich (012 M6a)", async ({ browser }) => {
   const p = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
   await newUser(p, "bwal");
   await expect(p.getByTestId("first-steps")).toContainText("Team gründen"); // neue Nutzer bekommen eine Starthilfe
-  await expect(p.getByTestId("wallet-card")).toBeVisible();
-  await expect(p.getByTestId("header-wallet")).toContainText("0,00");
-  await p.getByTestId("wallet-card").click();
-  await expect(p).toHaveURL(/\/app\/guthaben$/);
-  await expect(p.getByRole("heading", { name: "So funktioniert dein Guthaben" })).toBeVisible();
-  await expect(p.getByRole("heading", { name: "Aufladen" })).toBeVisible();
-  await p.goto("/app");
+  await expect(p.getByTestId("wallet-card")).toHaveCount(0);
+  await expect(p.getByTestId("header-wallet")).toHaveCount(0);
+  await expect(p.getByRole("banner")).not.toContainText(/Guthaben|Aufladen/);
+  await expect(p.getByRole("main")).not.toContainText(/Guthaben|Aufladen/);
+  await p.goto("/app/guthaben");
+  await expect(p).toHaveURL(/\/app$/);
   for (const link of ["Lobby aufmachen", "Mein Profil", "Rangliste", "Einstellungen", "Hilfe"]) await expect(p.getByRole("navigation", { name: "Schnellzugriff" }).getByRole("link", { name: link })).toBeVisible();
 });
 
@@ -174,7 +173,7 @@ test("Kopfleiste: Konto-Menü mit Meine Spiele, Einstellungen und Abmelden", asy
   await p.getByTestId("user-menu-button").click();
   const menu = p.getByTestId("user-menu");
   await expect(menu.getByTestId("user-menu-name")).toContainText("menu"); // der Name steht ganz oben im Menü
-  for (const item of ["Meine Spiele", "Mein Profil", "Guthaben", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"]) await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
+  for (const item of ["Meine Spiele", "Mein Profil", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"]) await expect(menu.getByRole("menuitem", { name: new RegExp(item) })).toBeVisible();
   // Mein Profil ist wieder ein eigener Eintrag (Textentscheid t9), Mein Bereich heißt Meine Spiele
   await menu.getByRole("menuitem", { name: "Mein Profil" }).click();
   await expect(p).toHaveURL(new RegExp(`/spieler/${id}$`));

@@ -20,8 +20,8 @@ async function loggedIn(page: Page, key: string, scheme: "dark" | "light" = "dar
 const button = (page: Page) => page.getByTestId("user-menu-button");
 const menu = (page: Page) => page.getByTestId("user-menu");
 const activeName = (page: Page) => page.evaluate(() => (document.activeElement as HTMLElement | null)?.textContent?.trim() ?? "");
-// Reihenfolge im Menü (Textentscheid t9): Meine Spiele, Mein Profil, [Meine Halle], [Admin] | Benachrichtigungen, Guthaben (auslaufend bis 012 M6a), Konto, Hilfe | Abmelden
-const ITEMS = ["Meine Spiele", "Mein Profil", "Benachrichtigungen", "Guthaben", "Konto und Einstellungen", "Hilfe", "Abmelden"];
+// Reihenfolge im Menü (Textentscheid t9): Meine Spiele, Mein Profil, [Meine Halle], [Admin] | Benachrichtigungen, Konto, Hilfe | Abmelden
+const ITEMS = ["Meine Spiele", "Mein Profil", "Benachrichtigungen", "Konto und Einstellungen", "Hilfe", "Abmelden"];
 
 test.describe("Konto-Menü: Tastatur und Fokus", () => {
   test("Enter öffnet, Fokus liegt auf dem ersten Eintrag, aria-expanded und Popover im Top-Layer", async ({ page }) => {

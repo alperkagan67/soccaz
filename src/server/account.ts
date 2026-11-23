@@ -195,7 +195,7 @@ export async function deleteAccount(userId: string) {
     if (!user || user.bannedAt) throw new DomainError("Dieses Konto gibt es nicht mehr.");
     if (user.role !== "player") throw new DomainError("Dein Konto hat eine Admin-Rolle. Bitte lass sie zuerst entfernen.");
 
-    if ((await walletBalance(tx, userId)) > 0) throw new DomainError("Du hast noch Guthaben. Bitte melde dich beim Support, damit wir es dir auszahlen.");
+    if ((await walletBalance(tx, userId)) > 0) throw new DomainError("Du hast noch einen Restbetrag. Bitte melde dich beim Support: Er wird dort geklärt.");
 
     const open = await tx
       .select({ id: matches.id })
