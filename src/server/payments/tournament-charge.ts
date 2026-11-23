@@ -24,7 +24,7 @@ import { chargeDueAt, lockTournament, maybeGenerateBracket, tournamentPayOpenAt 
 import { seatsOf, tournamentCardMode } from "../tournament-card";
 import { hallZusageOkLive } from "../tournament-venue";
 import { validCoversOf } from "./cover";
-import { cardPaymentsEnabled } from "../settings";
+import { tournamentPaymentsActive } from "../settings";
 import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 import { type ApplyResult, type ChargeOutcome, type ChargeReport, bookChargeFee, ensureRefundRow } from "./charge";
 import { ATTEMPT_MAX_AGE_MS, CLAIM_LEASE_MS, MIN_CHARGE_CENTS, UNKNOWN_OUTCOME, AFTER_START } from "./charge-run";
@@ -218,7 +218,7 @@ async function sendCharge(c: Claimed): Promise<void> {
   // Notabschaltung (Schalter AUS): ein Select unmittelbar VOR dem Netzaufruf, ausserhalb der Transaktion. Eine schon beanspruchte Zeile geht nach dem Abschalten nicht mehr raus: sie bleibt
   // pending, die Beanspruchung wird zurueckgenommen (frueherer Versuchsstand), der naechste Lauf nach dem Wieder-Einschalten holt sie nach. Restfenster: der Schalter wird zwischen diesem
   // Select und dem Aufruf umgelegt (Millisekunden, siehe BETRIEB).
-  if (!(await cardPaymentsEnabled())) {
+  if (!(await tournamentPaymentsActive())) {
     await db.update(paymentCharges).set({ attemptStartedAt: c.prevStarted, updatedAt: new Date() }).where(and(eq(paymentCharges.id, c.id), eq(paymentCharges.status, "pending"), isNull(paymentCharges.paymentIntentId)));
     return;
   }

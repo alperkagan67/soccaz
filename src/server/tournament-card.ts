@@ -9,7 +9,7 @@ import { audienceFor, cardDisplayFor, type CardDisplay, type CardViewer } from "
 import { COVER_MANDATE_KEY } from "@/lib/cover";
 import { audit } from "./audit";
 import { validCoversOf, type CoverSeat } from "./payments/cover";
-import { cardPaymentsEnabled } from "./settings";
+import { cardPaymentsEnabled, paymentsEnabled, tournamentPaymentsActive } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
@@ -21,7 +21,35 @@ const NOT_POSSIBLE = "Den Anteil kannst du gerade nicht übernehmen.";
  * bleibt das Turnier im Guthabenmodell, bis es abgesagt oder beendet ist (kein Mischzustand; Altturniere werden zurueckgesetzt, Plan T-18). Unter der Turniersperre des Aufrufers lesen.
  */
 export async function tournamentCardMode(tx: Pick<Tx, "select">, tournamentId: string): Promise<boolean> {
-  if (!(await cardPaymentsEnabled(tx as Tx))) return false;
+  if (!(await tournamentPaymentsActive(tx as Tx))) return false;
+  return tournamentCardEligible(tx, tournamentId);
+}
+
+/**
+ * "Zahlungen AUS" bei eingeschaltetem Kartenschalter: ein Turnier mit Preis wird NICHT kostenlos. Beim Fixieren des Preises zaehlt es als Kartenfluss (Halle, Zugangs-Snapshot, Provisionssatz einfrieren),
+ * damit es eingefroren ist und den Alarm ausloest (frozenTournaments), statt unbemerkt im Guthabenpfad zu haengen. Abgebucht wird erst nach dem Wiedereinschalten.
+ */
+export async function tournamentCardFlowPaused(tx: Pick<Tx, "select">, tournamentId: string): Promise<boolean> {
+  if (!(await cardPaymentsEnabled(tx as Tx)) || (await paymentsEnabled(tx as Tx))) return false;
+  return tournamentCardEligible(tx, tournamentId);
+}
+
+/**
+ * Zahlungen sind fuer dieses Turnier pausiert (Zahlungen AUS bzw. Kartenschalter AUS bei bereits fixiertem Kartenfluss): Weder Guthaben-Zahlung noch Bereit sind moeglich
+ * (sonst entstuende paid_cents am Kartenfluss, an Halle, Zusage und Provision vorbei, und nach dem Wiedereinschalten eine Doppelbelastung). Turniere mit Guthaben im Turnier
+ * (paid_cents > 0, Altmodell) bleiben davon ausgenommen. Unter der Turniersperre des Aufrufers lesen.
+ */
+export async function tournamentPayBlocked(tx: Pick<Tx, "select">, t: { id: string; venueAccessRequiredSnapshot: boolean | null }): Promise<boolean> {
+  if (await tournamentPaymentsActive(tx as Tx)) return false; // Kartenfluss aktiv: tournamentCardMode entscheidet
+  if (await tournamentCardFlowPaused(tx, t.id)) return true;
+  if (t.venueAccessRequiredSnapshot === null) return false;
+  const [paid] = await tx.select({ userId: tournamentPlayers.userId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), gt(tournamentPlayers.paidCents, 0))).limit(1);
+  return !paid;
+}
+
+export const PAYMENTS_PAUSED = "Zahlungen sind gerade pausiert.";
+
+async function tournamentCardEligible(tx: Pick<Tx, "select">, tournamentId: string): Promise<boolean> {
   // Kostenlose Turniere (Hallenkosten 0 bzw. Anteil 0) haben nichts abzubuchen: sie laufen wie bisher (Bereit ohne Karte, Bracket sofort), sonst haengen sie im Kartenmodell fest (Security-Review M5-3).
   const [t] = await tx.select({ totalCents: tournaments.totalCents, finalShareCents: tournaments.finalShareCents, entryFeeCents: tournaments.entryFeeCents }).from(tournaments).where(eq(tournaments.id, tournamentId));
   if (!t || t.totalCents === 0 || t.finalShareCents === 0 || (t.totalCents === null && t.entryFeeCents === 0)) return false;

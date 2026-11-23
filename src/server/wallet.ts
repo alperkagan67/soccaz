@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { clearCoversInvolving } from "./payments/cover-clear";
 import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { auditLog, matchParticipants, matches, paymentCharges } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentCharges, paymentRefunds } from "@/db/schema";
 import { pendingRefunds } from "@/db/schema-finance";
 import { joinClosedByTime, leaveClosedByTime } from "@/lib/deadlines";
 import { MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
@@ -44,11 +44,27 @@ export function isDeadlineModel(match: Pick<MatchRow, "kind" | "legacyShareModel
  */
 export async function cardModeActive(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "kind" | "legacyShareModel">): Promise<boolean> {
   if (!isDeadlineModel(match) || !(await cardPaymentsEnabled(tx as Tx))) return false;
+  // "Zahlungen AUS" (payments_enabled aus) = neue Beitritte und Bereit-Meldungen sind kostenlos, keine Karte. Spiele, deren Abrechnung schon begonnen hat, bleiben im Kartenmodell (kein Geld verschwindet, keine Doppelbelastung).
+  if (!(await paymentsEnabled(tx as Tx)) && !(await isChargeBound(tx, match.id))) return false;
   // Umschalten im laufenden Betrieb: Liegt schon Geld im Spiel (ein Platz mit paid_cents > 0 aus dem Guthabenmodell), bleibt das Spiel im Guthabenmodell,
   // bis es leer oder abgesagt ist. Pro Spiel gibt es nie einen Mischzustand, solange Geld darin liegt; Austritt, Neuberechnung und Fixieren erstatten dann wie bisher.
   // Gelesen wird in der Transaktion des Aufrufers unter der Spielsperre (Zahlung und Moduswechsel können sich nicht überholen).
   const [paid] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), gt(matchParticipants.paidCents, 0))).limit(1);
   return !paid;
+}
+
+/**
+ * Abrechnungsgebunden: Die Abrechnung dieses Spiels über die Karte hat begonnen (Abbuchungs- oder Erstattungszeilen, fixierter Anteil, Platz mit charge_pending/charged).
+ * Solche Spiele bleiben auch bei payments_enabled AUS im Kartenmodell. Eine hinterlegte Karte allein bindet nicht (es gibt weder Geld noch Abbuchung). Unter der Spielsperre des Aufrufers lesen.
+ */
+export async function isChargeBound(tx: Pick<Tx, "select">, matchId: string): Promise<boolean> {
+  if (await hasChargeRows(tx, matchId)) return true;
+  const [fixed] = await tx.select({ id: matches.id }).from(matches).where(and(eq(matches.id, matchId), gt(matches.finalShareCents, 0))); // 0 = kostenlos fixiert (Zahlungen AUS), bindet nicht
+  if (fixed) return true;
+  const [seat] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), inArray(matchParticipants.cardStatus, ["charge_pending", "charged"]))).limit(1);
+  if (seat) return true;
+  const [refund] = await tx.select({ id: paymentRefunds.id }).from(paymentRefunds).where(eq(paymentRefunds.matchId, matchId)).limit(1);
+  return Boolean(refund);
 }
 
 /**
@@ -222,9 +238,12 @@ export async function fixShare(tx: Tx, match: MatchRow): Promise<void> {
     .from(matchParticipants)
     .where(and(eq(matchParticipants.matchId, match.id), isNotNull(matchParticipants.teamId)));
   if (seated.length === 0) return;
-  const share = shareCents(priceCents, shareDivisor(match, seated.length));
+  // Zahlungen AUS bei eingeschaltetem Kartenschalter: das Spiel ist kostenlos, der Anteil wird als 0 fixiert (sonst waere es "abrechnungsgebunden" und würde abgebucht).
+  const [moneyIn] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), gt(matchParticipants.paidCents, 0))).limit(1); // Guthaben im Spiel: Guthabenmodell, nie gratis fixieren
+  const freeByPaymentsOff = isDeadlineModel(match) && !moneyIn && (await cardPaymentsEnabled(tx)) && !(await paymentsEnabled(tx)) && !(await isChargeBound(tx, match.id));
+  const share = freeByPaymentsOff ? 0 : shareCents(priceCents, shareDivisor(match, seated.length));
   // Kartenmodell: nur Preis und Spielerzahl festschreiben; nichts prüfen, nichts erstatten (abgebucht wird mit M2)
-  const pay = !(await cardModeActive(tx, match)) && (await paymentsEnabled(tx));
+  const pay = Boolean(moneyIn) || (!(await cardModeActive(tx, match)) && (await paymentsEnabled(tx))); // Guthaben im Spiel: wie im Guthabenmodell pruefen und erstatten, auch bei Zahlungen AUS
   if (pay && share > 0) {
     const short = seated.filter((p) => p.paidCents < share).length;
     if (short > 0) throw new DomainError(`Der Anteil wäre ${formatEuro(share)} pro Spieler (${seated.length} Spieler), ${short} Spieler haben weniger bezahlt. Die Spielerzahl muss sich ändern oder die betroffenen Spieler treten neu bei.`);

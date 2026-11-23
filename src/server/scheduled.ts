@@ -6,7 +6,7 @@ import { users } from "@/db/schema";
 import { payments } from "@/db/schema-finance";
 import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
-import { cardModeActive, hasChargeRows, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
+import { cardModeActive, hasChargeRows, isChargeBound, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
 import { chargeEligibility } from "./payments/charge-run";
 import { paymentsEnabled } from "./settings";
 import { teamName } from "./names";
@@ -60,6 +60,7 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
     await db.transaction(async (tx) => {
       const [fresh] = await tx.select().from(matches).where(eq(matches.id, m.id)).for("update");
       if (!fresh || fresh.status !== "lobby") return;
+      if (isDeadlineModel(fresh) && (await isChargeBound(tx, fresh.id))) return; // abrechnungsgebunden (auch bei Zahlungen AUS): folgt der Frist-Regel, nicht der 24-h-Pruefung (unter der Spielsperre gelesen)
       if (await hasChargeRows(tx, fresh.id)) return; // Abbuchung angelaufen: der Job storniert nie (Erstattung auf die Karte = M3)
       await cancelMatchTx(tx, fresh, null, "Zu wenige bereite Spieler bis zur Frist.");
       await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
@@ -85,7 +86,7 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
  * "Gebucht" heißt hier abgerechnet (`settleMatch`): Das Geld liegt schon auf dem Konto revenue, es gibt noch keine Auszahlung an den Veranstalter.
  */
 export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<number> {
-  if (!(await paymentsEnabled())) return 0;
+  const payOn = await paymentsEnabled(); // AUS: nur abrechnungsgebundene Spiele (Abbuchung/Erstattung/fixierter Preis) werden weiter nach der Frist-Regel geschlossen, kostenlose Spiele nicht
   const candidates = await db
     .select()
     .from(matches)
@@ -99,6 +100,7 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
       await db.transaction(async (tx) => {
         const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
         if (!m || m.settledAt || (m.status !== "lobby" && m.status !== "confirmed") || m.startsAt.getTime() <= now.getTime()) return;
+        if (!payOn && !(await isChargeBound(tx, m.id))) return;
         if (!payAndReadyPossible(m)) return; // Zahlen und Bereit sind noch gesperrt (Termin oder Hallen-Veto): keine Absage
         // Kartenspiel (012 M2b-2): Gibt es schon Abbuchungszeilen, storniert der Job NIE (Teil-Erfolg, Nachzahlfenster und Erstattung auf die Karte = M3).
         // Ist das Spiel abbuchungsbereit (beide Captains bereit, Anteil fixiert, alle mit Karte, Miete gedeckt), bucht der Karten-Job (card-charges) ab; auch dann keine Absage.

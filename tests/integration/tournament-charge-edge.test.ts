@@ -14,6 +14,10 @@ import { setSetting } from "@/server/settings";
 import { cancelTournament, closeTournamentsAtDeadline, createTournament, joinAsPlayer, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 // Fuer den Test "Phase A schluckt keine Fehler": lockTournament schlaegt auf Wunsch mit einem unerwarteten Fehler fehl.
 const forced = vi.hoisted(() => ({ fail: false, offOnProvider: false }));
 // Notabschaltung zwischen Beanspruchen und Netzaufruf: der Schalter wird beim ersten Holen des Anbieters ausgeschaltet (sendCharge holt ihn nach dem Beanspruchen).

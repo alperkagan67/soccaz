@@ -13,7 +13,7 @@ import { ensureRefundRow } from "./payments/charge";
 import { sendPendingRefunds } from "./payments/refund";
 import { creditWallet, totalWalletLiability, trialBalance } from "./ledger";
 import { notifyUsers } from "./notifications";
-import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
+import { paymentsEnabled, tournamentPaymentsActive } from "./settings";
 import { DomainError } from "./teams";
 
 type Row = Record<string, unknown>;
@@ -82,7 +82,7 @@ export async function getRefundAlerts(now: Date = new Date()) {
   // eingefrorene Turniere bei Schalter AUS (Backlog 141): ab 6 h nach dem Zeitpunkt, an dem der Job sonst gehandelt haette; verschwindet bei Schalter AN oder Absage
   const tournamentFrozen = (await frozenTournaments(db, now)).filter((f) => frozenStage(now, f.since) !== undefined);
   const unmatched = await unmatchedAlertData(db, now); // Backlog 118: erfolgreiche Zahlung ohne Zuordnung sofort, andere unbekannte Ereignisse erst ab der Schwelle
-  const tournamentWaitsForCards = (await cardPaymentsEnabled())
+  const tournamentWaitsForCards = (await tournamentPaymentsActive())
     ? (
         await db.execute<{ id: string }>(sql`select t.id from tournaments t
           where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null and t.starts_at > ${now} and t.starts_at - interval '48 hours' <= ${now}

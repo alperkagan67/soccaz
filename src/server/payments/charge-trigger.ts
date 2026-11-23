@@ -5,7 +5,7 @@ import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
 import { audit } from "../audit";
-import { cardPaymentsEnabled } from "../settings";
+import { cardPaymentsEnabled, tournamentPaymentsActive } from "../settings";
 import { bookOpenFees } from "./charge";
 import { runErasureTasks } from "./erasure";
 import { retryTournamentChargesInWindow, runTournamentChargesDue } from "./tournament-charge";
@@ -87,19 +87,25 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
     }
   }
   // Turniere im Kartenmodell (012 M5-4): Abbuchung zur Frist bzw. sofort, und Nachholen offener Zeilen
-  if (await cardPaymentsEnabled()) {
+  if (await tournamentPaymentsActive()) {
     try {
       touched += (await runTournamentChargesDue(now)).turniere;
       touched += await retryTournamentChargesInWindow({ now }); // neue Karte im Nachzahlfenster: erneut abbuchen (M5-5)
       touched += await cancelTournamentsAfterWindow(now); // Alles-oder-nichts: abgelaufenes Nachzahlfenster -> Absage + Erstattung (M5-5)
-      touched += await notifyHallConfirmReminders(); // Datenbankuhr // Vorwarnung 24 h und 6 h vor der Frist: Halle hat noch nicht zugesagt (M5-7b)
       touched += await notifyMissingCardReminders(now); // Vorwarnung 24 h und 6 h vor der Frist: Karte fehlt (M5-5)
     } catch (error) {
       console.error("runCardCharges: Fehler bei Turnieren", error instanceof Error ? error.name : "Fehler");
     }
   }
+  // Zusage der Halle (M5-7b): Vorwarnung 24 h und 6 h vor der Frist. Die Zusage ist Buchungsbedingung und unabhaengig von Zahlungen und Kartenschalter (Entscheid t2q): laeuft auch bei
+  // "Zahlungen AUS" und bei eingefrorenen Turnieren (Datenbankuhr).
+  try {
+    touched += await notifyHallConfirmReminders();
+  } catch (error) {
+    console.error("runCardCharges: Zusage-Erinnerung", error instanceof Error ? error.name : "Fehler");
+  }
   // Eingefrorene Turniere bei Schalter AUS: Mitteilung an Admin 1 ab 6 h, dann alle 12 h (Backlog 141); keine automatische Absage
-  if (!(await cardPaymentsEnabled())) {
+  if (!(await tournamentPaymentsActive())) {
     try {
       touched += await notifyFrozenTournaments(now);
     } catch (error) {

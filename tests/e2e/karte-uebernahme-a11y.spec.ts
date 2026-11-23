@@ -7,13 +7,20 @@ import { query, setPlatformSetting } from "./helpers-db";
 // Rollen wie in karte-uebernahme.spec.ts: C = Captain, A = Mitspieler ohne Karte, B = Übernehmer, T = Dritter. Teamspiel, Kartenmodell AN.
 test.describe.configure({ mode: "serial" });
 
-test.beforeAll(async () => {
+// Schalter pro Test (Regel 23): Kartenmodell UND Zahlungen AN (bei "Zahlungen AUS" ist ein Spiel kostenlos, 012 M6b Gratis); Reset nach jedem Test.
+test.beforeEach(async () => {
+  await setPlatformSetting("payments_enabled", true);
   await setPlatformSetting("card_payments_enabled", true);
+});
+test.afterEach(async () => {
+  await setPlatformSetting("payments_enabled", false);
+  await setPlatformSetting("card_payments_enabled", false);
 });
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
 });
 test.afterAll(async () => {
+  await setPlatformSetting("payments_enabled", false);
   await setPlatformSetting("card_payments_enabled", false);
   await closeTestDb();
 });

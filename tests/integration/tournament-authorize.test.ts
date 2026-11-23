@@ -11,6 +11,10 @@ import { setSetting } from "@/server/settings";
 import { createTournament, joinAsPlayer, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 // 012 M5-5: 3-D-Secure-Freigabe fuer Turnierzeilen: nur der Zahler selbst, nur im Fenster, neutrale Fehler.
 
 let provider: FakeProvider;

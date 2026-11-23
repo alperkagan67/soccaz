@@ -14,6 +14,10 @@ import { freezeVenueTerms, isPartnerVenue, listPartnerVenueOptions, setTournamen
 import { accessHolders, hasVenueAccess, venueHasActiveAccess } from "@/server/venue-access-rules";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 // 012 M5-7a (Plan 19): Zugang je Halle aus EINER Bedingung, Provisionssatz aus der Halle, Hallenauswahl ohne Zugang, Sperre beim Fixieren, Alarm bei Zahlung ohne Zuordnung (Backlog 118).
 
 let provider: FakeProvider;
