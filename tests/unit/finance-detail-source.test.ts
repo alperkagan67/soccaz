@@ -26,6 +26,7 @@ describe("Admin-Finanzen Detailseite: eine Rechenstelle", () => {
     expect(game).toBeGreaterThan(-1);
     expect(game).toBeLessThan(charges);
     expect(charges).toBeLessThan(user);
+    expect(fn).toMatch(/from\(matches\)[^;]*\.for\("update"\)/); // das Spiel wird wirklich FOR UPDATE gesperrt (nicht nur gelesen)
     expect(fn).toMatch(/\.from\(users\)[^;]*\.for\("no key update"\)/); // der Nutzer nur FOR NO KEY UPDATE und zuletzt
   });
 });
