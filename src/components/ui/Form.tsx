@@ -28,7 +28,7 @@ export type FormProps = {
  * Nach Erfolg wird das Formular geleert (außer `keepOnSuccess`). Die Speichern-Handlung ist ein `Button` (44 px, `pending` mit Wort).
  */
 export function Form({ action, submitLabel, danger = false, successText, keepOnSuccess = false, children }: FormProps) {
-  const { state, pending, onSubmit } = useFormAction(action);
+  const { state, pending, onSubmit, formAction } = useFormAction(action);
   const ref = useRef<HTMLFormElement>(null);
   const fieldErrors = state?.fieldErrors ?? NO_ERRORS;
   const hasFieldErrors = Object.keys(fieldErrors).length > 0;
@@ -43,7 +43,7 @@ export function Form({ action, submitLabel, danger = false, successText, keepOnS
 
   return (
     <FormErrorsContext.Provider value={fieldErrors}>
-      <form ref={ref} onSubmit={onSubmit} className="space-y-4">
+      <form ref={ref} action={formAction} onSubmit={onSubmit} className="space-y-4">
         {children}
         {hasFieldErrors && <p className="text-sm font-semibold">{translate(DEFAULT_LOCALE, "ui.checkFields")}</p>}
         {state?.error && (
