@@ -4,6 +4,9 @@
 // Pflichtprüfung je Schritt mit Fehler am Feld, Entwurf bleibt in der Browser-Sitzung erhalten (sessionStorage, nie auf dem Server), Enter = Weiter,
 // nach jedem Schrittwechsel springt der Fokus auf die Überschrift des Schritts. Keine neue Seite, kein `?schritt=`, keine Bewegung (Schrittwechsel ohne Animation).
 //
+// ACHTUNG Entwurf: Der Baustein speichert ALLE Feldwerte der Schritte im Klartext im sessionStorage des Browsers. Felder mit sensiblen Werten (Passwort, Zahlungsdaten,
+// Zustimmungen/Einwilligungen, Ausweis- oder Kontodaten) MÜSSEN im Schritt unter `nichtSpeichern` stehen; sie landen dann nie im Entwurf (tests/unit/assistent.test.ts).
+//
 // Benutzung: `schritte` enthält Funktionen (`render`, `pruefe`) und gehört deshalb in eine Client-Komponente; nur `abschlussAction` darf eine Server-Aktion sein
 // (Signatur wie bei `Form`: (vorher, formData) => ActionState; die Werte aller Felder gehen als FormData hinein, bestehende Aktionen bleiben nutzbar).
 import { useEffect, useId, useMemo, useRef, useState, useTransition, type ChangeEvent, type ReactNode, type SyntheticEvent } from "react";
@@ -60,6 +63,9 @@ export type AssistentProps = {
 };
 
 const t = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>) => translate(DEFAULT_LOCALE, key, vars);
+
+/** Next wirft für `redirect()` einen Fehler mit diesem Digest; er muss weiterlaufen. */
+const istWeiterleitung = (e: unknown): boolean => typeof e === "object" && e !== null && String((e as { digest?: unknown }).digest ?? "").startsWith("NEXT_REDIRECT");
 
 function alleFehler(schritte: readonly AssistentSchritt[], werte: Werte): Fehler {
   const fehler: Record<string, string> = {};
@@ -143,7 +149,20 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
     setAllgemein(undefined);
     entwurfLoeschen(); // bei Erfolg oder Weiterleitung bleibt kein alter Entwurf liegen; bei einem Fehler schreibt der Effekt ihn wieder
     startTransition(async () => {
-      const antwort = await abschlussAction(undefined, daten);
+      let antwort: ActionState;
+      try {
+        antwort = await abschlussAction(undefined, daten);
+      } catch (fehler) {
+        if (istWeiterleitung(fehler)) throw fehler; // eine Weiterleitung der Aktion ist kein Fehler
+        // Ausnahme (z. B. Netzwerkfehler): nichts ist verloren, der Entwurf wird wieder geschrieben und der Nutzer sieht eine Meldung
+        setAllgemein(t("ui.confirmFailed"));
+        try {
+          window.sessionStorage.setItem(key, serialisiereEntwurf(z, infos));
+        } catch {
+          /* siehe oben */
+        }
+        return;
+      }
       if (!antwort?.error && !antwort?.fieldErrors) {
         setFertig(true);
         return;

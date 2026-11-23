@@ -10,7 +10,7 @@ export type SchrittInfo = {
   id: string;
   /** Namen der Felder dieses Schritts: nur diese werden im Entwurf gespeichert und bei Serverfehlern dem Schritt zugeordnet. */
   felder: readonly string[];
-  /** Felder, die NIE im Entwurf landen (z. B. Zustimmungen, die jede Sitzung neu gegeben werden). */
+  /** Felder, die NIE im Entwurf landen. PFLICHT für sensible Werte (Passwort, Zahlungsdaten, Zustimmungen, Ausweis-/Kontodaten): alles andere speichert der Baustein im Klartext im sessionStorage. */
   nichtSpeichern?: readonly string[];
 };
 

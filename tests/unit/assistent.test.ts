@@ -108,6 +108,13 @@ describe("Assistent: Entwurf (sessionStorage)", () => {
     expect(leseEntwurf(roh, schritte)?.werte).toEqual({ name: "Halle A" });
   });
 
+  it("ein Feld unter nichtSpeichern steht nie im Entwurf, auch nicht im Text (sensible Werte)", () => {
+    const roh = serialisiereEntwurf({ schritt: 3, werte: { name: "Halle A", bedingungen: "geheim-ja" }, fehler: {} }, schritte);
+    expect(roh).not.toContain("geheim-ja");
+    expect(roh).not.toContain("bedingungen");
+    expect(leseEntwurf(JSON.stringify({ v: ENTWURF_VERSION, schritt: 0, werte: { bedingungen: "geheim-ja" } }), schritte)?.werte).toEqual({});
+  });
+
   it("ein manipulierter Entwurf wird gefiltert: unbekannte Felder, Nicht-Texte, zu lange Werte, nichtSpeichern", () => {
     const roh = JSON.stringify({ v: ENTWURF_VERSION, schritt: 1, werte: { name: "ok", bedingungen: "ja", fremd: "x", plaetze: 3, adresse: "a".repeat(MAX_WERT_LAENGE + 1) } });
     expect(leseEntwurf(roh, schritte)).toEqual({ schritt: 1, werte: { name: "ok" } });
