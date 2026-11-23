@@ -137,8 +137,8 @@ describe("Altspiel: Erstattungen und Absagen BLEIBEN (Fixture ueber seedPaid, Ge
 
 describe("Altspiel: Job-Pfade (Erstattung bleibt) und Alarm", () => {
   it("cancelUncoveredPrivateGames sagt ein ungedecktes Altspiel (Privatspiel) ab und erstattet alle genau einmal, auch einen Aussteiger mit offenem Anspruch; zweiter Lauf tut nichts; Hauptbuch ausgeglichen", async () => {
-    const m = await makeMatch({ legacy: true, hoursAhead: 72, priceCents: 12_000, costCents: 12_000 });
-    await db.update(matches).set({ kind: "private", status: "confirmed", createdAt: new Date(Date.now() - 10 * 3_600_000) }).where(eq(matches.id, m.match.id));
+    const m = await makeMatch({ legacy: true, hoursAhead: 10, priceCents: 12_000, costCents: 12_000 }); // Anstoss in 10 h: der Austritt ist "zu spaet" (unter 24 h), es entsteht ein offener Anspruch
+    await db.update(matches).set({ kind: "private", status: "confirmed", createdAt: new Date(Date.now() - 20 * 3_600_000) }).where(eq(matches.id, m.match.id));
     const players = [m.adminA];
     for (let i = 0; i < 9; i++) players.push(await addPlayer(m.match.id, m.home.id));
     for (const p of players) {
@@ -146,7 +146,12 @@ describe("Altspiel: Job-Pfade (Erstattung bleibt) und Alarm", () => {
       await seedPaid(m.match.id, p.id, 1200); // 10 x 1200 = Miete gedeckt
     }
     const leaver = players[9];
-    await leaveLobby(leaver.id, m.match.id); // zu spaet oder nicht: zaehlt nur der tatsaechlich gezahlte Betrag (9 x 1200 = 10800 < 12000)
+    // Austritt eines Zahlers kurz vor dem Spiel (Privatspiel: die Liste ist ab 48 h gesperrt, der Weg ueber leaveLobby geht dort nicht): Zustand direkt gesetzt = Platz weg, Geld vorerst weg, offener Anspruch
+    await db.delete(matchParticipants).where(and(eq(matchParticipants.matchId, m.match.id), eq(matchParticipants.userId, leaver.id)));
+    await db.insert(pendingRefunds).values({ matchId: m.match.id, userId: leaver.id, amountCents: 1200 });
+    // gezahlt sind jetzt nur noch 9 x 1200 = 10800 < 12000
+    expect(await walletBalance(db, leaver.id)).toBe(3000 - 1200);
+    expect(await pendingOf(m.match.id)).toHaveLength(1);
     const fresh = await reloadMatch(m.match.id);
     const due = new Date(rentCheckAt(fresh.startsAt, fresh.createdAt).getTime() + 60_000);
     await cancelUncoveredPrivateGames(due);
