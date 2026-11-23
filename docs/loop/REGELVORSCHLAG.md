@@ -277,6 +277,14 @@ Vorschlag: (1) Ein Test, der ein Skript oder eine CLI als Kindprozess startet (`
 
 Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer, Abschnitt Tests); Regel-PR (Nutzer mergt).
 
+## 27. Schreibende Befehle nie hinter einem `cd`, das fehlschlagen kann
+
+Anlass: 2026-11-23 führte w2 versehentlich `npm run db:migrate` in SoccaV2 (Haupt-DB `soccav2`) aus, nachdem der Review-Worktree entfernt war und das `cd` dorthin fehlschlug (No-op, kein Schaden, aber nur durch Glück).
+
+Vorschlag: Schreibende Befehle (`git checkout`, `git merge`, `npm run db:migrate`, `npm install`) laufen nie hinter einem `cd`, das fehlschlagen kann und danach weitermacht. Entweder `cd <worktree> && <Befehl>` oder `cd <worktree> || exit 1`. Vor dem Schreiben: `pwd` und `git branch --show-current` prüfen, bei `db:migrate` zusätzlich die Ziel-DB (Name aus der Konfiguration, ohne `.env*` auszugeben): im Worktree `soccaz_w1` bis `soccaz_w4`, nie `soccav2` ohne ausdrücklichen Auftrag.
+
+Wer ändert: AGENTS-SETUP.md (Abschnitt Arbeitsweise aller Rollen); Regel-PR (Nutzer mergt).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.

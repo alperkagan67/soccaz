@@ -32,8 +32,8 @@ let provider: FakeProvider;
 beforeEach(async () => {
   provider = new FakeProvider();
   setPaymentProviderForTests(provider);
+  await cleanup(); // setzt seit dem Schalter-Flip beide Schalter zurueck: erst aufraeumen, dann den Kartenschalter setzen
   await setSetting(null, "card_payments_enabled", true);
-  await cleanup();
 });
 afterEach(() => setPaymentProviderForTests(null));
 afterAll(async () => {

@@ -12,6 +12,7 @@ import { setSetting } from "./settings";
 import { DomainError } from "./teams";
 import { addPriceRule, createVenue, listVenues, setVenueManager, setVenueVerified, updateVenue } from "./venues";
 import { revokeVenueAccess } from "./venue-access";
+import { approveVenue, rejectVenue } from "./venue-approval";
 
 type Permission = Parameters<typeof requirePermission>[0];
 
@@ -25,6 +26,12 @@ async function guarded(permission: Permission, path: string, fn: (actorId: strin
   }
   revalidatePath(path);
   return { ok: true };
+}
+
+/** Bei einer Meldung (z. B. "keine offene Anfrage": schon von jemand anderem entschieden) die Seite neu laden lassen, damit die Zeile verschwindet bzw. den neuen Stand zeigt. */
+function refreshOnError(result: ActionState, path: string): ActionState {
+  if (result && "error" in result && result.error) revalidatePath(path);
+  return result;
 }
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? "").trim();
@@ -103,6 +110,21 @@ export async function setVenueManagerAction(venueId: string, _prev: ActionState,
   return guarded("owner", "/admin/hallen", async (actor) => {
     await setVenueManager(actor, venueId, String(fd.get("email") ?? ""), String(fd.get("reason") ?? "")); // Grund ist Pflicht (Eingriffsprotokoll)
   });
+}
+
+/** Hallen-Anfrage freischalten (013 v3 AC-31): Admin 1 und Admin 2 (booking); die Funktion prueft das Recht zusaetzlich selbst. */
+export async function approveVenueAction(venueId: string, _prev: ActionState, _fd: FormData): Promise<ActionState> {
+  void _fd;
+  return refreshOnError(await guarded("booking", "/admin/hallen/anfragen", async (actor) => {
+    await approveVenue(actor, venueId);
+  }), "/admin/hallen/anfragen");
+}
+
+/** Hallen-Anfrage ablehnen, Grund Pflicht (3 bis 200 Zeichen). */
+export async function rejectVenueAction(venueId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  return refreshOnError(await guarded("booking", "/admin/hallen/anfragen", async (actor) => {
+    await rejectVenue(actor, venueId, text(fd, "reason"));
+  }), "/admin/hallen/anfragen");
 }
 
 /** Zugang einer Halle entziehen bzw. eine offene Einladung zurückziehen: nur Admin 1, Grund Pflicht, wirkt sofort. */

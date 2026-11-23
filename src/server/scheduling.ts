@@ -153,7 +153,7 @@ export async function getScheduling(match: { id: string; schedulingOpen: boolean
   if (!match.schedulingOpen) return null;
   const options = await db.select().from(matchOptions).where(eq(matchOptions.matchId, match.id)).orderBy(asc(matchOptions.startsAt), asc(matchOptions.createdAt));
   const votes = await db.select({ teamId: matchOptionVotes.teamId, optionId: matchOptionVotes.optionId }).from(matchOptionVotes).where(eq(matchOptionVotes.matchId, match.id));
-  const list = await db.select({ id: venues.id, name: venues.name, city: venues.city }).from(venues).where(eq(venues.active, true)).orderBy(asc(venues.city), asc(venues.name));
+  const list = await db.select({ id: venues.id, name: venues.name, city: venues.city }).from(venues).where(and(eq(venues.active, true), eq(venues.approvalStatus, "approved"))).orderBy(asc(venues.city), asc(venues.name));
   return {
     open: true,
     windows: match.timeWindows ?? [],
