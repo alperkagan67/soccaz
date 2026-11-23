@@ -2,16 +2,27 @@
   "name": "soccav2",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13 <23"
+  },
   "scripts": {
+    "predev": "node scripts/check-node.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/check-node.mjs",
     "build": "next build",
     "start": "next start",
+    "prelint": "node scripts/check-node.mjs",
     "lint": "eslint",
+    "pretest": "node scripts/check-node.mjs",
     "test": "vitest run",
+    "pretest:e2e": "node scripts/check-node.mjs",
     "test:e2e": "playwright test",
+    "pretypecheck": "node scripts/check-node.mjs",
     "typecheck": "next typegen && tsc --noEmit",
     "db:generate": "drizzle-kit generate",
+    "predb:migrate": "node scripts/check-node.mjs",
     "db:migrate": "node --env-file=.env.local node_modules/drizzle-kit/bin.cjs migrate",
+    "pretest:integration": "node scripts/check-node.mjs",
     "test:integration": "vitest run --config vitest.integration.config.mts",
     "test:integration:commission": "node scripts/test-commission.mjs"
   },

@@ -35,7 +35,7 @@ Next.js 16 (App Router, Cache Components), React 19, TypeScript, Tailwind 4, Pos
 
 ## Lokal starten
 
-Voraussetzungen: Node 22, PostgreSQL 16 oder neuer.
+Voraussetzungen: **Node 22.13 oder neuer 22er (>=22.13 <23)**, PostgreSQL 16 oder neuer. Die Datei `.nvmrc` nennt die Version (`nvm use`), `package.json` (`engines`) und `.npmrc` (`engine-strict=true`) lassen eine zu alte Version beim Installieren scheitern, und `scripts/check-node.mjs` prüft sie vor `dev`, `build`, `lint`, `test`, `test:e2e`, `test:integration`, `typecheck` und `db:migrate` mit einer deutschen Meldung. Warum: Tailwind 4 wird per `require()` geladen, und `require()` von ES-Modulen geht in Node 22 erst ab 22.12 ohne Flag (ältere 22er brechen mit `ERR_REQUIRE_ESM` ab); ESLint verlangt 22.13. **Node 23 und 24 sind nicht getestet** (CI und Docker nutzen Node 22).
 
 ```bash
 npm install
