@@ -84,6 +84,11 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
   const [pending, startTransition] = useTransition();
   const ueberschrift = useRef<HTMLHeadingElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const fertigRef = useRef<HTMLDivElement>(null);
+  const zRef = useRef(z);
+  useEffect(() => {
+    zRef.current = z; // aktueller Zustand für die Schreibzugriffe nach dem Abschluss (die Klick-Closure kennt nur den Stand beim Absenden)
+  }, [z]);
 
   const infos = useMemo<readonly SchrittInfo[]>(() => schritte.map((s) => ({ id: s.id, felder: s.felder, nichtSpeichern: s.nichtSpeichern })), [schritte]);
   const infosRef = useRef(infos);
@@ -125,6 +130,10 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
     if (fokusFehler > 0) formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [fokusFehler]);
 
+  useEffect(() => {
+    if (fertig) fertigRef.current?.focus(); // der fokussierte Knopf ist weg: der Fokus geht auf die Meldung, Screenreader lesen sie vor
+  }, [fertig]);
+
   const setze = (name: string, wert: string) => setZ((alt) => setzeWert(alt, name, wert));
   const feld: SchrittProps["feld"] = (name) => ({ name, value: z.werte[name] ?? "", onChange: (e) => setze(name, e.target.value) });
 
@@ -157,13 +166,14 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
         // Ausnahme (z. B. Netzwerkfehler): nichts ist verloren, der Entwurf wird wieder geschrieben und der Nutzer sieht eine Meldung
         setAllgemein(t("ui.confirmFailed"));
         try {
-          window.sessionStorage.setItem(key, serialisiereEntwurf(z, infos));
+          window.sessionStorage.setItem(key, serialisiereEntwurf(zRef.current, infos));
         } catch {
           /* siehe oben */
         }
         return;
       }
       if (!antwort?.error && !antwort?.fieldErrors) {
+        entwurfLoeschen(); // sicher weg, auch wenn zwischenzeitlich geschrieben wurde
         setFertig(true);
         return;
       }
@@ -171,7 +181,7 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
       setZ((alt) => springeZuFehler(alt, infos, antwort.fieldErrors ?? {}));
       setFokusFehler((x) => x + 1);
       try {
-        window.sessionStorage.setItem(key, serialisiereEntwurf(z, infos));
+        window.sessionStorage.setItem(key, serialisiereEntwurf(zRef.current, infos));
       } catch {
         /* siehe oben */
       }
@@ -199,7 +209,7 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
         <h2 id={`${uid}-titel`} className="text-xl font-semibold">
           {titel}
         </h2>
-        <div role="status" data-testid="assistent-fertig">
+        <div ref={fertigRef} tabIndex={-1} role="status" className="outline-none ui-focus" data-testid="assistent-fertig">
           {erfolg ?? t("ui.saved")}
         </div>
       </section>
@@ -231,7 +241,9 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
           {aktuell.titel}
         </h2>
         {aktuell.beschreibung && <div className="text-sm text-muted">{aktuell.beschreibung}</div>}
-        <div className="space-y-4">{aktuell.render({ werte: z.werte, fehler: z.fehler, setze, feld })}</div>
+        <fieldset disabled={pending} className="m-0 min-w-0 space-y-4 border-0 p-0" data-testid="assistent-felder">
+          {aktuell.render({ werte: z.werte, fehler: z.fehler, setze, feld })}
+        </fieldset>
         {Object.keys(z.fehler).length > 0 && <p className="text-sm font-semibold">{t("ui.checkFields")}</p>}
         {allgemein && (
           <p className="error" role="alert">
@@ -242,6 +254,7 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
           {z.schritt > 0 && (
             <Button
               variant="secondary"
+              disabled={pending}
               data-testid="assistent-zurueck"
               onClick={() => {
                 setZ((alt) => zurueck(alt));

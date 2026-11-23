@@ -83,6 +83,12 @@ describe("Assistent (013 AC-25)", () => {
     expect(m).toContain('data-schritt="1"');
   });
 
+  it("die Felder liegen in einem Fieldset, das während der Abschluss-Aktion gesperrt wird (hier: nicht gesperrt, solange nichts läuft)", () => {
+    const m = html();
+    expect(m).toMatch(/<fieldset[^>]*data-testid="assistent-felder"/);
+    expect(m).not.toMatch(/<fieldset[^>]*disabled/);
+  });
+
   it("jeder Schritt hat eine Test-ID (Punkt und Form), damit die Spec je Schritt prüfen kann (AC-26)", () => {
     const m = html();
     for (const s of schritte) expect(m).toContain(`data-testid="assistent-punkt-${s.id}"`);
