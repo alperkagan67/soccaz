@@ -2,16 +2,16 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { and, eq, like } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db } from "@/db";
-import { auditLog, matchParticipants, users } from "@/db/schema";
+import { auditLog, matchParticipants, teamMembers, users } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { settings } from "@/db/schema-finance";
 import { tournaments } from "@/db/schema-league";
 import { getAlerts } from "@/server/finance";
-import { setReady } from "@/server/lobby";
+import { joinLobby, setReady } from "@/server/lobby";
 import { cardPaymentsEnabled, paymentsEnabled, setSetting, tournamentPaymentsActive } from "@/server/settings";
 import { frozenTournaments } from "@/server/tournaments";
 import { getCardSwitch, setCardSwitch } from "@/server/payment-switch";
-import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
+import { cleanup, makeMatch, makeUser } from "./helpers";
 
 // Notschalter Kartenzahlung (Entscheid t2q/t2s): NUR Admin 1; Grund (3 bis 200, bereinigt) und Bestaetigung Pflicht; eine Transaktion unter Sperre; Audit mit Grund im Klartext UND SHA-256, ohne
 // Personendaten. Aus = Zahlungen pausiert (kein Guthaben-Fallback, nicht kostenlos): Turniere frieren ein, Alarm card:switch-off.
@@ -176,7 +176,9 @@ describe("Kernversprechen: Zahlungen AN + Karte AUS (pausiert)", () => {
     await setSetting(null, "payments_enabled", true);
     await setCardSwitch(o.id, false, "Notabschaltung wegen Stoerung", true);
     const m = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
-    const p = await addPlayer(m.match.id, m.home.id); // Beitritt moeglich
+    const p = await makeUser("swjoin");
+    await db.insert(teamMembers).values({ teamId: m.home.id, userId: p.id, role: "player" });
+    await joinLobby(p.id, m.match.id); // Beitritt ueber den echten Pfad: moeglich
     const ledgerBefore = (await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id))).length;
     await expect(setReady(p.id, m.match.id, true)).rejects.toThrow(/zahle zuerst[\s\S]*Support/);
     const seat = (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, m.match.id), eq(matchParticipants.userId, p.id))))[0];
