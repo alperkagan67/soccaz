@@ -132,6 +132,30 @@ curl -X POST -H "x-job-secret: $JOB_SECRET" https://deine-domain/api/jobs/send-r
 
 Hinweise: Das Buchungsjournal ist unveränderlich (Datenbank-Trigger). Korrekturen sind Gegenbuchungen. Die Zahlungsgebühr wird beim Verbuchen **geschätzt** (Einstellung oben); die echten Gebühren stehen im Stripe-Dashboard und sollten monatlich abgeglichen werden.
 
+### Jobs und Schalter-Zustand (Entscheid D, Pause)
+
+Spalten: **P AUS** = Zahlungen AUS (Gratis) | **K AN** = Zahlungen AN + Karte AN | **Pause** = Zahlungen AN + Karte AUS (Notabschaltung). Je Zeile der Beleg (Test in `tests/integration/payments-pause.test.ts`, sonst benannt).
+
+| # | Job / Frist | P AUS | K AN | Pause | Beleg |
+|---|---|---|---|---|---|
+| 1 | Spiel-Frist `closeLobbiesAtDeadline` | nur abrechnungsgebundene Spiele nach Frist-Regel, kostenlose nie | Absage, wenn nicht abbuchungsbereit; nie bei Abbuchungszeilen | **keine Absage, kein Buchen** (nach Wiedereinschalten gilt die Frist wieder) | payments-pause "Frist-Job" |
+| 2 | 24-h-Prüfung `cancelUnderfilledLobbies` | nur Spiele ohne Frist-Regel/Bindung | Frist-Regel-Spiele übersprungen | übersprungen | deadlines.test |
+| 3 | `cancelUncoveredPrivateGames`, `settleDueMatches` (Altspiele) | stillgelegt | stillgelegt | stillgelegt (entfällt mit 1c-ii-b) | legacy-stilllegen.test |
+| 4 | Turnier-Frist `closeTournamentsAtDeadline` | eingefroren, keine Absage | Absage zur Frist, außer Abbuchung läuft | **eingefroren, keine Absage** (Alarm `card:tournament-frozen` nach 6 h) | tournament-cancel-perm.test "Schalter AUS: Frist-Job und Fenster-Job sagen NICHT ab" |
+| 5 | Turnier Alles-oder-nichts `cancelTournamentsAfterWindow` | stumm | aktiv | stumm | tournament-cancel-perm.test |
+| 6 | Turnier-Abbuchung, Nachzahlen, Karten-Erinnerung | stumm | aktiv | stumm | tournament-charge-edge.test "Schalter AUS", tournament-reminder.test |
+| 7 | Alarm eingefrorene Turniere `notifyFrozenTournaments` | aktiv | stumm | aktiv | tournament-frozen.test |
+| 8 | Spiel-Abbuchung, Nachzahlen im Fenster, Nachrücker (`runCharges`, `retryChargesInWindow`, `runSubstitutes`) | nur abrechnungsgebundene Spiele | aktiv | **stumm** (kein Platz frei, keine Absage, kein Abbuchen; nur lesender Abgleich bei Stripe) | payments-pause "Nachzahlfenster" |
+| 9 | Anteil übernehmen (Cover), gespeicherte Karte | nur gebundene Spiele | aktiv | "gerade nicht möglich" | payments-pause "Cover" |
+| 10 | Erstattung `runRefunds` (Absage mit abgebuchtem Geld) | läuft | läuft | **läuft** (kein Schalter) | payments-pause "Erstattungen" |
+| 11 | Webhook (succeeded, Erstattung, Streit) | läuft | läuft | läuft (Geld ist bei Stripe schon gebucht) | payments-pause "Webhook" |
+| 12 | Spiel-Erinnerungen 24 h/2 h/30 min | läuft | läuft | läuft | payments-pause "Erinnerungen" |
+| 13 | Zusage-Erinnerung der Halle (24 h/6 h) | läuft | läuft | läuft | tournament-confirm.test |
+| 14 | DSGVO-Löschaufträge, Aufbewahrung (`runErasureTasks`, `cleanup`) | läuft | läuft | läuft | card-erasure.test |
+| 15 | Anmeldeschluss-Hinweis, `expireStalePayments`, Buchungs-Agent | läuft | läuft | läuft | schalterunabhängig |
+
+**Annahme (Entscheid t2q):** Fristen verschieben sich durch eine Pause NICHT. Läuft ein Nachzahlfenster oder eine Frist während einer langen Pause ab, wird das Spiel nach dem Wiedereinschalten wie bei einer verspäteten Abbuchung behandelt (Nachzahlfenster 2 Stunden); Spieler können also nach einer langen Pause ihren Platz verlieren oder das Spiel kann abgesagt werden. Deshalb Pausen möglichst kurz halten und vor dem Wiedereinschalten die offenen Spiele prüfen.
+
 ### Notabschaltung Kartenzahlung (Admin 1, `/admin/einstellungen`)
 
 - **Nur Admin 1** (nicht Admin 2, nicht finance) schaltet `card_payments_enabled` in den Einstellungen: Abschnitt "Notabschaltung Kartenzahlung" zeigt den Zustand und seit wann (Zeitpunkt der letzten Änderung; ohne Zeile "Standard, noch nie geschaltet" = AUS). Ausschalten UND Wiedereinschalten verlangen einen **Grund** (3 bis 200 Zeichen) und das **Häkchen "Folgen gelesen"** (serverseitig geprüft), laufen in einer Transaktion unter Sperre und sind protokolliert: Eingriffsprotokoll `card_switch.off`/`card_switch.on` mit vorher/nachher, Grund im Klartext UND SHA-256 des Grundes (ohne Personendaten); die Einstellung trägt `updated_by`/`updated_at`. Beweisprotokoll nach 009: kein eigener Trigger (Entscheid t2s: ein Schalter, kein Overkill).

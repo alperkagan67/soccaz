@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { invites, matchParticipants, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
 import { abortDeadline, dueReminders, dueWithGrace, fixDeadline, hasLongLead, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
@@ -8,7 +8,7 @@ import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
 import { cardModeActive, hasChargeRows, isChargeBound, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
 import { chargeEligibility } from "./payments/charge-run";
-import { paymentsEnabled } from "./settings";
+import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
 import { teamName } from "./names";
 import { cancelUncoveredPrivateGames } from "./privategame";
 import { closeTournamentsAtDeadline, notifyRegistrationDeadlines } from "./tournaments";
@@ -101,6 +101,9 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
         const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
         if (!m || m.settledAt || (m.status !== "lobby" && m.status !== "confirmed") || m.startsAt.getTime() <= now.getTime()) return;
         if (!payOn && !(await isChargeBound(tx, m.id))) return;
+        // PAUSIERT (Entscheid D: Zahlungen AN + Karte AUS = Notabschaltung): niemand konnte abbuchen, das ist nicht die Schuld der Spieler. Keine Absage, kein Buchen; nach dem Wiedereinschalten
+        // gilt die Frist-Regel wieder (Fristen verschieben sich nicht). Spiele mit Guthaben im Platz (paid_cents > 0, Altmodell) bleiben bis 1c-ii-b im alten Pfad.
+        if (payOn && !(await cardPaymentsEnabled(tx)) && !(await hasPaidSeat(tx, m.id))) return;
         if (!payAndReadyPossible(m)) return; // Zahlen und Bereit sind noch gesperrt (Termin oder Hallen-Veto): keine Absage
         // Kartenspiel (012 M2b-2): Gibt es schon Abbuchungszeilen, storniert der Job NIE (Teil-Erfolg, Nachzahlfenster und Erstattung auf die Karte = M3).
         // Ist das Spiel abbuchungsbereit (beide Captains bereit, Anteil fixiert, alle mit Karte, Miete gedeckt), bucht der Karten-Job (card-charges) ab; auch dann keine Absage.
@@ -124,6 +127,12 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
     }
   }
   return cancelled;
+}
+
+/** Liegt Guthaben (paid_cents > 0, Altmodell) in diesem Spiel? */
+async function hasPaidSeat(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], matchId: string): Promise<boolean> {
+  const [row] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), gt(matchParticipants.paidCents, 0))).limit(1);
+  return Boolean(row);
 }
 
 /** Können wir buchen? Beide Captains bereit, der Preis steht fest und alle eingeteilten Spieler haben ihren Anteil bezahlt (kostenlos: nur "Bereit"). */
