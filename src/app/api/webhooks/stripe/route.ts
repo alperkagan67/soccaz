@@ -1,13 +1,17 @@
 import { verifyStripeSignature } from "@/lib/stripe-signature";
-import { completePayment, failPayment } from "@/server/payments";
+import { audit } from "@/server/audit";
 
-type StripeEvent = {
-  id: string;
-  type: string;
-  data: { object: Record<string, unknown> };
-};
+type StripeEvent = { id?: string; type?: string; created?: number; data?: { object?: { id?: string; amount_total?: number; currency?: string; payment_status?: string } } };
 
-/** Webhook von Stripe. Die Signatur wird geprüft, die Verbuchung ist idempotent (mehrfache Zustellung ist unschädlich). */
+/** Checkout-Ereignisse, bei denen Geld für eine alte Aufladung angekommen sein kann (SEPA verzögert, Sitzung bis 24 Stunden). */
+const PAID_TYPES = new Set(["checkout.session.completed", "checkout.session.async_payment_succeeded"]);
+
+/**
+ * Alter Webhook (Aufladung per Checkout). 012 M6b: Aufladungen gibt es nicht mehr, es wird nichts mehr gutgeschrieben. Die Signatur bleibt geprüft.
+ * Kommt trotzdem ein BEZAHLTES Checkout-Ereignis (eine vor dem Rollout gestartete Aufladung), schreibt der Endpunkt einen Protokolleintrag OHNE Personendaten
+ * (Ereignis-ID, Betrag, Währung, Zeit), damit Admin 1 manuell auf die Karte erstattet. Quittiert wird immer mit 200, damit Stripe nicht wiederholt.
+ * Betrieb: vor dem Rollout offene Aufladungen abwarten (24 Stunden) und das Stripe-Ziel erst danach abmelden (docs/BETRIEB.md).
+ */
 export async function POST(request: Request) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) return new Response("Webhook nicht konfiguriert", { status: 503 });
@@ -23,28 +27,11 @@ export async function POST(request: Request) {
   }
 
   const object = event.data?.object ?? {};
-  const sessionId = typeof object.id === "string" ? object.id : undefined;
-  const meta = (object.metadata ?? {}) as Record<string, string>;
-  const paymentId = (typeof object.client_reference_id === "string" ? object.client_reference_id : undefined) ?? meta.paymentId;
-  const ref = { paymentId, providerRef: paymentId ? undefined : sessionId };
-
-  switch (event.type) {
-    case "checkout.session.completed":
-      // Bei verzögerten Zahlarten (SEPA) ist die Zahlung hier noch nicht eingegangen
-      if (object.payment_status === "paid") await completePayment(ref);
-      break;
-    case "checkout.session.async_payment_succeeded":
-      await completePayment(ref);
-      break;
-    case "checkout.session.async_payment_failed":
-      await failPayment(ref, "failed", "Zahlung fehlgeschlagen");
-      break;
-    case "checkout.session.expired":
-      await failPayment(ref, "canceled", "Sitzung abgelaufen");
-      break;
-    // charge.dispute.* gehoert seit 012 M4a zum Kartenwebhook (/api/stripe/webhook). Dieses Ereignis dort abmelden und hier NICHT mehr abonnieren (sonst doppelte Meldung).
-    default:
-      break; // andere Ereignisse sind uns egal
+  const paid = event.type === "checkout.session.completed" ? object.payment_status === "paid" : event.type === "checkout.session.async_payment_succeeded";
+  if (event.type && PAID_TYPES.has(event.type) && paid) {
+    await audit(null, "payment.legacy_topup_paid", "stripe_event", String(event.id ?? "unbekannt"), {
+      after: { amountCents: typeof object.amount_total === "number" ? object.amount_total : null, currency: object.currency ?? null, at: new Date().toISOString(), note: "Aufladung nicht gutgeschrieben (012 M6b): manuell erstatten" },
+    });
   }
   return Response.json({ received: true });
 }

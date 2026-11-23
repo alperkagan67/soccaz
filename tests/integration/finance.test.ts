@@ -1,30 +1,36 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
 import { creditWallet, walletBalance } from "@/server/ledger";
-import { payShare, setReady } from "@/server/lobby";
+import { setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
 import { recordExpense } from "@/server/booking";
 import { exportLedgerCsv, getAlerts, listMatchFinance, manualRefund, matchEntries, monthPeriod, overview, playerFinance } from "@/server/finance";
-import { settleMatch } from "@/server/wallet";
-import { addPlayer, cleanup, makeMatch, reloadMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, reloadMatch, seedShare } from "./helpers";
 
 let base: Awaited<ReturnType<typeof overview>>;
 const wide = { from: new Date("2020-01-01"), to: new Date("2100-01-01") };
 const key = () => `f-${Math.random().toString(36).slice(2)}`;
 const fund = (userId: string, cents: number) => creditWallet(db, userId, { from: "clearing", amountCents: cents, kind: "topup", idempotencyKey: key() });
 
+/**
+ * Abgerechnetes Spiel als Endzustand (012 M6b: die Guthaben-Abrechnung settleMatch ist entfernt): 10 Zahler: Aufladung 20,00, Anteil (Reservierung = Anteil + 2,00) als Zeile wallet -> revenue, 2,00 Rückbuchung,
+ * settled_at und final_share_cents gesetzt. Geprüft wird hier nur das Reporting, das diese Zeilen liest.
+ */
 async function settledMatch(priceCents: number) {
   const m = await makeMatch({ legacy: true, priceCents, costCents: priceCents });
   const players = [m.adminA, m.adminB];
   for (let i = 0; i < 4; i++) players.push(await addPlayer(m.match.id, m.home.id), await addPlayer(m.match.id, m.away.id));
+  const share = Math.floor(priceCents / players.length); // endgültiger Anteil
+  const reserved = share + 200; // wie früher: reserviert wurde mit der Mindestzahl, die Differenz ging bei der Abrechnung zurück
   for (const p of players) {
     await fund(p.id, 2000);
-    await payShare(p.id, m.match.id);
-    await setReady(p.id, m.match.id, true);
+    await seedShare(p.id, m.match.id, share);
+    await db.execute(sql`insert into ledger_entries (debit_account, debit_user_id, credit_account, amount_cents, kind, match_id, idempotency_key, reason) values ('wallet', ${p.id}, 'revenue', ${reserved}, 'match_share', ${m.match.id}, ${key()}, 'Test: Anteil')`);
+    await db.execute(sql`insert into ledger_entries (debit_account, credit_account, credit_user_id, amount_cents, kind, match_id, idempotency_key, reason) values ('revenue', 'wallet', ${p.id}, 200, 'refund', ${m.match.id}, ${key()}, 'Test: Abrechnungsdifferenz')`);
   }
-  await db.transaction(async (tx) => settleMatch(tx, await reloadMatch(m.match.id)));
+  await db.update(matches).set({ settledAt: new Date(), finalShareCents: share }).where(eq(matches.id, m.match.id));
   return { ...m, players };
 }
 
@@ -104,7 +110,7 @@ describe("Finanz-Reporting", () => {
     const c = await makeMatch({ legacy: true });
     const p = c.adminA;
     await fund(p.id, 2000);
-    await payShare(p.id, c.match.id);
+    await seedShare(p.id, c.match.id);
     await setReady(p.id, c.match.id, true);
     await db.update(matches).set({ status: "confirmed", startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, c.match.id));
     const alerts = await getAlerts();

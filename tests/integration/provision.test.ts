@@ -13,10 +13,9 @@ import { setSetting } from "@/server/settings";
 import { recordExpense } from "@/server/booking";
 import { getAlerts, manualRefund } from "@/server/finance";
 import { creditWallet, walletBalance } from "@/server/ledger";
-import { payShare } from "@/server/lobby";
 import { createPrivateGame } from "@/server/privategame";
 import { createVenue } from "@/server/venues";
-import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeUser, seedShare } from "./helpers";
 
 // Vertrag 009 M2 (Entscheide t9: S1 Variante A, P1 kumulierbar, P2/P6 Hallenmiete, P3 Bonus bleibt, P4 ab Einführung, P7 Absage storniert ganz).
 // Die Server-Aktion läuft mit der ECHTEN Sitzungsprüfung; nur die Anmeldung und die Weiterleitung sind ersetzt.
@@ -389,36 +388,6 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     await expect(recordExpense(g.admin.id, { matchId: g.match.id, kind: "other", amountCents: 100 })).resolves.toBeTruthy(); // andere Ausgaben bleiben möglich
   });
 
-  it("Punkt 2: Guthaben-Pfade bleiben auf revenue (Hin UND Zurück), Ausnahme-Erstattung berührt venue_payable nie; Kartenzahler ist nicht ausnahme-erstattbar", async () => {
-    const v = await venue();
-    // Guthaben-Spiel im Provisionsmodell: Zahlung wallet -> revenue, Ausnahme-Erstattung revenue -> wallet
-    const w = await makeMatch({ legacy: true, priceCents: 4000, costCents: 4000, ledgerModel: "commission" });
-    await db.update(matches).set({ venueId: v.id }).where(eq(matches.id, w.match.id));
-    const payer = w.adminA;
-    await db.transaction((tx) => creditWallet(tx, payer.id, { from: "bank", amountCents: 5000, kind: "adjustment", idempotencyKey: nid("fund") }));
-    await setSetting(null, "payments_enabled", true);
-    try {
-      await payShare(payer.id, w.match.id);
-    } finally {
-      await setSetting(null, "payments_enabled", false);
-    }
-    const paid = (await entries(w.match.id)).filter((x) => x.kind === "match_share");
-    expect(paid.length).toBeGreaterThan(0);
-    expect(paid.every((x) => x.debitAccount === "wallet" && x.creditAccount === "revenue")).toBe(true);
-    const before = await walletBalance(db, payer.id);
-    await manualRefund(w.adminB.id, w.match.id, payer.id, 100, "Test-Erstattung");
-    expect(await walletBalance(db, payer.id)).toBe(before + 100);
-    const ref = (await entries(w.match.id)).filter((x) => x.kind === "refund");
-    expect(ref).toMatchObject([{ debitAccount: "revenue", creditAccount: "wallet", amountCents: 100 }]);
-    expect((await entries(w.match.id)).some((x) => x.creditAccount === "venue_payable" || x.debitAccount === "venue_payable")).toBe(false);
-    expect((await trialBalance()).balanced).toBe(true);
-
-    // Kartenzahler: kein Guthaben-Eintrag, also netto 0: die Ausnahme-Erstattung ist abgelehnt und kann nie aus revenue/venue_payable ins Guthaben buchen
-    const g = await game(v.id);
-    await runCharges(g.match.id);
-    await expect(manualRefund(g.admin.id, g.match.id, g.adminA.id, 100, "Test")).rejects.toThrow(/höchstens 0,00/);
-  });
-
   it("Punkt 3 (C4): matches.ledger_model ist unveränderlich; nur die Wartungsausnahme darf es ändern", async () => {
     const v = await venue();
     const m = await commissionMatch(v.id);
@@ -458,35 +427,6 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
 
   // Übergangsregel bis M6a (Guthaben-Spiele laufen aus): Zahlt ein Spieler per Guthaben, hat er keine Karte; die Abbuchung (Phase A, cards_missing) belastet dann KEINE Karte (Alles-oder-nichts, AC-4),
   // das Spiel gilt nie als gebucht (settledAt bleibt leer, ABSICHT, kein Testaufbau-Fehler) und bekommt keine Provision. Es liegt also nichts auf venue_payable.
-  it("Mischspiel (ein Spieler zahlt per Guthaben, die anderen per Karte): das Spiel wird NIE abgerechnet, also keine Provision und kein Bonus; der Guthaben-Anteil liegt auf revenue, es wird keine Karte belastet (cards_missing)", async () => {
-    const v = await venue({ bonus: true });
-    const g = await game(v.id);
-    const walletPayer = g.adminB;
-    // dieser Spieler hat per Guthaben bezahlt (wallet -> revenue) und hat keine Karte
-    await db.update(matchParticipants).set({ cardStatus: "none" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, walletPayer.id)));
-    await db.transaction(async (tx) => {
-      await creditWallet(tx, walletPayer.id, { from: "bank", amountCents: 3000, kind: "adjustment", idempotencyKey: nid("fund") });
-      await post(tx, { debit: { account: "wallet", userId: walletPayer.id }, credit: { account: "revenue" }, amountCents: 1000, kind: "match_share", matchId: g.match.id, idempotencyKey: nid("walletshare") });
-    });
-    await runCharges(g.match.id);
-    const [m] = await db.select().from(matches).where(eq(matches.id, g.match.id));
-    expect(m.settledAt).toBeNull();
-    const e = await entries(g.match.id);
-    expect(e.some((x) => x.kind === "commission" || x.kind === "commission_bonus")).toBe(false);
-    expect(await db.select().from(matchCommissions).where(eq(matchCommissions.matchId, g.match.id))).toHaveLength(0);
-    // Grund: Phase A der Abbuchung (cards_missing) belastet gar keine Karte, solange ein eingeteilter Spieler weder eine Karte noch einen Übernehmer hat (Alles-oder-nichts, AC-4)
-    expect(await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id))).toHaveLength(0);
-    expect(e.some((x) => x.creditAccount === "venue_payable" || x.debitAccount === "venue_payable")).toBe(false);
-    expect(e.filter((x) => x.creditAccount === "revenue")).toHaveLength(1); // nur der Guthaben-Anteil
-    // Gegenprobe (keine leere Behauptung): ohne den Guthabenzahler, mit Karte für alle, läuft derselbe Aufbau über venue_payable und bucht die Provision
-    const ok = await game(v.id);
-    await runCharges(ok.match.id);
-    const okEntries = await entries(ok.match.id);
-    expect(okEntries.filter((x) => x.creditAccount === "venue_payable" && x.kind === "match_share").length).toBeGreaterThan(0);
-    expect(okEntries.some((x) => x.kind === "commission")).toBe(true);
-    expect((await trialBalance()).balanced).toBe(true);
-  });
-
   it("Review A: die Erstattung geht auf das Konto der ORIGINAL-Abbuchung zurück, auch wenn sich Halle/Miete danach ändern", async () => {
     const v = await venue();
     // Abbuchung auf venue_payable, danach fehlt die Halle: Erstattung weiter aus venue_payable

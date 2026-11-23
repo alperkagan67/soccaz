@@ -11,7 +11,7 @@ import { expireVenueInvites } from "./venue-access";
 import { runEvidenceHead } from "./evidence-head";
 import { runCardCharges } from "./payments/charge-trigger";
 import { runRefunds } from "./payments/refund";
-import { cancelUnderfilledLobbies, cleanup, expireOldRequests, expireStalePayments, notifyFinanceAlerts, sendMatchReminders, sendResultReminders, settleDueMatches } from "./scheduled";
+import { cancelUnderfilledLobbies, cleanup, expireOldRequests, expireStalePayments, notifyFinanceAlerts, sendMatchReminders, sendResultReminders } from "./scheduled";
 
 /** Alle Hintergrundjobs als einfache Funktionen. Zeitplaner und Test-Schnittstelle rufen sie über den Namen auf. */
 export const JOBS: Record<string, () => Promise<unknown>> = {
@@ -24,7 +24,6 @@ export const JOBS: Record<string, () => Promise<unknown>> = {
   "expire-requests": () => expireOldRequests(),
   "result-reminders": () => sendResultReminders(),
   cleanup: () => cleanup(),
-  "settle-matches": () => settleDueMatches(),
   "expire-payments": () => expireStalePayments(),
   "booking-agent": () => runBookingAgent(),
   "finance-alerts": () => notifyFinanceAlerts(),
@@ -50,7 +49,6 @@ export const SCHEDULE: Record<string, string> = {
   "result-reminders": "*/15 * * * *",
   "expire-requests": "*/10 * * * *",
   cleanup: "17 3 * * *",
-  "settle-matches": "*/5 * * * *",
   "expire-payments": "*/30 * * * *",
   "booking-agent": "*/5 * * * *",
   "finance-alerts": "5 6 * * *",
