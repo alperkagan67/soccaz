@@ -13,7 +13,9 @@ import { ensureRefundRow } from "./payments/charge";
 import { sendPendingRefunds } from "./payments/refund";
 import { creditWallet, totalWalletLiability, trialBalance } from "./ledger";
 import { notifyUsers } from "./notifications";
-import { paymentsEnabled, tournamentPaymentsActive } from "./settings";
+import { cardPaymentsEnabled, paymentsEnabled, tournamentPaymentsActive } from "./settings";
+import { formatDateTime } from "@/lib/time";
+import { getCardSwitch } from "./payment-switch";
 import { DomainError } from "./teams";
 
 type Row = Record<string, unknown>;
@@ -533,6 +535,11 @@ export async function getAlerts(): Promise<Alert[]> {
         and not exists (select 1 from booking_jobs j where j.match_id = m.id and j.status in ('booked','confirmed','done')) limit 10`),
   );
   for (const m of noJob) alerts.push({ code: `unbooked-hall:${m.id}`, severity: "high", title: `Halle noch nicht gebucht: ${m.home} gegen ${m.away}`, detail: "Das Spiel findet in weniger als 48 Stunden statt.", href: "/admin/buchungen" });
+  // Notabschaltung (Entscheid D): Zahlungen AN, Kartenschalter AUS = pausiert. Der Alarm steht, solange der Zustand besteht (bei Zahlungen AUS ist das Gratis, kein Alarm).
+  if ((await paymentsEnabled()) && !(await cardPaymentsEnabled())) {
+    const sw = await getCardSwitch();
+    alerts.push({ code: "card:switch-off", severity: "high", title: "Kartenzahlung ausgeschaltet (Zahlungen pausiert)", detail: `Neue Bezahlungen sind pausiert, Turniere frieren ein${sw.since ? `, seit ${formatDateTime(sw.since)}` : ""}.`, href: "/admin/einstellungen" });
+  }
   alerts.push(...cardAlertsFrom(await getRefundAlerts()));
   return alerts;
 }

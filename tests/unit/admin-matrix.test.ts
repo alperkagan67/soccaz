@@ -88,6 +88,9 @@ describe("Server-Aktionen mit Wächter", () => {
     expect(src("admin-finance-actions.ts")).toMatch(/export async function approveVenueAction[\s\S]{0,300}guarded\("booking", "\/admin\/hallen\/anfragen"/);
     expect(src("admin-finance-actions.ts")).toMatch(/export async function rejectVenueAction[\s\S]{0,300}guarded\("booking", "\/admin\/hallen\/anfragen"/);
   });
+  it("Notschalter Kartenzahlung: nur Admin 1 (Waechter owner, nicht booking/finance)", () => {
+    expect(src("admin-finance-actions.ts")).toMatch(/export async function setCardSwitchAction[\s\S]{0,200}guarded\("owner", "\/admin\/einstellungen"/);
+  });
   it("Rolle vergeben: nur Admin 1 (Wächter owner)", () => {
     expect(src("admin-actions.ts")).toContain('"owner"); // nur Admin 1 vergibt Rollen');
   });
