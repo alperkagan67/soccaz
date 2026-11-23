@@ -143,13 +143,18 @@ test("Einstellungen vor der Hydration: Profil, Konto löschen und Einstellungen 
   const page = await (await browser.newContext()).newPage();
   await newUser(page, "fw2");
   const html = await (await page.context().request.get("/app/einstellungen")).text();
+  // JEDES Formular mit einem solchen Knopf (nicht nur das erste Vorkommen des Knopftextes) muss nativ POST senden
   for (const label of ["Profil speichern", "Konto endgültig löschen", "Speichern"]) {
-    const at = html.indexOf(`>${label}</button>`);
-    expect(at, label).toBeGreaterThan(0);
-    const form = html.slice(html.lastIndexOf("<form", at), html.indexOf("</form>", at));
-    expect(form, label).toMatch(/^<form[^>]*\bmethod="POST"/);
-    expect(form, label).toContain('name="$ACTION_');
-    expect(form, label).not.toContain("javascript:throw");
+    const knopf = `>${label}</button>`;
+    let n = 0;
+    for (let at = html.indexOf(knopf); at >= 0; at = html.indexOf(knopf, at + 1)) {
+      n++;
+      const form = html.slice(html.lastIndexOf("<form", at), html.indexOf("</form>", at));
+      expect(form, label).toMatch(/^<form[^>]*method="POST"/);
+      expect(form, label).toContain('name="$ACTION_');
+      expect(form, label).not.toContain("javascript:throw");
+    }
+    expect(n, `Formular mit Knopf "${label}" gefunden`).toBeGreaterThan(0);
   }
 });
 
