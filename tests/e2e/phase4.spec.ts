@@ -234,12 +234,13 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
   await expect(caps[0].page.getByTestId("final-share")).toContainText("10,00"); // 160 Euro durch 16 Spieler, automatisch
   expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // noch kein Bracket
 
-  // Karten: alle Teams haben ihre Karten (Ampel grün), nichts ist bezahlt, das Bracket bleibt verborgen
+  // Karten: alle Teams haben ihre Karten (Bereit-Block des Captains), nichts ist bezahlt, das Bracket bleibt verborgen
   for (const c of caps) {
     await c.page.reload();
     await c.page.waitForLoadState("networkidle");
     await expect(c.page.getByTestId("bracket-hidden")).toBeVisible();
-    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team }).getByTestId("team-cards-state")).toHaveText("Karten komplett");
+    // Captain-Ansicht (Kartenmodell): alle Karten da => der Bereit-Block mit dem Hinweistext erscheint (team-cards-state sieht nur der Veranstalter)
+    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team }).getByTestId("paid-ready-box")).toContainText("Alle in eurem Team haben eine Karte hinterlegt");
     expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // Karten da, aber noch nicht bereit
   }
   expect(await query("select 1 from payment_charges where tournament_id = $1", [tid]), "vor dem letzten Bereit wird nichts abgebucht").toHaveLength(0);
