@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAX_MAJOR_EXCLUSIVE, MIN_VERSION, nodeVersionMessage, nodeVersionOk, parseNodeVersion } from "../../scripts/lib/node-version.mjs";
@@ -53,8 +54,25 @@ describe("Übereinstimmung der Angaben (eine Quelle für die Grenzen)", () => {
     expect(pkg.scripts.preinstall).toBeUndefined();
     expect(pkg.scripts.postinstall).toBeUndefined();
   });
-  it("Docker und CI erfüllen die Mindestversion (Node 22, jeweils die neueste 22er)", () => {
+  it("Docker und CI erfüllen die Mindestversion (Node 22, jeweils die neueste 22er); jeder setup-node-Eintrag in der CI nennt 22", () => {
     expect(readFileSync(path.join(root, "Dockerfile"), "utf8")).toMatch(/^FROM node:22-alpine AS base$/m);
-    expect(readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8").match(/node-version: 22$/gm)?.length).toBe(3);
+    const versions = [...readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8").matchAll(/^\s*node-version:\s*(\S+)\s*$/gm)].map((m) => m[1]);
+    expect(versions.length).toBeGreaterThanOrEqual(1);
+    for (const v of versions) expect(v).toBe("22");
+  });
+
+  it("engine-strict bricht keine Installation: JEDES nicht optionale Paket im package-lock erlaubt Node 22.13.0 UND eine hohe 22er (fängt künftige Dependabot-Updates); optionale Pakete werden von npm übersprungen", () => {
+    const semver = createRequire(import.meta.url)("semver") as { satisfies: (v: string, range: string) => boolean };
+    const lock = JSON.parse(readFileSync(path.join(root, "package-lock.json"), "utf8")) as { packages: Record<string, { engines?: { node?: string }; optional?: boolean }> };
+    const checked: string[] = [];
+    const verstoesse: string[] = [];
+    for (const [name, pkg] of Object.entries(lock.packages)) {
+      const range = pkg.engines?.node;
+      if (!name || !range || pkg.optional) continue;
+      checked.push(name);
+      for (const v of ["22.13.0", "22.99.0"]) if (!semver.satisfies(v, range)) verstoesse.push(`${name} (${range}) gegen ${v}`);
+    }
+    expect(checked.length).toBeGreaterThan(100); // die Prüfung läuft wirklich über die Pakete
+    expect(verstoesse).toEqual([]);
   });
 });
