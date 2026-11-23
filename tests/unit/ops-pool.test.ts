@@ -99,3 +99,12 @@ describe("Verbindungsaufbau", () => {
     expect(read("src/db/ops.ts")).toContain("connectionTimeoutMillis: OPS_CONNECT_TIMEOUT_MS");
   });
 });
+
+describe("Hinweistexte (Variante b)", () => {
+  it("Kommentar und Produktionswarnung nennen: im SELBEN Release wie A2 setzen, nicht vorher (nie 'vor dem Rechtewechsel')", () => {
+    const ops = read("src/db/ops.ts");
+    expect(ops).toContain("im SELBEN Release wie A2 zu setzen, nicht vorher");
+    expect(ops).toContain("Im SELBEN Release wie der Rechtewechsel (G25-009 A2) setzen, nicht vorher.");
+    expect(ops).not.toMatch(/VOR dem URL-Wechsel zu setzen|Vor dem Rechtewechsel \(G25-009 A2\) setzen/);
+  });
+});

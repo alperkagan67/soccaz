@@ -9,7 +9,7 @@ import { db } from "./index";
 //
 // Env: DATABASE_URL_OPS (Wert wird nie gelesen oder ausgegeben ausser fuer die Verbindung). Fehlt sie, laeuft der Ops-Pfad ueber den Hauptpool (Dev, Test, CI und die Zeit VOR dem Rechtewechsel A2, in der
 // die App-Rolle die Funktionen noch ausfuehren darf; in Produktion mit einer Warnung im Log). Nach dem Rechtewechsel (A2: REVOKE von soccaz_app) scheitert dieser Rueckfall abgesichert: die App-Rolle
-// hat dann kein EXECUTE mehr (fail closed, klare Fehlermeldung, Alarm im Audit), die Variable ist also VOR dem URL-Wechsel zu setzen (BETRIEB, GO-LIVE-AUDIT G25-009).
+// hat dann kein EXECUTE mehr (fail closed, klare Fehlermeldung, Alarm im Audit), die Variable ist also im SELBEN Release wie A2 zu setzen, nicht vorher (sonst 42501 bei den noch invoker-Funktionen; BETRIEB, GO-LIVE-AUDIT G25-009).
 export const OPS_POOL_MAX = 2;
 /** Eine Admin-Aktion wartet nie lange auf einen toten Ops-Pool: Verbindungsaufbau nach 5 Sekunden abbrechen (klarer Fehler statt Haenger). */
 export const OPS_CONNECT_TIMEOUT_MS = 5_000;
@@ -34,7 +34,7 @@ function opsDb(env: Record<string, string | undefined> = process.env): OpsDb | t
   if (c.kind === "main") {
     if (c.warn && !g.opsWarned) {
       g.opsWarned = true;
-      console.warn("DATABASE_URL_OPS fehlt: Beweisprotokoll-Aufrufe laufen ueber den Hauptpool. Vor dem Rechtewechsel (G25-009 A2) setzen.");
+      console.warn("DATABASE_URL_OPS fehlt: Beweisprotokoll-Aufrufe laufen ueber den Hauptpool. Im SELBEN Release wie der Rechtewechsel (G25-009 A2) setzen, nicht vorher.");
     }
     return db;
   }
