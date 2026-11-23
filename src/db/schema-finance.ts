@@ -67,12 +67,14 @@ export const venues = pgTable(
   approvalRequestedAt: timestamp("approval_requested_at", { withTimezone: true }),
   approvalDecidedAt: timestamp("approval_decided_at", { withTimezone: true }),
   approvalDecidedBy: uuid("approval_decided_by").references(() => users.id, { onDelete: "set null" }),
+  courtCount: integer("court_count"), // Anzahl Plaetze (Hallen-Anfrage, 013 v3 AC-25); null = unbekannt (Altbestand, Import). Die Oberflaeche begrenzt auf 1 bis 20, die Datenbank auf 1 bis 50
   approvalReason: text("approval_reason"), // Grund der Ablehnung (3 bis 200 Zeichen), keine Personendaten
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     check("venues_commission_percent_range", sql`${t.commissionPercent} >= 0 and ${t.commissionPercent} <= 100`),
     check("venues_approval_status_chk", sql`${t.approvalStatus} in ('requested', 'approved', 'rejected')`),
+    check("venues_court_count_chk", sql`${t.courtCount} is null or (${t.courtCount} between 1 and 50)`),
     check("venues_requested_inactive_chk", sql`${t.approvalStatus} = 'approved' or ${t.active} = false`), // einzige DB-seitige Absicherung: eine angefragte/abgelehnte Halle kann nicht aktiv sein
   ],
 );

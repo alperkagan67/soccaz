@@ -1,0 +1,2 @@
+ALTER TABLE "venues" ADD COLUMN "court_count" integer;--> statement-breakpoint
+ALTER TABLE "venues" ADD CONSTRAINT "venues_court_count_chk" CHECK ("venues"."court_count" is null or ("venues"."court_count" between 1 and 50));
