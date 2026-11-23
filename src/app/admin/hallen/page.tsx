@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
 import { CITIES } from "@/lib/validation";
 import { formatEuro } from "@/lib/money";
@@ -7,6 +8,7 @@ import { formatDateTime } from "@/lib/time";
 import { listVenueAccess } from "@/server/venue-access";
 import { canUser } from "@/lib/roles";
 import { requirePermission } from "@/server/session";
+import { countVenueRequests } from "@/server/venue-approval";
 import { listPriceRules, listVenues } from "@/server/venues";
 
 export const metadata: Metadata = { title: "Admin: Hallen und Preise" };
@@ -60,11 +62,15 @@ export default async function VenuesPage() {
   const canCommission = canUser(user, "owner"); // Provision je Halle: nur Admin 1 (Vertrag 009 M2); Admin 2 sieht sie nicht
   const canAssign = canUser(user, "owner"); // Betreiber zuordnen nur Admin 1 (Vertrag 011 AC-7); Admin 2 sieht nur, ob einer zugewiesen ist
   const venues = await listVenues();
+  const openRequests = await countVenueRequests();
   const access = new Map((await listVenueAccess({ isOwner: canAssign })).map((a) => [a.venueId, a])); // E-Mail nur für Admin 1 (Entscheid P7), Admin 2 sieht Status und Datum
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Hallen und Preise</h1>
+      <p>
+        <Link href="/admin/hallen/anfragen" className="underline" data-testid="venue-requests-link">Hallen-Anfragen ({openRequests} offen)</Link>
+      </p>
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Standardpreise</h2>
