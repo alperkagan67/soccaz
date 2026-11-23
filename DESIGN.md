@@ -1,21 +1,62 @@
 ---
 name: Soccaz
-description: Richtung E „Trikot“: neutrale Grüngrau-Töne, Orange nur für Marke und Hauptaktion, Teamfarbe als Identität, Status mit Symbol und Wort. Hell und Dunkel folgen dem System.
+description: Richtung F „Spielerkarte“ (ENTWURF, Vertrag 013 Version 3, G1 2026-11-23, gilt ab M2c): dunkle Tiefblau-Anthrazit-Grundfläche, EINE Leuchtfarbe (Orange) für Hauptaktion und Glow, Teamfarbe als zweite Akzentfarbe, Stufen Kreide bis Legende, ruhige Bewegung nur mit transform und opacity. Hell ohne Glow. Bis M2c gelten die Werte aus src/app/globals.css (Richtung E, Abschnitt unten).
+status: entwurf
 colors:
-  bg: "#0f1914"
-  panel: "#1b2a23"
-  panel-2: "#24362d"
-  line: "#3a5043"
-  ink: "#eef4f0"
-  muted: "#a3b5ab"
-  rim: "#cfe0d6"
+  bg: "#0a0f1c"
+  panel: "#121a2c"
+  panel-2: "#1b2640"
+  line: "#31405f"
+  ink: "#f2f6fc"
+  muted: "#a8b4cc"
+  rim: "#cdd8ec"
   accent: "#ff6a1f"
   accent-ink: "#1d0a00"
+  accent-fg: "#ff6a1f"
+  focus: "#9ecbff"
   ok: "#4ade80"
   warn: "#facc15"
   danger: "#ff8a8a"
   info: "#6cb2ff"
-  focus: "#9ecbff"
+  tier-ink: "#0a0f1c"
+  tier-kreide: "#cfd6e4"
+  tier-rasen: "#4fd08a"
+  tier-flutlicht: "#ffe27a"
+  tier-pokal: "#f0b429"
+  tier-legende: "#b794ff"
+colors-light:
+  bg: "#e4e9f2"
+  panel: "#f4f6fb"
+  panel-2: "#e9edf6"
+  line: "#b8c2d6"
+  ink: "#101828"
+  muted: "#4a566d"
+  rim: "#101828"
+  accent: "#c2410c"
+  accent-ink: "#ffffff"
+  accent-fg: "#b23a0a"
+  focus: "#1a44bd"
+  ok: "#0f5f2c"
+  warn: "#704800"
+  danger: "#a51d12"
+  info: "#1a44bd"
+tiers:
+  kreide: 0
+  rasen: 55
+  flutlicht: 70
+  pokal: 80
+  legende: 90
+glow:
+  color: "accent"
+  alpha-low: 0.12
+  alpha-high: 0.32
+  light: "none"
+motion:
+  dur-fast: 120
+  dur-base: 200
+  dur-reveal: 600
+  dur-reduced: 120
+  ease-out: "cubic-bezier(0.22, 1, 0.36, 1)"
 typography:
   display:
     fontFamily: "Outfit, Plus Jakarta Sans, sans-serif"
@@ -25,16 +66,14 @@ typography:
     fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
     fontWeight: 400
     fontSize: "1rem"
-  label:
-    fontFamily: "Plus Jakarta Sans, system-ui, sans-serif"
-    fontSize: "0.875rem"
-    fontWeight: 400
 rounded:
   field: "10px"
-  card: "12px"
+  card: "16px"
 spacing:
   card: "1rem"
   touch: "44px"
+  block-mobile: "16px"
+  block-desktop: "24px"
 components:
   button-primary:
     backgroundColor: "{colors.accent}"
@@ -55,13 +94,91 @@ components:
 
 # Design System: Soccaz
 
-> Verbindlich seit Vertrag 007 (Richtung E „Trikot“), erweitert in Vertrag 013 M2-1 (Typo-Skala, Status, Fokus, Abstände). Quelle der Werte ist `src/app/globals.css`; Kontrast und Übereinstimmung prüfen `tests/unit/contrast.test.ts` und `tests/unit/accent.test.ts`. Der Frontmatter zeigt die dunklen Werte.
+> **Richtung F „Spielerkarte“ ist der Entwurf der Tokens (Vertrag 013 Version 3, G1 2026-11-23).** Sie wird mit M2c in `src/app/globals.css` umgesetzt; bis dahin gelten die Werte der Richtung E (Abschnitt „Bestand bis M2c“ unten, Quelle `src/app/globals.css`). Der Frontmatter oben zeigt den Entwurf F; ihn prüft `tests/unit/design-tokens.test.ts` (Pflicht-Tokens, Kontrast, Stufen, Bewegung). Nach M2c entfallen die E-Reste (AC-16).
 
-## Verbindliche Richtung: E „Trikot“ (Nutzerentscheid 2026-11-10, Vertrag 007)
+## Richtung F „Spielerkarte“ (ENTWURF)
+
+### Grundsätze (013 Version 3, Abschnitt 3)
+
+- **Dunkle Grundfläche** (Anthrazit/Tiefblau) mit Leucht-Effekten; **Hell** folgt der Systemeinstellung als ruhige Variante derselben Karten: **kein Glow**, dafür Rand und Schatten.
+- **Zwei Akzentfarben je Ansicht, nicht mehr:** die **Leuchtfarbe** (Orange, zugleich Hauptaktion und Glow) und die **Teamfarbe**. Die Stufenfarben (unten) färben nur den Chip der Karte, zählen nicht als Akzentfarbe der Ansicht und stehen immer auch als Wort da.
+- **Inhalt vor Rahmen** (Anmutung ruhig, großzügig): wenige Linien und Kästen, Typografie trägt die Hierarchie, höchstens **eine Hauptaktion** und **vier Schriftgrößen** je Ansicht, Mindestabstand zwischen Blöcken 16 px (Handy) und 24 px (Desktop), keine doppelten Rahmen, keine Banner-Optik (AC-30).
+- **Zustand bleibt Form plus Wort** (Status-Tokens und Navigation aus Richtung E gelten weiter).
+- **Eigenständig** gegenüber den Vorbildern (AC-29): eigene Kartensilhouette, eigene Stufennamen, eigene Farbwelt; keine Namen, Logos, Schriften, Kartenvorlagen oder Screenshots der Vorbilder im Repo.
+
+### Flächen und Schrift (gemessen, WCAG 2.x; geprüft von `design-tokens.test.ts`)
+
+| Rolle | Dunkel | Hell |
+|---|---|---|
+| Grund (`bg`) | `#0a0f1c` | `#e4e9f2` |
+| Fläche (`panel`) | `#121a2c` | `#f4f6fb` |
+| Fläche 2 (`panel-2`, Feldgrund) | `#1b2640` | `#e9edf6` |
+| Tinte (`ink`) | `#f2f6fc` | `#101828` |
+| Gedämpft (`muted`) | `#a8b4cc` | `#4a566d` |
+| Rahmen/Feldlinie (`rim`) | `#cdd8ec` | `#101828` |
+| Linie (`line`, nur Trennlinie, kein Bedienrahmen) | `#31405f` | `#b8c2d6` |
+| Leuchtfarbe (`accent`) / Schrift darauf (`accent-ink`) | `#ff6a1f` / `#1d0a00` | `#c2410c` / `#ffffff` |
+| Leuchtfarbe als Schrift/Strich (`accent-fg`) | `#ff6a1f` | `#b23a0a` |
+| Fokusring (`focus`) | `#9ecbff` | `#1a44bd` |
+
+Gemessen Dunkel: Tinte auf Fläche 16,0:1, gedämpft auf Fläche 8,3:1, Leuchtfarbe mit Schrift 6,7:1, Leuchtfarbe gegen Fläche 6,1:1, Fokus gegen Fläche 10,3:1. Hell: Tinte auf Fläche 16,4:1, gedämpft 6,8:1, `accent-fg` auf Fläche 5,6:1, Leuchtfarbe mit weißer Schrift 5,2:1. Die Status-Töne (`ok`, `warn`, `danger`, `info`) behalten ihre Werte und werden auch auf den neuen Flächen mit mindestens 4,5:1 geprüft. Das Messprotokoll für alle neuen Flächen (Glow, Verläufe, Teamfarben, Karten, Rollen, 390 und 1280 px, hell und dunkel) ist AC-27 und liegt VOR M3.
+
+### Leuchtfarbe und Glow
+
+- Es gibt **eine** Leuchtfarbe: Orange (`accent`). Sie steht für die eine nächste Handlung (Hauptknopf), die aktuelle Station und den Glow der Karten.
+- **Glow ist eine statische Fläche** (radialer Verlauf oder Pseudo-Element hinter der Karte), nie ein Schatten: Deckkraft `alpha-low` 0,12 im Ruhezustand, `alpha-high` 0,32 bei Hover, Fokus und Aufdecken. **Nur die Deckkraft wird animiert** (AC-22). Hell: `glow.light = none`, stattdessen Rand (`rim`) und ein ruhiger Schatten.
+- Text auf Glow wird nie unter 4,5:1 gesetzt (AC-27): der Glow liegt hinter einer `panel`-Fläche für den Text oder bleibt unter 0,32.
+
+### Stufen der Spielerkarte
+
+Die Stufe ist ein **Chip** mit Wort und Rahmen (`rim`) in der Stufenfarbe; sie steht nie nur als Farbe da. Alle fünf Chips tragen dunkle Schrift (`tier-ink`).
+
+| Stufe | Wertung ab | Chipfarbe (`tier-*`) | Schrift darauf (`tier-ink`) |
+|---|---|---|---|
+| Kreide | 0 | `#cfd6e4` | `#0a0f1c` |
+| Rasen | 55 | `#4fd08a` | `#0a0f1c` |
+| Flutlicht | 70 | `#ffe27a` | `#0a0f1c` |
+| Pokal | 80 | `#f0b429` | `#0a0f1c` |
+| Legende | 90 | `#b794ff` | `#0a0f1c` |
+
+**Einzige Quelle der Wertungsgrenzen ist `src/lib/rating.ts`** (`RATING_TIERS`): Wertung = `round(50 + (Elo - 1000) / 8)`, begrenzt auf 0 bis 99, Stufen ab 0/55/70/80/90, vorläufig bis nach dem Pilot an echten Elo-Daten. Die Tabelle hier und `tiers` im Frontmatter spiegeln diese Grenzen und werden NICHT eigenständig geändert; `design-tokens.test.ts` prüft Lückenlosigkeit und Reihenfolge und gleicht sie mit `rating.ts` ab, sobald die Datei im Repo liegt. Elo-Grenzen stehen nur dort.
+
+### Karten (`PlayerCard`, `TeamCard`)
+
+- **Eigene Silhouette:** Rechteck mit Radius 16 px und einer diagonalen Kerbe an der oberen rechten Ecke (`clip-path`), **keine** Schild- oder Kartenform eines Vorbilds. Der Fokusring liegt außen am Container (Abstand 2 px), damit die Kerbe ihn nicht abschneidet.
+- **Inhalt (Spielerkarte):** Wertung groß, Position (Kürzel und Wort), Name (nur angemeldete Nutzer), Initialen statt Foto (keine Fotos, keine Uploads), Teamfarbe als schmaler Streifen links, Stufe als Chip. **Gäste** sehen eine neutrale Karte (Initialen und Zahlen, keine Wertung, kein Name), Hallenbetreiber namenfrei (AC-17).
+- **Teamkarte:** Trikotfarbe als Akzent, Wappen-Platzhalter aus Initialen, Teamwertung als Zahl. Text auf der Teamfarbe nach Kontrast (Weiß oder Fast-Schwarz, wie bei den Teamfarben unten).
+- **Listen** (Rangliste, Spielersuche) zeigen einfache Zeilen statt Vollkarten; höchstens **sechs gleichzeitig animierte Karten** (AC-21).
+
+### Bewegung
+
+| Token | Wert | Verwendung |
+|---|---|---|
+| `dur-fast` | 120 ms | Hover, Fokus, Knopfzustand |
+| `dur-base` | 200 ms | Kartenaufbau, Ein-/Ausblenden |
+| `dur-reveal` | 600 ms | Karten-Aufdecken, Aufstieg |
+| `dur-reduced` | 120 ms | `prefers-reduced-motion: reduce`: nur Ein-/Ausblenden, keine Bewegung (unter 150 ms, AC-23) |
+| `ease-out` | `cubic-bezier(0.22, 1, 0.36, 1)` | alle Übergänge |
+
+- **Animiert werden nur `transform` und `opacity`** (AC-22). Nie `width`, `height`, `top`, `left`, `margin`, `box-shadow` oder `filter`. `will-change` nur während der Animation. Keine Animationsbibliothek ohne ADR 0003 (Standard: CSS und Web Animations).
+- Jede Animation endet im selben Zustand wie die statische Darstellung; die Information steht immer auch als Text (alte → neue Wertung, Pfeil, Stufenname).
+- **Aufstiegsfeier einmal je neuem Höchststand** (`shouldCelebrate` in `src/lib/rating.ts`): Merker nur im Browser. Folge, laut Vertrag so gewollt: auf einem neuen Gerät oder nach gelöschtem Speicher gibt es EINMAL eine Feier für die bereits erreichte Stufe (ab Rasen).
+
+### Schrift, Abstände, Radien
+
+- Schriften unverändert: **Outfit** (Überschriften) und **Plus Jakarta Sans** (Text), beide unter der **SIL Open Font License 1.1**, über `next/font/google` eingebunden (AC-29: Lizenznachweis hier, keine Fremdschriften). Höchstens **vier Schriftgrößen** je Ansicht aus der vorhandenen Skala `--fs-*`.
+- Abstände aus der vorhandenen 4er-Skala `--space-*`; Blockabstand mindestens 16 px (Handy) und 24 px (Desktop). Touch-Ziele 44 px bleiben.
+- Radien: Feld 10 px, Karte 16 px.
+
+## Bestand bis M2c: Richtung E „Trikot“ (wird mit M2c ersetzt)
+
+> Dieser Abschnitt beschreibt, was heute in `src/app/globals.css` steht. Neutrale Töne und Orange werden durch Richtung F ersetzt; **Teamfarben, Lobby-Feld, Ausnahmen von AC-14, Status, Fokus und Abstände bleiben** (siehe Vertrag 013 Version 3, Abschnitt 2).
+
+### Verbindliche Richtung: E „Trikot“ (Nutzerentscheid 2026-11-10, Vertrag 007)
 
 Seit Vertrag 007 gilt Richtung E, Vertrag 013 baut sie flächendeckend um. Es gibt keinen Ist-Stand-Teil mehr; was hier steht, gilt. Referenz: `docs/design/richtung-e-trikot.html` (Skizze, dunkel und hell), Kontrastwerte: Tabelle in `docs/design/README.md`, Abschnitt „Teamfarben und Lesbarkeit“.
 
-### Grundsätze
+#### Grundsätze
 
 - **Hell und dunkel folgen der Systemeinstellung** (`prefers-color-scheme`). Es gibt keinen eigenen Umschalter und keinen festen Standard.
 - **Orange ist die einzige Akzentfarbe, und nur für Marke und Hauptaktion.** Sie steht für die eine nächste Handlung und den aktuellen Stand: Hauptknopf, Mittelknopf „Spiel suchen“, aktiver Navigationsstrich, **aktuelle Station** im Weg bis zum Anstoß (Stationsmarker). Alles andere ist neutral (Fläche, Tinte, gedämpft, Linie) oder Teamfarbe.
@@ -69,7 +186,7 @@ Seit Vertrag 007 gilt Richtung E, Vertrag 013 baut sie flächendeckend um. Es gi
 - **Zustand ist immer Form plus Wort.** Ampel: Ring = in der Lobby, Halbfläche = bereit und bezahlt, Haken = bestätigt, gestrichelt = Platz frei. Die Legende nennt das Wort.
 - **Spielnummer** bleibt als Anzeigetafel-Chip (invertiert: Tinte als Grund, Fläche als Schrift) das wiederkehrende Zeichen.
 
-### Neutrale Töne und Orange (Tokens in `src/app/globals.css`, Referenzwerte in `src/lib/color.ts`)
+#### Neutrale Töne und Orange (Tokens in `src/app/globals.css`, Referenzwerte in `src/lib/color.ts`)
 
 | Rolle | Dunkel | Hell |
 |---|---|---|
@@ -84,7 +201,7 @@ Seit Vertrag 007 gilt Richtung E, Vertrag 013 baut sie flächendeckend um. Es gi
 
 Gemessen (WCAG 2.x): Tinte auf Fläche 13,43:1 / 15,30:1, gedämpft auf Fläche 6,96:1 / 6,64:1, Orange mit Schrift 6,69:1 / 5,18:1, Orange gegen Fläche 5,23:1 / 4,71:1. Das helle Orange ist bewusst dunkler als das dunkle, weil `#ff6a1f` auf heller Fläche unter 3:1 fällt.
 
-### Teamfarben
+#### Teamfarben
 
 - Jedes Team wählt **eine Trikotfarbe aus der festen 12er-Palette**: Rot `#c8102e`, Bordeaux `#7a1f3d`, Pink `#e9498c`, Violett `#6a3fb5`, Marine `#14284b`, Blau `#1f4fd1`, Himmelblau `#4fb3e8`, Türkis `#0fb5a6`, Grün `#1e9e4a`, Gelb `#f2c200`, Weiß `#f4f4f2`, Schwarz `#15181c`. Freie Farbwahl gibt es nicht. Orange ist ausgeschlossen, damit die Akzentfarbe einmalig bleibt.
 - **Textfarbe nach Kontrast**: auf jeder Teamfarbe Weiß `#ffffff` oder Fast-Schwarz `#0b1118`, je nachdem, welche das größere Verhältnis ergibt. Alle zwölf erreichen mindestens 4,5:1 (Werte in der Tabelle in `docs/design/README.md`). Auch Spielerzeichen auf der Hälfte (Ring, Halbfläche, Haken) nutzen diese Textfarbe.
@@ -92,11 +209,11 @@ Gemessen (WCAG 2.x): Tinte auf Fläche 13,43:1 / 15,30:1, gedämpft auf Fläche 
 - **Neutraler Rahmen um jede Hälfte** in der Feldlinienfarbe (`rim`): Eine Teamfarbe kann zur Fläche unter 3:1 liegen (Marine auf Dunkel 1,02:1, Gelb auf Hell 1,53:1). Der Rahmen und der Teamname als Text halten die Hälfte lesbar.
 - Teams ohne gewählte Farbe bekommen eine **Standardfarbe aus dem Slug** (stabil, aus der Palette); das Team kann sie jederzeit ändern.
 
-### Lobby-Feld
+#### Lobby-Feld
 
 Zwei Hälften nebeneinander auf neutraler Grundfläche (`fl2`): links Heim, rechts Gast, jede in der Teamfarbe, Mittellinie und Mittelkreis in `rim`. Spieler als Zeichen in der Textfarbe der Hälfte, leere Plätze gestrichelt. Darunter die Teamnamen als Chips in Teamfarbe mit Textfarbe, Elo und Stärke als zweite Zeile. Ab einer Schwelle von Spielern (Privatspiel bis 22) wechselt das Feld in eine Liste mit denselben Zeichen.
 
-### Ausnahmen von AC-14 (Orange einzige Akzentfarbe)
+#### Ausnahmen von AC-14 (Orange einzige Akzentfarbe)
 
 Status-Töne (`--ok`, `--warn`, `--danger`, `--info`, Abschnitt „Status“) sind Zustandsfarben, keine Akzentfarben; sie kommen zu den Ausnahmen unten dazu.
 
@@ -146,7 +263,7 @@ Vier Zustandsfarben, je Dunkel und Hell, jeweils mit `-ink` (Schrift auf voller 
 - **Touch-Ziele mindestens 44 px** (`--tap`), auch für Symbol- und Zeilenknöpfe.
 - Seitenbreiten (`PageShell`, M2-2): schmal 720 px, Standard 1040 px, voll 1280 px.
 
-## Orange-Regel
+## Orange-Regel (Leuchtfarbe)
 
 Orange (`--accent`) steht für die **eine nächste Handlung** (Hauptknopf, Mittelknopf, aktiver Navigationsstrich) und die aktuelle Station im Weg zum Anstoß. Orange als Schrift (`--accent-fg`) ist nur für Marke und Hauptaktion zulässig, nicht für Status, Warnungen oder Fehler. Bestehende Stellen, die Orange als Status nutzen (Verdichtung K09), wechseln in M3 bis M7 mit der jeweiligen Seitengruppe auf die Status-Tokens.
 
