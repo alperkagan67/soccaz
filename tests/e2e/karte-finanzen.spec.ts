@@ -171,6 +171,7 @@ async function scenario(browser: import("@playwright/test").Browser, model: Mode
   expect(body.startsWith("﻿Datum;")).toBe(true);
   expect(body).toContain("match_share");
   if (model === "legacy") {
+    expect(body).toContain("venue_cost"); // die Ausgabe wurde hier gebucht (im Provisionsmodell abgelehnt)
     await adm.goto(`/admin/finanzen/ausgaben?monat=${month}`);
     await expect(adm.getByText("Hallenmiete: Hallenmiete E2E")).toBeVisible();
   }
