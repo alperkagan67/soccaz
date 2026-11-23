@@ -129,7 +129,7 @@ describe("Altspiel: Erstattungen und Absagen BLEIBEN (Fixture ueber seedPaid, Ge
     expect(await revenueOf(m.match.id)).toBe(0);
     expect(await pendingOf(m.match.id)).toHaveLength(0);
     expect((await reloadMatch(m.match.id)).status).toBe("cancelled");
-    await expect(cancelMatch(m.adminA.id, m.match.id, "nochmal")).rejects.toThrow(); // zweite Absage aendert nichts
+    await expect(cancelMatch(m.adminA.id, m.match.id, "nochmal")).rejects.toThrow(/nicht mehr/); // zweite Absage aendert nichts (Spiel ist nicht mehr aktiv)
     for (const p of [a, b, leaver]) expect(await walletBalance(db, p.id)).toBe(2000);
     expect((await trialBalance()).balanced).toBe(true);
   });
@@ -164,7 +164,7 @@ describe("Altspiel: Job-Pfade (Erstattung bleibt) und Alarm", () => {
     await fund(m.adminA.id, 3000);
     await seedPaid(m.match.id, m.adminA.id, 1000);
     await db.update(matches).set({ status: "confirmed", startsAt: new Date(Date.now() - 3_600_000), createdAt: new Date(Date.now() - 100 * 3_600_000) }).where(eq(matches.id, m.match.id));
-    expect(await settleDueMatches()).toBe(0);
+    await settleDueMatches(); // kein globaler Zaehler (Reste fremder Tests): geprueft wird nur dieses Spiel
     expect((await reloadMatch(m.match.id)).settledAt).toBeNull();
     expect((await getAlerts()).some((a) => a.code === `unsettled:${m.match.id}`)).toBe(true);
   });
