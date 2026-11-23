@@ -24,6 +24,7 @@ const props = (v: CardViewer) => JSON.stringify({ data: playerCardFor(v, person,
 
 describe("PlayerCard je Rolle (AC-17), Rohtext des HTML und der Props, nicht nur das sichtbare DOM", () => {
   it("Gast: weder Name noch Wertung noch Stufe noch Position, nur Initialen und Hinweis", () => {
+    for (const key of ["rating", "tier", "position", "name", "elo"]) expect(props(viewers.gast), `Schlüssel ${key}`).not.toContain(`"${key}"`);
     for (const out of [html(viewers.gast), props(viewers.gast)]) {
       for (const verboten of ["Zorro", "Quasimodo", "Angriff", "Pokal", "pokal", "1236", "player-card-rating", "player-card-name", "player-card-tier", "player-card-position", "data-tier", "border-rim px-2.5"]) {
         expect(out, verboten).not.toContain(verboten);
@@ -77,6 +78,10 @@ describe("PlayerCard je Rolle (AC-17), Rohtext des HTML und der Props, nicht nur
       { kind: "x", rating: 80, tier: "pokal", name: "Zorro Quasimodo", position: "Angriff", initials: "ZQ", colorKey: "blue" },
       { kind: "full", name: "Zorro Quasimodo", position: "Angriff", colorKey: "blue" }, // full ohne Wertung und Stufe
       { kind: "full", rating: 80, tier: "gold", name: "Zorro Quasimodo", position: "Angriff", colorKey: "blue" }, // unbekannte Stufe
+      { kind: "full", rating: 80, tier: "constructor", name: "Zorro Quasimodo", position: "Angriff", colorKey: "blue" }, // Prototypkette
+      { kind: "nameless", rating: 80, tier: "__proto__", position: "Angriff", colorKey: "blue" },
+      { kind: "full", rating: Number.NaN, tier: "pokal", name: "Zorro Quasimodo", position: "Angriff", colorKey: "blue" },
+      { kind: "full", rating: Number.POSITIVE_INFINITY, tier: "pokal", name: "Zorro Quasimodo", position: "Angriff", colorKey: "blue" },
     ];
     for (const d of kaputt) {
       const out = renderToStaticMarkup(createElement(PlayerCard, { data: d as never }));

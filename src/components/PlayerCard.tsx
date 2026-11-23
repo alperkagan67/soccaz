@@ -18,7 +18,7 @@ export function PlayerCard({ data: given, className = "" }: { data: PlayerCardDa
   // Fail-closed (Review security): NUR die beiden bekannten Wertungs-Varianten ("full", "nameless") führen in die volle Sicht. Alles andere (fehlendes oder kaputtes Objekt, JSON ohne kind,
   // unbekannte Art) wird wie die neutrale Karte gerendert und liest NUR die Initialen als Text; Wertung, Stufe, Position und Name eines unbekannten Objekts erscheinen nie.
   const data = (given && typeof given === "object" ? given : {}) as Partial<PlayerCardData> & { kind?: string };
-  const known = (data.kind === "full" || data.kind === "nameless") && typeof data.rating === "number" && typeof data.tier === "string" && data.tier in TIER_LABELS;
+  const known = (data.kind === "full" || data.kind === "nameless") && Number.isFinite(data.rating) && typeof data.tier === "string" && Object.hasOwn(TIER_LABELS, data.tier);
   const hex = stripeHex(typeof data.colorKey === "string" ? data.colorKey : "");
   const base = `relative isolate flex min-h-28 w-full max-w-xs items-stretch gap-3 overflow-hidden rounded-2xl border border-line bg-panel p-3 pl-5 text-ink ${className}`;
   const stripe = <span aria-hidden="true" data-testid="player-card-stripe" className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: hex }} />;
