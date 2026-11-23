@@ -243,6 +243,14 @@ Vorschlag: Wer eine Vorbedingungs- oder Schutzfunktion der Zahlung ändert oder 
 
 Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer); Regel-PR (Nutzer mergt).
 
+## 23. Schalterzustand pro Test setzen, nie dateiweit (beforeAll); Rücksetzen im afterEach oder finally auf den Ausgangswert
+
+Anlass: 012 M6b PR 1c-i (#202): `payments.spec` setzte `card_payments_enabled` in `beforeAll` für die ganze Datei auf AN; ein Test des Altmodells lief dadurch im Kartenmodell, dazu kam ein Hydrations-Flake. Folge: drei CI-Runden im Teil 3/5 der Browser-Tests, bis Ursache und Reihenfolge-Abhängigkeit getrennt waren.
+
+Vorschlag: Ein Test, der einen Plattform-Schalter braucht (`payments_enabled`, `card_payments_enabled` u. ä.), setzt ihn im Test selbst (oder in einem `describe`, das nur Tests mit demselben Zustand enthält) und stellt ihn in `afterEach` oder `finally` auf den **Ausgangswert** zurück (nicht pauschal auf AUS, sondern auf das, was vorher galt). Kein Setzen in `beforeAll`/`afterAll` für eine Datei mit gemischten Tests; die Teile der CI verteilen Dateien auf Shards, eine Reihenfolge-Abhängigkeit zwischen Tests derselben Datei oder zweier Dateien gilt als Fehler. Reviewer prüfen je Spec: wer setzt den Schalter, wer stellt ihn zurück, läuft jeder Test im gemeinten Modell (Gegenprobe: Schalter im Test kurz umdrehen, der Test muss rot werden).
+
+Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer, Abschnitt Tests) oder Test-Hinweis in `tests/e2e/`; Regel-PR (Nutzer mergt).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.
