@@ -1,8 +1,9 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, like, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, users } from "@/db/schema";
 import { priceRules, venueAccess, venues } from "@/db/schema-finance";
+import { priceFor } from "@/server/pricing";
 import { approveVenue, rejectVenue, requestVenue, resubmitVenue, REQUESTS_PER_HOUR } from "@/server/venue-approval";
 import { cleanup, makeUser } from "./helpers";
 
@@ -28,6 +29,9 @@ afterAll(async () => {
 beforeEach(() => {
   currentUserId = "";
 });
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 async function operator(tag = "vop") {
   const u = await makeUser(tag);
@@ -45,7 +49,7 @@ function form(over: Record<string, string> = {}): FormData {
 const venueByName = async (nm: string) => (await db.select().from(venues).where(eq(venues.name, nm)))[0];
 const rulesOf = (venueId: string) => db.select().from(priceRules).where(eq(priceRules.venueId, venueId));
 const auditsOf = (venueId: string) => db.select().from(auditLog).where(and(eq(auditLog.entityId, venueId), like(auditLog.action, "venue.%")));
-const berlinToday = () => new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+const utcToday = () => new Date().toISOString().slice(0, 10); // dieselbe Konvention wie addPriceRule und priceFor
 
 describe("requestVenueAction: Sitzung und Eingaben", () => {
   it("ohne Anmeldung: Weiterleitung, nichts geschrieben", async () => {
@@ -93,13 +97,13 @@ describe("requestVenueAction: gueltige Anfrage", () => {
     expect(v).toMatchObject({ approvalStatus: "requested", active: false, courtCount: 3, managerUserId: u.id });
     const rules = (await rulesOf(v.id)).sort((a, b) => a.durationMin - b.durationMin);
     expect(rules.map((x) => [x.durationMin, x.priceCents, x.costCents, x.validFrom])).toEqual([
-      [60, 4000, 4000, berlinToday()],
-      [90, 5500, 5500, berlinToday()],
+      [60, 4000, 4000, utcToday()],
+      [90, 5500, 5500, utcToday()],
     ]);
     expect((await db.select().from(venueAccess).where(eq(venueAccess.venueId, v.id)))[0]).toMatchObject({ userId: u.id, status: "active" });
     const audits = await auditsOf(v.id);
     expect(audits).toHaveLength(1);
-    expect(audits[0].after).toMatchObject({ status: "requested", courts: 3, termsKey: "hallen.onboarding.terms.entwurf", termsVersion: 1 });
+    expect(audits[0].after).toMatchObject({ status: "requested", courts: 3, price60Cents: 4000, price90Cents: 5500, termsKey: "hallen.onboarding.terms.entwurf", termsVersion: 1 }); // Preise: Spur fuer Streit Betreiber/Admin um die Miete (kein Personenbezug)
     const json = JSON.stringify(audits);
     expect(json).not.toContain("geheim.kontakt");
     expect(json).not.toContain("Geheimstrasse");
@@ -189,5 +193,77 @@ describe("Sichtbarkeit unveraendert", () => {
     await approveVenue(admin.id, v.id);
     expect((await venueByName(nm)).active).toBe(true);
     expect(await rulesOf(v.id)).toHaveLength(2);
+  });
+});
+
+describe("Review w2/security (M2d-1 Folge): Preisregeln, Doppelklick, Wiederanfrage", () => {
+  it("validFrom folgt der UTC-Tagesgrenze von priceFor: um 00:30 Berlin (22:30 UTC Vortag) findet priceFor die neue Regel sofort", async () => {
+    const u = await operator();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T22:30:00Z")); // 16.06. 00:30 Berlin
+    const v = await requestVenue(u.id, { name: name("clock"), city: CITY, courts: 2, price60Cents: 4000, price90Cents: 5500, termsKey: "k", termsVersion: 1 });
+    const found = await priceFor(db, v.id, 60, new Date());
+    expect(found).toEqual({ priceCents: 4000, costCents: 4000 });
+    expect((await rulesOf(v.id)).every((r) => r.validFrom === "2026-06-15")).toBe(true);
+  });
+
+  it("nur EIN Preis (60 ODER 90 Minuten): abgewiesen, nichts geschrieben, vorhandene Regeln bleiben bei der Wiederanfrage erhalten", async () => {
+    const u = await operator();
+    const nm = name("einpreis");
+    await expect(requestVenue(u.id, { name: nm, city: CITY, price60Cents: 4000 })).rejects.toThrow(/beide Preise/);
+    expect(await venueByName(nm)).toBeUndefined();
+    const nm2 = name("einpreis2");
+    const v = await requestVenue(u.id, { name: nm2, city: CITY, courts: 2, price60Cents: 4000, price90Cents: 5500 });
+    const admin = await makeUser("vadm", "admin");
+    await rejectVenue(admin.id, v.id, "Preise pruefen");
+    await expect(resubmitVenue(u.id, v.id, { name: nm2, city: CITY, price90Cents: 5000 })).rejects.toThrow(/beide Preise/);
+    expect(await rulesOf(v.id)).toHaveLength(2); // nicht still geloescht
+    expect((await venueByName(nm2)).approvalStatus).toBe("rejected");
+  });
+
+  it("resubmitVenueAction mit einer ungueltigen venueId (kein UUID): 'Halle nicht gefunden', kein Typfehler/500", async () => {
+    await operator();
+    const r = await resubmitVenueAction("kein-uuid", undefined, form());
+    expect(r?.error).toMatch(/nicht gefunden/);
+  });
+
+  it("Wiederanfrage zaehlt gegen die Obergrenze offener Anfragen (nicht 4 offene moeglich)", async () => {
+    const u = await operator();
+    const first = await requestVenue(u.id, { name: name("ob1"), city: CITY });
+    const admin = await makeUser("vadm", "admin");
+    await rejectVenue(admin.id, first.id, "Doppelt angelegt");
+    for (let i = 2; i <= 4; i++) await requestVenue(u.id, { name: name(`ob${i}`), city: CITY }); // 3 offene (ob2..ob4)
+    await expect(resubmitVenue(u.id, first.id, { name: first.name, city: CITY })).rejects.toThrow(/offene Hallen-Anfragen/);
+    expect((await venueByName(first.name)).approvalStatus).toBe("rejected");
+  });
+
+  it("Doppelklick: dieselbe offene Anfrage mit IDENTISCHEN Werten ist ok (dieselbe Halle); mit ABWEICHENDEN Werten Fehlermeldung statt stillem ok", async () => {
+    const u = await operator();
+    const nm = name("dbl");
+    const same = form({ name: nm });
+    expect((await requestVenueAction(undefined, same))?.ok).toBe(true);
+    const first = await venueByName(nm);
+    expect((await requestVenueAction(undefined, form({ name: nm })))?.ok).toBe(true); // identisch (gleiche Standardwerte)
+    expect((await db.select().from(venues).where(eq(venues.name, nm))).length).toBe(1);
+    const differing = await requestVenueAction(undefined, form({ name: nm, courts: "9", price60: "99,00" }));
+    expect(differing?.ok).not.toBe(true);
+    expect(differing?.error).toMatch(/Diese Anfrage liegt schon vor/);
+    expect(await venueByName(nm)).toMatchObject({ id: first.id, courtCount: 3 }); // unveraendert
+    expect((await rulesOf(first.id)).map((r) => r.priceCents).sort()).toEqual([4000, 5500]);
+    void u;
+  });
+
+  it("Wiederanfrage ueberschreibt stumm vorhandene (Admin-)Regeln der abgelehnten Halle: ersetzt, Preise stehen im Audit", async () => {
+    const u = await operator();
+    const nm = name("ueber");
+    const v = await requestVenue(u.id, { name: nm, city: CITY, courts: 2, price60Cents: 4000, price90Cents: 5500, termsKey: "k", termsVersion: 1 });
+    const admin = await makeUser("vadm", "admin");
+    await rejectVenue(admin.id, v.id, "Preise pruefen");
+    await db.insert(priceRules).values({ venueId: v.id, durationMin: 60, priceCents: 9900, costCents: 5000, validFrom: "2020-01-01" }); // Admin-Regel
+    await resubmitVenue(u.id, v.id, { name: nm, city: CITY, courts: 2, price60Cents: 3800, price90Cents: 5200, termsKey: "k", termsVersion: 1 });
+    expect((await rulesOf(v.id)).map((r) => [r.durationMin, r.priceCents]).sort()).toEqual([[60, 3800], [90, 5200]]);
+    const re = (await auditsOf(v.id)).filter((a) => (a.after as { resubmit?: boolean })?.resubmit);
+    expect(re).toHaveLength(1);
+    expect(re[0].after).toMatchObject({ price60Cents: 3800, price90Cents: 5200 });
   });
 });

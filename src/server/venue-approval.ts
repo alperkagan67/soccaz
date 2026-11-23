@@ -29,23 +29,40 @@ async function assertRateLimit(tx: Tx, userId: string): Promise<void> {
   if (r.n >= REQUESTS_PER_HOUR) throw new DomainError("Zu viele Anfragen in kurzer Zeit. Bitte versuche es später noch einmal.");
 }
 
-/** Preisregeln der Halle fuer 60 und 90 Minuten (Preis = Kosten, Marge 0; Admin 1 stellt die Kosten spaeter), ab heute (Berlin). ERSETZT vorhandene Regeln der Halle (Wiederanfrage: kein Verdoppeln). In der Transaktion des Aufrufers. */
-async function replacePriceRules(tx: Tx, venueId: string, x: VenueRequestExtras): Promise<void> {
-  if (x.price60Cents === undefined && x.price90Cents === undefined) return;
-  await tx.delete(priceRules).where(eq(priceRules.venueId, venueId));
-  const validFrom = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
-  const rows = [
-    ...(x.price60Cents !== undefined ? [{ venueId, durationMin: 60, priceCents: x.price60Cents, costCents: x.price60Cents, validFrom }] : []),
-    ...(x.price90Cents !== undefined ? [{ venueId, durationMin: 90, priceCents: x.price90Cents, costCents: x.price90Cents, validFrom }] : []),
-  ];
-  await tx.insert(priceRules).values(rows);
+/** Beide Preise (60 und 90 Minuten) oder keiner: ein einzelner Preis wuerde bei der Wiederanfrage alle vorhandenen Regeln loeschen und nur eine anlegen. */
+function assertPriceExtras(x: VenueRequestExtras): void {
+  if ((x.price60Cents === undefined) !== (x.price90Cents === undefined)) throw new DomainError("Bitte beide Preise angeben (60 und 90 Minuten).");
 }
 
-/** Audit-Inhalt der Anfrage: Status, Plaetze und Bedingungstext (Schluessel/Version); NIE Kontakt, Adresse oder Preise im Klartext. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Preisregeln der Halle fuer 60 und 90 Minuten (Preis = Kosten, Marge 0; Admin 1 stellt die Kosten spaeter), ab heute. Der Tag ist der UTC-Tag, GENAU wie bei addPriceRule und priceFor
+ * (sonst laege die Regel zwischen 00:00 und 01:00/02:00 Berlin "in der Zukunft" und priceFor fuende sie nicht). ERSETZT vorhandene Regeln der Halle (Wiederanfrage: kein Verdoppeln; auch
+ * Regeln, die Admin 1 an einer abgelehnten Halle angelegt hat). In der Transaktion des Aufrufers.
+ */
+async function replacePriceRules(tx: Tx, venueId: string, x: VenueRequestExtras): Promise<void> {
+  if (x.price60Cents === undefined || x.price90Cents === undefined) return;
+  await tx.delete(priceRules).where(eq(priceRules.venueId, venueId));
+  const validFrom = new Date().toISOString().slice(0, 10);
+  await tx.insert(priceRules).values([
+    { venueId, durationMin: 60, priceCents: x.price60Cents, costCents: x.price60Cents, validFrom },
+    { venueId, durationMin: 90, priceCents: x.price90Cents, costCents: x.price90Cents, validFrom },
+  ]);
+}
+
+/** Zaehlt die offenen Anfragen des Nutzers (Zugang ueber die gemeinsame Quelle venue-access-rules). */
+async function openRequestsOf(tx: Tx, userId: string) {
+  const myIds = await venueIdsOf(userId, tx);
+  return myIds.length ? await tx.select().from(venues).where(and(inArray(venues.id, myIds), eq(venues.approvalStatus, "requested"))) : [];
+}
+
+/** Audit-Inhalt der Anfrage: Status, Plaetze, Preise je Termin (Cent) und Bedingungstext (Schluessel/Version); NIE Kontakt oder Adresse. */
 const requestedAudit = (x: VenueRequestExtras, extra: Record<string, unknown> = {}) => ({
   status: "requested",
   ...extra,
   ...(x.courts !== undefined ? { courts: x.courts } : {}),
+  ...(x.price60Cents !== undefined ? { price60Cents: x.price60Cents, price90Cents: x.price90Cents } : {}), // Betreiber-Preise sind kein Personenbezug: Spur fuer einen Streit um die Miete
   ...(x.termsKey ? { termsKey: x.termsKey, termsVersion: x.termsVersion } : {}),
 });
 
@@ -80,6 +97,7 @@ async function notifyAdmins(tx: Tx, title: string, body: string) {
  */
 export async function requestVenue(userId: string, input: VenueInput & VenueRequestExtras) {
   const v = cleanVenueInput(input);
+  assertPriceExtras(input);
   const commission = (await defaultCommissionPercent()).toFixed(2);
   return db.transaction(async (tx) => {
     // Sperre je Nutzer (Advisory-Lock, bis zum Ende der Transaktion): Doppelklick und parallele Anfragen laufen nacheinander, Pruefung und Anlage sind atomar
@@ -88,10 +106,19 @@ export async function requestVenue(userId: string, input: VenueInput & VenueRequ
     if (!u || u.bannedAt) throw new DomainError("Bitte melde dich an.");
     if (isPlatformAdmin(u)) throw new DomainError("Mit einem Admin-Konto kann keine Halle angefragt werden."); // wie inviteVenueManager: ein Admin ist nie Betreiber
     // Eigene offene Anfragen: zwei Abfragen statt einer je Halle (Zugang ueber die gemeinsame Quelle venue-access-rules)
-    const myIds = await venueIdsOf(userId, tx);
-    const mine = myIds.length ? await tx.select().from(venues).where(and(inArray(venues.id, myIds), eq(venues.approvalStatus, "requested"))) : [];
+    const mine = await openRequestsOf(tx, userId);
     const same = mine.find((h) => h.name === v.name && h.city === v.city);
-    if (same) return same; // Doppelklick: dieselbe offene Anfrage desselben Betreibers
+    if (same) {
+      // Doppelklick: dieselbe offene Anfrage desselben Betreibers. Mit IDENTISCHEN Werten ist das ok (dieselbe Halle); mit ABWEICHENDEN Werten KEIN stilles ok (die neuen Angaben wuerden verschluckt).
+      const rules = await tx.select().from(priceRules).where(eq(priceRules.venueId, same.id));
+      const price = (d: number) => rules.find((r) => r.durationMin === d)?.priceCents;
+      const identical =
+        (v.address ?? null) === same.address && (v.contact ?? null) === same.contact && (v.surface ?? null) === same.surface && (v.hasShowers ?? false) === same.hasShowers && (v.hasParking ?? false) === same.hasParking &&
+        (input.courts === undefined || input.courts === same.courtCount) &&
+        (input.price60Cents === undefined || (input.price60Cents === price(60) && input.price90Cents === price(90)));
+      if (!identical) throw new DomainError("Diese Anfrage liegt schon vor, mit anderen Angaben. Bitte warte auf die Entscheidung, bevor du eine geänderte Anfrage sendest.");
+      return same;
+    }
     await assertRateLimit(tx, userId);
     if (mine.length >= MAX_OPEN_REQUESTS) throw new DomainError(`Du hast schon ${MAX_OPEN_REQUESTS} offene Hallen-Anfragen. Bitte warte auf die Entscheidung.`);
     const now = new Date();
@@ -109,13 +136,16 @@ export async function requestVenue(userId: string, input: VenueInput & VenueRequ
 
 /** Erneute Anfrage nach einer Ablehnung (nach Aenderung der Angaben), nur durch den Betreiber der Halle (aktiver Zugang). Die Historie bleibt im audit_log. */
 export async function resubmitVenue(userId: string, venueId: string, input: VenueInput & VenueRequestExtras) {
+  if (!UUID.test(venueId)) throw new DomainError(NOT_FOUND); // keine UUID: wie eine unbekannte Halle (kein Typfehler der Datenbank)
   const v = cleanVenueInput(input);
+  assertPriceExtras(input);
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"venue-request:" + userId}))`); // dieselbe Sperre je Nutzer wie requestVenue (Rate-Limit atomar)
     const [locked] = await tx.select({ id: venues.id, status: venues.approvalStatus }).from(venues).where(eq(venues.id, venueId)).for("update");
     if (!locked || !(await hasVenueAccess(venueId, userId, tx))) throw new DomainError(NOT_FOUND);
     if (locked.status !== "rejected") throw new DomainError("Nur eine abgelehnte Halle kann erneut angefragt werden.");
     await assertRateLimit(tx, userId);
+    if ((await openRequestsOf(tx, userId)).length >= MAX_OPEN_REQUESTS) throw new DomainError(`Du hast schon ${MAX_OPEN_REQUESTS} offene Hallen-Anfragen. Bitte warte auf die Entscheidung.`); // dieselbe Obergrenze wie requestVenue
     const [row] = await tx
       .update(venues)
       .set({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, ...(input.courts !== undefined ? { courtCount: input.courts } : {}), approvalStatus: "requested", active: false, approvalRequestedAt: new Date(), approvalDecidedAt: null, approvalDecidedBy: null, approvalReason: null })
