@@ -227,6 +227,19 @@ describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauc
     expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
   });
 
+  it("Flattern des Notschalters: Frist D in Pause 1, die zweite Pause (aus/an) liegt in der Karenz und enthaelt D nicht: die Karenz von Pause 1 bleibt bis on1 + 2 h", async () => {
+    const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const due = await dueOf(g.match.id);
+    const t = new Date(due.getTime() + 60_000);
+    const on1 = new Date(t.getTime() - 30_000);
+    await pause(on1, new Date(t.getTime() - 2 * 3_600_000)); // Pause 1 ueber die Frist
+    await pause(new Date(on1.getTime() + 40 * MIN), new Date(on1.getTime() + 30 * MIN), true); // Pause 2 (flattern) nach der Frist
+    expect(await closeLobbiesAtDeadline(new Date(on1.getTime() + 45 * MIN))).toBe(0); // innerhalb on1 + 2 h: keine Absage
+    expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(new Date(on1.getTime() + 121 * MIN));
+    expect((await stateOf(g.match.id)).status).toBe("cancelled");
+  });
+
   it("Einschalten WAEHREND des Laufs (zwischen Kandidatenauswahl und Spielsperre): die Entscheidung liest frisch, keine Absage ohne Karenz", async () => {
     const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
     const t = new Date((await dueOf(g.match.id)).getTime() + 60_000);

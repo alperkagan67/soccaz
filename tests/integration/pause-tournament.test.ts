@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { notifications, paymentCharges, paymentProfiles, teamMembers } from "@/db/schema";
@@ -12,6 +12,22 @@ import { resumeUntil } from "@/server/pause-resume";
 import { setSetting } from "@/server/settings";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 import { resumeCycle } from "./pause-helpers";
+
+const staleOnce = vi.hoisted(() => ({ arm: false, used: false }));
+vi.mock("@/server/pause-resume", async (orig) => {
+  const m = await orig<typeof import("@/server/pause-resume")>();
+  return {
+    ...m,
+    resumeUntil: async (...a: Parameters<typeof m.resumeUntil>) => {
+      if (staleOnce.arm) {
+        staleOnce.arm = false;
+        staleOnce.used = true;
+        return null; // veralteter Vorabwert: der Admin hat noch nicht eingeschaltet
+      }
+      return m.resumeUntil(...a);
+    },
+  };
+});
 
 // Turniere in der Pause (Zahlungen AN + Karte AUS): eingefroren, nie wegen der Frist abgesagt (auch wenn der Preis erst in der Pause festgelegt wurde, Snapshot leer); nach dem Wiedereinschalten Karenz
 // fuer Fristen, die in der Pause abliefen (Wiedereinschalten + 2 Stunden, nie ueber den Start hinaus; sonst Absage mit Klartext); Mitteilung nur an die, die noch handeln muessen.
@@ -146,6 +162,30 @@ describe("Turnier-Nachzahlfenster nach der Pause", () => {
     expect((await tOf(t.id)).status).not.toBe("cancelled");
     await cancelTournamentsAfterWindow(new Date(Date.now() + 2 * 3_600_000 + 5 * MIN));
     expect((await tOf(t.id)).status).toBe("cancelled");
+  });
+});
+
+describe("Turnier: Einschalten waehrend des Laufs", () => {
+  it("Nachzahlfenster-Absage: die Karenz wird unter der Turniersperre frisch gelesen (veralteter Vorabwert: keine Absage)", async () => {
+    await clearSwitchAudits();
+    const { t, squads } = await unready();
+    await db.insert(paymentCharges).values({ tournamentId: t.id, userId: squads[0].captain.id, amountCents: 1000, status: "failed", failureCode: "card_declined", graceUntil: new Date(Date.now() - 60_000), idempotencyKey: `charge:t:${t.id}:${squads[0].captain.id}:1:1` });
+    await resumeCycle(new Date(Date.now() - 30_000), new Date(Date.now() - 2 * 3_600_000));
+    staleOnce.arm = true; // die erste Lesung (Kandidatenauswahl) sieht die Pause nicht, die zweite (unter der Sperre) schon
+    expect(await cancelTournamentsAfterWindow()).toBe(0);
+    expect(staleOnce.used).toBe(true);
+    expect((await tOf(t.id)).status).not.toBe("cancelled");
+  });
+
+  it("Frist-Absage: ebenso (veralteter Vorabwert in closeTournamentsAtDeadline)", async () => {
+    await clearSwitchAudits();
+    const { t } = await unready();
+    const due = (await chargeDueAt(db, await tOf(t.id)))!;
+    const now = new Date(T0 + 4.9 * DAY);
+    await resumeCycle(new Date(now.getTime() - 30_000), new Date(due.getTime() - 60 * MIN));
+    staleOnce.arm = true;
+    expect(await closeTournamentsAtDeadline(now)).toBe(0);
+    expect((await tOf(t.id)).status).not.toBe("cancelled");
   });
 });
 

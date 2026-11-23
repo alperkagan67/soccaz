@@ -757,20 +757,20 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
 export async function cancelTournamentsAfterWindow(now: Date = new Date()): Promise<number> {
   if (!(await tournamentPaymentsActive())) return 0; // Schalter AUS: nicht wegen Fenster absagen (Plan 17.2); nach dem Wiedereinschalten laeuft die Pruefung weiter
   const NON_CARD = NON_CARD_CODES;
-  const until = await resumeUntil();
-  const expired = (tx: Pick<Tx, "execute">, id: string | null) =>
+  const preResume = await resumeUntil(); // nur für die Kandidatenauswahl; die Entscheidung liest unter der Turniersperre frisch
+  const expired = (tx: Pick<Tx, "execute">, id: string | null, resume: Awaited<ReturnType<typeof resumeUntil>>) =>
     tx.execute(sql`select distinct t.id from tournaments t join payment_charges c on c.tournament_id = t.id
       where t.status = 'payment' and t.bracket_generated_at is null and t.settled_at is null ${id ? sql`and t.id = ${id}` : sql``}
         and c.status in ('failed', 'requires_action') and c.grace_until is not null and c.failure_code is not null and c.failure_code not in (${sql.join(NON_CARD.map((c) => sql`${c}`), sql`, `)})
-        and ${windowEndSql(sql`c.grace_until`, sql`t.starts_at`, until)} <= ${now}`);
-  const candidates = (await expired(db, null)).rows as { id: string }[];
+        and ${windowEndSql(sql`c.grace_until`, sql`t.starts_at`, resume)} <= ${now}`);
+  const candidates = (await expired(db, null, preResume)).rows as { id: string }[];
   let cancelled = 0;
   for (const c of candidates) {
     try {
       await db.transaction(async (tx) => {
         const t = await lockTournament(tx, c.id);
         if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt) return;
-        if ((await expired(tx, c.id)).rows.length === 0) return; // inzwischen nachgezahlt oder anderer Stand
+        if ((await expired(tx, c.id, await resumeUntil(tx))).rows.length === 0) return; // inzwischen nachgezahlt oder anderer Stand
         await cancelTournamentTx(tx, t, null, () => "Eine Abbuchung ist nicht gelungen und das Nachzahlfenster ist abgelaufen.");
         cancelled += 1;
       });

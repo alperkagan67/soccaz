@@ -56,12 +56,10 @@ describe("Mitteilung nach dem Wiedereinschalten (Spiele)", () => {
     expect(await notesOf(outsider.id)).toHaveLength(0);
   });
 
-  it("Ausschluesse (je ein Spiel): kostenlos, mit Abbuchungszeilen, abrechnungsgebunden (fixierter Anteil), Guthaben im Platz, Altspiel, alle mit Karte: keine Mitteilung", async () => {
+  it("Ausschluesse (je ein Spiel): kostenlos, mit Abbuchungszeilen, Guthaben im Platz, Altspiel, alle mit Karte: keine Mitteilung", async () => {
     const free = await longGame({ priceCents: 0 });
     const charged = await longGame();
     await db.insert(paymentCharges).values({ matchId: charged.match.id, userId: charged.adminA.id, amountCents: 1000, status: "succeeded", idempotencyKey: `charge:${charged.match.id}:${charged.adminA.id}:pn` });
-    const bound = await longGame();
-    await db.update(matches).set({ finalShareCents: 1500 }).where(eq(matches.id, bound.match.id));
     const guthaben = await longGame(); // Platz mit Guthaben (paid_cents > 0, Altmodell): kein Kartenmodell
     await db.update(matchParticipants).set({ paidCents: 800 }).where(and(eq(matchParticipants.matchId, guthaben.match.id), eq(matchParticipants.userId, guthaben.adminA.id)));
     const legacy = await longGame({ legacy: true });
@@ -69,10 +67,18 @@ describe("Mitteilung nach dem Wiedereinschalten (Spiele)", () => {
     await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(eq(matchParticipants.matchId, allCards.match.id));
     await pauseAcross(free.due);
     await notifyResumedGames();
-    for (const g of [free, charged, bound, guthaben, legacy, allCards]) {
+    for (const g of [free, charged, guthaben, legacy, allCards]) {
       expect(await notesOf(g.adminA.id)).toHaveLength(0);
       expect(await notesOf(g.adminB.id)).toHaveLength(0);
     }
+  });
+
+  it("abrechnungsgebunden (Anteil fixiert, noch keine Abbuchungszeilen): die Frist-Regel gilt bei eingeschalteten Zahlungen trotzdem (Karenz), also bekommen die Spieler ohne Karte die Mitteilung", async () => {
+    const g = await longGame();
+    await db.update(matches).set({ finalShareCents: 1500 }).where(eq(matches.id, g.match.id));
+    await pauseAcross(g.due);
+    await notifyResumedGames();
+    expect(await notesOf(g.adminA.id)).toHaveLength(1);
   });
 
   it("Frist nicht in der Pause abgelaufen oder Karenz reicht bis zum Anstoss: keine 'neue Frist'", async () => {
@@ -102,6 +108,16 @@ describe("Mitteilung nach dem Wiedereinschalten (Spiele)", () => {
     // Karenz vorbei: nichts mehr
     const info = (await resumeUntil())!;
     expect(await notifyResumedGames(new Date(info.until.getTime() + 60_000))).toBe(0);
+  });
+
+  it("Flattern des Schalters: eine zweite Pause nach der Frist (D nicht darin) loest keine zweite Mitteilung aus (Marke je Frist, nicht je Einschaltung)", async () => {
+    const g = await longGame();
+    await pauseAcross(g.due);
+    await notifyResumedGames();
+    expect(await notesOf(g.adminA.id)).toHaveLength(1);
+    await resumeCycle(new Date(g.due.getTime() + 40 * 60_000), new Date(g.due.getTime() + 30 * 60_000)); // zweite Pause, D liegt nicht darin
+    await notifyResumedGames();
+    expect(await notesOf(g.adminA.id)).toHaveLength(1);
   });
 
   it("Begrenzung: mit Limit 1 bekommt je Aufruf nur ein Spiel die Mitteilung, der Rest kommt beim naechsten Aufruf (Job)", async () => {
