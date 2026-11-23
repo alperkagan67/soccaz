@@ -42,6 +42,41 @@ describe("Finanz-Reporting", () => {
     a = await settledMatch(8000);
   });
 
+  // Wiederhergestellt auf dem NEUEN Guthabenmodell (Anteil = Preis ÷ Spielerzahl, keine Reservierung/Rueckzahlung): gleiche Pruefungen wie vor a-1, Zahlen angepasst.
+  it("Spiel mit 10 Zahlern: Einnahmen gleich Hallenpreis, mit Hallenkosten Marge 0", async () => {
+    await recordExpense(a.adminA.id, { matchId: a.match.id, kind: "venue", amountCents: 8000, note: "Hallenmiete" });
+    const o = await overview(wide);
+    expect(o.revenueCents - base.revenueCents).toBe(8000);
+    expect(o.venueCostCents - base.venueCostCents).toBe(8000);
+    expect(o.marginCents - base.marginCents).toBe(0);
+    expect(o.topupsCents - base.topupsCents).toBe(20_000);
+    expect(o.refundsCents - base.refundsCents).toBe(0); // neues Modell: jeder zahlt gleich den endgueltigen Anteil, keine Abrechnungsdifferenz
+    expect(o.liabilityCents - base.liabilityCents).toBe(12_000); // 10 x 12,00 EUR Restguthaben (20,00 - 8,00)
+    expect(o.feesCents).toBe(0);
+    expect(o.promoCents).toBe(0);
+  });
+
+  it("Spieleliste zeigt Zahler, Einnahmen, Kosten und Marge", async () => {
+    const rows = (await listMatchFinance(wide)).filter((x) => x.id === a.match.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: a.match.id, payers: 10, revenueCents: 8000, costCents: 8000, marginCents: 0, priceCents: 8000 });
+  });
+
+  it("je Spieler: bezahlt, zurück, netto", async () => {
+    const players = await playerFinance(a.match.id);
+    expect(players).toHaveLength(10);
+    for (const p of players) {
+      expect(p.paidCents).toBe(800);
+      expect(p.refundedCents).toBe(0);
+      expect(p.netCents).toBe(800);
+      expect(p.pendingRefundCents).toBe(0);
+      expect(p.hasPaidNow).toBe(true);
+    }
+    const entries = await matchEntries(a.match.id);
+    expect(entries.filter((e) => e.kind === "match_share")).toHaveLength(10);
+    expect(entries.filter((e) => e.kind === "venue_cost")).toHaveLength(1);
+  });
+
   it("Ausnahme-Erstattung höchstens bis zum netto bezahlten Betrag", async () => {
     const p = a.players[2];
     const before = await walletBalance(db, p.id);
@@ -52,6 +87,26 @@ describe("Finanz-Reporting", () => {
     await expect(manualRefund(a.adminA.id, a.match.id, p.id, 1, "nochmal")).rejects.toThrow(/höchstens 0,00/);
     const pf = (await playerFinance(a.match.id)).find((x) => x.userId === p.id)!;
     expect(pf.netCents).toBe(0);
+  });
+
+  it("Verlustspiel löst einen Alarm aus (Hallenkosten höher als Einnahmen)", async () => {
+    const b = await settledMatch(8000);
+    await recordExpense(b.adminA.id, { matchId: b.match.id, kind: "venue", amountCents: 10_000, note: "Teurere Halle" });
+    await db.update(matches).set({ status: "played", startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, b.match.id));
+    const alerts = await getAlerts();
+    const loss = alerts.find((x) => x.code === `loss:${b.match.id}`);
+    expect(loss?.title).toMatch(/Verlustspiel/);
+    expect(loss?.detail).toContain("-20,00");
+    expect(alerts.some((x) => x.code === "unbalanced")).toBe(false);
+  });
+
+  it("CSV-Export mit Kopfzeile, Dezimalkomma und Excel-tauglichem BOM", async () => {
+    const csv = await exportLedgerCsv(wide);
+    expect(csv.startsWith("\uFEFFDatum;Buchungs-ID;Art;Soll;Haben;Betrag EUR;Spiel;Zahlungs-ID;Nutzer;Grund")).toBe(true);
+    const lines = csv.trim().split("\r\n");
+    expect(lines.length).toBeGreaterThan(20);
+    expect(csv).toMatch(/;8,00;/);
+    expect(csv).toContain("venue_cost");
   });
 
   it("Monatsparser", () => {

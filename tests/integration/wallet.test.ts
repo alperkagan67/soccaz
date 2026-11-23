@@ -48,12 +48,6 @@ describe("Anteil reservieren beim Bereitmachen", () => {
   });
 });
 
-describe("Bestätigung, Buchungsauftrag und Abrechnung", () => {
-});
-
-describe("Abmelden, Entfernen und Absage", () => {
-});
-
 describe("Buchführung insgesamt", () => {
   it("Saldenprobe ausgeglichen, jede Bewegung hat eine Gegenseite", async () => {
     const tb = await trialBalance();
