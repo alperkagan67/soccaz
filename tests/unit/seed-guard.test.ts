@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import { assertSeedAllowed } from "../../scripts/lib/seed-guard";
 
@@ -106,5 +107,47 @@ describe("seed-frontend Schutz: Fälle je Prüfung (Backlog 54)", () => {
   it("lehnt NODE_ENV=production ab, auch bei sonst erlaubter URL", () => {
     rejected("postgres://u:p@localhost:5433/soccav2", "production");
     rejected("postgres://u:p@127.0.0.1:5433/soccaz_w1", "production");
+  });
+});
+
+// Adversarialfälle aus review/seed2 (Wegwerfskript adv.mts): Guard und Treiber (pg-connection-string) müssen dieselbe Adresse sehen.
+const require = createRequire(import.meta.url);
+const { parse } = require("pg-connection-string") as { parse: (u: string) => { host?: string | null; port?: string | null; database?: string | null } };
+const BASE = "postgres://u:p@127.0.0.1:5433/soccaz_w4";
+
+describe("Guard und pg-Treiber lesen dieselbe Adresse (Adversarialfälle)", () => {
+  const rejected = (url: string) => expect(() => assertSeedAllowed({ databaseUrl: url }), url).toThrow(/Abbruch/);
+
+  it("lehnt ab: Query/Fragment, fremde Hosts, Sonderformen", () => {
+    for (const q of ["?host=prod.example.com", "?hostaddr=10.0.0.5", "?port=5432", "?database=produktion", "#x"]) rejected(BASE + q);
+    for (const u of [
+      "postgres://u:p@[::1]:5433/soccaz_w4",
+      "postgres://u:p@0.0.0.0:5433/soccaz_w4",
+      "postgres://u:p@localhost.evil.com:5433/soccaz_w4",
+      "postgres://localhost:5433@prod.example.com/soccaz_w4",
+      "postgres://localhost%40prod.example.com:5433/soccaz_w4",
+      "postgres://u:p@127.0.0.1:5433" + String.fromCharCode(92) + "@prod.example.com/soccaz_w4",
+      "postgres://u:p@127.0.0.1:5433/soccaz_w4%3Fhost=prod.example.com",
+      "postgres://u:p@127.0.0.1:5433,prod.example.com:5433/soccaz_w4",
+      "postgres://u:p@LOCALHOST:5433/soccaz_w4",
+      "postgres://u:p@2130706433:5433/soccaz_w4",
+      "",
+    ]) rejected(u);
+  });
+
+  it("lehnt Leerzeichen und Steuerzeichen ab (WHATWG entfernt sie, pg liest eine andere Adresse)", () => {
+    const TAB = String.fromCharCode(9);
+    const NL = String.fromCharCode(10);
+    for (const u of [" " + BASE, BASE + " ", "postgres://u:p@127.0.0.1" + TAB + ":5433/soccaz_w4", BASE + NL, "post" + NL + "gres://u:p@127.0.0.1:5433/soccaz_w4"]) rejected(u);
+    // Beleg für den Grund: pg liest die URL mit führendem Leerzeichen anders (relative URL)
+    expect(parse(" " + BASE).host).not.toBe("127.0.0.1");
+  });
+
+  it("Parität: Wo der Guard erlaubt, liest pg dieselbe Adresse (Host, Port, Datenbank)", () => {
+    for (const u of [BASE, "POSTGRES://u:p@127.0.0.1:5433/soccaz_w4", "postgres://u:p@127.0.0.1:05433/soccaz_w4", "postgresql://u:p@localhost:5433/soccav2"]) {
+      const g = assertSeedAllowed({ databaseUrl: u });
+      const c = parse(u);
+      expect([c.host, String(c.port), c.database], u).toEqual([g.host, g.port, g.database]);
+    }
   });
 });

@@ -1,10 +1,19 @@
 // Legt zwei Demo-Teams mit je 5 Spielern an, damit man Matchmaking und Veto von Hand ausprobieren kann (nur lokal).
 // Anmeldung im Browser über den Dev-Login mit  demo-a@soccav2.local  bzw.  demo-b@soccav2.local  (beliebiger Name).
 // Aufruf: node --env-file=.env.local scripts/seed-demo.mjs        Aufräumen: node --env-file=.env.local scripts/seed-demo.mjs --clean
+// Braucht zur Laufzeit `tsx` (devDependency, lädt scripts/lib/seed-guard.ts): nach `npm ci`, nicht mit `npm ci --omit=dev` (z. B. nicht im Produktions-Image).
 import pg from "pg";
+import { tsImport } from "tsx/esm/api";
 
-const url = new URL(process.env.DATABASE_URL);
-if (!["127.0.0.1", "localhost"].includes(url.hostname)) throw new Error("Nur gegen eine lokale Datenbank.");
+// Schutz wie bei den anderen Seed-Skripten (scripts/lib/seed-guard.ts, Backlog 56): nur localhost:5433 mit soccav2 oder soccaz_w1 bis soccaz_w4, keine
+// Query-Parameter (?host= würde den Hostnamen umgehen). tsx lädt die TypeScript-Datei, damit es nur EINE Regel gibt (Aufruf bleibt: node scripts/seed-demo.mjs).
+const { assertSeedAllowed } = await tsImport("./lib/seed-guard.ts", import.meta.url);
+try {
+  assertSeedAllowed({ nodeEnv: process.env.NODE_ENV, databaseUrl: process.env.DATABASE_URL });
+} catch (e) {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+}
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 if (process.argv.includes("--clean")) {
