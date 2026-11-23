@@ -238,3 +238,47 @@ export function renderProtocol(list: readonly Evaluated[], meta: ProtocolMeta): 
   out.push("## Alle Messpunkte (zusammengefasst)", "", head, ...groups.map(line), "");
   return out.join("\n");
 }
+
+// ---- Messflächen (R-T348): Rechtecke des Textes, auf sichtbare Bereiche zugeschnitten, und das Pixelbudget je Messpunkt. Reine Funktionen (Rechnung in Node, der Browser sammelt nur).
+export type Rect = { x: number; y: number; w: number; h: number };
+
+/** Schnitt zweier Rechtecke; null, wenn sie sich nicht überlappen. */
+export function intersectRect(a: Rect, b: Rect): Rect | null {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const x2 = Math.min(a.x + a.w, b.x + b.w);
+  const y2 = Math.min(a.y + a.h, b.y + b.h);
+  return x2 > x && y2 > y ? { x, y, w: x2 - x, h: y2 - y } : null;
+}
+
+/**
+ * Schneidet Textrechtecke mit den Clip-Rechtecken der Vorfahren (overflow ungleich visible: `truncate`, `text-overflow: ellipsis`, `line-clamp`, Scrollbereiche): der abgeschnittene Teil des Textes
+ * wird nie gezeichnet, die Pixel dort gehören dem Nachbarn (Chip, Rand). Reste kleiner als `minPx` in Breite oder Höhe werden verworfen (auch 1-px-Elemente wie sr-only).
+ */
+export function clipRects(rects: readonly Rect[], clips: readonly Rect[], minPx = 2): Rect[] {
+  const out: Rect[] = [];
+  for (const r of rects) {
+    let cur: Rect | null = r;
+    for (const c of clips) {
+      cur = cur ? intersectRect(cur, c) : null;
+      if (!cur) break;
+    }
+    if (cur && cur.w >= minPx && cur.h >= minPx) out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * Pixelbudget je Messpunkt: höchstens `max` Pixel insgesamt. Bei vielen Zeilen (mehr als max / minPerRect) werden gleichmäßig verteilte Zeilen ausgewählt (erste und letzte immer dabei),
+ * sonst alle; jede ausgewählte Zeile bekommt gleich viele Pixel, mindestens `minPerRect`, und die Summe überschreitet `max` nie.
+ */
+export function planSamples(rects: readonly Rect[], max: number, minPerRect = 20): { rects: Rect[]; perRect: number } {
+  if (rects.length === 0 || max < minPerRect) return { rects: [], perRect: 0 };
+  const limit = Math.max(1, Math.floor(max / minPerRect));
+  let chosen: Rect[] = [...rects];
+  if (rects.length > limit) {
+    chosen = [];
+    for (let i = 0; i < limit; i++) chosen.push(rects[limit === 1 ? 0 : Math.round((i * (rects.length - 1)) / (limit - 1))]);
+  }
+  return { rects: chosen, perRect: Math.max(minPerRect, Math.floor(max / chosen.length)) };
+}

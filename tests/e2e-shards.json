@@ -1,14 +1,16 @@
 {
   "version": 1,
-  "note": "Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf 5 Shards nach gemessener Laufzeit (CI #155, Lauf 45062105668; Schaetzwert 30 s fuer karte-freigabe und karte-lobby). Pflege: neue Spec-Datei hier eintragen (node scripts/e2e-shards.mjs check meldet fehlende/doppelte Eintraege). halle-onboarding.spec.ts (013 M2d, Shard 1): Schaetzwert ca. 150 s (5 Tests, 2 davon mit axe je Schritt), nach dem ersten CI-Lauf messen und nachtragen. Jobdauer inkl. Setup aus den letzten gruenen Laeufen (#240 und #242): Teil 1 ca. 6 min (inkl. halle-onboarding.spec.ts), Teil 2 8 bis 9, Teil 3 ca. 7 (inkl. admin-hallen-anfragen.spec.ts), Teil 4 8 bis 9, Teil 5 ca. 7. kontrast-390.spec.ts (Shard 1) und kontrast-1280.spec.ts (Shard 3), AC-27 Baseline (Gast und Spieler, 6 Kernseiten, dunkel/hell): Schaetzwert je ca. 3 Minuten bei 12 Seitenmessungen je Spec (6 Kernseiten x dunkel/hell; der volle Umfang waeren 36), nach dem ersten CI-Lauf messen und nachtragen; Umfang als Konstante UMFANG in tests/e2e/kontrast/seiten.ts. Ziel je Shard: hoechstens ca. 10 Minuten (erfuellt). wertung-aufdecken.spec.ts (013 M2c C1) liegt in Shard 4; Laufzeit nach dem ersten CI-Lauf messen. wertung-bewegung.spec.ts (je 1 Seed, ca. 30 s) und performance-animation.spec.ts (CPU-Drosselung, Trace und Video, Schaetzwert ca. 60 s) liegen in Shard 5; Laufzeit nach dem ersten CI-Lauf messen. team-kader-zeilen.spec.ts (013 M2c C3a, 1 Test, ca. 40 s) liegt in Shard 5 (Shard 3 ist mit kontrast-1280 schon bei ca. 10 Minuten); Laufzeit nach dem ersten CI-Lauf messen.",
+  "note": "Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf 5 Shards nach gemessener Laufzeit (CI #155, Lauf 45062105668; Schaetzwert 30 s fuer karte-freigabe und karte-lobby). Pflege: neue Spec-Datei hier eintragen (node scripts/e2e-shards.mjs check meldet fehlende/doppelte Eintraege). halle-onboarding.spec.ts (013 M2d, Shard 1): Schaetzwert ca. 150 s (5 Tests, 2 davon mit axe je Schritt), nach dem ersten CI-Lauf messen und nachtragen. Jobdauer inkl. Setup aus den letzten gruenen Laeufen (#240 und #242): Teil 1 ca. 6 min (inkl. halle-onboarding.spec.ts), Teil 2 8 bis 9, Teil 3 ca. 7 (inkl. admin-hallen-anfragen.spec.ts), Teil 4 8 bis 9, Teil 5 ca. 7. kontrast-390.spec.ts (Shard 1) und kontrast-1280.spec.ts (Shard 3), AC-27 Baseline (Gast und Spieler, 6 Kernseiten, dunkel/hell): Schaetzwert je ca. 3 Minuten bei 12 Seitenmessungen je Spec (6 Kernseiten x dunkel/hell; der volle Umfang waeren 36), nach dem ersten CI-Lauf messen und nachtragen; Umfang als Konstante UMFANG in tests/e2e/kontrast/seiten.ts. NEUVERTEILUNG (nach den gemessenen Testzeiten des CI-Laufs zu #253; Jobdauer = Testzeit + ca. 68 s Setup): Teil 1 8m03 (417 s Tests), Teil 2 10m40 (570 s), Teil 3 9m41 (520 s), Teil 4 8m02 (416 s), Teil 5 10m39 (565 s); verschoben: karte-lobby.spec.ts (71 s) von 2 nach 1, notifications.spec.ts (95 s) von 5 nach 4, uebersicht.spec.ts (33 s) von 3 nach 5; erwartet je ca. 487 bis 511 s Tests, also Jobdauer ca. 9m15 bis 9m40; die tatsaechliche Zeit nach dem ersten Lauf hier nachtragen. Ziel je Shard: hoechstens ca. 10 Minuten (erfuellt). wertung-aufdecken.spec.ts (013 M2c C1) liegt in Shard 4; Laufzeit nach dem ersten CI-Lauf messen. wertung-bewegung.spec.ts (je 1 Seed, ca. 30 s) und performance-animation.spec.ts (CPU-Drosselung, Trace und Video, Schaetzwert ca. 60 s) liegen in Shard 5; Laufzeit nach dem ersten CI-Lauf messen. team-kader-zeilen.spec.ts (013 M2c C3a, 1 Test, ca. 40 s) liegt nach der Neuverteilung in SHARD 1 (488 + 40 = 528 s Tests, Job ca. 9m50; in Shard 5 laege er bei ca. 10m11, in Shard 3 mit kontrast-1280 ebenfalls ueber dem Ziel); Laufzeit nach dem ersten CI-Lauf messen.",
   "shards": {
     "1": [
       "community2.spec.ts",
       "halle-onboarding.spec.ts",
       "karte-freigabe.spec.ts",
+      "karte-lobby.spec.ts",
       "kontrast-390.spec.ts",
       "lobby-gast-kosten.spec.ts",
       "privatspiel.spec.ts",
+      "team-kader-zeilen.spec.ts",
       "turnier-freigabe.spec.ts",
       "ui-confirm.spec.ts",
       "ui-shell.spec.ts"
@@ -17,7 +19,6 @@
       "a11y.spec.ts",
       "basics.spec.ts",
       "karte-finanzen.spec.ts",
-      "karte-lobby.spec.ts",
       "lobby.spec.ts",
       "pwa.spec.ts",
       "ui-buttons.spec.ts"
@@ -32,8 +33,7 @@
       "request.spec.ts",
       "results.spec.ts",
       "team-color.spec.ts",
-      "teamspiel-ablauf.spec.ts",
-      "uebersicht.spec.ts"
+      "teamspiel-ablauf.spec.ts"
     ],
     "4": [
       "admin.spec.ts",
@@ -43,6 +43,7 @@
       "halle.spec.ts",
       "karte-uebernahme-a11y.spec.ts",
       "karte-uebernahme.spec.ts",
+      "notifications.spec.ts",
       "phase4.spec.ts",
       "ui-regeln.spec.ts",
       "ui-status.spec.ts",
@@ -53,12 +54,11 @@
       "halle-formular.spec.ts",
       "karte-privatsphaere.spec.ts",
       "matchmaking.spec.ts",
-      "notifications.spec.ts",
       "performance-animation.spec.ts",
       "team-invite.spec.ts",
-      "team-kader-zeilen.spec.ts",
       "turnier-ablauf.spec.ts",
       "turnier-karte.spec.ts",
+      "uebersicht.spec.ts",
       "ui-form.spec.ts",
       "user-menu.spec.ts",
       "wertung-bewegung.spec.ts"

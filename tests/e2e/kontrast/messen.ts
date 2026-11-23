@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { evaluate, type Evaluated, type RawMeasurement } from "../../../src/lib/contrast-audit";
+import { clipRects, evaluate, planSamples, type Evaluated, type RawMeasurement, type Rect } from "../../../src/lib/contrast-audit";
 
 // AC-27 (Vertrag 013 v3): Browserschicht der Kontrastmessung. Sie sammelt NUR Rohdaten aus dem gerenderten Zustand (getComputedStyle, Pixel); gerechnet und bewertet wird im
 // reinen Kern src/lib/contrast-audit.ts. Regeln aus Review R-T343 (B bis E):
@@ -23,7 +23,10 @@ type Item = {
   layers: string[];
   base: string;
   needPixel: boolean;
-  rect: { x: number; y: number; w: number; h: number };
+  /** Bei Text: die Zeilenrechtecke des TEXTES (Range über die Textknoten), nie das Rechteck des ganzen Elements; sonst das Elementrechteck. */
+  rects: Rect[];
+  /** Clip-Rechtecke (Innenfläche) der Vorfahren mit overflow ungleich visible: der Text wird in Node darauf zugeschnitten (truncate, ellipsis, line-clamp, Scrollbereiche). */
+  clips: Rect[];
   disabled: boolean;
   note?: string;
 };
@@ -100,9 +103,35 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     if (typeof (el as HTMLElement).checkVisibility === "function" && !(el as HTMLElement).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
     return true;
   };
-  const pageRect = (el: Element) => {
+  const pageRect = (el: Element): Rect => {
     const r = el.getBoundingClientRect();
     return { x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height };
+  };
+  /** Rechtecke des Textes selbst (eigene Textknoten des Elements), je Zeile eines: nur dort liegen Glyphen (R-T345/Auswertung AC-27: das Elementrechteck zog fremde Flächen ins Perzentil). */
+  const textRects = (el: Element): Rect[] => {
+    const out: Rect[] = [];
+    for (const node of Array.from(el.childNodes)) {
+      if (node.nodeType !== Node.TEXT_NODE || !(node.nodeValue ?? "").trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of Array.from(range.getClientRects())) {
+        if (r.width < 1 || r.height < 1) continue;
+        out.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height });
+      }
+    }
+    return out;
+  };
+  /** Innenflächen aller Vorfahren (und des Elements selbst), die ihren Inhalt abschneiden (overflow ungleich visible); Inline-Elemente und body/html bleiben außen vor. */
+  const clipsOf = (el: Element): Rect[] => {
+    const out: Rect[] = [];
+    for (let e: Element | null = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      const cs = getComputedStyle(e);
+      if ((cs.overflowX === "visible" && cs.overflowY === "visible") || cs.display === "inline") continue;
+      const r = e.getBoundingClientRect();
+      const h = e as HTMLElement;
+      out.push({ x: r.left + h.clientLeft + window.scrollX, y: r.top + h.clientTop + window.scrollY, w: h.clientWidth, h: h.clientHeight });
+    }
+    return out;
   };
   /** Hintergrundschichten (unten zuerst) und ob ein Bild/Verlauf oder ein überlappendes Element dahinter liegt. */
   function backdrop(el: Element, startAtParent: boolean): { layers: string[]; needPixel: boolean } {
@@ -123,7 +152,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     return { layers: layers.reverse(), needPixel };
   }
   /** Liegt hinter dem Text ein fremdes, gezeichnetes Element (Bild, Video, Canvas, SVG oder Fläche eines Nicht-Vorfahren)? */
-  function overlapped(el: Element, r: { x: number; y: number; w: number; h: number }): boolean {
+  function overlapped(el: Element, r: Rect): boolean {
     const cx = r.x + r.w / 2 - window.scrollX;
     const cy = r.y + r.h / 2 - window.scrollY;
     if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return false; // unterhalb des Fensters: nicht prüfbar, Stapel gilt
@@ -149,7 +178,8 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     try {
       const cs = getComputedStyle(el);
       const fg = toRgba(cs.color);
-      const r = pageRect(el);
+      const rects = textRects(el);
+      if (rects.length === 0) continue; // kein sichtbarer Text im Element selbst
       const b = backdrop(el, false);
       items.push({
         kind: "text",
@@ -160,8 +190,9 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         fg: fg ? withAlpha(fg, effOpacity(el)) : cs.color,
         layers: b.layers,
         base,
-        needPixel: b.needPixel || overlapped(el, r),
-        rect: r,
+        needPixel: b.needPixel || rects.some((rc) => overlapped(el, rc)),
+        rects,
+        clips: clipsOf(el),
         disabled: el.closest("[disabled], [aria-disabled='true']") !== null,
         note: cs.textShadow !== "none" ? "Textschatten vorhanden (nicht eingerechnet)" : undefined,
       });
@@ -177,7 +208,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
       const b = backdrop(el, false);
       const fgValue = toRgba(cs.color);
       const r = pageRect(el);
-      const common = { kind: "text" as const, selector: describe(el), fontSizePx: parseFloat(cs.fontSize), fontWeight: Number(cs.fontWeight) || 400, layers: b.layers, base, needPixel: b.needPixel, rect: r, disabled: el.matches("[disabled]") };
+      const common = { kind: "text" as const, selector: describe(el), fontSizePx: parseFloat(cs.fontSize), fontWeight: Number(cs.fontWeight) || 400, layers: b.layers, base, needPixel: b.needPixel, rects: [r], clips: [] as Rect[], disabled: el.matches("[disabled]") };
       if (fgValue) items.push({ ...common, sample: "Eingabetext", fg: withAlpha(fgValue, effOpacity(el)) });
       const ph = el.getAttribute("placeholder");
       if (ph && ph.trim()) {
@@ -219,7 +250,8 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         layers: ground.layers,
         base,
         needPixel: false,
-        rect: pageRect(el),
+        rects: [pageRect(el)],
+        clips: [],
         disabled: el.matches("[disabled], [aria-disabled='true']"),
         note: ground.needPixel ? "Grund hat Bild/Verlauf: Stapel nur angenähert" : undefined,
       });
@@ -248,7 +280,8 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         layers: ground.layers,
         base,
         needPixel: false,
-        rect: pageRect(el),
+        rects: [pageRect(el)],
+        clips: [],
         disabled: false,
         note: ring ? (w < 2 ? "Ring unter 2 px" : undefined) : "Fokus über box-shadow o. Ä. wird hier nicht erkannt",
       });
@@ -261,7 +294,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
 }
 
 /** Läuft IM Browser: liest aus einem Screenshot (PNG als Base64) je Rechteck ein Raster von höchstens `max` Pixeln. */
-async function samplePixels(args: { b64: string; rects: { x: number; y: number; w: number; h: number }[]; max: number }): Promise<number[][]> {
+async function samplePixels(args: { b64: string; rects: Rect[][]; per: number[] }): Promise<number[][]> {
   const img = new Image();
   img.src = `data:image/png;base64,${args.b64}`;
   await img.decode();
@@ -271,17 +304,21 @@ async function samplePixels(args: { b64: string; rects: { x: number; y: number; 
   const g = cv.getContext("2d", { willReadFrequently: true });
   if (!g) return args.rects.map(() => []);
   g.drawImage(img, 0, 0);
-  return args.rects.map((r) => {
-    const x0 = Math.max(0, Math.floor(r.x));
-    const y0 = Math.max(0, Math.floor(r.y));
-    const w = Math.min(cv.width - x0, Math.ceil(r.w));
-    const h = Math.min(cv.height - y0, Math.ceil(r.h));
-    if (w < 1 || h < 1) return [];
-    const data = g.getImageData(x0, y0, w, h).data;
-    const total = w * h;
-    const step = Math.max(1, Math.ceil(total / args.max));
+  // je Messpunkt und Zeilenrechteck höchstens `per[k]` Pixel (das Budget plant planSamples in Node: Summe nie über dem Höchstwert)
+  return args.rects.map((list, k) => {
     const out: number[] = [];
-    for (let i = 0; i < total; i += step) out.push(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+    const budget = Math.max(1, args.per[k] ?? 1);
+    for (const r of list) {
+      const x0 = Math.max(0, Math.floor(r.x));
+      const y0 = Math.max(0, Math.floor(r.y));
+      const w = Math.min(cv.width - x0, Math.ceil(r.w));
+      const h = Math.min(cv.height - y0, Math.ceil(r.h));
+      if (w < 1 || h < 1) continue;
+      const data = g.getImageData(x0, y0, w, h).data;
+      const total = w * h;
+      const step = Math.max(1, Math.ceil(total / budget));
+      for (let i = 0; i < total; i += step) out.push(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+    }
     return out;
   });
 }
@@ -304,8 +341,12 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         }
       }
     });
-    const { items, errors: inPageErrors } = await page.evaluate(collectInPage, maxFocus);
-    errors.push(...inPageErrors);
+    const collected = await page.evaluate(collectInPage, maxFocus);
+    errors.push(...collected.errors);
+    // Text auf die sichtbaren Bereiche zuschneiden (abgeschnittene Teile von truncate/ellipsis/line-clamp gehören dem Nachbarn); ohne Rest gibt es nichts zu messen
+    const items = collected.items
+      .map((it) => (it.kind === "text" ? { ...it, rects: clipRects(it.rects, it.clips) } : it))
+      .filter((it) => it.rects.length > 0);
     const needIdx = items.map((it, i) => (it.needPixel ? i : -1)).filter((i) => i >= 0);
     let pixelsByIdx = new Map<number, number[]>();
     if (needIdx.length > 0) {
@@ -314,7 +355,8 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         const style = await page.addStyleTag({ content: "*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;caret-color:transparent!important}" });
         const png = await page.screenshot({ fullPage: true, animations: "disabled" });
         await style.evaluate((n) => (n as HTMLElement).remove());
-        const sampled = await page.evaluate(samplePixels, { b64: png.toString("base64"), rects: needIdx.map((i) => items[i].rect), max: MAX_PIXELS });
+        const plans = needIdx.map((i) => planSamples(items[i].rects, MAX_PIXELS));
+        const sampled = await page.evaluate(samplePixels, { b64: png.toString("base64"), rects: plans.map((pl) => pl.rects), per: plans.map((pl) => pl.perRect) });
         pixelsByIdx = new Map(needIdx.map((i, k) => [i, sampled[k]]));
       } catch (e) {
         errors.push(`Pixelmessung fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
