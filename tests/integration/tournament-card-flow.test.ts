@@ -13,7 +13,7 @@ import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runTournamentCharges } from "@/server/payments/tournament-charge";
 import { confirmResult, submitResult } from "@/server/results";
 import { setSetting } from "@/server/settings";
-import { cancelTournament, closeTournamentsAtDeadline, closeWithJoinedTeams, createTournament, decideShootout, getTournament, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "@/server/tournaments";
+import { cancelTournament, closeTournamentsAtDeadline, closeWithJoinedTeams, createTournament, decideShootout, getTournament, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setDrawRandom, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "@/server/tournaments";
 import { takeOverTournamentShare } from "@/server/tournament-card";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
@@ -566,5 +566,51 @@ describe("Turnier im Kartenmodell: Anmeldeschluss, Kader öffnen, Absage und Ers
     expect(await chargesOf(t.id)).toHaveLength(0);
     expect(await refundsOfTournament(t.id)).toHaveLength(0);
     expect((await trialBalance()).balanced).toBe(true);
+  });
+});
+
+// --- Nachtrag R-T319: Auslosung und Freilose ---
+//  - "AC-9: Auslosung zufällig mit injizierter Zufallsquelle" und "Freilose: 5 Teams" (tournament.test.ts) liefen über payAll (Guthaben): Gegenstücke unten.
+//  - "scheitert Turnier 1 NACH dem Eintragen (Rollback) ..." (Job notifyRegistrationDeadlines) nutzt NUR squad(): UNABHÄNGIG vom Guthabenweg, bleibt in tournament.test.ts bestehen.
+describe("Turnier im Kartenmodell: Auslosung und Freilose", () => {
+  it("Gegenstück zu 'AC-9: Auslosung zufällig mit injizierter Zufallsquelle': das Bracket entsteht mit der Abbuchung, die Auslosung folgt der Zufallsquelle (nicht der Anmeldereihenfolge), jedes Team genau einmal", async () => {
+    const o = await organizer();
+    const { t, squads, players } = await cardTournament(o);
+    const [A, B, C, D] = squads.map((s) => s.team.id);
+    await giveCards(players);
+    for (const s of squads) await setPaidReady(s.captain.id, t.id);
+    setDrawRandom(() => 0); // Fisher-Yates mit r = 0: [A,B,C,D] wird zu [B,C,D,A]
+    try {
+      await charge(t.id);
+    } finally {
+      setDrawRandom(null);
+    }
+    const rows = (await bracketRows(t.id)).filter((r) => r.stage === "ko:4").sort((x, y) => x.slot - y.slot);
+    expect(rows.map((r) => [r.teamA, r.teamB])).toEqual([[B, A], [C, D]]); // Anmeldereihenfolge hätte A-D und B-C ergeben
+    expect(new Set(rows.flatMap((r) => [r.teamA, r.teamB])).size).toBe(4);
+    expect(await bracketRows(t.id)).toHaveLength(3);
+    expect((await statusOf(t.id)).bracketGeneratedAt).not.toBeNull();
+  });
+
+  it("Gegenstück zu 'Freilose: 5 Teams ergeben 4 Spiele': Teams mit Freilos spielen erst in der nächsten Runde", async () => {
+    const o = await organizer();
+    const t = await createTournament(o.id, { ...base, venueId: hall, maxTeams: 5 });
+    const squads: Squad[] = [];
+    for (let i = 0; i < 5; i++) squads.push(await squad(t.id, 4)); // 20 Spieler, 8 Euro
+    await giveCards(squads.flatMap((s) => s.players));
+    for (const s of squads) await setPaidReady(s.captain.id, t.id);
+    await charge(t.id);
+    const rows = await bracketRows(t.id);
+    expect(rows).toHaveLength(4); // n - 1 Spiele
+    const first = rows.filter((r) => r.stage === "ko:8");
+    expect(first).toHaveLength(1); // nur ein Spiel in der ersten Runde
+    for (const r of rows.filter((x) => x.matchId)) expect(r.teamA && r.teamB).toBeTruthy();
+    const inFirst = new Set(first.flatMap((r) => [r.teamA, r.teamB]).filter(Boolean));
+    expect(inFirst.size).toBe(2);
+    const semis = rows.filter((r) => r.stage === "ko:4");
+    // die drei Teams mit Freilos stehen schon in der zweiten Runde und haben in der ersten Runde nicht gespielt
+    const freilos = new Set(semis.flatMap((r) => [r.teamA, r.teamB]).filter((x): x is string => Boolean(x) && !inFirst.has(x as string)));
+    expect(freilos.size).toBe(3);
+    expect([...inFirst, ...freilos].sort()).toEqual(squads.map((s) => s.team.id).sort());
   });
 });
