@@ -14,6 +14,10 @@ updates:
     # Playwright vorerst NICHT automatisch (alle Updates): bis Image-Tag und Digest in ci.yml mitgezogen werden, Backlog 182 (Playwright 1.65.1).
       - dependency-name: "@playwright/test"
       - dependency-name: "playwright"
+    # Stripe vorerst NICHT automatisch (alle Versionen und Update-Typen): bis Backlog 183 (Stripe-Bump mit apiVersion-Pin) erledigt ist; ohne gesetzte apiVersion aendert ein SDK-Bump die Standard-API-Version.
+      - dependency-name: "stripe"
+      - dependency-name: "@stripe/stripe-js"
+      - dependency-name: "@stripe/react-stripe-js"
     groups:
       playwright:
         patterns:
