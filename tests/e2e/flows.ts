@@ -42,8 +42,11 @@ export async function acceptChallenge(page: Page) {
  * Keine Wiederholung des Klicks: für Stellen, an denen ein zweiter Klick das Ergebnis verfälschen würde (gleichzeitiger Doppelklick, Erwartung "nicht mehr offen").
  */
 export async function waitHydrated(target: Locator) {
-  await expect(target).toBeVisible();
-  await expect.poll(() => target.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps")))).toBe(true);
+  // 20 s: Kaltstart des Dev-Servers; geprüft wird der Knopf UND sein Formular (bei zeitgeteilter Hydration kann der Knopf vor dem Formular übernommen sein)
+  await expect(target).toBeVisible({ timeout: 20_000 });
+  await expect
+    .poll(() => target.evaluate((el) => [el, el.closest("form")].filter((x): x is Element => x !== null).every((x) => Object.keys(x).some((k) => k.startsWith("__reactProps")))), { timeout: 20_000 })
+    .toBe(true);
 }
 
 export async function clickWhenReady(page: Page, name: string | RegExp) {
