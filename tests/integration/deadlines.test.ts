@@ -20,8 +20,10 @@ import { addPlayer, cleanup, grantVenueAccess, makeMatch, makeTeam, makeUser, re
 
 beforeAll(async () => {
   await setSetting(null, "payments_enabled", true);
+  await setSetting(null, "card_payments_enabled", true); // Kartenmodell: Zahlungen AN + Karte AUS ist die PAUSE (kein Absagen, payments-pause.test.ts); die Fristzeiten gelten im Kartenmodell
 });
 afterAll(async () => {
+  await setSetting(null, "card_payments_enabled", false);
   await setSetting(null, "payments_enabled", false);
   await db.execute(sql`delete from venue_access where venue_id in (select id from venues where name like 'E2E Echtort%')`); // 011 M1: Zugang vor der Halle (Fremdschlüssel restrict)
   await db.delete(venues).where(like(venues.name, "E2E Echtort%"));
