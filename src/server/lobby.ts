@@ -245,7 +245,7 @@ async function evaluateConfirmation(tx: Tx, match: MatchRow, actorId: string) {
     await tx.update(matches).set({ status: next }).where(eq(matches.id, match.id));
     await audit(actorId, "match.status", "match", match.id, { before: { status: current.status }, after: { status: next } }, tx);
     if (next === "confirmed") {
-      if (await paymentsEnabled(tx)) await createBookingJob(tx, match);
+      await createBookingJob(tx, match); // Reservierung der Halle: unabhaengig von Guthaben und von "Zahlungen aus" (Entscheid t2q, 1c-ii)
       await notifyUsers(
         await matchParticipantIds(tx, match.id),
         { type: "match.confirmed", title: "Spiel bestätigt", body: `Das Spiel ${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} findet statt.`, url: `/lobby/${match.id}` },
