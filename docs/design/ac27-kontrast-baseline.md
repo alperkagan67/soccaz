@@ -37,6 +37,21 @@ Die Pixelmessung nimmt das Rechteck des **Elements**, nicht das des Textes. Bei 
 - Nicht gemessen: Videoframes, Text in Bildern, `::before/::after`-Inhalt, Hover-Zustände, Fokus über `box-shadow` (wird als „kein Fokusring“ gemeldet; in diesem Lauf kein solcher Fall).
 
 ## 5. Nächste Schritte
-1. **PR 3 (Messgenauigkeit):** Text-Range statt Elementrechteck, danach Baseline erneut auswerten (Backlog 215).
-2. **M2c (neuer Look):** die Befunde 1 bis 5 in den Tokens und Komponenten beheben (Rand von Bedienelementen, Platzhalter, Akzent auf Tönung, Hero-Scrim), `UMFANG = "voll"`, danach `AUDIT_MODE = "enforce"`.
+1. ~~**PR 3 (Messgenauigkeit):** Text-Range statt Elementrechteck, danach Baseline erneut auswerten~~ erledigt mit #256, Auswertung in Abschnitt 6.
+2. **M2c (neuer Look):** Befunde 1 bis 4 behoben mit #257 (Abschnitt 6); offen: Befund 5 (Hero hell), `UMFANG = "voll"`, danach `AUDIT_MODE = "enforce"` (Backlog 220).
 3. **M3:** AC-27 verbindlich bestanden (alle Seiten, alle Rollen) vor dem Start von M3.
+
+## 6. Neu-Messung nach PR 3 und Kontrast-Tokens (main-Lauf zu `2fd96b1`, 2026-11-23)
+Quelle: CI-Lauf 45252842310 (Push auf `main` nach #256 und #257), Jobs „Teil 1/5“ (390 px) und „Teil 3/5“ (1280 px), gleicher Umfang `baseline` wie in Abschnitt 1.
+
+| Messung | Messpunkte | bestanden | durchgefallen | davor (Abschnitt 1) |
+|---|---|---|---|---|
+| 390 px | 1272 | 1260 | 12 | 49 von 1274 |
+| 1280 px | 1092 | 1091 | 1 | 32 von 1092 |
+
+- **Befunde 1 bis 4 sind weg** (Rand von Bedienelementen, Platzhalter, Akzent auf Tönung, Akzentschrift auf getönter Fläche): keiner der Verstöße betrifft mehr Ränder, Platzhalter oder Orange auf Tönung (Ursache: #257, `--control-line`, `--accent-text`, `accent-fg` dunkel 4,58:1). Messfehler und unlesbare Punkte: 0.
+- **Befund 5 (Hero hell) bleibt:** „Gegner finden. Spielen.“ `#b23a0a` auf Pixelgrund `#a7ada8` 2,19:1 (390 px) und auf `#c2cfbd` 2,65:1 (1280 px) gegen 3:1; die Einleitung (`p.max-w-md.text-muted`) 4,11:1 (390 px, hell) gegen 4,5:1. Klärung der Hero-Fläche: im Hauptzweig gibt es nur das Video mit `opacity-60` und den Verlauf `from-bg via-bg/60 to-transparent`, **keinen** Scrim; der 94-%-/88-%-Scrim aus dem Look-Zweig `feat/m2b-look` (ee2843d) ist in `main` nicht enthalten. Dunkel ist der Hero in Ordnung (3,67:1 und 4,45:1 gegen 3:1).
+- **10 verbleibende Verstöße bei 390 px** (Kartenlinks „Teamspiel“ hell 1,38 bis 1,73; Einleitung der Kacheln `p.flex-1.text-sm` 1,33 dunkel und 1,41 hell; `summary` „Nicht erschienen markieren“ 2,57 dunkel und 3,25 hell): Die gemessenen Verhältnisse passen rechnerisch nicht zu den Tokenfarben (z. B. `#a3b5ab` auf `#0f1a14` wären ca. 8,3:1, `#4a5a51` auf `#dfe6e2` ca. 5,9:1). Das spricht für **Messartefakte der Pixelprobe** (Karten mit mehreren Textkindern, Überlagerung durch Nachbarflächen); bewiesen ist es nicht, weil die Probe nicht als Bild abgelegt wird. Weiter als Rest-Artefakte führen, nicht als Befund (Backlog 220).
+- **Laufzeit:** Kontrast-Specs 149 s (390 px) und 137 s (1280 px) in den Shards 1 und 3; Gesamtjob Teil 1 11m43 (Ursache nicht die Kontrastmessung, sondern die Verteilung: `privatspiel` 224 s, Neuverteilung in `ci/shard-rebalance-2`).
+- **Nachweis der 10 Rest-Punkte (lokal, Worker-Port, nur Kontrast-Specs; Debug-Ablage `KONTRAST_DEBUG_DIR`):** alle zehn sind **Messartefakte**: die feste untere Leiste (`BottomNav`, nur unter 640 px) und die Dev-Anzeige von Next liegen im Ganzseiten-Bild an der Stelle des ersten Bildschirms über dem Text weiter unten (Kachel-Einleitung `p.flex-1`, Label „Teamspiel“ in der Leiste unter dem Badge, `summary` und Hallenname unter dem Knopf „Spiel suchen"; die Proben enthielten Weiß, Schwarz und Orange 255/106/31). Beim Scrollen ist der Text frei. Behoben in der Messung (zwei Bilder: A ohne feste/klebende Leisten für Text außerhalb, B mit Leisten für Text in den Leisten), **keine Ausnahmeliste**. Ergebnis lokal: 390 px nur noch 2 Verstöße, 1280 px 1 Verstoß, alle drei Hero hell (Hero-PR). Backlog 220 entfällt.
+- Modus bleibt `report`; verbindlich (`enforce`) erst, wenn Befund 5 behoben und die Rest-Artefakte geklärt sind.
