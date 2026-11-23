@@ -33,7 +33,7 @@ describe("evaluateGuard", () => {
   it("historische Zeilen (abgerechnete/abgesagte Spiele, beendete Turniere) sind nur Information: Ausgang bleibt erfuellt", () => {
     const f = { ...ZERO, matchPaidHistRows: 4, tournamentPaidHistRows: 2 };
     expect(evaluateGuard(f)).toEqual({ ok: true, lines: [] });
-    expect(historyInfo(f)).toMatch(/4 in abgeschlossenen Spielen, 2 in beendeten Turnieren/);
+    expect(historyInfo(f)).toMatch(/4 in abgerechneten Spielen, 2 in beendeten Turnieren/);
     expect(historyInfo(ZERO)).toBeNull();
   });
 

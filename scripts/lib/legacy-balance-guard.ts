@@ -1,8 +1,9 @@
 // 012 M6b 1c-ii-b, Vorbedingung (Entscheid t2q): Salden-Guard vor dem Löschen des Guthaben-Pfads. NUR LESEN (read only), keine Schreibzugriffe, keine Personendaten in der Ausgabe (nur Zahlen).
 // Geprüft wird, ob im Guthabenmodell noch Geld steht:
 //  1. Guthaben-Salden je Nutzer (Hauptbuch, Konto wallet): Nutzer mit Saldo != 0
-//  2. match_participants.paid_cents > 0 (bezahlte Plätze im Spiel)
-//  3. tournament_players.paid_cents > 0 (bezahlte Plätze im Turnier)
+//  2. match_participants.paid_cents > 0 auf jeder Zeile eines NICHT abgerechneten Spiels (settled_at leer, jeder Status inkl. abgesagt: nicht erstattete Zahlung)
+//  3. tournament_players.paid_cents > 0 in jedem Turnier außer beendet (auch abgesagt)
+//  Info (kein Befund): nur ABGERECHNETE Zeilen (Spiel settled_at gesetzt, Turnier beendet); sie ändern den Ausgang nicht.
 //  4. pending_refunds (offene Erstattungen an ausgefallene Spieler)
 //  5. offene Altspiele mit Guthabenzahlung (Skript close-legacy-games, F2: Trockenlauf muss 0/0 liefern)
 // Ergebnis != 0 => KEINE Löschung, klare Meldung (evaluateGuard). Das Skript scripts/legacy-balance-guard.mjs beendet sich dann mit Code 1.
@@ -12,17 +13,17 @@ import { closeLegacyGames } from "./close-legacy-games";
 export type GuardFindings = {
   walletUsers: number; // Nutzer mit Guthaben-Saldo != 0
   walletNetCents: number; // Summe dieser Salden (vorzeichenbehaftet)
-  matchPaidRows: number; // OFFENE Plaetze (Spiel lobby/confirmed, nicht abgerechnet)
+  matchPaidRows: number; // Plaetze nicht abgerechneter Spiele (settled_at leer, jeder Status inkl. abgesagt)
   matchPaidCents: number;
-  tournamentPaidRows: number; // OFFENE Plaetze (Turnier nicht beendet/abgesagt)
+  tournamentPaidRows: number; // Plaetze von Turnieren ausser beendet (auch abgesagt)
   tournamentPaidCents: number;
   pendingRefundRows: number;
   pendingRefundCents: number;
   walletUnassignedCents: number; // Gesamtsumme aller wallet-Buchungen minus Summe der Nutzersalden (Buchungen ohne Nutzerbezug); muss 0 sein
   paymentsPending: number; // alte Stripe-Aufladungen im Status pending (SEPA kann Tage dauern)
   paymentsUnbooked: number; // erfolgreiche Aufladungen ohne Hauptbucheintrag (Art topup)
-  matchPaidHistRows: number; // nur Info (Ausgang unabhaengig): bezahlte Plaetze abgerechneter/abgesagter Spiele
-  tournamentPaidHistRows: number; // nur Info: bezahlte Plaetze beendeter/abgesagter Turniere
+  matchPaidHistRows: number; // nur Info (Ausgang unabhaengig): bezahlte Plaetze ABGERECHNETER Spiele (settled_at gesetzt)
+  tournamentPaidHistRows: number; // nur Info: bezahlte Plaetze BEENDETER Turniere
   legacyGames: number; // schließbare offene Altspiele mit Guthabenzahlung (F2)
   legacyManual: number; // manuell zu klärende (Abbuchung/Provision/Buchungsauftrag)
 };
@@ -110,9 +111,9 @@ export function evaluateGuard(f: GuardFindings): { ok: boolean; lines: string[] 
   return { ok: lines.length === 0, lines };
 }
 
-/** Nur Information (beeinflusst den Ausgang nicht): historische Zeilen mit paid_cents > 0 in abgerechneten/abgesagten Spielen und beendeten/abgesagten Turnieren (settle laesst paid_cents stehen). */
+/** Nur Information (beeinflusst den Ausgang nicht): ABGERECHNETE Zeilen mit paid_cents > 0 (Spiel: settled_at gesetzt; Turnier: beendet); settle laesst paid_cents stehen. Alles andere ist ein Befund. */
 export function historyInfo(f: GuardFindings): string | null {
-  return f.matchPaidHistRows !== 0 || f.tournamentPaidHistRows !== 0 ? `Info (kein Befund): historische Zeilen mit paid_cents > 0: ${f.matchPaidHistRows} in abgeschlossenen Spielen, ${f.tournamentPaidHistRows} in beendeten Turnieren` : null;
+  return f.matchPaidHistRows !== 0 || f.tournamentPaidHistRows !== 0 ? `Info (kein Befund): historische Zeilen mit paid_cents > 0: ${f.matchPaidHistRows} in abgerechneten Spielen, ${f.tournamentPaidHistRows} in beendeten Turnieren` : null;
 }
 
 export const GUARD_FAIL_MESSAGE = "Salden-Guard NICHT erfüllt: KEINE Löschung des Guthaben-Pfads. Erst klären (Skript close-legacy-games, Erstattung/Auflösung), dann erneut prüfen.";

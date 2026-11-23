@@ -97,8 +97,8 @@ describe("Salden-Guard: offene gegen historische Zeilen, alte Aufladungen (Revie
       await db.update(matches).set({ status, settledAt: settled ? new Date() : null }).where(eq(matches.id, g.match.id));
       return seatsOf(g.match.id);
     };
-    // 1) abgerechnet (played + settled): nur Info
-    const nHist = await mk("played", true);
+    // 1) abgerechnet (played + settled): nur Info; ebenso abgesagt UND abgerechnet (settled_at gesetzt)
+    const nHist = (await mk("played", true)) + (await mk("cancelled", true));
     let f = await readLegacyBalances(pool);
     expect(f.matchPaidRows).toBe(base.matchPaidRows);
     expect(f.matchPaidCents).toBe(base.matchPaidCents);
