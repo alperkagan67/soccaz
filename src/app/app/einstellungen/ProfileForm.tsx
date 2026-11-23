@@ -11,9 +11,9 @@ const POSITIONS = ["Torwart", "Abwehr", "Mittelfeld", "Angriff", "Flexibel"];
 export type GamerProfile = { nickname: string | null; accentColor: string | null; shirtNumber: number | null; favoriteClub: string | null; strongFoot: string | null };
 
 export function ProfileForm({ name, city, position, profilePublic, bio, gamer }: { name: string; city: string | null; position: string | null; profilePublic: boolean; bio: string | null; gamer: GamerProfile }) {
-  const { state, pending, onSubmit } = useFormAction(updateProfileAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(updateProfileAction);
   return (
-    <form onSubmit={onSubmit} className="card space-y-3">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-3">
       <div>
         <label className="label" htmlFor="name">Name</label>
         <input id="name" name="name" defaultValue={name} required minLength={2} maxLength={60} className="field" />
@@ -93,9 +93,9 @@ export function ProfileForm({ name, city, position, profilePublic, bio, gamer }:
 }
 
 export function DeleteAccountForm() {
-  const { state, pending, onSubmit } = useFormAction(deleteAccountAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(deleteAccountAction);
   return (
-    <form onSubmit={onSubmit} className="card space-y-3">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-3">
       <p className="text-sm text-muted">
         Beim Löschen entfernen wir deine persönlichen Daten, Kommentare, Abzeichen und Statistik. Gespielte Spiele und Buchungen bleiben ohne deinen Namen erhalten. Das lässt sich nicht rückgängig machen.
       </p>

@@ -137,6 +137,22 @@ test("Einstellungen: Profil, privates Profil, Profilbild, Datenexport, Konto lö
   await expect(page).toHaveURL(/\/anmelden/);
 });
 
+// Welle 2 (Formulare vor der Hydration, Backlog 224): Profil-, Konto-löschen- und Einstellungsformular enthalten personenbezogene Felder (Name, Geburtsdatum, Spitzname ...). Ein Klick vor der Hydration darf sie nie
+// als GET in Adresse, Server-Log und Referrer legen: das vom Server gelieferte Formular muss `method="POST"` und die Kennung der Server-Aktion tragen (der Browser sendet es dann nativ als POST).
+test("Einstellungen vor der Hydration: Profil, Konto löschen und Einstellungen senden nativ POST, nie GET mit Feldern", async ({ browser }) => {
+  const page = await (await browser.newContext()).newPage();
+  await newUser(page, "fw2");
+  const html = await (await page.context().request.get("/app/einstellungen")).text();
+  for (const label of ["Profil speichern", "Konto endgültig löschen", "Speichern"]) {
+    const at = html.indexOf(`>${label}</button>`);
+    expect(at, label).toBeGreaterThan(0);
+    const form = html.slice(html.lastIndexOf("<form", at), html.indexOf("</form>", at));
+    expect(form, label).toMatch(/^<form[^>]*\bmethod="POST"/);
+    expect(form, label).toContain('name="$ACTION_');
+    expect(form, label).not.toContain("javascript:throw");
+  }
+});
+
 test("Mitspieler gesucht und Spielserie", async ({ browser }) => {
   const poster = await (await browser.newContext()).newPage();
   const captain = await (await browser.newContext()).newPage();

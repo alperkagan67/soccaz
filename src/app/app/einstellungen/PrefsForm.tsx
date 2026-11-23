@@ -6,11 +6,11 @@ import { SubmitButton } from "@/components/FormBits";
 import { useFormAction } from "@/components/useFormAction";
 
 export function PrefsForm({ push, email, disabledTypes }: { push: boolean; email: boolean; disabledTypes: string[] }) {
-  const { state, pending, onSubmit } = useFormAction(savePrefsAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(savePrefsAction);
   const optional = (Object.keys(NOTIFICATION_TYPES) as NotificationType[]).filter((t) => NOTIFICATION_TYPES[t].optional);
 
   return (
-    <form onSubmit={onSubmit} className="card space-y-4">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-4">
       <fieldset className="space-y-2">
         <legend className="font-semibold">Kanäle</legend>
         <label className="flex items-center gap-3"><input type="checkbox" name="push" defaultChecked={push} className="size-5 accent-accent" /> Push-Nachrichten auf meinen Geräten</label>
