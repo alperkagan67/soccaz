@@ -43,6 +43,15 @@ describe("Auswahlschritt Spiel suchen (ohne neue URL, AC-5)", () => {
     expect(s).toContain("Privatspiel anlegen");
     expect(s).toContain("Turniere ansehen");
   });
+  it("die drei Wege haben Überschriften (h3 unter dem h2) und beziehen den Wortlaut aus EINER Quelle (spielarten-texte)", () => {
+    const s = src(SUCHE);
+    for (const k of ["team", "private", "tournament"]) expect(s).toContain(`<h3 className="font-semibold">{SPIELART_TEXT.${k}.title}</h3>`);
+    expect(s).toContain("@/lib/spielarten-texte");
+    const q = src("src/lib/spielarten-texte.ts");
+    expect(q).toContain("Dein Team gegen ein anderes Team. Der Captain öffnet eine Lobby");
+    expect(q).toContain("Für deine Freundesgruppe: nicht öffentlich");
+    expect(src("src/app/einladung/[token]/page.tsx")).not.toContain("in einer Minute");
+  });
   it("die Überschrift enthält weiter 'Offene Lobbys' (basics.spec bindet sie), das Formular behält seine Felder-IDs", () => {
     const s = src(SUCHE);
     expect(s).toContain("Offene Lobbys anderer Teams");

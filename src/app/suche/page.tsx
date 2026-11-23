@@ -4,6 +4,7 @@ import { LiveIndicator } from "@/components/LiveIndicator";
 import { BoardSection } from "@/components/BoardSection";
 import { MyGames } from "@/components/MyGames";
 import { Challenges } from "@/components/Challenges";
+import { SPIELART_TEXT } from "@/lib/spielarten-texte";
 import { CITIES, filterSchema } from "@/lib/validation";
 import { myChallenges } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
@@ -31,18 +32,18 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
         <h2 id="modes-h" className="text-lg font-semibold">Was möchtest du spielen?</h2>
         <ul className="grid gap-4 sm:grid-cols-3">
           <li className="space-y-2" data-testid="search-mode-team">
-            <p className="font-semibold">Teamspiel</p>
-            <p className="text-sm text-muted">Öffne eine Lobby für dein Team oder nimm unten eine offene Lobby an.</p>
+            <h3 className="font-semibold">{SPIELART_TEXT.team.title}</h3>
+            <p className="text-sm text-muted">{SPIELART_TEXT.team.text}</p>
             <Link href="/matchmaking" className="btn btn-primary">Lobby aufmachen</Link>
           </li>
           <li className="space-y-2" data-testid="search-mode-private">
-            <p className="font-semibold">Privatspiel</p>
-            <p className="text-sm text-muted">Nur für deine Freunde, per Einladungslink, ohne Rangliste.</p>
+            <h3 className="font-semibold">{SPIELART_TEXT.private.title}</h3>
+            <p className="text-sm text-muted">{SPIELART_TEXT.private.text}</p>
             <Link href={user ? "/app/privatspiel/neu" : "/anmelden?next=/app/privatspiel/neu"} className="btn btn-ghost">Privatspiel anlegen</Link>
           </li>
           <li className="space-y-2" data-testid="search-mode-tournament">
-            <p className="font-semibold">Turnier</p>
-            <p className="text-sm text-muted">Mehrere Teams, ein Sieger. Der Captain meldet das Team an.</p>
+            <h3 className="font-semibold">{SPIELART_TEXT.tournament.title}</h3>
+            <p className="text-sm text-muted">{SPIELART_TEXT.tournament.text}</p>
             <Link href="/turniere" className="btn btn-ghost">Turniere ansehen</Link>
           </li>
         </ul>
