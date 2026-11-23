@@ -32,7 +32,7 @@ export async function getCardSwitch(): Promise<CardSwitchState> {
  * Schaltet die Kartenzahlung ein oder aus. Nur Admin 1 (nicht Admin 2, nicht finance); Grund 3 bis 200 Zeichen (bereinigt) und Bestaetigung der Folgen sind Pflicht; eine Transaktion unter
  * Sperre (genau ein Gewinner bei gleichzeitigen Klicks); "steht schon auf ..." wird abgewiesen.
  */
-/** Pausen ab dieser Dauer bekommen beim Wiedereinschalten einen Hinweis an Admin 1 und 2 (Fristen und Fenster wurden in dieser Zeit nicht abgesagt, aber vieles kann sich angestaut haben). */
+/** Pausen ab dieser Dauer bekommen beim Wiedereinschalten einen Hinweis an alle nicht gesperrten Admins (Fristen und Fenster wurden in dieser Zeit nicht abgesagt, aber vieles kann sich angestaut haben). */
 const LONG_PAUSE_DAYS = 14;
 
 export async function setCardSwitch(actorId: string, enabled: boolean, reason: string, confirmed: boolean): Promise<void> {
@@ -88,7 +88,7 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
   }
 }
 
-/** Zusatz im Hinweis an Admin 1 und 2, wenn die Pause lange dauerte ("lange Pause beendet"): offene Spiele und Turniere prüfen. Nichts geht automatisch verloren: Absagen nennen die Pause und erstatten voll. */
+/** Zusatz im Hinweis an alle nicht gesperrten Admins (Buchungsstab), wenn die Pause lange dauerte ("lange Pause beendet"): offene Spiele und Turniere prüfen. Nichts geht automatisch verloren: Absagen nennen die Pause und erstatten voll. */
 function longPauseNote(since: Date | null): string {
   if (!since) return "";
   const days = Math.floor((Date.now() - since.getTime()) / 86_400_000);

@@ -38,7 +38,8 @@ export async function notifyResumedGames(now: Date = new Date(), opts: { limit?:
 /**
  * SQL-Vorfilter statt je Kandidat `leadStart` für ALLE Spiele (N+1 alle 5 Minuten während der Karenz): Eine Frist liegt nie vor Anstoß minus 48 Stunden und nie nach Anstoß minus 15 Minuten (`dueWithGrace` deckelt auf
  * `LAST_CHECK_BEFORE_START_MINUTES`, nicht auf eine Stunde: Terminwahl/Veto); sie kann also nur dann in einer Pause (off, on] liegen, wenn Anstoß > frühestes Ausschalten + 15 Minuten und Anstoß <= spätestes
- * Einschalten + 48 Stunden. Der genaue Fristwert wird danach je verbleibendem Kandidat berechnet.
+ * Einschalten + 48 Stunden. Äquivalent zum früheren Filter mit einer Stunde: spätere Fristen in diesem Band werden ohnehin vom Deckel (Anstoß minus 15 Minuten) gedeckelt, die Karenz reicht dort bis zum Anstoß, und es
+ * gibt keine "neue Frist" (Absage mit Klartext). Der genaue Fristwert wird danach je verbleibendem Kandidat berechnet.
  */
 function startWindow(col: unknown, info: ResumeInfo) {
   const minOff = new Date(Math.min(...info.pauses.map((p) => p.offAt.getTime())));

@@ -89,6 +89,13 @@ describe("Mehrfach-Pausen: Definition (Karenz = Maximum der Karenzenden der Paus
     expect(p[0].onAt.getTime()).toBe(t(60).getTime()); // die Kurzpause (70..75) ist weg, die Karenz endet bei 60 + 2 h
     expect(p[0].until.getTime()).toBe(t(60).getTime() + RESUME_GRACE_MS);
   });
+  it("hoechstens 10 Pausen: bei 11 getrennten Pausen faellt die aelteste heraus", () => {
+    const t = (m: number) => new Date(Date.UTC(2030, 0, 1, 0, m));
+    const events = Array.from({ length: 11 }, (_, i) => [{ action: "card_switch.off", at: t(i * 600) }, { action: "card_switch.on", at: t(i * 600 + 60) }]).flat(); // je 60 min, Abstand 9 h
+    const p = pausesFrom(events);
+    expect(p).toHaveLength(10);
+    expect(p[0].offAt.getTime()).toBe(t(600).getTime()); // die erste (i = 0) ist weg
+  });
   it("pausesFrom: nur vollstaendige Paare (off dann on); ein on ohne off davor zaehlt nicht; off, off, on nimmt das letzte off", () => {
     const t = (m: number) => new Date(Date.UTC(2030, 0, 1, 0, m));
     expect(pausesFrom([{ action: "card_switch.on", at: t(1) }])).toHaveLength(0);

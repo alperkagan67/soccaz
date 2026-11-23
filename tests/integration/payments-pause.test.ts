@@ -276,7 +276,7 @@ describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauc
     expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
   });
 
-  it("nachtraeglicher Termin (Terminwahl): Frist 15 min vor Anstoss (deckelt die Karenz) in der Pause abgelaufen: Absage mit Klartext, nie stille Absage", async () => {
+  it("Absage mit Klartext bei gedeckelter Karenz (nachtraeglicher Termin): Frist 15 min vor Anstoss in der Pause abgelaufen, die Karenz reicht bis zum Anstoss: nie stille Absage", async () => {
     const g = await cardGame({ hoursAhead: 5, n: 6, confirmed: false });
     const [row] = await db.select().from(matches).where(eq(matches.id, g.match.id));
     await db.insert(auditLog).values({ actorId: null, action: "scheduling.locked", entity: "match", entityId: g.match.id, before: null, after: null, at: new Date(row.createdAt.getTime() + 60_000) }); // payOpenAt > createdAt: Karenz der Frist (dueWithGrace)
