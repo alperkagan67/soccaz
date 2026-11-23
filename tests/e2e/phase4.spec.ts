@@ -244,6 +244,9 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
     expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // Karten da, aber noch nicht bereit
   }
   expect(await query("select 1 from payment_charges where tournament_id = $1", [tid]), "vor dem letzten Bereit wird nichts abgebucht").toHaveLength(0);
+  // Der Termin liegt laut Formular 6 TAGE voraus (futureLocal(6) = Tage): langer Vorlauf, die Abbuchung wäre erst zur 48-h-Frist fällig (Grund "not_due", CI #212). Für den Test kurzer Vorlauf: Beginn in 6 Stunden, Anmeldeschluss in 4 Stunden
+  // (die Anlage liegt Minuten zurück, also gilt der kurze Vorlauf): beim letzten Bereit ist die Abbuchung sofort fällig.
+  await query("update tournaments set starts_at = now() + interval '6 hours', registration_deadline = now() + interval '4 hours' where id = $1", [tid]);
 
   // Bereit gibt es erst mit allen Karten; die Abbuchung und das Bracket kommen erst, wenn das letzte Team bereit ist
   for (const [i, c] of caps.entries()) {
@@ -254,7 +257,7 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
     await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-paid-ready", "true", { timeout: 20_000 });
     if (i < 3) expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
   }
-  // das letzte Bereit löst die Abbuchung im Hintergrund aus (Anstoß in 6 h = kurzer Vorlauf = sofort fällig); der Job card-charges holt nach, falls der Hintergrundlauf hängt
+  // das letzte Bereit löst die Abbuchung im Hintergrund aus (nach der Anpassung oben: Anstoß in 6 h = kurzer Vorlauf = sofort fällig); der Job card-charges holt nach, falls der Hintergrundlauf hängt
   try {
     await expect
     .poll(async () => {
