@@ -394,29 +394,37 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         // Text unsichtbar schalten, damit nur der Grund gemessen wird. Feste und klebende Leisten (untere Leiste, Kopfzeile) und die Dev-Anzeige von Next liegen im Ganzseiten-Bild an der Stelle des ERSTEN Bildschirms
         // und decken dort Text darunter ab (Artefakt, kein Befund: beim Scrollen ist der Text frei). Darum zwei Bilder: A ohne diese Leisten für Text außerhalb der Leisten, B mit Leisten für Text in den Leisten.
         const style = await page.addStyleTag({ content: "*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;caret-color:transparent!important}nextjs-portal,[data-nextjs-toast],[data-nextjs-dev-tools-button]{display:none!important}" });
-        const pngBar = needIdx.some((i) => items[i].inFixed) ? await page.screenshot({ fullPage: true, animations: "disabled" }) : null;
-        const hidden = await page.evaluate(() => {
-          const out: HTMLElement[] = [];
-          for (const el of Array.from(document.body.querySelectorAll("*")) as HTMLElement[]) {
-            const p = getComputedStyle(el).position;
-            if (p === "fixed" || p === "sticky") {
-              el.setAttribute("data-kt-fixed", el.style.visibility || "-");
-              el.style.setProperty("visibility", "hidden", "important");
-              out.push(el);
+        let pngBar: Buffer | null = null;
+        let pngFree: Buffer | null = null;
+        try {
+          pngBar = needIdx.some((i) => items[i].inFixed) ? await page.screenshot({ fullPage: true, animations: "disabled" }) : null;
+          const hidden = await page.evaluate(() => {
+            const out: HTMLElement[] = [];
+            for (const el of Array.from(document.body.querySelectorAll("*")) as HTMLElement[]) {
+              const p = getComputedStyle(el).position;
+              if (p === "fixed" || p === "sticky") {
+                el.setAttribute("data-kt-fixed", el.style.visibility || "-");
+                el.style.setProperty("visibility", "hidden", "important");
+                out.push(el);
+              }
             }
-          }
-          return out.length;
-        });
-        const pngFree = hidden > 0 || !pngBar ? await page.screenshot({ fullPage: true, animations: "disabled" }) : pngBar;
-        await page.evaluate(() => {
-          for (const el of Array.from(document.querySelectorAll("[data-kt-fixed]")) as HTMLElement[]) {
-            const v = el.getAttribute("data-kt-fixed");
-            if (v === "-") el.style.removeProperty("visibility");
-            else el.style.setProperty("visibility", v ?? "");
-            el.removeAttribute("data-kt-fixed");
-          }
-        });
-        await style.evaluate((n) => (n as HTMLElement).remove());
+            return out.length;
+          });
+          pngFree = hidden > 0 || !pngBar ? await page.screenshot({ fullPage: true, animations: "disabled" }) : pngBar;
+        } finally {
+          // Rückbau immer (auch wenn ein Bild oder die Seitenumschaltung wirft): Leisten wieder sichtbar, Mess-Stil entfernt, sonst verfälscht es Folgewerte der Seite
+          await page
+            .evaluate(() => {
+              for (const el of Array.from(document.querySelectorAll("[data-kt-fixed]")) as HTMLElement[]) {
+                const v = el.getAttribute("data-kt-fixed");
+                if (v === "-") el.style.removeProperty("visibility");
+                else el.style.setProperty("visibility", v ?? "");
+                el.removeAttribute("data-kt-fixed");
+              }
+            })
+            .catch(() => {});
+          await style.evaluate((n) => (n as HTMLElement).remove()).catch(() => {});
+        }
         const plans = needIdx.map((i) => planSamples(items[i].rects, MAX_PIXELS));
         const sampled: number[][] = new Array(needIdx.length);
         for (const [bar, shot] of [[true, pngBar], [false, pngFree]] as const) {
