@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { vi } from "vitest";
+import { Pool } from "pg";
+import { beforeAll, vi } from "vitest";
 import { dbUrlAllowed } from "./db-guard";
 
 // Integrationstests laufen gegen eine echte Datenbank, nie gegen eine entfernte.
@@ -14,3 +15,14 @@ if (!dbUrlAllowed(url)) throw new Error("Integrationstests nur gegen lokale Date
 
 // `connection()` gibt es nur innerhalb einer Next-Anfrage; außerhalb (Tests, Jobs) ist es ein No-op.
 vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), connection: async () => {} }));
+
+// Schalter-Flip: Dev-Seeds schalten Zahlungen und Kartenmodell EIN; jede Testdatei startet trotzdem im Produktionsstandard AUS/AUS (Regel 23: Schalter pro Test/Datei setzen, danach zurueck).
+// Heilt zugleich einen Abbruch der Vorgaengerdatei. Nur gegen die erlaubte lokale Datenbank (oben geprueft).
+beforeAll(async () => {
+  const pool = new Pool({ connectionString: url, max: 1 });
+  try {
+    await pool.query("update settings set value = 'false'::jsonb where key in ('payments_enabled', 'card_payments_enabled')");
+  } finally {
+    await pool.end();
+  }
+});

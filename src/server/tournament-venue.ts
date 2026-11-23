@@ -69,14 +69,14 @@ export async function venueCommissionPercent(venueId: string, exec: Pick<Tx, "se
  */
 export async function listPartnerVenueOptions(): Promise<{ id: string; label: string }[] | null> {
   if (!(await cardPaymentsEnabled())) return null;
-  const rows = await db.select({ id: venues.id, name: venues.name, city: venues.city }).from(venues).where(and(eq(venues.active, true), eq(venues.isPartner, true))).orderBy(venues.city, venues.name);
+  const rows = await db.select({ id: venues.id, name: venues.name, city: venues.city }).from(venues).where(and(eq(venues.active, true), eq(venues.approvalStatus, "approved"), eq(venues.isPartner, true))).orderBy(venues.city, venues.name);
   return rows.map((v) => ({ id: v.id, label: [v.name, v.city].join(", ") }));
 }
 
 /** Ist die Halle eine aktive Partnerhalle? Nur solche duerfen fuer ein Turnier gewaehlt werden (mit oder ohne Betreiber-Zugang; mit Zugang braucht das Turnier die Zusage der Halle, M5-7b). */
 export async function isPartnerVenue(exec: Pick<typeof db, "select">, venueId: string): Promise<boolean> {
   if (typeof venueId !== "string" || !UUID.test(venueId)) return false;
-  const [v] = await exec.select({ id: venues.id }).from(venues).where(and(eq(venues.id, venueId), eq(venues.active, true), eq(venues.isPartner, true)));
+  const [v] = await exec.select({ id: venues.id }).from(venues).where(and(eq(venues.id, venueId), eq(venues.active, true), eq(venues.approvalStatus, "approved"), eq(venues.isPartner, true)));
   return Boolean(v);
 }
 

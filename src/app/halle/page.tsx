@@ -7,6 +7,7 @@ import { formatDateTime } from "@/lib/time";
 import { answerHallAction, declineHallAction } from "@/server/matchmaking-actions";
 import { listTournamentConfirmations, rentText } from "@/server/tournament-confirm";
 import { confirmTournamentVenueAction } from "@/server/tournament-confirm-actions";
+import { myPendingVenues } from "@/server/venue-approval";
 import { requireVenueManager } from "@/server/venue-session";
 import { pendingHallInquiries } from "@/server/veto";
 import { HallDeclineForm } from "./HallDeclineForm";
@@ -22,10 +23,16 @@ export default async function HallInquiriesPage() {
   const now = new Date();
   const user = await requireVenueManager("/halle");
   const inquiries = await pendingHallInquiries(user.id);
+  const pendingVenues = await myPendingVenues(user.id); // Hallen-Anfragen ohne Freischaltung (013 v3 AC-31)
   const confirmations = await listTournamentConfirmations(user.id); // Turniere, die auf die Zusage der Halle warten (M5-7b, namenfrei)
   return (
     <section className="mx-auto mt-4 max-w-2xl space-y-4">
       <h1 className="text-2xl font-bold">Spielanfragen für eure Halle</h1>
+      {pendingVenues.map((v) => (
+        <p key={v.id} className="card text-sm" data-testid={`venue-${v.status}`}>
+          <strong>{v.name}:</strong> {v.status === "requested" ? "Die Anfrage wartet auf Freischaltung. Bis dahin ist die Halle nicht sichtbar und nicht buchbar." : `Die Anfrage wurde abgelehnt: ${v.reason}. Nach einer Änderung könnt ihr sie erneut senden.`}
+        </p>
+      ))}
       <p className="text-sm text-muted">Zwei Teams haben sich auf einen Termin geeinigt. Bestätigt, wenn die Halle dann frei ist, oder lehnt ab, wenn sie belegt ist. Die Teams wählen danach unter allen freien Hallen.</p>
       {inquiries.length === 0 ? (
         <p className="card text-muted" data-testid="no-inquiries">Keine offenen Anfragen. Wir benachrichtigen euch, sobald ein Team eure Halle anfragt.</p>

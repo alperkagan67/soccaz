@@ -3,6 +3,7 @@
 // abhängige Daten (Spiele, Teilnehmer, Abbuchungszeilen, Einladungen, Turniere, Bewertungen) werden vor dem Anlegen
 // gelöscht und neu erzeugt. Gelöscht wird nur, was zu den Seed-Markern gehört (Teams seed-*, Nutzer seed-*@test.local).
 import type { Pool } from "pg";
+import { enableCardModel } from "./seed-switches";
 
 export const SEED_PASSWORDLESS_NOTE = "Anmeldung nur über den Dev-Login (E-Mail eintragen, kein Passwort).";
 
@@ -370,6 +371,7 @@ export async function runSeed(pool: Pool): Promise<SeedCounts> {
       await count("Benachrichtigungen", "select count(*) n from notifications where user_id = any($1::uuid[])", seedUsers),
       await count("Benachrichtigungen ungelesen", "select count(*) n from notifications where read_at is null and user_id = any($1::uuid[])", seedUsers),
     ];
+    await enableCardModel(client); // Schalter-Flip: Dev nutzt das Kartenmodell (Zahlungen und Karte EIN), Produktion bleibt AUS/AUS (nur lokale Dev-DB, seed-guard)
     await client.query("commit");
     return Object.fromEntries(rows);
   } catch (e) {
