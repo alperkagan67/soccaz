@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf 5 Shards nach gemessener Laufzeit (CI #155, Lauf 45062105668; Schaetzwert 30 s fuer karte-freigabe und karte-lobby). Pflege: neue Spec-Datei hier eintragen (node scripts/e2e-shards.mjs check meldet fehlende/doppelte Eintraege). halle-onboarding.spec.ts (013 M2d, Shard 1): Schaetzwert ca. 150 s (5 Tests, 2 davon mit axe je Schritt), nach dem ersten CI-Lauf messen und nachtragen. Ziel je Shard: hoechstens ca. 10 Minuten. wertung-aufdecken.spec.ts liegt in Shard 4; Laufzeit nach dem ersten CI-Lauf messen.",
+  "note": "Aufteilung der Browser-Tests (tests/e2e/*.spec.ts) auf 5 Shards nach gemessener Laufzeit (CI #155, Lauf 45062105668; Schaetzwert 30 s fuer karte-freigabe und karte-lobby). Pflege: neue Spec-Datei hier eintragen (node scripts/e2e-shards.mjs check meldet fehlende/doppelte Eintraege). halle-onboarding.spec.ts (013 M2d, Shard 1): Schaetzwert ca. 150 s (5 Tests, 2 davon mit axe je Schritt), nach dem ersten CI-Lauf messen und nachtragen. Ziel je Shard: hoechstens ca. 10 Minuten. wertung-aufdecken.spec.ts liegt in Shard 4; Laufzeit nach dem ersten CI-Lauf messen. wertung-bewegung.spec.ts (je 1 Seed, ca. 30 s) und performance-animation.spec.ts (CPU-Drosselung, Trace und Video, Schaetzwert ca. 60 s) liegen in Shard 5; Laufzeit nach dem ersten CI-Lauf messen.",
   "shards": {
     "1": [
       "community2.spec.ts",
@@ -52,11 +52,13 @@
       "karte-privatsphaere.spec.ts",
       "matchmaking.spec.ts",
       "notifications.spec.ts",
+      "performance-animation.spec.ts",
       "team-invite.spec.ts",
       "turnier-ablauf.spec.ts",
       "turnier-karte.spec.ts",
       "ui-form.spec.ts",
-      "user-menu.spec.ts"
+      "user-menu.spec.ts",
+      "wertung-bewegung.spec.ts"
     ]
   }
 }

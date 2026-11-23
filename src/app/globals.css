@@ -222,3 +222,34 @@ h1, h2, h3 {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Karten-Aufdecken und Aufstieg (Vertrag 013 v3, AC-20 bis AC-23; Bausteine src/components/RevealMotion.tsx, Markup RatingReveal).
+   Animiert wird NUR transform und opacity (AC-22); kein Glow in diesem Schritt (kommt mit dem Umbau auf Richtung F). will-change steht nur auf .is-animating und fällt mit dem letzten animationend weg.
+   Tokens wie in DESIGN.md (dur-reveal, dur-reduced, ease-out); tests/unit/reveal-motion-css.test.ts gleicht sie ab. */
+:root {
+  --dur-reveal: 600ms;
+  --dur-reduced: 120ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes reveal-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes reveal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes promote-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.reveal-motion.is-animating .reveal-card { animation: reveal-in var(--dur-reveal) var(--ease-out) both; will-change: transform, opacity; }
+.reveal-motion[data-celebrate="true"] [data-testid="player-card-tier"] { animation: promote-pop var(--dur-reveal) var(--ease-out) var(--dur-reveal) both; }
+.reveal-motion.is-animating [data-testid="player-card-tier"] { will-change: transform; }
+/* AC-23: Die globale Regel oben schaltet jede Animation ab. Für das Aufdecken gilt eine gezielte Ausnahme (nach der globalen Regel, höhere Spezifität, ebenfalls !important):
+   nur Einblenden über opacity in --dur-reduced (unter 150 ms), keine Bewegung; der Chip-Pop entfällt, der Chip steht sofort da. Alle Informationen bleiben (sie stehen als Text im Markup). */
+@media (prefers-reduced-motion: reduce) {
+  .reveal-motion.is-animating .reveal-card { animation: reveal-fade var(--dur-reduced) linear both !important; will-change: opacity; }
+  .reveal-motion[data-celebrate="true"] [data-testid="player-card-tier"] { animation: none !important; }
+}
