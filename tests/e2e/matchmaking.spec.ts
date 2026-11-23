@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, futureLocal, newUser, run } from "./helpers";
+import { acceptChallenge } from "./flows";
 import { query } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
@@ -183,8 +184,7 @@ test("Spielsuche zeigt den Kader des suchenden Teams, Lobby auch den Rest des ge
   await expect(roster).toContainText("Spieler rka");
   await expect(roster).toContainText("Spieler rkc");
   await expect(roster).toContainText("Elo");
-  await b.getByRole("button", { name: "Spiel annehmen" }).click();
-  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
+  await acceptChallenge(b);
 
   // Der gegnerische Admin sieht in der Lobby auch Teammitglied c, das noch nicht beigetreten ist
   await expect(b.getByTestId(`roster-${await slugOf(teamA)}`)).toContainText("Spieler rkc");

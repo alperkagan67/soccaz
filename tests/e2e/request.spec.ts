@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createTeam, futureLocal, newUser, run, closeContexts } from "./helpers";
+import { acceptChallenge, waitHydrated } from "./flows";
 
 async function createRequest(page: Page, team: string, startsAt: string, opts: { visibility?: string; duration?: string } = {}) {
   await page.goto("/app/suche/neu");
@@ -75,13 +76,14 @@ test("Spielsuche erstellen, in der Liste finden, annehmen, Lobby", async ({ brow
   await b.goto(requestUrl);
   await c.goto(requestUrl);
   await expect(c.getByRole("button", { name: "Spiel annehmen" })).toBeVisible();
-  await b.getByRole("button", { name: "Spiel annehmen" }).click();
-  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
+  await acceptChallenge(b);
   await expect(b.getByRole("heading", { name: new RegExp(`${teamA}.*gegen.*${teamB}`) })).toBeVisible();
   await expect(b.getByText("Spieler ra").first()).toBeVisible();
   await expect(b.getByText("Spieler rb").first()).toBeVisible();
 
   // C war zu langsam
+  // keine Lobby-Erwartung (die Annahme scheitert): erst nach der Hydration klicken, kein Wiederholen
+  await waitHydrated(c.getByRole("button", { name: "Spiel annehmen" }));
   await c.getByRole("button", { name: "Spiel annehmen" }).click();
   await expect(c.getByText(/nicht mehr offen/)).toBeVisible();
 
@@ -106,6 +108,8 @@ test("zwei Teams nehmen gleichzeitig an: genau eines gewinnt", async ({ browser 
   const url = a.url();
   await b.goto(url);
   await c.goto(url);
+  // beide Knöpfe erst nach der Hydration, dann gleichzeitig klicken (kein Wiederholen: der Wettlauf ist der Test)
+  await Promise.all([waitHydrated(b.getByRole("button", { name: "Spiel annehmen" })), waitHydrated(c.getByRole("button", { name: "Spiel annehmen" }))]);
   await Promise.all([
     b.getByRole("button", { name: "Spiel annehmen" }).click(),
     c.getByRole("button", { name: "Spiel annehmen" }).click(),
