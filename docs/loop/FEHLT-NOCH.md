@@ -16,6 +16,7 @@ Das Repo ist öffentlich: Hier stehen nur die NAMEN der fehlenden Angaben, nie S
 | Mail-Dienst | Umgebung des Servers | Rechnungsmail, Benachrichtigungen | ja | Nutzer |
 | Zwei-Faktor für das Google-Konto von Admin 1 | Google-Konto des Admin 1 | Schutz des Admin-Zugangs | ja | Nutzer |
 | Partnervertrag Hallen | Hallen-Onboarding | Vertragsgrundlage mit Hallen | ja | Anwalt |
+| Button-Beschriftung Zahlungspflicht (§ 312j Abs. 3 BGB) für ALLE zahlungsauslösenden Knöpfe (Inventar w1), Mandatstext (Karte hinterlegen), B2C-Einordnung des Captains, Zusagetexte „Spiel ist angesetzt, Halle wird gebucht“ und Hinweis zur automatischen Absage (Entwurf-Texte sind als ENTWURF/Rechtsprüfung gekennzeichnet); dazu Faktenabgleich AGB/Hilfe „24 Stunden“ gegen die 48-Stunden-Frist im Code (Backlog 230, 231) | Lobby (Preis bestätigen und zahlungspflichtig zusagen), Karte hinterlegen, Mails/Hilfe/AGB | rechtssichere Zahlungs-Knöpfe und Zusagen | ja | Anwalt |
 | Bedingungstext Hallen-Onboarding („Bedingungen bestätigen“, bis zur Prüfung gekennzeichneter ENTWURF) | Hallen-Onboarding, Abschluss „Anfrage senden“ (013 M2d) | Rechtssichere Bedingungen bei der Hallen-Anfrage | ja | Anwalt |
 | Markenprüfung Look Richtung F (Vorbilder EA FC Ultimate Team und Vero: Ähnlichkeit, Begriffe, Gestaltung) | `docs/contracts/013-frontend-ueberarbeitung.md` (Version 3), `docs/loop/GO-LIVE-AUDIT.md` | Eigenständigkeit des Designs, kein Fremdmaterial | ja | Anwalt |
 | Steuerberater-Antworten (E4) | `docs/loop/GO-LIVE-AUDIT.md` | Steuer- und Rechnungsfragen | ja | Steuerberater |
