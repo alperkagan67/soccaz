@@ -114,10 +114,6 @@ export async function seedShare(matchId: string, userId: string, cents: number) 
   );
 }
 
-export async function seedPromo(code: string, kind: "percent" | "fixed", value: number, extra: { budgetCents?: number } = {}) {
-  await testDb().query("insert into promo_codes (code, kind, value, budget_cents, note) values ($1, $2, $3, $4, 'e2e')", [code, kind, value, extra.budgetCents ?? null]);
-}
-
 export async function teamIdBySlugLike(namePart: string): Promise<string> {
   return (await query<{ id: string }>("select id from teams where name like $1 order by created_at desc limit 1", [`%${namePart}%`]))[0].id;
 }

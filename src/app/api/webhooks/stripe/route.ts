@@ -1,13 +1,8 @@
 import { verifyStripeSignature } from "@/lib/stripe-signature";
-import { completePayment, failPayment } from "@/server/payments";
 
-type StripeEvent = {
-  id: string;
-  type: string;
-  data: { object: Record<string, unknown> };
-};
+type StripeEvent = { id: string; type: string };
 
-/** Webhook von Stripe. Die Signatur wird geprüft, die Verbuchung ist idempotent (mehrfache Zustellung ist unschädlich). */
+/** Webhook von Stripe. Die Signatur wird geprüft; verbucht wird nichts. */
 export async function POST(request: Request) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) return new Response("Webhook nicht konfiguriert", { status: 503 });
@@ -22,29 +17,8 @@ export async function POST(request: Request) {
     return new Response("Ungültiger Inhalt", { status: 400 });
   }
 
-  const object = event.data?.object ?? {};
-  const sessionId = typeof object.id === "string" ? object.id : undefined;
-  const meta = (object.metadata ?? {}) as Record<string, string>;
-  const paymentId = (typeof object.client_reference_id === "string" ? object.client_reference_id : undefined) ?? meta.paymentId;
-  const ref = { paymentId, providerRef: paymentId ? undefined : sessionId };
-
-  switch (event.type) {
-    case "checkout.session.completed":
-      // Bei verzögerten Zahlarten (SEPA) ist die Zahlung hier noch nicht eingegangen
-      if (object.payment_status === "paid") await completePayment(ref);
-      break;
-    case "checkout.session.async_payment_succeeded":
-      await completePayment(ref);
-      break;
-    case "checkout.session.async_payment_failed":
-      await failPayment(ref, "failed", "Zahlung fehlgeschlagen");
-      break;
-    case "checkout.session.expired":
-      await failPayment(ref, "canceled", "Sitzung abgelaufen");
-      break;
-    // charge.dispute.* gehoert seit 012 M4a zum Kartenwebhook (/api/stripe/webhook). Dieses Ereignis dort abmelden und hier NICHT mehr abonnieren (sonst doppelte Meldung).
-    default:
-      break; // andere Ereignisse sind uns egal
-  }
+  // 012 M6b: Aufladungen (Checkout) gibt es nicht mehr, hier wird nichts mehr verbucht. Die Signatur bleibt geprüft, der Endpunkt quittiert nur,
+  // damit ein noch eingetragenes Stripe-Ziel nicht ins Leere läuft. Karten- und Streitereignisse gehören zu /api/stripe/webhook.
+  void event;
   return Response.json({ received: true });
 }
