@@ -101,7 +101,7 @@ components:
 ### Grundsätze (013 Version 3, Abschnitt 3)
 
 - **Dunkle Grundfläche** (Anthrazit/Tiefblau) mit Leucht-Effekten; **Hell** folgt der Systemeinstellung als ruhige Variante derselben Karten: **kein Glow**, dafür Rand und Schatten.
-- **Zwei Akzentfarben je Ansicht, nicht mehr:** die **Leuchtfarbe** (Orange, zugleich Hauptaktion und Glow) und die **Teamfarbe**. Die Stufenfarben (unten) färben nur den Chip der Karte, zählen nicht als Akzentfarbe der Ansicht und stehen immer auch als Wort da.
+- **Zwei Akzentfarben je Ansicht, nicht mehr:** die **Leuchtfarbe** (Orange, zugleich Hauptaktion und Glow) und die **Teamfarbe**. Die Stufenfarben (`tier-*`, unten) sind davon **ausgenommen** (Entscheid t2q 2026-11-23, Vertrag 013 AC-30), dürfen aber **nur als Chip** auftreten (Wort plus `rim`-Rahmen, nie als Fläche, Text oder Hintergrund der Seite), höchstens eine Stufen-Chip-Farbe je Karte; im Hellmodus ist der Chip nur über Wort und Rahmen erkennbar, nie über die Farbe allein (AC-3, AC-10). Prüfung im Stilregel-Test: `tier-*` kommen nur in den Komponenten Chip und `PlayerCard` vor.
 - **Inhalt vor Rahmen** (Anmutung ruhig, großzügig): wenige Linien und Kästen, Typografie trägt die Hierarchie, höchstens **eine Hauptaktion** und **vier Schriftgrößen** je Ansicht, Mindestabstand zwischen Blöcken 16 px (Handy) und 24 px (Desktop), keine doppelten Rahmen, keine Banner-Optik (AC-30).
 - **Zustand bleibt Form plus Wort** (Status-Tokens und Navigation aus Richtung E gelten weiter).
 - **Eigenständig** gegenüber den Vorbildern (AC-29): eigene Kartensilhouette, eigene Stufennamen, eigene Farbwelt; keine Namen, Logos, Schriften, Kartenvorlagen oder Screenshots der Vorbilder im Repo.
@@ -131,7 +131,7 @@ Gemessen Dunkel: Tinte auf Fläche 16,0:1, gedämpft auf Fläche 8,3:1, Leuchtfa
 
 ### Stufen der Spielerkarte
 
-Die Stufe ist ein **Chip** mit Wort und Rahmen (`rim`) in der Stufenfarbe; sie steht nie nur als Farbe da. Alle fünf Chips tragen dunkle Schrift (`tier-ink`).
+Die Stufe ist ein **Chip** mit Wort und Rahmen (`rim`) in der Stufenfarbe; sie steht nie nur als Farbe da. Alle fünf Chips tragen dunkle Schrift (`tier-ink`). **Hell:** Der Chip ist über das Wort und den `rim`-Rahmen erkennbar, nicht über die Stufenfarbe allein (die Stufenfarben liegen gegen die helle Fläche nur bei 1,2 bis 2,2:1); dunkel liegen sie bei mindestens 6,2:1 gegen die Fläche.
 
 | Stufe | Wertung ab | Chipfarbe (`tier-*`) | Schrift darauf (`tier-ink`) |
 |---|---|---|---|
@@ -141,7 +141,7 @@ Die Stufe ist ein **Chip** mit Wort und Rahmen (`rim`) in der Stufenfarbe; sie s
 | Pokal | 80 | `#f0b429` | `#0a0f1c` |
 | Legende | 90 | `#b794ff` | `#0a0f1c` |
 
-**Einzige Quelle der Wertungsgrenzen ist `src/lib/rating.ts`** (`RATING_TIERS`): Wertung = `round(50 + (Elo - 1000) / 8)`, begrenzt auf 0 bis 99, Stufen ab 0/55/70/80/90, vorläufig bis nach dem Pilot an echten Elo-Daten. Die Tabelle hier und `tiers` im Frontmatter spiegeln diese Grenzen und werden NICHT eigenständig geändert; `design-tokens.test.ts` prüft Lückenlosigkeit und Reihenfolge und gleicht sie mit `rating.ts` ab, sobald die Datei im Repo liegt. Elo-Grenzen stehen nur dort.
+**Einzige Quelle der Wertungsgrenzen und der Umrechnung Elo → Wertung ist `src/lib/rating.ts`** (`RATING_TIERS`, `ratingFromElo`; vorläufig bis nach dem Pilot an echten Elo-Daten). Die Tabelle hier und `tiers` im Frontmatter spiegeln nur die Stufen ab 0/55/70/80/90 und werden NICHT eigenständig geändert; `design-tokens.test.ts` prüft Lückenlosigkeit und Reihenfolge und gleicht sie mit `rating.ts` ab, sobald die Datei im Repo liegt. Weder Formel noch Elo-Grenzen stehen in diesem Dokument.
 
 ### Karten (`PlayerCard`, `TeamCard`)
 

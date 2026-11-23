@@ -129,6 +129,7 @@ describe("DESIGN.md Richtung F: Stufen (Wertungsgrenzen aus src/lib/rating.ts)",
   it("Hinweis: die einzige Quelle ist rating.ts, der Text nennt keine Elo-Grenzen als Zahl", () => {
     expect(fBody).toContain("src/lib/rating.ts");
     expect(fBody).not.toMatch(/\b(1036|1040|1156|1160|1236|1240|1316|1320)\b/);
+    expect(fBody).not.toMatch(/round\(50|\(Elo\s*-\s*1000\)/); // die Umrechnung steht nur in rating.ts
   });
 
   // Solange rating.ts nicht im Repo liegt (eigener PR), entfällt der Abgleich; danach läuft er und hält DESIGN.md und Code zusammen.
@@ -136,6 +137,15 @@ describe("DESIGN.md Richtung F: Stufen (Wertungsgrenzen aus src/lib/rating.ts)",
     const src = readFileSync(path.join(process.cwd(), "src/lib/rating.ts"), "utf8");
     const code = [...src.matchAll(/\{\s*tier:\s*"(\w+)"\s*,\s*label:\s*"[^"]*"\s*,\s*from:\s*(\d+)\s*\}/g)].map((r) => [r[1], Number(r[2])]);
     expect(code).toEqual(Object.entries(tiers));
+  });
+});
+
+describe("DESIGN.md Richtung F: Stufenfarben nur als Chip (AC-30, Entscheid t2q 2026-11-23)", () => {
+  it("der Text nennt die Ausnahme von den zwei Akzentfarben und die Chip-Pflicht, hell nur über Wort und Rahmen", () => {
+    expect(fBody).toContain("**ausgenommen**");
+    expect(fBody).toContain("**nur als Chip**");
+    expect(fBody).toContain("nur über Wort und Rahmen erkennbar");
+    expect(fBody).toMatch(/Hell:\*\* Der Chip ist über das Wort und den `rim`-Rahmen erkennbar/);
   });
 });
 
