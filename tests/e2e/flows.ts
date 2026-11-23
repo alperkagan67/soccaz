@@ -20,11 +20,21 @@ export async function setupLobby(browser: Browser, key: string, visibility: "pub
   await expect(a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
 
   await b.goto(a.url());
-  await b.getByRole("button", { name: "Spiel annehmen" }).click();
-  await expect(b).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
+  await acceptChallenge(b);
   const matchId = matchIdFromUrl(b.url());
   await a.goto(`/lobby/${matchId}`);
   return { a, b, matchId, nameA, nameB };
+}
+
+/**
+ * "Spiel annehmen" bis zur Lobby, mit Wiederholung: Das Formular hat nur einen onSubmit-Handler (kein action). Ein Klick VOR der Hydration schickt es nativ als GET (Adresse bekommt ?teamId=...) und die Seite
+ * bleibt auf der Suche; erst der zweite Klick ruft die Server-Aktion. Ein pending-Button ist deaktiviert (kein Doppelklick auf eine laufende Annahme).
+ */
+export async function acceptChallenge(page: Page) {
+  await expect(async () => {
+    if (!/\/lobby\/[0-9a-f-]{36}$/.test(page.url())) await page.getByRole("button", { name: "Spiel annehmen" }).click({ timeout: 3_000 });
+    await expect(page).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/, { timeout: 4_000 });
+  }).toPass({ timeout: 25_000 });
 }
 
 export async function clickWhenReady(page: Page, name: string | RegExp) {

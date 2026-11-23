@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db } from "@/db";
 import { auditLog, matchParticipants, notificationPrefs, notifications, teamMembers, users } from "@/db/schema";
@@ -287,5 +287,22 @@ describe("Einstellung mit unerwartetem Wert (von Hand gesetzt)", () => {
     expect((await db.select().from(settings).where(eq(settings.key, "card_payments_enabled")))[0].value).toBe("on");
     expect((await switchAudits()).length).toBe(n0);
     await setSetting(null, "card_payments_enabled", true); // Aufraeumen: wieder ein Boolean
+  });
+});
+
+describe("Hinweis 'lange Pause beendet'", () => {
+  it("Wiedereinschalten nach mehr als 14 Tagen: Admin 2 bekommt den Zusatz mit Tagen und Pruefauftrag; nach kurzer Pause nicht", async () => {
+    const o = await owner();
+    const admin2 = await makeUser("lp2", "admin");
+    const bodiesOf = async () => (await db.select().from(notifications).where(eq(notifications.userId, admin2.id))).map((n) => n.body);
+    await setCardSwitch(o.id, false, "Notabschaltung wegen Stoerung", true);
+    await setCardSwitch(o.id, true, "Stoerung behoben, alles geprueft", true);
+    expect((await bodiesOf()).some((b) => /Lange Pause beendet/.test(b))).toBe(false);
+    await setCardSwitch(o.id, false, "Zweite Notabschaltung wegen Stoerung", true);
+    await db.execute(sql`update settings set updated_at = now() - interval '20 days' where key = 'card_payments_enabled'`);
+    await setCardSwitch(o.id, true, "Lange Stoerung behoben, geprueft", true);
+    const long = (await bodiesOf()).find((b) => /Lange Pause beendet/.test(b));
+    expect(long).toMatch(/20 Tage/);
+    expect(long).toMatch(/Bitte offene Spiele und Turniere prüfen/);
   });
 });

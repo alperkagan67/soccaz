@@ -11,6 +11,7 @@ import { clearCoversInvolving } from "./cover-clear";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges } from "@/db/schema";
 import { effectiveGraceEnd, isCardProblemCode } from "@/lib/grace";
+import { resumeUntil, windowEndAfterResume, windowEndSql } from "../pause-resume";
 import { formatEuro } from "@/lib/money";
 import { audit } from "../audit";
 import { teamName } from "../names";
@@ -34,6 +35,7 @@ export type SubstituteResult = { released: number; filled: number; exhausted: st
  */
 async function prepareReleases(matchId: string, now: Date): Promise<Set<string>> {
   const allowed = new Set<string>();
+  const until = await resumeUntil();
   const roots = await db
     .select({ row: paymentCharges, startsAt: matches.startsAt })
     .from(paymentCharges)
@@ -41,7 +43,7 @@ async function prepareReleases(matchId: string, now: Date): Promise<Set<string>>
     .where(and(eq(paymentCharges.matchId, matchId), isNull(paymentCharges.slotOf), isNull(paymentCharges.resolution), inArray(paymentCharges.status, ["failed", "requires_action"]), sql`${paymentCharges.graceUntil} is not null`));
   for (const { row, startsAt } of roots) {
     if (!isCardProblemCode(row.failureCode)) continue;
-    const end = effectiveGraceEnd(row.graceUntil, startsAt);
+    const end = windowEndAfterResume(effectiveGraceEnd(row.graceUntil, startsAt), startsAt, until);
     if (end === null || end.getTime() > now.getTime()) continue;
     const verdict = await reconcileKnownIntents({ id: row.id, matchId, userId: row.userId, attempt: row.currentAttempt, amountCents: row.amountCents }, row.paymentIntentId);
     if (verdict !== "go") continue;
@@ -64,6 +66,7 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
     const [game] = await tx.select().from(matches).where(eq(matches.id, matchId)).for("update");
     if (!game || !["lobby", "confirmed"].includes(game.status) || game.settledAt !== null || game.cancelRequestedAt !== null || game.startsAt.getTime() <= now.getTime()) return out;
     if (!(await cardModeActive(tx, game))) return out;
+    const until = await resumeUntil(tx);
 
     const roots = await tx.select().from(paymentCharges).where(and(eq(paymentCharges.matchId, matchId), isNull(paymentCharges.slotOf))).orderBy(asc(paymentCharges.id)).for("update");
 
@@ -72,7 +75,7 @@ async function processMatch(matchId: string, now: Date, allowed: Set<string>): P
       // Doppelte Verteidigung: prepareReleases laesst technische Zustaende (kein Kartenfehler) nie in `allowed`; die Pruefung hier faengt sie unabhaengig davon ab (aequivalente Mutante
       // bei einzelner Entfernung, Review R-T158)
       if (r.resolution !== null || !["failed", "requires_action"].includes(r.status) || r.graceUntil === null || !isCardProblemCode(r.failureCode)) continue;
-      const end = effectiveGraceEnd(r.graceUntil, game.startsAt);
+      const end = windowEndAfterResume(effectiveGraceEnd(r.graceUntil, game.startsAt), game.startsAt, until);
       if (end === null || end.getTime() > now.getTime()) continue;
       if (!allowed.has(r.id)) continue; // der offene PaymentIntent konnte noch nicht geklaert/abgebrochen werden: naechste Runde
       const [seat] = await tx.select({ teamId: matchParticipants.teamId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, r.userId))).for("update");
@@ -156,6 +159,7 @@ export async function runSubstitutes(opts: { matchId?: string; now?: Date } = {}
   const now = opts.now ?? new Date();
   const total: SubstituteResult = { released: 0, filled: 0, exhausted: [] };
   let matchIds: string[];
+  const until = await resumeUntil();
   if (opts.matchId) matchIds = [opts.matchId];
   else {
     const rows = await db
@@ -169,7 +173,7 @@ export async function runSubstitutes(opts: { matchId?: string; now?: Date } = {}
           isNull(matches.cancelRequestedAt),
           isNull(matches.settledAt),
           sql`${matches.startsAt} > ${now}`,
-          sql`(${paymentCharges.resolution} = 'replaced' or (${paymentCharges.resolution} is null and ${paymentCharges.status} in ('failed', 'requires_action') and ${paymentCharges.graceUntil} is not null and least(${paymentCharges.graceUntil}, ${matches.startsAt} - interval '1 hour') <= ${now}))`,
+          sql`(${paymentCharges.resolution} = 'replaced' or (${paymentCharges.resolution} is null and ${paymentCharges.status} in ('failed', 'requires_action') and ${paymentCharges.graceUntil} is not null and ${windowEndSql(paymentCharges.graceUntil, matches.startsAt, until)} <= ${now}))`,
         ),
       );
     matchIds = rows.map((r) => matchIdOf({ matchId: r.id }));

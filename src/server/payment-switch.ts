@@ -6,6 +6,7 @@ import { users } from "@/db/schema";
 import { settings } from "@/db/schema-finance";
 import { isOwner } from "@/lib/roles";
 import { audit } from "./audit";
+import { notifyResumedGames } from "./pause-notify";
 import { bookingStaffIds } from "./booking";
 import { notifyUsers } from "./notifications";
 import { DomainError } from "./teams";
@@ -31,7 +32,11 @@ export async function getCardSwitch(): Promise<CardSwitchState> {
  * Schaltet die Kartenzahlung ein oder aus. Nur Admin 1 (nicht Admin 2, nicht finance); Grund 3 bis 200 Zeichen (bereinigt) und Bestaetigung der Folgen sind Pflicht; eine Transaktion unter
  * Sperre (genau ein Gewinner bei gleichzeitigen Klicks); "steht schon auf ..." wird abgewiesen.
  */
+/** Pausen ab dieser Dauer bekommen beim Wiedereinschalten einen Hinweis an alle nicht gesperrten Admins (Fristen und Fenster wurden in dieser Zeit nicht abgesagt, aber vieles kann sich angestaut haben). */
+const LONG_PAUSE_DAYS = 14;
+
 export async function setCardSwitch(actorId: string, enabled: boolean, reason: string, confirmed: boolean): Promise<void> {
+  let pausedSince: Date | null = null; // Zeitpunkt des Ausschaltens (updated_at vor dem Wiedereinschalten)
   const clean = stripControl(reason).trim();
   if (clean.length < 3 || clean.length > 200) throw new DomainError("Bitte gib einen Grund an (3 bis 200 Zeichen).");
   if (!confirmed) throw new DomainError("Bitte bestätige, dass du die Folgen gelesen hast.");
@@ -43,6 +48,7 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
     // Steht in der Einstellung etwas anderes als true/false (von Hand gesetzt), wuerde der Vergleich unten nie treffen: klare Meldung statt "jemand anderes hat geaendert"
     if (row && typeof row.value !== "boolean") throw new DomainError("Die Einstellung hat einen unerwarteten Wert (kein Ja/Nein). Bitte per SQL prüfen und auf true oder false setzen.");
     const current = row?.value === true;
+    if (enabled && row) pausedSince = row.updatedAt;
     if (current === enabled) throw new DomainError(enabled ? "Die Kartenzahlung ist schon eingeschaltet." : "Die Kartenzahlung ist schon ausgeschaltet.");
     // Compare-and-set (zweite Schicht neben dem Lock): geschrieben wird nur, wenn der Wert seit dem Lesen unveraendert ist (Vergleich auf value; updated_at taugt nicht: Mikrosekunden gehen beim Lesen verloren) bzw. die Zeile noch fehlt
     const written = row
@@ -64,7 +70,7 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
     await notifyUsers(
       await bookingStaffIds(db),
       enabled
-        ? { type: "system.critical", title: "Kartenzahlung eingeschaltet", body: "Die Kartenzahlung wurde eingeschaltet. Fällige Abbuchungen laufen nach.", url: "/admin/finanzen" }
+        ? { type: "system.critical", title: "Kartenzahlung eingeschaltet", body: `Die Kartenzahlung wurde eingeschaltet. Fällige Abbuchungen laufen nach.${longPauseNote(pausedSince)}`, url: "/admin/finanzen" }
         : { type: "system.critical", title: "Kartenzahlung ausgeschaltet", body: "Die Kartenzahlung wurde ausgeschaltet (Notabschaltung): neue Bezahlungen sind pausiert.", url: "/admin/finanzen" },
       db,
       actorId,
@@ -72,4 +78,19 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
   } catch (error) {
     console.error("setCardSwitch: Mitteilung an den Buchungsstab fehlgeschlagen", error instanceof Error ? error.name : "Fehler");
   }
+  // Mitteilung "Bezahlung ist wieder moeglich, neue Frist" an die betroffenen Spiele: NACH dem Commit, best effort, eigener Fangblock (ein Fehler verhindert das Einschalten nie)
+  if (enabled) {
+    try {
+      await notifyResumedGames(new Date());
+    } catch (error) {
+      console.error("setCardSwitch: Mitteilung zur neuen Frist fehlgeschlagen", error instanceof Error ? error.name : "Fehler");
+    }
+  }
+}
+
+/** Zusatz im Hinweis an alle nicht gesperrten Admins (Buchungsstab), wenn die Pause lange dauerte ("lange Pause beendet"): offene Spiele und Turniere prüfen. Nichts geht automatisch verloren: Absagen nennen die Pause und erstatten voll. */
+function longPauseNote(since: Date | null): string {
+  if (!since) return "";
+  const days = Math.floor((Date.now() - since.getTime()) / 86_400_000);
+  return days >= LONG_PAUSE_DAYS ? ` Lange Pause beendet: Die Pause dauerte ${days} Tage. Bitte offene Spiele und Turniere prüfen; Absagen nennen die Pause und erstatten voll.` : "";
 }
