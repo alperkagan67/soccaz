@@ -57,14 +57,19 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
       { before: { value: current, since: row?.updatedAt ?? null }, after: { value: enabled, reason: clean, reasonSha256: createHash("sha256").update(clean, "utf8").digest("hex") } },
       tx,
     );
-    // Mitteilung an den Buchungsstab (Admin 1 und Admin 2, nicht gesperrt), den Akteur ausgenommen: ohne Personendaten, ohne Grund im Klartext
+  });
+  // Mitteilung an den Buchungsstab (Admin 1 und Admin 2, nicht gesperrt), den Akteur ausgenommen: ohne Personendaten, ohne Grund im Klartext. NACH dem Commit und best effort: ein Fehler hier
+  // darf den Notschalter nie zurueckrollen (Schalten und Audit sind schon sicher; die Alarmliste zeigt den Zustand ohnehin).
+  try {
     await notifyUsers(
-      await bookingStaffIds(tx),
+      await bookingStaffIds(db),
       enabled
         ? { type: "admin.task", title: "Kartenzahlung eingeschaltet", body: "Die Kartenzahlung wurde eingeschaltet. Fällige Abbuchungen laufen nach.", url: "/admin/einstellungen" }
         : { type: "admin.task", title: "Kartenzahlung ausgeschaltet", body: "Die Kartenzahlung wurde ausgeschaltet (Notabschaltung): neue Bezahlungen sind pausiert.", url: "/admin/einstellungen" },
-      tx,
+      db,
       actorId,
     );
-  });
+  } catch (error) {
+    console.error("setCardSwitch: Mitteilung an den Buchungsstab fehlgeschlagen", error instanceof Error ? error.name : "Fehler");
+  }
 }

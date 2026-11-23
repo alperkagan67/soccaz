@@ -23,6 +23,12 @@ vi.mock("next/navigation", () => ({
   },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+// Die Mitteilung darf den Notschalter nie scheitern lassen: ein Test schaltet notifyUsers auf "wirft" (nur ueber diesen Schalter, sonst echter Pfad)
+const failNotify = { on: false };
+vi.mock("@/server/notifications", async (importOriginal) => {
+  const m = await importOriginal<typeof import("@/server/notifications")>();
+  return { ...m, notifyUsers: (...args: Parameters<typeof m.notifyUsers>) => (failNotify.on ? Promise.reject(new Error("boom")) : m.notifyUsers(...args)) };
+});
 import { setCardSwitchAction } from "@/server/admin-finance-actions";
 
 beforeEach(async () => {
@@ -210,6 +216,22 @@ describe("Mitteilung an den Buchungsstab beim Umschalten", () => {
     expect(await noteTo(player.id, /Kartenzahlung/)).toHaveLength(0);
     await setCardSwitch(o.id, true, "Stoerung behoben, alles geprueft", true);
     expect(await noteTo(admin2.id, /Kartenzahlung eingeschaltet/)).toHaveLength(1);
+  });
+
+  it("Notschalter-Garantie: scheitert die Mitteilung, bleibt das Umschalten mit Audit bestehen (die Mitteilung laeuft nach dem Commit, best effort)", async () => {
+    const o = await owner();
+    const n0 = (await switchAudits()).length;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    failNotify.on = true;
+    try {
+      await setCardSwitch(o.id, false, "Notabschaltung trotz Mitteilungsfehler", true);
+    } finally {
+      failNotify.on = false;
+      logged.mockRestore();
+    }
+    expect(await cardPaymentsEnabled()).toBe(false);
+    expect((await switchAudits()).length).toBe(n0 + 1);
+    await setCardSwitch(o.id, true, "Wieder an nach dem Mitteilungstest", true);
   });
 
   it("eine abgewiesene Umschaltung (Admin 2 versucht es, Pflichtangabe fehlt) verschickt nichts", async () => {
