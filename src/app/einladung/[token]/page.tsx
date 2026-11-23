@@ -30,9 +30,12 @@ export default async function InvitePage({ params }: PageProps<"/einladung/[toke
       {user ? (
         <JoinForm token={token} />
       ) : (
-        <Link href={`/anmelden?next=${encodeURIComponent(`/einladung/${token}`)}`} className="btn btn-primary w-full">
-          Anmelden und beitreten
-        </Link>
+        <>
+          <Link href={`/anmelden?next=${encodeURIComponent(`/einladung/${token}`)}`} className="btn btn-primary w-full">
+            Anmelden und beitreten
+          </Link>
+          <p className="text-sm text-muted" data-testid="invite-steps">So geht es weiter: anmelden, in einer Minute einrichten (Name, Stadt, Position, Geburtsdatum), danach trittst du dem Team bei.</p>
+        </>
       )}
     </section>
   );
