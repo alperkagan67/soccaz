@@ -56,8 +56,9 @@ export async function requestVenue(userId: string, input: VenueInput) {
     const [u] = await tx.select({ id: users.id, bannedAt: users.bannedAt, role: users.role }).from(users).where(eq(users.id, userId));
     if (!u || u.bannedAt) throw new DomainError("Bitte melde dich an.");
     if (isPlatformAdmin(u)) throw new DomainError("Mit einem Admin-Konto kann keine Halle angefragt werden."); // wie inviteVenueManager: ein Admin ist nie Betreiber
-    const mine = [];
-    for (const h of await tx.select().from(venues).where(eq(venues.approvalStatus, "requested"))) if (await hasVenueAccess(h.id, userId, tx)) mine.push(h);
+    // Eigene offene Anfragen: zwei Abfragen statt einer je Halle (Zugang ueber die gemeinsame Quelle venue-access-rules)
+    const myIds = await venueIdsOf(userId, tx);
+    const mine = myIds.length ? await tx.select().from(venues).where(and(inArray(venues.id, myIds), eq(venues.approvalStatus, "requested"))) : [];
     const same = mine.find((h) => h.name === v.name && h.city === v.city);
     if (same) return same; // Doppelklick: dieselbe offene Anfrage desselben Betreibers
     if (mine.length >= MAX_OPEN_REQUESTS) throw new DomainError(`Du hast schon ${MAX_OPEN_REQUESTS} offene Hallen-Anfragen. Bitte warte auf die Entscheidung.`);

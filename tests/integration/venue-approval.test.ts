@@ -279,6 +279,9 @@ describe("Fehlzustand: angefragte Halle ist aktiv (CHECK entfernt), jeder Leser 
 });
 
 describe("DB-Absicherung: aktiv nur wenn freigegeben", () => {
+  beforeAll(async () => {
+    await restoreActiveCheck(); // hart abgebrochene fruehere Laeufe lassen die Worker-DB sonst ohne CHECK
+  });
   it("der CHECK venues_requested_inactive_chk besteht (auch nach den Fehlzustands-Tests davor)", async () => {
     const r = await db.execute(sql`select count(*)::int as n from pg_constraint where conrelid = 'venues'::regclass and conname = 'venues_requested_inactive_chk'`);
     expect(((r as unknown as { rows?: { n: number }[] }).rows ?? (r as unknown as { n: number }[]))[0].n).toBe(1);
