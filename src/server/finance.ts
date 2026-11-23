@@ -473,15 +473,16 @@ export async function getAlerts(): Promise<Alert[]> {
         where m.status = 'confirmed' and m.settled_at is null and m.starts_at < now() and exists (select 1 from match_participants p where p.match_id = m.id and p.paid_cents > 0) limit 10`),
     );
     for (const m of unsettled) alerts.push({ code: `unsettled:${m.id}`, severity: "high", title: `Nicht abgerechnet: ${m.home} gegen ${m.away}`, detail: "Das Spiel hat begonnen, aber die Anteile wurden noch nicht abgerechnet.", href: `/admin/finanzen/spiel/${m.id}` });
-
-    const noJob = rowsOf<{ id: string; home: string; away: string }>(
-      await db.execute(sql`
-        select m.id, h.name as home, a.name as away from matches m join teams h on h.id = m.home_team_id join teams a on a.id = m.away_team_id
-        where m.status = 'confirmed' and m.starts_at > now() and m.starts_at < now() + interval '48 hours'
-          and not exists (select 1 from booking_jobs j where j.match_id = m.id and j.status in ('booked','confirmed','done')) limit 10`),
-    );
-    for (const m of noJob) alerts.push({ code: `unbooked-hall:${m.id}`, severity: "high", title: `Halle noch nicht gebucht: ${m.home} gegen ${m.away}`, detail: "Das Spiel findet in weniger als 48 Stunden statt.", href: "/admin/buchungen" });
   }
+
+  // Halle noch nicht gebucht (< 48 h): Reservierung, unabhaengig von Zahlungen (Entscheid t2q, 1c-ii); nur der Geldteil (nicht abgerechnet) haengt an payments_enabled
+  const noJob = rowsOf<{ id: string; home: string; away: string }>(
+    await db.execute(sql`
+      select m.id, h.name as home, a.name as away from matches m join teams h on h.id = m.home_team_id join teams a on a.id = m.away_team_id
+      where m.status = 'confirmed' and m.starts_at > now() and m.starts_at < now() + interval '48 hours'
+        and not exists (select 1 from booking_jobs j where j.match_id = m.id and j.status in ('booked','confirmed','done')) limit 10`),
+  );
+  for (const m of noJob) alerts.push({ code: `unbooked-hall:${m.id}`, severity: "high", title: `Halle noch nicht gebucht: ${m.home} gegen ${m.away}`, detail: "Das Spiel findet in weniger als 48 Stunden statt.", href: "/admin/buchungen" });
   alerts.push(...cardAlertsFrom(await getRefundAlerts()));
   return alerts;
 }

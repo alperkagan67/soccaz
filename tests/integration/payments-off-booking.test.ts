@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, notifications } from "@/db/schema";
 import { bookingJobs } from "@/db/schema-finance";
+import { getAlerts } from "@/server/finance";
 import { cancelMatchTx, setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
 import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
@@ -19,13 +20,13 @@ beforeEach(async () => {
   await setSetting(null, "card_payments_enabled", true);
 });
 
-async function confirmedGame(payments: boolean) {
+async function confirmedGame(payments: boolean, hoursAhead = 72, withCards = true) {
   await setSetting(null, "payments_enabled", payments);
-  const g = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
+  const g = await makeMatch({ hoursAhead, priceCents: 8000, costCents: 8000 });
   const all = [g.adminA, g.adminB];
   while (all.length < 10) all.push(await addPlayer(g.match.id, all.length % 2 === 0 ? g.home.id : g.away.id));
   // Karte hinterlegt (nur im Kartenmodell noetig; bei AUS egal)
-  await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(eq(matchParticipants.matchId, g.match.id));
+  if (withCards) await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(eq(matchParticipants.matchId, g.match.id));
   for (const p of all) await setReady(p.id, g.match.id, true);
   return g;
 }
@@ -46,4 +47,25 @@ describe("Halle-Buchung (Reservierung) unabhaengig von Zahlungen", () => {
       expect((await jobsOf(g.match.id))[0].status).toBe("withdrawn");
     });
   }
+});
+
+describe("Halle-Buchung: Gratis ohne Karte, Idempotenz, Alarm", () => {
+  it("payments AUS, ohne hinterlegte Karte: Bestaetigung erzeugt trotzdem den Auftrag (Zusage ist Buchungsbedingung); Bereit aus/an und erneutes Bestaetigen: weiter genau 1 Auftrag", async () => {
+    const g = await confirmedGame(false, 72, false);
+    expect(await jobsOf(g.match.id)).toHaveLength(1);
+    const ids = (await db.select({ id: matchParticipants.userId }).from(matchParticipants).where(eq(matchParticipants.matchId, g.match.id))).map((r) => r.id);
+    for (const id of ids) await setReady(id, g.match.id, false); // faellt zurueck in die Lobby
+    expect((await reloadMatch(g.match.id)).status).toBe("lobby");
+    for (const id of ids) await setReady(id, g.match.id, true); // wieder bestaetigt
+    expect((await reloadMatch(g.match.id)).status).toBe("confirmed");
+    expect(await jobsOf(g.match.id)).toHaveLength(1);
+  });
+
+  it("Alarm \"Halle noch nicht gebucht\" (unter 48 h, kein gebuchter Auftrag) kommt unabhaengig von Zahlungen: payments AUS ja; nach Buchung weg", async () => {
+    const g = await confirmedGame(false, 30, false);
+    const code = `unbooked-hall:${g.match.id}`;
+    expect((await getAlerts()).some((a) => a.code === code)).toBe(true);
+    await db.update(bookingJobs).set({ status: "booked" }).where(eq(bookingJobs.matchId, g.match.id));
+    expect((await getAlerts()).some((a) => a.code === code)).toBe(false);
+  });
 });
