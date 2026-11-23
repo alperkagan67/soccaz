@@ -4,6 +4,7 @@
   "shards": {
     "1": [
       "community2.spec.ts",
+      "halle-onboarding.spec.ts",
       "karte-freigabe.spec.ts",
       "lobby-gast-kosten.spec.ts",
       "privatspiel.spec.ts",

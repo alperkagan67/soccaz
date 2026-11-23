@@ -146,12 +146,13 @@ export function buildHalleSteps(commissionPercent: number): readonly AssistentSc
   ];
 }
 
-export function HalleOnboarding({ commissionPercent, abschlussAction }: { commissionPercent: number; abschlussAction: (prev: ActionState, formData: FormData) => Promise<ActionState> }) {
+export function HalleOnboarding({ commissionPercent, abschlussAction, anfangswerte }: { commissionPercent: number; abschlussAction: (prev: ActionState, formData: FormData) => Promise<ActionState>; anfangswerte?: Record<string, string> }) {
   return (
     <Assistent
       id={ONBOARDING_ID}
       titel="Halle anfragen"
       schritte={buildHalleSteps(commissionPercent)}
+      anfangswerte={anfangswerte}
       abschlussLabel="Anfrage senden"
       abschlussAction={abschlussAction}
       erfolg={
