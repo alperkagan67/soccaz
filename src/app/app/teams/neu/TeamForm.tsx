@@ -14,11 +14,11 @@ const STRENGTH = [
 ] as const;
 
 export function TeamForm({ defaultCity, next }: { defaultCity: string; next?: string }) {
-  const { state, pending, onSubmit } = useFormAction(createTeamAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(createTeamAction);
   const fe = state?.fieldErrors ?? {};
 
   return (
-    <form onSubmit={onSubmit} className="card space-y-4">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-4">
       {next && <input type="hidden" name="next" value={next} />}
       <div>
         <label className="label" htmlFor="name">Teamname</label>

@@ -95,7 +95,9 @@ export async function createInviteAction(teamId: string): Promise<{ token?: stri
   }
 }
 
-export async function joinTeamAction(token: string): Promise<ActionState> {
+// Signatur (token, vorher, formData): per bind(null, token) eine Server-Aktions-Referenz für useFormAction (Formular sendet auch vor der Hydration nativ POST), nicht als Inline-Closure.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- useActionState ruft mit (vorher, formData); beide werden hier nicht gebraucht
+export async function joinTeamAction(token: string, _prev?: ActionState, _formData?: FormData): Promise<ActionState> {
   const user = await requireUser(`/einladung/${token}`);
   let slug: string;
   try {

@@ -6,13 +6,13 @@ import { FieldError, SubmitButton } from "./FormBits";
 import { useFormAction } from "./useFormAction";
 
 export function CommentForm({ targetType, targetId, path, withRating, label }: { targetType: "team" | "player" | "venue"; targetId: string; path: string; withRating?: boolean; label: string }) {
-  const { state, pending, onSubmit } = useFormAction(postCommentAction);
+  const { state, pending, onSubmit, formAction } = useFormAction(postCommentAction);
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state?.ok) ref.current?.reset();
   }, [state]);
   return (
-    <form ref={ref} onSubmit={onSubmit} className="card space-y-3">
+    <form ref={ref} action={formAction} onSubmit={onSubmit} className="card space-y-3">
       <input type="hidden" name="targetType" value={targetType} />
       <input type="hidden" name="targetId" value={targetId} />
       <input type="hidden" name="path" value={path} />
