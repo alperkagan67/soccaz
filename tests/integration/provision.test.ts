@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles } from "@/db/schema";
 import { ledgerEntries, matchCommissions, venues } from "@/db/schema-finance";
 import { bookCommission, reverseCommission, setVenueCommission } from "@/server/commission";
-import { post, trialBalance } from "@/server/ledger";
+import { debitWallet, post, trialBalance } from "@/server/ledger";
 import { runCharges } from "@/server/payments/charge-run";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
@@ -13,10 +13,9 @@ import { setSetting } from "@/server/settings";
 import { recordExpense } from "@/server/booking";
 import { getAlerts, manualRefund } from "@/server/finance";
 import { creditWallet, walletBalance } from "@/server/ledger";
-import { payShare } from "@/server/lobby";
 import { createPrivateGame } from "@/server/privategame";
 import { createVenue } from "@/server/venues";
-import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeUser, seedShare } from "./helpers";
 
 // Vertrag 009 M2 (Entscheide t9: S1 Variante A, P1 kumulierbar, P2/P6 Hallenmiete, P3 Bonus bleibt, P4 ab Einführung, P7 Absage storniert ganz).
 // Die Server-Aktion läuft mit der ECHTEN Sitzungsprüfung; nur die Anmeldung und die Weiterleitung sind ersetzt.
@@ -398,7 +397,9 @@ describe("Review-Fixes 009 M2 (t1d): Konten je Pfad, Unveränderlichkeit, Vorgab
     await db.transaction((tx) => creditWallet(tx, payer.id, { from: "bank", amountCents: 5000, kind: "adjustment", idempotencyKey: nid("fund") }));
     await setSetting(null, "payments_enabled", true);
     try {
-      await payShare(payer.id, w.match.id);
+      // Altspiele sind stillgelegt (1c-ii a-1): kein payShare mehr; die urspruengliche Zahlung (wallet -> revenue, Art match_share) wird direkt gebucht
+      await db.transaction((tx) => debitWallet(tx, payer.id, { to: "revenue", amountCents: 500, kind: "match_share", matchId: w.match.id, idempotencyKey: nid("seed-share"), reason: "Startgebühr (Reservierung)", actorId: payer.id }));
+      await seedShare(payer.id, w.match.id, 500);
     } finally {
       await setSetting(null, "payments_enabled", false);
     }
