@@ -1,9 +1,9 @@
 import { Fragment, createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { buildHalleSteps } from "@/app/halle/anfragen/HalleOnboarding";
+import { buildHalleSteps, onboardingDraftId } from "@/app/halle/anfragen/HalleOnboarding";
 import type { SchrittProps } from "@/components/ui/Assistent";
-import { serialisiereEntwurf, startZustand, type Werte } from "@/lib/assistent";
+import { entwurfSchluessel, serialisiereEntwurf, startZustand, type Werte } from "@/lib/assistent";
 import { ONBOARDING_STEPS, validateStep } from "@/lib/venue-onboarding";
 
 // Vertrag 013 Version 3, M2d (AC-25): Die Oberfläche des Hallen-Onboardings folgt der gemeinsamen Quelle (src/lib/venue-onboarding.ts). Auflage (Review Assistent): Zustimmung und
@@ -92,5 +92,22 @@ describe("Inhalt der Schritte", () => {
     expect(out).not.toMatch(/name="terms"[^>]*checked/);
     expect(String(steps[4].beschreibung)).toContain("10,00 %");
     expect(markup(4, full)).toMatch(/checked/);
+  });
+});
+
+describe("Review R-T335: getrennte Entwürfe und Hinweis bei leerem Kontakt", () => {
+  it("Entwurfsschlüssel: neuer Antrag und jede erneute Anfrage haben verschiedene Kennungen (nie Werte einer anderen Halle)", () => {
+    const neu = onboardingDraftId();
+    const a = onboardingDraftId("11111111-1111-4111-8111-111111111111");
+    const b = onboardingDraftId("22222222-2222-4222-8222-222222222222");
+    expect(neu).toBe("halle-onboarding");
+    expect(new Set([neu, a, b]).size).toBe(3);
+    expect(entwurfSchluessel(a)).not.toBe(entwurfSchluessel(neu));
+    expect(onboardingDraftId(null)).toBe(neu);
+  });
+
+  it("Zusammenfassung: ohne Kontakt (z. B. nach dem Neuladen) steht ein Hinweis auf Schritt 1, mit Kontakt nicht", () => {
+    expect(markup(3, { ...full, contact: "" })).toContain('data-testid="summary-contact-missing"');
+    expect(markup(3, full)).not.toContain("summary-contact-missing");
   });
 });

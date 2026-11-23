@@ -5,7 +5,7 @@ import { isPlatformAdmin } from "@/lib/roles";
 import { defaultCommissionPercent } from "@/server/commission";
 import { requireUser } from "@/server/session";
 import { requestVenueAction, resubmitVenueAction } from "@/server/venue-request-actions";
-import { myPendingVenues } from "@/server/venue-approval";
+import { rejectedVenueForm } from "@/server/venue-resubmit-data";
 import { HalleOnboarding } from "./HalleOnboarding";
 
 export const metadata: Metadata = { title: "Halle anfragen", robots: { index: false } };
@@ -20,7 +20,7 @@ export default async function HallRequestPage({ searchParams }: PageProps<"/hall
   const user = await requireUser("/halle/anfragen");
   const sp = await searchParams;
   const again = typeof sp.erneut === "string" ? sp.erneut : null;
-  const rejected = again ? (await myPendingVenues(user.id)).find((v) => v.id === again && v.status === "rejected") : undefined;
+  const rejected = again ? await rejectedVenueForm(user.id, again) : null; // nur die eigene abgelehnte Halle, sonst die normale Anfrage
   const commission = await defaultCommissionPercent();
 
   return (
@@ -37,7 +37,8 @@ export default async function HallRequestPage({ searchParams }: PageProps<"/hall
         <HalleOnboarding
           commissionPercent={commission}
           abschlussAction={rejected ? resubmitVenueAction.bind(null, rejected.id) : requestVenueAction}
-          anfangswerte={rejected ? { name: rejected.name } : undefined}
+          anfangswerte={rejected?.values}
+          resubmitVenueId={rejected?.id}
         />
       )}
     </section>

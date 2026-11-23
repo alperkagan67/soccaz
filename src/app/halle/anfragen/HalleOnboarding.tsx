@@ -13,6 +13,9 @@ import { CITIES } from "@/lib/validation";
 import { ONBOARDING_ID, ONBOARDING_STEPS, validateStep, type OnboardingStepId } from "@/lib/venue-onboarding";
 import type { ActionState } from "@/lib/validation";
 
+/** Entwurfsschluessel je Ablauf (R-T335): ein neuer Antrag und jede erneute Anfrage haben getrennte Entwuerfe, sonst wuerden Werte einer anderen Halle gesendet. */
+export const onboardingDraftId = (resubmitVenueId?: string | null): string => (resubmitVenueId ? `${ONBOARDING_ID}-erneut-${resubmitVenueId}` : ONBOARDING_ID);
+
 const t = (key: Parameters<typeof translate>[1]) => translate(DEFAULT_LOCALE, key);
 const info = (id: OnboardingStepId) => ONBOARDING_STEPS.find((s) => s.id === id)!;
 
@@ -43,6 +46,11 @@ function Summary({ p }: { p: SchrittProps }) {
       {row("Stadt", w.city, "city")}
       {row("Adresse", w.address, "address")}
       {row("Kontakt", w.contact || "—", "contact")}
+      {!w.contact ? (
+        <p className="py-2 text-sm font-medium" role="note" data-testid="summary-contact-missing">
+          Der Kontakt wird nicht im Entwurf gespeichert. Bitte gehe mit „Zurück“ zu Schritt 1 und gib ihn erneut ein.
+        </p>
+      ) : null}
       {row("Anzahl Plätze", w.courts, "courts")}
       {row("Boden", w.surface || "—", "surface")}
       {row("Duschen", w.hasShowers === "on" ? "ja" : "nein", "showers")}
@@ -146,10 +154,10 @@ export function buildHalleSteps(commissionPercent: number): readonly AssistentSc
   ];
 }
 
-export function HalleOnboarding({ commissionPercent, abschlussAction, anfangswerte }: { commissionPercent: number; abschlussAction: (prev: ActionState, formData: FormData) => Promise<ActionState>; anfangswerte?: Record<string, string> }) {
+export function HalleOnboarding({ commissionPercent, abschlussAction, anfangswerte, resubmitVenueId }: { commissionPercent: number; resubmitVenueId?: string | null; abschlussAction: (prev: ActionState, formData: FormData) => Promise<ActionState>; anfangswerte?: Record<string, string> }) {
   return (
     <Assistent
-      id={ONBOARDING_ID}
+      id={onboardingDraftId(resubmitVenueId)}
       titel="Halle anfragen"
       schritte={buildHalleSteps(commissionPercent)}
       anfangswerte={anfangswerte}
