@@ -10,12 +10,22 @@ export async function devLogin(page: Page, email: string, name: string, next?: s
   await page.getByRole("button", { name: "Als Dev-Nutzer anmelden" }).click();
 }
 
+/**
+ * Spieler-Onboarding (Assistent, AC-26): Schritte Du (Name vorbelegt, Stadt), Position, Alter, Zusammenfassung, Abschluss. Felder und Knöpfe sind bis zur Hydration gesperrt
+ * (Backlog 224); Playwright wartet auf "enabled", ein Wiederholen ist nicht nötig. Alles nur innerhalb des Assistenten adressieren (strict mode).
+ */
 export async function onboard(page: Page, birthDate: string) {
   await expect(page).toHaveURL(/\/willkommen/);
-  await page.getByLabel("Stadt").selectOption("Gelsenkirchen");
-  await page.getByLabel("Position").selectOption("Angriff");
-  await page.getByLabel("Geburtsdatum").fill(birthDate);
-  await page.getByRole("checkbox").check();
+  const form = page.getByTestId("assistent");
+  const weiter = page.getByTestId("assistent-weiter");
+  await form.getByLabel("Stadt").selectOption("Gelsenkirchen");
+  await weiter.click();
+  await form.getByLabel("Position").selectOption("Angriff");
+  await weiter.click();
+  await form.getByLabel("Geburtsdatum").fill(birthDate);
+  await weiter.click(); // Zusammenfassung
+  await weiter.click(); // Abschluss
+  await form.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Los geht's" }).click();
 }
 
