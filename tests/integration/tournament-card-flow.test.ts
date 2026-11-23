@@ -4,14 +4,15 @@ import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges, paymentProfiles, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { ledgerEntries, venues } from "@/db/schema-finance";
-import { tournamentMatches, tournaments } from "@/db/schema-league";
+import { tournamentMatches, tournamentTeams, tournaments } from "@/db/schema-league";
 import { trialBalance, walletBalance } from "@/server/ledger";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runTournamentCharges } from "@/server/payments/tournament-charge";
 import { confirmResult, submitResult } from "@/server/results";
 import { setSetting } from "@/server/settings";
-import { createTournament, decideShootout, getTournament, joinAsPlayer, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
+import { createTournament, decideShootout, getTournament, joinAsPlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
+import { takeOverTournamentShare } from "@/server/tournament-card";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 // 012 M6b b2-i Teil 2, Paket 1: Karten-Gegenstücke zu den Guthaben-Tests von tournament.test.ts (Bracket, Ergebnisse, Ansicht). Der Altpfad (payEntry, Auszahlung) wird in b2-ii gelöscht;
@@ -245,5 +246,122 @@ describe("Turnier im Kartenmodell: Ergebnisse, kein Preisgeld, Provision aus dem
     expect((await commissionOf(t.id)).map((e) => e.amountCents)).toEqual([1600]);
     expect(await walletBalance(db, o.id)).toBe(orgBefore); // kein Preisgeld
     expect((await trialBalance()).balanced).toBe(true);
+  });
+});
+
+// --- Paket 2: Kader, Bereit, Zahlung ---
+// Zuordnung (AC-5) der Guthaben-Tests von tournament.test.ts, die in b2-ii entfallen, zu den Karten-Gegenstücken:
+//  - "nur der Captain, 4 bis 6 Spieler; Kaderänderung hebt die Meldung auf; vorher kann niemand bezahlen" -> unten (Kaderregeln; "vorher kein Bereit" statt "vorher nicht bezahlen")
+//  - "Zuschauer sehen weder paidReady noch paidReadyAt, Beteiligte schon" -> unten
+//  - "AC-1: Bereit nur in Phase payment, nur der Captain, nur wenn alle bezahlt haben (auch durch andere)" -> unten (Karten statt Zahlung, "durch andere" = Übernahme)
+//  - "AC-2: Kader wieder öffnen setzt Bereit aller Teams zurück" -> unten
+//  - "abbuchen, nicht doppelt, auch bei gleichzeitigen Anfragen; ohne Guthaben nichts" -> tournament-charge.test.ts ('zur Frist: jeder Spieler genau einmal', 'nicht abbuchbar: ... Karte fehlt') + Paket 1 (parallele Läufe)
+//  - "Captain zahlt für alle oder einzelne, alles oder nichts" / AC-4 (A zahlt für B, parallel, created=false) / AC-5 (anderes Team, Nicht-Kader) / AC-1 "Zahlung durch Mitspieler genügt"
+//    -> tournament-card.test.ts ('Anteil uebernehmen', 'Uebernahme abgelehnt: ... aus einem anderen Team, doppelt'), tournament-charge.test.ts ('Anteil uebernehmen: der Zahler ist B', 'Alles-oder-nichts')
+//  - "Erstattung geht an den Zahler" -> Paket 3 (Absage)
+const paidReadyOf = async (tid: string, teamId: string) =>
+  (await db.select({ v: tournamentTeams.paidReadyAt }).from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tid), eq(tournamentTeams.teamId, teamId))))[0].v;
+
+describe("Turnier im Kartenmodell: Kader und Bereit", () => {
+  it("Gegenstück zu 'nur der Captain, 4 bis 6 Spieler': Kaderregeln unverändert; vor dem festen Preis gibt es kein Bereit; ein neuer Spieler hebt die Meldung auf", async () => {
+    const o = await organizer();
+    const t = await createTournament(o.id, { ...base, venueId: hall });
+    const small = await squad(t.id, 3, false);
+    await expect(setRosterComplete(small.captain.id, t.id, true)).rejects.toThrow(/4 bis 6/);
+    await expect(setRosterComplete(small.players[1].id, t.id, true)).rejects.toThrow(/Captain/); // normaler Spieler
+    await expect(setRosterComplete((await makeUser("fremd")).id, t.id, true)).rejects.toThrow(/Captain/);
+    const p = await makeUser("pl");
+    await db.insert(teamMembers).values({ teamId: small.team.id, userId: p.id, role: "player" });
+    await joinAsPlayer(p.id, t.id, small.team.id);
+    await setRosterComplete(small.captain.id, t.id, true);
+    expect((await orgView(o, t.id))!.teams[0].ready).toBe(true);
+
+    // vor der Preisfestlegung gibt es kein Bereit (Zahlungsphase fehlt) und nichts wird abgebucht
+    await giveCards(small.players);
+    await expect(setPaidReady(small.captain.id, t.id)).rejects.toThrow(/Zahlung/);
+    expect(await chargesOf(t.id)).toHaveLength(0);
+
+    // ein neuer Spieler: die Meldung ist aufgehoben
+    const late = await makeUser("pl");
+    await db.insert(teamMembers).values({ teamId: small.team.id, userId: late.id, role: "player" });
+    await joinAsPlayer(late.id, t.id, small.team.id);
+    expect((await orgView(o, t.id))!.teams[0].ready).toBe(false);
+    await setRosterComplete(small.captain.id, t.id, true);
+    await setRosterComplete(small.captain.id, t.id, false); // zurücknehmen geht, solange der Preis nicht feststeht
+    expect((await orgView(o, t.id))!.teams[0].ready).toBe(false);
+    expect((await statusOf(t.id)).status).toBe("registration");
+  });
+
+  it("Gegenstück zu 'AC-1: Bereit nur in Phase payment, nur der Captain, nur wenn alle bezahlt haben': Bereit nur in der Zahlungsphase, nur der Captain, nur mit Karten aller Spieler (auch durch Übernahme)", async () => {
+    const o = await organizer();
+    const t = await createTournament(o.id, { ...base, venueId: hall });
+    const squads: Squad[] = [];
+    for (let i = 0; i < 3; i++) squads.push(await squad(t.id, 4));
+    const a = squads[0];
+    // vor der Zahlungsphase: abgelehnt (auch mit Karten)
+    await giveCards(a.players);
+    await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/Zahlung/);
+    squads.push(await squad(t.id, 4));
+    expect((await statusOf(t.id)).status).toBe("payment");
+
+    // keine Karten: Fehler, Spalte bleibt leer (die Karten wurden oben vergeben: für den Test wieder entziehen)
+    for (const p of a.players.slice(1)) await db.delete(paymentProfiles).where(eq(paymentProfiles.userId, p.id));
+    await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/Karte/);
+    expect(await paidReadyOf(t.id, a.team.id)).toBeNull();
+
+    // nur Captain-Recht: normale Spieler und Fremde dürfen nicht
+    await giveCards([a.players[1]]);
+    await expect(setPaidReady(a.players[1].id, t.id)).rejects.toThrow(/Captain/);
+    await expect(setPaidReady((await makeUser("fremd")).id, t.id)).rejects.toThrow(/Captain/);
+
+    // teilweise Karten: weiter Fehler
+    await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/Karte/);
+
+    // Spieler 3 bekommt eine eigene Karte, Spieler 2 wird vom Captain übernommen ("durch andere"): jetzt gelingt Bereit
+    await giveCards([a.players[3]]);
+    await takeOverTournamentShare(a.captain.id, t.id, a.players[2].id, true);
+    await setPaidReady(a.captain.id, t.id);
+    expect(await paidReadyOf(t.id, a.team.id)).not.toBeNull();
+    // ready_at ("Kader vollzählig") bleibt unberührt
+    expect((await orgView(o, t.id))!.teams.find((x) => x.teamId === a.team.id)!.ready).toBe(true);
+    // Team B ist unberührt, und es gibt kein Bracket (die anderen Teams sind nicht bereit, nichts ist abgebucht)
+    expect(await paidReadyOf(t.id, squads[1].team.id)).toBeNull();
+    expect((await statusOf(t.id)).bracketGeneratedAt).toBeNull();
+    expect(await chargesOf(t.id)).toHaveLength(0);
+  });
+
+  it("Gegenstück zu 'Zuschauer sehen weder paidReady noch paidReadyAt, Beteiligte schon'", async () => {
+    const o = await organizer();
+    const { t, squads } = await cardTournament(o);
+    const a = squads[0];
+    await giveCards(a.players);
+    await setPaidReady(a.captain.id, t.id);
+    const stranger = await makeUser("fremd");
+    for (const viewer of [null, { id: stranger.id, role: "player" as const }]) {
+      const v = await getTournament(t.id, viewer, "falscher-token");
+      for (const team of v!.teams) {
+        expect(team.paidReady).toBe(false);
+        expect(JSON.stringify(team)).not.toContain("paidReadyAt");
+      }
+    }
+    const member = await getTournament(t.id, { id: a.players[1].id, role: "player" });
+    expect(member!.teams.find((x) => x.teamId === a.team.id)!.paidReady).toBe(true);
+    expect(JSON.stringify(member!.teams)).not.toContain("paidReadyAt");
+  });
+
+  it("Gegenstück zu 'AC-2: Kader wieder öffnen setzt Bereit aller Teams zurück': vor der Abbuchung gibt es nichts zu erstatten, Bereit ist danach nicht mehr möglich", async () => {
+    const o = await organizer();
+    const { t, squads, players } = await cardTournament(o);
+    await giveCards(players);
+    const a = squads[0];
+    await setPaidReady(a.captain.id, t.id);
+    await setPaidReady(squads[1].captain.id, t.id);
+    expect(await paidReadyOf(t.id, a.team.id)).not.toBeNull();
+    await reopenRosters(o.id, t.id);
+    for (const s of squads) expect(await paidReadyOf(t.id, s.team.id)).toBeNull();
+    expect((await statusOf(t.id)).status).toBe("registration");
+    expect(await chargesOf(t.id)).toHaveLength(0); // es war nichts abgebucht, also gibt es nichts zu erstatten
+    // nach dem Wiederöffnen ist Bereit nicht mehr möglich
+    await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/Zahlung/);
   });
 });
