@@ -227,17 +227,50 @@ describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauc
     expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
   });
 
-  it("Flattern des Notschalters: Frist D in Pause 1, die zweite Pause (aus/an) liegt in der Karenz und enthaelt D nicht: die Karenz von Pause 1 bleibt bis on1 + 2 h", async () => {
+  it("Flattern des Notschalters: die zweite Pause beginnt weniger als 2 h nach dem Wiedereinschalten: EINE Pause, die Karenz wird verkettet (bis on2 + 2 h)", async () => {
     const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
     const due = await dueOf(g.match.id);
     const t = new Date(due.getTime() + 60_000);
     const on1 = new Date(t.getTime() - 30_000);
     await pause(on1, new Date(t.getTime() - 2 * 3_600_000)); // Pause 1 ueber die Frist
-    await pause(new Date(on1.getTime() + 40 * MIN), new Date(on1.getTime() + 30 * MIN), true); // Pause 2 (flattern) nach der Frist
-    expect(await closeLobbiesAtDeadline(new Date(on1.getTime() + 45 * MIN))).toBe(0); // innerhalb on1 + 2 h: keine Absage
+    await pause(new Date(on1.getTime() + 100 * MIN), new Date(on1.getTime() + 30 * MIN), true); // Pause 2: on1 + 2 h (120 min) faellt IN Pause 2 (off2 = +30, on2 = +100)
+    expect(await closeLobbiesAtDeadline(new Date(on1.getTime() + 125 * MIN))).toBe(0); // nach on1 + 2 h, aber vor on2 + 2 h (= +220 min): keine Absage
     expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(new Date(on1.getTime() + 221 * MIN));
+    expect((await stateOf(g.match.id)).status).toBe("cancelled");
+  });
+
+  it("zwei getrennte Pausen (Abstand mindestens 2 h): die Frist in Pause 1 behaelt ihre Karenz bis on1 + 2 h; die spaetere Pause aendert nichts", async () => {
+    const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const due = await dueOf(g.match.id);
+    const t = new Date(due.getTime() + 60_000);
+    const on1 = new Date(t.getTime() - 30_000);
+    await pause(on1, new Date(t.getTime() - 2 * 3_600_000));
+    await pause(new Date(on1.getTime() + 5 * 3_600_000), new Date(on1.getTime() + 3 * 3_600_000), true); // Pause 2 beginnt erst 3 h nach dem Wiedereinschalten
+    expect(await closeLobbiesAtDeadline(new Date(on1.getTime() + 100 * MIN))).toBe(0);
     await closeLobbiesAtDeadline(new Date(on1.getTime() + 121 * MIN));
     expect((await stateOf(g.match.id)).status).toBe("cancelled");
+  });
+
+  it("lange Pause (20 Tage): das Ausschalten liegt vor dem Rueckblick, das Einschalten darin: die Karenz gilt trotzdem", async () => {
+    const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const due = await dueOf(g.match.id);
+    const t = new Date(due.getTime() + 60_000);
+    await pause(new Date(t.getTime() - 30_000), new Date(t.getTime() - 20 * 24 * 3_600_000)); // off vor 20 Tagen (t liegt rund 1 Tag in der Zukunft: older than 14 days)
+    expect(await closeLobbiesAtDeadline(t)).toBe(0);
+    expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
+  });
+
+  it("nachtraeglicher Termin (Terminwahl): Frist 15 min vor Anstoss (deckelt die Karenz) in der Pause abgelaufen: Absage mit Klartext, nie stille Absage", async () => {
+    const g = await cardGame({ hoursAhead: 5, n: 6, confirmed: false });
+    const [row] = await db.select().from(matches).where(eq(matches.id, g.match.id));
+    await db.insert(auditLog).values({ actorId: null, action: "scheduling.locked", entity: "match", entityId: g.match.id, before: null, after: null, at: new Date(row.createdAt.getTime() + 60_000) }); // payOpenAt > createdAt: Karenz der Frist (dueWithGrace)
+    const t = new Date(row.startsAt.getTime() - 10 * MIN); // Frist = Anstoss minus 15 min ist erreicht
+    await pause(new Date(t.getTime() - 5 * MIN), new Date(t.getTime() - 50 * MIN)); // Pause ueber die Frist hinweg
+    await closeLobbiesAtDeadline(t);
+    const m = await stateOf(g.match.id);
+    expect(m.status).toBe("cancelled");
+    expect(m.cancelReason).toMatch(/Bezahlung war pausiert/);
   });
 
   it("Einschalten WAEHREND des Laufs (zwischen Kandidatenauswahl und Spielsperre): die Entscheidung liest frisch, keine Absage ohne Karenz", async () => {

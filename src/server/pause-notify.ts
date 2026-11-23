@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, remindersSent } from "@/db/schema";
 import { settings } from "@/db/schema-finance";
 import { tournamentTeams, tournaments } from "@/db/schema-league";
-import { abortDeadline, dueWithGrace, fixDeadline, hasLongLead } from "@/lib/deadlines";
+import { LAST_CHECK_BEFORE_START_MINUTES, abortDeadline, dueWithGrace, fixDeadline, hasLongLead } from "@/lib/deadlines";
 import { notifyUsers, teamAdminIds } from "./notifications";
 import { resumeFloor, resumeUntil, type ResumeInfo } from "./pause-resume";
 import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
@@ -36,13 +36,14 @@ export async function notifyResumedGames(now: Date = new Date(), opts: { limit?:
 }
 
 /**
- * SQL-Vorfilter statt je Kandidat `leadStart` für ALLE Spiele (N+1 alle 5 Minuten während der Karenz): Eine Frist liegt nie vor Anstoß minus 48 Stunden und nie nach Anstoß minus 1 Stunde; sie kann also nur dann in einer
- * Pause (off, on] liegen, wenn Anstoß > frühestes Ausschalten + 1 Stunde und Anstoß <= spätestes Einschalten + 48 Stunden. Der genaue Fristwert wird danach je verbleibendem Kandidat berechnet.
+ * SQL-Vorfilter statt je Kandidat `leadStart` für ALLE Spiele (N+1 alle 5 Minuten während der Karenz): Eine Frist liegt nie vor Anstoß minus 48 Stunden und nie nach Anstoß minus 15 Minuten (`dueWithGrace` deckelt auf
+ * `LAST_CHECK_BEFORE_START_MINUTES`, nicht auf eine Stunde: Terminwahl/Veto); sie kann also nur dann in einer Pause (off, on] liegen, wenn Anstoß > frühestes Ausschalten + 15 Minuten und Anstoß <= spätestes
+ * Einschalten + 48 Stunden. Der genaue Fristwert wird danach je verbleibendem Kandidat berechnet.
  */
 function startWindow(col: unknown, info: ResumeInfo) {
   const minOff = new Date(Math.min(...info.pauses.map((p) => p.offAt.getTime())));
   const maxOn = new Date(Math.max(...info.pauses.map((p) => p.onAt.getTime())));
-  return [sql`${col} > ${new Date(minOff.getTime() + 3_600_000)}`, sql`${col} <= ${new Date(maxOn.getTime() + 48 * 3_600_000)}`];
+  return [sql`${col} > ${new Date(minOff.getTime() + LAST_CHECK_BEFORE_START_MINUTES * 60_000)}`, sql`${col} <= ${new Date(maxOn.getTime() + 48 * 3_600_000)}`];
 }
 
 async function notifyGames(now: Date, info: ResumeInfo, limit: number): Promise<number> {

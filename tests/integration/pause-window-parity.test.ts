@@ -64,6 +64,19 @@ describe("Mehrfach-Pausen: Definition (Karenz = Maximum der Karenzenden der Paus
   it("D in keiner Pause: unveraendert", () => {
     expect(resumeFloor(new Date(OFF.getTime() - 30 * H), START, info([P1, flap])).due.getTime()).toBe(OFF.getTime() - 30 * H);
   });
+  it("pausesFrom fuehrt Pausen mit Abstand unter 2 h zusammen (Karenz verkettet): off2 < on1 + 2 h <= on2 -> EINE Pause off1..on2, Karenz bis on2 + 2 h", () => {
+    const t = (m: number) => new Date(Date.UTC(2030, 0, 1, 0, m));
+    const p = pausesFrom([{ action: "card_switch.off", at: t(0) }, { action: "card_switch.on", at: t(60) }, { action: "card_switch.off", at: t(90) }, { action: "card_switch.on", at: t(150) }]);
+    expect(p).toHaveLength(1);
+    expect(p[0].offAt.getTime()).toBe(t(0).getTime());
+    expect(p[0].onAt.getTime()).toBe(t(150).getTime());
+    expect(p[0].until.getTime()).toBe(t(150).getTime() + RESUME_GRACE_MS);
+  });
+  it("pausesFrom: Abstand genau 2 h oder mehr bleibt getrennt (zwei Pausen)", () => {
+    const t = (m: number) => new Date(Date.UTC(2030, 0, 1, 0, m));
+    const p = pausesFrom([{ action: "card_switch.off", at: t(0) }, { action: "card_switch.on", at: t(60) }, { action: "card_switch.off", at: t(180) }, { action: "card_switch.on", at: t(200) }]); // Abstand 120 min
+    expect(p).toHaveLength(2);
+  });
   it("pausesFrom: nur vollstaendige Paare (off dann on); ein on ohne off davor zaehlt nicht; off, off, on nimmt das letzte off", () => {
     const t = (m: number) => new Date(Date.UTC(2030, 0, 1, 0, m));
     expect(pausesFrom([{ action: "card_switch.on", at: t(1) }])).toHaveLength(0);
