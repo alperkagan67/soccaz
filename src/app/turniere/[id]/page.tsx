@@ -31,7 +31,7 @@ import { hasOpenTournamentAuthorization } from "@/server/payments/authorize";
 import { TournamentVenuePick } from "./TournamentVenuePick";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { TournamentCard } from "./TournamentCard";
-import { ZP } from "@/lib/zahlungspflicht-texte";
+import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
 
@@ -220,7 +220,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                   <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{priceFixed && !free && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>
                   {mine && inPayment && team.dueCents === 0 && team.cardMissing === 0 && team.players.length > 0 && !team.paidReady && (
                     <div className="space-y-1" data-testid="paid-ready-box">
-                      <ActionButton action={setPaidReadyAction.bind(null, t.id)} label={data.cardMode && !free && !data.paymentsPaused ? ZP.tournamentReady : ZP.tournamentReadyFree} className="btn btn-primary w-full" />
+                      <ActionButton action={setPaidReadyAction.bind(null, t.id)} label={tournamentReadyLabel({ cardMode: data.cardMode, free, paused: Boolean(data.paymentsPaused) })} className="btn btn-primary w-full" />
                       <p className="text-xs text-muted">{data.cardMode ? (data.paymentsPaused ? ZP.tournamentReadyPause : "Alle in eurem Team haben eine Karte hinterlegt. Drücke Bereit; abgebucht wird erst zur Frist.") : "Euer Team hat komplett bezahlt. Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind."}</p>
                     </div>
                   )}

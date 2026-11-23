@@ -23,6 +23,13 @@ export const ZP = {
   tournamentReadyFree: "Bereit",
   /** Spiel: letzte Bestätigung der Captains (M3 PR 1, #281): Preis bestätigen UND zahlungspflichtig zusagen. Wortlaut unverändert (E2E karte-finanzen, privatspiel), nur an einer Stelle. */
   finalConfirm: `Ja, mein Team ist komplett: Preis bestätigen und ${ZAHLUNGSPFLICHT}`,
+  /** Dasselbe OHNE Zahlungspflicht (Gratisspiel, Zahlungen aus/pausiert, Altmodell): bisheriger Text, keine Zusage und keine Abbuchungszeile. */
+  finalConfirmFree: "Ja, mein Team ist komplett: Spiel bestätigen",
+  finalHeading: "Preis bestätigen und Zahlung zusagen",
+  finalHeadingFree: "Letzte Bestätigung der Captains",
+  /** Hinweis in der Lobby, solange der Preis fehlt (null): kein "es wird nichts abgebucht"-Versprechen, der Preis kann noch kommen. */
+  priceUnknown: "Der Preis steht noch nicht fest. Du siehst ihn vor der Zusage.",
+  gameFree: "Dieses Spiel ist kostenlos. Es wird nichts abgebucht.",
   /** Anteil eines Mitspielers übernehmen (Spiel und Turnier): Bestätigungsknopf im Dialog; der Auslöser (trigger) öffnet nur den Dialog. */
   coverTrigger: "Anteil übernehmen",
   coverConfirm: mitZahlungspflicht("Anteil übernehmen"),
@@ -52,3 +59,9 @@ export const betragszeile = (betragText: string | null, fest: boolean) =>
       : `Aktuell ${betragText}: der Anteil ändert sich, bis beide Captains den Preis bestätigen. Abgebucht wird erst zur Frist.`;
 
 /** Turnier, Hinweis unter "Bereit" im pausierten Kartenfluss (Zahlungen pausiert): die Pause nicht verschweigen. */
+
+/** Zeile unter dem letzten Bestätigen (Captains): Betrag aus payments.chargeCents (derselbe Betrag wie am Bereit-Knopf), nie "wird abgebucht: X" vor dem Festpreis. */
+export const finalConfirmHinweis = (betragText: string | null) => (betragText ? `Abgebucht wird erst zur Frist: aktuell ${betragText}.` : "Abgebucht wird erst zur Frist.");
+
+/** Turnier, "Bereit" des Captains: die Formel nur im Kartenfluss mit Preis und NICHT im pausierten Kartenfluss (dort ist Bereit ohnehin gesperrt). Rein rechnend (testbar). */
+export const tournamentReadyLabel = (o: { cardMode: boolean; free: boolean; paused: boolean }) => (o.cardMode && !o.free && !o.paused ? ZP.tournamentReady : ZP.tournamentReadyFree);

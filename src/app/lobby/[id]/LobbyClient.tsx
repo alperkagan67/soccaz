@@ -96,7 +96,7 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
               {card && !card.ready && !card.failure && (
                 <>
                   <p className="text-sm text-muted" data-testid="card-hint">
-                    {payable ? <>Schritt 1: Karte hinterlegen. {betragszeile(card.estimateCents != null ? formatEuro(card.estimateCents) : null, card.estimateFixed)} Bis dahin wird nichts abgebucht.</> : "Dieses Spiel ist kostenlos oder der Preis steht noch nicht fest. Es wird nichts abgebucht."}
+                    {payable ? <>Schritt 1: Karte hinterlegen. {betragszeile(card.estimateCents != null ? formatEuro(card.estimateCents) : null, card.estimateFixed)} Bis dahin wird nichts abgebucht.</> : card.priceCents === 0 ? ZP.gameFree : ZP.priceUnknown}
                   </p>
                   <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={card.stored} />
                 </>

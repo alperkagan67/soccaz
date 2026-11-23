@@ -446,6 +446,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           matchId={match.id}
           paymentsOn={payments.enabled && !cardOn}
           minPlayers={MIN_READY_PER_TEAM}
+          payable={cardOn && payments.priceCents !== null && payments.priceCents > 0}
+          amountText={estimateCents !== null ? formatEuro(estimateCents) : null}
           myTeamId={myFinalTeamId}
           teams={[
             { id: match.homeId, name: match.homeName, final: match.homeFinalAt },
