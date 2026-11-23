@@ -19,13 +19,12 @@ import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
 import { triggerChargesInBackground } from "./payments/charge-trigger";
 import { chargeAmount } from "./payments/charge-run";
-import { CHARGES_LOCKED, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { CHARGES_LOCKED, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, recalcShares, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
 import { secureRandom, shuffle } from "@/lib/tournament";
 import { teamRoster, teamStrength, type RosterMember } from "./roster";
-import { walletBalance } from "./ledger";
 
 type MatchRow = typeof matches.$inferSelect;
 
@@ -151,7 +150,6 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
     // Privatspiel und neues Teamspiel: so viel muss die angemeldete Person noch zahlen (Anteil gestiegen oder noch nichts gezahlt)
     myDueCents: newModel && currentShare !== null && viewer ? Math.max(currentShare - (participants.find((p) => p.userId === viewer.id)?.paidCents ?? currentShare), 0) : null,
     settled: Boolean(match.settledAt),
-    balanceCents: viewer && payEnabled ? await walletBalance(db, viewer.id) : null,
   };
 
   return {
@@ -337,20 +335,9 @@ export async function finalConfirm(userId: string, matchId: string) {
     const [fresh] = await tx.select().from(matches).where(eq(matches.id, matchId));
     const bothDone = Boolean(fresh.homeFinalAt && fresh.awayFinalAt);
     bothConfirmed = bothDone;
-    // Privatspiel und neues Teamspiel: mit dem zweiten Bereit steht die Spielerzahl fest, der Anteil wird fixiert (genau einmal; zu wenig bezahlt -> Fehler, nichts wird bestätigt)
+    // Privatspiel und neues Teamspiel: mit dem zweiten Bereit steht die Spielerzahl fest, der Anteil wird fixiert (genau einmal)
     if (bothDone) {
       await fixShare(tx, fresh);
-      // Anlage unter 48 Stunden Vorlauf: sofort buchen, sobald alle bezahlt haben und beide Captains bereit sind (genau einmal: Spielsperre plus settledAt)
-      // Kartenmodell (M1): keine Buchung und keine Abbuchung, das kommt mit M2; das zweite Bereit schreibt nur Preis und Spielerzahl fest
-      if (!card && isDeadlineModel(fresh) && !hasLongLead(fresh.startsAt, await leadStart(tx, fresh))) {
-        const [booked] = await tx.select().from(matches).where(eq(matches.id, matchId));
-        const free = !booked.priceCents || booked.finalShareCents === 0;
-        // Zahlungen an und Preis > 0: Lässt sich nicht buchen (z. B. Unterdeckung), scheitert die Bestätigung ganz; die Transaktion rollt zurück,
-        // es bleibt kein halbfixierter Zustand (weder Preis noch Bereit).
-        if (booked.settledAt === null && !free && (await paymentsEnabled(tx)) && !(await settleMatch(tx, booked))) {
-          throw new DomainError("Das Spiel lässt sich noch nicht buchen: Die Summe der Anteile deckt den Preis nicht (zu wenige eingeteilte Spieler oder nicht alle bezahlt). Teilt mehr Spieler ein oder lasst alle zahlen.");
-        }
-      }
     }
     await notifyUsers(
       [...(await teamAdminIds(tx, match.homeTeamId)), ...(await teamAdminIds(tx, match.awayTeamId))],
@@ -411,7 +398,7 @@ export function leaveLobby(userId: string, matchId: string) {
     await assertNoCharges(tx, matchId); // Abbuchungszeilen vorhanden: Liste gesperrt (012 M2b-2)
     if (!(await findParticipant(tx, matchId, userId))) throw new DomainError("Du bist nicht in dieser Lobby.");
     if (await leaveClosed(tx, match, now)) throw new DomainError(LIST_LOCKED);
-    await onParticipantLeaves(tx, match, userId, { removedByAdmin: false, actorId: userId });
+    await onParticipantLeaves(tx, match, userId);
     const me = await findParticipant(tx, matchId, userId);
     // Wertung bei kurzfristigem Austritt: nur Altspiele und Lobbys ohne Zahlungen; mit der neuen Frist-Regel sind Austritte unter 48 Stunden gesperrt (Backlog 10)
     if (match.kind === "team" && (match.legacyShareModel || !(await paymentsEnabled(tx))) && me?.readyAt && match.startsAt.getTime() - Date.now() < 24 * 3_600_000) await recordLateCancel(tx, userId, matchId);
@@ -421,18 +408,6 @@ export function leaveLobby(userId: string, matchId: string) {
       .returning({ userId: matchParticipants.userId });
     if (removed.length === 0) throw new DomainError("Du bist nicht in dieser Lobby.");
     await audit(userId, "lobby.leave", "match", matchId, {}, tx);
-  });
-}
-
-/** Erst bezahlen, dann bereit: Bucht den Anteil vom Guthaben (nur wenn Zahlungen eingeschaltet sind). */
-export function payShare(userId: string, matchId: string) {
-  return mutateLobby(userId, matchId, async (tx, match) => {
-    const me = await findParticipant(tx, matchId, userId);
-    if (!me) throw new DomainError("Tritt zuerst der Lobby bei.");
-    if (!me.teamId) throw new DomainError("Erst muss ein Team-Admin dich einem Team zuweisen.");
-    if (match.schedulingOpen || match.vetoStatus === "halls" || match.vetoStatus === "running") throw new DomainError("Bezahlen geht, sobald Uhrzeit und Halle feststehen.");
-    if (await cardModeActive(tx, match)) throw new DomainError("Bezahlt wird per Karte: Hinterlege eine Karte. Abgebucht wird erst, wenn der Anteil feststeht.");
-    await reserveShare(tx, match, userId);
   });
 }
 
@@ -578,7 +553,7 @@ export function removeParticipant(actorId: string, matchId: string, targetUserId
       (target.teamId ? await isAdminOf(tx, actorId, target.teamId) : await canManageMatch(tx, actorId, match));
     if (!allowed) throw new DomainError("Dazu hast du keine Berechtigung.");
     if (await leaveClosed(tx, match, now)) throw new DomainError(LIST_LOCKED);
-    await onParticipantLeaves(tx, match, targetUserId, { removedByAdmin: true, actorId });
+    await onParticipantLeaves(tx, match, targetUserId);
     await tx
       .delete(matchParticipants)
       .where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, targetUserId)));
@@ -603,7 +578,6 @@ export async function cancelMatchTx(tx: Tx, match: MatchRow, actorId: string | n
   // Einzige Ausnahme: der Erstattungs-Ablauf (refund.ts) ruft mit afterRefund auf, NACHDEM jede Abbuchung erstattet ist (finalizeCancel). Absage von Hand: nur Admin 1 über adminCancelMatch.
   if (!opts.afterRefund && (await hasChargeRows(tx, match.id))) throw new DomainError("Für dieses Spiel hat die Abbuchung begonnen: Absage und Erstattung folgen erst mit der Karten-Erstattung. Bitte kontaktiere den Support.");
   await tx.update(matches).set({ status: "cancelled", cancelReason: reason }).where(eq(matches.id, match.id)); // der Grund bleibt am Spiel (Anzeige in der Lobby); der Erstattungspfad (refund.ts) hat denselben Text schon gesetzt
-  await refundOnCancel(tx, match, actorId);
   await reverseCommission(tx, match.id); // Vertrag 009 M2 (Entscheid t9 P7): Absage -> Provision ganz storniert (ein ausgeloester 10er-Bonus bleibt)
   await withdrawBookingJob(tx, match.id);
   await audit(actorId, "match.cancel", "match", match.id, { before: { status: match.status }, after: { status: "cancelled", reason } }, tx);

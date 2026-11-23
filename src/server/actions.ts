@@ -187,9 +187,7 @@ export async function randomSplitAction(matchId: string, reshuffle: boolean) {
 export async function unassignParticipantAction(matchId: string, targetUserId: string) {
   return lobbyAction(matchId, (id) => lobby.unassignParticipant(id, matchId, targetUserId));
 }
-export async function payShareAction(matchId: string) {
-  return lobbyAction(matchId, (id) => lobby.payShare(id, matchId));
-}
+
 export async function setVenueAction(matchId: string, venue: string) {
   return lobbyAction(matchId, (id) => lobby.setVenue(id, matchId, venue));
 }

@@ -6,7 +6,7 @@ import { users } from "@/db/schema";
 import { payments } from "@/db/schema-finance";
 import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
-import { cardModeActive, hasChargeRows, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
+import { cardModeActive, hasChargeRows, isDeadlineModel, leadStart, payAndReadyPossible } from "./wallet";
 import { chargeEligibility } from "./payments/charge-run";
 import { paymentsEnabled } from "./settings";
 import { teamName } from "./names";
@@ -105,10 +105,9 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
         // Nicht bereit zur Frist: Absage wie bisher (es wurde nichts abgebucht, also gibt es nichts zu erstatten).
         if (await hasChargeRows(tx, m.id)) return;
         if ((await cardModeActive(tx, m)) && (await chargeEligibility(tx, m, now)).reason === "ready") return;
-        // Gebucht ist erst, wenn `settleMatch` es bestätigt (kostenlos: nichts zu buchen). Meldet es false (Unterdeckung, Status), wird wie bei
-        // "nicht buchbar" abgesagt und alle erstattet: nie ein Fehlbetrag zu Lasten der Plattform, nie Geld ohne Beleg auf revenue.
+        // Gebucht ist nur ein kostenloses Spiel (nichts zu buchen). Alles andere ist ohne Abbuchungszeilen nicht bezahlt: abgesagt (012 M6b: kein Guthaben mehr, nichts zu erstatten).
         const free = !m.priceCents || m.finalShareCents === 0;
-        if ((await bookable(tx, m)) && (free || (await settleMatch(tx, m)))) {
+        if (free && (await bookable(tx, m))) {
           await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
           return;
         }
@@ -185,25 +184,6 @@ export async function cleanup(now: Date = new Date()): Promise<{ invites: number
   const oldInvites = await db.delete(invites).where(lt(invites.expiresAt, inviteCutoff)).returning({ t: invites.token });
   const oldNotes = await db.delete(notifications).where(and(isNotNull(notifications.readAt), lt(notifications.createdAt, noteCutoff))).returning({ id: notifications.id });
   return { invites: oldInvites.length, notifications: oldNotes.length };
-}
-
-/** Rechnet bestätigte Spiele ab, sobald ihre Lobby-Frist erreicht ist: Hallenpreis geteilt durch die zahlenden Spieler. */
-export async function settleDueMatches(now: Date = new Date()): Promise<number> {
-  const candidates = await db.select().from(matches).where(and(eq(matches.status, "confirmed"), sql`${matches.settledAt} is null`));
-  let settled = 0;
-  for (const m of candidates) {
-    if (isDeadlineModel(m)) continue; // neue Frist-Regel: gebucht wird zur 48-h-Frist bzw. sofort (closeLobbiesAtDeadline, finalConfirm)
-    if (lobbyDeadline(m.startsAt, m.createdAt).getTime() > now.getTime()) continue;
-    await db.transaction(async (tx) => {
-      const [fresh] = await tx.select().from(matches).where(eq(matches.id, m.id)).for("update");
-      if (!fresh || fresh.settledAt || fresh.status !== "confirmed") return;
-      if (await settleMatch(tx, fresh)) {
-        await tx.execute(sql`select pg_notify('lobby', ${m.id})`);
-        settled += 1;
-      }
-    });
-  }
-  return settled;
 }
 
 /** Offene Zahlungen, die nach 24 Stunden nicht abgeschlossen wurden, gelten als abgebrochen. */
