@@ -42,6 +42,8 @@ async function userPage(browser: Browser, key: string, viewport: { width: number
   return page;
 }
 
+/** Alle Felder nur innerhalb des Assistenten adressieren: die Kopfzeile oder eine noch sichtbare Vorseite (/hallen hat ein Stadt-Auswahlfeld) kann dieselben Beschriftungen haben (CI-Lauf zu PR 240, strict mode). */
+const form = (page: Page) => page.getByTestId("assistent");
 const weiter = (page: Page) => page.getByTestId("assistent-weiter");
 const zurueck = (page: Page) => page.getByTestId("assistent-zurueck");
 const heading = (page: Page) => page.getByTestId("assistent-ueberschrift");
@@ -49,10 +51,10 @@ const schritt = (page: Page, n: number) => expect(page.getByTestId("assistent"))
 const contact = () => `betrieb-${run}@test.local`;
 
 async function fillHall(page: Page, name: string) {
-  await page.getByLabel(/Name der Halle/).fill(name);
-  await page.getByLabel(/^Stadt/).selectOption("Essen");
-  await page.getByLabel(/^Adresse/).fill("Hallenweg 1");
-  await page.getByLabel(/^Kontakt/).fill(contact());
+  await form(page).getByLabel(/Name der Halle/).fill(name);
+  await form(page).getByLabel(/^Stadt/).selectOption("Essen");
+  await form(page).getByLabel(/^Adresse/).fill("Hallenweg 1");
+  await form(page).getByLabel(/^Kontakt/).fill(contact());
 }
 
 for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
@@ -72,32 +74,32 @@ for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
     // Schritt 1 leer: Fehler am Feld, Fokus auf das erste fehlerhafte Feld, kein Schrittwechsel
     await weiter(page).click();
     await schritt(page, 1);
-    await expect(page.getByLabel(/Name der Halle/)).toBeFocused();
+    await expect(form(page).getByLabel(/Name der Halle/)).toBeFocused();
     await expect(page.getByTestId("error-name")).toBeVisible();
     expect(await axeViolations(page), "Schritt 1 mit Fehlern").toEqual([]);
 
     // Tastatur: Enter im Namensfeld geht weiter (ein Submit-Knopf), sobald alles stimmt
     await fillHall(page, hall(n));
-    await page.getByLabel(/Name der Halle/).press("Enter");
+    await form(page).getByLabel(/Name der Halle/).press("Enter");
     await schritt(page, 2);
     await expect(heading(page)).toBeFocused();
     expect(await axeViolations(page), "Schritt 2").toEqual([]);
 
     // Schritt 2: Plätze (ungültig, dann gültig)
-    await page.getByLabel(/Anzahl Plätze/).fill("0");
+    await form(page).getByLabel(/Anzahl Plätze/).fill("0");
     await weiter(page).click();
     await expect(page.getByTestId("error-courts")).toBeVisible();
-    await page.getByLabel(/Anzahl Plätze/).fill("3");
-    await page.getByLabel(/^Boden/).fill("Kunstrasen");
-    await page.getByLabel(/Duschen/).check();
+    await form(page).getByLabel(/Anzahl Plätze/).fill("3");
+    await form(page).getByLabel(/^Boden/).fill("Kunstrasen");
+    await form(page).getByLabel(/Duschen/).check();
     await weiter(page).click();
 
     // Schritt 3: Hallenmiete je Termin (Eingabe mit Komma)
     await schritt(page, 3);
     await expect(page.getByText("Hallenmiete je Termin").first()).toBeVisible();
     expect(await axeViolations(page), "Schritt 3").toEqual([]);
-    await page.getByLabel(/60 Minuten/).fill("40,00");
-    await page.getByLabel(/90 Minuten/).fill("55");
+    await form(page).getByLabel(/60 Minuten/).fill("40,00");
+    await form(page).getByLabel(/90 Minuten/).fill("55");
     await weiter(page).click();
     await schritt(page, 4);
     expect(await axeViolations(page), "Schritt 4").toEqual([]);
@@ -114,9 +116,9 @@ for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
     await zurueck(page).click();
     await zurueck(page).click();
     await zurueck(page).click();
-    await expect(page.getByLabel(/Name der Halle/)).toHaveValue(hall(n));
-    await expect(page.getByLabel(/^Kontakt/)).toHaveValue(""); // Kontakt wird nicht aus dem Entwurf wiederhergestellt
-    await page.getByLabel(/^Kontakt/).fill(contact());
+    await expect(form(page).getByLabel(/Name der Halle/)).toHaveValue(hall(n));
+    await expect(form(page).getByLabel(/^Kontakt/)).toHaveValue(""); // Kontakt wird nicht aus dem Entwurf wiederhergestellt
+    await form(page).getByLabel(/^Kontakt/).fill(contact());
     await weiter(page).click();
     await weiter(page).click();
     await weiter(page).click();
@@ -132,7 +134,7 @@ for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
     await page.getByTestId("assistent-abschluss").focus();
     await page.keyboard.press("Enter");
     await expect(page.getByTestId("error-terms")).toBeVisible();
-    await page.getByLabel(/Ich bestätige die Bedingungen/).check();
+    await form(page).getByLabel(/Ich bestätige die Bedingungen/).check();
     await page.getByTestId("assistent-abschluss").click();
     await expect(page.getByTestId("onboarding-done")).toBeVisible();
     await expect(page.getByTestId("assistent-fertig")).toBeFocused();
@@ -160,11 +162,11 @@ test("Tastatur: Enter im letzten Schritt ohne Zustimmung zeigt den Feldfehler, n
   await page.waitForLoadState("networkidle");
   await fillHall(page, hall(n));
   await weiter(page).click();
-  await page.getByLabel(/Anzahl Plätze/).fill("2");
-  await page.getByLabel(/Anzahl Plätze/).press("Enter");
-  await page.getByLabel(/60 Minuten/).fill("30");
-  await page.getByLabel(/90 Minuten/).fill("45");
-  await page.getByLabel(/90 Minuten/).press("Enter");
+  await form(page).getByLabel(/Anzahl Plätze/).fill("2");
+  await form(page).getByLabel(/Anzahl Plätze/).press("Enter");
+  await form(page).getByLabel(/60 Minuten/).fill("30");
+  await form(page).getByLabel(/90 Minuten/).fill("45");
+  await form(page).getByLabel(/90 Minuten/).press("Enter");
   await weiter(page).click(); // Zusammenfassung -> Abschluss
   await schritt(page, 5);
   await page.getByTestId("assistent-abschluss").focus();
@@ -189,10 +191,10 @@ test("Erneute Anfrage: Vorbelegung aus der abgelehnten Halle (ohne Kontakt), eig
   // ein angefangener NEUER Antrag (Entwurf unter der Standard-Kennung)
   await page.goto("/halle/anfragen");
   await page.waitForLoadState("networkidle");
-  await page.getByLabel(/Name der Halle/).fill("Anderer Entwurf");
-  await page.getByLabel(/^Stadt/).selectOption("Bochum");
-  await page.getByLabel(/^Adresse/).fill("Neue Straße 9");
-  await page.getByLabel(/^Kontakt/).fill(contact());
+  await form(page).getByLabel(/Name der Halle/).fill("Anderer Entwurf");
+  await form(page).getByLabel(/^Stadt/).selectOption("Bochum");
+  await form(page).getByLabel(/^Adresse/).fill("Neue Straße 9");
+  await form(page).getByLabel(/^Kontakt/).fill(contact());
   await weiter(page).click();
   await schritt(page, 2);
 
@@ -203,20 +205,20 @@ test("Erneute Anfrage: Vorbelegung aus der abgelehnten Halle (ohne Kontakt), eig
   await expect(page).toHaveURL(new RegExp(`/halle/anfragen\\?erneut=${h.id}`));
   await page.waitForLoadState("networkidle");
   await schritt(page, 1);
-  await expect(page.getByLabel(/Name der Halle/)).toHaveValue(hall(n));
-  await expect(page.getByLabel(/^Stadt/)).toHaveValue("Essen");
-  await expect(page.getByLabel(/^Adresse/)).toHaveValue("Alte Straße 5");
-  await expect(page.getByLabel(/^Kontakt/)).toHaveValue("");
-  await page.getByLabel(/^Kontakt/).fill(contact());
+  await expect(form(page).getByLabel(/Name der Halle/)).toHaveValue(hall(n));
+  await expect(form(page).getByLabel(/^Stadt/)).toHaveValue("Essen");
+  await expect(form(page).getByLabel(/^Adresse/)).toHaveValue("Alte Straße 5");
+  await expect(form(page).getByLabel(/^Kontakt/)).toHaveValue("");
+  await form(page).getByLabel(/^Kontakt/).fill(contact());
   await weiter(page).click();
-  await expect(page.getByLabel(/Anzahl Plätze/)).toHaveValue("4");
-  await expect(page.getByLabel(/^Boden/)).toHaveValue("Hartboden");
+  await expect(form(page).getByLabel(/Anzahl Plätze/)).toHaveValue("4");
+  await expect(form(page).getByLabel(/^Boden/)).toHaveValue("Hartboden");
   await weiter(page).click();
-  await expect(page.getByLabel(/60 Minuten/)).toHaveValue("42,00");
-  await expect(page.getByLabel(/90 Minuten/)).toHaveValue("60,00");
+  await expect(form(page).getByLabel(/60 Minuten/)).toHaveValue("42,00");
+  await expect(form(page).getByLabel(/90 Minuten/)).toHaveValue("60,00");
   await weiter(page).click();
   await weiter(page).click();
-  await page.getByLabel(/Ich bestätige die Bedingungen/).check();
+  await form(page).getByLabel(/Ich bestätige die Bedingungen/).check();
   await page.getByTestId("assistent-abschluss").click();
   await expect(page.getByTestId("onboarding-done")).toBeVisible();
   const [after] = await query<{ approval_status: string; contact: string }>("select approval_status, contact from venues where id = $1", [h.id]);
@@ -226,7 +228,7 @@ test("Erneute Anfrage: Vorbelegung aus der abgelehnten Halle (ohne Kontakt), eig
   // der angefangene neue Antrag liegt weiter unter seiner eigenen Kennung
   await page.goto("/halle/anfragen");
   await page.waitForLoadState("networkidle");
-  await expect(page.getByLabel(/Name der Halle/)).toHaveValue("Anderer Entwurf");
+  await expect(form(page).getByLabel(/Name der Halle/)).toHaveValue("Anderer Entwurf");
 });
 
 test("Gastaufruf: Weiterleitung zur Anmeldung mit Rückkehr auf /halle/anfragen", async ({ browser }) => {
