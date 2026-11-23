@@ -49,7 +49,10 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
       <header className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted">{formatDateTime(match.startsAt)} Uhr · {match.durationMin} Min{match.venueText ? ` · ${match.venueText}` : ""}</p>
-          <LiveIndicator eventsUrl={`/api/spiele/${match.id}/events`} />
+          {/* feste Breite, linksbündig: der Wechsel "○ Verbinde…" -> "● Live" verschiebt nichts (CLS, AC-21) */}
+          <span className="inline-block w-24 text-left">
+            <LiveIndicator eventsUrl={`/api/spiele/${match.id}/events`} />
+          </span>
         </div>
         <div className="card grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center">
           <Link href={`/teams/${match.homeSlug}`} className="font-semibold hover:text-accent-fg">{match.homeName}</Link>

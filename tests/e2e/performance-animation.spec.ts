@@ -14,13 +14,21 @@ test.afterEach(async ({ browser }) => {
 const OBSERVE = `
   window.__perf = { longtasks: [], shifts: [], frames: [], events: [], maxAnimations: 0 };
   new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__perf.longtasks.push({ start: e.startTime, duration: e.duration }); }).observe({ type: "longtask", buffered: true });
-  new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__perf.shifts.push({ start: e.startTime, value: e.value }); }).observe({ type: "layout-shift", buffered: true });
+  const rect = (r) => (r ? { x: r.x, y: r.y, w: r.width, h: r.height } : null);
+  const describe = (n) => {
+    if (!n) return null;
+    const el = n.nodeType === 1 ? n : n.parentElement;
+    const testid = el && el.getAttribute ? el.getAttribute("data-testid") : null;
+    return n.nodeName + (testid ? "[" + testid + "]" : "") + " | " + ((n.textContent || "").trim().slice(0, 30));
+  };
+  const inCard = (n) => { const el = n && (n.nodeType === 1 ? n : n.parentElement); return !!(el && el.closest && el.closest("[data-testid=reveal-motion]")); };
+  new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__perf.shifts.push({ start: e.startTime, value: e.value, sources: (e.sources || []).map((s) => ({ node: describe(s.node), inCard: inCard(s.node), previous: rect(s.previousRect), current: rect(s.currentRect) })) }); }).observe({ type: "layout-shift", buffered: true });
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__perf.events.push({ name: e.name, duration: e.duration }); }).observe({ type: "event", durationThreshold: 16, buffered: true }); } catch (err) { /* Event Timing nicht verfügbar */ }
   const tick = (t) => { window.__perf.frames.push(t); window.__perf.maxAnimations = Math.max(window.__perf.maxAnimations, document.getAnimations().length); requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
 `;
 
-type Perf = { longtasks: { start: number; duration: number }[]; shifts: { start: number; value: number }[]; frames: number[]; events: { name: string; duration: number }[]; maxAnimations: number };
+type Perf = { longtasks: { start: number; duration: number }[]; shifts: { start: number; value: number; sources: { node: string | null; inCard: boolean; previous: unknown; current: unknown }[] }[]; frames: number[]; events: { name: string; duration: number }[]; maxAnimations: number };
 
 test("Aufdecken und Aufstieg am Handy (390 px, 4-fach CPU-Drosselung): keine Long Tasks > 50 ms, CLS 0, >= 55 fps im Mittel, Tippen < 200 ms, höchstens 6 Animationen gleichzeitig", async ({ browser }, testInfo) => {
   const g = await seedPlayedWithRatings("pf");
@@ -53,7 +61,9 @@ test("Aufdecken und Aufstieg am Handy (390 px, 4-fach CPU-Drosselung): keine Lon
   const inWindow = (t: number) => t >= from && t <= to;
   const longInWindow = data.perf.longtasks.filter((l) => l.duration > 50 && (inWindow(l.start) || inWindow(l.start + l.duration)));
   expect(longInWindow, `Long Tasks im Fenster: ${JSON.stringify(longInWindow)}`).toEqual([]);
-  expect(data.perf.shifts.filter((s) => inWindow(s.start)).reduce((a, s) => a + s.value, 0)).toBe(0);
+  const shiftsInWindow = data.perf.shifts.filter((s) => inWindow(s.start));
+  await testInfo.attach("layout-shifts.json", { body: JSON.stringify({ window: { from, to }, all: data.perf.shifts, inWindow: shiftsInWindow }, null, 2), contentType: "application/json" });
+  expect(shiftsInWindow.reduce((a, s) => a + s.value, 0), `Layoutverschiebung im Fenster: ${JSON.stringify(shiftsInWindow)}`).toBe(0);
   const frames = data.perf.frames.filter(inWindow);
   const fps = (frames.length - 1) / ((frames[frames.length - 1] - frames[0]) / 1000);
   testInfo.annotations.push({ type: "fps", description: fps.toFixed(1) });
