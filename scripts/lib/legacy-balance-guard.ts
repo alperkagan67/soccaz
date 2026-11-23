@@ -12,12 +12,17 @@ import { closeLegacyGames } from "./close-legacy-games";
 export type GuardFindings = {
   walletUsers: number; // Nutzer mit Guthaben-Saldo != 0
   walletNetCents: number; // Summe dieser Salden (vorzeichenbehaftet)
-  matchPaidRows: number;
+  matchPaidRows: number; // OFFENE Plaetze (Spiel lobby/confirmed, nicht abgerechnet)
   matchPaidCents: number;
-  tournamentPaidRows: number;
+  tournamentPaidRows: number; // OFFENE Plaetze (Turnier nicht beendet/abgesagt)
   tournamentPaidCents: number;
   pendingRefundRows: number;
   pendingRefundCents: number;
+  walletUnassignedCents: number; // Gesamtsumme aller wallet-Buchungen minus Summe der Nutzersalden (Buchungen ohne Nutzerbezug); muss 0 sein
+  paymentsPending: number; // alte Stripe-Aufladungen im Status pending (SEPA kann Tage dauern)
+  paymentsUnbooked: number; // erfolgreiche Aufladungen ohne Hauptbucheintrag (Art topup)
+  matchPaidHistRows: number; // nur Info (Ausgang unabhaengig): bezahlte Plaetze abgerechneter/abgesagter Spiele
+  tournamentPaidHistRows: number; // nur Info: bezahlte Plaetze beendeter/abgesagter Turniere
   legacyGames: number; // schließbare offene Altspiele mit Guthabenzahlung (F2)
   legacyManual: number; // manuell zu klärende (Abbuchung/Provision/Buchungsauftrag)
 };
@@ -41,14 +46,37 @@ export async function readLegacyBalances(pool: Pool): Promise<GuardFindings> {
               - coalesce(sum(case when l.debit_account = 'wallet' and l.debit_user_id = u.id then l.amount_cents else 0 end), 0) <> 0
        ) t`,
     );
-    const mp = await q.query<{ n: number; c: number }>("select count(*)::int as n, coalesce(sum(paid_cents), 0)::int as c from match_participants where paid_cents > 0");
-    const tp = await q.query<{ n: number; c: number }>("select count(*)::int as n, coalesce(sum(paid_cents), 0)::int as c from tournament_players where paid_cents > 0");
+    const total = await q.query<{ net: number }>(
+      `select coalesce(sum(case when credit_account = 'wallet' then amount_cents else 0 end), 0)::int - coalesce(sum(case when debit_account = 'wallet' then amount_cents else 0 end), 0)::int as net from ledger_entries`,
+    );
+    const pay = await q.query<{ pending: number; unbooked: number }>(
+      `select count(*) filter (where p.status = 'pending')::int as pending,
+              count(*) filter (where p.status = 'succeeded' and not exists (select 1 from ledger_entries l where l.payment_id = p.id and l.kind = 'topup'))::int as unbooked
+         from payments p`,
+    );
+    const mp = await q.query<{ n: number; c: number; h: number }>(
+      `select count(*) filter (where m.status in ('lobby', 'confirmed') and m.settled_at is null)::int as n,
+              coalesce(sum(p.paid_cents) filter (where m.status in ('lobby', 'confirmed') and m.settled_at is null), 0)::int as c,
+              count(*) filter (where not (m.status in ('lobby', 'confirmed') and m.settled_at is null))::int as h
+         from match_participants p join matches m on m.id = p.match_id where p.paid_cents > 0`,
+    );
+    const tp = await q.query<{ n: number; c: number; h: number }>(
+      `select count(*) filter (where t.status not in ('finished', 'cancelled'))::int as n,
+              coalesce(sum(p.paid_cents) filter (where t.status not in ('finished', 'cancelled')), 0)::int as c,
+              count(*) filter (where t.status in ('finished', 'cancelled'))::int as h
+         from tournament_players p join tournaments t on t.id = p.tournament_id where p.paid_cents > 0`,
+    );
     const pr = await q.query<{ n: number; c: number }>("select count(*)::int as n, coalesce(sum(amount_cents), 0)::int as c from pending_refunds");
     await q.query("commit");
     const legacy = await closeLegacyGames(pool, { apply: false }); // Trockenlauf: schreibt nichts
     return {
       walletUsers: wallet.rows[0].users,
       walletNetCents: wallet.rows[0].net,
+      walletUnassignedCents: total.rows[0].net - wallet.rows[0].net,
+      paymentsPending: pay.rows[0].pending,
+      paymentsUnbooked: pay.rows[0].unbooked,
+      matchPaidHistRows: mp.rows[0].h,
+      tournamentPaidHistRows: tp.rows[0].h,
       matchPaidRows: mp.rows[0].n,
       matchPaidCents: mp.rows[0].c,
       tournamentPaidRows: tp.rows[0].n,
@@ -70,11 +98,19 @@ export async function readLegacyBalances(pool: Pool): Promise<GuardFindings> {
 export function evaluateGuard(f: GuardFindings): { ok: boolean; lines: string[] } {
   const lines: string[] = [];
   if (f.walletUsers !== 0 || f.walletNetCents !== 0) lines.push(`Guthaben-Salden: ${f.walletUsers} Nutzer mit Saldo != 0 (Summe ${f.walletNetCents} Cent)`);
-  if (f.matchPaidRows !== 0 || f.matchPaidCents !== 0) lines.push(`Bezahlte Spielplätze (paid_cents > 0): ${f.matchPaidRows} Plätze, ${f.matchPaidCents} Cent`);
-  if (f.tournamentPaidRows !== 0 || f.tournamentPaidCents !== 0) lines.push(`Bezahlte Turnierplätze (paid_cents > 0): ${f.tournamentPaidRows} Plätze, ${f.tournamentPaidCents} Cent`);
+  if (f.walletUnassignedCents !== 0) lines.push(`Guthaben-Buchungen ohne Nutzerbezug: ${f.walletUnassignedCents} Cent (Gesamtsumme der wallet-Konten weicht von der Summe der Nutzersalden ab)`);
+  if (f.paymentsPending !== 0) lines.push(`Alte Aufladungen im Status pending (payments): ${f.paymentsPending}`);
+  if (f.paymentsUnbooked !== 0) lines.push(`Erfolgreiche Aufladungen ohne Hauptbucheintrag (payments): ${f.paymentsUnbooked}`);
+  if (f.matchPaidRows !== 0 || f.matchPaidCents !== 0) lines.push(`Offene bezahlte Spielplätze (paid_cents > 0): ${f.matchPaidRows} Plätze, ${f.matchPaidCents} Cent`);
+  if (f.tournamentPaidRows !== 0 || f.tournamentPaidCents !== 0) lines.push(`Offene bezahlte Turnierplätze (paid_cents > 0): ${f.tournamentPaidRows} Plätze, ${f.tournamentPaidCents} Cent`);
   if (f.pendingRefundRows !== 0 || f.pendingRefundCents !== 0) lines.push(`Offene Erstattungen (pending_refunds): ${f.pendingRefundRows} Zeilen, ${f.pendingRefundCents} Cent`);
   if (f.legacyGames !== 0 || f.legacyManual !== 0) lines.push(`Offene Altspiele mit Guthabenzahlung (F2): ${f.legacyGames} schließbar, ${f.legacyManual} manuell`);
   return { ok: lines.length === 0, lines };
+}
+
+/** Nur Information (beeinflusst den Ausgang nicht): historische Zeilen mit paid_cents > 0 in abgerechneten/abgesagten Spielen und beendeten/abgesagten Turnieren (settle laesst paid_cents stehen). */
+export function historyInfo(f: GuardFindings): string | null {
+  return f.matchPaidHistRows !== 0 || f.tournamentPaidHistRows !== 0 ? `Info (kein Befund): historische Zeilen mit paid_cents > 0: ${f.matchPaidHistRows} in abgeschlossenen Spielen, ${f.tournamentPaidHistRows} in beendeten Turnieren` : null;
 }
 
 export const GUARD_FAIL_MESSAGE = "Salden-Guard NICHT erfüllt: KEINE Löschung des Guthaben-Pfads. Erst klären (Skript close-legacy-games, Erstattung/Auflösung), dann erneut prüfen.";

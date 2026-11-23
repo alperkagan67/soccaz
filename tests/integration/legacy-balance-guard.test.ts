@@ -3,11 +3,11 @@ import { execFileSync } from "node:child_process";
 import { eq, sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { db } from "@/db";
-import { matchParticipants } from "@/db/schema";
-import { pendingRefunds } from "@/db/schema-finance";
+import { matchParticipants, matches } from "@/db/schema";
+import { payments, pendingRefunds } from "@/db/schema-finance";
 import { tournamentPlayers, tournaments } from "@/db/schema-league";
 import { creditWallet } from "@/server/ledger";
-import { evaluateGuard, readLegacyBalances } from "../../scripts/lib/legacy-balance-guard";
+import { evaluateGuard, historyInfo, readLegacyBalances } from "../../scripts/lib/legacy-balance-guard";
 import { cleanup, makeMatch, makeTeam, makeUser } from "./helpers";
 
 // Salden-Guard (012 M6b 1c-ii-b): liest rein lesend, zaehlt jeden Befund. Die Test-DB kann Seed-Daten enthalten: geprueft werden DIFFERENZEN zum Ausgangszustand.
@@ -87,3 +87,56 @@ describe("Salden-Guard: lesen und zaehlen", () => {
   });
 });
 
+describe("Salden-Guard: offene gegen historische Zeilen, alte Aufladungen (Review w4)", () => {
+  it("abgerechnetes/abgesagtes Spiel und beendetes Turnier mit paid_cents zaehlen NUR als Info, nicht als Befund; offene Plaetze zaehlen", async () => {
+    const base = await readLegacyBalances(pool);
+    const done = await makeMatch({});
+    await db.update(matchParticipants).set({ paidCents: 200 }).where(eq(matchParticipants.matchId, done.match.id));
+    await db.update(matches).set({ status: "played", settledAt: new Date() }).where(eq(matches.id, done.match.id));
+    const cancelled = await makeMatch({});
+    await db.update(matchParticipants).set({ paidCents: 200 }).where(eq(matchParticipants.matchId, cancelled.match.id));
+    await db.update(matches).set({ status: "cancelled" }).where(eq(matches.id, cancelled.match.id));
+    const n1 = (await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, done.match.id))).length + (await db.select().from(matchParticipants).where(eq(matchParticipants.matchId, cancelled.match.id))).length;
+    let f = await readLegacyBalances(pool);
+    expect(f.matchPaidRows).toBe(base.matchPaidRows); // offen unveraendert
+    expect(f.matchPaidCents).toBe(base.matchPaidCents);
+    expect(f.matchPaidHistRows).toBe(base.matchPaidHistRows + n1);
+    expect(historyInfo(f)).not.toBeNull();
+
+    const org = await makeUser("hto");
+    const cap = await makeUser("htc");
+    const team = await makeTeam(cap.id, "HistTeam");
+    const mk = async (status: "finished" | "payment") => {
+      const [t] = await db.insert(tournaments).values({ organizerId: org.id, name: `Hist-Cup ${status} ${Date.now()}`, city: "Essen", startsOn: new Date(Date.now() + 6 * 86_400_000).toISOString().slice(0, 10), format: "knockout", maxTeams: 4, durationMin: 120, status } as typeof tournaments.$inferInsert).returning();
+      return t;
+    };
+    const fin = await mk("finished");
+    const cap2 = await makeUser("htd");
+    await db.insert(tournamentPlayers).values({ tournamentId: fin.id, teamId: team.id, userId: cap.id, paidCents: 900 });
+    f = await readLegacyBalances(pool);
+    expect(f.tournamentPaidRows).toBe(base.tournamentPaidRows);
+    expect(f.tournamentPaidHistRows).toBe(base.tournamentPaidHistRows + 1);
+    const open = await mk("payment");
+    await db.insert(tournamentPlayers).values({ tournamentId: open.id, teamId: team.id, userId: cap2.id, paidCents: 400 });
+    f = await readLegacyBalances(pool);
+    expect(f.tournamentPaidRows).toBe(base.tournamentPaidRows + 1);
+    expect(f.tournamentPaidCents).toBe(base.tournamentPaidCents + 400);
+  });
+
+  it("payments: pending und erfolgreich ohne Hauptbucheintrag werden gezaehlt; mit Hauptbucheintrag (topup) nicht", async () => {
+    const base = await readLegacyBalances(pool);
+    const u = await makeUser("pay");
+    const mkPay = (status: "pending" | "succeeded") => db.insert(payments).values({ userId: u.id, provider: "dev", amountCents: 1000, status, idempotencyKey: `lbg-pay-${status}-${Math.random().toString(36).slice(2)}` }).returning();
+    const [pend] = await mkPay("pending");
+    const [ok] = await mkPay("succeeded");
+    let f = await readLegacyBalances(pool);
+    expect(f.paymentsPending).toBe(base.paymentsPending + 1);
+    expect(f.paymentsUnbooked).toBe(base.paymentsUnbooked + 1);
+    // Hauptbucheintrag (topup) zur erfolgreichen Zahlung: nicht mehr ungebucht
+    await creditWallet(db, u.id, { from: "clearing", amountCents: 1000, kind: "topup", paymentId: ok.id, idempotencyKey: `lbg-pay-book-${Math.random().toString(36).slice(2)}` });
+    f = await readLegacyBalances(pool);
+    expect(f.paymentsUnbooked).toBe(base.paymentsUnbooked);
+    expect(f.paymentsPending).toBe(base.paymentsPending + 1);
+    void pend;
+  });
+});

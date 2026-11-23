@@ -14,13 +14,15 @@ if (!process.env.DATABASE_URL) {
   console.error("DATABASE_URL fehlt.");
   process.exit(2);
 }
-const { readLegacyBalances, evaluateGuard, GUARD_FAIL_MESSAGE } = await tsImport("./lib/legacy-balance-guard.ts", import.meta.url);
+const { readLegacyBalances, evaluateGuard, historyInfo, GUARD_FAIL_MESSAGE } = await tsImport("./lib/legacy-balance-guard.ts", import.meta.url);
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 2 });
 try {
   const f = await readLegacyBalances(pool);
   const r = evaluateGuard(f);
+  const info = historyInfo(f);
+  if (info) console.log(`  ${info}`);
   if (r.ok) {
-    console.log("Salden-Guard erfüllt: alle Salden und paid_cents = 0, pending_refunds leer, keine offenen Altspiele mit Guthabenzahlung.");
+    console.log("Salden-Guard erfüllt: alle Salden = 0, keine offenen bezahlten Plätze, payments ohne pending/ohne fehlende Buchung, pending_refunds leer, keine offenen Altspiele mit Guthabenzahlung.");
   } else {
     for (const l of r.lines) console.log(`  ${l}`);
     console.error(GUARD_FAIL_MESSAGE);
