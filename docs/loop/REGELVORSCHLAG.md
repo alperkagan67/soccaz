@@ -253,6 +253,14 @@ Zusatz (Anlass #202, Lauf 4): **Wettlauf mit einem Hintergrundlauf (z. B. `final
 
 Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer, Abschnitt Tests) oder Test-Hinweis in `tests/e2e/`; Regel-PR (Nutzer mergt).
 
+## 24. Hintergrundläufe nie per Glück: Zustand oder awaitbarer Testhook
+
+Anlass: 012 M6b, CI #202 Runde 4 (`karte-finanzen`, Wettlauf mit der Sofortabbuchung aus `finalConfirm`) und CI #205 (`privategame` AC-8): ein `void`-Lauf im Hintergrund schreibt nebenher in dieselben Tabellen wie der Test; ob er vor oder nach der Prüfung fertig wird, hängt vom Zufall ab (Flake, der nur in manchen CI-Runden rot wird).
+
+Vorschlag: Wer einen Test schreibt, der einen Hintergrundlauf auslösen kann (`void`-Aufruf, Job, Zeitplaner, Webhook), schließt den Wettlauf **auf einem der zwei Wege** aus, nie durch Abwarten, Wiederholen oder Glück: (1) **Zustand:** das Szenario so aufbauen, dass der Lauf bestimmt nichts tut (z. B. langer Vorlauf, fehlende Karte, Schalter AUS, Frist noch nicht erreicht) und diesen Ausgangszustand im Test hart prüfen; (2) **awaitbarer Testhook:** der Lauf bietet im Testmodus (`PAYMENTS_FAKE` oder `NODE_ENV=test`, nie in Produktion) eine Möglichkeit, ihn abzuwarten oder zu überspringen (Backlog 190). Reviewer prüfen je neuem Test: Gibt es einen zweiten Schreiber, und wodurch ist er hier ausgeschlossen? Ein Test, der nur mit "meist grün" besteht, gilt als rot.
+
+Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer, Abschnitt Tests); Regel-PR (Nutzer mergt).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.
