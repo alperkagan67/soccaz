@@ -1,6 +1,6 @@
 # 013 – Frontend-Überarbeitung (Richtung E „Trikot“, Seite für Seite)
-Status: Freigegeben (G1 2026-11-11, durch den Nutzer, mit vier Bedingungen: AC-13 bis AC-15 und die entschiedenen Produktfragen)
-Version: 2
+Status: Freigegeben (Version 2: G1 2026-11-11, durch den Nutzer, mit vier Bedingungen: AC-13 bis AC-15 und die entschiedenen Produktfragen; Version 3 (Richtung F „Spielerkarte“, Abschnitt „Änderung Version 3“ unten): G1 2026-11-23, durch den Nutzer)
+Version: 3
 
 ## Ziel
 Das gesamte Frontend wird überarbeitet, weil der Nutzer Bedienung und Aufbau als „katastrophal“ und „noch fast wie die Vorlage“ beurteilt. Ergebnis: klare Wege, verständliche Texte, gute Bedienung auf dem Handy, ein eigener Look nach `DESIGN.md` (Richtung E „Trikot“) und kein KI-Einheitsaussehen. Vertrag 007 (Navigation, Begriffe, Teamfarbe, Lobby-Feld) bleibt gültig; 013 fasst dessen offene Oberflächenstufen (Meine Spiele, Lobby-Feld) ein und erweitert sie auf alle Seiten (62 Seiten, davon 16 im Admin-Bereich, 34 Komponenten).
@@ -126,12 +126,21 @@ Keine neuen Daten. Neue Abhängigkeiten (falls Radix, ADR 0002): security-review
 
 ---
 
-## Änderung Version 3 (Entwurf)
+## Änderung Version 3 (FREIGEGEBEN, G1 2026-11-23): Richtung F „Spielerkarte“ und Schritt-für-Schritt-Abläufe
 
-> **Status: Entwurf Version 3, wartet auf G1 (Nutzer).** Version 2 (G1 2026-11-11) bleibt **gültig**, bis der Nutzer diese Änderung freigibt. Dieser Abschnitt ergänzt Version 2 und löscht oder überschreibt nichts davor; widersprechende Stellen oben gelten erst nach G1 als ersetzt.
+> **Status: Version 3 freigegeben (G1 2026-11-23, durch den Nutzer).** Dieser Abschnitt ergänzt Version 2 und ersetzt, wo er widerspricht, die Stellen oben (Richtung E, Look der Seitenköpfe/Karten); alles andere aus Version 2 gilt weiter (siehe Abschnitt 2). Der frühere Entwurf ist durch diese Fassung ersetzt.
 
-Status: ENTWURF, wartet auf G1 (Nutzer). Basis: Version 2 (G1 2026-11-11). Anlass: Look-Abnahme M2b vom 2026-11-22, Punkt 1 = NEIN.
-Version: 3 (Entwurf)
+Status: FREIGEGEBEN (G1 2026-11-23, durch den Nutzer). Grundsatz des Nutzers: alles nach Best Practice, Details entscheidet der Orchestrator. Basis: Version 2 (G1 2026-11-11). Anlass: Look-Abnahme M2b vom 2026-11-22, Punkt 1 = NEIN.
+Version: 3
+
+**Änderungsvermerk 2026-11-23 (AC-30, Entscheid t2q, gleiche Version 3):** „Höchstens zwei Akzentfarben je Ansicht“ zählt die **Teamfarbe** und die **Leuchtfarbe**. Die **Stufenfarben** (`tier-*` in `DESIGN.md`) sind **ausgenommen**, dürfen aber **nur als Chip** auftreten (Wort plus `rim`-Rahmen, nie als Fläche, Text oder Hintergrund der Seite), im Hellmodus **nur über Wort und Rahmen erkennbar**, nie über die Farbe allein (AC-3, AC-10); je Karte höchstens **eine** Stufen-Chip-Farbe. Prüfung im Stilregel-Test: `tier-*` kommen nur in den Komponenten Chip und `PlayerCard` vor.
+
+**Änderungsvermerk 2026-11-23 (AC-25, Klarstellung nach Review R-T327, gleiche Version 3):** Der Betreiber-Zugang des Anfragenden ist sofort aktiv (nötig für Status und erneute Anfrage); nicht der Zugang, sondern die HALLE ist bis zur Freischaltung unsichtbar und nicht buchbar (AC-31).
+
+### Freigabe G1 (2026-11-23) mit Änderungen des Nutzers
+- Annahme 1 GEÄNDERT: Der letzte Schritt des Hallen-Onboardings heißt **„Anfrage senden“** (nicht „Mitglied werden“). Die Halle ist **erst nach Freischaltung durch Admin 1 sichtbar und buchbar**; dafür kommt eine **Freischalt-Ansicht für Admin 1**. Test: eine nicht freigeschaltete Halle erscheint nirgends (Liste, Suche, Karte, Lobby, API, Sitemap) und ist nicht buchbar. Der Text **„Bedingungen bestätigen“ ist bis zur Anwaltsprüfung ein gekennzeichneter ENTWURF** und steht auf der Rechtsliste (Anwalt).
+- Annahmen 2 (Stufennamen), 3 (keine Fotos; Fotos später mit dem Social-Media-Teil), 4 (Gäste neutrale Karten), 5 (Hell-Variante bleibt), 6 (Vero nur Look) = JA.
+- Neu AC-31 (Freischaltung): Hallen-Anfrage legt eine Halle im Status „angefragt“ an; nur Admin 1 und Admin 2 (Rechte nach 009) können freischalten oder ablehnen (mit Grund, Beweisprotokoll nach 009); angefragte oder abgelehnte Hallen sind für alle anderen unsichtbar und nicht buchbar (Server prüft, nicht nur die Oberfläche); Benachrichtigung an den Betreiber bei Freischaltung/Ablehnung; Test `tests/integration/venue-approval.test.ts` und E2E `halle-onboarding.spec.ts`.
 
 ### 1. Entscheidungen des Nutzers (2026-11-22, Look-Abnahme M2b)
 - Richtung E „Trikot“ ist als Look **abgelehnt** („zu schlicht, nicht benutzerfreundlich genug“). Neue Richtung **F „Spielerkarte“**, inspiriert von EA FC Ultimate Team, aber **eigene Gestaltung ohne Nachbau von EA-Designs oder -Marken**.
@@ -152,13 +161,13 @@ Version: 3 (Entwurf)
 3. **Teamkarte** (`TeamCard`): Trikotfarben des Teams (`teams`-Farbe aus 007), Wappen-Platzhalter aus Initialen, Teamwertung (Durchschnitt der Mitglieder-Wertungen, nur Zahl).
 4. **Wertung aus Elo:** reine Anzeigefunktion `ratingFromElo(elo) -> 0..99`, monoton, deterministisch, in `src/lib/` mit Tabellentest; Neuling (Elo 1000) = Startwertung. **Stufen** (eigene Namen, nicht „Bronze/Silber/Gold/Special“ aus dem Vorbild): Kreide, Rasen, Flutlicht, Pokal, Legende; Schwellen in `DESIGN.md`. **Keine neuen Daten:** Aufstieg erkennt die Stufe aus dem vorhandenen Elo-Verlauf.
 5. **Bewegung:** (a) **Karten-Aufdecken** nach bestätigtem Ergebnis (Elo-Änderung sichtbar: alte Wertung → neue, Pfeil), (b) **Aufstieg** bei Stufenwechsel (einmalig, pro Aufstieg nur einmal gezeigt, Merker im Browser, kein Serverzustand), (c) Kartenaufbau/Hover/Fokus dezent. Jede Animation endet im selben Zustand wie die statische Darstellung (die Information steht immer auch als Text da).
-6. **Anmutung „soziales Netzwerk“ (Vorbild Vero):** ruhige, großzügige Flächen, Inhalte (Karten, Spiele, Ergebnisse) stehen vor Rahmen und Menüs, wenige Linien und Kästen, Typografie trägt die Hierarchie, höchstens zwei Akzentfarben je Ansicht (Teamfarbe, Leuchtfarbe), keine Werbe- oder Banner-Optik. Fan-Gefühl entsteht durch Karten, Teamfarben und Ergebnisse, nicht durch neue Funktionen.
+6. **Anmutung „soziales Netzwerk“ (Vorbild Vero):** ruhige, großzügige Flächen, Inhalte (Karten, Spiele, Ergebnisse) stehen vor Rahmen und Menüs, wenige Linien und Kästen, Typografie trägt die Hierarchie, höchstens zwei Akzentfarben je Ansicht (Teamfarbe, Leuchtfarbe; Stufenfarben nur als Chip, siehe Änderungsvermerk), keine Werbe- oder Banner-Optik. Fan-Gefühl entsteht durch Karten, Teamfarben und Ergebnisse, nicht durch neue Funktionen.
 7. **Eigenständigkeit gegenüber den Vorbildern (EA FC Ultimate Team und Vero):** eigene Kartensilhouette (nicht die FUT-Form), eigene Schrift/Farbwelt/Stufennamen/Begriffe, **keine** EA-/FIFA-/FC-/FUT- und Vero-Namen, -Logos, -Schriften, -Kartenvorlagen oder -Screenshots im Repo oder auf der Oberfläche. Eine Markenprüfung ist ein Punkt für den Anwalt (GO-LIVE-AUDIT, Rechtsliste), blockiert aber den Look-Bau nicht.
 
 ### 4. Schritt-für-Schritt-Abläufe (Baustein `Assistent`)
 - **Baustein:** `Assistent` (Stepper): Fortschrittsanzeige („Schritt 2 von 5“), **Weiter** und **Zurück**, ein Gedanke pro Schritt, Pflichtfelder je Schritt geprüft, **Fehler am Feld**, **Entwurf bleibt erhalten** (Browser-Sitzung; Neuladen verliert nichts), am Ende **Zusammenfassung** und eine Abschluss-Handlung. Schritte laufen **auf derselben URL** (Zustand oder `?schritt=`), **keine neuen Seiten/URLs** (AC-5). Tastatur: Enter = Weiter, Fokus springt auf die Überschrift des Schritts, `aria-current="step"`.
 - **Reihenfolge der Umsetzung:**
-  1. **Hallen-Onboarding (zuerst):** (1) Name und **Adresse**, (2) **Anzahl Plätze**, (3) **Preise für 60 und 90 Minuten** je Platz (bestehende Preislogik, Mindest-/Höchstwerte wie im Server geprüft), (4) Zusammenfassung, (5) **Abschluss: Mitglied werden** (Bedingungen bestätigen, Halle ist angelegt und der Betreiber-Zugang aktiv; Provisionssatz laut 012 sichtbar). Ausgangslage und Server-Aktionen: bestehende Halle-anlegen-/011-Wege, keine neue Geldlogik.
+  1. **Hallen-Onboarding (zuerst):** (1) Name und **Adresse**, (2) **Anzahl Plätze**, (3) **Preise für 60 und 90 Minuten** je Platz (bestehende Preislogik, Mindest-/Höchstwerte wie im Server geprüft), (4) Zusammenfassung, (5) **Abschluss: „Anfrage senden“** (Bedingungen bestätigen = gekennzeichneter ENTWURFSTEXT bis zur Anwaltsprüfung; Halle wird im Status „angefragt“ angelegt und ist erst nach Freischaltung durch Admin 1 sichtbar und buchbar, siehe AC-31; Provisionssatz laut 012 sichtbar). Ausgangslage und Server-Aktionen: bestehende Halle-anlegen-/011-Wege, keine neue Geldlogik.
   2. Spieler-Onboarding (Willkommen: Stadt, Position, Geburtsdatum, Zustimmung).
   3. Spiel/Privatspiel anlegen, Team anlegen, Turnier anlegen.
   4. Karte hinterlegen (012) und Ergebnis eintragen/bestätigen.
@@ -176,13 +185,14 @@ Version: 3 (Entwurf)
 | AC-22 | Animation und Glow | Lint-/Stilregel | Animiert werden nur `transform` und `opacity`; kein Animieren von `width/height/top/left/margin/box-shadow/filter`; Glow als statische Fläche (Verlauf/Pseudo-Element), nur Deckkraft animiert; `will-change` nur während der Animation; **keine Animationsbibliothek ohne ADR 0003** (Standard: CSS/Web Animations) | Stylelint-/Test-Regel, Review |
 | AC-23 | Reduced Motion, Datensparmodus | `prefers-reduced-motion: reduce` | Aufdecken und Aufstieg ersetzt durch Ein-/Ausblenden unter 150 ms ohne Bewegung; alle Informationen bleiben | E2E mit emulierter Einstellung |
 | AC-24 | **Echtes Gerät** | Nutzer prüft auf seinem Handy (Server oder Vorschau) | Karten, Aufdecken und Aufstieg laufen flüssig; Ergebnis im Abnahmeprotokoll des Nutzers (Gate M2c) | Nutzer-Abnahme (NEEDS-USER) |
-| AC-25 | `Assistent` | Hallen-Onboarding durchlaufen | 5 Schritte mit Weiter/Zurück; Pflichtprüfung je Schritt; Entwurf übersteht Neuladen; Abschluss legt Halle und aktiven Betreiber-Zugang an; Tastatur komplett; Fehler am Feld; keine neue URL | `tests/e2e/halle-onboarding.spec.ts` (390 und 1280 px), a11y-Test |
+| AC-25 | `Assistent` | Hallen-Onboarding durchlaufen | 5 Schritte mit Weiter/Zurück; Pflichtprüfung je Schritt; Entwurf übersteht Neuladen; Abschluss „Anfrage senden“ legt die Halle im Status „angefragt“ mit sofort aktivem Betreiber-Zugang an (der Anfragende sieht Status und Ablehnungsgrund auf `/halle`); die Halle ist sichtbar und buchbar erst nach der Freischaltung durch Admin 1 oder Admin 2 (AC-31); Tastatur komplett; Fehler am Feld; keine neue URL | `tests/e2e/halle-onboarding.spec.ts` (390 und 1280 px), a11y-Test |
 | AC-26 | Weitere Abläufe aus Abschnitt 4 | je Etappe | wie AC-25 mit eigener Spec; jeder neue Ablauf hat Test-ID je Schritt und Knopf | je Spec |
 | AC-27 | Kontrast | **vor M3** | Messprotokoll für **alle** neuen Flächen: Text auf Glow/Verlauf/Teamfarben, Karten, Kopf-/Fußzeile, Lobby, `/app`, angemeldete Rollen, hell und dunkel, 390 und 1280 px (WCAG 4,5:1 Text, 3:1 Zeichen und Fokusring) | Messskript + Protokoll im PR, alle bestanden |
 | AC-28 | Abnahme-Punkte 3, 5, 7 | PR M2c | Rand ruhiger Knöpfe stärker (Kontrast ≥ 3:1 zum Umfeld), Hero zeigt das Standbild (Video nur nach Lizenz), Kader-Zeilen brechen am Handy nicht um | Screenshots 390 px, Test auf Zeilenhöhe |
 | AC-29 | Eigenständigkeit | Review/Prüfskript | Kein Fremdmaterial (Logos, Schriften, Namen, Screenshots, Icon-Sätze aus der Vorbildliste: EA FC/FUT, Vero) im Repo; Schriften mit Lizenznachweis in `DESIGN.md`; Stufennamen und Kartenform eigen | Skript-Suche + Review |
-| AC-30 | Anmutung (Vorbild Vero, eigene Gestaltung) | Review jeder umgebauten Seite (Start, `/app`, Lobby, Karten) | (a) Abstände nur aus der Token-Skala, Mindestabstand zwischen Blöcken 16 px (Handy) / 24 px (Desktop); (b) höchstens **eine** Hauptaktion und **zwei** Akzentfarben je Ansicht; (c) keine doppelten Rahmen (Karte in Karte); (d) die erste Ansicht auf 390 px zeigt Inhalt und Hauptaktion ohne Scrollen; (e) höchstens 4 Schriftgrößen je Ansicht; (f) keine Werbe-/Banner-Optik; (g) der Nutzer bestätigt die Anmutung in der Look-Abnahme 2 | Stilregel-Test (Token/Zählung), Screenshot-Review, Nutzer-Abnahme |
+| AC-30 | Anmutung (Vorbild Vero, eigene Gestaltung) | Review jeder umgebauten Seite (Start, `/app`, Lobby, Karten) | (a) Abstände nur aus der Token-Skala, Mindestabstand zwischen Blöcken 16 px (Handy) / 24 px (Desktop); (b) höchstens **eine** Hauptaktion und **zwei** Akzentfarben je Ansicht (Teamfarbe und Leuchtfarbe; die Stufenfarben `tier-*` sind ausgenommen, **nur als Chip** mit Wort und `rim`-Rahmen, nie als Fläche/Text/Hintergrund, hell nur über Wort und Rahmen erkennbar, höchstens eine Stufen-Chip-Farbe je Karte); (c) keine doppelten Rahmen (Karte in Karte); (d) die erste Ansicht auf 390 px zeigt Inhalt und Hauptaktion ohne Scrollen; (e) höchstens 4 Schriftgrößen je Ansicht; (f) keine Werbe-/Banner-Optik; (g) der Nutzer bestätigt die Anmutung in der Look-Abnahme 2 | Stilregel-Test (Token/Zählung; `tier-*` nur in Chip und `PlayerCard`), Screenshot-Review, Nutzer-Abnahme |
 | AC-14 (bestätigt) | Vor dem Pilot-Test | Ein Spieler nutzt die Plattform | Kein Guthaben sichtbar (Kopfleiste, Konto, `/app/guthaben`, Texte); dafür liegt **012 M6a/M6b vor dem Pilot-Test** | Test über alle Rollen |
+| AC-31 | Freischaltung (Hallen-Anfrage) | Ein Betreiber schließt das Hallen-Onboarding mit „Anfrage senden“ ab | Die Halle wird im Status „angefragt“ angelegt; nur Admin 1 und Admin 2 (Rechte nach 009) können freischalten oder ablehnen (mit Grund, Beweisprotokoll nach 009); angefragte oder abgelehnte Hallen sind für alle anderen unsichtbar (Liste, Suche, Karte, Lobby, API, Sitemap) und nicht buchbar (Server prüft, nicht nur die Oberfläche); Benachrichtigung an den Betreiber bei Freischaltung/Ablehnung; „Bedingungen bestätigen“ ist bis zur Anwaltsprüfung ein gekennzeichneter ENTWURF | `tests/integration/venue-approval.test.ts`, E2E `halle-onboarding.spec.ts` |
 
 ### 6. Meilensteine (Änderung)
 - **M2c (neu), 8 bis 12 Task-Tage:** `DESIGN.md` Richtung F, Tokens und Schriften, `PlayerCard`/`TeamCard`, `ratingFromElo`, Bewegungsbausteine mit Leistungstest (AC-16 bis AC-24, AC-28 bis AC-30), `Assistent`-Baustein; Start, `/app` und Lobby im neuen Look. **Gate M2c = Look-Abnahme 2** durch den Nutzer: Bilder (390/1280, hell/dunkel), **Videos der Animationen**, Live-Server, **Prüfung auf seinem Handy (AC-24)**.
@@ -200,7 +210,7 @@ Version: 3 (Entwurf)
 - **Lesbarkeit auf Glow:** AC-27 vor M3 ist Pflicht.
 
 ### 8. Annahmen, die du mit Ja/Nein bestätigen kannst
-1. „Am Ende Mitglied“ im Hallen-Onboarding = Abschluss-Schritt **„Mitglied werden“** (Bedingungen bestätigen, Halle angelegt, Betreiber-Zugang aktiv).
+1. (Entschieden 2026-11-23, geändert) Abschluss-Schritt **„Anfrage senden“**, Freischaltung durch Admin 1 (AC-31), Bedingungstext = Entwurf auf der Rechtsliste.
 2. Stufennamen **Kreide, Rasen, Flutlicht, Pokal, Legende** (eigene Namen).
 3. Keine Fotos/Uploads auf Karten (Initialen und Teamfarbe).
 4. Gäste sehen neutrale Karten ohne Wertung.

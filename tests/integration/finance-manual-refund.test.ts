@@ -66,6 +66,15 @@ describe("Ausnahme-Erstattung per Stripe (ganze Abbuchung)", () => {
     expect(refundCalls()).toHaveLength(0);
   });
 
+  it("ohne Grund (kürzer als 3 Zeichen) abgelehnt: nichts angelegt, nichts gesendet", async () => {
+    const m = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000, legacy: true });
+    const u = await addPlayer(m.match.id, m.home.id, "mg");
+    const charge = await paidCharge(m, u);
+    await expect(manualRefund(m.adminA.id, m.match.id, u.id, 800, "x")).rejects.toThrow(/Grund/);
+    expect(await refundsOf(charge.id)).toHaveLength(0);
+    expect(refundCalls()).toHaveLength(0);
+  });
+
   it("zweiter Versuch derselben Abbuchung: klare Meldung, keine zweite Erstattung, kein zweiter Stripe-Aufruf", async () => {
     const m = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000, legacy: true });
     const u = await addPlayer(m.match.id, m.home.id, "m2");
