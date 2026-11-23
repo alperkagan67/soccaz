@@ -2,14 +2,16 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { and, eq, like } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db } from "@/db";
-import { auditLog, users } from "@/db/schema";
+import { auditLog, matchParticipants, users } from "@/db/schema";
+import { ledgerEntries } from "@/db/schema-finance";
 import { settings } from "@/db/schema-finance";
 import { tournaments } from "@/db/schema-league";
 import { getAlerts } from "@/server/finance";
+import { setReady } from "@/server/lobby";
 import { cardPaymentsEnabled, paymentsEnabled, setSetting, tournamentPaymentsActive } from "@/server/settings";
 import { frozenTournaments } from "@/server/tournaments";
 import { getCardSwitch, setCardSwitch } from "@/server/payment-switch";
-import { cleanup, makeUser } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
 
 // Notschalter Kartenzahlung (Entscheid t2q/t2s): NUR Admin 1; Grund (3 bis 200, bereinigt) und Bestaetigung Pflicht; eine Transaktion unter Sperre; Audit mit Grund im Klartext UND SHA-256, ohne
 // Personendaten. Aus = Zahlungen pausiert (kein Guthaben-Fallback, nicht kostenlos): Turniere frieren ein, Alarm card:switch-off.
@@ -165,5 +167,22 @@ describe("Anzeige und Folgen", () => {
     await setCardSwitch(o.id, false, "Notabschaltung wegen Stoerung", true);
     expect(await paymentsEnabled()).toBe(false);
     expect((await getAlerts()).some((a) => a.code === "card:switch-off")).toBe(false);
+  });
+});
+
+describe("Kernversprechen: Zahlungen AN + Karte AUS (pausiert)", () => {
+  it("ein neuer Spieler kann beitreten, aber nicht 'Bereit' melden: abgewiesen mit Support-Hinweis, NICHTS wird kostenlos oder vom Guthaben gebucht (kein Hauptbuch-Eintrag, kein paid_cents), Alarm steht", async () => {
+    const o = await owner();
+    await setSetting(null, "payments_enabled", true);
+    await setCardSwitch(o.id, false, "Notabschaltung wegen Stoerung", true);
+    const m = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000 });
+    const p = await addPlayer(m.match.id, m.home.id); // Beitritt moeglich
+    const ledgerBefore = (await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id))).length;
+    await expect(setReady(p.id, m.match.id, true)).rejects.toThrow(/zahle zuerst[\s\S]*Support/);
+    const seat = (await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, m.match.id), eq(matchParticipants.userId, p.id))))[0];
+    expect(seat.readyAt).toBeNull();
+    expect(seat.paidCents).toBe(0);
+    expect((await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id))).length).toBe(ledgerBefore);
+    expect((await getAlerts()).some((a) => a.code === "card:switch-off")).toBe(true);
   });
 });

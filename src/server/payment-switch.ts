@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -8,8 +8,7 @@ import { isOwner } from "@/lib/roles";
 import { audit } from "./audit";
 import { DomainError } from "./teams";
 
-// Notschalter Kartenzahlung (t2q/t2s): `card_payments_enabled` AUS = Zahlungen PAUSIERT (Entscheid D): kein Guthaben-Fallback, nicht kostenlos, neue Beitritte/Bereit zeigen "Bezahlung ist gerade
-// nicht moeglich", faellige Abbuchungen warten, Turniere frieren ein (Alarm nach 6 Stunden), bestehende bezahlte Plaetze bleiben. NUR Admin 1 darf schalten (die Funktion prueft das selbst).
+// Notschalter Kartenzahlung (t2q/t2s): `card_payments_enabled` AUS = Zahlungen PAUSIERT (Entscheid D): nicht kostenlos; Beitritt moeglich, "Bereit" gesperrt (Support-Hinweis; der neutrale Text kommt mit 1c-ii-b), Turniere "Zahlungen sind gerade pausiert"; faellige Abbuchungen warten, Turniere frieren ein (Alarm nach 6 Stunden), bestehende bezahlte Plaetze bleiben. NUR Admin 1 darf schalten (die Funktion prueft das selbst).
 // Protokoll: audit_log (card_switch.on/off) mit before/after, Grund im Klartext UND als SHA-256 (Commitment), ohne Personendaten; die Einstellung selbst traegt updated_at/updated_by ("seit wann").
 export const CARD_SWITCH_KEY = "card_payments_enabled";
 
@@ -41,10 +40,11 @@ export async function setCardSwitch(actorId: string, enabled: boolean, reason: s
     const [row] = await tx.select({ value: settings.value, updatedAt: settings.updatedAt }).from(settings).where(eq(settings.key, CARD_SWITCH_KEY));
     const current = row?.value === true;
     if (current === enabled) throw new DomainError(enabled ? "Die Kartenzahlung ist schon eingeschaltet." : "Die Kartenzahlung ist schon ausgeschaltet.");
-    await tx
-      .insert(settings)
-      .values({ key: CARD_SWITCH_KEY, value: enabled, updatedBy: actorId })
-      .onConflictDoUpdate({ target: settings.key, set: { value: enabled, updatedBy: actorId, updatedAt: new Date() } });
+    // Compare-and-set (zweite Schicht neben dem Lock): geschrieben wird nur, wenn der Wert seit dem Lesen unveraendert ist (Vergleich auf value; updated_at taugt nicht: Mikrosekunden gehen beim Lesen verloren) bzw. die Zeile noch fehlt
+    const written = row
+      ? await tx.update(settings).set({ value: enabled, updatedBy: actorId, updatedAt: new Date() }).where(and(eq(settings.key, CARD_SWITCH_KEY), sql`${settings.value} = ${JSON.stringify(current)}::jsonb`)).returning({ key: settings.key })
+      : await tx.insert(settings).values({ key: CARD_SWITCH_KEY, value: enabled, updatedBy: actorId }).onConflictDoNothing().returning({ key: settings.key });
+    if (written.length === 0) throw new DomainError("Der Schalter wurde gerade von jemand anderem geändert. Bitte lade die Seite neu.");
     await audit(
       actorId,
       enabled ? "card_switch.on" : "card_switch.off",

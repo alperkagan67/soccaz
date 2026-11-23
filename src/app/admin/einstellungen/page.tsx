@@ -49,7 +49,7 @@ export default async function SettingsAdminPage() {
         {cardSwitch.enabled ? (
           <ActionForm action={setCardSwitchAction.bind(null, false)} submit="Kartenzahlung ausschalten (Notabschaltung)" danger successText="Kartenzahlung ausgeschaltet." keepOnSuccess>
             <p className="text-sm text-muted" data-testid="card-switch-consequence-off">
-              Folgen: Neue Bezahlungen werden pausiert, Turniere frieren ein, Alarm nach 6 Stunden. Bestehende bezahlte Plätze bleiben unverändert, fällige Abbuchungen warten. Es gibt keinen Ersatzweg für die Zahlung, und nichts wird kostenlos.
+              Folgen (bei eingeschalteten Zahlungen): Neue Bezahlungen werden pausiert. Neue Spieler können beitreten, aber nicht „Bereit“ melden (Hinweis: beim Support melden), nichts wird kostenlos. Turniere zeigen „Zahlungen sind gerade pausiert“, frieren ein, Alarm nach 6 Stunden. Bestehende bezahlte Plätze bleiben unverändert, fällige Abbuchungen warten.
             </p>
             <div>
               <label className="label" htmlFor="card-off-reason">Grund (3 bis 200 Zeichen, wird protokolliert)</label>

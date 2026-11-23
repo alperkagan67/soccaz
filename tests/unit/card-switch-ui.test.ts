@@ -15,8 +15,12 @@ describe("/admin/einstellungen: Notabschaltung Kartenzahlung", () => {
   });
 
   it("Folgetext beim Ausschalten (Entscheid t2q) und beim Wiedereinschalten", () => {
-    expect(page).toContain("Neue Bezahlungen werden pausiert, Turniere frieren ein, Alarm nach 6 Stunden");
-    expect(page).toContain("Es gibt keinen Ersatzweg für die Zahlung, und nichts wird kostenlos");
+    // ECHTER Stand (w4 R-T333): Beitritt moeglich, Bereit gesperrt (Support-Hinweis), nichts kostenlos, Turniere pausiert/eingefroren mit Alarm nach 6 Stunden
+    expect(page).toContain("Neue Bezahlungen werden pausiert");
+    expect(page).toContain("können beitreten, aber nicht „Bereit“ melden");
+    expect(page).toContain("nichts wird kostenlos");
+    expect(page).toContain("Zahlungen sind gerade pausiert");
+    expect(page).toContain("Alarm nach 6 Stunden");
     expect(page).toContain('data-testid="card-switch-consequence-on"');
   });
 
