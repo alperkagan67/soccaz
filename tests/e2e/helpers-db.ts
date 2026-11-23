@@ -133,14 +133,15 @@ export async function seedCardReady(matchId: string, userId: string) {
 
 /**
  * Endzustand eines per Karte abgebuchten und abgerechneten Spiels (012 M6b; die Abbuchung selbst prüfen card-trigger/card-charge in der Integration, der Browser prüft den Admin-Bereich,
- * der diese Zeilen liest). Wie die echte Abbuchung (charge.ts): Hauptbuch-Zeile clearing -> revenue (Art match_share, ohne Nutzer-Bezug), dazu paid_cents/paid_at und matches.settled_at.
- * Idempotent gegen eine echte Sofortabbuchung (FakeProvider): ein Spieler mit schon bezahltem Anteil wird übersprungen, settled_at bleibt dann wie gesetzt.
+ * der diese Zeilen liest). Wie die echte Abbuchung (charge.ts): Hauptbuch-Zeile clearing -> revenue (Art match_share, ohne Nutzer-Bezug), dazu card_status charged (paid_cents bleibt 0) und matches.settled_at.
+ * Idempotent gegen eine echte Sofortabbuchung (FakeProvider): ein Platz mit card_status charged wird übersprungen, settled_at bleibt dann wie gesetzt.
  */
 export async function seedCharged(matchId: string, userIds: string[], shareCents: number) {
   for (const userId of userIds) {
-    const [seat] = await query<{ paid_cents: number }>("select paid_cents from match_participants where match_id = $1 and user_id = $2", [matchId, userId]);
-    if (seat && seat.paid_cents > 0) continue; // schon echt abgebucht
-    await testDb().query("update match_participants set paid_cents = $3, paid_at = now(), card_status = 'charged' where match_id = $1 and user_id = $2", [matchId, userId, shareCents]);
+    const [seat] = await query<{ card_status: string }>("select card_status from match_participants where match_id = $1 and user_id = $2", [matchId, userId]);
+    if (seat && seat.card_status === "charged") continue; // schon echt abgebucht
+    // wie die echte Abbuchung: der Platz wird charged, paid_cents bleibt 0 ("nur Guthaben"; sonst kippt das Spiel ins Guthabenmodell, siehe card-charge.test.ts)
+    await testDb().query("update match_participants set card_status = 'charged' where match_id = $1 and user_id = $2", [matchId, userId]);
     await testDb().query(
       "insert into ledger_entries (debit_account, credit_account, amount_cents, kind, match_id, idempotency_key, reason) values ('clearing', 'revenue', $1, 'match_share', $2, $3, 'E2E Abbuchung Anteil (Karte)')",
       [shareCents, matchId, "e2e-charge:" + randomUUID()],
