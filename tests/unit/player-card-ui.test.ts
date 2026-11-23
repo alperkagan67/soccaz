@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -25,10 +25,11 @@ const props = (v: CardViewer) => JSON.stringify({ data: playerCardFor(v, person,
 describe("PlayerCard je Rolle (AC-17), Rohtext des HTML und der Props, nicht nur das sichtbare DOM", () => {
   it("Gast: weder Name noch Wertung noch Stufe noch Position, nur Initialen und Hinweis", () => {
     for (const out of [html(viewers.gast), props(viewers.gast)]) {
-      for (const verboten of ["Zorro", "Quasimodo", "Angriff", "80", "Pokal", "pokal", "1236", "Wertung 8", "player-card-rating", "player-card-name", "player-card-tier", "player-card-position"]) {
+      for (const verboten of ["Zorro", "Quasimodo", "Angriff", "Pokal", "pokal", "1236", "player-card-rating", "player-card-name", "player-card-tier", "player-card-position", "data-tier", "border-rim px-2.5"]) {
         expect(out, verboten).not.toContain(verboten);
       }
       expect(out).not.toMatch(/\bAN\b/); // das Positionskürzel
+      expect(out).not.toMatch(/Wertung\s*\d/); // keine Wertung als Text (strukturell, unabhängig von einzelnen Ziffern)
     }
     expect(html(viewers.gast)).toContain('data-kind="neutral"');
     expect(html(viewers.gast)).toContain("ZQ");
@@ -64,6 +65,25 @@ describe("PlayerCard je Rolle (AC-17), Rohtext des HTML und der Props, nicht nur
     const out = renderToStaticMarkup(createElement(PlayerCard, { data: playerCardFor(undefined as never, person, RATING) }));
     expect(out).toContain('data-kind="neutral"');
     expect(out).not.toContain("Zorro");
+  });
+
+  it("fail-closed im Rendern: kaputte oder untypisierte Objekte (leer, null, JSON ohne kind, unbekannte Art mit Wertung/Name, kind full ohne Wertung) zeigen NICHTS davon im HTML", () => {
+    const kaputt: unknown[] = [
+      {},
+      null,
+      undefined,
+      "karte",
+      { rating: 80, tier: "pokal", name: "Zorro Quasimodo", position: "Angriff", colorKey: "blue" }, // JSON ohne kind
+      { kind: "x", rating: 80, tier: "pokal", name: "Zorro Quasimodo", position: "Angriff", initials: "ZQ", colorKey: "blue" },
+      { kind: "full", name: "Zorro Quasimodo", position: "Angriff", colorKey: "blue" }, // full ohne Wertung und Stufe
+      { kind: "full", rating: 80, tier: "gold", name: "Zorro Quasimodo", position: "Angriff", colorKey: "blue" }, // unbekannte Stufe
+    ];
+    for (const d of kaputt) {
+      const out = renderToStaticMarkup(createElement(PlayerCard, { data: d as never }));
+      expect(out).toContain('data-kind="neutral"');
+      for (const verboten of ["Zorro", "Quasimodo", "Angriff", "Pokal", "undefined", "NaN", "player-card-rating", "player-card-name", "player-card-tier", "player-card-position", "data-tier"]) expect(out, verboten).not.toContain(verboten);
+      expect(out).not.toMatch(/Wertung\s*\d/);
+    }
   });
 
   it("jede Karte hat eine Textfassung (aria-label) mit Wertung und Stufe, wo sie sichtbar sind; Stufe steht nie nur als Farbe", () => {
@@ -131,5 +151,48 @@ describe("Stufenfarben (DESIGN.md)", () => {
       expect(out, t.tier).toContain(TIER_LABELS[t.tier]);
       expect(out, t.tier).toContain(`background-color:${TIER_COLOR[t.tier]}`);
     }
+  });
+});
+
+describe("Stufenfarbe NUR als Chip (AC-30) und Kontrast hell", () => {
+  const root = process.cwd();
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(ts|tsx|css)$/.test(e.name) ? [path.join(dir, e.name)] : []));
+
+  it("tier-style und TIER_COLOR kommen in src/ nur in tier-style.ts und PlayerCard.tsx vor; in PlayerCard.tsx genau einmal als backgroundColor des Chips (data-testid player-card-tier)", () => {
+    const erlaubt = new Set(["src/lib/tier-style.ts", "src/components/PlayerCard.tsx"]);
+    for (const file of walk(path.join(root, "src"))) {
+      const rel = path.relative(root, file).split(path.sep).join("/");
+      const text = readFileSync(file, "utf8");
+      if (/tier-style|TIER_COLOR/.test(text)) expect(erlaubt.has(rel), `${rel} darf die Stufenfarbe nicht lesen`).toBe(true);
+    }
+    const card = readFileSync(path.join(root, "src/components/PlayerCard.tsx"), "utf8");
+    expect(card.match(/\bTIER_COLOR\b/g)).toHaveLength(2); // Import und genau EINE Verwendung (der Chip), egal in welcher Schreibweise
+    expect(card.match(/TIER_COLOR\[/g)).toHaveLength(1);
+    const chip = /data-testid="player-card-tier"[\s\S]*?style=\{\{[^}]*TIER_COLOR\[[^}]*\}\}/.exec(card);
+    expect(chip, "TIER_COLOR steht im Element mit data-testid player-card-tier").not.toBeNull();
+    expect(chip![0]).toContain("backgroundColor");
+  });
+
+  it("Gegenprobe: das Markup OHNE den Chip enthält keinen der fünf Stufen-Hexwerte", () => {
+    const out = html(viewers.mitspieler);
+    const ohneChip = out.replace(/<span data-testid="player-card-tier"[\s\S]*?<\/span>/, "");
+    expect(ohneChip).not.toBe(out); // der Chip war da
+    for (const hex of Object.values(TIER_COLOR)) expect(ohneChip.toLowerCase(), hex).not.toContain(hex.toLowerCase());
+    expect(out.toLowerCase()).toContain(TIER_COLOR.pokal); // und im Chip steht die Farbe
+  });
+
+  it("Kontrast HELL: der Rahmen border-rim des Chips (--rim hell) gegen die Kartenfläche (--panel hell) >= 3:1; Werte aus globals.css gelesen, Markup trägt border-rim am Chip", () => {
+    const css = readFileSync(path.join(root, "src/app/globals.css"), "utf8");
+    const light = /@media \(prefers-color-scheme: light\) \{\s*:root \{([\s\S]*?)\n  \}/.exec(css);
+    expect(light, "heller Block in globals.css").not.toBeNull();
+    const val = (name: string) => new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`).exec(light![1])?.[1];
+    const rim = val("rim");
+    const panel = val("panel");
+    expect(rim && panel).toBeTruthy();
+    expect(contrast(rim!, panel!)).toBeGreaterThanOrEqual(3);
+    const chipTag = /<span data-testid="player-card-tier"[^>]*>/.exec(html(viewers.mitspieler));
+    expect(chipTag![0]).toContain("border-rim");
+    expect(chipTag![0]).toContain("border ");
   });
 });
