@@ -5,7 +5,7 @@ import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
 import { audit } from "../audit";
-import { cardPaymentsEnabled } from "../settings";
+import { cardPaymentsEnabled, tournamentPaymentsActive } from "../settings";
 import { bookOpenFees } from "./charge";
 import { runErasureTasks } from "./erasure";
 import { retryTournamentChargesInWindow, runTournamentChargesDue } from "./tournament-charge";
@@ -87,7 +87,7 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
     }
   }
   // Turniere im Kartenmodell (012 M5-4): Abbuchung zur Frist bzw. sofort, und Nachholen offener Zeilen
-  if (await cardPaymentsEnabled()) {
+  if (await tournamentPaymentsActive()) {
     try {
       touched += (await runTournamentChargesDue(now)).turniere;
       touched += await retryTournamentChargesInWindow({ now }); // neue Karte im Nachzahlfenster: erneut abbuchen (M5-5)
@@ -99,7 +99,7 @@ export async function runCardCharges(now: Date = new Date()): Promise<number> {
     }
   }
   // Eingefrorene Turniere bei Schalter AUS: Mitteilung an Admin 1 ab 6 h, dann alle 12 h (Backlog 141); keine automatische Absage
-  if (!(await cardPaymentsEnabled())) {
+  if (!(await tournamentPaymentsActive())) {
     try {
       touched += await notifyFrozenTournaments(now);
     } catch (error) {

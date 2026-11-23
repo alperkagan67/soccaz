@@ -9,7 +9,7 @@ import { audienceFor, cardDisplayFor, type CardDisplay, type CardViewer } from "
 import { COVER_MANDATE_KEY } from "@/lib/cover";
 import { audit } from "./audit";
 import { validCoversOf, type CoverSeat } from "./payments/cover";
-import { cardPaymentsEnabled } from "./settings";
+import { tournamentPaymentsActive } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 
@@ -21,7 +21,7 @@ const NOT_POSSIBLE = "Den Anteil kannst du gerade nicht übernehmen.";
  * bleibt das Turnier im Guthabenmodell, bis es abgesagt oder beendet ist (kein Mischzustand; Altturniere werden zurueckgesetzt, Plan T-18). Unter der Turniersperre des Aufrufers lesen.
  */
 export async function tournamentCardMode(tx: Pick<Tx, "select">, tournamentId: string): Promise<boolean> {
-  if (!(await cardPaymentsEnabled(tx as Tx))) return false;
+  if (!(await tournamentPaymentsActive(tx as Tx))) return false;
   // Kostenlose Turniere (Hallenkosten 0 bzw. Anteil 0) haben nichts abzubuchen: sie laufen wie bisher (Bereit ohne Karte, Bracket sofort), sonst haengen sie im Kartenmodell fest (Security-Review M5-3).
   const [t] = await tx.select({ totalCents: tournaments.totalCents, finalShareCents: tournaments.finalShareCents, entryFeeCents: tournaments.entryFeeCents }).from(tournaments).where(eq(tournaments.id, tournamentId));
   if (!t || t.totalCents === 0 || t.finalShareCents === 0 || (t.totalCents === null && t.entryFeeCents === 0)) return false;

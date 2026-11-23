@@ -24,7 +24,7 @@ import { notifyHolderOnFix } from "./tournament-holders";
 import { venueAccessHolderIds } from "./venue-access-rules";
 import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
-import { cardPaymentsEnabled } from "./settings";
+import { cardPaymentsEnabled, tournamentPaymentsActive } from "./settings";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
 export const MIN_TOURNAMENT_TEAMS = 4;
@@ -797,7 +797,7 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
  * (keine technischen Codes). Je Turnier eine eigene Transaktion unter der Turniersperre, Bedingung wird dort neu geprueft (die Zeile kann inzwischen erfolgreich nachgezahlt sein). Idempotent.
  */
 export async function cancelTournamentsAfterWindow(now: Date = new Date()): Promise<number> {
-  if (!(await cardPaymentsEnabled())) return 0; // Schalter AUS: nicht wegen Fenster absagen (Plan 17.2); nach dem Wiedereinschalten laeuft die Pruefung weiter
+  if (!(await tournamentPaymentsActive())) return 0; // Schalter AUS: nicht wegen Fenster absagen (Plan 17.2); nach dem Wiedereinschalten laeuft die Pruefung weiter
   const NON_CARD = NON_CARD_CODES;
   const expired = (tx: Pick<Tx, "execute">, id: string | null) =>
     tx.execute(sql`select distinct t.id from tournaments t join payment_charges c on c.tournament_id = t.id
@@ -879,7 +879,7 @@ async function chargeUnderway(tx: Tx, t: T): Promise<boolean> {
   if (!(await tournamentCardMode(tx, t.id))) {
     // Schalter AUS (Plan 17.2): Kartenfluss mit Zeilen oder eingefrorenem Zugangs-Snapshot wird NICHT wegen der Frist abgesagt (die Abschaltung ist keine Schuld der Spieler); bucht nach, sobald der Schalter wieder EIN ist
     if (row) return true;
-    if (t.venueAccessRequiredSnapshot === null || (await cardPaymentsEnabled())) return false;
+    if (t.venueAccessRequiredSnapshot === null || (await tournamentPaymentsActive())) return false;
     const paid = await tx.select({ id: tournamentPlayers.userId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, t.id), gt(tournamentPlayers.paidCents, 0))).limit(1);
     return paid.length === 0;
   }
@@ -1117,7 +1117,7 @@ async function frozenSince(exec: Pick<typeof db, "select" | "execute">, t: T): P
 
 /** Eingefrorene Turniere (nur bei Schalter AUS): id und Zeitpunkt, ab dem gehandelt worden waere. Kartenfluss = Snapshot gesetzt oder Abbuchungszeilen. */
 export async function frozenTournaments(exec: Pick<typeof db, "select" | "execute">, now: Date): Promise<{ id: string; since: Date }[]> {
-  if (await cardPaymentsEnabled()) return [];
+  if (await tournamentPaymentsActive()) return [];
   const rows = await exec
     .select()
     .from(tournaments)
@@ -1141,7 +1141,7 @@ export async function notifyFrozenTournaments(now: Date = new Date(), opts: { ca
     try {
       await db.transaction(async (tx) => {
         const t = await lockTournament(tx, f.id);
-        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || (await cardPaymentsEnabled())) return; // inzwischen geloest
+        if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || (await tournamentPaymentsActive())) return; // inzwischen geloest
         // Frist/Fenster UNTER der Sperre neu rechnen (R-T269): wurde zwischenzeitlich nachgezahlt oder ist das Turnier nicht mehr eingefroren, keine Mitteilung; die Stufe stammt aus dieser Rechnung
         const since = await frozenSince(tx, t);
         if (!since || now.getTime() < since.getTime()) return;

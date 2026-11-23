@@ -2,12 +2,15 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, matchParticipants, paymentCharges, paymentRefunds } from "@/db/schema";
+import { tournaments } from "@/db/schema-league";
+import { frozenTournaments } from "@/server/tournaments";
+import { tournamentCardMode } from "@/server/tournament-card";
 import { chargeEligibility } from "@/server/payments/charge-run";
 import { finalConfirm, setReady, teamComplete } from "@/server/lobby";
 import { closeLobbiesAtDeadline } from "@/server/scheduled";
 import { setSetting } from "@/server/settings";
 import { cardModeActive } from "@/server/wallet";
-import { addPlayer, cleanup, makeMatch, reloadMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
 
 const nid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 12)}`;
 
@@ -153,5 +156,43 @@ describe("Zahlungen AUS: Frist-Job schliesst nur abrechnungsgebundene Spiele", (
     await switches(false, true);
     await closeLobbiesAtDeadline();
     expect((await reloadMatch(g.match.id)).status).toBe("cancelled");
+  });
+});
+
+// Turniere: "Zahlungen AUS" macht ein Turnier mit Preis NICHT kostenlos; es bleibt eingefroren (Alarm), die Bezahlphase laeuft nicht still weiter.
+describe("Turniere: payments_enabled x card_payments_enabled", () => {
+  const DAY = 86_400_000;
+  async function tournament(totalCents: number) {
+    const org = await makeUser("orgpof");
+    const [t] = await db
+      .insert(tournaments)
+      .values({
+        organizerId: org.id, name: nid("POF-Cup"), city: "Essen", startsOn: new Date(Date.now() + 6 * DAY).toISOString().slice(0, 10), format: "knockout", maxTeams: 4,
+        totalCents, hourlyCents: 8000, durationMin: 120, status: "payment", registrationDeadline: new Date(Date.now() + 4 * DAY), startsAt: new Date(Date.now() + 6 * DAY), isPrivate: false,
+        venueAccessRequiredSnapshot: false, commissionPercentSnapshot: "10.00", finalShareCents: totalCents / 4,
+      } as typeof tournaments.$inferInsert)
+      .returning();
+    return t;
+  }
+  const frozenIds = async () => (await frozenTournaments(db, new Date(Date.now() + 5 * DAY))).map((f) => f.id);
+  const cases: [boolean, boolean, boolean][] = [
+    // payments, card, Turnier mit Preis eingefroren?
+    [true, true, false],
+    [false, true, true],
+    [true, false, true],
+    [false, false, true],
+  ];
+  for (const [payments, card, frozen] of cases) {
+    it(`payments=${payments ? "AN" : "AUS"} card=${card ? "AN" : "AUS"}: Turnier mit Preis ${frozen ? "eingefroren (Alarm), Kartenfluss aus" : "laeuft im Kartenfluss"}`, async () => {
+      const t = await tournament(16000);
+      await switches(payments, card);
+      expect((await frozenIds()).includes(t.id)).toBe(frozen);
+      expect(await db.transaction((tx) => tournamentCardMode(tx, t.id))).toBe(!frozen);
+    });
+  }
+  it("Turnier ohne Preis (0 EUR) ist bei AUS nicht im Kartenfluss (wie bisher)", async () => {
+    const t = await tournament(0);
+    await switches(false, true);
+    expect(await db.transaction((tx) => tournamentCardMode(tx, t.id))).toBe(false);
   });
 });
