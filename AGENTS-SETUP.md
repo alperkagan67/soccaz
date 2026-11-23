@@ -27,7 +27,7 @@ Ohne `--label` zeigt `hc ls` keine Labels. Beispiel: `hc ls --json --label role=
 
 Setup in jeder Session: Umgebungsvariable `HC_TERMINAL_ID` lesen (eigene Adresse), dann `hc label <ID> role=<rolle>`.
 
-Es gibt **sechs Rollen**: Orchestrator, Task Manager, Worker 1–4.
+Es gibt **sechs Rollen in der Kette**: Orchestrator, Task Manager, Worker 1–4. Dazu kommt optional der Planer (Abschnitt 2.4), der außerhalb der Kette steht.
 
 ## 2. Rollen-Prompts (kopierfertig)
 
@@ -47,6 +47,10 @@ Deine Rolle:
 - Aufträge gibst du ausschließlich an den Task Manager. Seine Adresse findest du mit hc ls --json --label role=task-manager. Senden mit: hc send <TM-ID> und dem Text.
 - Ergebnisse vom Task Manager prüfst du kritisch und fasst sie mir kurz zusammen.
 - Prozess, Phasen und Gates (G1 nur für Verträge mit Produktentscheidung; Merge siehe CLAUDE.md, Merge-Regel) stehen in docs/loop/LOOP-SPEC.md; halte dich daran. Meldungen an mich: max. 3 Zeilen.
+- Best Practice: Details entscheidest du; mich fragst du nur bei Geld, Recht, Sicherheit, Look-Abnahme sowie Ausnahme- und Regel-PRs.
+- Herzschlag: Prompt und feste Regel stehen in docs/loop/HERZSCHLAG.md. Ist ein Worker frei, bekommt er sofort Arbeit, die nichts blockiert; Warten auf CI oder Merge ist kein Grund für Stillstand.
+- Briefings des Planers (Label role=planer, siehe 2.4) sind Aufträge wie von mir; Freigaben gebe nur ich.
+- Meldungen an mich bei Blockaden im Format NEEDS-USER (Abschnitt 3b).
 
 Erste Aufgabe: Lies das Projekt und gib mir einen Überblick über Struktur, Stack und aktuellen Stand. Warte danach auf meine Anweisungen.
 ```
@@ -73,6 +77,11 @@ Deine Rolle:
 - Du schreibst selbst keinen Feature-Code.
 - Code-Änderungen laufen über eigenen Branch + Pull Request auf main (nie direkt auf main); Tests führt ein anderer Worker aus als der Ersteller; Merge siehe CLAUDE.md, Merge-Regel.
 - Arbeite nach Abschnitt 3a (Worktrees) und nach docs/loop/LOOP-SPEC.md (Zerlegung, Integration, Retro); Meldungsformate siehe Abschnitt 3b.
+- Kein Worker wartet untätig: freie Worker bekommen sofort unabhängige Vorarbeit (nächster Backlog-Eintrag ohne offene Produktfrage, lokale Vorbereitung, Plan oder Doku); Herzschlag-Prompt: docs/loop/HERZSCHLAG.md.
+- Merge-Ablauf, Belegpflicht für Merge-/Schließmeldungen und Dependabot-Regeln: CLAUDE.md, Merge-Regel (nicht hier kopieren).
+- Worktree erst entfernen, wenn der Worker ihn mit "Worktree frei" freigegeben hat (Abschnitt 3a).
+- Scheitert gh pr edit beim Ändern des PR-Textes, setze ihn per gh api -X PATCH repos/<owner>/<repo>/pulls/<nr> -F body=@datei.
+- PR-Texte haben die Überschriften Anlass, Änderung, Risiko, Beleg. In jeder DONE-Meldung prüfst du die Zeilen "Vorgaben" und "Degradiert"; ein PR ohne Belege wird nicht gemergt.
 
 Lege jetzt TASKS.md an (falls nicht vorhanden) und warte auf den ersten Auftrag.
 ```
@@ -100,6 +109,9 @@ Deine Rolle:
 - Wenn du feststeckst: hc send <TM-ID> "worker-N blockiert: <Grund>"
 - Danach wartest du auf den nächsten Task.
 - Arbeite nach Abschnitt 3a (Worktrees) und docs/loop/LOOP-SPEC.md (Writer: Plan, TDD, /goal; Reviewer siehe unten). Meldungsformate siehe Abschnitt 3b.
+- Worker pushen nie. Gepusht wird nur der PR-Branch, durch den Task Manager; Worker-Branches bleiben lokal.
+- Speicherregel und Schreib-Befehle: CLAUDE.md, Stolperfallen (höchstens 2 Dev-Server, Server sofort beenden, Vitest mit Zeitlimit; schreibende Befehle nur nach erfolgreichem cd, vorher pwd und Branch prüfen).
+- Wer arbeitet, wartet nicht untätig, sondern meldet früh (NEEDS-USER nach spätestens 15 Minuten Blockade, Abschnitt 3b).
 ```
 
 **Reviewer-Hinweis (gilt für jeden Worker, der einen Task als Reviewer bekommt):** Reviewer ist immer ein anderer Worker als der Writer. Er prüft in der Reihenfolge der Spec (Phase 6): Kriterien und Tests, Umfang, Code-Review (Subagent `code-reviewer`), bei Auth/Zahlung/Eingaben/Datenzugriff zusätzlich Security-Review (Subagent `security-reviewer`), dann typecheck, lint, npm test und die betroffenen E2E-Tests. Gemeldet werden nur Funde zu Korrektheit, Sicherheit oder Vertragskriterien. Ergebnis: `REVIEW-OK` oder `REVIEW-CHANGES` (max. 2 Runden, danach Eskalation an den Orchestrator).
@@ -108,6 +120,21 @@ Deine Rolle:
 
 - Regel von heute: Nichts löschen, verschieben oder überschreiben, was nicht ausdrücklich im Task steht; bei Unsicherheit erst fragen.
 - Das `hc ls --json` im Originalprompt zeigt keine Labels. Zuverlässig ist `hc ls --json --label role=task-manager`.
+
+### 2.4 Planer (optional, außerhalb der Kette)
+
+Label `role=planer`. Der Planer ist die Planungs-Schnittstelle des Nutzers: Er plant und brainstormt mit dem Nutzer, behält den Überblick und schickt dem Orchestrator fertige Briefings per `hc send`, nachdem der Nutzer sie bestätigt hat. Er schreibt keinen Code, ändert nichts im Repo und spricht nicht mit Task Manager oder Workern. Briefings des Planers sind Aufträge wie vom Nutzer; Freigaben (Merge von Ausnahme- und Regel-PRs, Look-Abnahme, Geld, Recht, Sicherheit) gibt nur der Nutzer selbst. Anlass: Planung und Steuerung liefen im selben Fenster des Orchestrators.
+
+### 2.5 Writer- und Reviewer-Regeln für Tests und Zahlungsfluss
+
+Jede Regel gilt für Writer und Reviewer; Beispiele und Vorfälle stehen in `docs/loop/REGELVORSCHLAG.md` (Kandidaten 18 bis 26).
+
+- **Entfernte oder geänderte Texte/Bedienelemente (18):** vor dem Push `git grep` über das ganze `tests/` (E2E, Integration, Unit) nach jedem geänderten Wort; Trefferliste in den PR-Text; bei neuen oder geänderten Specs `node scripts/e2e-shards.mjs check` (Anlass: drei CI-Runden zu je rund 10 Minuten, E2E läuft lokal nicht).
+- **Zahlungs-Vorbedingungen (22):** wer eine Vorbedingungs- oder Schutzfunktion der Zahlung (`cardModeActive`, Doppelbelastungs-, Idempotenz-, Sperrprüfung) ändert oder entfernt, führt vor dem Push ALLE Integrationsdateien `card-*`, `lobby*`, `tournament-*` und `payments*` einzeln aus (Befehl und Ergebnis im PR-Text); der Reviewer prüft sie ebenso (Anlass: beide Reviews übersahen eine Doppelbelastungs-Lücke, erst die CI fand sie).
+- **Plattform-Schalter (23, 25):** ein Test setzt einen Schalter (`payments_enabled`, `card_payments_enabled`) im Test selbst, nie in `beforeAll`, und stellt in `afterEach` oder `finally` den Ausgangswert wieder her; wer die Bedeutung eines Schalters ändert, sucht vorher per `git grep` über `src`, `tests/integration`, `tests/e2e` und `scripts` jede Stelle, listet sie im PR-Text (Datei, Stelle, Entscheid) und führt alle betroffenen Tests aus (Anlass: 8 Specs und 15 Integrationstests kippten erst in der CI).
+- **Hintergrundläufe (24):** ein Wettlauf mit einem Hintergrundlauf (`void`-Aufruf, Job, Webhook) wird nie durch Abwarten, Wiederholen oder Glück gelöst, sondern durch den Zustand (Lauf tut bestimmt nichts) oder einen awaitbaren Testhook.
+- **Skript-/CLI-Tests (26):** sie laufen ohne `.env.local` (Umgebung ausdrücklich weitergeben, kein `--env-file`); die Einheit von Testhilfen prüfen (`futureLocal(6)` sind 6 Tage, nicht Stunden).
+- **Abhängigkeiten (20, 21):** Siehe `docs/loop/LOOP-SPEC.md`, Abschnitt 14 (stille Standardversionen pinnen, Lockfile nur Zielpakete).
 
 ## 3. Regeln
 
@@ -124,15 +151,18 @@ Deine Rolle:
 
 ## 3a. Arbeitsweise: Git-Worktrees
 
-- Der Task Manager legt pro Task einen Worktree an (aus SoccaV2 heraus): `git worktree add ../worktrees/<branch> -b <branch>`. `../worktrees` liegt im Elternordner `Soccaz\worktrees`, also außerhalb des Repos. Pfade enthalten Leerzeichen: immer quoten.
-- Bevorzugt per Skript: `node scripts/worktree.mjs create <branch> <worker 1..4>` legt den Worktree unter `../worktrees/<branch mit - statt />` an, kopiert `.env.local` (nur `PORT` = 310N und `DATABASE_URL` mit Datenbank `soccaz_wN` werden geändert), führt `npm ci` aus, legt die DB `soccaz_wN` auf dem lokalen Postgres (5433) an, migriert und seedet (`--no-seed` überspringt den Seed). `node scripts/worktree.mjs remove <branch> [--delete-branch]` räumt Worktree und Worker-DB ab (bricht bei uncommitteten Änderungen ab; angefasst werden nur `soccaz_w1` bis `soccaz_w4`). Bekannte Grenze: `APP_URL` bleibt auf dem Haupt-Port 3100, Einladungslinks aus Worker-Apps zeigen daher dorthin.
-- Manuell (Fallback): `.env.local` aus SoccaV2 kopieren; der Worker führt dort `npm ci` aus.
+- Der Task Manager legt pro Task einen Worktree an (aus SoccaV2 heraus), und zwar **nur** über das Skript; ein von Hand mit `git worktree add` angelegter Worktree hat keine `.env.local` (Kopieren ist per Deny-Regel gesperrt) und blockiert DB-Läufe. `../worktrees` liegt im Elternordner `Soccaz\worktrees`, also außerhalb des Repos. Pfade enthalten Leerzeichen: immer quoten.
+- Per Skript: `node scripts/worktree.mjs create <branch> <worker 1..4>` legt den Worktree unter `../worktrees/<branch mit - statt />` an, kopiert `.env.local` (nur `PORT` = 310N und `DATABASE_URL` mit Datenbank `soccaz_wN` werden geändert), führt `npm ci` aus, legt die DB `soccaz_wN` auf dem lokalen Postgres (5433) an, migriert und seedet (`--no-seed` überspringt den Seed). `node scripts/worktree.mjs remove <branch> [--delete-branch]` räumt Worktree und Worker-DB ab (bricht bei uncommitteten Änderungen ab; angefasst werden nur `soccaz_w1` bis `soccaz_w4`). Bekannte Grenze: `APP_URL` bleibt auf dem Haupt-Port 3100, Einladungslinks aus Worker-Apps zeigen daher dorthin.
+- Ein Review-Worktree (Review eines Commits) entsteht ebenso über das Skript (`--base <ref> --no-seed`); im Hauptrepo wird nie ausgecheckt.
+- Der Worktree und der Port einer Nutzer-Abnahme sind tabu: kein Checkout, kein Test, kein Beenden, keine Änderung durch Worker, nur Lesen per `git -C`. Sie werden mit Ende der Abnahme in `docs/loop/` benannt (eine Zeile je Abnahme).
 - Jeder Worker arbeitet ausschließlich in seinem Worktree, nie in SoccaV2 selbst.
 - Braucht ein Worker einen Dev-Server, bekommt er einen eigenen Port: worker-1=3101, worker-2=3102, worker-3=3103, worker-4=3104 (3100 bleibt für den Haupt-Dev-Server in SoccaV2).
 - Mit eigener DB pro Worker (`soccaz_wN`) isolieren Migrationen die Worker voneinander; Migrationen laufen trotzdem nie parallel zu Tasks mit Schema-Annahmen. Ohne eigene DB (gemeinsame Postgres auf 5433) laufen Migrations-Tasks strikt seriell.
 - Parallelität: Standard 2 Writer + 1 Reviewer gleichzeitig (Nutzungslimit, Spec Abschnitt 10).
 - Task-Ende: Dev-Server per Port beenden (PowerShell: `Get-NetTCPConnection -LocalPort 310N -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess }`, nur der eigene Port 3101 bis 3104) und die Shell aus dem Worktree verlassen, sonst bleibt der Ordner gesperrt und `git worktree remove` scheitert mit „Invalid argument“.
 - Nach dem Merge räumt der Task Manager den Worktree auf: `git worktree remove <pfad>` (und lokalen Branch löschen, nur den selbst angelegten). Aufräumen erst nach geprüftem Merge, siehe CLAUDE.md, Merge-Regel.
+- Entfernt wird mit `git worktree remove`, **nicht** mit `worktree.mjs remove`: Letzteres bricht bei ungetrackten Dateien ab und löscht die geteilte Worker-DB (`soccaz_wN`). Vorher den Dev-Server des Worktrees beenden (sonst bleibt der Ordner halb zurück). Erst entfernen, wenn der Worker den Worktree mit der DONE-Zeile „Worktree frei“ freigegeben hat; seine `.env.local` liegt nur dort und ist nicht kopierbar (Anlass: entfernter Worktree, den der Worker für den Folge-Branch brauchte). Ging sie verloren: neu anlegen mit `create <branch> <worker> --base <ref> --no-seed`.
+- Lässt sich der PR-Text mit `gh pr edit` nicht ändern, wird er per `gh api -X PATCH repos/<owner>/<repo>/pulls/<nr> -F body=@datei` gesetzt (Datei statt Inline-Text, kein Quoting).
 - Weiterhin: Branch + PR, Tests durch anderen Worker als Ersteller, Merge siehe CLAUDE.md, Merge-Regel.
 
 ## 3b. Kommunikationsformat (`hc send`, Spec Abschnitt 8)
@@ -145,7 +175,10 @@ Kurze, feste Formate halten die Kontexte schlank. Details und Beispiele: docs/lo
 - `BLOCKED <id> | Grund | braucht: TM / Orchestrator / Nutzer`
 - `REVIEW-OK <id>` oder `REVIEW-CHANGES <id> | 1) … 2) …` (Reviewer)
 - `AUFTRAG <Axx> fertig | PR #N | ACs belegt | CI grün` (Task Manager an Orchestrator)
-- `NEEDS-USER | <eine Zeile, was der Nutzer tun muss>`: Wartet jemand auf den Nutzer, geht sofort `NEEDS-USER` an den Orchestrator; Rückfragen nur im eigenen Fenster sind verboten.
+- `NEEDS-USER | <Fenster> | <Blockade oder Vorgabe> | seit <hh:mm> | Auswirkung | Vorschlag`: Wartet jemand auf den Nutzer, geht sofort `NEEDS-USER` an den Orchestrator; Rückfragen nur im eigenen Fenster sind verboten. Jede Blockade (Werkzeug, Klassifizierer, Berechtigung, Skill-Prüfung) und jede nicht befolgte Vorgabe wird spätestens nach 15 Minuten gemeldet: Worker an Task Manager und Task Manager an Orchestrator sofort, der Orchestrator an den Nutzer im nächsten Herzschlag, bei Geld oder Sicherheit sofort. Ein blockierter Schritt wird nie still umgangen. (Eine Einzeiler-Meldung ohne Fenster und Wartezeit gilt als unvollständig.)
+- DONE-Meldungen enthalten zusätzlich die Zeile `Vorgaben: erfüllt/nicht (Liste)` und die Zeile `Degradiert: ja/nein, Grund`. Ein PR ohne Belege (Befehl + Ergebnis; bei UI zusätzlich die Impeccable-Befehle und Screenshots vorher/nachher) wird nicht gemergt.
+- `hc send` mit längerem Text liest die Nachricht aus einer Datei (`hc send <ID> "$(cat datei)"`). Im Text selbst stehen keine Backticks und keine Inline-Kommandos (Dollarzeichen mit Klammer), weil die Shell sie in doppelten Anführungszeichen ausführt; Pfade, Code und Befehle als schlichter Text.
+- PR-Texte haben die Überschriften `## Anlass`, `## Änderung`, `## Risiko`, `## Beleg` (PR-Text-Check).
 
 ## 3c. Intake (Phase 1)
 
@@ -172,7 +205,12 @@ Den Intake startet der Nutzer in der Orchestrator-Session mit `/grill-me`. Der S
 - Der Projektpfad enthält ein Leerzeichen („Neuer Ordner“): Pfade immer quoten.
 - Vom Nutzer bestätigt: in einer frischen Session kein Hook-Fehler, `sessions/<id>.jsonl` wird angelegt.
 
+Kandidaten aus `docs/loop/REGELVORSCHLAG.md` sind in 2.x, 3a, 3b, CLAUDE.md und LOOP-SPEC eingearbeitet (Status dort je Kandidat); hier nichts doppeln.
+
 ## 5. Neustart ab jetzt
+
+- Nach jedem Neustart der Sitzung erneuert der Orchestrator den Herzschlag mit `/loop 15m` und dem Prompt aus `docs/loop/HERZSCHLAG.md`, danach spätestens alle 7 Tage (wiederkehrende Aufgaben laufen ab; der Herzschlag überlebt weder `/clear` noch einen Neustart).
+- Node mindestens 22.13 (`.nvmrc`, `engines`, `scripts/check-node.mjs`).
 
 - Agents/Claude direkt in SoccaV2 starten: `cd "<Projektordner>\Soccaz\SoccaV2"` (Pfad quoten, Leerzeichen).
 - Alle Agents in SoccaV2 starten, damit Skills (`.claude/skills/`), Subagents (`.claude/agents/`), Hooks und `CLAUDE.md` geladen werden. Frühere Sessions per `claude --resume <name>` wieder aufnehmen (Namen wie `worker-1`, vergeben mit `/rename`).

@@ -131,7 +131,7 @@
   2. Kurzen Plan schreiben (Superpowers `writing-plans`), Plan im Task-Bericht referenzieren
   3. **TDD:** Zuerst Test(s) für die Kriterien schreiben → rot → implementieren → grün
   4. `/goal` setzen (Bedingung nach Abschnitt 4)
-  5. Commit(s) auf dem Task-Branch, Push des Branches
+  5. Commit(s) auf dem Task-Branch; Worker pushen nie, den PR-Branch pusht der Task Manager (CLAUDE.md, Konventionen)
   6. Bericht an Task Manager im Protokollformat (Abschnitt 8), **mit Belegen**: Befehl + Ergebnis
 - **Superpowers-Abgrenzung:** Worker nutzen `writing-plans`, `test-driven-development`, `verification-before-completion`, `systematic-debugging`. Sie nutzen **nicht** `brainstorming` (der Vertrag existiert schon), **nicht** `using-git-worktrees` (Worktrees verwaltet der Task Manager) und **nicht** `subagent-driven-development` (Parallelisierung macht Herdr). Die genauen Skill-Namen nach der Installation per `/skills` prüfen und hier korrigieren. Superpowers lädt sich beim Sessionstart automatisch; der Worker-Prompt muss die Abgrenzung deshalb ausdrücklich nennen.
 
@@ -152,9 +152,11 @@
 - PR öffnen mit: Link zum Vertrag, Kriterien-Checkliste (welcher Test belegt welches AC), Review-Ergebnis, Testausgabe
 - Warten, bis die CI grün ist
 - Orchestrator melden: `PR bereit: <Link>, alle ACs belegt, CI grün`
+- Herzschlag: Ist ein Worker frei, bekommt er sofort unabhängige Arbeit; Warten auf CI oder Merge ist kein Grund für Stillstand (Prompt: `docs/loop/HERZSCHLAG.md`, Rollen: `AGENTS-SETUP.md` 2.1/2.2).
 
 ### Phase 8 – Merge
 - **Merge-Regel:** siehe CLAUDE.md, Merge-Regel (wer mergt, Voraussetzungen, Ausnahmen, Aufräumen).
+- **Merge-Ablauf (Begründung):** Ein Merge auf veraltetem Stand kann `main` rot machen, obwohl der PR grün war; darum `gh pr update-branch` vor dem Merge und die CI von `main` nach jeder Serie. Die frühere Grenze „ein CI-Lauf pro 30 Minuten“ ist überholt (seit die Browser-Tests in 5 Teilen laufen, rund 10 Minuten); es gilt: höchstens 2 PRs mit disjunkten Dateien gleichzeitig in der CI, Doku-PRs immer parallel. Zwei grüne Läufe auf verschiedenen SHAs ohne Rerun sind nur für Zahlungs-, Auth-, Migrations- und Beweisprotokoll-PRs sowie PRs mit Flake in den letzten 7 Tagen nötig, sonst genügen ein grüner Lauf auf aktuellem `main`-Stand und die Reviews. Meldungen über Merge oder Schließen nennen `gh pr view <nr> --json state,mergedAt,mergeCommit` als Beleg.
 
 ### Phase 9 – Retro (Compounding)
 - **Wer:** Task Manager entwirft, Orchestrator kürzt, Nutzer sieht es im PR
@@ -342,10 +344,12 @@ Kurze, feste Formate halten alle Kontexte schlank.
 | TM → Worker | `REVIEW T12 | Branch feat-x | Vertrag: docs/contracts/004.md` |
 | Worker → TM | `REVIEW-OK T12` oder `REVIEW-CHANGES T12 | 1) … 2) …` |
 | TM → Orch. | `AUFTRAG A17 fertig | PR #31 | ACs belegt | CI grün` |
-| TM → Orch. | `NEEDS-USER | <eine Zeile, was der Nutzer tun muss>` |
+| alle → Orch. | `NEEDS-USER | <Fenster> | <Blockade oder Vorgabe> | seit <hh:mm> | Auswirkung | Vorschlag` |
 | Orch. → Nutzer | max. 3 Zeilen |
 
-**Regel:** Wartet irgendwer auf den Nutzer, geht sofort `NEEDS-USER` an den Orchestrator. Rückfragen nur im eigenen Fenster sind verboten.
+**Regel:** Wartet irgendwer auf den Nutzer, geht sofort `NEEDS-USER` an den Orchestrator. Rückfragen nur im eigenen Fenster sind verboten. Jede Blockade (Werkzeug, Klassifizierer, Berechtigung, Skill-Prüfung) und jede nicht befolgte Vorgabe wird spätestens nach 15 Minuten gemeldet (Worker an Task Manager und Task Manager an Orchestrator sofort, Orchestrator an Nutzer im nächsten Herzschlag, bei Geld oder Sicherheit sofort); ein blockierter Schritt wird nie still umgangen (Anlass: Klassifizierer verweigerte einen Befehl, die Blockade ging unter).
+
+**DONE-Zeilen:** Jede DONE-Meldung enthält `Vorgaben: erfüllt/nicht (Liste)` und `Degradiert: ja/nein, Grund`; ein PR ohne Belege (Befehl + Ergebnis, bei UI zusätzlich Impeccable-Befehle und Screenshots vorher/nachher) wird nicht gemergt. Aufbau und Beispiele: `AGENTS-SETUP.md`, 3b.
 
 ---
 
@@ -362,6 +366,8 @@ Mehrere Schichten, weil jede einzelne Lücken hat:
 4. **GitHub Branch Protection auf `main`:** PR Pflicht, CI-Checks Pflicht, kein Force-Push, keine Löschung. Damit kann technisch niemand außer dem Nutzer nach `main` gelangen.
 5. **Git-Identität:** `user.email` = noreply-Adresse (repo-lokal), auch in jedem Worktree prüfen.
 6. **Öffentliches Repo:** Vor jedem Commit Geheimnis-Check (keine Tokens, Passwörter, E-Mails, lokalen Pfade).
+7. **Schutzdateien:** `scripts/ci-gate.mjs`, `tests/integration/db-guard.ts`, `tests/e2e/helpers.ts` und `tests/e2e/global-teardown.ts` bestimmen, was als „grün“ oder „sicher“ gilt; Änderungen daran sind wie `.github/` `NEEDS-USER` (CLAUDE.md, Merge-Regel). Agenten lockern ihre eigenen Schutzregeln nicht.
+8. **Messungen auf CI-Runnern** (Leistung, Kontrast) laufen im Meldemodus und sind nie hart gating; Notschalter- und Sicherheitsmitteilungen sind nicht abschaltbar.
 
 ---
 
@@ -440,10 +446,23 @@ Jede Etappe = eigener Task mit eigenem Check. Writer und Reviewer verschieden.
 - CLAUDE.md wächst unbegrenzt → Regeln gehen unter
 - Vier Writer auf überlappenden Dateien
 - Melden, bevor etwas wirklich erledigt ist (gilt auch für den Nutzer 😉)
+- Freier Worker wartet untätig auf CI oder Merge
+- Schutzregel (Gate, DB-Guard, Hook) selbst lockern, um grün zu werden
+- Blockade still umgehen statt `NEEDS-USER` melden
 
 ---
 
-## 14. Quellen
+## 14. Abhängigkeiten
+
+- **Stille Standardversionen pinnen (20):** Bibliotheken, deren Standardwert Verhalten außerhalb unseres Codes festlegt (API-Version, Protokoll, Verschlüsselung, Zeitzone), werden VOR dem Bump explizit auf den bisher wirksamen Wert gepinnt; ein Test vergleicht Pin und Standardwert der installierten Bibliothek und wird bei einem Bump ohne bewusste Entscheidung rot (Muster `tests/unit/stripe-api-version.test.ts`). Anlass: Der Dependabot-Bump von stripe-node hätte die Stripe-API-Version still gewechselt.
+- **Lockfile nur Zielpakete (21):** Ein Abhängigkeits-PR ändert im Lockfile nur die Zielpakete und ihre eigenen Abhängigkeiten; Versionen und Integritäten werden vorher gegen den Dependabot-Stand oder `origin/main` verglichen, Plattformfelder (`libc`, `cpu`, `os`) und unbeteiligte Einträge bleiben wie auf `origin/main`; der PR-Text nennt die Zahl der geänderten Einträge. Anlass: Ein unter Windows erzeugtes Lockfile wich vom Linux-Lockfile ab.
+- **Dependabot (19):** kein Merge ohne OK des Orchestrators; Dependabot schließt seine PRs selbst (nie von Hand schließen); Major-Sprünge nur als eigener Task; Actions-Bumps (`.github/`) sind `NEEDS-USER` und werden gesammelt.
+- **Keine Installation durch Agenten:** Skills, Plugins, MCP-Server und Pakete installiert kein Agent selbst; Vorschläge mit Quelle, Version, Dateiliste und Risiko gehen an den Nutzer (globale Regel).
+- **Node** mindestens 22.13 (`.nvmrc`, `engines`, `scripts/check-node.mjs`).
+
+---
+
+## 15. Quellen
 
 - Anthropic: Best practices for Claude Code – https://code.claude.com/docs/en/best-practices
 - Anthropic: /goal – https://code.claude.com/docs/en/goal
