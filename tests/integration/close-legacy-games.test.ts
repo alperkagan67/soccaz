@@ -144,4 +144,17 @@ describe("close-legacy-games (F2)", () => {
     expect(r.manual).toHaveLength(0);
     expect(await statusOf(m.match.id)).toBe("lobby");
   });
+
+  it("abgerechnetes Spiel (settled_at gesetzt) wird nicht geschlossen; Provisionszeile ohne Hauptbuch-Eintrag blockiert nicht", async () => {
+    const settled = await paidLegacy();
+    await db.update(matches).set({ settledAt: new Date() }).where(eq(matches.id, settled.match.id));
+    const r1 = await closeLegacyGames(pool, { apply: true, only: [settled.match.id] });
+    expect(r1.games).toHaveLength(0);
+    expect(r1.manual).toHaveLength(0);
+    expect(await statusOf(settled.match.id)).toBe("lobby");
+    const m = await paidLegacy();
+    await pool.query("insert into match_commissions (match_id, venue_id, rate_percent, base_cents, commission_cents, ledger_entry_id) select $1, (select id from venues limit 1), 10, 0, 0, null", [m.match.id]);
+    const r2 = await closeLegacyGames(pool, { apply: true, only: [m.match.id] });
+    expect(r2.closed).toBe(1);
+  });
 });

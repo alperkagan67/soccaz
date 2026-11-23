@@ -32,6 +32,7 @@ async function candidates(q: Q, only?: string[]): Promise<LegacyGame[]> {
       where m.legacy_share_model = true
         and m.kind in ('team', 'private')
         and m.status in ('lobby', 'confirmed')
+        and m.settled_at is null
         and ($1::uuid[] is null or m.id = any($1::uuid[]))
         and not exists (select 1 from audit_log a where a.action = '${CLOSE_ACTION}' and a.entity = 'match' and a.entity_id = m.id::text)
       group by m.id
