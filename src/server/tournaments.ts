@@ -331,6 +331,9 @@ export async function reopenRosters(userId: string, tournamentId: string) {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann die Kader wieder öffnen.");
     if (!paymentOpen(t)) throw new DomainError("Das geht nur, solange die Zahlung läuft und das Bracket noch nicht steht.");
+    // Kartenmodell: Gibt es schon Abbuchungszeilen (auch nur teilweise erfolgreich, Alles-oder-nichts-Fenster), würde das Öffnen den Preis neu rechnen und die Anmeldung neu starten, die erfolgreichen
+    // Abbuchungen blieben ohne Erstattung bestehen und der Spieler würde bei der nächsten Preisrunde ein zweites Mal belastet (Geld). Deshalb abgelehnt: ab der ersten Abbuchung gibt es nur die Absage (Admin 1, mit Erstattung).
+    if (await hasTournamentChargeRows(tx, tournamentId)) throw new DomainError("Die Abbuchung hat begonnen: Kader öffnen ist nicht mehr möglich. Das Turnier kann nur noch Admin 1 absagen, dabei wird erstattet.");
     const players = await tx.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, tournamentId));
     for (const p of players) {
       await refundPlayer(tx, t, p, "Rückerstattung: Kader wieder geöffnet");
