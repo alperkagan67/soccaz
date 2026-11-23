@@ -185,3 +185,25 @@ export async function seedPartnerVenue(name: string): Promise<string> {
 export async function seedCardProfile(userId: string) {
   await testDb().query("insert into payment_profiles (user_id, stripe_customer_id, payment_method_id) values ($1, $2, $3) on conflict (user_id) do nothing", [userId, `cus_e2e_${userId}`, `pm_e2e_${userId}`]);
 }
+
+/**
+ * Diagnose für Turnier-Abbuchungen (CI-Anhang, ohne Personendaten): Turnierzeile (Status, Halle, Snapshots, Preis, Zeiten), Teams (bereit), Spieler (mit/ohne Karte), Abbuchungszeilen nach Status und Fehlercode,
+ * Audit tournament.* und charge.* sowie die Schalter. Zeigt, welche Bedingung der Abbuchung fehlt (chargeEligibility: not_open, no_venue, not_fixed, no_zusage, teams_missing, not_ready, not_due, cards_missing).
+ */
+export async function diagnoseTournamentCharges(tournamentId: string) {
+  try {
+    return await diagnoseTournamentChargesUnsafe(tournamentId);
+  } catch (error) {
+    return { diagnoseFehler: error instanceof Error ? error.message : String(error) }; // die Diagnose darf den eigentlichen Fehler nie überdecken
+  }
+}
+
+async function diagnoseTournamentChargesUnsafe(tournamentId: string) {
+  const [t] = await query("select status, venue_id is not null as has_venue, venue_access_required_snapshot, commission_percent_snapshot, venue_confirmed_at is not null as confirmed, final_share_cents, total_cents, max_teams, starts_at, created_at, registration_deadline, settled_at is not null as settled, bracket_generated_at is not null as bracket, price_round from tournaments where id = $1", [tournamentId]);
+  const teams = await query("select (ready_at is not null) as ready, (paid_ready_at is not null) as paid_ready, count(*)::int as n from tournament_teams where tournament_id = $1 group by 1, 2", [tournamentId]);
+  const players = await query("select (pp.payment_method_id is not null) as has_card, (p.paid_cents > 0) as legacy_paid, count(*)::int as n from tournament_players p left join payment_profiles pp on pp.user_id = p.user_id where p.tournament_id = $1 group by 1, 2", [tournamentId]);
+  const charges = await query("select status, failure_code, count(*)::int as n from payment_charges where tournament_id = $1 group by 1, 2", [tournamentId]);
+  const audits = await query("select action, count(*)::int as n from audit_log where entity = 'tournament' and entity_id = $1 and (action like 'tournament.%' or action like 'charge.%') group by 1 order by 1", [tournamentId]);
+  const settings = await query("select key, value from settings where key in ('payments_enabled', 'card_payments_enabled')");
+  return { tournament: t, teams, players, charges, audits, settings };
+}

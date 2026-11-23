@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, devLogin, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
-import { callJob, query, seedAdmin, seedCardProfile, seedPartnerVenue, setPlatformSetting } from "./helpers-db";
+import { callJob, diagnoseTournamentCharges, query, seedAdmin, seedCardProfile, seedPartnerVenue, setPlatformSetting } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(180_000);
@@ -255,12 +255,18 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
     if (i < 3) expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
   }
   // das letzte Bereit löst die Abbuchung im Hintergrund aus (Anstoß in 6 h = kurzer Vorlauf = sofort fällig); der Job card-charges holt nach, falls der Hintergrundlauf hängt
-  await expect
+  try {
+    await expect
     .poll(async () => {
       await callJob(baseURL!, "card-charges");
       return (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length;
     }, { timeout: 60_000, intervals: [1000, 2000] })
     .toBe(3);
+  } catch (error) {
+    // Diagnose für die CI: welche Bedingung der Abbuchung fehlt (Anhang ohne Personendaten)
+    await test.info().attach("turnier-abbuchung-diagnose", { body: JSON.stringify(await diagnoseTournamentCharges(tid), null, 2), contentType: "application/json" });
+    throw error;
+  }
   expect((await query<{ n: number }>("select count(*)::int as n from payment_charges where tournament_id = $1 and status = 'succeeded'", [tid]))[0].n, "alle 16 Plätze abgebucht").toBe(16);
   await caps[3].page.reload();
   await expect(caps[3].page.getByRole("heading", { name: "Halbfinale" })).toBeVisible({ timeout: 20_000 });

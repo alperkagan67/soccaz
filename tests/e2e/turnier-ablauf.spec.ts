@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { closeContexts, createTeam, devLogin, futureLocal, newUser, onboard, run, seedUser, addTeamMember, teamIdByName } from "./helpers";
-import { callJob, query, seedCardProfile, seedPartnerVenue, setPlatformSetting } from "./helpers-db";
+import { callJob, diagnoseTournamentCharges, query, seedCardProfile, seedPartnerVenue, setPlatformSetting } from "./helpers-db";
 
 // 012 M6b b2-i: der Ablauf läuft im KARTENMODELL (Karten statt Guthaben): Partnerhalle, Karte je Spieler, "Bereit" der Captains, Abbuchung (FakeProvider, PAYMENTS_FAKE=1 am Server und am Test), danach Bracket und Ergebnisse.
 test.skip(process.env.PAYMENTS_FAKE !== "1", "braucht PAYMENTS_FAKE=1 (nur Tests)");
@@ -172,12 +172,18 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, K
     if (i < 3) expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
   }
   // das letzte Bereit löst die Abbuchung im Hintergrund aus (Anstoß in 6 h = kurzer Vorlauf = sofort fällig); der Job card-charges holt nach, falls der Hintergrundlauf hängt
-  await expect
+  try {
+    await expect
     .poll(async () => {
       await callJob(baseURL!, "card-charges");
       return (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length;
     }, { timeout: 60_000, intervals: [1000, 2000] })
     .toBe(3);
+  } catch (error) {
+    // Diagnose für die CI: welche Bedingung der Abbuchung fehlt (Anhang ohne Personendaten)
+    await test.info().attach("turnier-abbuchung-diagnose", { body: JSON.stringify(await diagnoseTournamentCharges(tid), null, 2), contentType: "application/json" });
+    throw error;
+  }
   expect((await query<{ n: number }>("select count(*)::int as n from payment_charges where tournament_id = $1 and status = 'succeeded'", [tid]))[0].n, "alle 16 Plätze abgebucht").toBe(16);
   await caps[3].page.reload();
   await expect(caps[3].page.getByTestId("tournament-match")).toHaveCount(3);
