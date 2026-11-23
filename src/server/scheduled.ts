@@ -1,6 +1,6 @@
 import { and, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { invites, matchParticipants, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
+import { auditLog, invites, matchParticipants, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
 import { abortDeadline, dueReminders, dueWithGrace, fixDeadline, hasLongLead, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
 import { users } from "@/db/schema";
 import { payments } from "@/db/schema-finance";
@@ -95,7 +95,7 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
   for (const c of candidates) {
     const payOpenAt = await leadStart(db, c);
     const due = dueWithGrace(hasLongLead(c.startsAt, payOpenAt) ? fixDeadline(c.startsAt) : abortDeadline(c.startsAt), payOpenAt, c.startsAt, c.createdAt);
-    if (due.getTime() > now.getTime()) continue;
+    if ((await dueAfterResume(db, due, c.startsAt)).getTime() > now.getTime()) continue;
     try {
       await db.transaction(async (tx) => {
         const [m] = await tx.select().from(matches).where(eq(matches.id, c.id)).for("update");
@@ -127,6 +127,15 @@ export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<nu
     }
   }
   return cancelled;
+}
+
+/** Karenz nach der Pause (Entscheid t2q/t2s): Nach dem Wiedereinschalten der Kartenzahlung (Audit card_switch.on) gilt frühestens 2 Stunden später eine Frist als fällig, damit niemand abgesagt wird, der in der Pause nicht bestätigen oder eine Karte hinterlegen konnte. Reicht die Karenz bis zum Anstoß oder darüber, gilt die bestehende Absageregel (nie über den Anstoß hinaus). */
+export const RESUME_GRACE_MS = 2 * 3_600_000;
+async function dueAfterResume(exec: Pick<typeof db, "select">, due: Date, startsAt: Date): Promise<Date> {
+  const [row] = await exec.select({ at: sql<Date | null>`max(${auditLog.at})`.mapWith(auditLog.at) }).from(auditLog).where(and(eq(auditLog.entity, "setting"), eq(auditLog.entityId, "card_payments_enabled"), eq(auditLog.action, "card_switch.on")));
+  if (!row?.at) return due;
+  const until = new Date(row.at.getTime() + RESUME_GRACE_MS);
+  return until.getTime() < startsAt.getTime() && until.getTime() > due.getTime() ? until : due;
 }
 
 /** Liegt Guthaben (paid_cents > 0, Altmodell) in diesem Spiel? */

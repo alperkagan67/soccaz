@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, paymentCharges, paymentProfiles, remindersSent, stripeEvents } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles, remindersSent, stripeEvents } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { fixDeadline } from "@/lib/deadlines";
 import { FakeProvider } from "@/server/payments/fake";
@@ -11,8 +11,9 @@ import { runSubstitutes } from "@/server/payments/substitute";
 import { takeOverShare } from "@/server/payments/cover";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { closeLobbiesAtDeadline, sendMatchReminders } from "@/server/scheduled";
+import { setCardSwitch } from "@/server/payment-switch";
 import { setSetting } from "@/server/settings";
-import { addPlayer, cardGame, cleanup, makeMatch } from "./helpers";
+import { addPlayer, cardGame, cleanup, makeMatch, makeUser } from "./helpers";
 import { nid } from "./slot-helpers";
 import { slotGame } from "./slot-helpers";
 
@@ -139,5 +140,48 @@ describe("pausiert: Anteil uebernehmen (Cover) ist nicht moeglich", () => {
     await pause();
     await expect(takeOverShare(g.b.id, g.m.match.id, g.a.id, true)).rejects.toThrow(/nicht übernehmen/);
     expect((await db.select().from(matchParticipants).where(and(eq(matchParticipants.matchId, g.m.match.id), eq(matchParticipants.userId, g.a.id))))[0].coveredByUserId).toBeNull();
+  });
+});
+
+describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauchen 2 Stunden nach dem Einschalten", () => {
+  const MIN = 60_000;
+  let owner: Awaited<ReturnType<typeof makeUser>> | undefined;
+  /** Notschalter AUS und wieder EIN (Audit card_switch.on), danach den Zeitpunkt des Einschaltens auf `at` setzen (die Frist selbst laeuft ueber das `now` des Aufrufs). */
+  async function pauseAndResume(at: Date) {
+    owner ??= await makeUser("kz", "owner"); // Admin 1 gibt es hoechstens einmal je Datenbank
+    await setCardSwitch(owner.id, false, "Notabschaltung wegen Stoerung", true);
+    await setCardSwitch(owner.id, true, "Stoerung behoben, alles geprueft", true);
+    await db.execute(sql`update audit_log set at = ${at} where action = 'card_switch.on' and entity_id = 'card_payments_enabled'`);
+  }
+
+  it("Frist in der Pause abgelaufen: nach dem Wiedereinschalten innerhalb von 2 Stunden KEINE Absage, danach die regulaere", async () => {
+    const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const start = (await stateOf(g.match.id)).startsAt;
+    const t = new Date(fixDeadline(start).getTime() + 60_000); // Frist ist erreicht
+    await pauseAndResume(new Date(t.getTime() - 30 * MIN)); // eingeschaltet vor 30 Minuten
+    expect(await closeLobbiesAtDeadline(t)).toBe(0);
+    expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
+    expect(await closeLobbiesAtDeadline(new Date(t.getTime() + 89 * MIN))).toBe(0); // noch vor Einschalten + 2 h
+    expect((await stateOf(g.match.id)).status).not.toBe("cancelled");
+    await closeLobbiesAtDeadline(new Date(t.getTime() + 91 * MIN)); // Einschalten + 2 h erreicht
+    expect((await stateOf(g.match.id)).status).toBe("cancelled");
+  });
+
+  it("Obergrenze: reicht die Karenz bis zum Anstoss oder darueber, gilt die bestehende Absageregel (Absage mit Erstattung), die Karenz verschiebt nie ueber den Anstoss", async () => {
+    const g = await cardGame({ hoursAhead: 2, n: 6, confirmed: false });
+    const start = (await stateOf(g.match.id)).startsAt;
+    const t = new Date(start.getTime() - 30 * MIN); // Abbruchfrist (1 h vor Anstoss) laengst erreicht
+    await pauseAndResume(new Date(t.getTime() - 30 * MIN)); // Karenzende = Anstoss + 1 h
+    await closeLobbiesAtDeadline(t);
+    expect((await stateOf(g.match.id)).status).toBe("cancelled");
+  });
+
+  it("ein altes Einschalten (laenger als 2 Stunden her) verschiebt nichts: regulaere Absage", async () => {
+    const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const start = (await stateOf(g.match.id)).startsAt;
+    const t = new Date(fixDeadline(start).getTime() + 60_000);
+    await pauseAndResume(new Date(t.getTime() - 5 * 3_600_000));
+    await closeLobbiesAtDeadline(t);
+    expect((await stateOf(g.match.id)).status).toBe("cancelled");
   });
 });
