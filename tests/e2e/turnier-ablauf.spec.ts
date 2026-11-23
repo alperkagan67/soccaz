@@ -1,15 +1,21 @@
 import { expect, test, type Page } from "@playwright/test";
 import { closeContexts, createTeam, devLogin, futureLocal, newUser, onboard, run, seedUser, addTeamMember, teamIdByName } from "./helpers";
-import { fundWallet, query } from "./helpers-db";
+import { callJob, query, seedCardProfile, seedPartnerVenue, setPlatformSetting } from "./helpers-db";
+
+// 012 M6b b2-i: der Ablauf läuft im KARTENMODELL (Karten statt Guthaben): Partnerhalle, Karte je Spieler, "Bereit" der Captains, Abbuchung (FakeProvider, PAYMENTS_FAKE=1 am Server und am Test), danach Bracket und Ergebnisse.
+test.skip(process.env.PAYMENTS_FAKE !== "1", "braucht PAYMENTS_FAKE=1 (nur Tests)");
 
 // Vertrag 005, End-to-End-Nachweis (AC-12, AC-13 und der Gesamtablauf):
 // Organisator legt ein privates Turnier an, Teams treten per Einladungslink bei (ein Nutzer ganz neu über die Anmeldung,
-// einer ohne Team gründet erst eins), alle zahlen, Captains drücken "Bereit", das Bracket entsteht erst dann, Ergebnisse bis ins Finale.
+// einer ohne Team gründet erst eins), alle hinterlegen eine Karte, Captains drücken "Bereit", das Bracket entsteht erst dann, Ergebnisse bis ins Finale.
 // Die Testdaten räumt global-teardown (cleanupTestData) über den Veranstalter-Nutzer auf.
 test.describe.configure({ mode: "serial" });
 test.setTimeout(420_000);
 
+// Regel 23: der Schalterzustand gehört zum Test (Zahlungen UND Kartenmodell AN), Reset nach jedem Test
 test.afterEach(async ({ browser }) => {
+  await setPlatformSetting("payments_enabled", false);
+  await setPlatformSetting("card_payments_enabled", false);
   await closeContexts(browser);
 });
 
@@ -17,7 +23,7 @@ async function ctxPage(browser: import("@playwright/test").Browser): Promise<Pag
   return (await browser.newContext()).newPage();
 }
 
-test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, Zahlen, Bereit, Bracket, Finale", async ({ browser }) => {
+test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, Karten, Bereit, Abbuchung, Bracket, Finale", async ({ browser, baseURL }) => {
   // --- Organisator legt ein privates Turnier an
   const org = await ctxPage(browser);
   await newUser(org, "taorg");
@@ -107,7 +113,6 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, Z
   for (const c of caps) teamIds.set(c.team, await teamIdByName(c.team));
   const players = new Map<string, string[]>();
   for (const c of caps) {
-    await fundWallet(c.id, 4000);
     const ids = [c.id];
     for (let i = 1; i <= 3; i++) {
       const uid = await seedUser(`${c.team.split(" ")[1]}p${i}`);
@@ -118,7 +123,6 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, Z
   }
   const t1 = caps[0];
   const p1id = players.get(t1.team)![1];
-  await fundWallet(p1id, 1000);
   const p1email = (await query<{ email: string }>("select email from users where id = $1", [p1id]))[0].email;
   const p1 = await ctxPage(browser);
   await devLogin(p1, p1email, "Spieler Eins", tournamentPath);
@@ -131,6 +135,13 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, Z
     }
   }
 
+  // --- Kartenmodell AN, Partnerhalle gewählt, jeder Spieler hat eine Karte (Seed); noch keine Abbuchung
+  await setPlatformSetting("payments_enabled", true);
+  await setPlatformSetting("card_payments_enabled", true);
+  await query("update tournaments set venue_id = $1 where id = $2", [await seedPartnerVenue(`Ablauf Halle ${run}`), tid]);
+  for (const ids of players.values()) for (const uid of ids) await seedCardProfile(uid);
+  expect(await query("select 1 from payment_charges where tournament_id = $1", [tid]), "Ausgangszustand: noch keine Abbuchung").toHaveLength(0);
+
   // --- Alle Captains melden "vollzählig": erst dann steht der Preis fest
   for (const c of caps) {
     await c.page.goto(tournamentPath);
@@ -141,22 +152,15 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, Z
   }
   await expect.poll(async () => (await query<{ status: string }>("select status from tournaments where id = $1", [tid]))[0].status).toBe("payment");
 
-  // --- Zahlen: Spieler 1 selbst, Captain 3 erst für einen einzelnen Spieler, danach alle Captains für die übrigen
-  await p1.reload();
-  await p1.getByRole("button", { name: /Anteil bezahlen/ }).click();
-  await expect(p1.getByTestId("paid-note")).toBeVisible({ timeout: 20_000 });
-  const t3 = caps[2];
-  await t3.page.reload();
-  await t3.page.getByTestId("tournament-team").filter({ hasText: t3.team }).getByRole("button", { name: "Ich zahle für ihn" }).first().click();
-  await expect.poll(async () => (await query<{ n: number }>("select count(*)::int as n from tournament_players where tournament_id = $1 and team_id = $2 and paid_by = $3", [tid, teamIds.get(t3.team), t3.id]))[0].n).toBe(1);
+  // --- Karten: alle Teams haben ihre Karten (Ampel grün), nichts ist bezahlt, das Bracket bleibt verborgen
   for (const c of caps) {
     await c.page.reload();
     await c.page.waitForLoadState("networkidle");
     await expect(c.page.getByTestId("bracket-hidden")).toBeVisible();
-    await c.page.getByRole("button", { name: /Als Captain für alle offenen Spieler bezahlen/ }).click();
-    await expect(c.page.getByTestId("captain-pay-box")).toHaveCount(0, { timeout: 20_000 });
-    expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // voll bezahlt, aber noch nicht bereit
+    await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team }).getByTestId("team-cards-state")).toHaveText("Karten komplett");
+    expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0); // Karten da, aber noch nicht bereit
   }
+  expect(await query("select 1 from payment_charges where tournament_id = $1", [tid]), "vor dem letzten Bereit wird nichts abgebucht").toHaveLength(0);
 
   // --- Bereit: das Bracket entsteht erst nach dem letzten Team
   for (const [i, c] of caps.entries()) {
@@ -166,7 +170,14 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, Z
     await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-paid-ready", "true", { timeout: 20_000 });
     if (i < 3) expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
   }
-  await expect.poll(async () => (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length, { timeout: 20_000 }).toBe(3);
+  // das letzte Bereit löst die Abbuchung im Hintergrund aus (Anstoß in 6 h = kurzer Vorlauf = sofort fällig); der Job card-charges holt nach, falls der Hintergrundlauf hängt
+  await expect
+    .poll(async () => {
+      await callJob(baseURL!, "card-charges");
+      return (await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length;
+    }, { timeout: 60_000 })
+    .toBe(3);
+  expect((await query<{ n: number }>("select count(*)::int as n from payment_charges where tournament_id = $1 and status = 'succeeded'", [tid]))[0].n, "alle 16 Plätze abgebucht").toBe(16);
   await caps[3].page.reload();
   await expect(caps[3].page.getByTestId("tournament-match")).toHaveCount(3);
 

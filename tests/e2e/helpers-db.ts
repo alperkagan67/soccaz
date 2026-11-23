@@ -174,3 +174,14 @@ export async function setLedgerModelLegacy(matchId: string) {
     client.release();
   }
 }
+
+/** Kartenmodell: aktive Partnerhalle für Turniere (Auswahl und Abbuchung gehen an diese Halle), ohne Betreiber-Zugang (keine Zusage nötig). */
+export async function seedPartnerVenue(name: string): Promise<string> {
+  const rows = await query<{ id: string }>("insert into venues (name, city, is_partner, active) values ($1, 'Essen', true, true) returning id", [name]);
+  return rows[0].id;
+}
+
+/** Kartenmodell: der Nutzer hat eine Karte hinterlegt (Zahlungsprofil mit Zahlungsmethode); der FakeProvider bucht damit ab. */
+export async function seedCardProfile(userId: string) {
+  await testDb().query("insert into payment_profiles (user_id, stripe_customer_id, payment_method_id) values ($1, $2, $3) on conflict (user_id) do nothing", [userId, `cus_e2e_${userId}`, `pm_e2e_${userId}`]);
+}
