@@ -45,7 +45,10 @@ export async function waitHydrated(target: Locator) {
   // 20 s: Kaltstart des Dev-Servers; geprüft wird der Knopf UND sein Formular (bei zeitgeteilter Hydration kann der Knopf vor dem Formular übernommen sein)
   await expect(target).toBeVisible({ timeout: 20_000 });
   await expect
-    .poll(() => target.evaluate((el) => [el, el.closest("form")].filter((x): x is Element => x !== null).every((x) => Object.keys(x).some((k) => k.startsWith("__reactProps")))), { timeout: 20_000 })
+    .poll(() => target.evaluate((el) => {
+      const hydrated = (x: Element | null) => x === null || Object.keys(x).some((k) => k.startsWith("__reactProps"));
+      return hydrated(el) && hydrated(el.closest("form"));
+    }), { timeout: 20_000 })
     .toBe(true);
 }
 
