@@ -16,6 +16,8 @@ Das Repo ist öffentlich: Hier stehen nur die NAMEN der fehlenden Angaben, nie S
 | Mail-Dienst | Umgebung des Servers | Rechnungsmail, Benachrichtigungen | ja | Nutzer |
 | Zwei-Faktor für das Google-Konto von Admin 1 | Google-Konto des Admin 1 | Schutz des Admin-Zugangs | ja | Nutzer |
 | Partnervertrag Hallen | Hallen-Onboarding | Vertragsgrundlage mit Hallen | ja | Anwalt |
+| Bedingungstext Hallen-Onboarding („Bedingungen bestätigen“, bis zur Prüfung gekennzeichneter ENTWURF) | Hallen-Onboarding, Abschluss „Anfrage senden“ (013 M2d) | Rechtssichere Bedingungen bei der Hallen-Anfrage | ja | Anwalt |
+| Markenprüfung Look Richtung F (Vorbilder EA FC Ultimate Team und Vero: Ähnlichkeit, Begriffe, Gestaltung) | `docs/contracts/013-frontend-ueberarbeitung.md` (Version 3), `docs/loop/GO-LIVE-AUDIT.md` | Eigenständigkeit des Designs, kein Fremdmaterial | ja | Anwalt |
 | Steuerberater-Antworten (E4) | `docs/loop/GO-LIVE-AUDIT.md` | Steuer- und Rechnungsfragen | ja | Steuerberater |
 | Impressum, AGB, Datenschutz (Endfassung) | Rechtsseiten der App | rechtssicherer Betrieb | ja | Anwalt |
 | Rechnungsvorlage Firma | Rechnungsfunktion (009) | Rechnungen an Firmen | ja | Steuerberater |
