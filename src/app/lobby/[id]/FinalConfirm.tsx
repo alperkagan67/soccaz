@@ -27,6 +27,7 @@ export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers 
           </div>
         ))}
       </div>
+      {/* ENTWURF, Rechtsprüfung (Rechtsliste, Button-Lösung § 312j BGB): Knopftext und Hinweis zur Zahlungspflicht (Entwurf, bis die zentralen Zahlungsknopf-Konstanten kommen) */}
       {mine && !mine.confirmed && (
         <div className="space-y-1">
           <ActionButton action={finalConfirmAction.bind(null, matchId)} label="Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen" className="btn btn-primary w-full disabled:opacity-60" />
