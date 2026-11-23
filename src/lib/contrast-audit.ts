@@ -3,9 +3,9 @@
 // Grenzen (WCAG 2.2): normaler Text 4,5:1; großer Text (>= 24 px oder >= 18,66 px und Gewicht >= 700) 3:1; Zeichen (Rand/Symbol von Bedienelementen) und Fokusring 3:1.
 import { contrast } from "./color";
 
-/** Phase 1 (Baseline) meldet nur (Protokoll im Job-Log, Test grün); mit `enforce` schlägt der Test bei einer Unterschreitung fehl (verbindlich nach M2c). Der Umschalter ist diese eine Konstante. */
+/** `report` meldet nur (Protokoll im Job-Log, Test grün); `enforce` lässt den Test bei einer Unterschreitung oder einem unlesbaren Punkt fehlschlagen. Seit dem main-Lauf zu 23b67ab (0 Verstöße bei 390 und 1280 px, nach M2c) gilt `enforce`. Der Umschalter ist diese eine Konstante. */
 export type AuditMode = "report" | "enforce";
-export const AUDIT_MODE: AuditMode = "report";
+export const AUDIT_MODE: AuditMode = "enforce";
 
 export const LIMITS = { text: 4.5, largeText: 3, nonText: 3, focus: 3 } as const;
 export type MeasureKind = "text" | "non-text" | "focus";
@@ -281,4 +281,15 @@ export function planSamples(rects: readonly Rect[], max: number, minPerRect = 20
     for (let i = 0; i < limit; i++) chosen.push(rects[limit === 1 ? 0 : Math.round((i * (rects.length - 1)) / (limit - 1))]);
   }
   return { rects: chosen, perRect: Math.max(minPerRect, Math.floor(max / chosen.length)) };
+}
+
+/** Frühwarnung vor einem Flake: bestandene Messpunkte, deren Verhältnis nur knapp über der Grenze liegt (kleiner als Grenze x `factor`). Kein Fehler, nur Hinweis im Protokoll. */
+export function nearLimit(list: readonly Evaluated[], factor = 1.05): Evaluated[] {
+  return list.filter((e) => e.status === "ok" && Number.isFinite(e.ratio) && Number.isFinite(e.limit) && e.ratio < e.limit * factor);
+}
+
+/** Schutz gegen stilles Schrumpfen der Abdeckung (fail-open): erwartete Seite x Schema ohne jeden Messpunkt. Eine Seite, die nicht mehr lädt, steht sonst nur als Warnung unter den Messfehlern. */
+export function missingCoverage(list: readonly Evaluated[], expected: readonly { page: string; scheme: string }[]): { page: string; scheme: string }[] {
+  const seen = new Set(list.map((e) => `${e.raw.page}|${e.raw.scheme}`));
+  return expected.filter((x) => !seen.has(`${x.page}|${x.scheme}`));
 }
