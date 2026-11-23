@@ -38,12 +38,12 @@ test("Letzte Bestätigung beider Captains öffnet die Spielübersicht mit Ort, N
 
   // getrennt sichtbar: erst A, dann B
   await a.reload();
-  await a.getByRole("button", { name: /Spiel bestätigen/ }).click();
+  await a.getByRole("button", { name: /Preis bestätigen/ }).click();
   await expect(a.getByTestId("final-team").filter({ hasText: nameA })).toHaveAttribute("data-confirmed", "true");
   await expect(a.getByTestId("final-team").filter({ hasText: nameB })).toHaveAttribute("data-confirmed", "false");
   await b.reload();
   await expect(b.getByTestId("final-team").filter({ hasText: nameA })).toHaveAttribute("data-confirmed", "true");
-  await b.getByRole("button", { name: /Spiel bestätigen/ }).click();
+  await b.getByRole("button", { name: /Preis bestätigen/ }).click();
 
   // beide landen in der Übersicht
   await expect(b).toHaveURL(new RegExp(`/lobby/${matchId}/uebersicht`), { timeout: 30_000 });
