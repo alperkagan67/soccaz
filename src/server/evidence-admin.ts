@@ -1,11 +1,14 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { callEvidenceSetSetting } from "@/db/ops";
+import { isOpsUnreachable } from "@/lib/ops-errors";
 import { users } from "@/db/schema";
 import { settings } from "@/db/schema-finance";
 import { EVIDENCE_CLOCK } from "@/lib/evidence-clock";
 import { SWITCH_TEXTS, normalizeState, planSwitch } from "@/lib/evidence-switch";
 import { pgCodeOf } from "@/lib/hall-answer-errors";
 import { isOwner } from "@/lib/roles";
+import { reportOpsFailure } from "./ops-report";
 import { DomainError } from "./teams";
 
 export type EvidenceSwitchState = { enforcementOn: boolean; clockDb: boolean; changedAt: Date | null };
@@ -39,8 +42,12 @@ export async function switchEvidence(actorId: string, step: unknown, reason: str
   const plan = planSwitch(step, await readRaw(), reason);
   if (plan.kind === "invalid") throw new DomainError(plan.error);
   try {
-    await db.execute(sql`select evidence_set_setting(${plan.key}, ${plan.value}, ${actorId}::uuid, ${plan.reason})`);
+    await callEvidenceSetSetting(plan.key, plan.value, actorId, plan.reason); // Ops-Pool (soccaz_ops), G25-009 B
   } catch (error) {
+    if (isOpsUnreachable(error)) {
+      await reportOpsFailure("switchEvidence", error);
+      throw new DomainError(SWITCH_TEXTS.opsUnavailable);
+    }
     console.error("switchEvidence:", pgCodeOf(error) ?? "Fehler");
     throw new DomainError(SWITCH_TEXTS.technical);
   }

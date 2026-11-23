@@ -246,9 +246,10 @@ async function evaluateConfirmation(tx: Tx, match: MatchRow, actorId: string) {
     await audit(actorId, "match.status", "match", match.id, { before: { status: current.status }, after: { status: next } }, tx);
     if (next === "confirmed") {
       await createBookingJob(tx, match); // Reservierung der Halle: unabhaengig von Guthaben und von "Zahlungen aus" (Entscheid t2q, 1c-ii)
+      // ENTWURF, Rechtsprüfung (Rechtsliste, Button-Lösung § 312j BGB): Wortlaut der Mitteilung
       await notifyUsers(
         await matchParticipantIds(tx, match.id),
-        { type: "match.confirmed", title: "Spiel bestätigt", body: `Das Spiel ${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} findet statt.`, url: `/lobby/${match.id}` },
+        { type: "match.confirmed", title: "Spiel ist angesetzt, Halle wird gebucht", body: `Das Spiel ${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} ist angesetzt, die Halle wird gebucht. Klappt das nicht, sagen wir es rechtzeitig vor dem Anstoß automatisch ab und es wird nichts berechnet.`, url: `/lobby/${match.id}` },
         tx,
       );
     }

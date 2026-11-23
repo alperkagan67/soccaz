@@ -265,7 +265,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
 
       {match.status === "lobby" && active && !open && (
         <p className="card text-sm text-muted">
-          Das Spiel gilt als bestätigt, sobald in beiden Teams mindestens {MIN_READY_PER_TEAM} Spieler bereit sind.
+          Das Spiel ist angesetzt und die Halle wird gebucht, sobald in beiden Teams mindestens {MIN_READY_PER_TEAM} bereit sind.
         </p>
       )}
       {match.status === "cancelled" && <p className="card text-sm text-ink">Dieses Spiel wurde abgesagt.</p>}
