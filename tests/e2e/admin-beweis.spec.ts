@@ -98,3 +98,29 @@ test("Beweispflicht einschalten: Schritt 1 Uhrenquelle, Schritt 2 Pflicht, Grund
     await resetSwitches();
   }
 });
+
+// Welle 4 (Formulare vor der Hydration, Backlog 224): die Admin-Formulare der Bausteine ActionForm (Einstellungen, Notabschaltung Kartenzahlung) und ui/Form (Beweis-Schalter) senden vor der Hydration nativ POST an die
+// Server-Aktion, nie GET mit den Feldern (Grund, Einstellungen) in der Adresse. Geprüft wird das vom Server gelieferte HTML (nur Lesen, es wird nichts geschaltet).
+test("Admin-Formulare vor der Hydration: ActionForm und ui/Form senden nativ POST", async ({ browser }) => {
+  const page = await login(browser, "fw4", true, "/admin/einstellungen");
+  // Je Seite Gruppen von Knopftexten: von jeder Gruppe muss mindestens ein Formular vorhanden sein (die Notabschaltung zeigt je nach Schalterstand "ausschalten" ODER "wieder einschalten")
+  const erwartet: [string, string[][]][] = [
+    ["/admin/einstellungen", [["Speichern"], ["Rechnungseinstellungen übernehmen"], ["Kartenzahlung ausschalten (Notabschaltung)", "Kartenzahlung wieder einschalten"]]],
+    ["/admin/beweis", [["Uhrenquelle auf Datenbank stellen"]]],
+  ];
+  for (const [pfad, gruppen] of erwartet) {
+    const html = await (await page.context().request.get(pfad)).text();
+    for (const gruppe of gruppen) {
+      const treffer: string[] = [];
+      for (const knopf of gruppe) {
+        for (let at = html.indexOf(`>${knopf}</button>`); at >= 0; at = html.indexOf(`>${knopf}</button>`, at + 1)) treffer.push(html.slice(html.lastIndexOf("<form", at), html.indexOf("</form>", at)));
+      }
+      expect(treffer.length, `${pfad}: Formular mit "${gruppe.join(" / ")}"`).toBeGreaterThan(0);
+      for (const form of treffer) {
+        expect(form.slice(0, form.indexOf(">") + 1), `${pfad} ${gruppe[0]}`).toMatch(/\bmethod="POST"/);
+        expect(form, `${pfad} ${gruppe[0]}`).toContain('name="$ACTION_');
+        expect(form, `${pfad} ${gruppe[0]}`).not.toContain("javascript:throw");
+      }
+    }
+  }
+});
