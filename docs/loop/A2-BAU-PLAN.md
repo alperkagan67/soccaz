@@ -11,7 +11,7 @@ Basis: Plan v5 (docs/design/g25-009-db-rollenmodell.md, Abschnitte 3, 4, 5, 8, 1
 1. Plan-OK + Anbieter-Spike (Nutzer): geht `CREATE ROLE`, `ALTER OWNER`, `GRANT soccaz_owner TO soccaz_migrate`, `SET ROLE` auf dem gewaehlten Hoster? Ergebnis steuert db-owner-Pfad (kein REASSIGN OWNED).
 2. Fund 4 (Whitelist-Abgleich) und Fund 5 (Rollback-Beleg) als Bauabnahme festgelegt (siehe Tests).
 3. Security-Review (Agent) auf diesen Plan UND auf die Umsetzung (Pflicht).
-4. B (soccaz_ops) nicht Teil von A2; bis B bleiben `evidence_set_setting`/`evidence_late_attempt` fuer soccaz_app ausfuehrbar (dokumentiertes Restrisiko, Option 2).
+4. **B (soccaz_ops) ist als Etappe B gebaut (Migration 0058: nur GRANT an `soccaz_ops`, Ops-Pool `src/db/ops.ts`).** Der Entzug von `EXECUTE` auf `evidence_set_setting`/`evidence_late_attempt` für PUBLIC und `soccaz_app` gehört in die A2-Migration (Anweisungen: `tests/integration/db-ops-pool.test.ts`, Konstante `A2_REVOKE`), zusammen mit der Definer-Umstellung und `DATABASE_URL_OPS` im Hoster. Davor gilt: B nicht Teil von A2; bis B bleiben `evidence_set_setting`/`evidence_late_attempt` fuer soccaz_app ausfuehrbar (dokumentiertes Restrisiko, Option 2).
 
 ## Dateiliste
 | Datei | Aenderung |
