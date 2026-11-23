@@ -1,5 +1,5 @@
 import { expect, test, type BrowserContext } from "@playwright/test";
-import { AUDIT_MODE, auditPasses, groupEvaluations, renderProtocol, summarize, type Evaluated } from "../../../src/lib/contrast-audit";
+import { AUDIT_MODE, auditPasses, groupEvaluations, missingCoverage, nearLimit, renderProtocol, summarize, type Evaluated } from "../../../src/lib/contrast-audit";
 import { closeTestDb, devLogin } from "../helpers";
 import { measurePage } from "./messen";
 import { ROLLEN, seedWorld, type World } from "./seiten";
@@ -79,7 +79,14 @@ export function registerKontrast(viewport: 390 | 1280) {
       const r = g.example.raw;
       console.log(`::warning title=Kontrast ${viewport} px::${r.page} ${r.role} ${r.scheme}: ${r.selector} (${r.sample.slice(0, 30)}) ${g.example.ratio.toFixed(2)}:1 < ${g.example.limit}:1 (${g.count}x)`);
     }
+    // Frühwarnung vor einem Flake: bestanden, aber knapp (Grenze x 1,05); nur ein Hinweis, kein Fehler. Ein roter Lauf auf main: erst das Protokoll lesen (echt oder Artefakt), nicht pauschal neu starten.
+    for (const e of nearLimit(all).slice(0, 25)) console.log(`::notice title=Kontrast knapp ${viewport} px::${e.raw.page} ${e.raw.role} ${e.raw.scheme}: ${e.raw.selector} (${e.raw.sample.slice(0, 30)}) ${e.ratio.toFixed(2)}:1 bei Grenze ${e.limit}:1`);
     expect(all.length, "es wurde nichts gemessen").toBeGreaterThan(0);
+    // Fail-open-Schutz (nur unter enforce): jede erwartete Seite x Schema braucht mindestens einen Messpunkt, sonst schrumpft die Abdeckung still (Seite lädt nicht mehr: bisher nur eine Warnung unter den Messfehlern)
+    if (AUDIT_MODE !== "report") {
+      const expected = (world?.pages ?? []).flatMap((p) => SCHEMES.map((scheme) => ({ page: p.id, scheme })));
+      expect(missingCoverage(all, expected), "erwartete Seite x Schema ohne Messpunkt (Seite nicht messbar?)").toEqual([]);
+    }
     expect(auditPasses(all, AUDIT_MODE)).toBe(true); // Modus report: immer; Modus enforce: nur ohne Verstoß
   });
 }

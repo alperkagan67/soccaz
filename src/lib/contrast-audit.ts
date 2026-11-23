@@ -282,3 +282,14 @@ export function planSamples(rects: readonly Rect[], max: number, minPerRect = 20
   }
   return { rects: chosen, perRect: Math.max(minPerRect, Math.floor(max / chosen.length)) };
 }
+
+/** Frühwarnung vor einem Flake: bestandene Messpunkte, deren Verhältnis nur knapp über der Grenze liegt (kleiner als Grenze x `factor`). Kein Fehler, nur Hinweis im Protokoll. */
+export function nearLimit(list: readonly Evaluated[], factor = 1.05): Evaluated[] {
+  return list.filter((e) => e.status === "ok" && Number.isFinite(e.ratio) && Number.isFinite(e.limit) && e.ratio < e.limit * factor);
+}
+
+/** Schutz gegen stilles Schrumpfen der Abdeckung (fail-open): erwartete Seite x Schema ohne jeden Messpunkt. Eine Seite, die nicht mehr lädt, steht sonst nur als Warnung unter den Messfehlern. */
+export function missingCoverage(list: readonly Evaluated[], expected: readonly { page: string; scheme: string }[]): { page: string; scheme: string }[] {
+  const seen = new Set(list.map((e) => `${e.raw.page}|${e.raw.scheme}`));
+  return expected.filter((x) => !seen.has(`${x.page}|${x.scheme}`));
+}
