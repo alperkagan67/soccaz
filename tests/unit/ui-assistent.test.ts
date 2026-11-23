@@ -83,10 +83,29 @@ describe("Assistent (013 AC-25)", () => {
     expect(m).toContain('data-schritt="1"');
   });
 
-  it("die Felder liegen in einem Fieldset, das während der Abschluss-Aktion gesperrt wird (hier: nicht gesperrt, solange nichts läuft)", () => {
+  it("die Felder liegen in einem Fieldset; im SSR-Markup (vor der Hydration) ist es GESPERRT (Backlog 224: Klick oder Enter vor der Hydration darf nie als GET abschicken)", () => {
     const m = html();
     expect(m).toMatch(/<fieldset[^>]*data-testid="assistent-felder"/);
-    expect(m).not.toMatch(/<fieldset[^>]*disabled/);
+    expect(m).toMatch(/<fieldset[^>]*disabled/);
+  });
+
+  it("SSR-Standard: Weiter (Absenden) ist gesperrt, das Formular ist aria-busy, ein Hinweis für Screenreader sagt, dass der Ablauf lädt; es gibt kein action-Attribut am Formular", () => {
+    const m = html();
+    const form = /<form[^>]*>/.exec(m)?.[0] ?? "";
+    expect(form).toContain('aria-busy="true"');
+    expect(form.includes(" action=")).toBe(false);
+    expect(form.includes("method=")).toBe(false);
+    expect(m).toMatch(/<button[^>]*type="submit"[^>]*disabled=""[^>]*data-testid="assistent-weiter"|<button[^>]*data-testid="assistent-weiter"[^>]*disabled=""/);
+    expect(m).toMatch(/role="status"[^>]*data-testid="assistent-laedt"|data-testid="assistent-laedt"[^>]*role="status"/);
+    expect(m).toContain("Der Ablauf wird geladen");
+  });
+
+  it("fail-sicher ohne JavaScript: noscript-Hinweis mit Handlungsweg (Link zur Kontaktseite), nichts geht verloren", () => {
+    const m = html();
+    const ns = m.slice(m.indexOf("<noscript>"), m.indexOf("</noscript>"));
+    expect(ns).toContain('data-testid="assistent-noscript"');
+    expect(m).toContain("bleibt das Formular gesperrt");
+    expect(m).toContain('href="/kontakt"');
   });
 
   it("jeder Schritt hat eine Test-ID (Punkt und Form), damit die Spec je Schritt prüfen kann (AC-26)", () => {

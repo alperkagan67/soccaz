@@ -190,7 +190,7 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
 
   const onSubmit = (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault(); // Enter und der Knopf laufen hier zusammen: im letzten Schritt Abschluss, sonst Weiter
-    if (pending) return;
+    if (pending || !bereit) return;
     if (letzter) {
       abschliessen();
       return;
@@ -236,12 +236,26 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
           );
         })}
       </ol>
-      <form ref={formRef} onSubmit={onSubmit} noValidate className="space-y-4" data-testid={`assistent-form-${aktuell.id}`}>
+      {/* Klick vor der Hydration (Backlog 224): das Formular hat nur onSubmit und KEIN action. Bis der Baustein im Browser aktiv ist (`bereit`), sind Felder und Knöpfe GESPERRT (SSR-Standard, nicht erst per Effekt); so kann nichts nativ als GET abgeschickt werden (sonst stünden Eingaben, z. B. das Geburtsdatum, in der Adresse). Bleibt JavaScript aus oder scheitert die Hydration, bleibt es gesperrt (fail-sicher) und der noscript-Hinweis nennt den Weg. */}
+      <form ref={formRef} onSubmit={onSubmit} noValidate aria-busy={!bereit || undefined} className="space-y-4" data-testid={`assistent-form-${aktuell.id}`}>
+        {!bereit && (
+          <p className="sr-only" role="status" data-testid="assistent-laedt">
+            {t("ui.assistent.loading")}
+          </p>
+        )}
+        <noscript>
+          <p className="text-sm font-semibold" data-testid="assistent-noscript">
+            {t("ui.assistent.noscript")}{" "}
+            <a href="/kontakt" className="underline">
+              {t("ui.assistent.noscriptLink")}
+            </a>
+          </p>
+        </noscript>
         <h2 ref={ueberschrift} tabIndex={-1} className="text-xl font-semibold outline-none ui-focus" data-testid="assistent-ueberschrift">
           {aktuell.titel}
         </h2>
         {aktuell.beschreibung && <div className="text-sm text-muted">{aktuell.beschreibung}</div>}
-        <fieldset disabled={pending} className="m-0 min-w-0 space-y-4 border-0 p-0" data-testid="assistent-felder">
+        <fieldset disabled={pending || !bereit} className="m-0 min-w-0 space-y-4 border-0 p-0" data-testid="assistent-felder">
           {aktuell.render({ werte: z.werte, fehler: z.fehler, setze, feld })}
         </fieldset>
         {Object.keys(z.fehler).length > 0 && <p className="text-sm font-semibold">{t("ui.checkFields")}</p>}
@@ -254,7 +268,7 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
           {z.schritt > 0 && (
             <Button
               variant="secondary"
-              disabled={pending}
+              disabled={pending || !bereit}
               data-testid="assistent-zurueck"
               onClick={() => {
                 setZ((alt) => zurueck(alt));
@@ -264,7 +278,7 @@ export function Assistent({ id, titel, schritte, anfangswerte, abschlussLabel, a
               {t("ui.assistent.back")}
             </Button>
           )}
-          <Button type="submit" variant="primary" pending={pending} data-testid={letzter ? "assistent-abschluss" : "assistent-weiter"}>
+          <Button type="submit" variant="primary" pending={pending} disabled={!bereit} data-testid={letzter ? "assistent-abschluss" : "assistent-weiter"}>
             {letzter ? abschlussLabel : t("ui.assistent.next")}
           </Button>
         </div>
