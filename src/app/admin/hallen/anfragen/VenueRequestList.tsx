@@ -65,7 +65,7 @@ export function VenueRequestList({ requests, approveAction, rejectAction }: { re
                   trigger={{
                     label: (
                       <>
-                        Freischalten<span className="sr-only">: Halle {r.name}</span>
+                        Freischalten<span className="sr-only"> Halle {r.name}</span>
                       </>
                     ),
                     variant: "primary",
@@ -81,7 +81,7 @@ export function VenueRequestList({ requests, approveAction, rejectAction }: { re
                   trigger={{
                     label: (
                       <>
-                        Ablehnen<span className="sr-only">: Halle {r.name}</span>
+                        Ablehnen<span className="sr-only"> Halle {r.name}</span>
                       </>
                     ),
                   }}

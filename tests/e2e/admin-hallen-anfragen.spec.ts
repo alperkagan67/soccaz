@@ -51,8 +51,8 @@ test("Liste: Überschrift und Knopfnamen mit Hallennamen, keine schweren a11y-Ve
   for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
     const page = await adminPage(browser, `hra${viewport.width}`, viewport);
     await expect(page.getByRole("heading", { name: new RegExp(hall("A")) })).toBeVisible();
-    await expect(page.getByRole("button", { name: `Freischalten: Halle ${hall("A")}` })).toBeVisible();
-    await expect(page.getByRole("button", { name: `Ablehnen: Halle ${hall("B")}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Freischalten Halle ${hall("A")}` })).toBeVisible();
+    await expect(page.getByRole("button", { name: `Ablehnen Halle ${hall("B")}` })).toBeVisible();
     expect(await axeViolations(page)).toEqual([]);
     await page.context().close();
   }
@@ -60,7 +60,7 @@ test("Liste: Überschrift und Knopfnamen mit Hallennamen, keine schweren a11y-Ve
 
 test("Abbrechen gibt den Fokus an den öffnenden Knopf zurück; nichts wird geändert", async ({ browser }) => {
   const page = await adminPage(browser, "hrc");
-  const opener = page.getByRole("button", { name: `Ablehnen: Halle ${hall("C")}` });
+  const opener = page.getByRole("button", { name: `Ablehnen Halle ${hall("C")}` });
   await opener.click();
   const dialog = page.getByTestId("confirm-dialog").filter({ visible: true });
   await expect(dialog.getByRole("textbox", { name: /Grund der Ablehnung/ })).toBeFocused(); // Startfokus mit Feld = das Feld

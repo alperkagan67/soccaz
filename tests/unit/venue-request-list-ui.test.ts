@@ -27,8 +27,8 @@ describe("Liste der Hallen-Anfragen (Markup)", () => {
 
   it("die Auslöser-Knöpfe tragen den Hallennamen im zugänglichen Namen (sr-only), je Zeile zwei Dialoge", () => {
     const m = html();
-    expect(m).toContain('Freischalten<span class="sr-only">: Halle Halle Nord</span>');
-    expect(m).toContain('Ablehnen<span class="sr-only">: Halle Halle Süd</span>');
+    expect(m).toContain('Freischalten<span class="sr-only"> Halle Halle Nord</span>');
+    expect(m).toContain('Ablehnen<span class="sr-only"> Halle Halle Süd</span>');
     expect((m.match(/data-testid="confirm-dialog"/g) ?? []).length).toBe(4);
   });
 
