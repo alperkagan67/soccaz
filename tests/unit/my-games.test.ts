@@ -24,7 +24,7 @@ describe("groupByKind", () => {
 
 describe("matchBadge (immer ein Wort, nie nur Farbe)", () => {
   it("Zustandswörter nach begriffe.md", () => {
-    expect(matchBadge({ status: "confirmed", startsAt: at(5) }, now)).toEqual({ tone: "ok", label: "Findet statt" });
+    expect(matchBadge({ status: "confirmed", startsAt: at(5) }, now)).toEqual({ tone: "ok", label: "Spiel steht fest" });
     expect(matchBadge({ status: "lobby", startsAt: at(5) }, now)).toEqual({ tone: "warn", label: "Wartet auf Spieler" });
     expect(matchBadge({ status: "confirmed", startsAt: at(-1) }, now).label).toBe("Läuft");
     expect(matchBadge({ status: "played", startsAt: at(-5) }, now)).toEqual({ tone: "neutral", label: "Gespielt" });

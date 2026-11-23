@@ -30,12 +30,12 @@ export function groupByKind<T extends { kind: MatchKind; startsAt: Date }>(rows:
 export type BadgeTone = "ok" | "warn" | "danger" | "info" | "neutral";
 export type MatchBadge = { tone: BadgeTone; label: string };
 
-/** Zustandswort je Spiel: immer Wort (nie nur Farbe). „Findet statt“ = bestätigt (je Team mindestens 4 bereit, begriffe.md), „Wartet auf Spieler“ = Lobby vor dem Anstoß. */
+/** Zustandswort je Spiel: immer Wort (nie nur Farbe). „Spiel steht fest“ = bestätigt (je Team mindestens 4 bereit; Wortlaut wie `mygame.ts`, PR 1), „Wartet auf Spieler“ = Lobby vor dem Anstoß. */
 export function matchBadge(row: { status: MatchStatus; startsAt: Date }, now: Date = new Date()): MatchBadge {
   const phase: MatchPhase = phaseOf({ status: row.status, startsAt: row.startsAt, hasPendingResult: false, now });
   switch (phase) {
     case "upcoming":
-      return row.status === "confirmed" ? { tone: "ok", label: "Findet statt" } : { tone: "warn", label: "Wartet auf Spieler" };
+      return row.status === "confirmed" ? { tone: "ok", label: "Spiel steht fest" } : { tone: "warn", label: "Wartet auf Spieler" };
     case "live":
       return { tone: "info", label: PHASE_LABEL.live };
     case "pending":
