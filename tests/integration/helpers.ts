@@ -127,3 +127,70 @@ export async function seedShare(userId: string, matchId: string, cents?: number)
   }
   await db.update(matchParticipants).set({ paidCents: amount, paidAt: new Date() }).where(and(eq(matchParticipants.matchId, matchId), eq(matchParticipants.userId, userId)));
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// 012 M6b Kartenfixture: Spiele im KARTENMODELL aufbauen (Karte hinterlegt, Anteil fixiert, Abbuchung mit dem Fake-Provider), statt über das Guthaben (fund/payShare).
+// Regeln: keine Hintergrundläufe (Abbuchung nur über chargeGame, Regel 24), Schalter pro Test (Regel 23: useCardMode im beforeEach, nie nur im beforeAll).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+import { paymentProfiles } from "@/db/schema";
+import { FakeProvider } from "@/server/payments/fake";
+import { setPaymentProviderForTests } from "@/server/payments/provider";
+import { runCharges } from "@/server/payments/charge-run";
+import { setReady } from "@/server/lobby";
+import { setSetting } from "@/server/settings";
+
+let cardSeq = 0;
+const cardId = (p: string) => `${p}_${Date.now().toString(36)}_${++cardSeq}`;
+
+/** Zahlungsprofil mit Zahlungsmethode = "Karte hinterlegt". */
+export async function giveCard(userId: string) {
+  await db.insert(paymentProfiles).values({ userId, stripeCustomerId: cardId("cus_fx"), paymentMethodId: cardId("pm_fx") }).onConflictDoNothing();
+}
+
+/** Kartenmodell AN (payments_enabled + card_payments_enabled) mit frischem FakeProvider. Gibt den Provider und den Rückbau zurück (afterEach). */
+export async function useCardMode() {
+  const provider = new FakeProvider();
+  setPaymentProviderForTests(provider);
+  await setSetting(null, "payments_enabled", true);
+  await setSetting(null, "card_payments_enabled", true);
+  return {
+    provider,
+    async restore() {
+      setPaymentProviderForTests(null);
+      await setSetting(null, "card_payments_enabled", false);
+      await setSetting(null, "payments_enabled", false);
+    },
+  };
+}
+
+export type CardGameOpts = { n?: number; price?: number; hoursAhead?: number; confirmed?: boolean; legacy?: boolean };
+/**
+ * Kartenspiel, abbuchungsbereit: n Spieler (beide Captains inklusive) mit Karte (card_ready), Anteil fixiert (aufgerundet Preis ÷ n), Status confirmed.
+ * `confirmed: false` lässt die Bestätigung beider Captains weg (Spiel noch nicht fällig). Es fließt kein Geld, bis chargeGame läuft.
+ */
+export async function cardGame(o: CardGameOpts = {}) {
+  const n = o.n ?? 6;
+  const price = o.price ?? 6000;
+  const m = await makeMatch({ hoursAhead: o.hoursAhead ?? 72, priceCents: price, costCents: price, legacy: o.legacy });
+  const all = [m.adminA, m.adminB];
+  while (all.length < n) all.push(await addPlayer(m.match.id, all.length % 2 === 0 ? m.home.id : m.away.id));
+  for (const p of all) await giveCard(p.id);
+  await db.update(matchParticipants).set({ cardStatus: "card_ready" }).where(eq(matchParticipants.matchId, m.match.id));
+  const confirmed = o.confirmed ?? true;
+  await db
+    .update(matches)
+    .set({ homeFinalAt: confirmed ? new Date() : null, awayFinalAt: confirmed ? new Date() : null, finalShareCents: price > 0 ? Math.ceil(price / n) : 0, status: "confirmed" })
+    .where(eq(matches.id, m.match.id));
+  return { ...m, all, n, price };
+}
+export type CardGame = Awaited<ReturnType<typeof cardGame>>;
+
+/** Alle Spieler (oder `who`) melden sich bereit; im Kartenmodell ist die Karte das Bereit-Gate (nichts wird bezahlt). */
+export async function cardReadyAll(g: CardGame, who = g.all) {
+  for (const p of who) await setReady(p.id, g.match.id, true);
+}
+
+/** Abbuchung des Spiels (Fake-Provider), direkt über runCharges (kein Hintergrundauslöser): jeder Platz wird genau einmal belastet. */
+export async function chargeGame(g: { match: { id: string } }, now: Date = new Date()) {
+  return runCharges(g.match.id, now);
+}
