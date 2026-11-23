@@ -10,16 +10,6 @@ const root = join(__dirname, "..", "..", "src");
 
 /** Datei -> Grund (Welle laut docs/loop/BACKLOG.md 224). Client-Handler brauchen JavaScript ohnehin (Welle 5: Knopf bis zur Hydration gesperrt + method=post). */
 export const EXCEPTIONS: Record<string, string> = {
-  "app/mitspieler/PostForm.tsx": "Welle 3 (Inhalte)",
-  "components/CommentForm.tsx": "Welle 3 (Inhalte)",
-  "app/app/teams/neu/TeamForm.tsx": "Welle 3 (Inhalte)",
-  "app/app/suche/neu/RequestForm.tsx": "Welle 3 (Inhalte)",
-  "app/app/privatspiel/neu/PrivateGameForm.tsx": "Welle 3 (Inhalte)",
-  "app/app/turniere/neu/TournamentForm.tsx": "Welle 3 (Inhalte)",
-  "app/turniere/[id]/RegisterForm.tsx": "Welle 3 (Inhalte)",
-  "app/einladung/[token]/JoinForm.tsx": "Welle 3 (Inline-Closure: joinTeamAction per bind)",
-  "components/ActionForm.tsx": "Welle 4 (Bausteine, 29 Verwendungen)",
-  "components/ui/Form.tsx": "Welle 4 (Bausteine)",
   "components/ui/Assistent.tsx": "Welle 5 (Client-Handler)",
   "app/lobby/[id]/CardForm.tsx": "Welle 5 (Client-Handler, Stripe Elements)",
   "app/lobby/[id]/LobbyClient.tsx": "Welle 5 (Client-Handler)",
@@ -34,13 +24,13 @@ function files(dir: string): string[] {
 }
 
 /** Öffnende <form ...>-Tags samt Attributen; `>` in {...} oder Anführungszeichen zählt nicht als Ende (onSubmit={(e) => {...}}). */
-export function formTags(src: string): string[] {
+export function formTags(src: string, names = "form"): string[] {
   const out: string[] = [];
-  const re = /<form(?=[\s>])/g;
+  const re = new RegExp(`<(?:${names})(?=[\\s>])`, "g");
   for (let m = re.exec(src); m; m = re.exec(src)) {
     let depth = 0;
     let quote = "";
-    let i = m.index + 5;
+    let i = m.index + m[0].length;
     for (; i < src.length; i++) {
       const c = src[i];
       if (quote) {
@@ -108,5 +98,80 @@ describe("Formulare mit onSubmit brauchen action oder method=post (Progressive E
     expect(violates('<form method="post" onSubmit={onSubmit}>', "const ok = useHydrated();")).toBe(false); // Welle 5: Knopf bis zur Hydration gesperrt
     expect(violates('<form data-action="x" onSubmit={onSubmit}>')).toBe(true); // data-action zählt nicht
     expect(violates('<form className="card">')).toBe(false);
+  });
+});
+
+// Inline-Closure statt Server-Aktions-Referenz: `useFormAction(() => ...)` rendert trotz `action={formAction}` `javascript:throw ...` ins action-Attribut (vor der Hydration passiert beim Absenden nichts Brauchbares).
+// Erlaubt sind nur Referenzen (`useFormAction(meineAktion)` oder `meineAktion.bind(null, id)`).
+export const INLINE_CLOSURE = /useFormAction\(\s*(async\s*)?(\(|function\b)/;
+
+describe("useFormAction bekommt nie eine Inline-Closure", () => {
+  const alle = (dir: string): string[] =>
+    readdirSync(dir).flatMap((n) => {
+      const p = join(dir, n);
+      return statSync(p).isDirectory() ? alle(p) : /\.tsx?$/.test(p) ? [p] : [];
+    });
+
+  it("kein Aufruf in src mit Pfeilfunktion oder function", () => {
+    const treffer = alle(root).filter((f) => INLINE_CLOSURE.test(readFileSync(f, "utf8"))).map((f) => relative(root, f).split("\\").join("/"));
+    expect(treffer).toEqual([]);
+  });
+
+  it("Gegenprobe: erkennt Closures, lässt Referenzen und bind zu", () => {
+    expect(INLINE_CLOSURE.test("useFormAction(() => joinTeamAction(token))")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction( async (p, f) => x(p, f))")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction(function (p, f) { return x(p, f); })")).toBe(true);
+    expect(INLINE_CLOSURE.test("useFormAction(createTeamAction)")).toBe(false);
+    expect(INLINE_CLOSURE.test("useFormAction(joinTeamAction.bind(null, token))")).toBe(false);
+    expect(INLINE_CLOSURE.test("export function useFormAction(action: (prev: ActionState) => void)")).toBe(false);
+  });
+});
+
+// Welle 4: ActionForm und ui/Form bekommen die Aktion als Prop. Jeder Aufrufer muss eine Server-Aktions-Referenz übergeben (importierte Aktion oder `.bind(null, …)`), keine Pfeilfunktion und kein `function`.
+// Geprüft wird je JSX-Tag (Klammern und Anführungszeichen beachtet: ein `=>` in einer früheren Prop beendet den Tag nicht), auch an den Wrappern, die `action` nur weiterreichen.
+export const ACTION_TAGS = "ActionForm|Form|EvidenceSwitchForm|HallDeclineForm|ApplyForm";
+export const CLOSURE_PROP = /(?<![-\w])action=\{\s*(async\s*)?(\(|function\b)/;
+// Eine lokale Variable `action`, die als Funktion definiert ist (`const action = async (…) =>`), wäre ebenfalls keine Referenz.
+export const LOCAL_ACTION_FUNCTION = /\b(const|let)\s+action\s*=\s*(async\s*)?(\(|function\b)/;
+
+describe("ActionForm, Form und ihre Wrapper bekommen keine Inline-Closure als action", () => {
+  const alle = (dir: string): string[] =>
+    readdirSync(dir).flatMap((n) => {
+      const p = join(dir, n);
+      return statSync(p).isDirectory() ? alle(p) : p.endsWith(".tsx") ? [p] : [];
+    });
+  const rel = (f: string) => relative(root, f).split("\\").join("/");
+
+  it("kein Aufrufer in src übergibt eine Pfeilfunktion oder function als action", () => {
+    const treffer = alle(root)
+      .filter((f) => formTags(readFileSync(f, "utf8"), ACTION_TAGS).some((tag) => CLOSURE_PROP.test(tag)))
+      .map(rel);
+    expect(treffer).toEqual([]);
+  });
+
+  it("keine lokale Funktion namens action in Dateien mit ActionForm oder Form", () => {
+    const treffer = alle(root)
+      .filter((f) => {
+        const s = readFileSync(f, "utf8");
+        return formTags(s, ACTION_TAGS).length > 0 && LOCAL_ACTION_FUNCTION.test(s);
+      })
+      .map(rel);
+    expect(treffer).toEqual([]);
+  });
+
+  it("die drei Wrapper (EvidenceSwitchForm, HallDeclineForm, ApplyForm) werden mit bind oder Referenz aufgerufen", () => {
+    const aufrufe = alle(root).flatMap((f) => formTags(readFileSync(f, "utf8"), "EvidenceSwitchForm|HallDeclineForm|ApplyForm"));
+    expect(aufrufe.length).toBeGreaterThanOrEqual(3);
+    for (const tag of aufrufe) expect(tag).toMatch(/(?<![-\w])action=\{\s*[A-Za-z_][\w.]*(\.bind\(|\})/);
+  });
+
+  it("Gegenprobe: erkennt Closures auch nach einem `=>` in einer früheren Prop, lässt Referenzen und bind zu", () => {
+    const tags = (s: string) => formTags(s, ACTION_TAGS)[0];
+    expect(CLOSURE_PROP.test(tags('<ActionForm action={async () => { x(); }} submit="Ok">'))).toBe(true);
+    expect(CLOSURE_PROP.test(tags('<Form onDone={() => done()} action={(p, f) => y(p, f)} submitLabel="Ok">'))).toBe(true); // früheres => verdeckt nichts
+    expect(CLOSURE_PROP.test(tags('<ActionForm action={savePlatformSettingsAction} submit="Speichern">'))).toBe(false);
+    expect(CLOSURE_PROP.test(tags('<ActionForm onDone={() => done()} action={setCardSwitchAction.bind(null, true)} submit="Ein">'))).toBe(false);
+    expect(LOCAL_ACTION_FUNCTION.test("const action = async (p: A, f: B) => ok();")).toBe(true);
+    expect(LOCAL_ACTION_FUNCTION.test("const action = switchEvidenceAction.bind(null, step);")).toBe(false);
   });
 });

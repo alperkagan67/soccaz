@@ -5,9 +5,9 @@ import { useFormAction } from "@/components/useFormAction";
 import { registerTeamAction } from "@/server/tournament-actions";
 
 export function RegisterForm({ tournamentId, teams }: { tournamentId: string; teams: { id: string; name: string }[] }) {
-  const { state, pending, onSubmit } = useFormAction(registerTeamAction.bind(null, tournamentId));
+  const { state, pending, onSubmit, formAction } = useFormAction(registerTeamAction.bind(null, tournamentId));
   return (
-    <form onSubmit={onSubmit} className="card space-y-3" data-testid="register-team">
+    <form action={formAction} onSubmit={onSubmit} className="card space-y-3" data-testid="register-team">
       <h2 className="font-semibold">Als Captain mit deinem Team beitreten</h2>
       {teams.length > 1 ? (
         <div>
