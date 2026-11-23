@@ -55,8 +55,9 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
   };
   const code = (t: string) => t.split("\n").filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l)).join("\n"); // Kommentarzeilen zaehlen nicht
   // alte Beschriftungen als Literal (mit Anfuehrungszeichen bzw. als Attributwert): ausser in der Konstanten-Datei darf keines mehr stehen
-  const STREU = ['"Ich bin bereit"', '"Nicht mehr bereit"', '"Karte hinterlegen"', '"Karte ändern"', '"Karte für diese Lobby nutzen"', 'label="Bereit"', 'confirmLabel="Anteil übernehmen"', '>Andere Karte hinterlegen<', '"Zahlung freigeben"', 'label: "Anteil übernehmen"'];
   // Zeichenketten in jeder Anfuehrungsart (" ' `) und JSX-Attributwerte: die Formel oder die Beschriftungen der Zahlungsknoepfe dort sind verboten (ausser in der Konstanten-Datei, Kommentare zaehlen nicht)
+  // GRENZE (bewusst): Schutz vor VERSEHENTLICHEM Streutext, kein Beweis gegen Absicht: aufgeteilte Zeichenketten ('Ich bin ' + 'bereit') und dynamisch gebaute Texte erkennt die Sperre nicht.
+  const JSX_KIND = />([^<>{}\n]*(ich bin bereit|zahlungspflichtig)[^<>{}\n]*)</gi; // Kindtext im JSX (zwischen Tags)
   const LITERAL = /(["'`])((?:(?!\1)[^\n\\]|\\.)*)\1/g;
   const VERBOTEN = [/zahlungspflichtig/i, /ich bin bereit/i, /abbuchung erlauben/i, /^Bereit$/, /^nicht mehr bereit$/i, /^karte (hinterlegen|ändern)$/i, /^karte für diese lobby nutzen$/i, /^anteil übernehmen$/i, /^zahlung freigeben$/i];
   const ALLOWED_STATUS_WORDS = ["src/components/PlayerLight.tsx", "src/server/tournaments.ts"]; // Statusworte (Ampel "Bereit", Anzeige), keine Zahlungsknoepfe
@@ -65,7 +66,9 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
     for (const f of [...walk("src/app"), ...walk("src/components"), ...walk("src/server"), ...walk("src/lib")]) {
       if (ALLOWED_STATUS_WORDS.includes(f)) continue; // "Bereit" als Statuswort einer Ampel/Anzeige, kein Knopf
       if (f.startsWith("src/app/dev/") || f === "src/lib/zahlungspflicht-texte.ts" || f === "src/lib/i18n.ts") continue; // Entwickler-Vorschau, Konstanten-Datei, Uebersetzungstabelle (eigener Rechtsentwurf, cover.mandate)
-      for (const m of code(read(f)).matchAll(LITERAL)) if (VERBOTEN.some((r) => r.test(m[2]))) hits.push(`${f}: ${m[0].slice(0, 60)}`);
+      const text = code(read(f));
+      for (const m of text.matchAll(LITERAL)) if (VERBOTEN.some((r) => r.test(m[2]))) hits.push(`${f}: ${m[0].slice(0, 60)}`);
+      for (const m of text.matchAll(JSX_KIND)) hits.push(`${f}: JSX-Text ${m[1].slice(0, 60)}`);
     }
     expect(hits).toEqual([]);
   });
@@ -75,6 +78,8 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
       const hit = [...sample.matchAll(LITERAL)].some((m) => VERBOTEN.some((r) => r.test(m[2])));
       expect(hit, sample).toBe(true);
     }
+    expect([...'<p>Ich bin bereit - zahlungspflichtig</p>'.matchAll(JSX_KIND)]).toHaveLength(1); // JSX-Kindtext wird erkannt
+    expect([...'<p>Alle sind bereit</p>'.matchAll(JSX_KIND)]).toHaveLength(0);
     expect([...'const x = "Alle sind bereit";'.matchAll(LITERAL)].some((m) => VERBOTEN.some((r) => r.test(m[2])))).toBe(false); // normaler Satz bleibt erlaubt
   });
 
