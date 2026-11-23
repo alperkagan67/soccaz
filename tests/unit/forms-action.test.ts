@@ -74,7 +74,7 @@ describe("Formulare mit onSubmit brauchen action oder method=post (Progressive E
   });
 
   it("Welle 2: kein Formular mit personenbezogenen Feldern (Geburtsdatum, E-Mail, Telefon, IBAN, Spitzname, Bio, Lieblingsverein, Rückennummer) ohne action; nur OnboardingForm steht noch in der Ausnahmeliste, bis PR 2 sie löscht", () => {
-    const pii = /name="(birthDate|email|phone|iban|nickname|bio|favoriteClub|shirtNumber)"/; // Personenbezug eindeutig (Name/Ort sind auch Team- und Hallenfelder)
+    const pii = /name="[^"]*(mail|phone|iban|birth|street|address|postal|zip|bio|nick|club|shirt)[^"]*"/i; // Teilstrings: Name/Stadt/Position sind kein Personenbezug im engeren Sinn (werden im selben Absenden mit abgedeckt)
     const leaky = all.filter((f) => bad.includes(f.rel) && pii.test(f.src)).map((f) => f.rel);
     expect(leaky.filter((f) => f !== "app/willkommen/OnboardingForm.tsx")).toEqual([]);
   });

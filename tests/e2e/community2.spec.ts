@@ -143,19 +143,16 @@ test("Einstellungen vor der Hydration: Profil, Konto löschen und Einstellungen 
   const page = await (await browser.newContext()).newPage();
   await newUser(page, "fw2");
   const html = await (await page.context().request.get("/app/einstellungen")).text();
-  // JEDES Formular mit einem solchen Knopf (nicht nur das erste Vorkommen des Knopftextes) muss nativ POST senden
-  for (const label of ["Profil speichern", "Konto endgültig löschen", "Speichern"]) {
-    const knopf = `>${label}</button>`;
-    let n = 0;
-    for (let at = html.indexOf(knopf); at >= 0; at = html.indexOf(knopf, at + 1)) {
-      n++;
-      const form = html.slice(html.lastIndexOf("<form", at), html.indexOf("</form>", at));
-      expect(form, label).toMatch(/^<form[^>]*method="POST"/);
-      expect(form, label).toContain('name="$ACTION_');
-      expect(form, label).not.toContain("javascript:throw");
-    }
-    expect(n, `Formular mit Knopf "${label}" gefunden`).toBeGreaterThan(0);
+  // ALLE <form>-Tags des Server-HTML: jedes mit Eingabefeldern sendet nativ POST (nie GET mit Feldern in der Adresse); mindestens drei (Profil, Konto löschen, Einstellungen)
+  const forms = [...html.matchAll(/<form[^>]*>[\s\S]*?<\/form>/g)].map((m) => m[0]);
+  const mitFeldern = forms.filter((x) => /<(input|select|textarea)\b/.test(x.replace(/<input[^>]*type="hidden"[^>]*>/g, "")));
+  expect(mitFeldern.length, "Formulare mit Eingabefeldern").toBeGreaterThanOrEqual(3);
+  for (const x of mitFeldern) {
+    expect(x.slice(0, x.indexOf(">") + 1)).toMatch(/\bmethod="POST"/);
+    expect(x).toContain('name="$ACTION_');
+    expect(x).not.toContain("javascript:throw");
   }
+  for (const knopf of ["Profil speichern", "Konto endgültig löschen", "Speichern"]) expect(forms.filter((x) => x.includes(`>${knopf}</button>`)).length, knopf).toBeGreaterThan(0);
 });
 
 test("Mitspieler gesucht und Spielserie", async ({ browser }) => {
