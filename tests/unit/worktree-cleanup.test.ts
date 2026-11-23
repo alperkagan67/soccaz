@@ -42,13 +42,23 @@ function world() {
     ...over,
   });
   /** Verwaister Worktree-Rest: .git-Datei mit Gitlink auf ein nicht (mehr) vorhandenes gitdir, dazu ein paar Dateien. */
-  const orphan = (name: string, files: Record<string, string> = { "a.txt": "a", "sub/b.txt": "b" }) => {
+  const orphan = (name: string, files: Record<string, string> = { "a.txt": "a", "sub/b.txt": "b" }, unique: Record<string, string> = {}) => {
     const dir = path.join(root, name);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, ".git"), `gitdir: ${path.join(main, ".git", "worktrees", name)}\n`);
-    for (const [f, c] of Object.entries(files)) {
+    for (const [f, c] of Object.entries({ ...files, ...unique })) {
       fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
       fs.writeFileSync(path.join(dir, f), c);
+    }
+    // "files" sind committet (Blobs bekannt), "unique" nie (einzigartiger Worker-WIP): Gitlink-Reste werden nur bei bekannten Blobs geloescht
+    for (const [f, c] of Object.entries(files)) {
+      const q = path.join(main, "known", name, f);
+      fs.mkdirSync(path.dirname(q), { recursive: true });
+      fs.writeFileSync(q, c);
+    }
+    if (Object.keys(files).length > 0) {
+      git(["add", "-A"], main);
+      git(["commit", "-q", "--allow-empty", "-m", `known ${name}`], main);
     }
     return dir;
   };
@@ -480,9 +490,36 @@ describe("Worktree-Aufraeumen: Funde des security-reviewers", () => {
     fs.mkdirSync(gitdir);
     fs.writeFileSync(path.join(dir, ".git"), `gitdir: ${gitdir}\n`);
     fs.writeFileSync(path.join(dir, "arbeit.txt"), "ungepusht");
+    // der Inhalt ist als Blob bekannt: nur das LEBENDE gitdir haelt den Ordner (nicht die Inhaltspruefung)
+    fs.writeFileSync(path.join(w.main, "bekannt.txt"), "ungepusht");
+    git(["add", "-A"], w.main);
+    git(["commit", "-q", "-m", "bekannt"], w.main);
     const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
     expect(statusOf(res, "gitlink-lebt")).toBe("uebersprungen");
     expect(exists(path.join(dir, "arbeit.txt"))).toBe(true);
+  });
+
+  it("Gitlink-Rest (Auflage w4): eine EINZIGARTIGE Datei haelt den Ordner und wird namentlich gemeldet; mit nur bekannten Blobs (auch CRLF) wird er entfernt", () => {
+    const w = world();
+    const wip = w.orphan("wip", { "a.txt": "a" }, { "src/neu.ts": "nie committet" });
+    const res = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    expect(statusOf(res, "wip")).toBe("uebersprungen");
+    expect(exists(path.join(wip, "src/neu.ts"))).toBe(true);
+    expect(res.lines.join(String.fromCharCode(10))).toContain("src/neu.ts");
+    const sauber = w.orphan("sauber", { "x.txt": "eins" + String.fromCharCode(10) + "zwei" + String.fromCharCode(10) });
+    const crlf = path.join(sauber, "x.txt");
+    fs.writeFileSync(crlf, fs.readFileSync(crlf, "utf8").split(String.fromCharCode(10)).join(String.fromCharCode(13, 10)));
+    const res2 = run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() });
+    expect(statusOf(res2, "sauber")).toBe("geloescht");
+    expect(exists(sauber)).toBe(false);
+    expect(exists(wip)).toBe(true);
+  });
+
+  it("Gitlink-Rest ohne jede Datei ausser .git wird (nach 24 h) entfernt; generierte Dateien oben zaehlen nicht", () => {
+    const w = world();
+    const dir = w.orphan("nurgit", {});
+    fs.writeFileSync(path.join(dir, "next-env.d.ts"), "generiert");
+    expect(statusOf(run({ scriptDir: w.scriptDir, apply: true, deps: w.deps() }), "nurgit")).toBe("geloescht");
   });
 
   it("Mindestalter fuer ALLE Kandidatenarten: junger leerer Ordner, junger Gitlink-Rest und junge node_modules-Verknuepfung bleiben", () => {

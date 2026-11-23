@@ -6,6 +6,8 @@
 // Jedes andere Argument: Hilfe, Exit 2, nichts geschieht. Exit 3: Wurzel oder Git unklar (nichts angefasst). Sonst Exit 0 (auch bei gesperrten Ordnern; sie stehen in der Ausgabe).
 //
 // Sicherheit (fail-closed):
+//  - Grenze von "Blob bekannt": gemeint ist IRGENDEIN Objekt in der Objektdatenbank des Hauptrepos; das schliesst unerreichbare (dangling) Blobs bis zum gc-Prune und Blobs lokaler, ungepushter Branches/Stashes ein (akzeptiert).
+//  - Gitlink-Rest (.git-DATEI, gitdir fehlt): geloescht wird nur, wenn alle Dateien ausser .git und den generierten byteGLEICH als Blob bekannt sind (wie beim Snapshot) und nichts juenger als 24 h ist; sonst werden die einzigartigen Dateien gemeldet.
 //  - Die Wurzel kommt aus `git rev-parse --git-common-dir` (Verzeichnis des Skripts), NIE aus dem aktuellen Ordner: <Hauptrepo>/../worktrees. Sie muss `worktrees` heissen, ein echter Ordner
 //    sein (kein Symlink/keine Junction) und wird per realpath verglichen. Schlaegt `git worktree list --porcelain` fehl: Abbruch.
 //  - Kandidat: ein Ordner, der DIREKTES Kind der Wurzel ist (realpath unter realpath der Wurzel), keine Verknuepfung ist, nicht das Hauptrepo und nicht in `git worktree list` steht.
@@ -209,7 +211,7 @@ export function gitBlobCheck(paths, mainRepo, fsx = fs) {
 }
 
 /** Entscheidung fuer einen Ordner ohne .git: { ok, reason, missing[] }. Jede Unklarheit = nicht ok (manuell pruefen). */
-export function snapshotCheck(dir, { blobCheck, fsx = fs, now = Date.now() }) {
+export function snapshotCheck(dir, { blobCheck, fsx = fs, now = Date.now(), minFiles = SNAPSHOT_MIN_FILES }) {
   let listed;
   try {
     listed = listSnapshotFiles(dir, fsx);
@@ -218,7 +220,7 @@ export function snapshotCheck(dir, { blobCheck, fsx = fs, now = Date.now() }) {
   }
   if (!listed) return { ok: false, reason: "zu viele Dateien fuer die Pruefung", missing: [] };
   const { files, newest } = listed;
-  if (files.length < SNAPSHOT_MIN_FILES) return { ok: false, reason: `nur ${files.length} Dateien (Mindestgroesse ${SNAPSHOT_MIN_FILES})`, missing: [] };
+  if (files.length < minFiles) return { ok: false, reason: `nur ${files.length} Dateien (Mindestgroesse ${minFiles})`, missing: [] };
   if (now - newest <= SNAPSHOT_MIN_AGE_MS) return { ok: false, reason: "neueste Datei juenger als 24 h", missing: [] };
   let missing;
   try {
@@ -328,7 +330,12 @@ export function classifyEntry({ name, root, realRoot, mainRepoReal, known, fsx =
     }
     if (!targetGone) return { status: "uebersprungen", reason: "Gitlink, gitdir existiert noch (nicht in worktree list), bitte manuell pruefen", info };
     if (tooYoung()) return { status: "uebersprungen", reason: "Gitlink-Rest, aber juenger als 24 h, bleibt vorerst", info };
-    return { status: "kandidat", reason: "Worktree-Rest: Gitlink auf fehlendes gitdir, aelter als 24 h", info };
+    // Inhaltspruefung wie beim Snapshot (Auflage w4 R-T362): ein Worker-WIP ohne Commit existiert sonst nirgends. Alle Dateien ausser .git und den generierten muessen als Blob bekannt sein.
+    if (!blobCheck) return { status: "uebersprungen", reason: "Gitlink-Rest, aber keine Blob-Pruefung verfuegbar, bitte manuell pruefen", info };
+    const snap = snapshotCheck(full, { blobCheck, fsx, now, minFiles: 0 });
+    const list = snap.missing.length > 0 ? `; einzigartige Dateien: ${snap.missing.slice(0, 20).join(", ")}${snap.missing.length > 20 ? `, ... (+${snap.missing.length - 20})` : ""}` : "";
+    if (!snap.ok) return { status: "uebersprungen", reason: `Gitlink-Rest, bitte manuell pruefen (${snap.reason})`, info: info + list };
+    return { status: "kandidat", reason: "Worktree-Rest: Gitlink auf fehlendes gitdir, alle Dateien byteGLEICH als Blob bekannt, aelter als 24 h", info };
   }
   // keine .git: nur leer oder nur eine node_modules-Verknuepfung gilt als Rest
   let names = [];
