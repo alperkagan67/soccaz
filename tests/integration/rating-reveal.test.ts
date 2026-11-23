@@ -64,6 +64,18 @@ describe("getRatingReveal: nur die eigene Änderung", () => {
     expect(await getRatingReveal(g.match.id, g.me.id)).toBeNull(); // Privatspiele und alte Spiele ohne Verlauf: nichts erfinden
   });
 
+  it("Teilnehmer ohne Team (freier Ersatzspieler, team_id null): null, auch mit Verlaufszeile", async () => {
+    const g = await playedGame([1000, 1090], [1000, 910]);
+    await db.update(matchParticipants).set({ teamId: null }).where(eq(matchParticipants.userId, g.me.id));
+    expect(await getRatingReveal(g.match.id, g.me.id)).toBeNull();
+  });
+
+  it("zwei Verlaufszeilen zum selben Spiel und Spieler (Dublette): die jüngste gilt, das Ergebnis ist stabil", async () => {
+    const g = await playedGame([1000, 1090], [1000, 910]);
+    await db.insert(ratingHistory).values({ kind: "user", subjectId: g.me.id, matchId: g.match.id, eloBefore: 1000, eloAfter: 1200, at: new Date(Date.now() + 60_000) });
+    for (let i = 0; i < 3; i++) expect((await getRatingReveal(g.match.id, g.me.id))!.after.rating).toBe(ratingOf(1200));
+  });
+
   it("unbekannte Spiel-ID: null, kein Fehler", async () => {
     const u = await makeUser("x");
     expect(await getRatingReveal("00000000-0000-0000-0000-000000000000", u.id)).toBeNull();

@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, teams, users } from "@/db/schema";
 import { ratingHistory } from "@/db/schema-community";
@@ -27,7 +27,9 @@ export async function getRatingReveal(matchId: string, viewerId: string | null |
   const [h] = await db
     .select({ before: ratingHistory.eloBefore, after: ratingHistory.eloAfter })
     .from(ratingHistory)
-    .where(and(eq(ratingHistory.kind, "user"), eq(ratingHistory.subjectId, viewerId), eq(ratingHistory.matchId, matchId)));
+    .where(and(eq(ratingHistory.kind, "user"), eq(ratingHistory.subjectId, viewerId), eq(ratingHistory.matchId, matchId)))
+    .orderBy(desc(ratingHistory.at), desc(ratingHistory.id)) // deterministisch, falls je eine Dublette entstünde: die jüngste Zeile gilt
+    .limit(1);
   if (!h) return null;
   const side = (elo: number): RevealSide => {
     const rating = ratingFromElo(elo);
