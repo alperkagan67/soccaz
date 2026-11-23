@@ -98,6 +98,9 @@ const de = {
   "ui.assistent.stepDone": "erledigt",
   "ui.assistent.stepCurrent": "aktueller Schritt",
   "ui.assistent.stepOpen": "offen",
+  "ui.assistent.loading": "Der Ablauf wird geladen. Bitte einen Moment warten.",
+  "ui.assistent.noscript": "Dieser Ablauf braucht JavaScript. Ist es ausgeschaltet oder lädt die Seite nicht vollständig, bleibt das Formular gesperrt; es wird nichts abgeschickt und nichts geht verloren.",
+  "ui.assistent.noscriptLink": "Hilfe und Kontakt",
   // ENTWURF, rechtlich NICHT geprüft (Rechtsliste/FEHLT-NOCH, Anwalt, blockiert Go-live). Schlüssel und Version (TERMS_VERSION in venue-onboarding.ts) gehen in das Protokoll: den Wortlaut nie still ändern, sondern Schlüssel und Version erhöhen.
   "hallen.onboarding.terms.entwurf": "Mit der Anfrage bestätigst du: Du bist berechtigt, diese Halle anzumelden. Deine Angaben stimmen. Die Halle ist erst nach der Freischaltung durch Soccaz sichtbar und buchbar; Soccaz kann die Anfrage ablehnen. Für gebuchte Spiele berechnet Soccaz eine Provision auf die Hallenmiete (Satz siehe oben). Die endgültigen Bedingungen werden vor dem Start der Plattform ergänzt.",
   "hallen.onboarding.terms.draftNote": "ENTWURF, rechtlich noch nicht geprüft",
@@ -196,6 +199,9 @@ const en: Record<MessageKey, string> = {
   "ui.assistent.stepDone": "done",
   "ui.assistent.stepCurrent": "current step",
   "ui.assistent.stepOpen": "open",
+  "ui.assistent.loading": "The flow is loading. Please wait a moment.",
+  "ui.assistent.noscript": "This flow needs JavaScript. If it is turned off or the page does not load completely, the form stays locked; nothing is sent and nothing is lost.",
+  "ui.assistent.noscriptLink": "Help and contact",
   // DRAFT, legal text to be set by a lawyer (blocks go-live). Never change the wording silently: raise the key and the version.
   "hallen.onboarding.terms.entwurf": "By sending this request you confirm: you are entitled to register this venue. Your details are correct. The venue is visible and bookable only after Soccaz has approved it; Soccaz may reject the request. For booked games Soccaz charges a commission on the venue rent (rate shown above). The final terms will be added before the platform launches.",
   "hallen.onboarding.terms.draftNote": "DRAFT, not yet checked legally",
