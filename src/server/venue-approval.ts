@@ -1,8 +1,8 @@
-import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import { connection } from "next/server";
 import { db } from "@/db";
-import { users } from "@/db/schema";
-import { venueAccess, venues } from "@/db/schema-finance";
+import { auditLog, users } from "@/db/schema";
+import { priceRules, venueAccess, venues } from "@/db/schema-finance";
 import { canUser, isPlatformAdmin } from "@/lib/roles";
 import { audit } from "./audit";
 import { bookingStaffIds } from "./booking";
@@ -20,6 +20,54 @@ import { cleanVenueInput, type VenueInput } from "./venues";
 
 /** Hoechstens so viele offene Anfragen je Nutzer (Missbrauchsgrenze). */
 export const MAX_OPEN_REQUESTS = 3;
+/** Hoechstens so viele Anfragen (auch Wiederanfragen) je Akteur und Stunde, gezaehlt aus dem audit_log (venue.requested). */
+export const REQUESTS_PER_HOUR = 5;
+
+/** Rate-Limit: wird UNTER dem Advisory-Lock je Nutzer geprueft (kein Wettlauf zwischen zwei Tabs). */
+async function assertRateLimit(tx: Tx, userId: string): Promise<void> {
+  const [r] = await tx.select({ n: count() }).from(auditLog).where(and(eq(auditLog.actorId, userId), eq(auditLog.action, "venue.requested"), gt(auditLog.at, new Date(Date.now() - 3_600_000))));
+  if (r.n >= REQUESTS_PER_HOUR) throw new DomainError("Zu viele Anfragen in kurzer Zeit. Bitte versuche es später noch einmal.");
+}
+
+/** Beide Preise (60 und 90 Minuten) oder keiner: ein einzelner Preis wuerde bei der Wiederanfrage alle vorhandenen Regeln loeschen und nur eine anlegen. */
+function assertPriceExtras(x: VenueRequestExtras): void {
+  if ((x.price60Cents === undefined) !== (x.price90Cents === undefined)) throw new DomainError("Bitte beide Preise angeben (60 und 90 Minuten).");
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Preisregeln der Halle fuer 60 und 90 Minuten (Preis = Kosten, Marge 0; Admin 1 stellt die Kosten spaeter), ab heute. Der Tag ist der UTC-Tag, GENAU wie bei addPriceRule und priceFor
+ * (sonst laege die Regel zwischen 00:00 und 01:00/02:00 Berlin "in der Zukunft" und priceFor fuende sie nicht). ERSETZT vorhandene Regeln der Halle (Wiederanfrage: kein Verdoppeln; auch
+ * Regeln, die Admin 1 an einer abgelehnten Halle angelegt hat). In der Transaktion des Aufrufers.
+ */
+async function replacePriceRules(tx: Tx, venueId: string, x: VenueRequestExtras): Promise<void> {
+  if (x.price60Cents === undefined || x.price90Cents === undefined) return;
+  await tx.delete(priceRules).where(eq(priceRules.venueId, venueId));
+  const validFrom = new Date().toISOString().slice(0, 10);
+  await tx.insert(priceRules).values([
+    { venueId, durationMin: 60, priceCents: x.price60Cents, costCents: x.price60Cents, validFrom },
+    { venueId, durationMin: 90, priceCents: x.price90Cents, costCents: x.price90Cents, validFrom },
+  ]);
+}
+
+/** Zaehlt die offenen Anfragen des Nutzers (Zugang ueber die gemeinsame Quelle venue-access-rules). */
+async function openRequestsOf(tx: Tx, userId: string) {
+  const myIds = await venueIdsOf(userId, tx);
+  return myIds.length ? await tx.select().from(venues).where(and(inArray(venues.id, myIds), eq(venues.approvalStatus, "requested"))) : [];
+}
+
+/** Audit-Inhalt der Anfrage: Status, Plaetze, Preise je Termin (Cent) und Bedingungstext (Schluessel/Version); NIE Kontakt oder Adresse. */
+const requestedAudit = (x: VenueRequestExtras, extra: Record<string, unknown> = {}) => ({
+  status: "requested",
+  ...extra,
+  ...(x.courts !== undefined ? { courts: x.courts } : {}),
+  ...(x.price60Cents !== undefined ? { price60Cents: x.price60Cents, price90Cents: x.price90Cents } : {}), // Betreiber-Preise sind kein Personenbezug: Spur fuer einen Streit um die Miete
+  ...(x.termsKey ? { termsKey: x.termsKey, termsVersion: x.termsVersion } : {}),
+});
+
+/** Zusaetze aus dem Hallen-Onboarding (M2d, src/lib/venue-onboarding.ts): Plaetze, Preise je Termin in Cent (60/90 Minuten), Bedingungstext (Schluessel und Version, ENTWURF bis zur Anwaltspruefung). */
+export type VenueRequestExtras = { courts?: number; price60Cents?: number; price90Cents?: number; termsKey?: string; termsVersion?: number };
 
 export const NOT_FOUND = "Halle nicht gefunden.";
 const NOT_OPEN = "Diese Halle ist keine offene Anfrage.";
@@ -47,8 +95,9 @@ async function notifyAdmins(tx: Tx, title: string, body: string) {
  * Hallen-Anfrage ("Anfrage senden", M2d): legt die Halle im Status "requested" an (inaktiv, keine Partnerhalle, Standard-Provision) mit aktivem Betreiber-Zugang fuer den Anfragenden.
  * Idempotent: dieselbe offene Anfrage desselben Nutzers (Name, Stadt) liefert die vorhandene Halle (Doppelklick).
  */
-export async function requestVenue(userId: string, input: VenueInput) {
+export async function requestVenue(userId: string, input: VenueInput & VenueRequestExtras) {
   const v = cleanVenueInput(input);
+  assertPriceExtras(input);
   const commission = (await defaultCommissionPercent()).toFixed(2);
   return db.transaction(async (tx) => {
     // Sperre je Nutzer (Advisory-Lock, bis zum Ende der Transaktion): Doppelklick und parallele Anfragen laufen nacheinander, Pruefung und Anlage sind atomar
@@ -57,36 +106,53 @@ export async function requestVenue(userId: string, input: VenueInput) {
     if (!u || u.bannedAt) throw new DomainError("Bitte melde dich an.");
     if (isPlatformAdmin(u)) throw new DomainError("Mit einem Admin-Konto kann keine Halle angefragt werden."); // wie inviteVenueManager: ein Admin ist nie Betreiber
     // Eigene offene Anfragen: zwei Abfragen statt einer je Halle (Zugang ueber die gemeinsame Quelle venue-access-rules)
-    const myIds = await venueIdsOf(userId, tx);
-    const mine = myIds.length ? await tx.select().from(venues).where(and(inArray(venues.id, myIds), eq(venues.approvalStatus, "requested"))) : [];
+    const mine = await openRequestsOf(tx, userId);
     const same = mine.find((h) => h.name === v.name && h.city === v.city);
-    if (same) return same; // Doppelklick: dieselbe offene Anfrage desselben Betreibers
+    if (same) {
+      // Doppelklick: dieselbe offene Anfrage desselben Betreibers. Mit IDENTISCHEN Werten ist das ok (dieselbe Halle); mit ABWEICHENDEN Werten KEIN stilles ok (die neuen Angaben wuerden verschluckt).
+      const rules = await tx.select().from(priceRules).where(eq(priceRules.venueId, same.id));
+      const price = (d: number) => rules.find((r) => r.durationMin === d)?.priceCents;
+      const identical =
+        (v.address ?? null) === same.address && (v.contact ?? null) === same.contact && (v.surface ?? null) === same.surface && (v.hasShowers ?? false) === same.hasShowers && (v.hasParking ?? false) === same.hasParking &&
+        (input.courts === undefined || input.courts === same.courtCount) &&
+        (input.price60Cents === undefined || (input.price60Cents === price(60) && input.price90Cents === price(90)));
+      if (!identical) throw new DomainError("Diese Anfrage liegt schon vor, mit anderen Angaben. Bitte warte auf die Entscheidung, bevor du eine geänderte Anfrage sendest.");
+      return same;
+    }
+    await assertRateLimit(tx, userId);
     if (mine.length >= MAX_OPEN_REQUESTS) throw new DomainError(`Du hast schon ${MAX_OPEN_REQUESTS} offene Hallen-Anfragen. Bitte warte auf die Entscheidung.`);
     const now = new Date();
     const [row] = await tx
       .insert(venues)
-      .values({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, isPartner: false, active: false, commissionPercent: commission, approvalStatus: "requested", approvalRequestedAt: now, managerUserId: userId })
+      .values({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, courtCount: input.courts ?? null, isPartner: false, active: false, commissionPercent: commission, approvalStatus: "requested", approvalRequestedAt: now, managerUserId: userId })
       .returning();
     await tx.insert(venueAccess).values({ venueId: row.id, userId, status: "active", assignedBy: userId, assignedAt: now });
-    await audit(userId, "venue.requested", "venue", row.id, { after: { status: "requested" } }, tx);
+    await replacePriceRules(tx, row.id, input);
+    await audit(userId, "venue.requested", "venue", row.id, { after: requestedAudit(input) }, tx);
     await notifyAdmins(tx, "Neue Hallen-Anfrage", "Eine Halle wartet auf Freischaltung.");
     return row;
   });
 }
 
 /** Erneute Anfrage nach einer Ablehnung (nach Aenderung der Angaben), nur durch den Betreiber der Halle (aktiver Zugang). Die Historie bleibt im audit_log. */
-export async function resubmitVenue(userId: string, venueId: string, input: VenueInput) {
+export async function resubmitVenue(userId: string, venueId: string, input: VenueInput & VenueRequestExtras) {
+  if (!UUID.test(venueId)) throw new DomainError(NOT_FOUND); // keine UUID: wie eine unbekannte Halle (kein Typfehler der Datenbank)
   const v = cleanVenueInput(input);
+  assertPriceExtras(input);
   return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${"venue-request:" + userId}))`); // dieselbe Sperre je Nutzer wie requestVenue (Rate-Limit atomar)
     const [locked] = await tx.select({ id: venues.id, status: venues.approvalStatus }).from(venues).where(eq(venues.id, venueId)).for("update");
     if (!locked || !(await hasVenueAccess(venueId, userId, tx))) throw new DomainError(NOT_FOUND);
     if (locked.status !== "rejected") throw new DomainError("Nur eine abgelehnte Halle kann erneut angefragt werden.");
+    await assertRateLimit(tx, userId);
+    if ((await openRequestsOf(tx, userId)).length >= MAX_OPEN_REQUESTS) throw new DomainError(`Du hast schon ${MAX_OPEN_REQUESTS} offene Hallen-Anfragen. Bitte warte auf die Entscheidung.`); // dieselbe Obergrenze wie requestVenue
     const [row] = await tx
       .update(venues)
-      .set({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, approvalStatus: "requested", active: false, approvalRequestedAt: new Date(), approvalDecidedAt: null, approvalDecidedBy: null, approvalReason: null })
+      .set({ name: v.name, city: v.city, address: v.address, contact: v.contact, surface: v.surface, hasShowers: v.hasShowers ?? false, hasParking: v.hasParking ?? false, ...(input.courts !== undefined ? { courtCount: input.courts } : {}), approvalStatus: "requested", active: false, approvalRequestedAt: new Date(), approvalDecidedAt: null, approvalDecidedBy: null, approvalReason: null })
       .where(eq(venues.id, venueId))
       .returning();
-    await audit(userId, "venue.requested", "venue", venueId, { after: { status: "requested", resubmit: true } }, tx);
+    await replacePriceRules(tx, venueId, input); // ERSETZEN statt verdoppeln
+    await audit(userId, "venue.requested", "venue", venueId, { after: requestedAudit(input, { resubmit: true }) }, tx);
     await notifyAdmins(tx, "Neue Hallen-Anfrage", "Eine abgelehnte Halle wurde erneut angefragt.");
     return row;
   });
