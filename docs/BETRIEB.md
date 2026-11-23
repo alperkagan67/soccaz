@@ -132,6 +132,11 @@ curl -X POST -H "x-job-secret: $JOB_SECRET" https://deine-domain/api/jobs/send-r
 
 Hinweise: Das Buchungsjournal ist unveränderlich (Datenbank-Trigger). Korrekturen sind Gegenbuchungen. Die Zahlungsgebühr wird beim Verbuchen **geschätzt** (Einstellung oben); die echten Gebühren stehen im Stripe-Dashboard und sollten monatlich abgeglichen werden.
 
+### Schalter in Dev und Test (Schalter-Flip)
+
+- **Produktion bleibt `payments_enabled` AUS und `card_payments_enabled` AUS** (Standardwerte, keine Migration). Die Dev-Seeds (`scripts/seed-demo.mjs`, `scripts/lib/seed-frontend-data.ts`; `node scripts/worktree.mjs create` ruft `seed-demo.mjs`) schalten beide Schalter in der **lokalen** Datenbank EIN (idempotent, Audit-Zeile je Änderung, nur hinter `seed-guard`: `localhost:5433`, `soccav2` oder `soccaz_w1` bis `soccaz_w4`, nie `NODE_ENV=production`). Mit `PAYMENTS_FAKE=1` im Dev-Server gibt es die Karte ohne Stripe. Gratis testen: auf `/admin/einstellungen` `payments_enabled` ausschalten (nicht den Kartenschalter: **Zahlungen AN + Karte AUS = pausiert**, siehe 2c).
+- **Automatisierte Tests starten und enden im Standard AUS/AUS:** jede Integrationsdatei setzt vor dem Start beide Schalter zurück (`tests/integration/setup.ts`), das Aufräumen (`tests/cleanup.ts`, auch nach den E2E-Tests) setzt beide zurück, und der E2E-`globalSetup` (`tests/e2e/global-setup.ts`) setzt sie vor den Specs zurück (nur lokale Datenbank). Folge: nach einem Testlauf steht die lokale Datenbank wieder auf AUS/AUS; wer weiter von Hand im Kartenmodell arbeiten will, führt `node --env-file=.env.local scripts/seed-demo.mjs` erneut aus (idempotent) oder schaltet auf der Admin-Seite um. Specs und Tests, die das Kartenmodell brauchen, setzen ihre Schalter pro Test selbst und stellen sie zurück (Regel 23).
+
 ### Lokale Entwicklung mit Stripe-Testmodus (Kurzfassung)
 
 Die Einzelheiten stehen oben; hier die Reihenfolge für Worker-Worktrees. Nur Namen, nie Werte.
