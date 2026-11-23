@@ -44,6 +44,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email
   payment: { label: "Zahlungen", email: true, optional: false },
   system: { label: "Wichtige Hinweise", email: true, optional: false },
   // Sicherheitsrelevante Hinweise an Admins (z. B. Notschalter Kartenzahlung): NICHT abschaltbar, nur In-App (E-Mail erst mit dem Mail-Dienst, FEHLT-NOCH)
+  // NUR an Admins versenden: die Zustellung (notifyUsers) prueft den Empfaenger nicht, und der Typ umgeht die Praeferenzen. Empfaengerliste immer aus bookingStaffIds/platformAdminIds bilden.
   "system.critical": { label: "Kritische Hinweise für Admins", email: false, optional: false },
 };
 
