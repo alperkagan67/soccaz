@@ -34,7 +34,7 @@ describe("Konstanten", () => {
     }
     expect(ZP.finalConfirm).toBe("Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen"); // M3 PR 1 (#281): Wortlaut unverändert, nur eine Stelle
     expect(ZP.finalConfirm.endsWith(ZAHLUNGSPFLICHT)).toBe(true);
-    expect(read("src/app/lobby/[id]/FinalConfirm.tsx")).toContain("label={ZP.finalConfirm}");
+    expect(read("src/app/lobby/[id]/FinalConfirm.tsx")).toContain("label={payable ? ZP.finalConfirm : ZP.finalConfirmFree}");
     expect(ZP.gameReadyFree).toBe("Ich bin bereit"); // ohne Zahlung kein Zahlungspflicht-Zusatz
     expect(ZP.tournamentReadyFree).toBe("Bereit");
     for (const l of [ZP.cardSave, ZP.cardChange, ZP.cardUseStored]) expect(l.endsWith("und Abbuchung erlauben"), l).toBe(true); // Mandat: Erlaubnis, jetzt wird nichts abgebucht
@@ -100,6 +100,7 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
     expect(read("src/app/turniere/[id]/TournamentCard.tsx")).toContain("consequence={coverAmounts ? coverConsequence(m.name, coverAmounts) : undefined}");
     expect(ZP.tournamentReadyPause).toContain("pausiert");
     const lobby = read("src/app/lobby/[id]/page.tsx");
+    expect(lobby).toContain("payable={cardOn && payments.priceCents !== null && payments.priceCents > 0}"); // FinalConfirm: Formel nur bei Zahlungspflicht (Kartenmodell, Preis > 0)
     expect(lobby).toContain("payments.chargeCents"); // EINE Quelle fuer alle Betraege der Lobby-Seite (lobby.ts: chargeAmount(price, finalShareCents ?? shareToCharge)), keine Inline-Rechnung
     expect(lobby).not.toMatch(/shareCents\(|shareDivisor\(|cardShareCents/);
     expect(lobby).toContain("estimateCents !== null ? <>{estimateFixed"); // die Kosten-Zeile zeigt denselben Betrag wie der Knopf
