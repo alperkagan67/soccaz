@@ -339,6 +339,16 @@ Vorschlag: Schreibende Befehle (`git checkout`, `git merge`, `npm run db:migrate
 
 Wer ändert: AGENTS-SETUP.md (Abschnitt Arbeitsweise aller Rollen); Regel-PR (Nutzer mergt).
 
+## 28. Server nur mit Beendigung starten; Formulare mit Progressive Enhancement
+
+Anlass: (a) Ein Dev-Server auf dem Worker-Port blieb nach einem Lauf stehen, weil das Beenden verweigert wurde; die Speicherregel (CLAUDE.md, Stolperfallen) nennt das Ziel, nicht den Weg. (b) Review R-T353: Formulare mit reinem `onSubmit` senden vor der Hydration nativ GET (Felder in der Adresse), siehe Backlog 224.
+
+Vorschlag: (a) Worker starten einen Server nur mit Beendigung im selben Befehl oder per `run_in_background` und `TaskStop`. (b) Neue Formulare bekommen zusätzlich `action` (Server-Aktion), damit ein Klick vor der Hydration nie verloren geht oder GET sendet; Test: Formular vor der Hydration absenden.
+
+Wer ändert: AGENTS-SETUP.md (Rolle Writer) und CLAUDE.md (Stolperfallen); Regel-PR (Nutzer mergt).
+
+**Status:** offen (Sammelkandidat, noch kein Regel-PR).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.
