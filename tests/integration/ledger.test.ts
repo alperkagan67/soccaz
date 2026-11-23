@@ -20,8 +20,9 @@ describe("Ledger", () => {
   it("derselbe Schlüssel bucht genau einmal (Webhook-Wiederholung)", async () => {
     const u = await makeUser();
     const k = key();
-    const first = await creditWallet(db, u.id, { from: "clearing", amountCents: 1000, kind: "topup", idempotencyKey: k });
-    const second = await creditWallet(db, u.id, { from: "clearing", amountCents: 1000, kind: "topup", idempotencyKey: k });
+    const posting = { debit: { account: "clearing" as const }, credit: { account: "wallet" as const, userId: u.id }, amountCents: 1000, kind: "topup" as const, idempotencyKey: k };
+    const first = await post(db, posting);
+    const second = await post(db, posting);
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.id).toBe(first.id);
@@ -48,7 +49,7 @@ describe("Ledger", () => {
 
   it("Buchungen sind unveränderlich: ändern und löschen schlagen fehl", async () => {
     const u = await makeUser();
-    const { id } = await creditWallet(db, u.id, { from: "clearing", amountCents: 500, kind: "topup", idempotencyKey: key() });
+    const { id } = await post(db, { debit: { account: "clearing" }, credit: { account: "wallet", userId: u.id }, amountCents: 500, kind: "topup", idempotencyKey: key() });
     await expect(db.update(ledgerEntries).set({ amountCents: 999999 }).where(eq(ledgerEntries.id, id))).rejects.toMatchObject({ cause: { message: expect.stringMatching(/unveränderlich/) } });
     await expect(db.delete(ledgerEntries).where(eq(ledgerEntries.id, id))).rejects.toMatchObject({ cause: { message: expect.stringMatching(/unveränderlich/) } });
     expect(await walletBalance(db, u.id)).toBe(500);
@@ -74,8 +75,8 @@ describe("Ledger", () => {
 
   it("Gegenbuchung hebt eine Buchung auf, ohne sie zu verändern", async () => {
     const u = await makeUser();
-    await creditWallet(db, u.id, { from: "clearing", amountCents: 2000, kind: "topup", idempotencyKey: key() });
-    const share = await db.transaction((tx) => debitWallet(tx, u.id, { to: "revenue", amountCents: 800, kind: "match_share", idempotencyKey: key() }));
+    await post(db, { debit: { account: "clearing" }, credit: { account: "wallet", userId: u.id }, amountCents: 2000, kind: "topup", idempotencyKey: key() });
+    const share = await db.transaction((tx) => post(tx, { debit: { account: "wallet", userId: u.id }, credit: { account: "revenue" }, amountCents: 800, kind: "match_share", idempotencyKey: key() }));
     expect(await walletBalance(db, u.id)).toBe(1200);
     await db.transaction((tx) => reverseEntry(tx, share.id, { reason: "Test", idempotencyKey: key() }));
     expect(await walletBalance(db, u.id)).toBe(2000);
