@@ -1,17 +1,19 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matchParticipants, matches, paymentCharges, paymentProfiles, teamMembers } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentCharges, paymentProfiles, paymentRefunds, teamMembers } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { ledgerEntries, venues } from "@/db/schema-finance";
-import { tournamentMatches, tournamentTeams, tournaments } from "@/db/schema-league";
+import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
+import { abortDeadline, fixDeadline } from "@/lib/deadlines";
+import { sendPendingTournamentRefunds } from "@/server/payments/tournament-refund";
 import { trialBalance, walletBalance } from "@/server/ledger";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runTournamentCharges } from "@/server/payments/tournament-charge";
 import { confirmResult, submitResult } from "@/server/results";
 import { setSetting } from "@/server/settings";
-import { createTournament, decideShootout, getTournament, joinAsPlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
+import { cancelTournament, closeTournamentsAtDeadline, closeWithJoinedTeams, createTournament, decideShootout, getTournament, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "@/server/tournaments";
 import { takeOverTournamentShare } from "@/server/tournament-card";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
@@ -20,7 +22,9 @@ import { cleanup, makeTeam, makeUser } from "./helpers";
 // (F4), die Provision kommt aus dem eingefrorenen Satz. Die Abbuchung läuft deterministisch über runTournamentCharges (ohne Fälligkeitsprüfung) mit dem FakeProvider.
 let provider: FakeProvider;
 let hall = "";
+let owner: { id: string }; // Admin 1: nach der ersten Abbuchung sagt nur er ein Turnier ab (AC-21), der Veranstalter schlägt nur vor
 beforeAll(async () => {
+  owner = await makeUser("adm1", "owner");
   await setSetting(null, "payments_enabled", true);
   await setSetting(null, "card_payments_enabled", true);
   const [v] = await db.insert(venues).values({ name: `TKF Halle ${Date.now()}`, city: "Essen", isPartner: true, active: true, commissionPercent: "10" }).returning();
@@ -363,5 +367,204 @@ describe("Turnier im Kartenmodell: Kader und Bereit", () => {
     expect(await chargesOf(t.id)).toHaveLength(0); // es war nichts abgebucht, also gibt es nichts zu erstatten
     // nach dem Wiederöffnen ist Bereit nicht mehr möglich
     await expect(setPaidReady(a.captain.id, t.id)).rejects.toThrow(/Zahlung/);
+  });
+});
+
+// --- Paket 3: Frist, Absage, Erstattung ---
+// Zuordnung (AC-5) der Guthaben-Tests von tournament.test.ts, die in b2-ii entfallen:
+//  - "AC-11: Anmeldeschluss mit 3, 4 und 5 von 8 Teams ... Absage mit Vollerstattung an den Zahler" -> unten (Erstattung auf die Karte des Zahlers/Übernehmers)
+//  - "Kader wieder öffnen: alles wird erstattet, der Preis wird neu berechnet, Zahlen geht danach wieder sauber" -> unten (vor der Abbuchung nichts zu erstatten; neuer Preis; neue Abbuchung)
+//  - "Absage erstattet alle bezahlten Anteile vollständig, genau einmal; nach einem Ergebnis nicht mehr" -> unten
+//  - "AC-6: Hat A für B bezahlt, geht die Erstattung an A" -> unten (Übernehmer A zahlt für B: die Erstattung geht an A)
+//  - "AC-8: Ab der Zahlungsphase lehnt der Server Austritt und Abmeldung ab" und "AC-14: kein Austritt mit Erstattung nach der Zahlung" -> unten
+//  - "AC-11: zur 48-h-Frist fällt ein Turnier aus ..." und "AC-16: 1 Stunde vor dem Start ..." -> unten (nichts abgebucht, also nichts zu erstatten; genau eine Absage, auch parallel)
+const refundsOfTournament = (tid: string) => db.select().from(paymentRefunds).where(eq(paymentRefunds.tournamentId, tid));
+const cancelAudits = async (tid: string) => (await db.select().from(auditLog).where(and(eq(auditLog.entityId, tid), eq(auditLog.action, "tournament.cancel")))).length;
+const refundCalls = () => provider.calls.filter((c) => c.method === "createRefund");
+/** Turnier mit kurzem Vorlauf (Anstoß in 20 Stunden, Anmeldeschluss in 10 Stunden), im Kartenmodell, 4 Teams vollzählig. */
+async function shortCardTournament(o: { id: string }) {
+  const now = Date.now();
+  const t = await createTournament(o.id, { ...base, venueId: hall, startsAt: new Date(now + 20 * 3_600_000), registrationDeadline: new Date(now + 10 * 3_600_000) });
+  const squads: Squad[] = [];
+  for (let i = 0; i < t.maxTeams; i++) squads.push(await squad(t.id, 4));
+  expect((await statusOf(t.id)).status).toBe("payment");
+  return { t, squads, players: squads.flatMap((s) => s.players) };
+}
+
+describe("Turnier im Kartenmodell: Anmeldeschluss, Kader öffnen, Absage und Erstattung", () => {
+  it("Gegenstück zu 'AC-11: Anmeldeschluss mit 3, 4 und 5 von 8 Teams': Weitermachen nur ab 4, Absage immer, nur der Veranstalter; danach Karten, Bereit, Abbuchung und Bracket (mit Freilosen)", async () => {
+    const o = await organizer();
+    const expire = (id: string) => db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 1000) }).where(eq(tournaments.id, id));
+    for (const n of [3, 4, 5]) {
+      const t = await createTournament(o.id, { ...base, venueId: hall, maxTeams: 8 });
+      const squads: Squad[] = [];
+      for (let i = 0; i < n; i++) squads.push(await squad(t.id, 4));
+      await expire(t.id);
+      const stranger = await makeUser("fremd");
+      await expect(closeWithJoinedTeams(stranger.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(closeWithJoinedTeams(squads[0].captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(cancelTournament(stranger.id, t.id)).rejects.toThrow(/Veranstalter/);
+      await expect(cancelTournament(squads[0].captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+      if (n < 4) {
+        await expect(closeWithJoinedTeams(o.id, t.id)).rejects.toThrow(/weniger als 4/);
+        expect((await statusOf(t.id)).status).toBe("registration");
+        await cancelTournament(o.id, t.id);
+        expect((await statusOf(t.id)).status).toBe("cancelled");
+      } else {
+        await closeWithJoinedTeams(o.id, t.id);
+        expect(await statusOf(t.id)).toMatchObject({ status: "payment", maxTeams: n });
+        // Bedingung "alle angemeldeten Teams bereit und abgebucht" gilt weiter: ohne Karten und Abbuchung kein Bracket
+        expect(await bracketRows(t.id)).toHaveLength(0);
+        await giveCards(squads.flatMap((s) => s.players));
+        for (const s of squads) await setPaidReady(s.captain.id, t.id);
+        await charge(t.id);
+        expect((await bracketRows(t.id)).length).toBe(n - 1); // mit Freilosen bei 5 Teams
+      }
+    }
+  });
+
+  it("Gegenstück zu 'Absage mit Vollerstattung an den Zahler' und AC-6 ('Hat A für B bezahlt, geht die Erstattung an A'): der Übernehmer A zahlt für B, nach der Abbuchung bekommt A beide Anteile auf die Karte zurück, genau einmal", async () => {
+    const o = await organizer();
+    const { t, squads, players } = await cardTournament(o);
+    const a = squads[0];
+    const [mate, b] = [a.players[1], a.players[2]];
+    await giveCards(players.filter((p) => p.id !== b.id)); // B hat keine Karte: der Captain übernimmt
+    await takeOverTournamentShare(a.captain.id, t.id, b.id, true);
+    for (const s of squads) await setPaidReady(s.captain.id, t.id);
+    await charge(t.id);
+    const charges = await chargesOf(t.id);
+    expect(charges).toHaveLength(16);
+    expect(charges.find((c) => c.userId === b.id)!.payerUserId).toBe(a.captain.id); // gezahlt hat der Captain, nicht B
+
+    await expect(cancelTournament(o.id, t.id)).rejects.toThrow(/nur Admin 1/); // nach der ersten Abbuchung: nur ein Vorschlag, nichts wird erstattet
+    expect(await refundsOfTournament(t.id)).toHaveLength(0);
+    await cancelTournament(owner.id, t.id); // Admin 1 sagt ab, vor dem ersten Ergebnis
+    await sendPendingTournamentRefunds(t.id);
+    await sendPendingTournamentRefunds(t.id); // zweiter Lauf sendet nichts doppelt
+    const refunds = await refundsOfTournament(t.id);
+    expect(refunds).toHaveLength(16);
+    expect(refunds.every((r) => r.status === "succeeded" && r.amountCents === 1000)).toBe(true);
+    expect(refunds.filter((r) => r.userId === a.captain.id)).toHaveLength(2); // eigener Anteil UND der übernommene Anteil von B an den Zahler
+    expect(refunds.some((r) => r.userId === b.id)).toBe(false); // nicht an B
+    expect(refundCalls()).toHaveLength(16);
+    expect(refunds.filter((r) => r.userId === mate.id)).toHaveLength(1);
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+    await expect(cancelTournament(owner.id, t.id)).rejects.toThrow(/beendet oder abgesagt/);
+    expect(refundCalls()).toHaveLength(16); // auch die zweite Absage erstattet nichts erneut
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Gegenstück zu 'Absage erstattet alle bezahlten Anteile vollständig, genau einmal; nach einem Ergebnis nicht mehr': Absage vor der Abbuchung (nichts zu erstatten), Absage mit Bracket (Spiele abgesagt, alle erstattet), nach dem ersten Ergebnis nicht mehr", async () => {
+    const o = await organizer();
+    // vor der Abbuchung: nur der Veranstalter, nichts zu erstatten
+    const early = await cardTournament(o);
+    await expect(cancelTournament((await makeUser("fremd")).id, early.t.id)).rejects.toThrow(/Veranstalter/);
+    await cancelTournament(o.id, early.t.id);
+    expect((await statusOf(early.t.id)).status).toBe("cancelled");
+    expect(await refundsOfTournament(early.t.id)).toHaveLength(0);
+    expect(await chargesOf(early.t.id)).toHaveLength(0);
+
+    // nach der Bracket-Erzeugung, vor dem ersten Ergebnis: die Spiele werden mit abgesagt, alle 16 erstattet
+    const r2 = await runningCardTournament(o);
+    const gameIds = (await bracketRows(r2.t.id)).filter((r) => r.matchId).map((r) => r.matchId!);
+    expect(gameIds.length).toBe(2);
+    await cancelTournament(owner.id, r2.t.id);
+    await sendPendingTournamentRefunds(r2.t.id);
+    for (const id of gameIds) expect((await db.select().from(matches).where(eq(matches.id, id)))[0].status).toBe("cancelled");
+    expect((await refundsOfTournament(r2.t.id)).filter((r) => r.status === "succeeded")).toHaveLength(16);
+
+    // nach dem ersten Ergebnis geht es nicht mehr
+    const r3 = await runningCardTournament(o);
+    const captains = new Map(r3.squads.map((s) => [s.team.id, s.captain]));
+    const first = (await bracketRows(r3.t.id)).find((r) => r.matchId)!;
+    await play(first, 1, 0, captains);
+    await expect(cancelTournament(owner.id, r3.t.id)).rejects.toThrow(/schon Ergebnisse/);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Gegenstück zu 'Kader wieder öffnen: alles wird erstattet, der Preis wird neu berechnet': nur der Veranstalter; vor der Abbuchung nichts zu erstatten; neuer Preis (17 Spieler); danach wird mit dem neuen Preis abgebucht", async () => {
+    const o = await organizer();
+    const { t, squads, players } = await cardTournament(o);
+    await giveCards(players);
+    await setPaidReady(squads[0].captain.id, t.id);
+    await expect(reopenRosters(squads[0].captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+    await reopenRosters(o.id, t.id);
+    expect(await statusOf(t.id)).toMatchObject({ status: "registration", finalShareCents: null });
+    expect((await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id))).every((x) => x.readyAt === null && x.paidReadyAt === null)).toBe(true);
+    expect(await chargesOf(t.id)).toHaveLength(0);
+    await expect(reopenRosters(o.id, t.id)).rejects.toThrow(/Zahlung läuft/);
+
+    // ein Team nimmt einen Spieler dazu: wieder vollzählig, neuer Preis (17 Spieler), neue Abbuchung mit dem neuen Preis
+    const extra = await makeUser("pl");
+    await db.insert(teamMembers).values({ teamId: squads[1].team.id, userId: extra.id, role: "player" });
+    await joinAsPlayer(extra.id, t.id, squads[1].team.id);
+    for (const s of squads) await setRosterComplete(s.captain.id, t.id, true);
+    expect(await statusOf(t.id)).toMatchObject({ status: "payment", finalShareCents: 942 }); // 160 Euro / 17 Spieler, aufgerundet
+    await giveCards([extra]);
+    for (const s of squads) await setPaidReady(s.captain.id, t.id);
+    await charge(t.id);
+    const charges = await chargesOf(t.id);
+    expect(charges).toHaveLength(17);
+    expect(charges.every((c) => c.amountCents === 942 && c.status === "succeeded")).toBe(true);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Gegenstück zu AC-8 und AC-14: ab der Zahlungsphase lehnt der Server Austritt und Abmeldung ab (auch für den Veranstalter); Kader öffnen nur der Veranstalter; danach geht beides wieder", async () => {
+    const o = await organizer();
+    const { t, squads, players } = await cardTournament(o);
+    const a = squads[0];
+    const pl = a.players[1];
+    await giveCards([pl]);
+    expect((await statusOf(t.id)).status).toBe("payment");
+    await expect(leavePlayer(pl.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // Spieler selbst
+    await expect(leavePlayer(a.captain.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // Captain
+    await expect(leavePlayer(o.id, t.id, pl.id)).rejects.toThrow(/keine Änderung/); // sogar der Veranstalter: Weg ist reopenRosters
+    await expect(withdrawTeam(a.captain.id, t.id, a.team.id)).rejects.toThrow(/Abmeldung/);
+    await expect(withdrawTeam(o.id, t.id, a.team.id)).rejects.toThrow(/Abmeldung/);
+    await expect(reopenRosters(a.captain.id, t.id)).rejects.toThrow(/Veranstalter/);
+    await expect(reopenRosters(pl.id, t.id)).rejects.toThrow(/Veranstalter/);
+    // nichts hat sich geändert
+    expect(await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, t.id))).toHaveLength(players.length);
+    expect(await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id))).toHaveLength(4);
+    expect(await chargesOf(t.id)).toHaveLength(0); // es gibt keinen Austritt mit Erstattung: nichts abgebucht
+    await reopenRosters(o.id, t.id);
+    // zurück in der Anmeldephase gehen Austritt und Abmeldung wieder
+    await leavePlayer(pl.id, t.id, pl.id);
+    await withdrawTeam(squads[1].captain.id, t.id, squads[1].team.id);
+  });
+
+  it("Gegenstück zu 'AC-11: zur 48-h-Frist fällt ein Turnier aus': nicht alle Teams bereit/mit Karten: abgesagt, genau einmal (auch parallel), nicht vorher; nichts war abgebucht, also nichts zu erstatten", async () => {
+    const o = await organizer();
+    const { t, squads, players } = await cardTournament(o);
+    await giveCards(players.slice(0, 13)); // drei Spieler ohne Karte
+    for (const s of squads.slice(0, 3)) await setPaidReady(s.captain.id, t.id);
+    const start = (await statusOf(t.id)).startsAt!;
+    await closeTournamentsAtDeadline(new Date(fixDeadline(start).getTime() - 1));
+    expect((await statusOf(t.id)).status).toBe("payment"); // vor der Frist offen
+    const at = fixDeadline(start);
+    const runs = await Promise.all([closeTournamentsAtDeadline(at), closeTournamentsAtDeadline(at), closeTournamentsAtDeadline(at)]);
+    expect(runs.reduce((x, y) => x + y, 0)).toBeGreaterThanOrEqual(1);
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+    expect(await cancelAudits(t.id)).toBe(1); // genau eine Absage
+    expect(await chargesOf(t.id)).toHaveLength(0);
+    expect(await refundsOfTournament(t.id)).toHaveLength(0);
+    expect((await trialBalance()).balanced).toBe(true);
+  });
+
+  it("Gegenstück zu 'AC-16: 1 Stunde vor dem Start fällt ein Turnier mit kurzem Vorlauf aus': nicht alles bereit: abgesagt, genau einmal (parallel); eine Millisekunde früher nicht", async () => {
+    const o = await organizer();
+    const { t, squads, players } = await shortCardTournament(o);
+    await giveCards(players.slice(0, 12));
+    for (const s of squads.slice(0, 3)) await setPaidReady(s.captain.id, t.id);
+    const abort = abortDeadline((await statusOf(t.id)).startsAt!);
+    await closeTournamentsAtDeadline(new Date(abort.getTime() - 1));
+    expect((await statusOf(t.id)).status).toBe("payment");
+    const runs = await Promise.all([closeTournamentsAtDeadline(abort), closeTournamentsAtDeadline(abort)]);
+    expect(runs.reduce((x, y) => x + y, 0)).toBeGreaterThanOrEqual(1);
+    expect((await statusOf(t.id)).status).toBe("cancelled");
+    expect(await cancelAudits(t.id)).toBe(1);
+    expect(await chargesOf(t.id)).toHaveLength(0);
+    expect(await refundsOfTournament(t.id)).toHaveLength(0);
+    expect((await trialBalance()).balanced).toBe(true);
   });
 });
