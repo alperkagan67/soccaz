@@ -37,6 +37,14 @@ export async function cardPaymentsEnabled(exec: Exec = db): Promise<boolean> {
   return (await getSetting<boolean>("card_payments_enabled", false, exec)) === true;
 }
 
+/**
+ * Turniere: Kartenfluss nur, wenn der Kartenschalter UND "Zahlungen" EIN sind. Bei "Zahlungen AUS" wird ein Turnier mit Preis NICHT kostenlos: es bleibt eingefroren (wie bei Karten-AUS,
+ * Notabschaltung, Alarm nach 6 h, keine automatische Absage). Spiele entscheiden dagegen pro Spiel (wallet.ts cardModeActive).
+ */
+export async function tournamentPaymentsActive(exec: Exec = db): Promise<boolean> {
+  return (await cardPaymentsEnabled(exec)) && (await paymentsEnabled(exec));
+}
+
 /** Mindestzahl zahlender Spieler, ab der ein Spiel stattfindet und durch die der Hallenpreis höchstens geteilt wird. */
 export async function minPaidPlayers(exec: Exec = db): Promise<number> {
   const n = await getSetting<number>("min_paid_players", 8, exec);

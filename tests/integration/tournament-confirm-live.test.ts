@@ -236,6 +236,10 @@ describe("M5-7b R-T251: arm ueberspringt Turniere ohne bekannte Frist", () => {
 // ---- R-T255: N1 (ID und Berechtigung vor der Sperre), N2 (Liste und Erinnerung auf zusageRequired) ----
 import { listTournamentConfirmations, notifyHallConfirmReminders } from "@/server/tournament-confirm";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 describe("M5-7b R-T255", () => {
   it("N1: ungueltige ID und fremde Halle bekommen die neutrale Meldung (kein Roh-Postgres-Fehler)", async () => {
     const { v, t } = await fixture({ snapshot: true });

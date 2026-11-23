@@ -8,13 +8,20 @@ import { query, seedAdmin, setPlatformSetting } from "./helpers-db";
 // nicht nur, was am Bildschirm sichtbar ist.
 test.describe.configure({ mode: "serial" });
 
-test.beforeAll(async () => {
+// Schalter pro Test (Regel 23): Kartenmodell UND Zahlungen AN (bei "Zahlungen AUS" ist ein Spiel kostenlos, 012 M6b Gratis); Reset nach jedem Test.
+test.beforeEach(async () => {
+  await setPlatformSetting("payments_enabled", true);
   await setPlatformSetting("card_payments_enabled", true);
+});
+test.afterEach(async () => {
+  await setPlatformSetting("payments_enabled", false);
+  await setPlatformSetting("card_payments_enabled", false);
 });
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
 });
 test.afterAll(async () => {
+  await setPlatformSetting("payments_enabled", false);
   await setPlatformSetting("card_payments_enabled", false);
   await closeTestDb();
 });

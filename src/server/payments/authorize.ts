@@ -11,7 +11,7 @@ import { tournaments } from "@/db/schema-league";
 import { tournamentCardMode } from "../tournament-card";
 import { effectiveGraceEnd, graceText } from "@/lib/grace";
 import { audit } from "../audit";
-import { cardPaymentsEnabled } from "../settings";
+import { cardPaymentsEnabled, tournamentPaymentsActive } from "../settings";
 import { DomainError } from "../teams";
 import { getPaymentProvider } from "./provider";
 import { matchIdOf } from "./charge-context";
@@ -174,7 +174,7 @@ export async function hasOpenTournamentAuthorization(userId: string, tournamentI
 
 export async function getTournamentAuthorizationSecret(userId: string, tournamentId: string, now: Date = new Date()): Promise<{ clientSecret: string }> {
   if (typeof tournamentId !== "string" || !UUID.test(tournamentId)) throw new DomainError(NOT_AVAILABLE);
-  if (!(await cardPaymentsEnabled()) || !(await tournamentCardMode(db, tournamentId))) throw new DomainError(NOT_AVAILABLE);
+  if (!(await tournamentPaymentsActive()) || !(await tournamentCardMode(db, tournamentId))) throw new DomainError(NOT_AVAILABLE);
   const row = await openTournamentRow(userId, tournamentId, now);
   if (!row) throw new DomainError(NOT_AVAILABLE);
   await countAttempt(userId, tournamentId, row.currentAttempt, now);

@@ -12,6 +12,10 @@ import { paymentCharges } from "@/db/schema";
 import { getTournament } from "@/server/tournaments";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
+// Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
+beforeAll(() => setSetting(null, "payments_enabled", true));
+afterAll(() => setSetting(null, "payments_enabled", false));
+
 // 012 M5-3: Turnier im Kartenmodell. "Bereit" = Karte hinterlegt, "Anteil uebernehmen" nur im eigenen Team, nichts wird bezahlt oder abgebucht, das Bracket entsteht nicht.
 
 let hall = ""; // Partnerhalle: im Kartenmodell Pflicht (M5-1)
@@ -298,13 +302,13 @@ describe("M5-3: Kartenmodell im Turnier", () => {
     await expect(takeOverTournamentShare(squads[0].captain.id, t.id, squads[0].players[1].id, MANDATE)).rejects.toThrow();
   });
 
-  it("Schalter AUS: alter Weg (Bereit verlangt Bezahlung, Karten genuegen nicht)", async () => {
+  it("Schalter AUS bei bereits fixiertem Kartenfluss: Bezahlung und Bereit sind pausiert (kein Guthaben-Weg an Halle und Provision vorbei, Review Zahlungen AUS)", async () => {
     const { t, squads } = await paymentPhase();
     for (const p of squads[0].players) await giveCard(p.id);
     await setSetting(null, "card_payments_enabled", false);
     try {
       expect(await tournamentCardMode(db, t.id)).toBe(false);
-      await expect(setPaidReady(squads[0].captain.id, t.id)).rejects.toThrow(/bezahlt/);
+      await expect(setPaidReady(squads[0].captain.id, t.id)).rejects.toThrow(/pausiert/);
     } finally {
       await setSetting(null, "card_payments_enabled", true);
     }

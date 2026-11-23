@@ -138,6 +138,24 @@ Die Einzelheiten stehen oben; hier die Reihenfolge für Worker-Worktrees. Nur Na
 4. **`PAYMENTS_FAKE=1`** nur für Tests und CI (Fake-Anbieter ohne Stripe). In Produktion und Staging nie setzen: Staging läuft mit `NODE_ENV=production`; der Code verweigert `PAYMENTS_FAKE=1` nur bei `NODE_ENV=production` (`src/server/payments/provider.ts` wirft einen harten Fehler), die Regel für Staging ist also eine Betriebsregel und zugleich durch den Produktions-Build abgesichert. Ist `STRIPE_SECRET_KEY` gesetzt, wählt der Code Stripe statt des Fake-Anbieters; die Integrationstests brauchen den Fake-Anbieter und werden deshalb mit leerem Schlüssel gestartet (`STRIPE_SECRET_KEY= npm run test:integration`; die `.env.local` überschreibt eine schon gesetzte, auch leere Variable nicht). `STRIPE_WEBHOOK_SECRET` setzt die CI für die Tests auf einen Testwert (`.github/workflows/ci.yml`); lokal ist dafür nichts zu tun, die Tests, die ein Webhook-Geheimnis brauchen, setzen es selbst (z. B. `tests/integration/card-setup.test.ts`).
 5. **`card_payments_enabled` umlegen:** nur ohne offene bezahlte Spiele (GO-LIVE G8-012; die Konto-Löschung bei laufender Abbuchung läuft nur über den Support), und in Produktion erst, wenn M3c-1 (Fenster und Wiederabbuchen), M3c-1c (3-D-Secure-Freigabe) UND M3c-2 (Nachrücker, automatische Absage) gemergt und deployt sind (GO-LIVE G8-012, G9-012).
 
+### Zahlungen AUS bei eingeschaltetem Kartenmodell (Gratis-/Testbetrieb)
+
+**`payments_enabled` AUS = Gratis-/Testbetrieb. In Produktion nur bewusst ausschalten.** Wirkung bei `card_payments_enabled` EIN und `payments_enabled` AUS:
+
+| Gegenstand | Verhalten |
+|---|---|
+| Neue Beitritte und Bereit-Meldungen in Spielen (Frist-Regel) | kostenlos, keine Karte verlangt (`cardModeActive` liefert false) |
+| Captains bestätigen ein solches Spiel | der Anteil wird als 0 fixiert (kostenlos); keine Abbuchung, keine Provision, auch nicht nach dem Wiedereinschalten |
+| Spiel mit begonnener Abrechnung (Abbuchungs- oder Erstattungszeilen, fixierter Anteil > 0, Platz `charge_pending`/`charged`) | bleibt unverändert im Kartenmodell: Abbuchung, Nachzahlfenster, Erstattung und Frist-Regel laufen weiter (`isChargeBound`); kein Geld verschwindet, keine Doppelbelastung |
+| Spiel mit Karte, aber ohne Abrechnung | friert nicht ein (eine hinterlegte Karte allein bindet nicht) |
+| Turnier mit Preis | wird NICHT kostenlos: bleibt eingefroren (wie bei Karte AUS): keine Abbuchung, keine Absage durch das Nachzahlfenster, Alarm für Admin 1 ab 6 Stunden (`tournamentPaymentsActive`) |
+| Zusage der Halle (Turnier) | unabhängig von Zahlungen: die Erinnerung 24 h/6 h vor der Frist (`notifyHallConfirmReminders`) läuft auch bei AUS und bei eingefrorenen Turnieren; Zusage = Buchungsbedingung |
+| Wiedereinschalten (`payments_enabled` EIN) | Spiele ohne Karte, nicht fixiert, kehren ins Kartenmodell zurück: Karten nachholen, sonst Absage zur Frist (nichts abgebucht, kein Geldverlust); kostenlos fixierte Spiele bleiben kostenlos |
+
+Der Schalter wirkt nicht rückwirkend auf bezahlte Plätze.
+
+**Ertragsverzicht:** Ein bei AUS bestätigtes Spiel ist mit Anteil 0 fixiert und bleibt auch nach dem Wiedereinschalten kostenlos (keine Abbuchung, keine Provision). Das ist gewollt und entgeht dem Ertrag; vor dem Ausschalten in Produktion bedenken (siehe GO-LIVE-AUDIT). Ein Spiel mit Guthaben im Spiel (`paid_cents > 0`) wird nie gratis fixiert. **Turniere:** Ein bei AUS angelegtes oder fixiertes Turnier mit Preis bekommt beim Fixieren Halle, Zugangs-Snapshot und Provisionssatz (Kartenfluss) und ist damit eingefroren (Alarm ab 6 Stunden, keine Abbuchung, keine Absage); es wird nie still kostenlos. Das Anlegen verlangt bei eingeschaltetem Kartenschalter weiterhin eine Partnerhalle.
+
 ## Hallen-Buchung
 
 Sobald ein bezahltes Spiel bestätigt ist, entsteht im Admin-Bereich unter **Buchungen** ein Auftrag. Es gibt noch keinen automatischen Buchungs-Agenten: Die Halle wird per Telefon, Mail oder Webseite gebucht und im Auftrag eingetragen. Für einen späteren Agenten gibt es die Schnittstelle `src/server/booking-agent.ts`.
