@@ -3,6 +3,7 @@
 import { acceptRequestAction } from "@/server/actions";
 import { SubmitButton } from "@/components/FormBits";
 import { useFormAction } from "@/components/useFormAction";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 export function AcceptForm({ requestId, teams }: { requestId: string; teams: { id: string; name: string }[] }) {
   const { state, pending, onSubmit, formAction } = useFormAction(acceptRequestAction.bind(null, requestId));
@@ -23,6 +24,7 @@ export function AcceptForm({ requestId, teams }: { requestId: string; teams: { i
         </>
       )}
       <SubmitButton pending={pending}>Spiel annehmen</SubmitButton>
+      <p className="text-xs text-muted" data-testid="accept-hint">{ZP.hintLater}</p>
       {state?.error && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

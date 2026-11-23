@@ -2,6 +2,7 @@ import { expect, test, type Browser, type Locator, type Page } from "@playwright
 import { setupLobby } from "./flows";
 import { closeContexts, closeTestDb, newUser, run } from "./helpers";
 import { query, setPlatformSetting } from "./helpers-db";
+import { ZP } from "../../src/lib/zahlungspflicht-texte";
 
 // Vertrag 012, M3c-3b: "Anteil übernehmen" nur mit der Tastatur bedienbar, Dialogtext vollständig lesbar, Tippziele, und "Gedeckt" für Dritte neutral (kein Name, kein Knopf).
 // Rollen wie in karte-uebernahme.spec.ts: C = Captain, A = Mitspieler ohne Karte, B = Übernehmer, T = Dritter. Teamspiel, Kartenmodell AN.
@@ -104,10 +105,10 @@ test("nur Tastatur: Auslöser per Fokus und Enter, Fokus auf dem Haken, Tab blei
     order.push(a.type === "checkbox" ? "Haken" : a.text);
     await g.B.keyboard.press("Tab");
   }
-  expect(order).toEqual(["Haken", "Abbrechen", "Anteil übernehmen", "Haken"]);
+  expect(order).toEqual(["Haken", "Abbrechen", ZP.coverConfirm, "Haken"]);
   await dlg.getByRole("checkbox").focus();
   await g.B.keyboard.press("Shift+Tab"); // umgekehrt: vom Haken zurück zur Bestätigung (Falle schließt)
-  expect((await activeInfo(g.B)).text).toBe("Anteil übernehmen");
+  expect((await activeInfo(g.B)).text).toBe(ZP.coverConfirm);
 
   // Enter auf der Bestätigung übernimmt
   await g.B.keyboard.press("Enter");

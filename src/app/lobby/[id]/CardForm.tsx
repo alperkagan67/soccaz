@@ -7,6 +7,7 @@ import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { createCardSetupAction } from "@/server/payments/card-actions";
 import { fakeCardReadyAction } from "@/server/payments/fake-card-actions";
 import { activateStoredCard } from "./stored-card";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 let stripePromise: Promise<Stripe | null> | null = null;
 /** Der öffentliche Schlüssel kommt nur aus NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (nie im Code). Ohne Schlüssel gibt es kein Formular. */
@@ -138,8 +139,8 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false, o
           <input id="card-mandate-stored" type="checkbox" className="mt-1" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
           <span data-testid="card-mandate">{mandateText}</span>
         </label>
-        <button className="btn btn-primary w-full" disabled={busy || !accepted} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : "Karte für diese Lobby nutzen"}</button>
-        <button type="button" className="btn btn-ghost w-full" onClick={switchToNewCard}>Andere Karte hinterlegen</button>
+        <button className="btn btn-primary w-full" disabled={busy || !accepted} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : ZP.cardUseStored}</button>
+        <button type="button" className="btn btn-ghost w-full" onClick={switchToNewCard}>{ZP.cardOther}</button>
         {error && <p className="error" role="alert" data-testid="card-error">{error}</p>}
       </div>
     );
@@ -158,7 +159,7 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false, o
             <span data-testid="card-mandate">{mandateText}</span>
           </label>
           <button className="btn btn-primary w-full" disabled={busy || !accepted} onClick={start} data-testid={fake ? "card-fake" : "card-start"}>
-            {busy ? "Bitte warten…" : fake ? (change ? "Testkarte ändern" : "Testkarte hinterlegen") : change ? "Karte ändern" : "Karte hinterlegen"}
+            {busy ? "Bitte warten…" : fake ? (change ? "Testkarte ändern" : "Testkarte hinterlegen") : change ? ZP.cardChange : ZP.cardSave}
           </button>
         </>
       )}

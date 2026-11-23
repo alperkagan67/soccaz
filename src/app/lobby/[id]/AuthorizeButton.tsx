@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { createAuthorizationAction, createTournamentAuthorizationAction } from "@/server/payments/authorize-actions";
 import { fakeAuthorizeAction, fakeAuthorizeTournamentAction } from "@/server/payments/fake-card-actions";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 let stripePromise: Promise<Stripe | null> | null = null;
 /** Der öffentliche Schlüssel kommt nur aus NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY (nie im Code). */
@@ -85,7 +86,7 @@ export function AuthorizeButton({ matchId, target, fake }: ({ matchId: string; t
         </>
       ) : (
         <button className="btn btn-primary w-full" disabled={busy} onClick={start} data-testid="authorize-start">
-          {busy ? "Bitte warten…" : "Zahlung freigeben"}
+          {busy ? "Bitte warten…" : ZP.authorize}
         </button>
       )}
       {error && (

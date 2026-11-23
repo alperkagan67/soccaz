@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { coverConsequence, coverDialogBody, type CoverAmounts } from "@/lib/cover-text";
 import { releaseCoverAction, takeOverShareAction } from "@/server/actions";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 // Backlog 72: Nach erfolgreicher Übernahme verschwindet der Auslöser, die neue Statuskarte erscheint erst nach dem Neuladen der Seite durch die Server-Aktion. Der Fokus soll dann
 // auf der Karte liegen (nicht verloren auf der Seite): der Knopf merkt sich den Erfolg, die Karte nimmt beim Erscheinen den Fokus. Nur wenn die Übernahme gerade hier erfolgt ist
@@ -33,11 +34,11 @@ export function CoverCoveringCard({ children }: { children: ReactNode }) {
 export function CoverButton({ matchId, targetUserId, targetName, amounts, mandateText }: { matchId: string; targetUserId: string; targetName: string; amounts: CoverAmounts | null; mandateText: string }) {
   return (
     <ConfirmDialog
-      trigger={{ label: "Anteil übernehmen", variant: "secondary", size: "sm" }}
+      trigger={{ label: ZP.coverTrigger, variant: "secondary", size: "sm" }}
       title={`Anteil von ${targetName} übernehmen?`}
       body={coverDialogBody(targetName)}
       consequence={amounts ? coverConsequence(targetName, amounts) : undefined}
-      confirmLabel="Anteil übernehmen"
+      confirmLabel={ZP.coverConfirm}
       consent={{ label: mandateText }}
       onConfirmAction={async ({ consent }) => {
         const result = await takeOverShareAction(matchId, targetUserId, consent);

@@ -1,0 +1,40 @@
+// ENTWURF, Rechtsprüfung (Backlog, Rechtsliste): Beschriftung der Knöpfe, die eine Zahlungspflicht auslösen (§ 312j Abs. 3 BGB, "Button-Lösung"), und die Hinweiszeilen dazu. KEINE endgültige Rechtsaussage.
+//
+// EINE Stelle für den Wortlaut: alle Zahlungsknöpfe (Lobby, Karte, Anteil übernehmen, Turnier) nutzen NUR diese Konstanten; ein Test (tests/unit/zahlungspflicht-texte.test.ts) sperrt Streutext in den Komponenten.
+// Ändert die Rechtsprüfung den Wortlaut, wird er hier geändert (und nur hier).
+//
+// Der Gesetzeswortlaut ist "zahlungspflichtig bestellen" oder eine entsprechend eindeutige Formulierung. Beide Varianten stehen hier als Entwurf; aktiv ist "zahlungspflichtig zusagen" bis zur Rechtsprüfung.
+// Keine Logik-, Preis- oder Zahlungsänderung: die Konstanten ersetzen nur Beschriftungen.
+export const ZAHLUNGSPFLICHT_VARIANTEN = { zusagen: "zahlungspflichtig zusagen", bestellen: "zahlungspflichtig bestellen" } as const;
+export type ZahlungspflichtVariante = keyof typeof ZAHLUNGSPFLICHT_VARIANTEN;
+export const ZAHLUNGSPFLICHT_AKTIV: ZahlungspflichtVariante = "zusagen";
+export const ZAHLUNGSPFLICHT = ZAHLUNGSPFLICHT_VARIANTEN[ZAHLUNGSPFLICHT_AKTIV];
+
+/** Knopfname = sichtbarer Text (kein abweichendes aria-label): Aktionswort, Gedankenstrich, Formel. Der Aktionswort-Anfang bleibt erhalten ("Ich bin bereit", "Bereit", "Anteil übernehmen"). */
+export const mitZahlungspflicht = (aktion: string, variante: ZahlungspflichtVariante = ZAHLUNGSPFLICHT_AKTIV) => `${aktion} – ${ZAHLUNGSPFLICHT_VARIANTEN[variante]}`;
+
+export const ZP = {
+  /** Spiel: "Ich bin bereit" (der verbindliche Moment: Platz zugesagt, Anteil wird zur Frist abgebucht). Ohne Zahlung (Gratis, kostenloses Spiel) bleibt der schlichte Text. */
+  gameReady: mitZahlungspflicht("Ich bin bereit"),
+  gameReadyFree: "Ich bin bereit",
+  gameNotReady: "Nicht mehr bereit",
+  /** Turnier (Captain): Team bereit melden. */
+  tournamentReady: mitZahlungspflicht("Bereit"),
+  tournamentReadyFree: "Bereit",
+  /** Anteil eines Mitspielers übernehmen (Spiel und Turnier): Bestätigungsknopf im Dialog; der Auslöser (trigger) öffnet nur den Dialog. */
+  coverTrigger: "Anteil übernehmen",
+  coverConfirm: mitZahlungspflicht("Anteil übernehmen"),
+  /** Karte hinterlegen: die Zustimmung (Mandat) ist die Erlaubnis zur späteren Abbuchung; jetzt wird nichts abgebucht. */
+  cardSave: "Karte hinterlegen und Abbuchung erlauben",
+  cardChange: "Karte ändern und Abbuchung erlauben",
+  cardUseStored: "Karte für diese Lobby nutzen und Abbuchung erlauben",
+  cardOther: "Andere Karte hinterlegen",
+  /** Bank-Freigabe (3-D-Secure) einer bestehenden Zahlung: kein eigener Vertragsschluss, Text unverändert. */
+  authorize: "Zahlung freigeben",
+  /** Mittelbare Knöpfe (keine Abbuchung ohne Karte, Mandat und Bereit): Hinweiszeile statt Knopftext. */
+  hintLater: "Spielst du mit Bezahlung, brauchst du danach eine Karte. Dein Anteil wird erst zur Frist abgebucht, bis dahin nicht.",
+  hintOrganizer: "Jeder Spieler zahlt seinen eigenen Anteil per Karte, abgebucht wird erst zur Frist.",
+} as const;
+
+/** Betragszeile unter dem Knopf: nur wo der Betrag ohne Logikänderung vorliegt (Lobby: card.shareCents). */
+export const betragszeile = (betragText: string | null) => (betragText ? `Danach wird dein Anteil von ${betragText} zur Frist abgebucht.` : "Danach wird dein Anteil zur Frist abgebucht.");

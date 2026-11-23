@@ -15,6 +15,7 @@ import {
 } from "@/server/actions";
 import { countdownText } from "@/lib/lobby-rules";
 import { formatEuro } from "@/lib/money";
+import { ZP, betragszeile } from "@/lib/zahlungspflicht-texte";
 import { AuthorizeButton } from "./AuthorizeButton";
 import { CardForm } from "./CardForm";
 
@@ -63,6 +64,7 @@ type MyActionsProps = {
 export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProps) {
   const { error, pending, run } = useRun();
   const busy = pending ? "opacity-60" : "";
+  const payable = Boolean(card) && card?.shareCents !== 0; // Zahlungspflicht nur im Kartenmodell und bei einem Anteil ungleich 0 (kostenlose Spiele: schlichter Text)
 
   return (
     <div className="card space-y-3">
@@ -105,8 +107,9 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
                 disabled={pending || (!ready && Boolean(card && !card.ready))}
                 onClick={() => run(() => setReadyAction(matchId, !ready))}
               >
-                {ready ? "Nicht mehr bereit" : "Ich bin bereit"}
+                {ready ? ZP.gameNotReady : payable ? ZP.gameReady : ZP.gameReadyFree}
               </button>
+              {!ready && payable && <p className="text-xs text-muted" data-testid="ready-amount">{betragszeile(card?.shareCents != null ? formatEuro(card.shareCents) : null)}</p>}
             </>
           ) : (
             <p className="text-sm text-muted">Du wartest auf die Zuweisung durch einen Team-Admin.</p>
@@ -120,6 +123,9 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
         <button className={`btn btn-primary w-full ${busy}`} disabled={pending} onClick={() => run(() => joinLobbyAction(matchId))}>
           Dem Spiel beitreten
         </button>
+      )}
+      {mode === "join" && (
+        <p className="text-xs text-muted" data-testid="join-hint">{ZP.hintLater}</p>
       )}
       {mode === "substitute" && (
         <>

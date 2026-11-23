@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { coverDialogBody } from "@/lib/cover-text";
 import { fakeTournamentCardAction } from "@/server/payments/fake-card-actions";
 import { releaseTournamentCoverAction, takeOverTournamentShareAction } from "@/server/tournament-actions";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 export type TeamSeat = { userId: string; name: string; hasCard: boolean; covered: boolean };
 
@@ -63,10 +64,10 @@ export function TournamentCard({
               <li key={m.userId} className="flex items-center justify-between gap-2">
                 <span className="text-sm">{m.name}</span>
                 <ConfirmDialog
-                  trigger={{ label: "Anteil übernehmen", variant: "secondary", size: "sm" }}
+                  trigger={{ label: ZP.coverTrigger, variant: "secondary", size: "sm" }}
                   title={`Anteil von ${m.name} übernehmen?`}
                   body={coverDialogBody(m.name)}
-                  confirmLabel="Anteil übernehmen"
+                  confirmLabel={ZP.coverConfirm}
                   consent={{ label: coverMandateText }}
                   onConfirmAction={async ({ consent }) => (await takeOverTournamentShareAction(tournamentId, m.userId, consent)) ?? { ok: true }}
                 />
