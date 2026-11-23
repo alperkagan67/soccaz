@@ -3,8 +3,16 @@ import { seedOwner } from "../helpers-db";
 
 // AC-27: Seitenliste der Kontrastmessung. Jede Seite wird mit der angegebenen Rolle geladen und in beiden Farbschemata gemessen. Neue Seiten (M2c, M3) hier eintragen.
 export type Role = "gast" | "spieler" | "admin1";
+
+/**
+ * Umfang der Messung. "baseline" (Phase 1, Laufzeit ca. 3 Minuten je Spec, Entscheid TM): Gast und Spieler, sechs Kernseiten, dunkel und hell. "voll": alle Rollen und alle Seiten (nach M2c im verbindlichen Lauf).
+ * Der Umfang ist diese eine Konstante; die Seitenliste unten bleibt vollständig.
+ */
+export const UMFANG = ((): "baseline" | "voll" => "baseline")(); // Funktionsaufruf, damit TypeScript den Vergleich mit "voll" nicht als unmöglich ablehnt
+export const ROLLEN: Role[] = UMFANG === "voll" ? ["gast", "spieler", "admin1"] : ["gast", "spieler"];
+const KERNSEITEN = new Set(["gast-start", "gast-hallen", "gast-spiel-gespielt", "spieler-app", "spieler-lobby", "spieler-spiel-gespielt"]);
 export type PageEntry = { id: string; role: Role; path: string };
-export type World = { pages: PageEntry[]; players: { spieler: { email: string; name: string }; admin1: { email: string; name: string } } };
+export type World = { pages: PageEntry[]; players: { spieler: { email: string; name: string }; admin1?: { email: string; name: string } } };
 
 /** Legt die Daten an, die für die Seiten gebraucht werden (ohne Oberfläche, wie die anderen Specs). `tag` trennt die beiden Specs (390/1280). */
 export async function seedWorld(tag: string): Promise<World> {
@@ -14,7 +22,7 @@ export async function seedWorld(tag: string): Promise<World> {
   const spielerId = await seedUser(spielerKey, spielerName);
   const gegnerId = await seedUser(`kzg${tag}`, `Kontrast Gegner ${tag}`);
   const adminKey = `kza${tag}`;
-  await seedOwner(adminKey, `Kontrast Admin ${tag}`);
+  if (UMFANG === "voll") await seedOwner(adminKey, `Kontrast Admin ${tag}`); // Admin 1 gibt es höchstens einmal je Datenbank: nur anlegen, wenn er gebraucht wird
   const mkTeam = async (name: string, admin: string, color: string) => {
     const slug = `e2e-kz-${name.replace(/\W+/g, "-").toLowerCase()}`;
     const { rows } = await db.query("insert into teams (name, slug, city, color, created_by) values ($1, $2, 'Essen', $3, $4) returning id, slug", [name, slug, color, admin]);
@@ -40,10 +48,10 @@ export async function seedWorld(tag: string): Promise<World> {
   await addParticipant(lobbyId, spielerId, home.id, true);
   await addParticipant(lobbyId, gegnerId, away.id);
   // offene Hallen-Anfrage (Admin-Seite)
-  await db.query("insert into venues (name, city, source, verified, active, approval_status, approval_requested_at) values ($1, 'Essen', 'manual', false, false, 'requested', now())", [`Kontrast Anfragehalle ${tag} ${run}`]);
+  if (UMFANG === "voll") await db.query("insert into venues (name, city, source, verified, active, approval_status, approval_requested_at) values ($1, 'Essen', 'manual', false, false, 'requested', now())", [`Kontrast Anfragehalle ${tag} ${run}`]);
 
   const gastSeiten = ["/", "/anmelden", "/hilfe", "/datenschutz", "/hallen", "/rangliste", "/teams", "/spiele"];
-  const pages: PageEntry[] = [
+  const alle: PageEntry[] = [
     ...gastSeiten.map((path) => ({ id: path === "/" ? "gast-start" : `gast${path.replace(/\//g, "-")}`, role: "gast" as const, path })),
     { id: "gast-spiel-gespielt", role: "gast", path: `/spiele/${playedId}` },
     { id: "gast-team", role: "gast", path: `/teams/${home.slug}` },
@@ -56,8 +64,9 @@ export async function seedWorld(tag: string): Promise<World> {
     { id: "admin-hallen-anfragen", role: "admin1", path: "/admin/hallen/anfragen" },
     { id: "admin-einstellungen", role: "admin1", path: "/admin/einstellungen" },
   ];
+  const pages = UMFANG === "voll" ? alle : alle.filter((p) => KERNSEITEN.has(p.id));
   return {
     pages,
-    players: { spieler: { email: `${spielerKey}-${run}@test.local`, name: spielerName }, admin1: { email: `${adminKey}-${run}@test.local`, name: `Kontrast Admin ${tag}` } },
+    players: { spieler: { email: `${spielerKey}-${run}@test.local`, name: spielerName }, ...(UMFANG === "voll" ? { admin1: { email: `${adminKey}-${run}@test.local`, name: `Kontrast Admin ${tag}` } } : {}) },
   };
 }

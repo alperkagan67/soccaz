@@ -2,12 +2,11 @@ import { expect, test } from "@playwright/test";
 import { AUDIT_MODE, auditPasses, groupEvaluations, renderProtocol, summarize, type Evaluated } from "../../../src/lib/contrast-audit";
 import { closeTestDb, devLogin } from "../helpers";
 import { measurePage } from "./messen";
-import { seedWorld, type Role, type World } from "./seiten";
+import { ROLLEN, seedWorld, type World } from "./seiten";
 
-// AC-27 (Vertrag 013 v3): Kontrastmessung des gerenderten Zustands, hell und dunkel, eine Breite je Spec (390 oder 1280). Phase 1 (AUDIT_MODE "report"): das Protokoll steht im Job-Log
+// AC-27 (Vertrag 013 v3): Kontrastmessung des gerenderten Zustands, hell und dunkel, eine Breite je Spec (390 oder 1280). Umfang und Rollen: Konstanten UMFANG und ROLLEN in seiten.ts. Phase 1 (AUDIT_MODE "report"): das Protokoll steht im Job-Log
 // (Block ::group::), Verstöße erscheinen als Warnung; der Test bleibt grün. Verbindlich (Test schlägt fehl) erst nach M2c: AUDIT_MODE in src/lib/contrast-audit.ts umstellen.
 const SCHEMES = ["dark", "light"] as const;
-const ROLES: Role[] = ["gast", "spieler", "admin1"];
 
 export function registerKontrast(viewport: 390 | 1280) {
   test.describe.configure({ mode: "serial" });
@@ -24,13 +23,14 @@ export function registerKontrast(viewport: 390 | 1280) {
   });
 
   for (const scheme of SCHEMES) {
-    for (const role of ROLES) {
+    for (const role of ROLLEN) {
       test(`Messung ${role}, ${scheme}, ${viewport} px`, async ({ browser }) => {
         const ctx = await browser.newContext({ viewport: { width: viewport, height: viewport === 390 ? 844 : 900 }, colorScheme: scheme });
         const page = await ctx.newPage();
         try {
           if (role !== "gast") {
             const who = world.players[role];
+            if (!who) throw new Error(`keine Anmeldedaten für ${role}`);
             await devLogin(page, who.email, who.name);
             await page.waitForURL((url) => !url.pathname.startsWith("/anmelden"), { timeout: 60_000 });
           }
