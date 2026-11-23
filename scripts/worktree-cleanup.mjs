@@ -320,7 +320,13 @@ export function classifyEntry({ name, root, realRoot, mainRepoReal, known, fsx =
     if (!m) return { status: "uebersprungen", reason: ".git-Datei ohne gitdir-Zeile (kein Gitlink), bitte manuell pruefen", info };
     const target = path.resolve(full, m[1].trim());
     // Nur wenn das gitdir FEHLT (kein Branch/Eintrag mehr): existiert es noch (z. B. gepruneter Eintrag, fremdes Repo), bleibt der Ordner zur manuellen Pruefung
-    if (fsx.existsSync(target)) return { status: "uebersprungen", reason: "Gitlink, gitdir existiert noch (nicht in worktree list), bitte manuell pruefen", info };
+    let targetGone = false;
+    try {
+      fsx.lstatSync(target);
+    } catch (e) {
+      targetGone = e.code === "ENOENT"; // nur "fehlt eindeutig" zaehlt; EACCES/EPERM = unklar = manuell pruefen
+    }
+    if (!targetGone) return { status: "uebersprungen", reason: "Gitlink, gitdir existiert noch (nicht in worktree list), bitte manuell pruefen", info };
     if (tooYoung()) return { status: "uebersprungen", reason: "Gitlink-Rest, aber juenger als 24 h, bleibt vorerst", info };
     return { status: "kandidat", reason: "Worktree-Rest: Gitlink auf fehlendes gitdir, aelter als 24 h", info };
   }
@@ -575,7 +581,7 @@ function main(argv) {
     return 0;
   } catch (e) {
     for (const l of e.partial ?? []) console.log(l);
-    console.error(`Abbruch, nichts angefasst oder Rest unklar: ${String(e.message).split("\n")[0]}`);
+    console.error(`Abbruch (bereits ausgegebene Zeilen oben gelten, der Rest wurde nicht bearbeitet): ${String(e.message).split("\n")[0]}`);
     return 3;
   }
 }
