@@ -18,7 +18,7 @@ export async function rejectedVenueForm(userId: string, venueId: string): Promis
   const [v] = await db.select().from(venues).where(and(eq(venues.id, venueId), eq(venues.approvalStatus, "rejected")));
   if (!v) return null;
   const rules = await db.select().from(priceRules).where(eq(priceRules.venueId, venueId)).orderBy(desc(priceRules.validFrom), desc(priceRules.createdAt));
-  const price = (d: number) => rules.find((r) => r.durationMin === d)?.priceCents;
+  const price = (d: number) => rules.find((r) => r.durationMin === d)?.costCents; // "Hallenmiete je Termin" = costCents (priceCents kann nach einer Admin-Regel abweichen)
   const p60 = price(60);
   const p90 = price(90);
   return {
