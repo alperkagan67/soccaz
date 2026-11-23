@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { and, asc, eq, isNull, like, sql } from "drizzle-orm";
 import { shuffle } from "@/lib/tournament";
 import { db } from "@/db";
-import { auditLog, matchParticipants, matches, teamMembers, teams } from "@/db/schema";
+import { auditLog, matchParticipants, matches, paymentCharges, teamMembers, teams } from "@/db/schema";
 import { teamStats } from "@/db/schema-community";
 import { gameInvites } from "@/db/schema-matchmaking";
 import { creditWallet, trialBalance, walletBalance } from "@/server/ledger";
@@ -20,6 +20,7 @@ import { ALL_MATCHES, mayAnnounceToAll, subscribeToLobby } from "@/server/realti
 import { GET as eventsGET } from "@/app/api/spiele/[id]/events/route";
 import { teamCard } from "@/server/cards";
 import { setSetting } from "@/server/settings";
+import { runChargesIfDue } from "@/server/payments/charge-trigger";
 import { ledgerEntries, pendingRefunds } from "@/db/schema-finance";
 import { fixShare, privateListLocked, settleMatch } from "@/server/wallet";
 import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
@@ -1568,7 +1569,14 @@ describe("Privatspiel im Kartenmodell (Gegenstücke zu AC-4, AC-6, AC-8)", () =>
 
   it("AC-8: weniger als 48 Stunden vor Anstoß werden Austritt und Rauswurf abgelehnt (nach dem Fixieren); Bereit bleibt möglich, Fremde kommen nicht hinein", async () => {
     const g = await fixedCard(9, 12); // zwölf Plätze, zehn belegt: nur die Sperre kann einen Beitritt verhindern
+    // Wettlauf beseitigen (gleiche Familie wie CI #202 Lauf 4): finalConfirm startet im Hintergrund die Abbuchung (void triggerChargesInBackground). Mit Anstoß in 24 h wäre sie sofort fällig und könnte
+    // payment_charges anlegen, dann würfe der Austritt "Abbuchung begonnen" statt "48 Stunden". Deshalb VOR dem Zeitsprung ein Platz ohne Karte: das Spiel ist nie abbuchungsbereit (cards_missing),
+    // egal wann der Hintergrundlauf auswertet; der Test prüft hart, dass keine Abbuchungszeile existiert.
+    await db.update(matchParticipants).set({ cardStatus: "none" }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.players[1].id)));
+    expect(await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id)), "vor dem Zeitsprung: keine Abbuchungszeile").toHaveLength(0);
     await setStart(g.match.id, 24);
+    // schlimmster Fall des Hintergrundlaufs ausdrücklich ausführen: nicht abbuchungsbereit, keine Zeile
+    expect((await runChargesIfDue(g.match.id)).reason).toBe("cards_missing");
     const [a, b] = [g.players[8], g.players[9]];
     await expect(leaveLobby(a.id, g.match.id)).rejects.toThrow(/48 Stunden/);
     await expect(removeParticipant(g.organizer.id, g.match.id, b.id)).rejects.toThrow(/48 Stunden/);
@@ -1578,6 +1586,7 @@ describe("Privatspiel im Kartenmodell (Gegenstücke zu AC-4, AC-6, AC-8)", () =>
     await setReady(a.id, g.match.id, true);
     const late = await makeUser("pvlate");
     await expect(joinPrivateGame(late.id, g.token)).rejects.toThrow(/gesperrt/);
+    expect(await db.select().from(paymentCharges).where(eq(paymentCharges.matchId, g.match.id)), "nach dem Test: weiter keine Abbuchungszeile").toHaveLength(0);
   });
 
   it("AC-8: auch vor dem Fixieren sind Austritt und Rauswurf unter 48 Stunden gesperrt; der Beitritt per Link bleibt dort möglich", async () => {

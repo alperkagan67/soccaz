@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
 import { formatEuro } from "@/lib/money";
 import { formatDateTime } from "@/lib/time";
-import { matchEntries, matchHeader, playerFinance } from "@/server/finance";
+import { matchEntries, matchHeader, matchMoneyOf, playerFinance } from "@/server/finance";
 import { manualRefundAction, recordExpenseAction } from "@/server/admin-finance-actions";
 import { requirePermission } from "@/server/session";
 
@@ -17,9 +17,8 @@ export default async function MatchFinancePage({ params }: PageProps<"/admin/fin
   await requirePermission("finance", `/admin/finanzen/spiel/${id}`);
   const header = await matchHeader(id);
   if (!header) notFound();
-  const [players, entries] = await Promise.all([playerFinance(id), matchEntries(id)]);
-  const revenue = players.reduce((s, p) => s + p.netCents, 0);
-  const cost = entries.filter((e) => e.kind === "venue_cost").reduce((s, e) => s + e.amountCents, 0);
+  const [players, entries, money] = await Promise.all([playerFinance(id), matchEntries(id), matchMoneyOf([id])]);
+  const { revenueCents: revenue, costCents: cost } = money.get(id)!; // dieselbe Rechenstelle wie die Spieleliste (Kartenmodell: Einnahmen aus den Hauptbuch-Konten, nicht aus den Spieler-Beträgen)
 
   return (
     <div className="space-y-6">
@@ -58,11 +57,11 @@ export default async function MatchFinancePage({ params }: PageProps<"/admin/fin
                   {p.inLobby ? (p.hasPaidNow ? "In der Lobby, Anteil bezahlt" : "In der Lobby, offen") : "Nicht mehr in der Lobby"}
                   {p.pendingRefundCents > 0 && ` · Erstattung ${formatEuro(p.pendingRefundCents)} offen (wartet auf Ersatz)`}
                 </p>
-                {p.netCents > 0 && (
+                {p.walletNetCents > 0 && ( // Guthaben-Altmodell; die Ausnahme-Erstattung per Stripe für Kartenzahlungen folgt in 1c-iii Etappe b
                   <ActionForm action={manualRefundAction.bind(null, id, p.userId)} submit="Ausnahme-Erstattung buchen" className="grid grid-cols-[1fr_2fr_auto] items-end gap-2" successText="Erstattet." keepOnSuccess>
                     <div>
                       <label className="label" htmlFor={`amt-${p.userId}`}>Betrag</label>
-                      <input id={`amt-${p.userId}`} name="amount" className="field" defaultValue={(p.netCents / 100).toFixed(2).replace(".", ",")} />
+                      <input id={`amt-${p.userId}`} name="amount" className="field" defaultValue={(p.walletNetCents / 100).toFixed(2).replace(".", ",")} />
                     </div>
                     <div>
                       <label className="label" htmlFor={`why-${p.userId}`}>Grund</label>
