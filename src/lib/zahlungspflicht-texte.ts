@@ -21,6 +21,8 @@ export const ZP = {
   /** Turnier (Captain): Team bereit melden. */
   tournamentReady: mitZahlungspflicht("Bereit"),
   tournamentReadyFree: "Bereit",
+  /** Spiel: letzte Bestätigung der Captains (M3 PR 1, #281): Preis bestätigen UND zahlungspflichtig zusagen. Wortlaut unverändert (E2E karte-finanzen, privatspiel), nur an einer Stelle. */
+  finalConfirm: `Ja, mein Team ist komplett: Preis bestätigen und ${ZAHLUNGSPFLICHT}`,
   /** Anteil eines Mitspielers übernehmen (Spiel und Turnier): Bestätigungsknopf im Dialog; der Auslöser (trigger) öffnet nur den Dialog. */
   coverTrigger: "Anteil übernehmen",
   coverConfirm: mitZahlungspflicht("Anteil übernehmen"),

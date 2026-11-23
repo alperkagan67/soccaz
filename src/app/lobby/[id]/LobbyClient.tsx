@@ -58,7 +58,7 @@ type MyActionsProps = {
   /** Nur gesetzt, wenn Zahlungen eingeschaltet sind. */
   /** Wie viele Spieler des eigenen Teams haben schon bezahlt? Bereit geht erst, wenn alle bezahlt haben. */
   /** Nur im Kartenmodell (Schalter card_payments_enabled EIN): Karte hinterlegen, Vertrag 012. */
-  card?: { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; priceCents: number | null; estimateCents: number | null; estimateFixed: boolean; stored: { brand: string | null; last4: string } | null; failure?: { text: string; until: string | null; expired: boolean; authorize?: boolean } | null } | null;
+  card?: { ready: boolean; mandateText: string; fake: boolean; priceCents: number | null; estimateCents: number | null; estimateFixed: boolean; stored: { brand: string | null; last4: string } | null; failure?: { text: string; until: string | null; expired: boolean; authorize?: boolean } | null } | null;
 };
 
 export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProps) {

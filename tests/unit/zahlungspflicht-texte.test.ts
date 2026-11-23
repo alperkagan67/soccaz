@@ -32,6 +32,9 @@ describe("Konstanten", () => {
       expect(label.startsWith(start), label).toBe(true);
       expect(label.endsWith(ZAHLUNGSPFLICHT), label).toBe(true);
     }
+    expect(ZP.finalConfirm).toBe("Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen"); // M3 PR 1 (#281): Wortlaut unverändert, nur eine Stelle
+    expect(ZP.finalConfirm.endsWith(ZAHLUNGSPFLICHT)).toBe(true);
+    expect(read("src/app/lobby/[id]/FinalConfirm.tsx")).toContain("label={ZP.finalConfirm}");
     expect(ZP.gameReadyFree).toBe("Ich bin bereit"); // ohne Zahlung kein Zahlungspflicht-Zusatz
     expect(ZP.tournamentReadyFree).toBe("Bereit");
     for (const l of [ZP.cardSave, ZP.cardChange, ZP.cardUseStored]) expect(l.endsWith("und Abbuchung erlauben"), l).toBe(true); // Mandat: Erlaubnis, jetzt wird nichts abgebucht
@@ -84,7 +87,7 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
   });
 
   it("die Komponenten importieren die Konstanten (Lobby, Karte, Anteil uebernehmen, Turnier)", () => {
-    for (const f of ["src/app/lobby/[id]/LobbyClient.tsx", "src/app/lobby/[id]/CardForm.tsx", "src/app/lobby/[id]/CoverShare.tsx", "src/app/turniere/[id]/TournamentCard.tsx", "src/app/turniere/[id]/page.tsx", "src/app/lobby/[id]/AuthorizeButton.tsx"]) {
+    for (const f of ["src/app/lobby/[id]/LobbyClient.tsx", "src/app/lobby/[id]/CardForm.tsx", "src/app/lobby/[id]/CoverShare.tsx", "src/app/turniere/[id]/TournamentCard.tsx", "src/app/turniere/[id]/page.tsx", "src/app/lobby/[id]/AuthorizeButton.tsx", "src/app/lobby/[id]/FinalConfirm.tsx"]) {
       expect(read(f), f).toContain('from "@/lib/zahlungspflicht-texte"');
     }
   });
@@ -93,12 +96,14 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
     const page = read("src/app/turniere/[id]/page.tsx");
     expect(page).toContain("data.cardMode && !free && !data.paymentsPaused ? ZP.tournamentReady : ZP.tournamentReadyFree");
     expect(page).toContain("data.paymentsPaused ? ZP.tournamentReadyPause");
-    expect(page).toContain("chargeAmount(pricing.totalCents ?? null, pricing.shareCents)");
+    expect(page).toContain("chargeAmount(pricing.totalCents ?? null, pricing.shareCents)"); // Turnier: dieselbe Funktion wie die Abbuchung (tournament-charge hat denselben Mindestbetrag)
     expect(read("src/app/turniere/[id]/TournamentCard.tsx")).toContain("consequence={coverAmounts ? coverConsequence(m.name, coverAmounts) : undefined}");
     expect(ZP.tournamentReadyPause).toContain("pausiert");
     const lobby = read("src/app/lobby/[id]/page.tsx");
-    expect(lobby).toContain("shareDivisor(match, assignedCount)"); // Betrag der Lobby: dieselbe Funktion wie die Abbuchung (nicht dupliziert)
-    expect(lobby).toContain("chargeAmount(payments.priceCents");
+    expect(lobby).toContain("payments.chargeCents"); // EINE Quelle fuer alle Betraege der Lobby-Seite (lobby.ts: chargeAmount(price, finalShareCents ?? shareToCharge)), keine Inline-Rechnung
+    expect(lobby).not.toMatch(/shareCents\(|shareDivisor\(|cardShareCents/);
+    expect(lobby).toContain("estimateCents !== null ? <>{estimateFixed"); // die Kosten-Zeile zeigt denselben Betrag wie der Knopf
+    expect(lobby).toContain("<strong className=\"text-ink\">{formatEuro(estimateCents)}</strong>");
   });
 
   it("Barrierefreiheit: kein abweichendes aria-label an den Zahlungsknoepfen (Knopfname = sichtbarer Text)", () => {
@@ -115,15 +120,15 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
 });
 
 describe("Lobby: Ich bin bereit (Formen wie die Seite sie liefert: shareCents ist nie 0, sondern null bei Preis 0/null oder niemand eingeteilt)", () => {
-  type Card = { ready: boolean; mandateText: string; fake: boolean; shareCents: number | null; priceCents: number | null; estimateCents: number | null; estimateFixed: boolean; stored: null; failure: null };
-  const card = (o: Partial<Card>): Card => ({ ready: true, mandateText: "Mandat", fake: false, shareCents: null, priceCents: null, estimateCents: null, estimateFixed: false, stored: null, failure: null, ...o });
+  type Card = { ready: boolean; mandateText: string; fake: boolean; priceCents: number | null; estimateCents: number | null; estimateFixed: boolean; stored: null; failure: null };
+  const card = (o: Partial<Card>): Card => ({ ready: true, mandateText: "Mandat", fake: false, priceCents: null, estimateCents: null, estimateFixed: false, stored: null, failure: null, ...o });
   const render = async (c: Card | null) => {
     const { MyActions } = await import("../../src/app/lobby/[id]/LobbyClient");
     return renderToStaticMarkup(createElement(MyActions, { matchId: "m", mode: "participant", ready: false, hasTeam: true, card: c }));
   };
 
   it("Preis > 0, Anteil noch nicht fixiert: Formel und 'Aktuell ...' mit dem Betrag der Abbuchungsrechnung", async () => {
-    const m = await render(card({ priceCents: 6000, shareCents: 600, estimateCents: 1500, estimateFixed: false }));
+    const m = await render(card({ priceCents: 6000, estimateCents: 1500, estimateFixed: false }));
     expect(m).toContain(`>${ZP.gameReady}<`);
     expect(m).toContain("Aktuell 15,00");
     expect(m).toContain("bis beide Captains den Preis bestätigen");
@@ -131,20 +136,20 @@ describe("Lobby: Ich bin bereit (Formen wie die Seite sie liefert: shareCents is
   });
 
   it("Preis > 0, Anteil fixiert (zweites Bereit): Formel und fester Betrag", async () => {
-    const m = await render(card({ priceCents: 6000, shareCents: 600, estimateCents: 1500, estimateFixed: true }));
+    const m = await render(card({ priceCents: 6000, estimateCents: 1500, estimateFixed: true }));
     expect(m).toContain(`>${ZP.gameReady}<`);
     expect(m).toContain("Danach wird dein Anteil von 15,00");
     expect(m).not.toContain("Aktuell");
   });
 
   it("Preis > 0, noch niemand eingeteilt (Betrag unbekannt): Formel, neutrale Zeile ohne Betrag", async () => {
-    const m = await render(card({ priceCents: 6000, shareCents: null, estimateCents: null }));
+    const m = await render(card({ priceCents: 6000, estimateCents: null }));
     expect(m).toContain(`>${ZP.gameReady}<`);
     expect(m).toContain(betragszeile(null, false));
   });
 
   it("GRATISSPIEL im Kartenmodell (Preis 0, shareCents null wie in der Produktion): schlichter Text, KEINE Formel, keine Abbuchungs-Zusage", async () => {
-    const m = await render(card({ priceCents: 0, shareCents: null, estimateCents: null }));
+    const m = await render(card({ priceCents: 0, estimateCents: null }));
     expect(m).toContain(`>${ZP.gameReadyFree}<`);
     expect(m).not.toContain("zahlungspflichtig");
     expect(m).not.toContain("ready-amount");
@@ -160,3 +165,17 @@ describe("Lobby: Ich bin bereit (Formen wie die Seite sie liefert: shareCents is
     }
   });
 }, 60_000);
+
+describe("Lobby: Ich bin bereit ist bei unbekanntem Preis nicht klickbar (payAndReadyPossible), sonst waere der rechtlich relevante Klick ohne Formel", () => {
+  it("Bereit geht erst, wenn Termin und Hallen-Veto durch sind (dann steht der Preis); setReady lehnt vorher ab", async () => {
+    const { payAndReadyPossible } = await import("../../src/server/wallet");
+    expect(payAndReadyPossible({ schedulingOpen: true, vetoStatus: "none" })).toBe(false);
+    expect(payAndReadyPossible({ schedulingOpen: false, vetoStatus: "halls" })).toBe(false);
+    expect(payAndReadyPossible({ schedulingOpen: false, vetoStatus: "running" })).toBe(false);
+    expect(payAndReadyPossible({ schedulingOpen: false, vetoStatus: "done" })).toBe(true);
+    expect(payAndReadyPossible({ schedulingOpen: false, vetoStatus: "none" })).toBe(true);
+    const lobby = read("src/server/lobby.ts");
+    expect(lobby).toMatch(/if \(ready && match\.schedulingOpen\) throw new DomainError/); // setReady: Termin und Ort zuerst
+    expect(read("src/app/lobby/[id]/page.tsx")).toContain("scheduling"); // die Seite zeigt den Bereit-Knopf im Termin-/Veto-Zustand gesperrt (Zeile unter dem Knopf)
+  }, 60_000);
+});

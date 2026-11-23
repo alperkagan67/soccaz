@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { formatDateTime, formatTime, toBerlinInputValue } from "@/lib/time";
-import { formatEuro, shareCents } from "@/lib/money";
+import { formatEuro } from "@/lib/money";
 import { hasFreeSlot, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { ShareLink } from "@/components/ShareLink";
 import { ActionButton } from "@/components/ActionButton";
@@ -15,9 +15,9 @@ import { getCurrentUser } from "@/server/session";
 import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
 import { fakeCardAllowed } from "@/server/payments/mode";
 import { getCoverView } from "@/server/payments/cover-view";
-import { chargeAmount } from "@/server/payments/charge-run";
+import { MIN_CHARGE_CENTS } from "@/server/payments/charge-run";
 import { DEFAULT_LOCALE, translate } from "@/lib/i18n";
-import { cardModeActive, shareDivisor } from "@/server/wallet";
+import { cardModeActive } from "@/server/wallet";
 import { cardView } from "@/lib/card-view";
 import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/server/payments/card-status";
 import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
@@ -85,18 +85,17 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   // Captain/Veranstalter/Admin: wen es betrifft und warum (nur Einträge mit Grund; der Betroffene selbst sieht oben seinen eigenen Block)
   const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === "failed" && id !== user?.id).map(([id, d]) => ({ userId: id, name: participants.find((p) => p.userId === id)?.name ?? "Spieler", text: chargeFailureText(d.reason), until: windowOf(d).until, authorizing: d.authorize === true }));
   const hasCard = (userId: string) => cardView(cardDisplays[userId]?.status ?? "none").hasCard;
-  const assignedCount = participants.filter((p) => p.teamId).length;
-  const cardShareCents = cardOn && payments.priceCents && payments.priceCents > 0 && assignedCount > 0 ? shareCents(payments.priceCents, assignedCount) : null;
-  // Betrag unter "Ich bin bereit": DIESELBE Rechnung wie die Abbuchung (shareDivisor/chargeAmount, mindestens 0,50 EUR); fest erst mit dem zweiten Bereit (finalShareCents), vorher voraussichtlich
+  const assignedCount = participants.filter((p) => p.teamId).length; // (nur noch fuer die Anzeige der Zahl der Eingeteilten)
+  // Betrag unter "Ich bin bereit": fest erst mit dem zweiten Bereit (finalShareCents), vorher aktuell
   const estimateFixed = match.finalShareCents !== null && match.finalShareCents !== undefined;
-  const estimateCents = cardOn && payments.priceCents && payments.priceCents > 0 ? (estimateFixed ? chargeAmount(payments.priceCents, match.finalShareCents ?? null) : assignedCount > 0 ? chargeAmount(payments.priceCents, shareCents(payments.priceCents, shareDivisor(match, assignedCount))) : null) : null;
+  const estimateCents = cardOn ? (payments.chargeCents ?? null) : null; // EINE Quelle fuer ALLE Betraege der Seite (Knopf, Kosten-Zeile, Anteil uebernehmen): lobby.ts chargeAmount(price, finalShareCents ?? shareToCharge(...))
   const myFinalTeamId = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null; // Team, für das der Betrachter bestätigen darf
   const finalDone = Boolean(match.homeFinalAt && match.awayFinalAt);
   // "Anteil übernehmen" (012 M3c-3b): was wer sieht, entscheidet der SERVER je Betrachter (cover-view.ts, Plan Abschnitt 3 bis 5); die Namen kommen aus der Lobby-Liste
   const cover = cardOn
     ? await getCoverView(match.id, { userId: user?.id ?? null, platformAdmin: v.platformAdmin, adminOf: v.adminOf })
     : { canCover: [] as string[], covering: null as string | null, releasable: false, covered: false, pairs: [] as { targetUserId: string; payerUserId: string }[] };
-  const coverPost = chargeAmount(payments.priceCents ?? null, cardShareCents);
+  const coverPost = estimateCents; // derselbe Betrag wie am Knopf und in der Kosten-Zeile
   const coverAmounts = coverPost !== null ? { own: formatEuro(coverPost), target: formatEuro(coverPost), total: formatEuro(coverPost * 2), estimated: !finalDone } : null;
   const coverMandate = translate(DEFAULT_LOCALE, "cover.mandate.v1.entwurf"); // Entwurf, Rechtstext durch Anwalt
   const seatName = (id: string) => participants.find((p) => p.userId === id)?.name ?? "Mitspieler";
@@ -295,7 +294,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             Halle {match.durationMin} Minuten: <strong>{formatEuro(payments.priceCents)}</strong>, geteilt durch alle Spieler.
           </p>
           <p className="text-muted">
-            {v.participant && cardShareCents !== null ? <>Dein Anteil: <strong className="text-ink">{formatEuro(cardShareCents)}</strong> (Miete geteilt durch die eingeteilten Spieler). </> : null}
+            {v.participant && estimateCents !== null ? <>{estimateFixed ? "Dein Anteil" : "Dein Anteil aktuell"}: <strong className="text-ink">{formatEuro(estimateCents)}</strong> (Miete geteilt durch die eingeteilten Spieler, mindestens {formatEuro(MIN_CHARGE_CENTS)} je Abbuchung). </> : null}
             Ändert sich die Spielerzahl, ändert sich der Anteil.{v.participant ? " Dein Anteil wird zur Frist von deiner Karte abgebucht; bis dahin wird nichts abgebucht." : null}
           </p>
         </section>
@@ -320,7 +319,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
-          card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), shareCents: cardShareCents, priceCents: payments.priceCents ?? null, estimateCents, estimateFixed, stored: storedCard, failure: myFailure } : null}
+          card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), priceCents: payments.priceCents ?? null, estimateCents, estimateFixed, stored: storedCard, failure: myFailure } : null}
         />
       )}
 

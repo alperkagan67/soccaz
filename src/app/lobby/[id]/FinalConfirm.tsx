@@ -2,6 +2,7 @@
 
 import { ActionButton } from "@/components/ActionButton";
 import { finalConfirmAction } from "@/server/actions";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 export type FinalTeam = { id: string; name: string; confirmed: boolean; ready: number; paid: number; total: number; complete: boolean };
 
@@ -30,7 +31,7 @@ export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers 
       {/* ENTWURF, Rechtsprüfung (Rechtsliste, Button-Lösung § 312j BGB): Knopftext und Hinweis zur Zahlungspflicht (Entwurf, bis die zentralen Zahlungsknopf-Konstanten kommen) */}
       {mine && !mine.confirmed && (
         <div className="space-y-1">
-          <ActionButton action={finalConfirmAction.bind(null, matchId)} label="Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen" className="btn btn-primary w-full disabled:opacity-60" />
+          <ActionButton action={finalConfirmAction.bind(null, matchId)} label={ZP.finalConfirm} className="btn btn-primary w-full disabled:opacity-60" />
           <p className="text-sm text-muted" data-testid="final-confirm-pay-note">Danach wird dein Anteil abgebucht.</p>
           {!mine.complete && <p className="text-xs text-muted">Noch nicht möglich: Es sind nicht alle in deinem Team bereit{paymentsOn ? " und bezahlt" : ""}.</p>}
         </div>
