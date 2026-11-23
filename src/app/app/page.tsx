@@ -131,7 +131,7 @@ export default async function DashboardPage() {
                     <span className="font-semibold"><TeamColorDot color={t.color} slug={t.slug} className="mr-2" />{t.name}</span>
                     <span className="block text-sm text-muted">{t.city}</span>
                   </span>
-                  <span className="text-xs text-muted">{t.role === "admin" ? "Team-Admin" : "Spieler"}</span>
+                  <span className="text-sm text-muted">{t.role === "admin" ? "Team-Admin" : "Spieler"}</span>
                 </Link>
               </li>
             ))}

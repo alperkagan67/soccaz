@@ -36,6 +36,14 @@ describe("matchBadge (immer ein Wort, nie nur Farbe)", () => {
   });
 });
 
+describe("matchBadge: Ergebnis offen ist in der Liste bewusst unerreichbar (keine Ergebnisdaten)", () => {
+  it("begonnenes Spiel ohne Endstand: Laeuft; gespieltes: Gespielt; nie Ergebnis offen", () => {
+    for (const h of [-1, -30]) expect(matchBadge({ status: "confirmed", startsAt: at(h) }, now).label).toBe("Läuft");
+    expect(matchBadge({ status: "played", startsAt: at(-30) }, now).label).toBe("Gespielt");
+    for (const status of ["lobby", "confirmed", "played", "disputed", "cancelled"] as const) for (const h of [-30, -1, 5]) expect(matchBadge({ status, startsAt: at(h) }, now).label).not.toBe("Ergebnis offen");
+  });
+});
+
 describe("matchHref", () => {
   it("kommende Spiele in die Lobby, alle anderen auf die Spielseite", () => {
     expect(matchHref({ id: "x", status: "lobby", startsAt: at(5) }, now)).toBe("/lobby/x");
@@ -86,6 +94,15 @@ describe("Stilregel /app (AC-30): höchstens eine Hauptaktion, kein Guthaben, Te
   it("Distill: /app rendert MyGames nicht mehr (das Spiel stünde viermal: Stand, Kasten, Liste, Knöpfe); offene Lobbys stehen in der Liste", () => {
     expect(page).not.toMatch(/<MyGames\b/);
     expect(page).toMatch(/data-testid="my-open-lobby"/);
+  });
+  it("Schriftgroessen (AC-30 e, wie C3a): nie text-xs, hoechstens 4 verschiedene Groessen in Seite, MyGames und GameModes (StatusBadge text-xs: geteilter Baustein, bekannte Grenze)", () => {
+    const sizes = new Set<string>();
+    for (const code of [page, myGames, src("src/components/GameModes.tsx")]) {
+      expect(code).not.toMatch(/\btext-xs\b/);
+      for (const m of code.matchAll(/\btext-(sm|base|lg|xl|2xl|3xl|4xl)\b/g)) sizes.add(m[1]);
+    }
+    expect(sizes.size).toBeLessThanOrEqual(4);
+    expect(sizes.size).toBeGreaterThan(0);
   });
   it("die Hauptaktion steht im Seitenkopf (PageHeader action), genau einmal", () => {
     expect((page.match(/<PageHeader\b/g) ?? []).length).toBe(1);

@@ -32,6 +32,7 @@ export type MatchBadge = { tone: BadgeTone; label: string };
 
 /** Zustandswort je Spiel: immer Wort (nie nur Farbe). „Spiel ist angesetzt“ = bestätigt (je Team mindestens 4 bereit; Wortlaut wie `mygame.ts`, PR 1), „Wartet auf Spieler“ = Lobby vor dem Anstoß. */
 export function matchBadge(row: { status: MatchStatus; startsAt: Date }, now: Date = new Date()): MatchBadge {
+  // Bewusst hasPendingResult false: die Liste kennt keine Ergebnis-Zeilen (myMatches liefert sie nicht). Der Zweig "pending" ("Ergebnis offen") ist hier unerreichbar; ein begonnenes Spiel ohne Endstand heisst "Laeuft", ein gespieltes "Gespielt". Beim Anschluss der Ergebnisdaten hier hasPendingResult uebergeben.
   const phase: MatchPhase = phaseOf({ status: row.status, startsAt: row.startsAt, hasPendingResult: false, now });
   switch (phase) {
     case "upcoming":
