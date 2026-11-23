@@ -235,6 +235,14 @@ Vorschlag: Ein Abhängigkeits-PR ändert im Lockfile nur die Zielpakete und ihre
 
 Wer ändert: AGENTS-SETUP.md (Rolle Writer) und die PR-Vorlage (Zeile „Lockfile-Diff nur für …“); Regel-PR (Nutzer mergt).
 
+## 22. Änderung an Zahlungs-Vorbedingungen: ALLE betroffenen Integrationsdateien einzeln lokal vor dem Push
+
+Anlass: 012 M6b PR 1a (#198): `cardModeActive` verlor die Klausel „bezahlter Platz bleibt im Guthabenmodell“; ohne sie konnte ein Platz mit Guthabenzahlung zusätzlich im Kartenlauf belastet werden (Doppelbelastungs-Risiko). Beide Reviews (security-reviewer und worker-4) haben es übersehen und die Änderung als „Altpfad-Rest“ gelesen; die CI fing es (acht statt vier PaymentIntent-Aufrufe in einem Integrationstest).
+
+Vorschlag: Wer eine Vorbedingungs- oder Schutzfunktion der Zahlung ändert oder entfernt (`cardModeActive`, Doppelbelastungs-Schutz, Idempotenz- und Sperrprüfungen u. ä.), führt vor dem Push ALLE Integrationsdateien `card-*`, `lobby*`, `tournament-*` und `payments*` einzeln lokal aus (je Datei, Befehl und Ergebnis, die Liste steht im PR-Text), nicht nur die „betroffenen“. Zusätzlich je geänderter Klausel: Aufrufer per `git grep`, ein Gegenprobe-Test (Altspiel mit Guthaben-Platz plus Kartenlauf ergibt keine zweite Belastung) und eine Mutation. Die Review-Checkliste führt dafür den Abschnitt „Vorbedingungs- und Schutzfunktionen“: eine entfernte Klausel wird nie als „Altpfad-Rest“ gelesen.
+
+Wer ändert: AGENTS-SETUP.md (Rolle Writer und Reviewer); Regel-PR (Nutzer mergt).
+
 ## Nicht Teil dieser Datei
 
 Keine Rechtsfragen, keine Produktentscheidungen, keine Änderung an `.claude/` oder `.github/`. Reihenfolge und Zuschnitt der Regel-PRs entscheidet der Orchestrator mit dem Nutzer.
