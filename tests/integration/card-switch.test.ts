@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { and, eq, like } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { db } from "@/db";
-import { auditLog, matchParticipants, teamMembers, users } from "@/db/schema";
+import { auditLog, matchParticipants, notifications, teamMembers, users } from "@/db/schema";
 import { ledgerEntries } from "@/db/schema-finance";
 import { settings } from "@/db/schema-finance";
 import { tournaments } from "@/db/schema-league";
@@ -186,5 +186,51 @@ describe("Kernversprechen: Zahlungen AN + Karte AUS (pausiert)", () => {
     expect(seat.paidCents).toBe(0);
     expect((await db.select().from(ledgerEntries).where(eq(ledgerEntries.matchId, m.match.id))).length).toBe(ledgerBefore);
     expect((await getAlerts()).some((a) => a.code === "card:switch-off")).toBe(true);
+  });
+});
+
+const noteTo = async (userId: string, title: RegExp) => (await db.select().from(notifications).where(eq(notifications.userId, userId))).filter((n) => title.test(n.title));
+
+describe("Mitteilung an den Buchungsstab beim Umschalten", () => {
+  it("Ausschalten und Einschalten: Admin 2 bekommt je eine Mitteilung (admin.task, ohne Grund und Namen), der Akteur, ein gesperrter Admin und ein Spieler nicht", async () => {
+    const o = await owner();
+    const admin2 = await makeUser("swn2", "admin");
+    const banned = await makeUser("swnb", "admin");
+    await db.update(users).set({ bannedAt: new Date() }).where(eq(users.id, banned.id));
+    const player = await makeUser("swnp");
+    const reason = "Geheimer Grund Stripe 4711";
+    await setCardSwitch(o.id, false, reason, true);
+    const off = await noteTo(admin2.id, /Kartenzahlung ausgeschaltet/);
+    expect(off).toHaveLength(1);
+    expect(off[0]).toMatchObject({ type: "admin.task", url: "/admin/einstellungen" });
+    expect(`${off[0].title} ${off[0].body}`).not.toContain("4711");
+    expect(`${off[0].title} ${off[0].body}`).not.toContain(o.id);
+    expect(await noteTo(o.id, /Kartenzahlung/)).toHaveLength(0); // der Akteur selbst nicht
+    expect(await noteTo(banned.id, /Kartenzahlung/)).toHaveLength(0);
+    expect(await noteTo(player.id, /Kartenzahlung/)).toHaveLength(0);
+    await setCardSwitch(o.id, true, "Stoerung behoben, alles geprueft", true);
+    expect(await noteTo(admin2.id, /Kartenzahlung eingeschaltet/)).toHaveLength(1);
+  });
+
+  it("eine abgewiesene Umschaltung (Admin 2 versucht es, Pflichtangabe fehlt) verschickt nichts", async () => {
+    const o = await owner();
+    const admin2 = await makeUser("swn3", "admin");
+    const before = (await noteTo(admin2.id, /Kartenzahlung/)).length;
+    await expect(setCardSwitch(admin2.id, false, "Notfall wegen Stoerung", true)).rejects.toThrow(/nur Admin 1/);
+    await expect(setCardSwitch(o.id, false, "x", true)).rejects.toThrow(/Grund/);
+    expect((await noteTo(admin2.id, /Kartenzahlung/)).length).toBe(before);
+  });
+});
+
+describe("Einstellung mit unerwartetem Wert (von Hand gesetzt)", () => {
+  it("steht dort kein true/false, kommt eine klare Meldung (SQL pruefen) statt 'jemand anderes hat geaendert'; nichts wird geaendert, kein Audit", async () => {
+    const o = await owner();
+    await db.update(settings).set({ value: "on" }).where(eq(settings.key, "card_payments_enabled"));
+    const n0 = (await switchAudits()).length;
+    await expect(setCardSwitch(o.id, false, "Notfall wegen Stoerung", true)).rejects.toThrow(/unerwarteten Wert.*SQL/);
+    await expect(setCardSwitch(o.id, true, "Wieder einschalten bitte", true)).rejects.toThrow(/unerwarteten Wert/);
+    expect((await db.select().from(settings).where(eq(settings.key, "card_payments_enabled")))[0].value).toBe("on");
+    expect((await switchAudits()).length).toBe(n0);
+    await setSetting(null, "card_payments_enabled", true); // Aufraeumen: wieder ein Boolean
   });
 });
