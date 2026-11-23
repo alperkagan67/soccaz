@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Challenges } from "@/components/Challenges";
 import { GameModes } from "@/components/GameModes";
-import { MyGames } from "@/components/MyGames";
 import { TeamColorDot } from "@/components/TeamColor";
 import { LinkButton } from "@/components/ui/LinkButton";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -55,8 +54,6 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <MyGames userId={user.id} data={current} />
-
       <Challenges incoming={challenges.incoming} outgoing={challenges.outgoing} />
 
       {myTeams.length === 0 && games.length === 0 && (
@@ -73,7 +70,25 @@ export default async function DashboardPage() {
 
       <section className="space-y-4" aria-label="Meine Spiele" data-testid="my-matches">
         <h2 className="text-lg font-semibold">Meine Spiele</h2>
-        {groups.length === 0 ? (
+        {current.open.length > 0 && (
+          <div className="space-y-2" data-testid="my-matches-open">
+            <h3 className="text-sm font-semibold text-muted">Offene Lobbys deiner Teams</h3>
+            <ul className="space-y-2">
+              {current.open.map((o) => (
+                <li key={o.id}>
+                  <Link href={`/lobby/offen/${o.id}`} className="card flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 hover:border-accent" data-testid="my-open-lobby">
+                    <span className="min-w-0 flex-1 basis-48">
+                      <span className="block truncate font-semibold">#{o.number} {o.team}</span>
+                      <span className="block text-sm text-muted">Eure Lobby ist offen und wartet auf einen Gegner</span>
+                    </span>
+                    <StatusBadge status="info" label="Offen" viewer="self" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {groups.length === 0 && current.open.length === 0 ? (
           <StateMessage kind="empty" title="Noch keine Spiele" reason="Such einen Gegner oder nimm eine Spielsuche an." action={{ label: "Spiel suchen", href: "/suche" }} />
         ) : (
           groups.map((group) => (
@@ -84,8 +99,8 @@ export default async function DashboardPage() {
                   const badge = matchBadge(g, now);
                   return (
                     <li key={g.id}>
-                      <Link href={matchHref(g, now)} className="card flex min-h-11 items-center justify-between gap-3 hover:border-accent" data-testid="my-match-row">
-                        <span className="min-w-0">
+                      <Link href={matchHref(g, now)} className="card flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-2 hover:border-accent" data-testid="my-match-row">
+                        <span className="min-w-0 flex-1 basis-48">
                           <span className="block truncate font-semibold">{g.homeName} <span className="text-muted">gegen</span> {g.awayName}</span>
                           <span className="block text-sm text-muted">{formatDateTime(g.startsAt)} Uhr · {g.durationMin} Min</span>
                         </span>

@@ -37,8 +37,8 @@ test("Spieler mit Spiel: Gruppe Teamspiele mit Zustandswort, Dein Stand führt z
   const row = gruppe.getByTestId("my-match-row").filter({ hasText: nameB });
   await expect(row).toBeVisible();
   await expect(row).toContainText(/Wartet auf Spieler|Spiel ist angesetzt/); // immer ein Wort, nie nur Farbe
-  await expect(a.getByTestId("my-games")).toBeVisible(); // bestehende Test-ID (AC-5)
-  await expect(a.getByTestId("my-game")).toContainText(nameB);
+  await expect(a.getByTestId("my-games")).toHaveCount(0); // Distill: das Spiel steht einmal in der Liste, nicht noch einmal in einem Extra-Kasten (my-games bleibt auf /suche, AC-5)
+  await expect(a.getByTestId("my-match-row").filter({ hasText: nameB })).toHaveCount(1);
   await expect(a.getByTestId("my-matches-private")).toHaveCount(0); // leere Gruppen entfallen
   await expect(a.getByTestId("my-matches-tournament")).toHaveCount(0);
 

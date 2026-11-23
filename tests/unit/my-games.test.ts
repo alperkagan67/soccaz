@@ -83,6 +83,10 @@ describe("Stilregel /app (AC-30): höchstens eine Hauptaktion, kein Guthaben, Te
     expect(page).toMatch(/<GameModes signedIn quiet \/>/); // GameModes ruhig: kein oranger Knopf neben der Hauptaktion
     expect(src("src/components/GameModes.tsx")).toMatch(/quiet \? "btn btn-ghost" : "btn btn-primary"/);
   });
+  it("Distill: /app rendert MyGames nicht mehr (das Spiel stünde viermal: Stand, Kasten, Liste, Knöpfe); offene Lobbys stehen in der Liste", () => {
+    expect(page).not.toMatch(/<MyGames\b/);
+    expect(page).toMatch(/data-testid="my-open-lobby"/);
+  });
   it("die Hauptaktion steht im Seitenkopf (PageHeader action), genau einmal", () => {
     expect((page.match(/<PageHeader\b/g) ?? []).length).toBe(1);
     expect(page).toMatch(/action=\{stand\.action\}/);
