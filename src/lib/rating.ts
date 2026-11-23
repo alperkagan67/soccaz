@@ -8,8 +8,9 @@
 // round(ELO_K * Marge * (Ergebnis - erwartet)) (src/lib/elo.ts). Ein Neuling (1000) gegen Gleichstarke hat nach
 // 3 Siegen mit 1 Tor Differenz etwa 1045. In der Simulation lag der Median bei ~1005, das 75. Perzentil bei
 // ~1060, das 90. bei ~1105 bis 1130, das 98. bei ~1185 und das Maximum bei ~1270.
-// Bei 8 Elo je Punkt ergeben sich: Rasen ab 1040 (nach ca. 3 Siegen), Flutlicht ab 1160 (obere Gruppe),
-// Pokal ab 1240 (Spitzengruppe), Legende ab 1320 (nur nach langer Dominanz). 10 oder 20 Elo je Punkt wären
+// Bei 8 Elo je Punkt ergeben sich (wegen der Rundung beginnt Wertung 55 schon bei Elo 1036: 50 + 36/8 = 54,5):
+// Rasen ab Elo 1036 (nach ca. 3 Siegen), Flutlicht ab 1156 (obere Gruppe), Pokal ab 1236 (Spitzengruppe),
+// Legende ab 1316 (nur nach langer Dominanz). Maßgeblich sind die Wertungsgrenzen 0/55/70/80/90. 10 oder 20 Elo je Punkt wären
 // in der Simulation für Pokal und Legende unerreichbar.
 
 import { ELO_START } from "./elo";
@@ -59,7 +60,8 @@ export function tierRank(tier: Tier): number {
 
 /**
  * Aufstiegs-Feier nur bei einem NEUEN Höchststand: `prevMaxTier` ist die höchste bisher gezeigte Stufe
- * (Merker im Browser; fehlt er, gilt Kreide als Start, ohne Feier). Abstieg oder gleiche Stufe feiert nie,
+ * (Merker im Browser; fehlt er, gilt Kreide als Start, ohne Feier). Folge, laut Vertrag so gewollt: Auf einem neuen
+ * Gerät oder nach gelöschtem Speicher gibt es EINMAL eine Feier für die bereits erreichte Stufe (ab Rasen). Abstieg oder gleiche Stufe feiert nie,
  * ein Hin und Her an der Grenze löst also nicht mehrfach aus.
  */
 export function shouldCelebrate(prevMaxTier: Tier | null | undefined, newTier: Tier): boolean {

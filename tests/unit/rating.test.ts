@@ -91,15 +91,26 @@ describe("Stufen an den Schwellen", () => {
 
   it.each([
     [1035, "kreide"],
-    [1040, "rasen"],
+    [1036, "rasen"],
     [1155, "rasen"],
-    [1160, "flutlicht"],
+    [1156, "flutlicht"],
     [1235, "flutlicht"],
-    [1240, "pokal"],
+    [1236, "pokal"],
     [1315, "pokal"],
-    [1320, "legende"],
+    [1316, "legende"],
   ] as [number, Tier][])("Elo %i -> %s (Grenzwerte)", (elo, tier) => {
     expect(tierFromElo(elo)).toBe(tier);
+  });
+
+  it("die kleinste Elo je Stufe wird aus der Funktion ermittelt und liegt genau an der Wertungsgrenze", () => {
+    for (const t of RATING_TIERS.slice(1)) {
+      let erste = -1;
+      for (let elo = 0; elo <= 3000; elo++) if (tierFromElo(elo) === t.tier) { erste = elo; break; }
+      expect(ratingFromElo(erste)).toBe(t.from);
+      expect(ratingFromElo(erste - 1)).toBe(t.from - 1);
+      expect(tierFromElo(erste - 1)).not.toBe(t.tier);
+    }
+    expect(RATING_TIERS.slice(1).map((t) => [...Array(3001).keys()].find((e) => tierFromElo(e) === t.tier))).toEqual([1036, 1156, 1236, 1316]);
   });
 
   it("Neuling gegen Gleichstarke: nach 3 Siegen (+16, +15, +14) Rasen, nach 2 noch Kreide", () => {
@@ -115,7 +126,7 @@ describe("shouldCelebrate / nextMaxTier (Feier nur bei neuem Höchststand)", () 
     expect(shouldCelebrate("pokal", "rasen")).toBe(false);
   });
 
-  it("fehlender Merker = Start Kreide: keine Feier für Kreide, Feier ab Rasen", () => {
+  it("fehlender Merker (neues Gerät, gelöschter Speicher) = Start Kreide: keine Feier für Kreide, EINE Feier für bereits erreichte Stufe ab Rasen", () => {
     expect(shouldCelebrate(null, "kreide")).toBe(false);
     expect(shouldCelebrate(undefined, "rasen")).toBe(true);
   });
@@ -153,7 +164,7 @@ describe("Strukturtest: Schwellen und Berechnung stehen nur in src/lib/rating.ts
   const andere = () => files("src").filter((f) => !f.replaceAll("\\", "/").endsWith("src/lib/rating.ts"));
 
   it("keine Elo-Grenze als Zahl und keine Stufen-Wertung (from: N) woanders im Quellcode", () => {
-    const eloGrenzen = RATING_TIERS.slice(1).map((t) => String(1000 + (t.from - START_RATING) * ELO_PER_POINT));
+    const eloGrenzen = RATING_TIERS.slice(1).map((t) => String([...Array(3001).keys()].find((e) => tierFromElo(e) === t.tier)));
     const fromWerte = RATING_TIERS.slice(1).map((t) => `from:\\s*${t.from}\\b`);
     const re = new RegExp(`(?<![\\d.])(?:${eloGrenzen.join("|")})(?![\\d])|${fromWerte.join("|")}`);
     // Zeilen mit Pixelbreiten (z. B. 1040 px Seitenbreite) sind keine Elo-Grenzen
