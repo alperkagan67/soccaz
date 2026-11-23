@@ -10,6 +10,7 @@ import { auditLog, matches, paymentCharges, paymentProfiles } from "@/db/schema"
 import { tournaments } from "@/db/schema-league";
 import { tournamentCardMode } from "../tournament-card";
 import { effectiveGraceEnd, graceText } from "@/lib/grace";
+import { resumeUntil, windowEndAfterResume } from "../pause-resume";
 import { audit } from "../audit";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "../settings";
 import { DomainError } from "../teams";
@@ -25,6 +26,7 @@ type OpenRow = { id: string; amountCents: number; paymentIntentId: string | null
 
 /** Die offene Freigabe-Zeile des Nutzers in diesem Spiel, wenn ALLE Bedingungen stimmen; sonst null. Liest nur eigene Zeilen (Nutzer-ID aus der Sitzung). */
 async function openRow(userId: string, matchId: string, now: Date): Promise<OpenRow | null> {
+  const until = await resumeUntil();
   const rows = await db
     .select({
       id: paymentCharges.id,
@@ -45,16 +47,16 @@ async function openRow(userId: string, matchId: string, now: Date): Promise<Open
     .where(and(eq(paymentCharges.matchId, matchId), sql`coalesce(${paymentCharges.payerUserId}, ${paymentCharges.userId}) = ${userId}`))
     .orderBy(paymentCharges.createdAt, paymentCharges.id);
   for (const r of rows) {
-    const open = openFrom(r, matchId, now);
+    const open = openFrom(r, matchId, now, until);
     if (open) return open;
   }
   return null;
 }
 
-function openFrom(r: Row, matchId: string, now: Date): OpenRow | null {
+function openFrom(r: Row, matchId: string, now: Date, until: Date | null): OpenRow | null {
   if (r.status !== "requires_action" || r.failureCode !== "authentication_required") return null;
   if (!["lobby", "confirmed"].includes(r.matchStatus) || r.cancelRequestedAt !== null || r.settledAt !== null || r.startsAt.getTime() <= now.getTime()) return null;
-  const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
+  const end = windowEndAfterResume(effectiveGraceEnd(r.graceUntil, r.startsAt), r.startsAt, until); // mit Karenz nach der Pause
   if (end === null || end.getTime() <= now.getTime()) return null; // Fenster abgelaufen (oder Altzeile)
   if (!r.paymentIntentId) return null;
   return { id: r.id, amountCents: r.amountCents, paymentIntentId: r.paymentIntentId, currentAttempt: r.currentAttempt, graceUntil: r.graceUntil, startsAt: r.startsAt, matchId };
@@ -113,6 +115,7 @@ export async function getAuthorizationSecret(userId: string, matchId: string, no
 
 /** Offene Freigaben des Nutzers (nur Spiel und Fensterende, KEIN Secret): fuer die Liste im Konto. Liest nur eigene Zeilen. */
 export async function listOpenAuthorizations(userId: string, now: Date = new Date()): Promise<{ matchId: string; until: string }[]> {
+  const resumeEnd = await resumeUntil();
   const rows = await db
     .select({ matchId: paymentCharges.matchId, graceUntil: paymentCharges.graceUntil, paymentIntentId: paymentCharges.paymentIntentId, startsAt: matches.startsAt, matchStatus: matches.status, cancelRequestedAt: matches.cancelRequestedAt, settledAt: matches.settledAt })
     .from(paymentCharges)
@@ -122,7 +125,7 @@ export async function listOpenAuthorizations(userId: string, now: Date = new Dat
   for (const r of rows) {
     // dieselben Bedingungen wie getAuthorizationSecret/openRow: Anzeige und Server stimmen ueberein
     if (!["lobby", "confirmed"].includes(r.matchStatus) || r.cancelRequestedAt !== null || r.settledAt !== null || !r.paymentIntentId || r.startsAt.getTime() <= now.getTime()) continue;
-    const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
+    const end = windowEndAfterResume(effectiveGraceEnd(r.graceUntil, r.startsAt), r.startsAt, resumeEnd);
     if (end === null || end.getTime() <= now.getTime()) continue;
     const rowMatchId = matchIdOf(r);
     if (!out.some((o) => o.matchId === rowMatchId)) out.push({ matchId: rowMatchId, until: graceText(end, now) });

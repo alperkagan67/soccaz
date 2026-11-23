@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentCharges, paymentProfiles, type CardStatus } from "@/db/schema";
 import { effectiveGraceEnd } from "@/lib/grace";
+import { resumeUntil, windowEndAfterResume } from "../pause-resume";
 import { cardDisplayFor, type Audience, type CardDisplay } from "@/lib/card-visibility";
 import { cardView } from "@/lib/card-view";
 import { validCoversOf } from "./cover";
@@ -22,9 +23,10 @@ export async function getCardDisplays(matchId: string, audienceOf: (p: { userId:
     .leftJoin(paymentCharges, and(eq(paymentCharges.matchId, matchParticipants.matchId), eq(paymentCharges.userId, matchParticipants.userId)))
     .where(eq(matchParticipants.matchId, matchId));
   const out: Record<string, CardDisplay> = {};
+  const resumeEnd = await resumeUntil();
   const valid = validCoversOf(rows.map((r) => ({ userId: r.userId, teamId: r.teamId, cardStatus: r.cardStatus, coveredByUserId: r.coveredBy })), rows[0]?.matchKind === "team");
   for (const r of rows) {
-    const end = effectiveGraceEnd(r.graceUntil, r.startsAt);
+    const end = windowEndAfterResume(effectiveGraceEnd(r.graceUntil, r.startsAt), r.startsAt, resumeEnd);
     // dieselben Bedingungen wie der Server (authorize.ts openRow): offenes Spiel, keine angeforderte Absage, nicht abgerechnet, PaymentIntent vorhanden, Anstoss in der Zukunft
     const awaiting =
       r.payer === null && // Zeile mit Zahler (Variante B): die Freigabe gehoert dem Zahler, nicht dem Platz
