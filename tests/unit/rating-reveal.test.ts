@@ -57,4 +57,9 @@ describe("Einbau in /spiele/[id] (Quelltext)", () => {
     expect(calls).toEqual(["getRatingReveal(match.id, user.id)"]);
     expect(page).toMatch(/user \? await getRatingReveal/); // ohne Anmeldung gar kein Aufruf
   });
+
+  it("Layoutverschiebung (AC-21): der Live-Indikator steht in einem Kasten fester Breite; der Wechsel von 'Verbinde' auf 'Live' ändert die Kopfzeile nicht", () => {
+    const page = readFileSync(path.join(process.cwd(), "src/app/spiele/[id]/page.tsx"), "utf8");
+    expect(page).toMatch(/<span className="inline-block w-24 text-left">\s*<LiveIndicator eventsUrl=/);
+  });
 });
