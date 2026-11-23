@@ -252,6 +252,21 @@ describe("Karenz ab Wiedereinschalten: Fristen, die in der Pause abliefen, brauc
     expect((await stateOf(g.match.id)).status).toBe("cancelled");
   });
 
+  it("Kurzpause (unter 15 Minuten) ueber der Frist: keine Karenz, regulaere Absage; ebenso eine Kurzpause nach einer langen verlaengert deren Karenz nicht", async () => {
+    const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const t = new Date((await dueOf(g.match.id)).getTime() + 60_000);
+    await pause(new Date(t.getTime() - 30_000), new Date(t.getTime() - 10 * MIN)); // Pause von nur 9,5 Minuten
+    await closeLobbiesAtDeadline(t);
+    expect((await stateOf(g.match.id)).status).toBe("cancelled");
+    const h = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
+    const t2 = new Date((await dueOf(h.match.id)).getTime() + 60_000);
+    const on1 = new Date(t2.getTime() - 30_000);
+    await pause(on1, new Date(t2.getTime() - 2 * 3_600_000)); // lange Pause ueber die Frist
+    await pause(new Date(on1.getTime() + 20 * MIN), new Date(on1.getTime() + 15 * MIN), true); // 5-min-Kurzpause danach: zaehlt nicht
+    await closeLobbiesAtDeadline(new Date(on1.getTime() + 121 * MIN)); // nur on1 + 2 h gilt (nicht on2 + 2 h)
+    expect((await stateOf(h.match.id)).status).toBe("cancelled");
+  });
+
   it("lange Pause (20 Tage): das Ausschalten liegt vor dem Rueckblick, das Einschalten darin: die Karenz gilt trotzdem", async () => {
     const g = await cardGame({ hoursAhead: 72, n: 6, confirmed: false });
     const due = await dueOf(g.match.id);

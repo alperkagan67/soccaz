@@ -45,6 +45,9 @@ describe("Nachzahlfenster: Karenz nach dem Wiedereinschalten", () => {
     const g = await slotGame(provider, { waitlist: 0, realPaid: true });
     await runSubstitutes({ matchId: g.match.id });
     expect((await stateOf(g.match.id)).cancelRequestedAt).not.toBeNull();
+    // OHNE Karenz (hier: nie pausiert) verliert nie ein BEZAHLTER Platz: freigegeben wird hoechstens der Platz mit gescheiterter Abbuchung, die Absage erstattet voll
+    const seats = (await seatsOf(g.match.id)).map((x) => x.userId);
+    for (const paid of [g.mate, g.adminA, g.adminB]) expect(seats).toContain(paid.id);
   });
 
   it("Kontrolle (nie pausiert): Fenster abgelaufen: auch mit neuer Karte kein Wiederabbuchen", async () => {

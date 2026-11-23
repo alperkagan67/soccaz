@@ -3,12 +3,14 @@ import { db } from "@/db";
 import { auditLog } from "@/db/schema";
 
 // Karenz nach der Pause (Entscheid t2q/t2s): Eine Frist (oder ein Nachzahlfenster), die WÄHREND einer Pause ablief (nach dem Ausschalten, bis zum Wiedereinschalten), gilt frühestens 2 Stunden nach dem
-// Wiedereinschalten dieser Pause als fällig. Mehrere Pausen (der Notschalter kann flattern): Pausen mit Abstand unter 2 Stunden werden zu EINER Pause zusammengeführt (Karenz verkettet); für jede Frist D zählt jede Pause k mit off_k < D <= on_k;
+// Wiedereinschalten dieser Pause als fällig. Mehrere Pausen (der Notschalter kann flattern): Pausen unter 15 Minuten zählen nicht (Mindestdauer, zuerst verworfen); Pausen mit Abstand unter 2 Stunden werden zu EINER Pause zusammengeführt (Karenz verkettet); für jede Frist D zählt jede Pause k mit off_k < D <= on_k;
 // die Karenz ist das MAXIMUM ihrer Enden on_k + 2 h (Definition für TS und SQL, Paritätstest). Fristen vor jeder Pause und Fristen nach dem Wiedereinschalten bleiben unberührt (kein Wiederaufleben alter Fenster). Gemeinsames Modul für Spiel-Frist, Turnier-Frist
 // und Nachzahlfenster. Kein Import von finance/scheduled/payment-switch (Zyklus). Ohne beide Audit-Einträge (off UND on; Seed, SQL ohne Eintrag) gibt es keine Karenz: sichere Richtung.
 export const RESUME_GRACE_MS = 2 * 3_600_000;
 const LOOKBACK_MS = 14 * 24 * 3_600_000; // Rückblick auf Ein-/Ausschalten; ein Ausschalten davor wird für eine längere Pause zusätzlich geladen
 const MAX_PAUSES = 10;
+/** Mindestdauer einer Pause (Entscheid t2q): kürzere Pausen (kurzes Flattern, Fehlschalten) lösen weder Karenz noch Mitteilung aus. Zuerst werden Kurzpausen verworfen, dann werden die übrigen zusammengeführt. */
+export const MIN_PAUSE_MS = 15 * 60_000;
 
 /** Eine Pause: Ausschalten, Wiedereinschalten und Ende der Karenz (+2 h). */
 export type Pause = { offAt: Date; onAt: Date; until: Date };
@@ -37,9 +39,10 @@ export function pausesFrom(events: { action: string; at: Date }[]): Pause[] {
       off = null;
     }
   }
-  // Pausen mit Abstand unter der Karenz (Ausschalten der nächsten Pause weniger als 2 Stunden nach dem Wiedereinschalten) gelten als EINE Pause (Flattern): off_k .. on_{k+1}; die Karenz wird so verkettet
+  // Reihenfolge: ERST Kurzpausen (unter 15 Minuten) verwerfen, DANN zusammenführen: sonst könnte eine Kurzpause die Karenz einer langen Pause verlängern. Pausen mit Abstand unter der Karenz (Ausschalten der
+  // nächsten Pause weniger als 2 Stunden nach dem Wiedereinschalten) gelten als EINE Pause (Flattern): off_k .. on_{k+1}; die Karenz wird so verkettet
   const merged: Pause[] = [];
-  for (const p of pauses) {
+  for (const p of pauses.filter((x) => x.onAt.getTime() - x.offAt.getTime() >= MIN_PAUSE_MS)) {
     const prev = merged[merged.length - 1];
     if (prev && p.offAt.getTime() - prev.onAt.getTime() < RESUME_GRACE_MS) merged[merged.length - 1] = { offAt: prev.offAt, onAt: p.onAt, until: p.until };
     else merged.push(p);

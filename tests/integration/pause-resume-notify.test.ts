@@ -110,14 +110,24 @@ describe("Mitteilung nach dem Wiedereinschalten (Spiele)", () => {
     expect(await notifyResumedGames(new Date(info.until.getTime() + 60_000))).toBe(0);
   });
 
-  it("Flattern des Schalters: eine zweite Pause nach der Frist (D nicht darin) loest keine zweite Mitteilung aus (Marke je Frist, nicht je Einschaltung)", async () => {
+  it("Flattern: zweite Pause weniger als 2 h nach dem Wiedereinschalten = EINE Pause mit spaeterer Karenz: die neue spaetere Frist wird einmal nachgemeldet; getrennte Pause (Abstand mindestens 2 h) aendert die Frist nicht: keine zweite Mitteilung", async () => {
     const g = await longGame();
     await pauseAcross(g.due);
     await notifyResumedGames();
     expect(await notesOf(g.adminA.id)).toHaveLength(1);
-    await resumeCycle(new Date(g.due.getTime() + 40 * 60_000), new Date(g.due.getTime() + 30 * 60_000)); // zweite Pause, D liegt nicht darin
+    await resumeCycle(new Date(g.due.getTime() + 60 * 60_000), new Date(g.due.getTime() + 30 * 60_000)); // zweite Pause (30 min) innerhalb von 2 h: verkettet, Karenz jetzt bis on2 + 2 h
     await notifyResumedGames();
-    expect(await notesOf(g.adminA.id)).toHaveLength(1);
+    const notes = await notesOf(g.adminA.id);
+    expect(notes).toHaveLength(2); // die verschobene Frist ist eine NEUE Frist: einmal nachgemeldet
+    expect(notes[0].body).not.toBe(notes[1].body);
+    await notifyResumedGames();
+    expect(await notesOf(g.adminA.id)).toHaveLength(2); // entprellt
+    const apart = await longGame();
+    await resumeCycle(new Date(apart.due.getTime() + 30_000), new Date(apart.due.getTime() - 3_600_000));
+    await notifyResumedGames();
+    await resumeCycle(new Date(apart.due.getTime() + 6 * 3_600_000), new Date(apart.due.getTime() + 5 * 3_600_000)); // getrennt (Abstand 5 h - 30 s)
+    await notifyResumedGames();
+    expect(await notesOf(apart.adminA.id)).toHaveLength(1); // die Frist von D ist unveraendert: keine zweite Mitteilung
   });
 
   it("Begrenzung: mit Limit 1 bekommt je Aufruf nur ein Spiel die Mitteilung, der Rest kommt beim naechsten Aufruf (Job)", async () => {

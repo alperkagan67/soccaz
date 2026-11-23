@@ -77,11 +77,23 @@ describe("Mehrfach-Pausen: Definition (Karenz = Maximum der Karenzenden der Paus
     const p = pausesFrom([{ action: "card_switch.off", at: t(0) }, { action: "card_switch.on", at: t(60) }, { action: "card_switch.off", at: t(180) }, { action: "card_switch.on", at: t(200) }]); // Abstand 120 min
     expect(p).toHaveLength(2);
   });
+  it("Mindestdauer: eine Pause unter 15 Minuten zaehlt nicht (14:59 verworfen, genau 15:00 zaehlt)", () => {
+    const t = (m: number, sec = 0) => new Date(Date.UTC(2030, 0, 1, 0, m, sec));
+    expect(pausesFrom([{ action: "card_switch.off", at: t(0) }, { action: "card_switch.on", at: t(14, 59) }])).toHaveLength(0);
+    expect(pausesFrom([{ action: "card_switch.off", at: t(0) }, { action: "card_switch.on", at: t(15) }])).toHaveLength(1);
+  });
+  it("Reihenfolge: ERST Kurzpausen verwerfen, DANN zusammenfuehren: eine Kurzpause verlaengert die Karenz der langen Pause nicht", () => {
+    const t = (m: number) => new Date(Date.UTC(2030, 0, 1, 0, m));
+    const p = pausesFrom([{ action: "card_switch.off", at: t(0) }, { action: "card_switch.on", at: t(60) }, { action: "card_switch.off", at: t(70) }, { action: "card_switch.on", at: t(75) }]); // lange Pause, 10 min spaeter eine 5-min-Pause
+    expect(p).toHaveLength(1);
+    expect(p[0].onAt.getTime()).toBe(t(60).getTime()); // die Kurzpause (70..75) ist weg, die Karenz endet bei 60 + 2 h
+    expect(p[0].until.getTime()).toBe(t(60).getTime() + RESUME_GRACE_MS);
+  });
   it("pausesFrom: nur vollstaendige Paare (off dann on); ein on ohne off davor zaehlt nicht; off, off, on nimmt das letzte off", () => {
     const t = (m: number) => new Date(Date.UTC(2030, 0, 1, 0, m));
     expect(pausesFrom([{ action: "card_switch.on", at: t(1) }])).toHaveLength(0);
-    expect(pausesFrom([{ action: "card_switch.off", at: t(1) }, { action: "card_switch.on", at: t(5) }, { action: "card_switch.off", at: t(10) }])).toHaveLength(1); // zweites off noch offen
-    const p = pausesFrom([{ action: "card_switch.off", at: t(1) }, { action: "card_switch.off", at: t(2) }, { action: "card_switch.on", at: t(5) }]);
+    expect(pausesFrom([{ action: "card_switch.off", at: t(1) }, { action: "card_switch.on", at: t(30) }, { action: "card_switch.off", at: t(40) }])).toHaveLength(1); // zweites off noch offen
+    const p = pausesFrom([{ action: "card_switch.off", at: t(1) }, { action: "card_switch.off", at: t(2) }, { action: "card_switch.on", at: t(30) }]);
     expect(p).toHaveLength(1);
     expect(p[0].offAt.getTime()).toBe(t(2).getTime());
   });
