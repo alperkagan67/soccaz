@@ -3,7 +3,8 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // Formulare vor der Hydration (Backlog 223/224, Kandidat 28): Ein <form> mit onSubmit, aber ohne `action`, wird vor der Hydration vom Browser nativ als GET gesendet (alle Felder in der Adresse, die Aktion läuft
-// nicht). Jedes <form> mit onSubmit braucht darum `action=` (Server-Aktion, Progressive Enhancement) oder `method="post"`. Bestehende Formulare stehen in der Ausnahmeliste, bis ihre Welle umgesetzt ist; die Liste
+// nicht). Jedes <form> mit onSubmit braucht darum `action=` (Server-Aktion: läuft auch vor der Hydration) oder, nur für Client-Handler-Formulare (Welle 5), `method="post"` PLUS einen bis zur Hydration gesperrten
+// Knopf (`useHydrated`): `method="post"` allein schützt nur vor dem GET-Leck, die Aktion läuft dann NICHT. Bestehende Formulare stehen in der Ausnahmeliste (je Datei begründet), bis ihre Welle umgesetzt ist; die Liste
 // darf nur kleiner werden (ein Eintrag ohne Verstoß lässt den Test rot werden: dann streichen).
 const root = join(__dirname, "..", "..", "src");
 
@@ -57,11 +58,14 @@ export function formTags(src: string): string[] {
   return out;
 }
 
-export const violates = (tag: string) => /\bonSubmit=/.test(tag) && !/\baction=/.test(tag) && !/\bmethod=["']post["']/i.test(tag);
+// `(?<![-\w])`: `data-action=` oder `formAction=` zählen nicht als `action=`.
+const attr = (tag: string, name: string) => new RegExp(`(?<![-\\w])${name}=`).test(tag);
+/** `src` ist der Quelltext der Datei: `method="post"` allein genügt nicht, der Knopf muss bis zur Hydration gesperrt sein (`useHydrated`). */
+export const violates = (tag: string, src = "") => attr(tag, "onSubmit") && !attr(tag, "action") && !(/(?<![-\w])method=["']post["']/i.test(tag) && /\buseHydrated\b/.test(src));
 
 describe("Formulare mit onSubmit brauchen action oder method=post (Progressive Enhancement)", () => {
   const all = files(root).map((f) => ({ rel: relative(root, f).split("\\").join("/"), src: readFileSync(f, "utf8") }));
-  const bad = all.filter((f) => formTags(f.src).some(violates)).map((f) => f.rel);
+  const bad = all.filter((f) => formTags(f.src).some((tag) => violates(tag, f.src))).map((f) => f.rel);
 
   it("kein NEUES Formular ohne action: jede Verletzung steht in der Ausnahmeliste", () => {
     expect(bad.filter((f) => !(f in EXCEPTIONS))).toEqual([]);
@@ -86,7 +90,9 @@ describe("Formulare mit onSubmit brauchen action oder method=post (Progressive E
     expect(formTags('<form onSubmit={(e) => { go(e); }} className="x">')).toHaveLength(1);
     expect(violates('<form onSubmit={(e) => { go(e); }} className="x">')).toBe(true);
     expect(violates('<form action={formAction} onSubmit={onSubmit}>')).toBe(false);
-    expect(violates('<form method="post" onSubmit={onSubmit}>')).toBe(false);
+    expect(violates('<form method="post" onSubmit={onSubmit}>')).toBe(true); // nur method=post: die Aktion läuft nicht, Knopf nicht gesperrt
+    expect(violates('<form method="post" onSubmit={onSubmit}>', "const ok = useHydrated();")).toBe(false); // Welle 5: Knopf bis zur Hydration gesperrt
+    expect(violates('<form data-action="x" onSubmit={onSubmit}>')).toBe(true); // data-action zählt nicht
     expect(violates('<form className="card">')).toBe(false);
   });
 });
