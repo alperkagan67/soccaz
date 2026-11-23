@@ -27,6 +27,8 @@ test.afterAll(async () => {
   await closeTestDb();
 });
 
+// ACHTUNG seedOwner: Admin 1 gibt es hoechstens einmal je Datenbank, seedOwner stuft einen frueheren Admin 1 zu Admin 2 zurueck. Darum nie zwei Kontexte mit verschiedenen Owner-Konten gleichzeitig
+// offen halten und nach dem ersten Kontext schliessen, bevor ein zweiter Owner angelegt wird (Test 1 schliesst seinen Kontext je Durchlauf; afterEach schliesst den Rest).
 async function adminPage(browser: Browser, key: string, viewport = { width: 1280, height: 900 }) {
   await seedOwner(key);
   const page = await (await browser.newContext({ viewport })).newPage();

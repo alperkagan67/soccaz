@@ -56,7 +56,7 @@ describe("DESIGN.md Richtung F: Pflicht-Tokens", () => {
   });
 
   it("Dunkel und Hell haben dieselben Farb-Tokens, alle als #rrggbb", () => {
-    const pflicht = ["bg", "panel", "panel-2", "line", "ink", "muted", "rim", "accent", "accent-ink", "accent-fg", "focus", "ok", "warn", "danger", "info"];
+    const pflicht = ["bg", "panel", "panel-2", "line", "control-line", "ink", "muted", "rim", "accent", "accent-ink", "accent-fg", "accent-text", "focus", "ok", "warn", "danger", "info"];
     for (const k of pflicht) {
       expect(dark[k], `dunkel ${k}`).toMatch(HEX);
       expect(light[k], `hell ${k}`).toMatch(HEX);
@@ -173,5 +173,34 @@ describe("DESIGN.md Richtung F: Eigenständigkeit und Lizenz (AC-29)", () => {
   });
   it("keine Namen der Vorbilder in DESIGN.md", () => {
     expect(raw).not.toMatch(/\b(EA FC|FIFA|FUT|Ultimate Team|Vero)\b/);
+  });
+});
+
+// AC-27 (Kontrast-PR): Rand von Bedienelementen, Platzhalter (= muted) und Orange als Schrift auf der Tönung im Entwurf F. Tönung = accent über der Fläche (dunkel 0,14, hell 0,12, wie in globals.css).
+describe("DESIGN.md Richtung F: Rand, Platzhalter und Orange auf Tönung (AC-27)", () => {
+  const mix = (top: string, ground: string, alpha: number) => {
+    const p = (h: string) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+    const [x, y] = [p(top), p(ground)];
+    return "#" + x.map((v, i) => Math.round(v * alpha + y[i] * (1 - alpha)).toString(16).padStart(2, "0")).join("");
+  };
+  for (const [name, c, alpha] of [["dunkel", dark, 0.14], ["hell", light, 0.12]] as const) {
+    it(`${name}: control-line mindestens 3:1 gegen Grund, Fläche und Feldgrund; Platzhalter (muted) mindestens 4,5:1 auf dem Feldgrund`, () => {
+      for (const g of ["bg", "panel", "panel-2"]) expect(contrast(c["control-line"], c[g]), `control-line auf ${g}`).toBeGreaterThanOrEqual(3);
+      expect(contrast(c.muted, c["panel-2"])).toBeGreaterThanOrEqual(4.5);
+    });
+    it(`${name}: accent-text mindestens 4,5:1 auf der Tönung über Grund, Fläche und Feldgrund`, () => {
+      for (const g of ["bg", "panel", "panel-2"]) {
+        const tint = mix(c.accent, c[g], alpha);
+        expect(contrast(c["accent-text"], tint), `accent-text auf Tönung über ${g} (${tint})`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  }
+  it("die Tabelle im Text nennt die Werte des Frontmatters (control-line, accent-text)", () => {
+    for (const token of ["control-line", "accent-text"] as const) {
+      const row = fBody.split("\n").find((l) => l.startsWith("| ") && l.includes(`(\`${token}\``));
+      expect(row, `Zeile ${token}`).toBeDefined();
+      expect(row).toContain(`\`${dark[token]}\``);
+      expect(row).toContain(`\`${light[token]}\``);
+    }
   });
 });

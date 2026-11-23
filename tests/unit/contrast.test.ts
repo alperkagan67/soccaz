@@ -151,3 +151,60 @@ describe("Status-Töne und Fokus (M2-1)", () => {
     expect(root.tap).toBe("44px");
   });
 });
+
+// AC-27 (Kontrast-PR, Befunde 1 bis 4 aus docs/design/ac27-kontrast-baseline.md): Rand von Bedienelementen, Platzhalter, Orange auf Tönung. Werte aus globals.css, Rechnung mit contrast().
+describe("AC-27: Rand, Platzhalter und Orange auf Tönung (globals.css)", () => {
+  const dark = cssBlock(":root {");
+  const light = cssBlock("@media (prefers-color-scheme: light)");
+  const forceDark = cssBlock(".force-dark");
+  const themes = [
+    { name: "dunkel", vars: dark, t: THEMES.dark, alpha: 0.14, accent: THEMES.dark.o },
+    { name: "hell", vars: light, t: THEMES.light, alpha: 0.12, accent: THEMES.light.o },
+    { name: ".force-dark", vars: forceDark, t: THEMES.dark, alpha: 0.14, accent: THEMES.dark.o },
+  ];
+
+  for (const { name, vars, t, alpha, accent } of themes) {
+    it(`${name}: --control-line mindestens 3:1 gegen Grund, Fläche und Feldgrund (Rand von Feldern und ruhigen Knöpfen)`, () => {
+      const line = vars["control-line"];
+      expect(line, "Token fehlt").toMatch(/^#[0-9a-f]{6}$/);
+      for (const ground of [t.bg, t.fl, t.fl2]) expect(contrast(line, ground), `control-line auf ${ground}`).toBeGreaterThanOrEqual(3);
+    });
+
+    it(`${name}: Platzhalter (--muted) mindestens 4,5:1 auf dem Feldgrund und der Fläche`, () => {
+      for (const ground of [t.fl2, t.fl, t.bg]) expect(contrast(t.muted, ground), `muted auf ${ground}`).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it(`${name}: --accent-text mindestens 4,5:1 auf der Tönung accent-soft über Grund, Fläche und Feldgrund`, () => {
+      const text = vars["accent-text"];
+      expect(text, "Token fehlt").toMatch(/^#[0-9a-f]{6}$/);
+      for (const ground of [t.bg, t.fl, t.fl2]) {
+        const tint = blend(accent, ground, alpha);
+        expect(contrast(text, tint), `accent-text auf Tönung über ${ground} (${tint})`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  }
+
+  it("die Tönung in globals.css hat die angenommene Deckkraft (dunkel 0,14, hell 0,12): sonst stimmt die Rechnung oben nicht", () => {
+    expect(dark["accent-soft"]).toBe("rgba(255, 106, 31, 0.14)");
+    expect(light["accent-soft"]).toBe("rgba(194, 65, 12, 0.12)");
+    expect(forceDark["accent-soft"]).toBe("rgba(255, 106, 31, 0.14)");
+  });
+
+  it("Quelltext: .btn-ghost und .field benutzen --control-line (nicht --line); Platzhalter-Regel; Regel für Orange auf Tönung (unlayered); Tailwind-Farben", () => {
+    const rule = (selector: string) => {
+      const i = css.indexOf(`${selector} {`);
+      expect(i, `Regel ${selector} fehlt`).toBeGreaterThanOrEqual(0);
+      return css.slice(i, css.indexOf("}", i) + 1);
+    };
+    expect(rule(".btn-ghost")).toContain("border-color: var(--control-line)");
+    expect(rule(".btn-ghost")).not.toContain("var(--line)");
+    expect(rule(".field")).toContain("border: 1px solid var(--control-line)");
+    expect(rule(".field")).not.toContain("var(--line)");
+    expect(css).toContain("::placeholder { color: var(--muted); opacity: 1; }");
+    expect(css).toContain(".bg-accent-soft.text-accent-fg, .bg-accent-soft .text-accent-fg { color: var(--accent-text); }");
+    expect(css).toContain("--color-accent-text: var(--accent-text);");
+    expect(css).toContain("--color-control-line: var(--control-line);");
+    // die Regel steht NICHT in einer @layer (sonst schlüge die Tailwind-Utility .text-accent-fg sie)
+    expect(css.slice(0, css.indexOf(".bg-accent-soft.text-accent-fg")).includes("@layer")).toBe(false);
+  });
+});

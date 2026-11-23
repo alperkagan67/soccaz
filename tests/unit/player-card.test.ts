@@ -88,11 +88,13 @@ describe("playerCardFor (AC-17): Sichtbarkeit je Betrachter", () => {
 });
 
 describe("initialsOf", () => {
-  it("zwei Wörter, groß; ein Wort ein Buchstabe; leer ein Fragezeichen; Unicode bleibt ganz", () => {
+  // C3a (AC-5): EINE Initialen-Regel für Karten, Zeilen und Gast-Ansichten = guest-roster.ts (erster und letzter Namensteil, Graphem-sicher). Alt: die ersten ZWEI Wörter; für zwei Wörter identisch,
+  // nur bei drei und mehr Namensteilen ändert sich die zweite Initiale (Letzter statt Zweiter). Die Aussagen "groß, ein Wort ein Buchstabe, leer = ?, Unicode bleibt ganz" bleiben.
+  it("erster und letzter Namensteil, groß; ein Wort ein Buchstabe; leer ein Fragezeichen; Unicode bleibt ganz", () => {
     expect(initialsOf("zorro quasimodo")).toBe("ZQ");
     expect(initialsOf("Zorro")).toBe("Z");
     expect(initialsOf("  ")).toBe("?");
-    expect(initialsOf("Özgür Çelik Demir")).toBe("ÖÇ");
+    expect(initialsOf("Özgür Çelik Demir")).toBe("ÖD"); // alt "ÖÇ" (zweites Wort), jetzt letzter Namensteil
   });
 });
 
@@ -101,7 +103,7 @@ describe("teamCardFor (AC-19)", () => {
 
   it("Teamwertung = Durchschnitt der Mitglieder-Wertungen (nur eine Zahl), keine Einzelwertungen im Objekt", () => {
     const d = teamCardFor(team, rating);
-    expect(d).toMatchObject({ name: "Die Wilden Kerle", initials: "DW", colorKey: "yellow", teamRating: 50, members: 3 }); // (25 + 50 + 75) / 3
+    expect(d).toMatchObject({ name: "Die Wilden Kerle", initials: "DK", colorKey: "yellow", teamRating: 50, members: 3 }); // (25 + 50 + 75) / 3
     expect(Object.keys(d).sort()).toEqual(["colorKey", "hex", "initials", "members", "name", "teamRating", "textColor"]);
     expect(JSON.stringify(d)).not.toContain("memberElos");
     expect(JSON.stringify(d)).not.toContain("1500");
