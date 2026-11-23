@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { closeContexts, devLogin } from "./helpers";
-import { RECORD_ANIMATIONS, seedPlayedWithRatings } from "./helpers-wertung";
+import { closeContexts } from "./helpers";
+import { RECORD_ANIMATIONS, login, seedPlayedWithRatings } from "./helpers-wertung";
 
 // Vertrag 013 v3, AC-21 (Leistung am Handy): 4-fach CPU-Drosselung, 390 px, während des Aufdeckens und des Aufstiegs keine Long Tasks über 50 ms, Layoutverschiebung 0,
 // im Mittel mindestens 55 fps, Interaktion nach Tippen unter 200 ms; höchstens 6 gleichzeitig animierte Elemente. Läuft nur in der CI (Trace und Video als Artefakt).
@@ -28,7 +28,7 @@ test("Aufdecken und Aufstieg am Handy (390 px, 4-fach CPU-Drosselung): keine Lon
   await ctx.addInitScript(OBSERVE);
   await ctx.tracing.start({ screenshots: true, snapshots: true });
   const page = await ctx.newPage();
-  await devLogin(page, g.starEmail, g.starName);
+  await login(page, g.starEmail, g.starName);
   await page.goto("/app");
   const client = await ctx.newCDPSession(page);
   await client.send("Emulation.setCPUThrottlingRate", { rate: 4 });

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { closeContexts, devLogin } from "./helpers";
-import { RECORD_ANIMATIONS, seedPlayedWithRatings } from "./helpers-wertung";
+import { closeContexts } from "./helpers";
+import { RECORD_ANIMATIONS, login, seedPlayedWithRatings } from "./helpers-wertung";
 
 // Vertrag 013 v3, AC-20 (Aufstieg nur einmal, Merker im Browser) und AC-23 (reduzierte Bewegung: nur Einblenden unter 150 ms, alle Informationen bleiben).
 test.describe.configure({ mode: "serial" });
@@ -18,7 +18,7 @@ test("Aufstieg: Aufdecken und Chip-Pop genau EINMAL (Merker im Browser); nach Ne
   const ctx = await browser.newContext();
   await ctx.addInitScript(RECORD_ANIMATIONS);
   const page = await ctx.newPage();
-  await devLogin(page, g.starEmail, g.starName);
+  await login(page, g.starEmail, g.starName);
   await page.goto(`/spiele/${g.matchId}`);
   const motion = page.getByTestId("reveal-motion");
   await expect(motion).toBeVisible();
@@ -38,7 +38,7 @@ test("Aufstieg: Aufdecken und Chip-Pop genau EINMAL (Merker im Browser); nach Ne
 
   // Gegner: Stufe bleibt, nie eine Feier
   const rp = await (await browser.newContext()).newPage();
-  await devLogin(rp, g.rivalEmail, g.rivalName);
+  await login(rp, g.rivalEmail, g.rivalName);
   await rp.goto(`/spiele/${g.matchId}`);
   await expect(rp.getByTestId("rating-reveal-text")).toBeVisible();
   await expect(rp.getByTestId("reveal-motion")).not.toHaveAttribute("data-celebrate", "true");
@@ -49,7 +49,7 @@ test("Reduzierte Bewegung: nur Einblenden (reveal-fade, unter 150 ms), kein Aufd
   const ctx = await browser.newContext({ reducedMotion: "reduce" });
   await ctx.addInitScript(RECORD_ANIMATIONS);
   const page = await ctx.newPage();
-  await devLogin(page, g.starEmail, g.starName);
+  await login(page, g.starEmail, g.starName);
   await page.goto(`/spiele/${g.matchId}`);
   await expect(page.getByTestId("reveal-motion")).toBeVisible();
   await expect.poll(() => names(page, "end")).toEqual(["reveal-fade"]);

@@ -1,4 +1,11 @@
-import { addParticipant, run, seedUser, testDb } from "./helpers";
+import type { Page } from "@playwright/test";
+import { addParticipant, devLogin, run, seedUser, testDb } from "./helpers";
+
+/** Anmelden UND abwarten, bis die Sitzung steht (devLogin wartet nicht: ein sofortiges goto bricht die Anmeldung ab, die Seite wäre als Gast geladen). */
+export async function login(page: Page, email: string, name: string) {
+  await devLogin(page, email, name);
+  await page.waitForURL((url) => !url.pathname.startsWith("/anmelden"));
+}
 
 /** Ein gespieltes, bestätigtes Spiel 3:1 mit zwei Spielern und je einer Verlaufszeile (nach 1000 -> 1090: Aufstieg Kreide -> Rasen; Gegner 1000 -> 910: Stufe bleibt). */
 export async function seedPlayedWithRatings(tag: string) {
