@@ -74,7 +74,7 @@ describe("Salden-Guard: lesen und zaehlen", () => {
     let code = 0;
     let out = "";
     try {
-      out = execFileSync(process.execPath, ["--env-file=.env.local", "scripts/legacy-balance-guard.mjs"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+      out = execFileSync(process.execPath, ["scripts/legacy-balance-guard.mjs"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env } }); // DATABASE_URL aus der Umgebung (setup.ts laedt .env.local, die CI setzt sie direkt): kein --env-file, laeuft in beiden Faellen
     } catch (e) {
       const err = e as { status?: number; stdout?: string; stderr?: string };
       code = err.status ?? -1;
