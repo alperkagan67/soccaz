@@ -82,7 +82,7 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
  *   Captains bereit sind; sonst wird abgesagt und alle bekommen ihren Anteil zurück. Es gibt keine 24-h-Prüfung und keinen 1-h-Abbruch.
  * - Anlage unter 48 Stunden Vorlauf: Gebucht wird sofort (finalConfirm); 1 Stunde vor Anstoß wird abgesagt, was dann noch nicht gebucht ist.
  * Nachholbar und idempotent: nur noch nicht abgerechnete, aktive Spiele vor dem Anstoß werden angefasst. Nur bei eingeschalteten Zahlungen.
- * "Gebucht" heißt hier abgerechnet (`settleMatch`): Das Geld liegt schon auf dem Konto revenue, es gibt noch keine Auszahlung an den Veranstalter.
+ * "Gebucht" heißt hier: kostenlos oder über die Karten-Abbuchung (012 M6b: keine Guthaben-Abrechnung mehr).
  */
 export async function closeLobbiesAtDeadline(now: Date = new Date()): Promise<number> {
   if (!(await paymentsEnabled())) return 0;

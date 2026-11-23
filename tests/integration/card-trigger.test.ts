@@ -209,14 +209,6 @@ describe("Auslöser: Schalter, Altspiel, Guthaben-Spiel, kostenlos (kein Aufruf)
     expect(callsFor(g)).toHaveLength(0);
   });
 
-  it("Guthaben-Spiel (ein Platz mit bezahltem Anteil)", async () => {
-    const g = await game({ hoursAhead: 24 });
-    await db.update(matchParticipants).set({ paidCents: 1000 }).where(and(eq(matchParticipants.matchId, g.match.id), eq(matchParticipants.userId, g.adminA.id)));
-    await runCardCharges(new Date());
-    expect((await runChargesIfDue(g.match.id)).reason).toBe("not_card_mode");
-    expect(callsFor(g)).toHaveLength(0);
-  });
-
   it("kostenloses Spiel", async () => {
     const g = await game({ hoursAhead: 24, price: 0 });
     await runCardCharges(new Date());

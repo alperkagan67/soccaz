@@ -1,17 +1,12 @@
-import { randomUUID } from "node:crypto";
 import { clearCoversInvolving } from "./payments/cover-clear";
-import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { auditLog, matchParticipants, matches, paymentCharges } from "@/db/schema";
 import { pendingRefunds } from "@/db/schema-finance";
 import { joinClosedByTime, leaveClosedByTime } from "@/lib/deadlines";
 import { MIN_PRIVATE_PLAYERS } from "@/lib/lobby-rules";
-import { finalShareFor, formatEuro, reservationFor, shareCents } from "@/lib/money";
+import { reservationFor, shareCents } from "@/lib/money";
 import { audit } from "./audit";
-import { creditWallet, debitWallet } from "./ledger";
-import { teamName } from "./names";
-import { notifyUsers } from "./notifications";
 import { priceFor } from "./pricing";
-import { issueReceipt } from "./receipts";
 import { cardPaymentsEnabled, minPaidPlayers, paymentsEnabled } from "./settings";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
@@ -37,18 +32,11 @@ export function isDeadlineModel(match: Pick<MatchRow, "kind" | "legacyShareModel
 
 /**
  * Gilt für dieses Spiel das Kartenmodell (Vertrag 012, M1)? Nur bei eingeschaltetem Schalter `card_payments_enabled` und nur für Spiele der Frist-Regel
- * (Privat- und Teamspiele des neuen Modells). Altspiele (`legacyShareModel`) und Turniere bleiben beim Guthaben, bis M5/M6 sie umstellen.
- * Betrieb: `card_payments_enabled` nur umlegen, wenn kein offenes Spiel mit bezahlten Plätzen existiert; solche Spiele bleiben bis zum Ende im Guthabenmodell
- * (siehe unten und docs/BETRIEB.md). Im Kartenmodell bewegt die Lobby kein Geld: kein reserveShare, keine Erstattung oder Nachforderung bei Änderung der Spielerzahl, keine Sofortbuchung.
+ * (Privat- und Teamspiele des neuen Modells). Altspiele (`legacyShareModel`) sind geschlossen (012 F2). Im Kartenmodell bewegt die Lobby kein Geld (012 M6b: Guthaben entfernt).
  * Die Abbuchung (beim Fixieren, zur Frist, sofort) kommt mit M2.
  */
 export async function cardModeActive(tx: Pick<Tx, "select">, match: Pick<MatchRow, "id" | "kind" | "legacyShareModel">): Promise<boolean> {
-  if (!isDeadlineModel(match) || !(await cardPaymentsEnabled(tx as Tx))) return false;
-  // Umschalten im laufenden Betrieb: Liegt schon Geld im Spiel (ein Platz mit paid_cents > 0 aus dem Guthabenmodell), bleibt das Spiel im Guthabenmodell,
-  // bis es leer oder abgesagt ist. Pro Spiel gibt es nie einen Mischzustand, solange Geld darin liegt; Austritt, Neuberechnung und Fixieren erstatten dann wie bisher.
-  // Gelesen wird in der Transaktion des Aufrufers unter der Spielsperre (Zahlung und Moduswechsel können sich nicht überholen).
-  const [paid] = await tx.select({ userId: matchParticipants.userId }).from(matchParticipants).where(and(eq(matchParticipants.matchId, match.id), gt(matchParticipants.paidCents, 0))).limit(1);
-  return !paid;
+  return isDeadlineModel(match) && (await cardPaymentsEnabled(tx as Tx));
 }
 
 /**
@@ -206,12 +194,8 @@ export async function seatedCount(tx: Pick<Tx, "select">, matchId: string): Prom
 }
 
 /**
- * Privatspiel vor dem Fixieren: Hat sich die Zahl der eingeteilten Spieler geändert, wird der Anteil neu gerechnet (Miete ÷ neue Zahl).
- * Zu viel Gezahltes geht sofort als Guthaben zurück (der bezahlte Betrag sinkt auf den neuen Anteil), zu wenig wird nicht automatisch
- * abgebucht, sondern vom Spieler per `payShare` nachgezahlt (die Differenz). "Bereit" beider Captains wird zurückgesetzt.
- * Der Aufrufer hält die Zeilensperre auf dem Spiel (genau einmal je Änderung). Rundungsreste (weniger als n Cent) bleiben bei der Plattform.
- * Erstattungs-Schlüssel enthalten eine Zufallskennung: derselbe Zahlungsstand kann nach mehreren Änderungen mehrfach vorkommen,
- * Doppelbuchung verhindert die Spielsperre, nicht der Schlüssel.
+ * Privatspiel vor dem Fixieren: Hat sich die Zahl der eingeteilten Spieler geändert, wird "Bereit" beider Captains zurückgesetzt; der Anteil wird neu angezeigt (Miete ÷ neue Zahl).
+ * Keine Erstattung und keine Nachforderung: die Lobby bewegt kein Geld (012 M6b). Der Aufrufer hält die Zeilensperre auf dem Spiel (genau einmal je Änderung).
  */
 export async function recalcShares(tx: Tx, match: MatchRow, actorId: string | null): Promise<void> {
   if (!usesFixedShareModel(match)) return;

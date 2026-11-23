@@ -14,12 +14,11 @@ import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications"
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { createBookingJob, withdrawBookingJob } from "./booking";
-import { hasLongLead } from "@/lib/deadlines";
 import { recordLateCancel } from "./stats";
 import { paymentsEnabled } from "./settings";
 import { triggerChargesInBackground } from "./payments/charge-trigger";
 import { chargeAmount } from "./payments/charge-run";
-import { CHARGES_LOCKED, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, recalcShares, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { CHARGES_LOCKED, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, onParticipantLeaves, privateShareNow, recalcShares, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";

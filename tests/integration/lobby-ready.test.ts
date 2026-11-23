@@ -3,9 +3,9 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matchParticipants } from "@/db/schema";
 import { creditWallet } from "@/server/ledger";
-import { payShare, setReady } from "@/server/lobby";
+import { setReady } from "@/server/lobby";
 import { setSetting } from "@/server/settings";
-import { addPlayer, cleanup, makeMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, seedShare } from "./helpers";
 
 // AC-4 (Vertrag 004): Mit eingeschalteten Zahlungen gibt es "Bereit" erst nach der Zahlung des Anteils.
 const key = () => `lr-${Math.random().toString(36).slice(2)}`;
@@ -34,7 +34,7 @@ describe("setReady und Zahlung", () => {
     expect(await readyAt(m.match.id, p.id)).toBeNull();
 
     await fund(p.id, 2000);
-    await payShare(p.id, m.match.id);
+    await seedShare(p.id, m.match.id);
     await setReady(p.id, m.match.id, true);
     expect(await readyAt(m.match.id, p.id)).toBeInstanceOf(Date);
   });
