@@ -194,3 +194,12 @@ export async function cardReadyAll(g: CardGame, who = g.all) {
 export async function chargeGame(g: { match: { id: string } }, now: Date = new Date()) {
   return runCharges(g.match.id, now);
 }
+
+/**
+ * Altsaldo als Fixture (012 M6b): schreibt dem Guthaben eines Nutzers direkt über den Hauptbuchkern (`post`) etwas gut, ohne `creditWallet`
+ * (die Guthaben-Funktionen werden mit 1c-ii-b gelöscht; Salden aus der alten Zeit bleiben bis PR 2 lesbar: `walletBalance`, Kontolöschung, Salden-Guard).
+ */
+export async function seedWalletBalance(userId: string, cents: number, opts: { from?: "bank" | "revenue" | "clearing"; kind?: "adjustment" | "topup" | "refund"; matchId?: string } = {}) {
+  const { post } = await import("@/server/ledger");
+  await db.transaction((tx) => post(tx, { debit: { account: opts.from ?? "bank" }, credit: { account: "wallet", userId }, amountCents: cents, kind: opts.kind ?? "adjustment", matchId: opts.matchId, idempotencyKey: `seedwallet-${randomUUID()}`, reason: "Test-Altsaldo" }));
+}
