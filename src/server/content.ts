@@ -16,7 +16,12 @@ export const AUTO_HIDE_REPORTERS = 3;
 const stripControl = (s: string) => s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/\r\n?/g, "\n");
 
 async function targetExists(type: CommentTarget, id: string): Promise<boolean> {
-  const table = type === "team" ? teams : type === "player" ? users : venues;
+  if (type === "venue") {
+    // Nur freigegebene Hallen (013 v3 AC-31): eine angefragte/abgelehnte Halle verhaelt sich wie eine unbekannte ID (keine Bewertung, kein Existenz-Leck)
+    const [v] = await db.select({ id: venues.id }).from(venues).where(and(eq(venues.id, id), eq(venues.approvalStatus, "approved")));
+    return Boolean(v);
+  }
+  const table = type === "team" ? teams : users;
   const [row] = await db.select({ id: table.id }).from(table).where(eq(table.id, id));
   return Boolean(row);
 }

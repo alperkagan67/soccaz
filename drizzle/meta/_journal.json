@@ -393,6 +393,13 @@
       "when": 1795387581289,
       "tag": "0055_maintenance_role",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1795433729928,
+      "tag": "0056_venue_approval",
+      "breakpoints": true
     }
   ]
 }
