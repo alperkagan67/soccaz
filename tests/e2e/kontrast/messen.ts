@@ -13,6 +13,8 @@ export const MAX_PIXELS = 2500;
 
 export type PageMeta = { page: string; role: string; scheme: "light" | "dark"; viewport: number };
 
+type Rect = { x: number; y: number; w: number; h: number };
+
 type Item = {
   kind: RawMeasurement["kind"];
   selector: string;
@@ -23,7 +25,8 @@ type Item = {
   layers: string[];
   base: string;
   needPixel: boolean;
-  rect: { x: number; y: number; w: number; h: number };
+  /** Bei Text: die Zeilenrechtecke des TEXTES (Range über die Textknoten), nie das Rechteck des ganzen Elements; sonst das Elementrechteck. */
+  rects: Rect[];
   disabled: boolean;
   note?: string;
 };
@@ -100,9 +103,23 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     if (typeof (el as HTMLElement).checkVisibility === "function" && !(el as HTMLElement).checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
     return true;
   };
-  const pageRect = (el: Element) => {
+  const pageRect = (el: Element): Rect => {
     const r = el.getBoundingClientRect();
     return { x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height };
+  };
+  /** Rechtecke des Textes selbst (eigene Textknoten des Elements), je Zeile eines: nur dort liegen Glyphen (R-T345/Auswertung AC-27: das Elementrechteck zog fremde Flächen ins Perzentil). */
+  const textRects = (el: Element): Rect[] => {
+    const out: Rect[] = [];
+    for (const node of Array.from(el.childNodes)) {
+      if (node.nodeType !== Node.TEXT_NODE || !(node.nodeValue ?? "").trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of Array.from(range.getClientRects())) {
+        if (r.width < 1 || r.height < 1) continue;
+        out.push({ x: r.left + window.scrollX, y: r.top + window.scrollY, w: r.width, h: r.height });
+      }
+    }
+    return out;
   };
   /** Hintergrundschichten (unten zuerst) und ob ein Bild/Verlauf oder ein überlappendes Element dahinter liegt. */
   function backdrop(el: Element, startAtParent: boolean): { layers: string[]; needPixel: boolean } {
@@ -123,7 +140,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     return { layers: layers.reverse(), needPixel };
   }
   /** Liegt hinter dem Text ein fremdes, gezeichnetes Element (Bild, Video, Canvas, SVG oder Fläche eines Nicht-Vorfahren)? */
-  function overlapped(el: Element, r: { x: number; y: number; w: number; h: number }): boolean {
+  function overlapped(el: Element, r: Rect): boolean {
     const cx = r.x + r.w / 2 - window.scrollX;
     const cy = r.y + r.h / 2 - window.scrollY;
     if (cx < 0 || cy < 0 || cx > window.innerWidth || cy > window.innerHeight) return false; // unterhalb des Fensters: nicht prüfbar, Stapel gilt
@@ -149,7 +166,8 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     try {
       const cs = getComputedStyle(el);
       const fg = toRgba(cs.color);
-      const r = pageRect(el);
+      const rects = textRects(el);
+      if (rects.length === 0) continue; // kein sichtbarer Text im Element selbst
       const b = backdrop(el, false);
       items.push({
         kind: "text",
@@ -160,8 +178,8 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         fg: fg ? withAlpha(fg, effOpacity(el)) : cs.color,
         layers: b.layers,
         base,
-        needPixel: b.needPixel || overlapped(el, r),
-        rect: r,
+        needPixel: b.needPixel || overlapped(el, rects[0]),
+        rects,
         disabled: el.closest("[disabled], [aria-disabled='true']") !== null,
         note: cs.textShadow !== "none" ? "Textschatten vorhanden (nicht eingerechnet)" : undefined,
       });
@@ -177,7 +195,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
       const b = backdrop(el, false);
       const fgValue = toRgba(cs.color);
       const r = pageRect(el);
-      const common = { kind: "text" as const, selector: describe(el), fontSizePx: parseFloat(cs.fontSize), fontWeight: Number(cs.fontWeight) || 400, layers: b.layers, base, needPixel: b.needPixel, rect: r, disabled: el.matches("[disabled]") };
+      const common = { kind: "text" as const, selector: describe(el), fontSizePx: parseFloat(cs.fontSize), fontWeight: Number(cs.fontWeight) || 400, layers: b.layers, base, needPixel: b.needPixel, rects: [r], disabled: el.matches("[disabled]") };
       if (fgValue) items.push({ ...common, sample: "Eingabetext", fg: withAlpha(fgValue, effOpacity(el)) });
       const ph = el.getAttribute("placeholder");
       if (ph && ph.trim()) {
@@ -219,7 +237,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         layers: ground.layers,
         base,
         needPixel: false,
-        rect: pageRect(el),
+        rects: [pageRect(el)],
         disabled: el.matches("[disabled], [aria-disabled='true']"),
         note: ground.needPixel ? "Grund hat Bild/Verlauf: Stapel nur angenähert" : undefined,
       });
@@ -248,7 +266,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         layers: ground.layers,
         base,
         needPixel: false,
-        rect: pageRect(el),
+        rects: [pageRect(el)],
         disabled: false,
         note: ring ? (w < 2 ? "Ring unter 2 px" : undefined) : "Fokus über box-shadow o. Ä. wird hier nicht erkannt",
       });
@@ -261,7 +279,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
 }
 
 /** Läuft IM Browser: liest aus einem Screenshot (PNG als Base64) je Rechteck ein Raster von höchstens `max` Pixeln. */
-async function samplePixels(args: { b64: string; rects: { x: number; y: number; w: number; h: number }[]; max: number }): Promise<number[][]> {
+async function samplePixels(args: { b64: string; rects: Rect[][]; max: number }): Promise<number[][]> {
   const img = new Image();
   img.src = `data:image/png;base64,${args.b64}`;
   await img.decode();
@@ -271,17 +289,21 @@ async function samplePixels(args: { b64: string; rects: { x: number; y: number; 
   const g = cv.getContext("2d", { willReadFrequently: true });
   if (!g) return args.rects.map(() => []);
   g.drawImage(img, 0, 0);
-  return args.rects.map((r) => {
-    const x0 = Math.max(0, Math.floor(r.x));
-    const y0 = Math.max(0, Math.floor(r.y));
-    const w = Math.min(cv.width - x0, Math.ceil(r.w));
-    const h = Math.min(cv.height - y0, Math.ceil(r.h));
-    if (w < 1 || h < 1) return [];
-    const data = g.getImageData(x0, y0, w, h).data;
-    const total = w * h;
-    const step = Math.max(1, Math.ceil(total / args.max));
+  // je Messpunkt höchstens `max` Pixel, gleichmäßig auf die Zeilenrechtecke des Textes verteilt
+  return args.rects.map((list) => {
     const out: number[] = [];
-    for (let i = 0; i < total; i += step) out.push(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+    const budget = Math.max(20, Math.floor(args.max / Math.max(1, list.length)));
+    for (const r of list) {
+      const x0 = Math.max(0, Math.floor(r.x));
+      const y0 = Math.max(0, Math.floor(r.y));
+      const w = Math.min(cv.width - x0, Math.ceil(r.w));
+      const h = Math.min(cv.height - y0, Math.ceil(r.h));
+      if (w < 1 || h < 1) continue;
+      const data = g.getImageData(x0, y0, w, h).data;
+      const total = w * h;
+      const step = Math.max(1, Math.ceil(total / budget));
+      for (let i = 0; i < total; i += step) out.push(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]);
+    }
     return out;
   });
 }
@@ -314,7 +336,7 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         const style = await page.addStyleTag({ content: "*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;caret-color:transparent!important}" });
         const png = await page.screenshot({ fullPage: true, animations: "disabled" });
         await style.evaluate((n) => (n as HTMLElement).remove());
-        const sampled = await page.evaluate(samplePixels, { b64: png.toString("base64"), rects: needIdx.map((i) => items[i].rect), max: MAX_PIXELS });
+        const sampled = await page.evaluate(samplePixels, { b64: png.toString("base64"), rects: needIdx.map((i) => items[i].rects), max: MAX_PIXELS });
         pixelsByIdx = new Map(needIdx.map((i, k) => [i, sampled[k]]));
       } catch (e) {
         errors.push(`Pixelmessung fehlgeschlagen: ${e instanceof Error ? e.message : String(e)}`);
