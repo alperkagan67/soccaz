@@ -2,9 +2,15 @@
 // Aufruf: npx tsx --env-file=.env.local scripts/seed-lobby.mts [matchId]    (ohne Angabe: die neueste offene Lobby)
 import pg from "pg";
 import { setReady } from "../src/server/lobby";
+import { assertSeedAllowed } from "./lib/seed-guard";
 
-const url = new URL(process.env.DATABASE_URL!);
-if (!["127.0.0.1", "localhost"].includes(url.hostname)) throw new Error("Nur gegen eine lokale Datenbank.");
+// Schutz wie bei den anderen Seed-Skripten (Backlog 56): nur localhost:5433 mit soccav2 oder soccaz_w1 bis soccaz_w4, keine Query-Parameter.
+try {
+  assertSeedAllowed({ nodeEnv: process.env.NODE_ENV, databaseUrl: process.env.DATABASE_URL });
+} catch (e) {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+}
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 const NAMES = ["Kevin Brandt", "Murat Yilmaz", "Jonas Keller", "Emre Demir", "Lukas Vogt", "Can Aydin", "Tim Hartmann", "Deniz Kaya"];

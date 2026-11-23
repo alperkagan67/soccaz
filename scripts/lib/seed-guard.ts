@@ -1,4 +1,4 @@
-// Schutz für scripts/seed-frontend.mts: Der Seed läuft nur gegen die lokale Dev-Datenbank.
+// Gemeinsamer Schutz aller Seed-Skripte (seed-frontend.mts, seed-demo.mjs, seed-lobby.mts, seed-tournament.mts): Ein Seed läuft nur gegen die lokale Dev-Datenbank.
 // Allowlist: Host localhost bzw. 127.0.0.1, Port 5433, Datenbank soccav2 oder soccaz_w1 bis soccaz_w4.
 // Bei Produktion oder jeder anderen URL gibt es einen Abbruch mit klarer Meldung; es wird nichts angefasst.
 
@@ -11,7 +11,7 @@ export type SeedEnv = { nodeEnv?: string; databaseUrl?: string };
 /** Wirft einen Fehler, wenn der Seed hier nicht laufen darf. Gibt Host, Port und Datenbankname zurück (nie Zugangsdaten). */
 export function assertSeedAllowed(env: SeedEnv): { host: string; port: string; database: string } {
   if (env.nodeEnv === "production") {
-    throw new Error("Abbruch: seed-frontend läuft nie mit NODE_ENV=production. Es wurde nichts verändert.");
+    throw new Error("Abbruch: Seed-Skripte laufen nie mit NODE_ENV=production. Es wurde nichts verändert.");
   }
   if (!env.databaseUrl) {
     throw new Error("Abbruch: DATABASE_URL fehlt (aus der Prozessumgebung, z. B. node --env-file=.env.local). Es wurde nichts verändert.");
@@ -21,6 +21,10 @@ export function assertSeedAllowed(env: SeedEnv): { host: string; port: string; d
     url = new URL(env.databaseUrl);
   } catch {
     throw new Error("Abbruch: DATABASE_URL ist keine gültige URL. Es wurde nichts verändert.");
+  }
+  // WHATWG-URL entfernt führende/innere Leerzeichen und Steuerzeichen, pg-connection-string nicht (" postgres://…" wird dort als relative URL mit anderem Host gelesen): Guard und Treiber müssten dieselbe Adresse sehen.
+  if (/[\s\u0000-\u001f\u007f]/.test(env.databaseUrl)) {
+    throw new Error("Abbruch: DATABASE_URL enthält Leerzeichen oder Steuerzeichen. Es wurde nichts verändert.");
   }
   // pg übernimmt Query-Parameter (host, hostaddr, port, database) mit Vorrang vor dem URL-Teil: jede Query und jedes Fragment ist verboten.
   if (env.databaseUrl.includes("?") || env.databaseUrl.includes("#") || url.search !== "" || url.hash !== "") {
