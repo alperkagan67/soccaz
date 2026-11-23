@@ -138,5 +138,9 @@ describe("Server-Aktion (Quelltext): keine eigene Feldprüfung", () => {
     expect(body).not.toMatch(/onboardingSchema|Object\.fromEntries|zodToState/);
     expect(body.indexOf("requireLoggedIn")).toBeLessThan(body.indexOf("parsePlayerOnboarding"));
     expect(body).toContain("isOldEnough(birth)"); // die Altersprüfung bleibt
+    // gleichzeitige Absendungen: Einrichten UND Löschen nur, solange onboarded_at leer ist (deterministischer Beleg; der Wettlauf-Test in der Integration deckt es nur wahrscheinlich auf)
+    expect(body.split("isNull(users.onboardedAt)").length - 1).toBe(2);
+    expect(body).toContain("db.delete(users).where(and(eq(users.id, user.id), isNull(users.onboardedAt)))");
+    expect(body).toContain(".where(and(eq(users.id, user.id), isNull(users.onboardedAt))) // nur einmal");
   });
 });

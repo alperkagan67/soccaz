@@ -8,8 +8,17 @@ import { cleanup, makeUser } from "./helpers";
 // Geprueft: Prueffunktion (src/lib/player-onboarding.ts), Alter und Konto-Loeschen unter 16 (Rechtsaussage unveraendert), Geburtsdatum wird nie gespeichert, Fehleingaben schreiben nichts.
 let currentUserId = "";
 const signOutCalls: unknown[] = [];
+// Schranke fuer den Wettlauf-Test: beide Aufrufe warten in auth(), bis beide da sind, und lesen danach gemeinsam den (noch nicht eingerichteten) Nutzer
+const barrier: { want: number; seen: number; open: (() => void) | null; gate: Promise<void> | null } = { want: 0, seen: 0, open: null, gate: null };
 vi.mock("@/auth", () => ({
-  auth: async () => (currentUserId ? { user: { id: currentUserId } } : null),
+  auth: async () => {
+    if (barrier.want > 0) {
+      barrier.seen += 1;
+      if (barrier.seen >= barrier.want) barrier.open?.();
+      await barrier.gate;
+    }
+    return currentUserId ? { user: { id: currentUserId } } : null;
+  },
   signOut: async (opts: unknown) => {
     signOutCalls.push(opts);
   },
@@ -135,7 +144,17 @@ describe("completeOnboardingAction: Fehleingaben schreiben nichts und loeschen k
 describe("completeOnboardingAction: gleichzeitige Absendungen", () => {
   it("zweimal gleichzeitig (gueltig): genau EIN Audit, Zeitpunkte nur einmal gesetzt, das Konto bleibt", async () => {
     const u = await fresh("pobr");
-    const res = await Promise.allSettled([completeOnboardingAction(undefined, form()), completeOnboardingAction(undefined, form({ name: "Zweiter Versuch" }))]);
+    barrier.want = 2;
+    barrier.seen = 0;
+    barrier.gate = new Promise<void>((resolve) => {
+      barrier.open = resolve;
+    });
+    let res: PromiseSettledResult<unknown>[];
+    try {
+      res = await Promise.allSettled([completeOnboardingAction(undefined, form()), completeOnboardingAction(undefined, form({ name: "Zweiter Versuch" }))]);
+    } finally {
+      barrier.want = 0;
+    }
     expect(res.every((r) => r.status === "rejected" && String(r.reason).includes("REDIRECT:/app"))).toBe(true);
     const audits = (await db.select().from(auditLog).where(eq(auditLog.entityId, u.id))).filter((a) => a.action === "user.onboarded");
     expect(audits).toHaveLength(1);
