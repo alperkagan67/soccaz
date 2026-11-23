@@ -51,7 +51,7 @@ describe("Assistent (013 AC-25)", () => {
 
   it("im ersten Schritt gibt es „Weiter“ als Absenden-Knopf (Enter = Weiter) und kein „Zurück“", () => {
     const m = html();
-    expect(m).toMatch(/<button[^>]*data-testid="assistent-weiter"[^>]*type="submit"[^>]*>Weiter</button>/);
+    expect(m).toMatch(new RegExp('<button[^>]*data-testid="assistent-weiter"[^>]*type="submit"[^>]*>Weiter</button>'));
     expect(m).not.toContain("assistent-zurueck");
     expect(m).not.toContain("assistent-abschluss");
   });
