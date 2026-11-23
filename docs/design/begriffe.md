@@ -255,6 +255,6 @@ Nicht Rechtstext, aber mit denselben Wörtern (Hilfe, Abschnitt „Geld und Guth
 
 ## Umgesetzt in 013 M3 PR 1 (Texte)
 
-- „Letzte Bestätigung der Captains“ heißt jetzt „Preis steht fest, sobald beide Captains bestätigen“, der Knopf „Ja, mein Team ist komplett: Preis bestätigen“.
-- Lobby-Hinweis: „Findet statt, sobald in beiden Teams mindestens 4 bereit sind.“; Meine Spiele: „Findet statt (Preis folgt)“.
-- Benachrichtigung `match.confirmed` (Typ-ID unverändert): „Spiel findet statt“; Hilfe-Text angepasst. „bestätigt“ bleibt nur für „Ergebnis bestätigt“ und den Captain-Knopf „Preis bestätigen“.
+- „Letzte Bestätigung der Captains“ heißt jetzt „Preis bestätigen und Zahlung zusagen“, der Knopf „Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen“ mit dem Satz „Danach wird dein Anteil abgebucht.“ (vorsichtige Fassung bis zur Rechtsprüfung, Button-Lösung § 312j BGB).
+- Lobby-Hinweis: „Das Spiel steht fest, sobald in beiden Teams mindestens 4 bereit sind.“; Meine Spiele: „Spiel steht fest“ (vorsichtiger als „Findet statt“, solange die Hallenzusage noch scheitern kann).
+- Benachrichtigung `match.confirmed` (Typ-ID unverändert): „Spiel steht fest, Halle wird gebucht“ mit Hinweis auf die automatische Absage 24 Stunden vorher; Hilfe-Text angepasst. „bestätigt“ bleibt nur für „Ergebnis bestätigt“ und den Captain-Knopf „Preis bestätigen“.

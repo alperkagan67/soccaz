@@ -9,11 +9,11 @@ export type FinalTeam = { id: string; name: string; confirmed: boolean; ready: n
 export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers }: { matchId: string; teams: FinalTeam[]; myTeamId: string | null; paymentsOn: boolean; minPlayers: number }) {
   const mine = teams.find((t) => t.id === myTeamId);
   return (
-    <section className="card space-y-3 border-accent/60" aria-label="Preis steht fest, sobald beide Captains bestätigen" data-testid="final-confirm">
+    <section className="card space-y-3 border-accent/60" aria-label="Preis bestätigen und Zahlung zusagen" data-testid="final-confirm">
       <div>
-        <h2 className="font-semibold">Preis steht fest, sobald beide Captains bestätigen</h2>
+        <h2 className="font-semibold">Preis bestätigen und Zahlung zusagen</h2>
         <p className="text-sm text-muted">
-          Wenn alle in deinem Team {paymentsOn ? "bezahlt haben und " : ""}bereit sind (mindestens {minPlayers} Spieler), bestätigt der Captain zum Schluss. Haben beide Captains bestätigt, öffnet sich die Spielübersicht mit allen Infos.
+          Wenn alle in deinem Team {paymentsOn ? "bezahlt haben und " : ""}bereit sind (mindestens {minPlayers} Spieler), bestätigt der Captain zum Schluss. Haben beide Captains bestätigt, steht der Preis fest und die Spielübersicht öffnet sich mit allen Infos.
         </p>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -29,7 +29,8 @@ export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers 
       </div>
       {mine && !mine.confirmed && (
         <div className="space-y-1">
-          <ActionButton action={finalConfirmAction.bind(null, matchId)} label="Ja, mein Team ist komplett: Preis bestätigen" className="btn btn-primary w-full disabled:opacity-60" />
+          <ActionButton action={finalConfirmAction.bind(null, matchId)} label="Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen" className="btn btn-primary w-full disabled:opacity-60" />
+          <p className="text-sm text-muted" data-testid="final-confirm-pay-note">Danach wird dein Anteil abgebucht.</p>
           {!mine.complete && <p className="text-xs text-muted">Noch nicht möglich: Es sind nicht alle in deinem Team bereit{paymentsOn ? " und bezahlt" : ""}.</p>}
         </div>
       )}

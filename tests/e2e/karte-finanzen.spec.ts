@@ -83,9 +83,9 @@ async function scenario(browser: import("@playwright/test").Browser, model: Mode
 
   // Neue Frist-Regel (008): Beide Captains bestätigen zum Schluss, damit steht der Preis fest und das Geld bleibt geparkt (kein Fehlbetrag).
   await a.reload();
-  await a.getByRole("button", { name: "Ja, mein Team ist komplett: Preis bestätigen" }).click();
+  await a.getByRole("button", { name: "Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen" }).click();
   await b.reload();
-  await b.getByRole("button", { name: "Ja, mein Team ist komplett: Preis bestätigen" }).click();
+  await b.getByRole("button", { name: "Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen" }).click();
   await expect.poll(async () => (await query<{ f: number | null; s: Date | null }>("select final_share_cents as f, settled_at as s from matches where id = $1", [matchId]))[0]).toMatchObject({ f: share, s: null });
   // Die Frist-Regeln (48 h, nicht abbuchungsbereit = abgesagt, abbuchungsbereit = bleibt offen) prüft deadlines.test.ts (Block Kartenmodell); hier keine Zeitsprünge mehr, damit der Auslöser im Hintergrund nie mit dem Test wetteifert
   expect(await query("select 1 from payment_charges where match_id = $1", [matchId]), "vor dem Seed: keine Abbuchung").toHaveLength(0);

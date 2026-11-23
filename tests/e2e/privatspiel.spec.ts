@@ -375,7 +375,7 @@ test("Privatspiel Gesamtablauf: Miete, Link teilen, 10 Spieler (einer neu), alle
       await slow(p.page.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
     }
     await org.reload();
-    await org.getByRole("button", { name: "Ja, mein Team ist komplett: Preis bestätigen" }).click();
+    await org.getByRole("button", { name: "Ja, mein Team ist komplett: Preis bestätigen und zahlungspflichtig zusagen" }).click();
     await slow
       .poll(async () => (await query<{ f: number | null; s: string }>("select final_share_cents as f, status as s from matches where id = $1", [matchId]))[0])
       .toMatchObject({ f: 1000, s: "confirmed" }); // Preis steht fest, Spiel ist bestätigt

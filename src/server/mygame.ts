@@ -57,7 +57,7 @@ export async function myCurrent(userId: string): Promise<{ games: MyGame[]; open
             ? "Die Hallen werden angefragt"
             : m.vetoStatus === "running"
               ? captain ? "Hallen-Veto läuft: Der Captain bannt" : "Hallen-Veto läuft"
-              : m.status === "confirmed" ? "Findet statt (Preis folgt)" : "Bereit machen und bezahlen";
+              : m.status === "confirmed" ? "Spiel steht fest" : "Bereit machen und bezahlen";
     return { kind: "game", id: m.id, number: m.number, home: m.homeName, away: m.awayName, homeColor: m.homeKind === "team" ? effectiveColorKey(m.homeColor, m.homeSlug) : null, awayColor: m.awayKind === "team" ? effectiveColorKey(m.awayColor, m.awaySlug) : null, startsAt: m.startsAt, timeOpen: m.schedulingOpen, phase, captain, confirmed: m.status === "confirmed" };
   });
   const open = await db

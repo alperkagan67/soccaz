@@ -248,7 +248,7 @@ async function evaluateConfirmation(tx: Tx, match: MatchRow, actorId: string) {
       await createBookingJob(tx, match); // Reservierung der Halle: unabhaengig von Guthaben und von "Zahlungen aus" (Entscheid t2q, 1c-ii)
       await notifyUsers(
         await matchParticipantIds(tx, match.id),
-        { type: "match.confirmed", title: "Spiel findet statt", body: `Das Spiel ${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} findet statt.`, url: `/lobby/${match.id}` },
+        { type: "match.confirmed", title: "Spiel steht fest, Halle wird gebucht", body: `Das Spiel ${await teamName(tx, match.homeTeamId)} gegen ${await teamName(tx, match.awayTeamId)} steht fest, die Halle wird gebucht. Klappt das nicht, sagen wir es 24 Stunden vorher automatisch ab.`, url: `/lobby/${match.id}` },
         tx,
       );
     }
