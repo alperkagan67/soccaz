@@ -7,7 +7,7 @@ import { frozenTournaments } from "@/server/tournaments";
 import { tournamentCardMode } from "@/server/tournament-card";
 import { chargeEligibility } from "@/server/payments/charge-run";
 import { finalConfirm, setReady, teamComplete } from "@/server/lobby";
-import { closeLobbiesAtDeadline } from "@/server/scheduled";
+import { cancelUnderfilledLobbies, closeLobbiesAtDeadline } from "@/server/scheduled";
 import { setSetting } from "@/server/settings";
 import { cardModeActive } from "@/server/wallet";
 import { addPlayer, cleanup, makeMatch, makeUser, reloadMatch } from "./helpers";
@@ -194,5 +194,15 @@ describe("Turniere: payments_enabled x card_payments_enabled", () => {
     const t = await tournament(0);
     await switches(false, true);
     expect(await db.transaction((tx) => tournamentCardMode(tx, t.id))).toBe(false);
+  });
+});
+
+describe("Zahlungen AUS: 24-h-Pruefung (cancelUnderfilledLobbies) laesst abrechnungsgebundene Spiele in Ruhe", () => {
+  it("fixiertes Spiel, 20 h vor Anstoss, zu wenig Bereite: bei AUS nicht von der 24-h-Pruefung abgesagt (Frist-Regel gilt weiter)", async () => {
+    const bound = await makeMatch({ hoursAhead: 20, priceCents: 8000, costCents: 8000 });
+    await db.update(matches).set({ finalShareCents: 800, createdAt: new Date(Date.now() - 13 * 3_600_000) }).where(eq(matches.id, bound.match.id)); // Schonfrist (12 h) abgelaufen
+    await switches(false, true);
+    await cancelUnderfilledLobbies();
+    expect((await reloadMatch(bound.match.id)).status).not.toBe("cancelled");
   });
 });
