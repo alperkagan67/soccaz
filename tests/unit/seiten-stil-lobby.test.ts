@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { LobbyAktion } from "@/lib/lobby-stand";
 
 // 013 M3 PR 5a, AC-30 (genau eine Hauptaktion, nie text-xs) und AC-3 (44 px) für die Lobby-Bausteine.
@@ -65,8 +65,16 @@ describe("AC-30 b: eine Hauptaktion je Zustand", () => {
   });
 
   const card = (o: Record<string, unknown> = {}) => ({ ready: true, mandateText: "Mandat", fake: false, priceCents: 6000, estimateCents: 1500, estimateFixed: false, stored: null, failure: null, ...o });
+  // Kaltimport EINMAL vor den Tests und mit eigenem Zeitlimit (60 s): im ersten Test gezählt, überschritt die Transformation unter Last die 5 s des Standards
+  let MyActions: typeof import("../../src/app/lobby/[id]/LobbyClient").MyActions;
+  let FinalConfirm: typeof import("../../src/app/lobby/[id]/FinalConfirm").FinalConfirm;
+  let ChallengePanel: typeof import("../../src/app/lobby/[id]/ChallengePanel").ChallengePanel;
+  beforeAll(async () => {
+    ({ MyActions } = await import("../../src/app/lobby/[id]/LobbyClient"));
+    ({ FinalConfirm } = await import("../../src/app/lobby/[id]/FinalConfirm"));
+    ({ ChallengePanel } = await import("../../src/app/lobby/[id]/ChallengePanel"));
+  }, 60_000);
   async function actions(mode: string, main: LobbyAktion, c: unknown, ready = false) {
-    const { MyActions } = await import("../../src/app/lobby/[id]/LobbyClient");
     return renderToStaticMarkup(createElement(MyActions, { matchId: "m", mode: mode as never, ready, hasTeam: true, main, card: c as never }));
   }
   it("MyActions: nur der Besitzer der Hauptaktion ist btn-primary; ohne Hauptaktion keiner", async () => {
@@ -86,14 +94,12 @@ describe("AC-30 b: eine Hauptaktion je Zustand", () => {
     expect(primaries(await actions("participant", null, card({ ready: false })))).toBe(0);
   });
   it("FinalConfirm: primary nur mit dem Merkmal primary, sonst ruhig", async () => {
-    const { FinalConfirm } = await import("../../src/app/lobby/[id]/FinalConfirm");
     const team = (id: string) => ({ id, name: id, confirmed: false, ready: 5, paid: 5, total: 5, complete: true });
     const render = (primary: boolean) => renderToStaticMarkup(createElement(FinalConfirm, { matchId: "m", teams: [team("a"), team("b")], myTeamId: "a", paymentsOn: false, minPlayers: 4, payable: true, amountText: "15,00 €", primary }));
     expect(primaries(render(true))).toBe(1);
     expect(primaries(render(false))).toBe(0);
   });
   it("ChallengePanel: Annehmen nur mit main primary", async () => {
-    const { ChallengePanel } = await import("../../src/app/lobby/[id]/ChallengePanel");
     const render = (main: boolean) => renderToStaticMarkup(createElement(ChallengePanel, { matchId: "m", homeName: "A", awayName: "B", role: "target", deadlineText: "morgen", main }));
     expect(primaries(render(true))).toBe(1);
     expect(primaries(render(false))).toBe(0);
