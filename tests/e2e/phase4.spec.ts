@@ -163,8 +163,10 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
   const anon = await (await browser.newContext()).newPage();
   await anon.goto(`/turniere/${tid}`);
   await anon.waitForLoadState("networkidle");
-  await expect(anon.getByTestId("tournament-name")).toHaveCount(1); // jeder darf zuschauen, auch bei privaten Turnieren
-  await expect(anon.getByText("Einladungslink")).toHaveCount(0); // aber ohne Einladungslink und Kader
+  // NEGATIVPROBE (PR 3): ohne Token sieht niemand das private Turnier, nur die neutrale Seite; mit dem Einladungslink geht es
+  await expect(anon.getByTestId("einladung-ungueltig")).toBeVisible();
+  await expect(anon.getByTestId("tournament-name")).toHaveCount(0);
+  await expect(anon.getByText("Einladungslink zum Turnier")).toHaveCount(0);
   await anon.goto("/turniere");
   await expect(anon.getByText(`E2E Cup ${run}`)).toHaveCount(0);
 

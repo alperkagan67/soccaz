@@ -9,7 +9,7 @@ import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runTournamentCharges } from "@/server/payments/tournament-charge";
 import { setSetting } from "@/server/settings";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
 beforeAll(() => setSetting(null, "payments_enabled", true));
@@ -47,7 +47,7 @@ type Squad = { captain: { id: string }; team: { id: string }; players: { id: str
 async function squad(tid: string): Promise<Squad> {
   const captain = await makeUser("cap");
   const team = await makeTeam(captain.id, "Turnier");
-  await registerTeam(captain.id, tid, team.id);
+  await registerTeam(captain.id, tid, team.id, await tokenOf(tid));
   const players = [captain];
   for (let i = 1; i < 4; i++) {
     const p = await makeUser("pl");

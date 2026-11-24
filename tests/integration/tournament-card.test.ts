@@ -10,7 +10,7 @@ import { getTournamentCardDisplays, releaseTournamentCover, takeOverTournamentSh
 import { exportCardData } from "@/server/account";
 import { paymentCharges } from "@/db/schema";
 import { getTournament } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
 beforeAll(() => setSetting(null, "payments_enabled", true));
@@ -42,7 +42,7 @@ async function organizer() {
 async function squad(tid: string, size = 4, complete = false) {
   const captain = await makeUser("cap");
   const team = await makeTeam(captain.id, "Turnier");
-  await registerTeam(captain.id, tid, team.id);
+  await registerTeam(captain.id, tid, team.id, await tokenOf(tid));
   const players = [captain];
   for (let i = 1; i < size; i++) {
     const p = await makeUser("pl");
@@ -266,7 +266,8 @@ describe("M5-3: Kartenmodell im Turnier", () => {
     expect(teamOf2(mine, s.team.id)).toMatchObject({ showLights: true, cardsComplete: null });
     expect(teamOf2(mine, squads[1].team.id)).toMatchObject({ showLights: false, cardsComplete: null });
 
-    for (const view of [await getTournament(t.id, null), await getTournament(t.id, { id: squads[1].players[1].id, role: "player" }), await getTournament(t.id, { id: (await makeUser("fremd")).id, role: "player" })]) {
+    const tok = await tokenOf(t.id); // privates Turnier: Gäste/Fremde sehen es nur mit dem Einladungstoken
+    for (const view of [await getTournament(t.id, null, tok), await getTournament(t.id, { id: squads[1].players[1].id, role: "player" }), await getTournament(t.id, { id: (await makeUser("fremd")).id, role: "player" }, tok)]) {
       for (const team of view!.teams.filter((x) => x.teamId !== squads[1].team.id)) expect(team, team.name).toMatchObject({ cardsComplete: null, showLights: false });
       expect(view!.cardMode).toBe(true);
     }

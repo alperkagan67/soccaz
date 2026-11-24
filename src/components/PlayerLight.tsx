@@ -34,7 +34,7 @@ export function PlayerLight({ light, paymentsOn = true, showLabel = false }: { l
 
 export function LightLegend({ paymentsOn = true }: { paymentsOn?: boolean }) {
   return (
-    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted" aria-label="Legende der Ampel" data-testid="light-legend">
+    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted" aria-label={paymentsOn ? "Legende der Ampel" : "Legende der Spielerstatus"} data-testid="light-legend">
       <PlayerLight light="red" paymentsOn={paymentsOn} showLabel />
       <PlayerLight light="orange" paymentsOn={paymentsOn} showLabel />
       <PlayerLight light="green" paymentsOn={paymentsOn} showLabel />

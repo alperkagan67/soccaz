@@ -12,6 +12,9 @@ import { listMatchPhotos } from "@/server/media";
 import { matchPhotosEnabled } from "@/lib/media-flags";
 import { RatingReveal } from "@/components/RatingReveal";
 import { getRatingReveal } from "@/server/rating-reveal";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { matches } from "@/db/schema";
 import { canViewMatch, getMatchPage } from "@/server/results";
 import { KommtBald } from "@/components/KommtBald";
 import { spielGesperrt } from "@/server/turnier-only";
@@ -25,7 +28,12 @@ import { StreamEmbed } from "./StreamEmbed";
 import { StreamForm } from "./StreamForm";
 import { ConfirmPanel, DecidePanel, EndMatchPanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
-export const metadata: Metadata = { title: "Spiel" };
+export async function generateMetadata({ params }: PageProps<"/spiele/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  // Spiele, die nicht öffentlich sind (alle Turnierspiele, auch die privater Turniere), werden von Suchmaschinen nicht aufgenommen; der Link bleibt teilbar. Kein Spiel bekannt: Standard.
+  const [m] = /^[0-9a-f-]{36}$/i.test(id) ? await db.select({ visibility: matches.visibility }).from(matches).where(eq(matches.id, id)) : [];
+  return m && m.visibility !== "public" ? { title: "Spiel", robots: { index: false, follow: false } } : { title: "Spiel" };
+}
 
 const EVENT_LABEL = { goal: "Tor", yellow_card: "Gelbe Karte", red_card: "Rote Karte" } as const;
 const EVENT_TONE = { goal: "bg-accent", yellow_card: "bg-card-yellow", red_card: "bg-card-red" } as const;

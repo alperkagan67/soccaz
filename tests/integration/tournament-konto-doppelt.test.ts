@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { teamMembers } from "@/db/schema";
 import { tournamentPlayers } from "@/db/schema-league";
 import { createTournament, joinAsPlayer, registerTeam, setOrganizer } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // Turnier 12.12. (Paket b): ein KONTO darf in einem Turnier nur in EINEM Team spielen (PK Turnier + Nutzer, Server-Sperre unter der Turniersperre). Der Demo-Fund "gleicher Name in zwei Teams" sind zwei Konten (Seed nutzt Namen mehrfach, E-Mails sind eindeutig).
 afterAll(cleanup);
@@ -27,8 +27,8 @@ describe("Ein Konto, ein Team je Turnier", () => {
     const capB = await makeUser("capb");
     const teamA = await makeTeam(capA.id, "Konto A");
     const teamB = await makeTeam(capB.id, "Konto B");
-    await registerTeam(capA.id, t.id, teamA.id);
-    await registerTeam(capB.id, t.id, teamB.id);
+    await registerTeam(capA.id, t.id, teamA.id, await tokenOf(t.id));
+    await registerTeam(capB.id, t.id, teamB.id, await tokenOf(t.id));
     const doppelt = await makeUser("doppelt");
     await db.insert(teamMembers).values([{ teamId: teamA.id, userId: doppelt.id, role: "player" }, { teamId: teamB.id, userId: doppelt.id, role: "player" }]);
     await joinAsPlayer(doppelt.id, t.id, teamA.id);
@@ -44,8 +44,8 @@ describe("Ein Konto, ein Team je Turnier", () => {
     const capB = await makeUser("capb2");
     const teamA = await makeTeam(capA.id, "Konto A2");
     const teamB = await makeTeam(capB.id, "Konto B2");
-    await registerTeam(capA.id, t.id, teamA.id);
-    await registerTeam(capB.id, t.id, teamB.id);
+    await registerTeam(capA.id, t.id, teamA.id, await tokenOf(t.id));
+    await registerTeam(capB.id, t.id, teamB.id, await tokenOf(t.id));
     await db.insert(teamMembers).values({ teamId: teamB.id, userId: capA.id, role: "player" });
     await expect(joinAsPlayer(capA.id, t.id, teamB.id)).rejects.toThrow(/in einem anderen Team dieses Turniers/);
     expect(await rowsOf(t.id, capA.id)).toHaveLength(1);
@@ -56,8 +56,8 @@ describe("Ein Konto, ein Team je Turnier", () => {
     const cap = await makeUser("cap2x");
     const team1 = await makeTeam(cap.id, "Eins");
     const team2 = await makeTeam(cap.id, "Zwei");
-    await registerTeam(cap.id, t.id, team1.id);
-    await expect(registerTeam(cap.id, t.id, team2.id)).rejects.toThrow(/schon in einem anderen Team dieses Turniers/);
+    await registerTeam(cap.id, t.id, team1.id, await tokenOf(t.id));
+    await expect(registerTeam(cap.id, t.id, team2.id, await tokenOf(t.id))).rejects.toThrow(/schon in einem anderen Team dieses Turniers/);
     await expect(joinAsPlayer(cap.id, t.id, team1.id)).rejects.toThrow(/schon im Turnier-Kader/);
   });
 
@@ -67,8 +67,8 @@ describe("Ein Konto, ein Team je Turnier", () => {
     const capB = await makeUser("capb3");
     const teamA = await makeTeam(capA.id, "Konto A3");
     const teamB = await makeTeam(capB.id, "Konto B3");
-    await registerTeam(capA.id, t.id, teamA.id);
-    await registerTeam(capB.id, t.id, teamB.id);
+    await registerTeam(capA.id, t.id, teamA.id, await tokenOf(t.id));
+    await registerTeam(capB.id, t.id, teamB.id, await tokenOf(t.id));
     const x1 = await makeUser("gleich");
     const x2 = await makeUser("gleich");
     await db.update((await import("@/db/schema")).users).set({ name: "Deniz Kaya" }).where(eq((await import("@/db/schema")).users.id, x1.id));
