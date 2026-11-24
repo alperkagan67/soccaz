@@ -6,7 +6,6 @@ import { ZP, finalConfirmHinweis } from "@/lib/zahlungspflicht-texte";
 
 export type FinalTeam = { id: string; name: string; confirmed: boolean; ready: number; paid: number; total: number; complete: boolean };
 /** Zum Schluss bestätigt jeder Captain, dass sein Team komplett bereit und bezahlt ist; bestätigen beide, öffnet sich die Spielübersicht. Die Hauptaktion steht oben, Team-Zeilen und Erklärung darunter (Impeccable Lauf 2, P1-2). */
-/** Jeder Captain (Hauptaktion steht oben, Team-Zeilen und Erklärung darunter; Impeccable Lauf 2, P1-2): Jeder Captain bestätigt zum Schluss, dass sein Team komplett bereit und bezahlt ist. Bestätigen beide, öffnet sich die Spielübersicht. */
 export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers, payable, amountText, primary = false }: { primary?: boolean; matchId: string; teams: FinalTeam[]; myTeamId: string | null; paymentsOn: boolean; minPlayers: number; payable: boolean; amountText: string | null }) {
   const mine = teams.find((t) => t.id === myTeamId);
   return (
