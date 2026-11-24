@@ -32,9 +32,21 @@ export function personRef(sicht: LobbySicht, id: string, name: string, index: nu
   return sicht === "member" ? { key: id, label: name, href: `/spieler/${id}` } : { key: `p${index}`, label: initialsOf(name), href: null };
 }
 
-/** Veranstalter in der Einladung für Gäste (Entscheid t2q 2026-11-24): Vorname und Initiale des Nachnamens ("Alper K."), nie der Nachname. Ein einteiliger Name bleibt, wie er ist. */
+/**
+ * Veranstalter in der Einladung für Gäste (Entscheid t2q 2026-11-24): Vorname und Initiale des Nachnamens ("Alper K."), nie der Nachname. Ein einteiliger Name bleibt, wie er ist.
+ * Komma-Schreibweise "Nachname, Vorname" (R-T380): der Teil vor dem Komma ist der Nachname. Bekannte Grenze (kosmetisch): "ß" am Anfang des Nachnamens wird wie in initialsOf zu "SS." (zwei Buchstaben).
+ */
+const teile = (s: string) => s.trim().split(/\s+/).filter(Boolean);
+
 export function vornameInitial(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const komma = name.indexOf(",");
+  if (komma >= 0) {
+    const nach = teile(name.slice(0, komma));
+    const vor = teile(name.slice(komma + 1));
+    if (nach.length > 0 && vor.length > 0) return `${vor[0]} ${initialsOf(nach[nach.length - 1])}.`;
+    name = [...nach, ...vor].join(" "); // "Kagan," oder ",Alper": kein vollständiges Paar, wie ein einteiliger Name behandeln
+  }
+  const parts = teile(name);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${initialsOf(parts[parts.length - 1])}.`;

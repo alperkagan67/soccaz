@@ -64,3 +64,23 @@ describe("vornameInitial (Veranstalter in der Privatspiel-Einladung für Gäste)
     expect(vornameInitial("Jan ßmith")).toBe("Jan SS."); // ß wird zu SS
   });
 });
+
+describe("vornameInitial: Schreibweisen (R-T380)", () => {
+  it("Komma-Format 'Nachname, Vorname': der Teil vor dem Komma ist der Nachname, nie im Klartext", () => {
+    expect(vornameInitial("Kagan, Alper")).toBe("Alper K.");
+    expect(vornameInitial("Kagan,Alper")).toBe("Alper K.");
+    expect(vornameInitial("von Berg, Anna-Lena")).toBe("Anna-Lena B.");
+    for (const n of ["Kagan, Alper", "Kagan,Alper"]) expect(vornameInitial(n)).not.toContain("Kagan");
+  });
+  it("unvollständiges Komma-Paar wie ein einteiliger Name, leer bleibt '?'", () => {
+    expect(vornameInitial("Kagan,")).toBe("Kagan");
+    expect(vornameInitial(",Alper")).toBe("Alper");
+    expect(vornameInitial(",")).toBe("?");
+    expect(vornameInitial("")).toBe("?");
+  });
+  it("Doppelname und Emoji", () => {
+    expect(vornameInitial("Hans Peter Müller Lüdenscheid")).toBe("Hans L.");
+    expect(vornameInitial("Max 😀")).toBe("Max 😀.");
+    expect(vornameInitial("😀 Max")).toBe("😀 M.");
+  });
+});
