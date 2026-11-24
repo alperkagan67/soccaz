@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { matches } from "@/db/schema";
+import { matches, matchResults } from "@/db/schema";
 import { tournamentMatches, tournamentTeams, tournaments } from "@/db/schema-league";
-import { getTournament, maybeGenerateBracket } from "@/server/tournaments";
+import { advanceFromMatch, getTournament, maybeGenerateBracket } from "@/server/tournaments";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 // Turnierseite bei Freilosen (Teamzahl keine Zweierpotenz): kein Absturz, Plan und Zeilen passen zusammen, jede Paarung mit beiden Teams hat ein Spiel mit Startzeit aus dem Plan.
@@ -56,6 +56,29 @@ describe("Turnierseite mit Freilosen", () => {
         const [game] = await db.select().from(matches).where(eq(matches.id, r.matchId!));
         expect(blockStarts.has(game.startsAt.toISOString()), `${r.stage}|${r.slot} Startzeit aus dem Plan`).toBe(true);
       }
+    });
+  }
+});
+
+describe("Freilos-Weitergabe bis zum Finale", () => {
+  for (const n of [5, 6, 7, 10]) {
+    it(`${n} Teams: alle Spiele nacheinander gespielt (Heim gewinnt), die Freilos-Teams rücken weiter, am Ende genau EIN Sieger und die Seite lädt in jedem Zustand`, async () => {
+      const { org, t } = await bracketWith(n);
+      for (let guard = 0; guard < 2 * n; guard++) {
+        const rows = await db.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, t.id));
+        const next = rows.filter((r) => r.matchId && r.teamA && r.teamB && r.scoreA === null).sort((a, b) => b.round * -1 - a.round * -1 || a.slot - b.slot)[0];
+        if (!next) break;
+        await db.insert(matchResults).values({ matchId: next.matchId!, homeScore: 2, awayScore: 1, confirmedHome: true, confirmedAway: true });
+        await db.transaction((tx) => advanceFromMatch(tx, next.matchId!));
+        for (const viewer of [null, { id: org.id, role: "player" as const }]) expect(await getTournament(t.id, viewer), "Seite lädt nach jedem Spiel").not.toBeNull();
+      }
+      const rows = await db.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, t.id));
+      expect(rows.every((r) => r.scoreA !== null), "jedes Spiel gespielt").toBe(true);
+      const [after] = await db.select().from(tournaments).where(eq(tournaments.id, t.id));
+      expect(after.winnerTeamId, "genau ein Sieger").not.toBeNull();
+      const final = rows.find((r) => r.stage === "ko:2")!;
+      expect(after.winnerTeamId).toBe(final.scoreA! > final.scoreB! ? final.teamA : final.teamB);
+      expect((await getTournament(t.id, null))!.winner).not.toBeNull();
     });
   }
 });
