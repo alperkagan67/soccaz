@@ -27,7 +27,7 @@ Menü **„APIs & Dienste“ → „OAuth-Zustimmungsbildschirm“** (neu: **„
    - Startseite: `https://socaz.de`
    - Datenschutzerklärung: `https://socaz.de/datenschutz`
    - Nutzungsbedingungen: `https://socaz.de/agb`
-4. **Autorisierte Domains:** `socaz.de` eintragen. Google verlangt, dass Sie die Domain **bestätigen** (Inhaberschaft): im Dienst „Google Search Console“ die Domain `socaz.de` hinzufügen, den angezeigten **TXT-Eintrag** bei Ihrem Domain-Anbieter (DNS) einfügen, dann „Bestätigen“ (dauert Minuten bis Stunden).
+4. **Autorisierte Domains:** `socaz.de` eintragen. Google verlangt, dass Sie die Domain **bestätigen** (Inhaberschaft): im Dienst „Google Search Console“ die Domain `socaz.de` hinzufügen, den angezeigten **TXT-Eintrag** bei Ihrem Domain-Anbieter (DNS) einfügen, dann „Bestätigen“ (dauert Minuten bis Stunden). **Liegt die Adresse der Testumgebung NICHT unter `socaz.de`** (z. B. `staging.example.org`), muss **auch deren Domain** unter „Autorisierte Domains“ stehen und bestätigt sein, sonst lehnt Google die Weiterleitungs-URI der Testumgebung ab.
 5. **Kontakt-E-Mail des Entwicklers:** eine Adresse, die Sie lesen.
 6. Speichern und weiter.
 
@@ -40,7 +40,7 @@ Es werden **nur** diese drei gebraucht (alle sind „nicht sensibel“, dafür g
 **Keine weiteren Bereiche hinzufügen.** (Soccaz liest nur E-Mail, Name, Bild und eine eindeutige Google-Kennung; siehe `src/auth.ts`.)
 
 ## 5. Veröffentlichungsstatus: „In Produktion“
-Im Zustimmungsbildschirm steht der Status **„Test“** (Testing). Im Status „Test“ dürfen sich **nur** Konten anmelden, die Sie als „Testnutzer“ eingetragen haben (höchstens 100), und Anmeldungen laufen nach 7 Tagen ab. **Für das Turnier ist das ungeeignet.**
+Im Zustimmungsbildschirm steht der Status **„Test“** (Testing). Im Status „Test“ dürfen sich **nur** Konten anmelden, die Sie als „Testnutzer“ eingetragen haben (höchstens 100); außerdem laufen die Google-Zugangstoken nach 7 Tagen ab. **Für das Turnier ist das ungeeignet.**
 - **Go-live (`socaz.de`): auf „In Produktion“ stellen** („App veröffentlichen“, bestätigen). Weil nur die drei einfachen Bereiche genutzt werden, braucht das normalerweise **keine** Prüfung durch Google (Abschnitt 8).
 - **Staging-Generalprobe (30.11. bis 2.12.):** entweder derselbe Client im Status „In Produktion“ (einfachste Lösung, die Redirect-Adresse der Testumgebung kommt zusätzlich in den Client, Schritt 6) **oder** Status „Test“ und alle Mitwirkenden der Generalprobe als **Testnutzer** eintragen (E-Mail-Adressen, höchstens 100).
 
@@ -97,3 +97,4 @@ In der Datei `.env` auf dem **jeweiligen** Server (Produktion bzw. Staging; `doc
 - [ ] OAuth-Client „Webanwendung“ mit **beiden** Weiterleitungs-URIs (Produktion und Staging), Pfad `/api/auth/callback/google`
 - [ ] `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET`, `APP_URL` nur in der Server-`.env`
 - [ ] Anmeldung auf Staging und auf Produktion getestet (Kontoauswahl, Rückkehr, `/willkommen`)
+- [ ] **Staging mit Zugangsschutz (Basic-Auth): Anmeldung in Chrome, Safari und Firefox** je einmal geprüft (die Annahme „Rückleitung von Google trägt die Zugangsdaten mit“ ist nur eine Annahme; sie gilt erst nach diesem Test, `pilot-staging-checkliste.md`, Schritt S7)
