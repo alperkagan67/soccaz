@@ -78,17 +78,23 @@ export function MyActions({ matchId, mode, ready, hasTeam, main = null, card }: 
           {hasTeam ? (
             <>
               {card?.failure && (
-                <div className="space-y-3" role="alert" data-testid="charge-failed">
-                  <p className="font-semibold">Abbuchung fehlgeschlagen</p>
-                  <p className="text-sm" data-testid="charge-failed-reason">{card.failure.text}</p>
+                <div className="space-y-3" data-testid="charge-failed">
+                  <div role="alert" className="space-y-1">
+                    <p className="font-semibold">Abbuchung fehlgeschlagen</p>
+                    <p className="text-sm" data-testid="charge-failed-reason">{card.failure.text}</p>
+                  </div>
                   {/* EIN nächster Schritt je Fall (lobby-fehler.ts): abgelaufen = keiner, Freigabe = Freigabe-Knopf (andere Karte nur eingeklappt), sonst Karte ändern */}
                   {fall === "abgelaufen" && <p className="text-sm text-muted" data-testid="charge-failed-expired">Das Zeitfenster ist abgelaufen. Dein Platz wird neu vergeben.</p>}
                   {fall === "freigabe" && (
                     <div className="space-y-3" data-testid="authorize-section">
                       <p className="text-sm">Deine Bank braucht eine Freigabe der Zahlung. Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p>
                       <AuthorizeButton matchId={matchId} fake={card.fake} quiet={main !== "freigeben"} />
-                      <details data-testid="charge-failed-other-card">
-                        <summary className="btn btn-ghost w-full cursor-pointer">Stattdessen eine andere Karte hinterlegen</summary>
+                      <details className="group" data-testid="charge-failed-other-card">
+                        <summary className="btn btn-ghost w-full cursor-pointer justify-between">
+                          <span>Stattdessen eine andere Karte hinterlegen</span>
+                          <span aria-hidden="true" className="group-open:hidden">+</span>
+                          <span aria-hidden="true" className="hidden group-open:inline">−</span>
+                        </summary>
                         <div className="pt-3">
                           <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change quiet />
                         </div>

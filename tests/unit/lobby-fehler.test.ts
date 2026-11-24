@@ -102,3 +102,17 @@ describe("Captain-Leiste (reine Darstellung, die Seite entscheidet, wer sie beko
     expect(primaries(out)).toBe(0);
   });
 });
+
+describe("Fehlerzustand: Zugänglichkeit (R-T377)", () => {
+  it("role=alert nur an der Meldung (Titel und Grund), nicht am ganzen Bereich mit Formular", async () => {
+    const out = await actions(frei, "freigeben");
+    expect(out.match(/role="alert"/g)).toHaveLength(1);
+    expect(out).toMatch(/<div role="alert"[^>]*><p[^>]*>Abbuchung fehlgeschlagen<\/p><p[^>]*data-testid="charge-failed-reason"/);
+    expect(out).not.toMatch(/role="alert"[^>]*data-testid="charge-failed"/);
+  });
+  it("die eingeklappte andere Karte zeigt Plus beziehungsweise Minus (Aufklappen nicht nur am Text erkennbar)", async () => {
+    const out = await actions(frei, "freigeben");
+    expect(out).toContain('class="group-open:hidden">+</span>');
+    expect(out).toContain('group-open:inline">−</span>');
+  });
+});

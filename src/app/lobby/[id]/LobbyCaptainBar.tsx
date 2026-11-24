@@ -6,6 +6,17 @@ import type { ReactNode } from "react";
 export type CaptainTeamStand = { id: string; name: string; count: number; ready: number; cardsReady: boolean | null };
 export type CaptainFailure = { userId: string; name: string; text: string; until: string | null; authorizing: boolean; step: ReactNode | null };
 
+/** Wer die Leiste bekommt: Veranstalter (canManage), Team-Admins und Plattform-Admins, nur solange das Spiel läuft. Spieler ohne Captain-Rolle, Gäste und Hallenbetreiber bekommen sie nie. */
+export function captainBarAllowed(r: { active: boolean; canManage: boolean; adminTeams: number; platformAdmin: boolean }): boolean {
+  return r.active && (r.canManage || r.adminTeams > 0 || r.platformAdmin);
+}
+
+/** Die Seite reicht Rolle und Inhalt durch; ohne Berechtigung wird NICHTS gerendert (kein Name, keine Fehlerzeile, keine Einladung im HTML). */
+export function LobbyCaptainBarFor({ role, ...props }: { role: Parameters<typeof captainBarAllowed>[0] } & Parameters<typeof LobbyCaptainBar>[0]) {
+  if (!captainBarAllowed(role)) return null;
+  return <LobbyCaptainBar {...props} />;
+}
+
 export function LobbyCaptainBar({ teams, failures, children }: { teams: CaptainTeamStand[]; failures: CaptainFailure[]; children?: ReactNode }) {
   return (
     <section className="card space-y-3" aria-label="Für Captains" data-testid="captain-bar">

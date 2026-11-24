@@ -119,8 +119,8 @@ describe("Teamseite je Rolle: Torjäger und Kader-Zeilen", () => {
 describe("Captain-Leiste: nur Team-Admin, Veranstalter und Plattform-Admin (5b)", () => {
   it("die Seite rendert die Leiste nur für diese Rollen; Fehlerzeilen kommen nur aus cardDisplays (Server-Sicht je Betrachter), nie aus Rohdaten", () => {
     const lobby = src("src/app/lobby/[id]/page.tsx");
-    expect(lobby).toContain("{active && (v.canManage || v.adminOf.length > 0 || v.platformAdmin) && (");
-    expect(lobby).toContain("<LobbyCaptainBar");
+    expect(lobby).toContain("<LobbyCaptainBarFor");
+    expect(lobby).toContain("role={{ active, canManage: v.canManage, adminTeams: v.adminOf.length, platformAdmin: v.platformAdmin }}");
     expect(lobby).toContain("const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === \"failed\" && id !== user?.id)");
     expect(lobby).toContain("cardDisplays = cardOn ? await getCardDisplays(match.id, (p) => audienceFor(cardViewer, p)) : {}");
     expect(lobby).not.toContain("data-testid=\"charge-failed-captain\""); // das Test-ID-Markup liegt in der Komponente, die Seite hat keinen zweiten Fehlerblock
@@ -128,5 +128,39 @@ describe("Captain-Leiste: nur Team-Admin, Veranstalter und Plattform-Admin (5b)"
   it("kein Fehlerblock für Gäste und Hallenbetreiber: die Leiste und der eigene Fehlerblock hängen an Rollen, nicht an der Anmeldung allein", () => {
     const lobby = src("src/app/lobby/[id]/page.tsx");
     expect(lobby).toContain("const myDisplay = user ? cardDisplays[user.id] : undefined;");
+  });
+});
+
+// Captain-Leiste je Rolle am echten HTML (security-reviewer zu PR 5b): ohne Berechtigung KEIN Markup, keine Namen, keine Fehlerzeile.
+import { LobbyCaptainBarFor } from "../../src/app/lobby/[id]/LobbyCaptainBar";
+
+describe("LobbyCaptainBarFor je Rolle (gerendertes HTML)", () => {
+  const failures = [{ userId: "u1", name: "Anna Beispiel", text: "Die Karte wurde gesperrt.", until: "bis 21:10 Uhr", authorizing: false, step: null }];
+  const teams = [{ id: "t1", name: "Heim FC", count: 5, ready: 3, cardsReady: true }];
+  const html = (role: { active: boolean; canManage: boolean; adminTeams: number; platformAdmin: boolean }) => renderToStaticMarkup(createElement(LobbyCaptainBarFor, { role, teams, failures }));
+  const roles = {
+    gast: { active: true, canManage: false, adminTeams: 0, platformAdmin: false },
+    spielerOhneRolle: { active: true, canManage: false, adminTeams: 0, platformAdmin: false },
+    captain: { active: true, canManage: false, adminTeams: 1, platformAdmin: false },
+    veranstalter: { active: true, canManage: true, adminTeams: 0, platformAdmin: false },
+    plattformAdmin: { active: true, canManage: false, adminTeams: 0, platformAdmin: true },
+  };
+  it("Gast und Spieler ohne Captain-Rolle (auch Hallenbetreiber): kein captain-bar, weder Name noch Fehlerzeile noch Teamstand", () => {
+    for (const r of [roles.gast, roles.spielerOhneRolle]) {
+      const out = html(r);
+      expect(out).toBe("");
+      for (const verboten of ["captain-bar", "Anna", "Beispiel", "charge-failed", "Heim FC"]) expect(out, verboten).not.toContain(verboten);
+    }
+  });
+  it("Captain, Veranstalter und Plattform-Admin: genau eine Leiste mit der Fehlerzeile", () => {
+    for (const r of [roles.captain, roles.veranstalter, roles.plattformAdmin]) {
+      const out = html(r);
+      expect(out.match(/data-testid="captain-bar"/g)).toHaveLength(1);
+      expect(out).toContain("Anna Beispiel");
+      expect(out).toContain('data-testid="charge-failed-captain"');
+    }
+  });
+  it("beendetes oder abgesagtes Spiel (active false): auch für Captains keine Leiste", () => {
+    expect(html({ ...roles.captain, active: false })).toBe("");
   });
 });

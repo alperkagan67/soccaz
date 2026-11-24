@@ -44,7 +44,7 @@ import { LiveIndicator } from "@/components/LiveIndicator";
 import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
 import { CoverButton, CoverCoveringCard, ReleaseCover } from "./CoverShare";
 import { LobbyRoster, ParticipantName } from "./LobbyRoster";
-import { LobbyCaptainBar } from "./LobbyCaptainBar";
+import { LobbyCaptainBarFor } from "./LobbyCaptainBar";
 
 export const metadata: Metadata = { title: "Lobby", robots: { index: false } };
 
@@ -364,8 +364,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
-      {active && (v.canManage || v.adminOf.length > 0 || v.platformAdmin) && (
-        <LobbyCaptainBar
+      <LobbyCaptainBarFor
+        role={{ active, canManage: v.canManage, adminTeams: v.adminOf.length, platformAdmin: v.platformAdmin }}
           teams={teamsView.filter((t) => canAdminTeam(t.id)).map((t) => ({ id: t.id, name: t.name, count: t.count, ready: t.ready, cardsReady: cardOn ? teamCardsReady[t.id] === true : null }))}
           failures={failedForManager.map((f) => ({
             ...f,
@@ -373,8 +373,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           }))}
         >
           {!isPrivate && teamsView.filter((t) => v.adminOf.includes(t.id)).map((t) => <InviteBox key={t.id} teamId={t.id} teamName={t.name} quiet />)}
-        </LobbyCaptainBar>
-      )}
+      </LobbyCaptainBarFor>
 
       {(cover.covering || cover.covered || cover.pairs.length > 0) && (
         <section className="card space-y-2" data-testid="cover-status">
