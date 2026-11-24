@@ -3,11 +3,12 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { ActionButton } from "@/components/ActionButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { HALL_DECLINE_FINAL_NOTE, HALL_DECLINE_NEXT } from "@/lib/hall-decline";
 import { replyWindow } from "@/lib/hall-reply-view";
 import { formatDateTime } from "@/lib/time";
 import { answerHallAction, declineHallAction } from "@/server/matchmaking-actions";
 import { listTournamentConfirmations, rentText } from "@/server/tournament-confirm";
-import { confirmTournamentVenueAction } from "@/server/tournament-confirm-actions";
+import { confirmTournamentVenueAction, declineTournamentVenueFormAction } from "@/server/tournament-confirm-actions";
 import { myPendingVenues } from "@/server/venue-approval";
 import { requireVenueManager } from "@/server/venue-session";
 import { pendingHallInquiries } from "@/server/veto";
@@ -86,23 +87,41 @@ export default async function HallInquiriesPage() {
       {confirmations.length > 0 && (
         <section className="space-y-3" aria-labelledby="zusage-turniere" data-testid="tournament-confirmations">
           <h2 id="zusage-turniere" className="text-lg font-semibold">Zusage der Halle</h2>
-          <p className="text-sm text-muted">Für diese Turniere fehlt die Zusage der Halle. Ohne Zusage wird nichts abgebucht, und das Turnier fällt zur Frist aus. Ihr sagt ein Turnier im Namen der Halle zu.</p>
+          <p className="text-sm text-muted">Für diese Turniere fehlt die Zusage der Halle. Ohne Zusage wird nichts abgebucht, und das Turnier fällt zur Frist aus. Ihr sagt ein Turnier im Namen der Halle zu oder lehnt es mit Grund ab.</p>
           <ul className="space-y-3">
             {confirmations.map((c) => (
-              <li key={c.tournamentId} className="card space-y-2" data-testid="tournament-confirmation">
+              <li key={c.tournamentId} className="card space-y-2" data-testid="tournament-confirmation" data-declined={c.declined ? "ja" : undefined}>
                 <p className="font-semibold">{c.name}</p>
                 <p className="text-sm">
                   {c.startsAt ? `${formatDateTime(c.startsAt)} Uhr · ` : ""}{c.durationMin} Minuten
                   <span className="block text-muted">{c.teams} Teams{c.rentCents !== null ? ` · Hallenmiete ${rentText(c.rentCents)}` : ""} · {c.venueName}</span>
                   {c.due && <span className="block text-xs text-muted">Zusage bis {formatDateTime(c.due)} Uhr, sonst fällt das Turnier aus.</span>}
                 </p>
-                <ConfirmDialog
-                  trigger={{ label: "Zusagen", variant: "primary" }}
-                  title={`${c.name} zusagen?`}
-                  body="Die Zusage ist verbindlich und lässt sich nicht rückgängig machen. Ihr sagt das Turnier im Namen der Halle zu."
-                  confirmLabel="Zusagen"
-                  onConfirmAction={confirmTournamentVenueAction.bind(null, c.tournamentId)}
-                />
+                {c.declined ? (
+                  <p className="text-sm" data-testid="tournament-declined-note">
+                    <span aria-hidden>■ </span>Ihr habt dieses Turnier abgelehnt. {HALL_DECLINE_FINAL_NOTE} {HALL_DECLINE_NEXT}
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap items-start gap-2">
+                    <ConfirmDialog
+                      trigger={{ label: "Zusagen", variant: "primary" }}
+                      title={`${c.name} zusagen?`}
+                      body="Die Zusage ist verbindlich und lässt sich nicht rückgängig machen. Ihr sagt das Turnier im Namen der Halle zu."
+                      confirmLabel="Zusagen"
+                      onConfirmAction={confirmTournamentVenueAction.bind(null, c.tournamentId)}
+                    />
+                    {c.chargesStarted ? (
+                      <p className="text-sm text-muted" data-testid="tournament-decline-locked">Die Abbuchung hat begonnen: Ablehnen ist nicht mehr möglich.</p>
+                    ) : (
+                      <details className="w-full" data-testid="tournament-decline">
+                        <summary className="btn btn-ghost ui-focus !min-h-11 !px-4 cursor-pointer list-none text-sm">Turnier ablehnen (Grund angeben)</summary>
+                        <div className="mt-2">
+                          <HallDeclineForm action={declineTournamentVenueFormAction.bind(null, c.tournamentId)} uid={`t-${c.tournamentId}`} notice={HALL_DECLINE_FINAL_NOTE} />
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                )}
               </li>
             ))}
           </ul>

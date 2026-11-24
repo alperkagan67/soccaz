@@ -14,6 +14,10 @@ export const ZAHLUNGSPFLICHT = ZAHLUNGSPFLICHT_VARIANTEN[ZAHLUNGSPFLICHT_AKTIV];
 export const mitZahlungspflicht = (aktion: string, variante: ZahlungspflichtVariante = ZAHLUNGSPFLICHT_AKTIV) => `${aktion} – ${ZAHLUNGSPFLICHT_VARIANTEN[variante]}`;
 
 export const ZP = {
+  /** Turnier, Halle hat abgelehnt (Backlog 161, ENTWURF): die zwei Wege des Veranstalters. Rechtsfolge (Erstattung, keine Abbuchung) nur hier. */
+  hallDeclinedReopenConfirm: "Die Kader werden wieder geöffnet. Bereits bezahlte Anteile werden erstattet, der Preis wird später neu berechnet. Danach wählst du die Halle.",
+  hallDeclinedCancelConfirm: "Turnier absagen? Alle bezahlten Anteile werden vollständig erstattet.",
+  hallDeclinedCancelNote: "Sagst du das Turnier ab, werden bezahlte Anteile vollständig erstattet. Es wird nichts abgebucht.",
   /** Spiel: "Ich bin bereit" (der verbindliche Moment: Platz zugesagt, Anteil wird zur Frist abgebucht). Ohne Zahlung (Gratis, kostenloses Spiel) bleibt der schlichte Text. */
   gameReady: mitZahlungspflicht("Ich bin bereit"),
   gameReadyFree: "Ich bin bereit",

@@ -12,6 +12,11 @@ export const DECLINE_LABELS: Record<DeclineCode, string> = {
   sonstiges: "Sonstiges",
 };
 
+/** Turnier-Ablehnen (Backlog 161, Entscheid t2q 2026-11-24): die Entscheidung der Halle je Anfrage ist endgueltig. ENTWURF, keine Rechtsaussage. */
+export const HALL_DECLINE_FINAL_NOTE = "Die Ablehnung ist endgültig.";
+export const HALL_DECLINE_NEXT = "Bitte den Veranstalter, die Halle erneut zu wählen.";
+export const HALL_DECLINE_FINAL = `${HALL_DECLINE_FINAL_NOTE} ${HALL_DECLINE_NEXT}`;
+
 export const DECLINE_TEXT_MIN = 3;
 export const DECLINE_TEXT_MAX = 200;
 

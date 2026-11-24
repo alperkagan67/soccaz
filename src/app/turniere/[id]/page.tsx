@@ -33,6 +33,7 @@ import { RegisterForm } from "./RegisterForm";
 import { hasOpenTournamentAuthorization } from "@/server/payments/authorize";
 import { TournamentVenuePick } from "./TournamentVenuePick";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
+import { DECLINE_LABELS, isDeclineCode } from "@/lib/hall-decline";
 import { TournamentCard } from "./TournamentCard";
 import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 
@@ -66,7 +67,11 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost";
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
   // Turnier ohne Halle im Kartenmodell: der Veranstalter waehlt sie hier (sonst laesst sich der Preis nicht festlegen)
-  const venueOptions = manage && inRegistration && !t.venueId && data.cardMode ? await listPartnerVenueOptions() : null;
+  // Ablehnung der Halle (Backlog 161): nur die Kategorie ist sichtbar (nie der Freitext); die Entscheidung ist endgueltig, der Veranstalter waehlt die Halle erneut (auch dieselbe) oder sagt ab
+  const declinedCode = t.venueDeclinedAt && isDeclineCode(t.venueDeclineCode) ? t.venueDeclineCode : null;
+  const declined = declinedCode !== null && (inPayment || inRegistration);
+  const venueOptionsRaw = manage && inRegistration && ((!t.venueId && data.cardMode) || declined) ? await listPartnerVenueOptions({ force: declined }) : null;
+  const venueOptions = venueOptionsRaw && declined ? venueOptionsRaw.map((o) => (o.id === t.venueId ? { ...o, label: `${o.label} (hat abgelehnt)` } : o)) : venueOptionsRaw;
   const linkUrl = t.inviteToken ? `${process.env.APP_URL ?? `${proto}://${host}`}/turniere/${t.id}?t=${t.inviteToken}` : null;
   const played = data.stages.flatMap((s) => s.matches).filter((m) => m.scoreA !== null).length;
   const totalGames = data.stages.flatMap((s) => s.matches).length;
@@ -98,7 +103,23 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
       {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} />}
-      {venueOptions && <TournamentVenuePick tournamentId={t.id} options={venueOptions} />}
+      {declined && inPayment && manage && (
+        <section className="card space-y-3" data-testid="venue-declined">
+          <h2 className="font-semibold">Die Halle kann das Turnier nicht ausrichten</h2>
+          <p className="text-sm" data-testid="venue-declined-reason">
+            Grund: {DECLINE_LABELS[declinedCode!]}. Die Entscheidung der Halle ist endgültig. Wähle eine andere Halle (oder dieselbe erneut) oder sage das Turnier ab.
+          </p>
+          <div className="flex flex-wrap items-start gap-2">
+            <ActionButton action={reopenRostersAction.bind(null, t.id)} label="Andere Halle wählen" confirm={ZP.hallDeclinedReopenConfirm} thenGo={`/turniere/${t.id}`} className="btn btn-primary !min-h-11 !px-4 text-sm" />
+            <ActionButton action={cancelTournamentAction.bind(null, t.id)} label="Turnier absagen" confirm={ZP.hallDeclinedCancelConfirm} className="btn btn-ghost !min-h-11 !px-4 text-sm" />
+          </div>
+          <p className="text-xs text-muted">{ZP.hallDeclinedCancelNote}</p>
+        </section>
+      )}
+      {declined && inPayment && !manage && v && (v.myTeamId || v.captainTeamId) && (
+        <p className="card text-sm" data-testid="venue-declined-team">Die Halle kann das Turnier nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.</p>
+      )}
+      {venueOptions && <TournamentVenuePick tournamentId={t.id} options={venueOptions} declinedCode={declined && declinedCode ? DECLINE_LABELS[declinedCode] : null} />}
       {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} />}
       {v && data.registrationOpen && !v.isOrganizer && !v.captainTeamId && !v.myTeamId && v.registerableTeams.length === 0 && v.joinableTeamIds.length === 0 && (
         <section className="card space-y-2" data-testid="no-team-hint">
@@ -137,10 +158,10 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             {inRegistration && data.deadlinePassed && teams.length < t.maxTeams && teams.length >= 4 && (
               <ActionButton action={closeWithJoinedAction.bind(null, t.id)} label={`Mit den ${teams.length} angemeldeten Teams starten`} confirm="Die Teamzahl wird auf die angemeldeten Teams gesenkt. Danach wird der Preis berechnet, sobald alle Teams vollzählig sind." className="btn btn-primary !min-h-9 !px-3 text-sm" />
             )}
-            {inPayment && (
+            {inPayment && !declined && (
               <ActionButton action={reopenRostersAction.bind(null, t.id)} label="Kader wieder öffnen" confirm="Alle bereits gezahlten Anteile werden erstattet, der Preis wird später neu berechnet." className="btn btn-ghost !min-h-9 !px-3 text-sm" />
             )}
-            <ActionButton action={cancelTournamentAction.bind(null, t.id)} label="Turnier absagen" confirm="Turnier absagen? Alle bezahlten Anteile werden vollständig erstattet." className="btn btn-danger !min-h-9 !px-3 text-sm" />
+            {!(declined && inPayment) && <ActionButton action={cancelTournamentAction.bind(null, t.id)} label="Turnier absagen" confirm="Turnier absagen? Alle bezahlten Anteile werden vollständig erstattet." className="btn btn-danger !min-h-9 !px-3 text-sm" />}
           </div>
           <p className="text-xs text-muted">Bis zum Anmeldeschluss kannst du Teams entfernen und durch neue ersetzen. Danach kannst du mit weniger Teams starten (mindestens 4) oder absagen. Wenn in der Zahlungsphase jemand nicht zahlt, öffne die Kader wieder: Alles wird erstattet und der Preis neu berechnet.</p>
         </section>

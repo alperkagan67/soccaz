@@ -16,6 +16,8 @@ type Props = {
   uid: string;
   /** Runde der Anfrage (Plan 011 M2, 3.1): kommt als Hidden-Feld mit, damit eine veraltete Seite abgelehnt werden kann. Optional bis zur Anbindung. */
   round?: number | null;
+  /** Hinweis im Formular (z. B. "Die Ablehnung ist endgültig."), sichtbar vor dem Absenden. */
+  notice?: string;
 };
 
 /** Fehler der Radiogruppe: unter der Gruppe, mit Symbol und Wort, `role="alert"` (wie `Field`). */
@@ -66,9 +68,15 @@ export function HallDeclineFields({ uid }: { uid: string }) {
   );
 }
 
-export function HallDeclineForm({ action, uid, round = null }: Props) {
+export function HallDeclineForm({ action, uid, round = null, notice }: Props) {
   return (
     <Form action={action} submitLabel="Ablehnung senden" danger>
+      {notice && (
+        <p className="text-sm font-semibold" data-testid="decline-final-note">
+          <span aria-hidden>■ </span>
+          {notice}
+        </p>
+      )}
       {round !== null && <input type="hidden" name="round" value={String(round)} />}
       <HallDeclineFields uid={uid} />
     </Form>
