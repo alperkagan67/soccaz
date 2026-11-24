@@ -82,7 +82,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
             <a href={`/api/karte/${match.id}`} className="text-accent-fg underline" download>Spielbericht als Bild</a>
           </p>
         )}
-        {v?.mySide && match.status === "played" && (
+        {v?.mySide && match.status === "played" && match.kind !== "tournament" && (
           <p className="text-center text-sm">
             <Link href={`/app/suche/neu?gegner=${v.mySide === "home" ? match.awaySlug : match.homeSlug}`} className="text-accent-fg underline">Revanche anfragen</Link>
           </p>

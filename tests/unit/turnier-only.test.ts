@@ -36,3 +36,24 @@ describe("Text", () => {
     expect(KOMMT_BALD_TEXT).not.toMatch(/\d{1,2}\.\s?\d{1,2}\./);
   });
 });
+
+describe("Revanche und PWA-Startmenü (Review R-T425)", () => {
+  it("Spielseite: Revanche-Link nur bei Nicht-Turnier-Spielen", async () => {
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/app/spiele/[id]/page.tsx", "utf8")).toMatch(/v\?\.mySide && match\.status === "played" && match\.kind !== "tournament" && \(/);
+  });
+  it("manifest: bei TURNIER_ONLY=1 keine Shortcuts auf gesperrte Bereiche, sonst unverändert", async () => {
+    const manifest = (await import("@/app/manifest")).default;
+    const alt = process.env.TURNIER_ONLY;
+    try {
+      process.env.TURNIER_ONLY = "1";
+      const urls = (manifest().shortcuts ?? []).map((x) => x.url);
+      expect(urls).toEqual(["/turniere", "/app"]);
+      for (const u of urls) expect(pfadGesperrt(u)).toBe(false);
+      delete process.env.TURNIER_ONLY;
+      expect((manifest().shortcuts ?? []).map((x) => x.url)).toEqual(["/matchmaking", "/spiele", "/app"]);
+    } finally {
+      if (alt === undefined) delete process.env.TURNIER_ONLY; else process.env.TURNIER_ONLY = alt;
+    }
+  });
+});
