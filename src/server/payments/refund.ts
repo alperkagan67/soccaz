@@ -355,8 +355,14 @@ async function lockFailedRefund(tx: Tx, refundRowId: string) {
   return { row, matchId: probe.matchId };
 }
 
+/** Neuer Stripe-Idempotenzschluessel je Neuversuch (<alt>:r1, :r2, ...): Stripe liefert bei GLEICHEM Schluessel 24 Stunden lang die ALTE Antwort ohne neue Erstattung (Review R-T376, P1). */
+export const nextRetryKey = (key: string) => {
+  const m = /^(.*):r([0-9]+)$/.exec(key);
+  return m ? `${m[1]}:r${Number(m[2]) + 1}` : `${key}:r1`;
+};
+
 /**
- * Backlog 192: Admin 1 versucht eine fehlgeschlagene Ausnahme-Erstattung erneut. Dieselbe Zeile und derselbe Idempotenzschlüssel (nie eine zweite Zeile: UNIQUE je Abbuchung),
+ * Backlog 192: Admin 1 versucht eine fehlgeschlagene Ausnahme-Erstattung erneut. Dieselbe Zeile, aber ein NEUER Idempotenzschlüssel (nextRetryKey; nie eine zweite Zeile: UNIQUE je Abbuchung; die alte Erstattung ist von Stripe als failed bestätigt),
  * der Versand läuft über den bestehenden Weg (claimRefund/sendRefund, Ergebnis über applyRefundInTx wie der Webhook). Ein bedingtes UPDATE (status = failed) macht zwei gleichzeitige
  * Neuversuche zu einem; Stripe selbst lehnt eine zweite Erstattung über den Abbuchungsbetrag ab. Ein Neuversuch bei einem Zahlungsstreit (charge_disputed) ist gesperrt.
  */
@@ -369,11 +375,11 @@ export async function retryFailedRefund(actorId: string, refundRowId: string): P
     if (!charge || charge.status !== "succeeded") throw new DomainError("Die zugehörige Abbuchung ist nicht (mehr) erfolgreich: kein Neuversuch.");
     const changed = await tx
       .update(paymentRefunds)
-      .set({ status: "pending", refundId: null, failureCode: null, attemptStartedAt: null, updatedAt: new Date() })
+      .set({ status: "pending", refundId: null, failureCode: null, attemptStartedAt: null, idempotencyKey: nextRetryKey(row.idempotencyKey), updatedAt: new Date() })
       .where(and(eq(paymentRefunds.id, row.id), eq(paymentRefunds.status, "failed")))
       .returning({ id: paymentRefunds.id });
     if (changed.length !== 1) throw new DomainError("Diese Erstattung wurde gerade von jemand anderem bearbeitet.");
-    await audit(actorId, "refund.retry", "match", mId, { after: { refundRowId: row.id, previousCode: row.failureCode, previousRefundId: row.refundId, amountCents: row.amountCents } }, tx);
+    await audit(actorId, "refund.retry", "match", mId, { after: { refundRowId: row.id, previousCode: row.failureCode, previousRefundId: row.refundId, previousKey: row.idempotencyKey, amountCents: row.amountCents } }, tx);
     return mId;
   });
   // Nach dem Commit senden (nie ein Stripe-Aufruf in der Transaktion); scheitert der Versand, holt der Job runRefunds es nach

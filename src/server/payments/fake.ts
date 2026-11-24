@@ -117,6 +117,21 @@ export class FakeProvider implements PaymentProvider {
   async createRefund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string; chargeId: string } }): Promise<RefundResult> {
     this.probe("createRefund");
     this.calls.push({ method: "createRefund", args: { paymentIntentId: input.paymentIntentId, amountCents: input.amountCents, idempotencyKey: input.idempotencyKey, metadata: input.metadata } });
+    const cached = this.replayRefunds ? this.refundReplay.get(input.idempotencyKey) : undefined;
+    if (cached) return cached; // Wiederholung mit gleichem Schluessel: Stripe liefert 24 h lang die ALTE Antwort ohne neue Erstattung
+    const result = await this.createRefundFresh(input);
+    if (this.replayRefunds) this.refundReplay.set(input.idempotencyKey, result);
+    return result;
+  }
+
+  /** Test-Hilfe: Wiederhol-Modus wie Stripe (gleicher Schluessel = gleiche alte Antwort). */
+  private replayRefunds = false;
+  private readonly refundReplay = new Map<string, RefundResult>();
+  setRefundReplay(on: boolean) {
+    this.replayRefunds = on;
+  }
+
+  private async createRefundFresh(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string; metadata: { matchId?: string; tournamentId?: string; userId: string; chargeId: string } }): Promise<RefundResult> {
     const outcome = this.refundOutcomes.get(input.metadata.userId) ?? "succeeded";
     if (outcome === "error") throw new Error("Netz weg");
     const id = `re_fake_${short(input.idempotencyKey)}`;

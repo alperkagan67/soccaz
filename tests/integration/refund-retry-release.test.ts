@@ -14,6 +14,7 @@ let provider: FakeProvider;
 let owner: Awaited<ReturnType<typeof makeUser>>;
 beforeEach(async () => {
   provider = new FakeProvider();
+  provider.setRefundReplay(true); // wie Stripe: gleicher Idempotenzschluessel = 24 h lang die ALTE Antwort ohne neue Erstattung (Review R-T376, P1)
   setPaymentProviderForTests(provider);
   owner = await makeUser("rr_owner", "owner");
 });
@@ -55,7 +56,7 @@ async function failedSetup(tag: string) {
 }
 
 describe("Neuversuch einer fehlgeschlagenen Ausnahme-Erstattung (Admin 1)", () => {
-  it("erfolgreich: dieselbe Zeile wird succeeded, derselbe Idempotenzschluessel, Rueckbuchung im Hauptbuch genau einmal, Protokoll mit Admin 1, Alarm weg", async () => {
+  it("erfolgreich: dieselbe Zeile wird succeeded, NEUER Idempotenzschluessel (<alt>:r1, sonst waere die alte Stripe-Antwort wiedergekommen), Rueckbuchung im Hauptbuch genau einmal, Protokoll mit Admin 1, Alarm weg", async () => {
     const { m, u, charge, row } = await failedSetup("r1");
     expect(await revenue(m)).toBe(800);
     provider.setRefundOutcome(u.id, "succeeded");
@@ -65,7 +66,9 @@ describe("Neuversuch einer fehlgeschlagenen Ausnahme-Erstattung (Admin 1)", () =
     expect(after.failureCode).toBeNull();
     const calls = refundCalls();
     expect(calls).toHaveLength(2);
-    expect((calls[1].args as { idempotencyKey: string }).idempotencyKey).toBe((calls[0].args as { idempotencyKey: string }).idempotencyKey);
+    const k0 = (calls[0].args as { idempotencyKey: string }).idempotencyKey;
+    expect((calls[1].args as { idempotencyKey: string }).idempotencyKey).toBe(`${k0}:r1`);
+    expect(after.idempotencyKey).toBe(`${k0}:r1`);
     expect(await revenue(m)).toBe(0);
     expect(await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, charge.id))).toHaveLength(1);
     const logs = await auditOf(m.match.id, "refund.retry");
@@ -83,6 +86,9 @@ describe("Neuversuch einer fehlgeschlagenen Ausnahme-Erstattung (Admin 1)", () =
     provider.setRefundOutcome(u.id, "succeeded");
     await retryFailedRefund(owner.id, row.id);
     expect((await refundRow(charge.id)).status).toBe("succeeded");
+    const keys = refundCalls().map((c) => (c.args as { idempotencyKey: string }).idempotencyKey);
+    expect(new Set(keys).size).toBe(3); // Erstversand, Neuversuch 1, Neuversuch 2: je ein eigener Schluessel (:r1, :r2)
+    expect(keys[2]).toMatch(/:r2$/);
   });
 
   it("nur Admin 1: Spieler, Betreiber-Admin ohne Admin-1-Recht und unbekannte Nutzer werden abgewiesen, nichts geaendert, nichts gesendet", async () => {
@@ -128,7 +134,7 @@ describe("Neuversuch einer fehlgeschlagenen Ausnahme-Erstattung (Admin 1)", () =
 
   it("spaetes oder doppeltes failed der ALTEN Erstattung nach einem Neuversuch setzt die neue Zeile nicht wieder auf failed (Review R-T376)", async () => {
     const { m, u, charge, row } = await failedSetup("r8");
-    provider.setRefundOutcome(u.id, "pending");
+    provider.setRefundOutcome(u.id, "error"); // Netz weg beim Neuversuch: Zeile pending ohne refund_id (das Fenster, in dem ein spaetes failed der alten Erstattung eintreffen kann)
     await retryFailedRefund(owner.id, row.id);
     expect((await refundRow(charge.id)).status).toBe("pending");
     const late = provider.signEvent({ id: nid("evt_rr"), type: "refund.updated", object: { id: row.refundId as string, amount: 800, currency: "eur", status: "failed", failure_reason: "unknown", payment_intent: charge.paymentIntentId, metadata: { matchId: m.match.id, userId: u.id, chargeId: charge.id } } });

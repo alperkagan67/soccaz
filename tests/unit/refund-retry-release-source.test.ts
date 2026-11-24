@@ -34,9 +34,10 @@ describe("Neuversuch und Abschreiben: Quelltext", () => {
     expect(body).toContain("REFUND_WRITTEN_OFF");
   });
 
-  it("der Neuversuch nutzt dieselbe Zeile und denselben Schluessel (kein Insert, kein neuer idempotency_key)", () => {
+  it("der Neuversuch nutzt dieselbe Zeile, aber einen NEUEN Stripe-Schluessel (kein Insert; Stripe liefert bei gleichem Schluessel 24 h die alte Antwort)", () => {
     const body = between(read("src/server/payments/refund.ts"), "export async function retryFailedRefund", "export async function writeOffFailedRefund");
-    expect(body).not.toMatch(/\.insert\(|idempotencyKey/);
+    expect(body).not.toContain(".insert(");
+    expect(body).toContain("idempotencyKey: nextRetryKey(row.idempotencyKey)");
     expect(body).toContain('eq(paymentRefunds.status, "failed")');
   });
 
