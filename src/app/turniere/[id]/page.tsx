@@ -107,7 +107,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <section className="card space-y-3" data-testid="venue-declined">
           <h2 className="font-semibold">Die Halle kann das Turnier nicht ausrichten</h2>
           <p className="text-sm" data-testid="venue-declined-reason">
-            Grund: {DECLINE_LABELS[declinedCode!]}. Die Entscheidung der Halle ist endgültig. Wähle eine andere Halle (oder dieselbe erneut) oder sage das Turnier ab.
+            Grund: {DECLINE_LABELS[declinedCode!]}. Die Halle hat diese Anfrage abgelehnt; das bleibt so. Wähle eine andere Halle, frage dieselbe Halle neu an oder sage das Turnier ab.
           </p>
           <div className="flex flex-wrap items-start gap-2">
             <ActionButton action={reopenRostersAction.bind(null, t.id)} label="Andere Halle wählen" confirm={ZP.hallDeclinedReopenConfirm} thenGo={`/turniere/${t.id}`} className="btn btn-primary !min-h-11 !px-4 text-sm" />
@@ -156,12 +156,12 @@ export default async function TournamentPage({ params, searchParams }: PageProps
           <h2 className="font-semibold">Veranstalter</h2>
           <div className="flex flex-wrap gap-2">
             {inRegistration && data.deadlinePassed && teams.length < t.maxTeams && teams.length >= 4 && (
-              <ActionButton action={closeWithJoinedAction.bind(null, t.id)} label={`Mit den ${teams.length} angemeldeten Teams starten`} confirm="Die Teamzahl wird auf die angemeldeten Teams gesenkt. Danach wird der Preis berechnet, sobald alle Teams vollzählig sind." className="btn btn-primary !min-h-9 !px-3 text-sm" />
+              <ActionButton action={closeWithJoinedAction.bind(null, t.id)} label={`Mit den ${teams.length} angemeldeten Teams starten`} confirm="Die Teamzahl wird auf die angemeldeten Teams gesenkt. Danach wird der Preis berechnet, sobald alle Teams vollzählig sind." className="btn btn-primary !min-h-11 !px-4 text-sm" />
             )}
             {inPayment && !declined && (
-              <ActionButton action={reopenRostersAction.bind(null, t.id)} label="Kader wieder öffnen" confirm="Alle bereits gezahlten Anteile werden erstattet, der Preis wird später neu berechnet." className="btn btn-ghost !min-h-9 !px-3 text-sm" />
+              <ActionButton action={reopenRostersAction.bind(null, t.id)} label="Kader wieder öffnen" confirm="Alle bereits gezahlten Anteile werden erstattet, der Preis wird später neu berechnet." className="btn btn-ghost !min-h-11 !px-4 text-sm" />
             )}
-            {!(declined && inPayment) && <ActionButton action={cancelTournamentAction.bind(null, t.id)} label="Turnier absagen" confirm="Turnier absagen? Alle bezahlten Anteile werden vollständig erstattet." className="btn btn-danger !min-h-9 !px-3 text-sm" />}
+            {!(declined && inPayment) && <ActionButton action={cancelTournamentAction.bind(null, t.id)} label="Turnier absagen" confirm="Turnier absagen? Alle bezahlten Anteile werden vollständig erstattet." className="btn btn-danger !min-h-11 !px-4 text-sm" />}
           </div>
           <p className="text-xs text-muted">Bis zum Anmeldeschluss kannst du Teams entfernen und durch neue ersetzen. Danach kannst du mit weniger Teams starten (mindestens 4) oder absagen. Wenn in der Zahlungsphase jemand nicht zahlt, öffne die Kader wieder: Alles wird erstattet und der Preis neu berechnet.</p>
         </section>
@@ -240,7 +240,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
               return (
                 <section key={team.teamId} className="card space-y-2" data-testid="tournament-team" data-ready={team.ready} data-paid-ready={team.paidReady}>
                   <div className="flex items-baseline justify-between gap-2">
-                    <h3 className="font-semibold"><Link href={`/teams/${team.slug}`} className="hover:text-accent-fg">{team.name}</Link></h3>
+                    <h3 className="font-semibold"><Link href={`/teams/${team.slug}`} className="inline-flex min-h-11 items-center hover:text-accent-fg">{team.name}</Link></h3>
                     <span className={`text-xs font-semibold ${team.ready ? "text-accent-fg" : "text-muted"}`}>{inPayment && team.paidReady ? "✓ Bereit" : team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
                   </div>
                   <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName === "–" ? "–" : autorLabel(team.captainName, sicht)} · {team.players.length} Spieler{priceFixed && !free && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>

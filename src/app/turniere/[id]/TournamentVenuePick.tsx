@@ -14,7 +14,7 @@ export function TournamentVenuePick({ tournamentId, options, declinedCode }: { t
     <section className="card space-y-2" data-testid="venue-pick">
       <h2 className="font-semibold">{declinedCode ? "Halle erneut oder andere Halle wählen" : "Partnerhalle wählen"}</h2>
       {declinedCode ? (
-        <p className="text-sm text-muted" data-testid="venue-pick-declined">Die Halle hat dieses Turnier abgelehnt (Grund: {declinedCode}). Die Entscheidung ist endgültig: Wähle eine andere Halle oder dieselbe erneut, dann wird sie neu angefragt. Der Turniername ist für die Halle sichtbar.</p>
+        <p className="text-sm text-muted" data-testid="venue-pick-declined">Die Halle hat diese Anfrage abgelehnt (Grund: {declinedCode}); das bleibt so. Wähle eine andere Halle oder lass dieselbe Halle neu anfragen: Das ist eine neue Anfrage. Der Turniername ist für die Halle sichtbar.</p>
       ) : (
         <p className="text-sm text-muted">Für dieses Turnier ist noch keine Halle gewählt. Ohne Halle kann der Preis nicht festgelegt werden. Der Turniername ist für die Halle sichtbar.</p>
       )}
