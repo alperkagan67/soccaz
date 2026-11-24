@@ -47,6 +47,8 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
       {rows.length === 0 ? (
         <p className="card text-muted">Keine Nutzer gefunden.</p>
       ) : (
+        <>
+        <p className="text-xs text-muted" data-testid="organizer-revoke-note">Entzug von is_organizer stoppt keine laufenden Turniere; zum Stoppen: Turnier absagen (Admin).</p>
         <ul className="space-y-2">
           {rows.map((u) => (
             <li key={u.id} className="card space-y-2" data-testid={`user-${u.email}`}>
@@ -69,6 +71,7 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
             </li>
           ))}
         </ul>
+        </>
       )}
       <Pager path="/admin/nutzer" params={{ q, role, banned: banned ? "1" : undefined }} page={page} hasMore={hasMore} />
     </div>

@@ -146,6 +146,8 @@ Eine Ergebnis-Korrektur NACH der Finalisierung gibt es bis nach dem 12.12. nicht
 3. **Notfall am Turniertag:** der Veranstalter notiert den richtigen Spielstand außerhalb von Soccaz (Zettel oder Nachricht) und spielt weiter; die Korrektur folgt nach dem Turnier.
 Vorbeugung: der Veranstalter trägt Endergebnisse nur über den Dialog „Endergebnis eintragen“ ein (große Anzeige „A 3 : 2 B“, „endgültig“) oder über „Abpfiff“; ein Team, das nicht antritt, wird mit „Kampflos werten“ (3:0) gewertet.
 
+**Veranstalter-Recht entzogen:** Entzug von is_organizer stoppt keine laufenden Turniere; zum Stoppen: Turnier absagen (Admin). Die Rechte im Turnier hängen am Veranstalter des Turniers, das Plattform-Recht steuert nur das Anlegen neuer Turniere.
+
 ## 10a. Staging-Seed für die Generalprobe (Teams 3 bis 6, nur Staging)
 Für das Gratis-Turnier mit 6 Teams sind Teams 1 und 2 **echte** Konten; Teams 3 bis 6 legt `scripts/staging-seed.mjs` mit **erfundenen** Konten an (`probe-t3-s1@staging.invalid` …, Namen „Probe Konto T3-1“, Teams „Probe-Team 3“ bis „Probe-Team 6“; `.invalid` ist nie zustellbar, es wird nie Post verschickt). Das Skript hat eine **eigene Sperre** und verweigert ohne Umgebungsmarke (Schritt 3a), bei `APP_URL` = `socaz.de` oder `www.socaz.de` und ohne ausdrückliche Bestätigung. Ein Staging unter einer Unteradresse (z. B. `staging.socaz.de`) ist erlaubt.
 ```

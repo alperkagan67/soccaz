@@ -260,3 +260,34 @@ describe("Abpfiff bei 0:0 im K.-o.-Spiel: Unentschieden, Bracket rückt erst mit
     expect([finalNachher.teamA, finalNachher.teamB]).toContain(first.teamB);
   });
 });
+
+// Entscheid t2q 2026-11-27 (PR D, Punkt 4): Die Rechte im Turnier hängen an tournaments.organizer_id, NICHT am Plattform-Recht users.is_organizer. Das Recht steuert nur das ANLEGEN neuer Turniere.
+// Entzug mitten im Turnier reisst ein laufendes Turnier nicht auseinander; zum Stoppen: Turnier absagen (Admin).
+describe("Entzug von is_organizer mitten im Turnier", () => {
+  it("Flag entzogen: Abpfiff, Ergebnis und Kampflos im EIGENEN laufenden Turnier gehen weiter, ein NEUES Turnier anlegen wird abgewiesen", async () => {
+    const { t, org } = await turnier(4);
+    const { forfeitTournamentMatch, createTournament } = await import("@/server/tournaments");
+    await db.update((await import("@/db/schema")).users).set({ isOrganizer: false }).where(eq((await import("@/db/schema")).users.id, org.id));
+    const [a, b] = (await rows(t.id)).filter((r) => r.matchId && r.stage === "ko:4");
+    await submitResult(org.id, a.matchId!, 2, 1);
+    expect((await gameOf(a.matchId!)).status).toBe("played");
+    await forfeitTournamentMatch(org.id, t.id, b.id, b.teamA!);
+    expect((await rows(t.id)).find((r) => r.id === b.id)!.scoreA).toBe(3);
+    const T0 = Date.now();
+    await expect(createTournament(org.id, { name: "Neu-Cup", city: "Essen", startsAt: new Date(T0 + 5 * DAY), registrationDeadline: new Date(T0 + 3 * DAY), maxTeams: 4, durationMin: 120, hourlyCents: 0 })).rejects.toThrow(/freigeschaltete Veranstalter/);
+  });
+  it("GEGENPROBE: ein Konto MIT is_organizer, aber OHNE organizer_id-Zuordnung zu diesem Turnier, darf nichts (Ergebnis, Ereignis, Abpfiff, Kampflos)", async () => {
+    const { t } = await turnier(4);
+    const fremd = await makeUser("er-flag");
+    const { users } = await import("@/db/schema");
+    await db.update(users).set({ isOrganizer: true }).where(eq(users.id, fremd.id));
+    const { recordEvent } = await import("@/server/results");
+    const { forfeitTournamentMatch } = await import("@/server/tournaments");
+    const first = (await rows(t.id)).filter((r) => r.matchId && r.stage === "ko:4")[0];
+    await expect(submitResult(fremd.id, first.matchId!, 1, 0)).rejects.toThrow(/Nur Team-Admins/);
+    await expect(recordEvent(fremd.id, first.matchId!, { type: "goal", teamId: first.teamA! })).rejects.toThrow(/Nur Team-Admins/);
+    await expect(endMatch(fremd.id, first.matchId!)).rejects.toThrow(/Nur Team-Admins/);
+    await expect(forfeitTournamentMatch(fremd.id, t.id, first.id, first.teamA!)).rejects.toThrow(/Nur der Veranstalter/);
+    expect((await gameOf(first.matchId!)).status).toBe("confirmed");
+  });
+});
