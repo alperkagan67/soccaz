@@ -36,7 +36,7 @@ export function definedTestIds(text: string): { ids: Set<string>; patterns: RegE
   for (const m of text.matchAll(/(?<!\[)data-testid=(?:"([^"]+)"|'([^']+)'|\{\s*"([^"]+)"\s*\}|\{\s*'([^']+)'\s*\})/g)) ids.add((m[1] ?? m[2] ?? m[3] ?? m[4]) as string);
   for (const m of text.matchAll(/(?<!\[)data-testid=\{\s*`([^`]*)`\s*\}/g)) {
     if (!m[1].includes("${")) ids.add(m[1]);
-    else patterns.push(new RegExp("^" + m[1].split(/\$\{[^}]*\}/).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".+") + "$"));
+    else if (m[1].replace(/\$\{[^}]*\}/g, "").length > 0) patterns.push(new RegExp("^" + m[1].split(/\$\{[^}]*\}/).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".+") + "$"));
   }
   for (const m of text.matchAll(/(?<!\[)data-testid=\{[^{}`"']*\?\s*"([^"]+)"\s*:\s*"([^"]+)"\s*\}/g)) {
     ids.add(m[1]);
@@ -111,6 +111,7 @@ describe("AC-5: Bindungen der E2E-Tests an Test-IDs und Adressen", () => {
         "<p data-testid={`zeile-${id}`}>x</p>",
         "<p data-testid={`${prefix}-ende`}>x</p>",
         "<p data-testid={testId}>x</p>",
+        "<p data-testid={`${nurPlatzhalter}`}>x</p>", // nur Platzhalter, kein fester Teil: kein Muster (sonst wuerde ^.+$ jede ID akzeptieren)
         '<p aria-label="nur-label">x</p>',
         'const KONSTANTE = "nur-konstante";',
         'document.querySelector(\'[data-testid="nur-selektor"]\');',
