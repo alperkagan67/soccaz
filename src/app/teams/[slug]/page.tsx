@@ -22,6 +22,7 @@ import { isTeamAdmin } from "@/server/teams";
 import { isVenueManager } from "@/server/venue-access-rules";
 import { InviteBox } from "./InviteBox";
 import { LeaveTeam, MemberControls, TeamSettings } from "./TeamManage";
+import { TopScorers } from "./TopScorers";
 
 export async function generateMetadata({ params }: PageProps<"/teams/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -153,19 +154,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         </p>
       )}
 
-      {profile.topScorers.length > 0 && (
-        <section className="space-y-2" aria-label="Torjäger">
-          <h2 className="text-lg font-semibold">Torjäger</h2>
-          <ol className="space-y-1 text-sm">
-            {profile.topScorers.map((s, i) => (
-              <li key={s.id} className="flex justify-between">
-                <span><span className="mr-2 text-muted">{i + 1}.</span><Link href={`/spieler/${s.id}`} className="hover:text-accent-fg">{s.name}</Link></span>
-                <span className="font-semibold">{s.goals} Tore</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+      <TopScorers scorers={profile.topScorers} viewer={viewer} />
 
       {admin && <InviteBox teamId={team.id} teamName={team.name} />}
       {admin && <ImageUpload kind="team_logo" refId={team.id} label={team.logoUrl ? "Logo ändern" : "Logo hochladen"} />}

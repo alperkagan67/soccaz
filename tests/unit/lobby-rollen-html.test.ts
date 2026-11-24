@@ -84,3 +84,34 @@ describe("Verdrahtung (Quelltext)", () => {
     expect(team).not.toContain("hallOperator: false");
   });
 });
+
+// Teamseite (security-reviewer zu PR 5a): auch Torjäger und Kader-Zeilen sind für den reinen Hallenbetreiber namenfrei, geprüft am gerenderten HTML.
+import { PlayerRow } from "../../src/components/PlayerRow";
+import { RATING, cardViewerFor, playerCardFor } from "@/lib/player-card";
+import { TopScorers } from "../../src/app/teams/[slug]/TopScorers";
+
+describe("Teamseite je Rolle: Torjäger und Kader-Zeilen", () => {
+  const scorers = [{ id: "s1", name: "Torben Treffer", goals: 7 }, { id: "s2", name: "Gerda Gut", goals: 4 }];
+  const viewerOf = (hallOperator: boolean, userId: string | null = "u9") => cardViewerFor({ userId, hallOperator, ...none });
+  const scorerHtml = (v: ReturnType<typeof viewerOf>) => renderToStaticMarkup(createElement(TopScorers, { scorers, viewer: v }));
+  it("Mitglied (angemeldet): Namen, Tore und Profil-Links", () => {
+    const out = scorerHtml(viewerOf(false));
+    for (const erwartet of ["Torben Treffer", "Gerda Gut", "7 Tore", 'href="/spieler/s1"']) expect(out, erwartet).toContain(erwartet);
+  });
+  it("reiner Hallenbetreiber: kein Torjäger-Block, weder Name noch Spieler-ID noch Link", () => {
+    const out = scorerHtml(viewerOf(true));
+    expect(out).toBe("");
+    for (const verboten of ["Torben", "Gerda", "s1", "/spieler/"]) expect(out, verboten).not.toContain(verboten);
+  });
+  it("Gast: kein Block", () => expect(scorerHtml(viewerOf(false, null))).toBe(""));
+  it("Kader-Zeile für den Hallenbetreiber: weder Name noch Initialen noch Link auf die Spielerseite", () => {
+    const data = playerCardFor(viewerOf(true), { name: "Zorro Quasimodo", elo: 1236, position: "Angriff", teamColor: "blue", teamSlug: "x" }, RATING);
+    const out = renderToStaticMarkup(createElement(PlayerRow, { data, href: "/spieler/m1" }));
+    for (const verboten of ["Zorro", "Quasimodo", "ZQ", "/spieler/"]) expect(out, verboten).not.toContain(verboten);
+  });
+  it("die Seite rendert Torjäger nur über TopScorers (kein eigenes Mapping mit Namen)", () => {
+    const team = src("src/app/teams/[slug]/page.tsx");
+    expect(team).toContain("<TopScorers scorers={profile.topScorers} viewer={viewer} />");
+    expect(team).not.toContain("topScorers.map");
+  });
+});
