@@ -25,6 +25,9 @@ import { getCurrentUser } from "@/server/session";
 import { getTournament } from "@/server/tournaments";
 import { BoardInfo } from "./BoardInfo";
 import { BracketView } from "./BracketView";
+import { PersonName } from "@/components/PersonName";
+import { autorLabel, personRef } from "@/lib/lobby-namen";
+import { getViewerSicht } from "@/server/viewer-sicht";
 import { CopyLink } from "./CopyLink";
 import { RegisterForm } from "./RegisterForm";
 import { hasOpenTournamentAuthorization } from "@/server/payments/authorize";
@@ -51,6 +54,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
     notFound();
   }
   const { tournament: t, teams, viewer: v, pricing } = data;
+  // AC-17 (Entscheid t2q 2026-11-24): Personennamen (Veranstalter, Captain, Spieler) nur für Angemeldete, sonst Initialen ohne Link; Teilnehmer und Veranstalter sehen Namen wie immer
+  const { sicht } = await getViewerSicht({ participant: Boolean(v?.myTeamId), teamAdmin: Boolean(v?.captainTeamId || v?.isOrganizer) });
   const manage = Boolean(v?.isOrganizer);
   const priceFixed = pricing.shareCents !== null;
   const free = pricing.totalCents === 0 || (priceFixed && pricing.shareCents === 0);
@@ -78,7 +83,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
           {t.startsAt ? ` · ${formatDateTime(t.startsAt)} Uhr` : ` · ${t.startsOn}`} · K.-o.-System
         </p>
         <p className="text-sm text-muted" data-testid="tournament-meta">
-          Veranstalter: {data.organizerName} · {STATUS[t.status]} · {teams.length}/{t.maxTeams} Teams · {free ? "kostenlos" : `Hallenkosten ${formatEuro(pricing.totalCents ?? 0)}, geteilt durch alle Spieler`}
+          Veranstalter: {autorLabel(data.organizerName, sicht)} · {STATUS[t.status]} · {teams.length}/{t.maxTeams} Teams · {free ? "kostenlos" : `Hallenkosten ${formatEuro(pricing.totalCents ?? 0)}, geteilt durch alle Spieler`}
           {t.registrationDeadline ? ` · Anmeldeschluss ${formatDateTime(t.registrationDeadline)} Uhr` : ""}
           {t.isPrivate ? " · privat" : ""}
         </p>
@@ -217,7 +222,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                     <h3 className="font-semibold"><Link href={`/teams/${team.slug}`} className="hover:text-accent-fg">{team.name}</Link></h3>
                     <span className={`text-xs font-semibold ${team.ready ? "text-accent-fg" : "text-muted"}`}>{inPayment && team.paidReady ? "✓ Bereit" : team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
                   </div>
-                  <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{priceFixed && !free && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>
+                  <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName === "–" ? "–" : autorLabel(team.captainName, sicht)} · {team.players.length} Spieler{priceFixed && !free && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>
                   {mine && inPayment && team.dueCents === 0 && team.cardMissing === 0 && team.players.length > 0 && !team.paidReady && (
                     <div className="space-y-1" data-testid="paid-ready-box">
                       <ActionButton action={setPaidReadyAction.bind(null, t.id)} label={tournamentReadyLabel({ cardMode: data.cardMode, free, paused: Boolean(data.paymentsPaused) })} className="btn btn-primary w-full" />
@@ -226,10 +231,10 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                   )}
                   {data.cardMode && team.cardsComplete !== null && <p className="text-xs text-muted" data-testid="team-cards-state">{team.cardsComplete ? "Karten komplett" : "Karten unvollständig"}</p>}
                   <ul className="space-y-1.5 text-sm">
-                    {team.players.map((p) => (
-                      <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="tournament-player" data-paid={p.paid}>
+                    {team.players.map((p, pi) => (
+                      <li key={personRef(sicht, p.userId, p.name, pi).key} className="flex items-center justify-between gap-2" data-testid="tournament-player" data-paid={p.paid}>
                         <span>
-                          <Link href={`/spieler/${p.userId}`} className="hover:text-accent-fg">{p.name}</Link>
+                          <PersonName person={personRef(sicht, p.userId, p.name, pi)} />
                           {p.isCaptain && <span className="ml-2 text-xs text-muted">Captain</span>}
                           {p.paidByOther && <span className="ml-2 text-xs text-muted">vom Captain bezahlt</span>}
                           {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
