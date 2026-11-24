@@ -27,14 +27,14 @@ export function PlayerLight({ light, paymentsOn = true, showLabel = false }: { l
     <span className="inline-flex items-center gap-1.5" title={label} data-light={light}>
       {/* Leuchtpunkt dezent (Look-Entscheid t2q, Richtung F: Leucht-Effekte erwünscht): 4 px, 33 % Deckkraft; Träger der Aussage sind die Wörter */}
       <span className="inline-block size-3 rounded-full" style={{ background: COLOR[light], boxShadow: `0 0 4px ${COLOR[light]}55` }} aria-hidden />
-      {showLabel ? <span className="text-xs text-muted">{label}</span> : <span className="sr-only">{label}</span>}
+      {showLabel ? <span className="text-sm text-muted">{label}</span> : <span className="sr-only">{label}</span>}
     </span>
   );
 }
 
 export function LightLegend({ paymentsOn = true }: { paymentsOn?: boolean }) {
   return (
-    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legende der Ampel" data-testid="light-legend">
+    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted" aria-label="Legende der Ampel" data-testid="light-legend">
       <PlayerLight light="red" paymentsOn={paymentsOn} showLabel />
       <PlayerLight light="orange" paymentsOn={paymentsOn} showLabel />
       <PlayerLight light="green" paymentsOn={paymentsOn} showLabel />
@@ -52,20 +52,20 @@ export function CardLight({ status, showLabel = true, legend = false }: { status
   return (
     <span className="inline-flex items-center gap-1.5" title={v.label} data-card-light={v.tone === "neutral" ? "neutral" : v.tone} data-card-status={legend ? undefined : status}>
       <span
-        className="inline-flex size-5 items-center justify-center rounded-full text-xs font-bold leading-none"
+        className="inline-flex size-6 items-center justify-center rounded-full text-sm font-bold leading-none"
         style={v.filled ? { background: color, color: "#04130a" } : { border: `2px ${v.tone === "neutral" ? "dashed" : "solid"} ${color}`, color }}
         aria-hidden
       >
         {v.glyph}
       </span>
-      {showLabel ? <span className="text-xs text-muted">{v.label}</span> : <span className="sr-only">{v.label}</span>}
+      {showLabel ? <span className="text-sm text-muted">{v.label}</span> : <span className="sr-only">{v.label}</span>}
     </span>
   );
 }
 
 export function CardLightLegend() {
   return (
-    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" aria-label="Legende der Ampel" data-testid="card-light-legend">
+    <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted" aria-label="Legende der Ampel" data-testid="card-light-legend">
       {CARD_LEGEND.map((status) => (
         <CardLight key={cardView(status).label} status={status} legend />
       ))}

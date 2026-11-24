@@ -28,6 +28,15 @@ describe("AC-30 e / AC-3: Lobby-Bausteine", () => {
       expect(src(f), f).not.toMatch(/!min-h-\d|!px-\d/);
     }
   });
+  it("jeder ActionButton der Lobby hat ein eigenes className (der Standard ist !min-h-9 text-xs: 36 px, zu klein; R-T373)", () => {
+    for (const f of files) {
+      for (const m of src(f).matchAll(/<ActionButton\b[^>]*?\/>/g)) expect(m[0], f).toContain("className=");
+    }
+    expect(src("src/components/ActionButton.tsx")).not.toMatch(/error text-xs/);
+  });
+  it("geteilte Ampel-Bausteine der Lobby (PlayerLight, CardLight, Legenden) ohne text-xs", () => {
+    expect(src("src/components/PlayerLight.tsx")).not.toMatch(/\btext-xs\b/);
+  });
   it("höchstens vier Schriftgrößen je Baustein und Seite (base als Fließtext zählt mit; sm:text-3xl ist derselbe Titel in größerer Breite)", () => {
     for (const f of files) {
       const sizes = new Set([...src(f).matchAll(/\btext-(sm|base|lg|xl|2xl|3xl|4xl|5xl)\b/g)].map((m) => m[1]));
@@ -68,9 +77,11 @@ describe("AC-30 b: eine Hauptaktion je Zustand", () => {
     expect(primaries(await actions("participant", null, card(), true))).toBe(0);
   });
   it("MyActions: Karte fehlt: Bereit ist nie btn-primary, Karte hinterlegen ist die eine Hauptaktion; ohne Hauptaktion bleibt auch die Karte ruhig", async () => {
-    const mitKarte = await actions("participant", "karte", card({ ready: false }));
-    expect(mitKarte).not.toMatch(/btn-primary w-full[^>]*disabled=""/);
-    expect(primaries(await actions("participant", "karte", card({ ready: false })))).toBeLessThanOrEqual(1);
+    const mitKarte = await actions("participant", "karte", card({ ready: false, fake: true }));
+    const bereit = [...mitKarte.matchAll(/<button[^>]*>[^<]*[Bb]ereit[^<]*<\/button>/g)].map((m) => m[0]); // der Bereit-Knopf selbst
+    expect(bereit.length).toBe(1);
+    expect(bereit[0]).not.toContain("btn-primary");
+    expect(primaries(await actions("participant", "karte", card({ ready: false, fake: true })))).toBe(1);
     expect(primaries(await actions("participant", null, card({ ready: false })))).toBe(0);
   });
   it("FinalConfirm: primary nur mit dem Merkmal primary, sonst ruhig", async () => {

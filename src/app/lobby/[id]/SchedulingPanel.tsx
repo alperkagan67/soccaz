@@ -54,7 +54,7 @@ export function SchedulingPanel({
                     ) : (
                       <ActionButton action={voteOptionAction.bind(null, matchId, o.id)} label="Dafür stimmen" className="btn btn-ghost text-sm" />
                     )}
-                    {o.proposedByTeamId === myTeamId && <ActionButton action={withdrawOptionAction.bind(null, matchId, o.id)} label="Zurückziehen" />}
+                    {o.proposedByTeamId === myTeamId && <ActionButton action={withdrawOptionAction.bind(null, matchId, o.id)} label="Zurückziehen" className="btn btn-ghost text-sm" />}
                   </span>
                 )}
               </div>

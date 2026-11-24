@@ -19,7 +19,7 @@ export function ChallengePanel({ matchId, homeName, awayName, role, deadlineText
           <ActionButton action={declineChallengeAction.bind(null, matchId)} label="Ablehnen" confirm="Herausforderung wirklich ablehnen?" className="btn btn-danger text-sm" />
         </div>
       )}
-      {role === "challenger" && <ActionButton action={declineChallengeAction.bind(null, matchId)} label="Herausforderung zurückziehen" confirm="Herausforderung wirklich zurückziehen?" />}
+      {role === "challenger" && <ActionButton action={declineChallengeAction.bind(null, matchId)} label="Herausforderung zurückziehen" confirm="Herausforderung wirklich zurückziehen?" className="btn btn-ghost text-sm" />}
       {role === "viewer" && <p className="text-sm text-muted">Nur die Admins von {awayName} können annehmen.</p>}
     </section>
   );

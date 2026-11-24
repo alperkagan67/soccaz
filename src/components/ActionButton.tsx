@@ -25,7 +25,7 @@ export function ActionButton({ action, label, className = "btn btn-ghost !min-h-
         {pending ? "Bitte warten…" : label}
       </button>
       {error && (
-        <span className="error text-xs" role="alert">
+        <span className="error text-sm" role="alert">
           {error}
         </span>
       )}
