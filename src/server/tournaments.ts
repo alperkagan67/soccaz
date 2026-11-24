@@ -884,6 +884,7 @@ export async function listTournaments(filter: { city?: string; viewerId?: string
       startsOn: tournaments.startsOn,
       format: tournaments.format,
       status: tournaments.status,
+      deadlinePassed: sql<boolean>`coalesce(${tournaments.registrationDeadline} <= now(), false)`, // Anmeldeschluss vorbei (wie deadlinePassed oben)
       maxTeams: tournaments.maxTeams,
       entryFeeCents: tournaments.entryFeeCents,
       isPrivate: tournaments.isPrivate,
@@ -893,6 +894,19 @@ export async function listTournaments(filter: { city?: string; viewerId?: string
     .where(and(inArray(tournaments.status, ["registration", "payment", "running", "finished"]), visible, filter.city ? eq(tournaments.city, filter.city) : undefined))
     .orderBy(sql`${tournaments.status} = 'finished'`, desc(tournaments.startsOn))
     .limit(50);
+}
+
+/**
+ * Ist der Nutzer Captain (Team-Admin) eines Teams? Nur für die ANZEIGE der Anmelden-Handlung in der Turnierliste. Angemeldet wird allein in `registerTeam`: dort prüft der Server Team-Admin und offene Anmeldung (nicht diese Funktion).
+ */
+export async function isCaptainOfAnyTeam(userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ teamId: teamMembers.teamId })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+    .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), isNull(teams.archivedAt)))
+    .limit(1);
+  return Boolean(row);
 }
 
 export async function myTournaments(userId: string) {

@@ -15,7 +15,7 @@ export async function HowItWorks() {
   return (
     <section className="space-y-4" aria-labelledby="how-h" data-testid="how-it-works">
       <div className="space-y-1">
-        <h2 id="how-h" className="text-2xl font-bold">{t("how.title")}</h2>
+        <h2 id="how-h" className="text-lg font-semibold">{t("how.title")}</h2>
         <p className="text-muted">{t("how.lead")}</p>
       </div>
       <ul className="grid grid-cols-3 gap-2 text-center" aria-label="Socaz in Zahlen" data-testid="platform-stats">
@@ -25,8 +25,8 @@ export async function HowItWorks() {
           [counts.games, "Spiele"],
         ].map(([n, label]) => (
           <li key={label} className="card !p-3">
-            <span className="block font-heading text-2xl font-bold tabular-nums">{n}</span>
-            <span className="text-xs text-muted">{label}</span>
+            <span className="block font-heading text-lg font-bold tabular-nums">{n}</span>
+            <span className="text-sm text-muted">{label}</span>
           </li>
         ))}
       </ul>
