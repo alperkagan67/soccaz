@@ -167,7 +167,10 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <section className="card space-y-2" data-testid="organizer-box">
           <h2 className="font-semibold">Veranstalter</h2>
           <div className="flex flex-wrap gap-2">
-            {inRegistration && data.deadlinePassed && teams.length < t.maxTeams && teams.length >= 4 && (
+            {inRegistration && free && teams.filter((x) => x.ready).length >= 4 && (teams.length < t.maxTeams || teams.some((x) => !x.ready)) && (
+              <ActionButton action={closeWithJoinedAction.bind(null, t.id)} label={`Anmeldung schließen und mit den ${teams.filter((x) => x.ready).length} bereiten Teams starten`} confirm="Die Anmeldung wird geschlossen. Teams, deren Kader nicht vollzählig ist, sind nicht dabei. Danach erscheint der Spielplan." className="btn btn-primary !min-h-11 !px-4 text-sm" />
+            )}
+            {inRegistration && !free && data.deadlinePassed && teams.length < t.maxTeams && teams.length >= 4 && (
               <ActionButton action={closeWithJoinedAction.bind(null, t.id)} label={`Mit den ${teams.length} angemeldeten Teams starten`} confirm="Die Teamzahl wird auf die angemeldeten Teams gesenkt. Danach wird der Preis berechnet, sobald alle Teams vollzählig sind." className="btn btn-primary !min-h-11 !px-4 text-sm" />
             )}
             {inPayment && !declined && (
