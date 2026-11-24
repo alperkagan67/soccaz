@@ -38,7 +38,7 @@ Erwartet: letzte Zeile ist der **abgestimmte Stand** (Nummer nennt der Task Mana
 | `APPLE_LOGIN_ENABLED` | `1` nur, wenn die Apple-Anmeldung eingerichtet ist (Nutzerentscheid: **Google und Apple**); sonst nicht setzen, dann gilt **nur Google** (Rückfall) |
 | `JOB_SECRET` | Zufallswert |
 | `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` | Impressum (Rechtstexte sind Entwürfe, Anwaltsprüfung) |
-| **`TURNIER_ONLY`** | **`1` (Pflicht in Produktion).** Standard ist AUS; ohne die Variable startet die App mit einer **Warnung im Server-Log**. Sie schaltet die Turnier-Fassung ein (Spielseiten zeigen „kommt bald“). |
+| **`TURNIER_ONLY`** | **`1` (Pflicht in Produktion):** nur Turniere; die übrigen Bereiche (Spiele, Suche, Hallen, Rangliste, Ligen u. a.) zeigen „Kommt bald“, ihre Live-Kanäle antworten 403. `0` = ausdrücklich alles offen. **Ohne die Variable** bleibt alles offen und die App schreibt beim Start diese Warnung ins Log: `[start] WARNUNG: TURNIER_ONLY ist in Produktion nicht gesetzt (1 = nur Turniere, 0 = alles offen). Pflichtvariable im Betriebsablauf.` Plattform-Admins sehen immer alles (Betrieb, Prüfung). |
 | `STRIPE_*`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | **leer lassen**: Zahlungen sind aus. Kein `PAYMENTS_FAKE`. |
 Prüfen, ohne Werte zu zeigen:
 ```
@@ -59,13 +59,34 @@ docker compose up -d --build        # Staging: sh scripts/staging-compose.sh up 
 docker compose ps
 docker compose logs migrate | tail -5
 ```
+Danach die **Startwarnung** prüfen:
+```
+docker compose logs app | grep -c "TURNIER_ONLY ist in Produktion nicht gesetzt"
+```
+Erwartet: `0` (Variable ist gesetzt). `1` oder mehr = `TURNIER_ONLY` in der `.env` fehlt: eintragen, neu starten.
+
 Erwartet: `db`, `app`, `caddy`, `backup` laufen (`uptime` nur, wenn Sie die optionale Überwachung mit `--profile monitoring` gestartet haben); `migrate` ist beendet (`Exited (0)`). **Die Datenbank-Migrationen laufen automatisch bei jedem Start.** Die Log-Warnung „soccaz_ops existiert nicht“ ist vor dem Rollenmodell (A2, nach dem 12.12.) normal. Keine neuen Migrationen bis zum Turnier (0061 bleibt frei).
+
+## 4a. Betriebsregel Produktion: BEIDE Zahlungsschalter AUS
+Für das Turnier (12.12.) und bis ausdrücklich anders entschieden gilt: **`payments_enabled` AUS und `card_payments_enabled` AUS.** Beide stehen im Admin-Bereich auf **einer** Seite, `https://socaz.de/admin/einstellungen` (nur Admin): das Häkchen **„Zahlungen einschalten“** (muss leer sein) und der Kasten **„Notabschaltung Kartenzahlung“** (muss „Die Kartenzahlung ist **AUS**“ zeigen). Grund: Ist nur der erste aus und der Kartenschalter an, richten Teile des Kartenwegs weiter Karten ein (Backlog 257); kein Geld fließt, aber die Oberfläche wäre irreführend. Beide Schalter sind ab Werk AUS.
+
+Prüfung auf dem Server (zeigt nur Schlüssel und Wahrheitswert):
+```
+docker compose exec -T db psql -U socaz -d socaz -c "select key, value from settings where key in ('payments_enabled','card_payments_enabled')"
+```
+Erwartet: **keine Zeilen** (Standard AUS) oder beide mit `false`. Steht dort `true`: **STOPP**, im Admin-Bereich ausschalten und melden. Einschalten nur nach ausdrücklicher Entscheidung nach dem 12.12.
 
 ## 5. Smoke-Test (Gesundheit und Hauptseiten)
 ```
 node scripts/smoke.mjs https://socaz.de --turnier-only
 ```
-Erwartet: jede Zeile `OK`, am Ende `Alle Prüfungen bestanden`, Ende-Code 0. **Gilt ab dem Merge von `feat/turnier-only`:** `TURNIER_ONLY` und die „kommt bald“-Seite unter `/spiele` gibt es erst danach; **bis dahin den Smoke-Test ohne `--turnier-only` aufrufen** und die Variable in der `.env` noch nicht verlangen. (Prüft `/api/health`, Anmeldeseite, `/turniere`, `/impressum`, `/robots.txt` und mit `--turnier-only` die „kommt bald“-Seite unter `/spiele`.) Zusätzlich prüft es, dass `/anmelden` **keinen Dev-Login** zeigt (in Produktion und Staging darf es ihn nie geben). Ist die Apple-Anmeldung eingeschaltet (`APPLE_LOGIN_ENABLED=1`), rufen Sie mit `--apple` auf: dann **muss** der Apple-Knopf da sein, sonst darf er **nicht** da sein. Das Skript braucht nur Node 22 (`node -v`); es nutzt keine Schlüssel.
+Erwartet: jede Zeile `OK`, am Ende `Alle Prüfungen bestanden`, Ende-Code 0.
+
+**Zweiter Aufruf (Sperrpfade der Betriebsart, nur Produktion mit `TURNIER_ONLY=1`):**
+```
+node scripts/smoke-turnier-only.mjs https://socaz.de
+```
+Erwartet: jede Zeile `PASS`, am Ende `ERGEBNIS: BESTANDEN`, Ende-Code 0. Er prüft ohne Anmeldung: die gesperrten Seiten (`/spiele`, `/matchmaking`, `/suche`, `/hallen`, `/rangliste`, `/mitspieler`, `/ligen`) antworten 200 mit „Kommt bald“ und `noindex` (kein 404), der Live-Kanal `/api/spiele/stream` antwortet 403, `/turniere`, `/hilfe`, `/impressum`, `/teams` bleiben offen. **Nicht für Staging mit Zugangsschutz:** dieses Skript kennt kein Passwort (alle Zeilen `FAIL`, Status 401); dort nur `smoke.mjs` mit `SMOKE_BASIC_AUTH` und die Sperrpfade einmal von Hand im Browser öffnen. **Gilt ab dem Merge von `feat/turnier-only`:** `TURNIER_ONLY` und die „kommt bald“-Seite unter `/spiele` gibt es erst danach; **bis dahin den Smoke-Test ohne `--turnier-only` aufrufen** und die Variable in der `.env` noch nicht verlangen. (Prüft `/api/health`, Anmeldeseite, `/turniere`, `/impressum`, `/robots.txt` und mit `--turnier-only` die „kommt bald“-Seite unter `/spiele`.) Zusätzlich prüft es, dass `/anmelden` **keinen Dev-Login** zeigt (in Produktion und Staging darf es ihn nie geben). Ist die Apple-Anmeldung eingeschaltet (`APPLE_LOGIN_ENABLED=1`), rufen Sie mit `--apple` auf: dann **muss** der Apple-Knopf da sein, sonst darf er **nicht** da sein. Das Skript braucht nur Node 22 (`node -v`); es nutzt keine Schlüssel.
 
 ## 6. Admin 1 festlegen (einmalig)
 1. **Einmal mit Google anmelden** (Admin 1 ist eine Google-Adresse) (`https://socaz.de/anmelden`), damit das Konto existiert.
