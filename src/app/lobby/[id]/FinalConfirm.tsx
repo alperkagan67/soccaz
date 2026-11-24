@@ -14,7 +14,7 @@ export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers,
       <div>
         <h2 className="font-semibold">{payable ? ZP.finalHeading : ZP.finalHeadingFree}</h2>
         <p className="text-sm text-muted">
-          Wenn alle in deinem Team {paymentsOn ? "bezahlt haben und " : ""}bereit sind (mindestens {minPlayers} Spieler), bestätigt der Captain zum Schluss. Haben beide Captains bestätigt, steht der Preis fest und die Spielübersicht öffnet sich mit allen Infos.
+          Wenn alle in deinem Team {paymentsOn ? "bezahlt haben und " : ""}bereit sind (mindestens {minPlayers} Spieler), bestätigt der Captain zum Schluss. Haben beide Captains bestätigt, öffnet sich die Spielübersicht mit allen Infos.
         </p>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">

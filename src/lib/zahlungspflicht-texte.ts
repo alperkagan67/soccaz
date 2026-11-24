@@ -28,7 +28,7 @@ export const ZP = {
   finalHeading: "Preis bestätigen und Zahlung zusagen",
   finalHeadingFree: "Letzte Bestätigung der Captains",
   /** Hinweis in der Lobby, solange der Preis fehlt (null): kein "es wird nichts abgebucht"-Versprechen, der Preis kann noch kommen. */
-  priceUnknown: "Der Preis steht noch nicht fest. Du siehst ihn vor der Zusage.",
+  priceUnknown: "Der Preis steht noch nicht fest.",
   gameFree: "Dieses Spiel ist kostenlos. Es wird nichts abgebucht.",
   /** Anteil eines Mitspielers übernehmen (Spiel und Turnier): Bestätigungsknopf im Dialog; der Auslöser (trigger) öffnet nur den Dialog. */
   coverTrigger: "Anteil übernehmen",

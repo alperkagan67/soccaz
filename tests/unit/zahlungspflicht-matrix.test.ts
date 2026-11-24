@@ -155,7 +155,7 @@ describe("Matrix: Anteil uebernehmen (Spiel und Turnier)", () => {
     const { CoverButton } = await import("../../src/app/lobby/[id]/CoverShare");
     const m = renderToStaticMarkup(createElement(CoverButton, { matchId: "m", targetUserId: "u", targetName: "Alex", amounts: { own: "15,00 €", target: "15,00 €", total: "30,00 €", estimated: true }, mandateText: "Zusatz" }));
     expect(m).toContain(`>${ZP.coverTrigger}<`);
-    expect(m).not.toContain(`>${ZP.coverTrigger}<`.replace(">", "> ").trim() + "x"); // Oeffner ohne Formel
+    expect(ZP.coverTrigger).not.toMatch(FORMEL); // Oeffner ohne Formel
     expect(m).toContain(`>${ZP.coverConfirm}<`);
     expect(m).toMatch(/disabled=""[^>]*>[^<]*zahlungspflichtig/); // ohne Zustimmung gesperrt
   }, 60_000);
