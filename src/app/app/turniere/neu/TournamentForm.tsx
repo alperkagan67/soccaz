@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { FieldError, SubmitButton } from "@/components/FormBits";
 import { anmeldeschlussVorschlag } from "@/lib/anmeldeschluss";
 import { useFormAction } from "@/components/useFormAction";
@@ -12,6 +12,11 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
   const { state, pending, onSubmit, formAction } = useFormAction(createTournamentAction);
   const fe = state?.fieldErrors ?? {};
   const deadlineRef = useRef<HTMLInputElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  // Fehler ohne Feldbezug (z. B. Anmeldeschluss nach dem Beginn) stehen unter dem Knopf: ins Bild holen, sonst sieht ihn der Veranstalter auf dem Handy nicht
+  useEffect(() => {
+    if (state?.error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [state]);
   return (
     <form action={formAction} onSubmit={onSubmit} className="card space-y-4">
       <div>
@@ -51,7 +56,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
         <label className="label" htmlFor="venueText">Spielort</label>
         <input id="venueText" name="venueText" className="field" maxLength={120} placeholder="Halle und Adresse" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="startsAt">Termin (Beginn)</label>
           <input
@@ -106,7 +111,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
         </div>
         </>
       )}
-      <label className="flex items-start gap-3 text-sm">
+      <label className="flex min-h-11 items-start gap-3 text-sm">
         <input type="checkbox" name="public" className="mt-1 size-5 accent-accent" />
         <span>
           <span className="block font-semibold">Öffentlich in der Turnierliste zeigen</span>
@@ -115,7 +120,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
       </label>
       <SubmitButton pending={pending}>Turnier anlegen</SubmitButton>
       {!free && <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>}
-      {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
+      {state?.error && !Object.keys(fe).length && <p ref={errorRef} className="error" role="alert" tabIndex={-1}>{state.error}</p>}
     </form>
   );
 }

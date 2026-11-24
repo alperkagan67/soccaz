@@ -36,12 +36,14 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
   if (rounds.length === 0) return null;
   const size = rounds[0].n;
   const rows = size / 2;
-  const cols = { gridTemplateColumns: `repeat(${rounds.length}, minmax(200px, 1fr))`, minWidth: `${rounds.length * 232}px` };
+  // Spalten schmal genug, dass auf dem Handy (390 px) zwei Runden ohne Wischen passen (2 x 160 + 32 Abstand = 352 px); ab drei Runden wischt man, ein Hinweis zeigt es
+  const cols = { gridTemplateColumns: `repeat(${rounds.length}, minmax(160px, 1fr))`, minWidth: `${rounds.length * 160 + (rounds.length - 1) * 32}px` };
 
   // Bei acht und mehr Plätzen liegt die Anzeige im freien Feld über dem Finale, sonst steht sie darüber
   const infoInGrid = rows >= 4;
   return (
     <div className="overflow-x-auto pb-2" data-testid="bracket">
+      {rounds.length > 2 && <p className="mb-2 text-xs text-muted sm:hidden" data-testid="bracket-hint">Nach rechts wischen für die weiteren Runden →</p>}
       {info && !infoInGrid && <div className="mx-auto mb-3 max-w-xs">{info}</div>}
       <div className="grid gap-x-8 pb-2" style={cols}>
         {rounds.map((r) => (

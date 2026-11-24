@@ -6,7 +6,7 @@ import { setStreamAction } from "@/server/stream-actions";
 export function StreamForm({ matchId, current }: { matchId: string; current: string | null }) {
   return (
     <details className="card space-y-2">
-      <summary className="cursor-pointer font-semibold">Live-Stream eintragen</summary>
+      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Live-Stream eintragen</summary>
       <ActionForm action={setStreamAction.bind(null, matchId)} submit="Speichern" className="mt-2 space-y-2" keepOnSuccess successText="Gespeichert. Leer lassen entfernt den Stream.">
         <label className="label" htmlFor="stream-url">Link zu Twitch, YouTube oder Kick</label>
         <input id="stream-url" name="url" type="url" defaultValue={current ?? ""} className="field" placeholder="https://twitch.tv/dein-kanal" />

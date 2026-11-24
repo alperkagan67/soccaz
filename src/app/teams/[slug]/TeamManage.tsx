@@ -52,7 +52,7 @@ export function TeamColorPicker({ teamId, slug, color }: { teamId: string; slug:
 export function TeamSettings({ teamId, slug, color, name, city, strength, bio }: { teamId: string; slug: string; color: string | null; name: string; city: string; strength: number; bio: string | null }) {
   return (
     <details className="card space-y-3" data-testid="team-settings">
-      <summary className="cursor-pointer font-semibold">Team verwalten</summary>
+      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Team verwalten</summary>
       <TeamColorPicker teamId={teamId} slug={slug} color={color} />
       <ActionForm action={updateTeamAction.bind(null, teamId)} submit="Änderungen speichern" className="mt-3 space-y-3" keepOnSuccess>
         <div>

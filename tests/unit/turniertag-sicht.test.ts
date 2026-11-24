@@ -13,7 +13,7 @@ describe("Turnierseite", () => {
   it("abgesagtes Turnier: Hinweis für alle, kein 'Anmelden und mitmachen' mehr für Gäste außerhalb der Anmeldung", () => {
     expect(page).toContain('data-testid="cancelled-note"');
     expect(page).toContain("Dieses Turnier wurde abgesagt.");
-    expect(page).toMatch(/\{!user && \(inRegistration \|\| inPayment\) && \(/);
+    expect(page).toMatch(/\{!user && \(inRegistration \|\| inPayment\) && !\(inRegistration && data\.deadlinePassed\) && \(/); // nach dem Anmeldeschluss: nicht mehr (N8)
   });
   it("Spielplan: deutsches Wort statt 'Just for fun'", () => {
     expect(page + src("src/app/turniere/[id]/BoardClock.tsx")).not.toContain("Just for fun");

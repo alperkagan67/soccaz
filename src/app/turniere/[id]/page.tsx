@@ -110,7 +110,17 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       {t.status === "cancelled" && (
         <p className="card text-sm" data-testid="cancelled-note">Dieses Turnier wurde abgesagt.</p>
       )}
-      {!user && (inRegistration || inPayment) && (
+      {inRegistration && data.deadlinePassed && (
+        <div className="card space-y-1 text-sm" data-testid="anmeldung-geschlossen">
+          <p className="font-semibold">Die Anmeldung ist geschlossen.</p>
+          {!user && (
+            <p className="text-muted">
+              Du bist schon mit deinem Team im Turnier? <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="inline-flex min-h-11 items-center text-accent-fg underline">Anmelden und zu deinem Team</Link>
+            </p>
+          )}
+        </div>
+      )}
+      {!user && (inRegistration || inPayment) && !(inRegistration && data.deadlinePassed) && (
         <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
       {!user && <KontoHinweis />}
