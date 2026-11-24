@@ -7,7 +7,7 @@ import { zahlungsWorte } from "@/lib/zahlungen-aus";
 import { cancelTournament, closeWithJoinedTeams, createTournament, joinAsPlayer, notifyFreeTournamentReminders, notifyRegistrationDeadlines, registerTeam, setOrganizer, setRosterComplete, withdrawTeam } from "@/server/tournaments";
 import { decideResult } from "@/server/results";
 import { setSetting } from "@/server/settings";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // GESAMT-Test Mitteilungen (und damit Mails: der Versand schickt Titel und Text der Mitteilung): Bei Zahlungen AUS steht in KEINER Mitteilung eines Gratis-Turniers ein Zahlungswort (zahlungsWorte),
 // über den ganzen Ablauf: Anmeldung, Team zurückziehen, vollzählig, Spielplan, Erinnerung, Anmeldeschluss, Schließen mit weniger Teams, Ergebnis, Absage.
@@ -33,7 +33,7 @@ async function gratisTurnier(name: string, maxTeams: number) {
 async function team(tid: string, volllzaehlig: boolean) {
   const captain = await makeUser("cap");
   const tm = await makeTeam(captain.id, "Turnier");
-  await registerTeam(captain.id, tid, tm.id);
+  await registerTeam(captain.id, tid, tm.id, await tokenOf(tid));
   for (let i = 1; i < 5; i++) {
     const p = await makeUser("pl");
     await db.insert(teamMembers).values({ teamId: tm.id, userId: p.id, role: "player" });
