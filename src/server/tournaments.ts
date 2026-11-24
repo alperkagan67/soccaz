@@ -750,7 +750,9 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
     }
   }
   const reason = cause ? cause(card) : null;
-  const body = card
+  const body = istGratis(t) // Gratis-Turnier: kein Zahlungswort (Gesamt-Wortscan Zahlungen AUS)
+    ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."}`
+    : card
     ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${refundedCards > 0 ? "Bereits abgebuchte Anteile werden auf die Karte erstattet." : "Es wurde nichts von deiner Karte abgebucht."}`
     : `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${players.some((p) => p.paidCents > 0) ? "Für bereits bezahlte Eintritte aus der früheren Guthaben-Zeit meldet sich die Plattform bei dir." : "Es wurde nichts bezahlt."}`;
   await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), ...payerIds, t.organizerId])], { type: "system", title: "Turnier abgesagt", body, url: `/turniere/${tournamentId}` }, tx);

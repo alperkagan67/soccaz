@@ -1,13 +1,15 @@
+import { ZP } from "@/lib/zahlungspflicht-texte";
 /** Die drei Schritte eines Spiels: 1 Uhrzeit, 2 Halle, 3 Bezahlen. Darunter getrennt, was jedes Team (der Captain) entschieden hat. */
 export type StepDecision = { teamId: string; teamName: string; text: string; done: boolean; active?: boolean };
 
 const STEPS = ["Uhrzeit", "Halle", "Bezahlen"];
+const STEPS_AUS = ["Uhrzeit", "Halle", ZP.tournamentReadyFree]; // Zahlungen AUS: kein Bezahl-Text
 
-export function Steps({ current, decisions, title }: { current: 1 | 2 | 3 | 4; decisions: StepDecision[]; title: string }) {
+export function Steps({ current, decisions, title, aus = false }: { current: 1 | 2 | 3 | 4; decisions: StepDecision[]; title: string; aus?: boolean }) {
   return (
     <section className="card space-y-3" aria-label="Ablauf" data-testid="steps" data-step={current}>
       <ol className="grid grid-cols-3 gap-2 text-center text-sm">
-        {STEPS.map((label, i) => {
+        {(aus ? STEPS_AUS : STEPS).map((label, i) => {
           const n = i + 1;
           const state = current > n ? "done" : current === n ? "current" : "todo";
           return (

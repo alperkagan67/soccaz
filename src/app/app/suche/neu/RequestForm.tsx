@@ -9,7 +9,7 @@ import { ZP } from "@/lib/zahlungspflicht-texte";
 
 type TeamOption = { id: string; name: string; city: string; strength: number };
 
-export function RequestForm({ teams, min, target }: { teams: TeamOption[]; min: string; target?: { id: string; name: string; city: string; strength: number } }) {
+export function RequestForm({ teams, min, target, aus = false }: { teams: TeamOption[]; min: string; target?: { id: string; name: string; city: string; strength: number }; aus?: boolean }) {
   const { state, pending, onSubmit, formAction } = useFormAction(createRequestAction);
   const fe = state?.fieldErrors ?? {};
   const ownTeams = target ? teams.filter((t) => t.id !== target.id) : teams;
@@ -94,7 +94,7 @@ export function RequestForm({ teams, min, target }: { teams: TeamOption[]; min: 
       </div>
 
       <SubmitButton pending={pending}>{target ? "Herausfordern" : "Spielsuche erstellen"}</SubmitButton>
-      <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>
+      {!aus && <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>}
       {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
     </form>
   );
