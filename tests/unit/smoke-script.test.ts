@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildChecks, runSmoke } from "../../scripts/smoke.mjs";
+import { buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS } from "../../scripts/smoke.mjs";
+import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Go-live-Runbook Schritt 5: Smoke-Skript ohne Secrets. Der Abruf wird mit einer Attrappe ersetzt, es gibt kein Netz im Test.
 
@@ -56,5 +57,47 @@ describe("scripts/smoke.mjs", () => {
   it("Quelltext: keine Schlüssel, keine .env-Zugriffe, keine feste Adresse", () => {
     const src = readFileSync(path.join(process.cwd(), "scripts/smoke.mjs"), "utf8");
     expect(src).not.toMatch(/readFileSync|\.env["'`]|DATABASE_URL|sk_live|sk_test|AUTH_SECRET/);
+  });
+});
+
+describe("scripts/smoke.mjs --zahlungen-aus (beide Zahlungsschalter AUS)", () => {
+  const html = (inner: string) => "<html><head><script>var x = 'Karte bezahlen';</script></head><body><nav>Menü</nav><main>" + inner + "</main></body></html>";
+  const uuid = "123e4567-e89b-12d3-a456-426614174000";
+  const sauber = {
+    ...pages,
+    "/turniere": { status: 200, body: html('<a href="/turniere/' + uuid + '">Cup</a> ' + SMOKE_HINWEIS) },
+    "/hilfe": { status: 200, body: html("Hilfe. " + SMOKE_HINWEIS + " Tore und Karten erfassen.") },
+    ["/turniere/" + uuid]: { status: 200, body: html("Kader füllen. Bereit melden.") },
+  };
+  const mit = (pfad: string, inner: string) => fake({ ...sauber, [pfad]: { status: 200, body: html(inner) } });
+  it("sauber: bestanden (Skripte und Tags zählen nicht, Hinweissatz und Fußball-Karten sind erlaubt)", async () => {
+    const r = await runSmoke({ base: "https://x.de", fetchImpl: fake(sauber), zahlungenAus: true });
+    expect(r.results.filter((x: { what: string }) => x.what.startsWith("Zahlungen AUS")).map((x: { ok: boolean }) => x.ok)).toEqual([true, true, true]);
+    expect(r.ok).toBe(true);
+  });
+  it("Zahlungswort auf Turnierliste, Hilfe oder Turnierseite, fehlender Hinweissatz: Fehler, ohne den Seiteninhalt auszugeben", async () => {
+    expect((await runSmoke({ base: "https://x.de", fetchImpl: mit("/turniere", '<a href="/turniere/' + uuid + '">Cup</a> ' + SMOKE_HINWEIS + " Preis pro Spieler 10 €"), zahlungenAus: true })).ok).toBe(false);
+    expect((await runSmoke({ base: "https://x.de", fetchImpl: mit("/hilfe", SMOKE_HINWEIS + " So läuft es ab"), zahlungenAus: true })).ok).toBe(false);
+    const turnier = await runSmoke({ base: "https://x.de", fetchImpl: mit("/turniere/" + uuid, "Karte hinterlegt"), zahlungenAus: true });
+    expect(turnier.ok).toBe(false);
+    expect(JSON.stringify(turnier)).not.toContain("hinterlegt");
+    const ohneHinweis = await runSmoke({ base: "https://x.de", fetchImpl: mit("/hilfe", "Hilfe ohne Satz"), zahlungenAus: true });
+    expect(ohneHinweis.results.find((x: { path: string }) => x.path === "/hilfe")?.detail).toContain("Hinweissatz");
+  });
+  it("ohne Option --zahlungen-aus wird nichts davon geprüft", async () => {
+    const r = await runSmoke({ base: "https://x.de", fetchImpl: fake() });
+    expect(r.results.some((x: { what: string }) => x.what.startsWith("Zahlungen AUS"))).toBe(false);
+  });
+  it("Wortliste und Hinweissatz sind gleich der Quelle src/lib/zahlungen-aus.ts (die Kopie darf nicht abweichen)", () => {
+    expect(SMOKE_HINWEIS).toBe(ZAHLUNGEN_AUS_HINWEIS);
+    expect(SMOKE_WORTE.map((re: RegExp) => re.source + re.flags)).toEqual(ZAHLUNGSWORTE.map((re) => re.source + re.flags));
+    for (const text of ["Die Ampel wird grün", "Preis pro Spieler 10", "Jeder hinterlegt eine Karte", "Anteil übernehmen", "Alles gut, Bracket erscheint", ZAHLUNGEN_AUS_HINWEIS + " ok"]) expect(smokeWorte(text)).toEqual(zahlungsWorte(text));
+  });
+  it("sichtText löst Entitäten nur EINMAL auf (kein doppeltes Entschlüsseln: &amp;quot; bleibt &quot;, &amp;lt;b&amp;gt; bleibt Text)", () => {
+    expect(sichtText(html("&amp;quot; &amp;amp; &amp;lt;b&amp;gt;")).trim()).toBe("&quot; &amp; &lt;b&gt;");
+    expect(sichtText(html("Gr&uuml;&szlig;e &quot;x&quot; a&nbsp;b")).trim()).toBe("Grüße \"x\" a b");
+  });
+  it("sichtText: nur Hauptbereich, keine Skripte und Tags", () => {
+    expect(sichtText(html("A &amp; B <b>fett</b>")).trim()).toBe("A & B fett");
   });
 });

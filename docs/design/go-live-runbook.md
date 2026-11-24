@@ -78,9 +78,11 @@ Erwartet: **keine Zeilen** (Standard AUS) oder beide mit `false`. Steht dort `tr
 
 ## 5. Smoke-Test (Gesundheit und Hauptseiten)
 ```
-node scripts/smoke.mjs https://socaz.de --turnier-only
+node scripts/smoke.mjs https://socaz.de --turnier-only --zahlungen-aus
 ```
 Erwartet: jede Zeile `OK`, am Ende `Alle Prüfungen bestanden`, Ende-Code 0.
+
+**`--zahlungen-aus`** (Produktion, beide Zahlungsschalter AUS, Schritt 4a): prüft zusätzlich die öffentlich sichtbare Folge: Turnierliste, Hilfe und die erste Turnierseite enthalten **kein Zahlungswort** (Wortliste wie `src/lib/zahlungen-aus.ts`), Liste und Hilfe nennen den Hinweissatz „Die Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.“. Ein Turnier **mit** Preis (Altbestand) zeigt Zahlungswörter und löst hier einen Befund aus: prüfen, nicht ignorieren. Die Schalter selbst sind nicht öffentlich prüfbar (nur Schritt 4a). Gilt ab dem Merge der Seitenänderung „Zahlungen AUS“ (PR A); davor schlägt die Prüfung der Hilfe fehl.
 
 **Zweiter Aufruf (Sperrpfade der Betriebsart, nur Produktion mit `TURNIER_ONLY=1`):**
 ```
