@@ -4,7 +4,6 @@ import { Pool } from "pg";
 import { db } from "@/db";
 import { teams, users } from "@/db/schema";
 import { tournaments, tournamentPlayers, tournamentTeams } from "@/db/schema-league";
-// @ts-expect-error reine .mjs-Datei ohne Typen
 import { lauf } from "../../scripts/staging-seed.mjs";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
