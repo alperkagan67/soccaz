@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { lobbyFehlerFall } from "@/lib/lobby-fehler";
 import { lobbyStand } from "@/lib/lobby-stand";
 import { LobbyCaptainBar } from "../../src/app/lobby/[id]/LobbyCaptainBar";
@@ -17,8 +17,12 @@ vi.mock("@/server/payments/fake-card-actions", () => ({ fakeAuthorizeAction: noo
 const primaries = (html: string) => html.match(/\bbtn-primary\b/g)?.length ?? 0;
 type Failure = { text: string; until: string | null; expired: boolean; authorize?: boolean };
 const card = (failure: Failure | null, o: Record<string, unknown> = {}) => ({ ready: true, mandateText: "Mandat", fake: true, priceCents: 6000, estimateCents: 1500, estimateFixed: false, stored: null, failure, ...o });
+// Kaltimport EINMAL vor den Tests und mit eigenem Zeitlimit (60 s): im ersten Test gezählt, überschritt die Transformation des großen Client-Baums unter Last die 5 s des Standards (Backlog, Berichte w1 und w2 2026-11-24)
+let MyActions: typeof import("../../src/app/lobby/[id]/LobbyClient").MyActions;
+beforeAll(async () => {
+  ({ MyActions } = await import("../../src/app/lobby/[id]/LobbyClient"));
+}, 60_000);
 async function actions(failure: Failure | null, main: string | null, c?: Record<string, unknown> | null) {
-  const { MyActions } = await import("../../src/app/lobby/[id]/LobbyClient");
   return renderToStaticMarkup(createElement(MyActions, { matchId: "m", mode: "participant", ready: true, hasTeam: true, main: main as never, card: (c === undefined ? card(failure) : c) as never }));
 }
 const frei: Failure = { text: "Die Bank braucht deine Freigabe der Zahlung.", until: "in 80 Min.", expired: false, authorize: true };
