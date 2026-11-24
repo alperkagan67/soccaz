@@ -196,6 +196,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     canJoinAsSubstitute: v.canJoinAsSubstitute,
     teamFull: v.teamFull,
     cardOn,
+    priceOpen: preisZustand(cardOn, payments.priceCents) === "offen",
     cardReady: hasCard(user?.id ?? ""),
     chargeFailure: myFailure ? lobbyFehlerFall(myFailure) : null,
     minReady: MIN_READY_PER_TEAM,
