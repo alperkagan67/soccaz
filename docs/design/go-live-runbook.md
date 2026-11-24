@@ -53,6 +53,14 @@ docker compose exec -T app sh -c 'test -z "$PAYMENTS_FAKE" && echo OK || echo ST
 ```
 Erwartet: `OK`. `STOPP` = Variable aus `.env` und aus Compose-Dateien entfernen, neu starten, erneut prüfen. Die Anwendung selbst **startet in Produktion nicht**, wenn `PAYMENTS_FAKE=1` gesetzt ist (Startsperre; Meldung im Log `PAYMENTS_FAKE=1 ist in Produktion verboten`). Das gilt auch für Staging.
 
+## 3a. Umgebungsmarke (NUR Staging, einmalig)
+Nur auf dem **Staging**-Server, nach dem ersten Start (Schritt 4), **einmal** (der Staging-Seed in Schritt 10 läuft ohne diese Marke nie):
+```
+sh scripts/staging-compose.sh exec -T db psql -U socaz -d socaz -c "insert into settings (key, value) values ('environment', '\"staging\"'::jsonb) on conflict (key) do update set value = excluded.value"
+sh scripts/staging-compose.sh exec -T db psql -U socaz -d socaz -c "select key, value from settings where key = 'environment'"
+```
+Erwartet: `INSERT 0 1`, dann eine Zeile `environment | "staging"`. **Auf Produktion wird diese Marke nie gesetzt**; dort muss die zweite Abfrage **0 Zeilen** liefern (Prüfpunkt im Go-live).
+
 ## 4. Starten und Migration
 ```
 docker compose up -d --build        # Staging: sh scripts/staging-compose.sh up -d --build
@@ -115,6 +123,13 @@ Erwartet: Smoke-Test (Schritt 5) wieder grün. **Datenbankänderungen gehen nur 
 
 ## 9. Update im Betrieb
 `git pull && docker compose up -d --build`, danach Smoke-Test. Nach Code-Freeze nur Fehlerbehebungen, jede mit Sicherung davor.
+
+## 10a. Staging-Seed für die Generalprobe (Teams 3 bis 6, nur Staging)
+Für das Gratis-Turnier mit 6 Teams sind Teams 1 und 2 **echte** Konten; Teams 3 bis 6 legt `scripts/staging-seed.mjs` mit **erfundenen** Konten an (`probe-t3-s1@staging.invalid` …, Namen „Probe Konto T3-1“, Teams „Probe-Team 3“ bis „Probe-Team 6“; `.invalid` ist nie zustellbar, es wird nie Post verschickt). Das Skript hat eine **eigene Sperre** und verweigert ohne Umgebungsmarke (Schritt 3a), bei `APP_URL` = `socaz.de` oder `www.socaz.de` und ohne ausdrückliche Bestätigung. Ein Staging unter einer Unteradresse (z. B. `staging.socaz.de`) ist erlaubt.
+```
+sh scripts/staging-compose.sh run --rm -e APP_URL=https://<staging-adresse> -e STAGING_SEED_CONFIRM=ja-staging-seed migrate node scripts/staging-seed.mjs --turnier <turnier-id>
+```
+Erwartet: je Team eine Zeile „… 5 Konten, im Turnier angemeldet und bereit“ und am Ende „Fertig: 20 erfundene Konten (@staging.invalid, nie zustellbar), 4 Teams.“. Ohne `--turnier` entstehen nur Konten und Teams. `--turnier` verlangt ein **Gratis-Turnier** (Preis 0) in der Anmeldung mit mindestens vier freien Plätzen. Die vier Teams stehen dann auf „vollzählig“ und „Bereit“ (**Annahme**, bei der Generalprobe belegen: der Ablauf der echten Captains danach bis zum Bracket). Aufräumen nach der Probe: dasselbe mit `--clean` statt `--turnier`. Verweigert das Skript („Staging-Seed verweigert: …“), **nichts umgehen**: Marke, Adresse oder Bestätigung prüfen und melden.
 
 ## 10. Staging ist anders
 Staging nur mit `sh scripts/staging-compose.sh …` starten (Zugangsschutz, Banner, noindex); nur Stripe-Testschlüssel; nie auf dem Produktionsserver. Vollständiger Ablauf: `pilot-staging-checkliste.md`.
