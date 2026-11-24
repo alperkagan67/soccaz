@@ -29,7 +29,7 @@ function useRefreshSoon() {
   };
 }
 
-function ConfirmStep({ onDone }: { onDone: () => void }) {
+function ConfirmStep({ onDone, quiet = false }: { onDone: () => void; quiet?: boolean }) {
   const stripe = useStripe();
   const elements = useElements();
   const [error, setError] = useState<string>();
@@ -49,7 +49,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
       }}
     >
       <PaymentElement />
-      <button className="btn btn-primary w-full" disabled={!stripe || busy} data-testid="card-confirm">{busy ? "Bitte warten…" : "Karte speichern"}</button>
+      <button className={`btn ${quiet ? "btn-ghost" : "btn-primary"} w-full`} disabled={!stripe || busy} data-testid="card-confirm">{busy ? "Bitte warten…" : "Karte speichern"}</button>
       {error && <p className="error" role="alert" data-testid="card-error">{error}</p>}
     </form>
   );
@@ -59,7 +59,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
  * Karte hinterlegen (Vertrag 012, AC-1). Zuerst der Mandatstext mit Zustimmung, dann das Stripe-Formular (Stripe Elements: die Karte geht nie über
  * unseren Server). Mit `fake` (nur Tests, PAYMENTS_FAKE=1) gibt es stattdessen den Knopf "Testkarte hinterlegen".
  */
-export function CardForm({ matchId, mandateText, fake, stored, change = false, onFake }: { matchId?: string; onFake?: () => Promise<{ error?: string }>; mandateText: string; fake: boolean; stored?: { brand: string | null; last4: string } | null; change?: boolean }) {
+export function CardForm({ matchId, mandateText, fake, stored, change = false, onFake, quiet = false }: { matchId?: string; onFake?: () => Promise<{ error?: string }>; mandateText: string; fake: boolean; stored?: { brand: string | null; last4: string } | null; change?: boolean; quiet?: boolean }) {
   const refreshSoon = useRefreshSoon();
   const [accepted, setAccepted] = useState(false);
   const [clientSecret, setClientSecret] = useState<string>();
@@ -139,7 +139,7 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false, o
           <input id="card-mandate-stored" type="checkbox" className="mt-1" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
           <span data-testid="card-mandate">{mandateText}</span>
         </label>
-        <button className="btn btn-primary w-full" disabled={busy || !accepted} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : ZP.cardUseStored}</button>
+        <button className={`btn ${quiet ? "btn-ghost" : "btn-primary"} w-full`} disabled={busy || !accepted} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : ZP.cardUseStored}</button>
         <button type="button" className="btn btn-ghost w-full" onClick={switchToNewCard}>{ZP.cardOther}</button>
         {error && <p className="error" role="alert" data-testid="card-error">{error}</p>}
       </div>
@@ -150,7 +150,7 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false, o
     <div className="space-y-3" data-testid="card-form">
       {clientSecret && stripe ? (
         <Elements stripe={stripe} options={{ clientSecret, appearance: { theme: "night" } }}>
-          <ConfirmStep onDone={() => { setDone(true); refreshSoon(); }} />
+          <ConfirmStep quiet={quiet} onDone={() => { setDone(true); refreshSoon(); }} />
         </Elements>
       ) : (
         <>
@@ -158,7 +158,7 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false, o
             <input id="card-mandate" type="checkbox" className="mt-1" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
             <span data-testid="card-mandate">{mandateText}</span>
           </label>
-          <button className="btn btn-primary w-full" disabled={busy || !accepted} onClick={start} data-testid={fake ? "card-fake" : "card-start"}>
+          <button className={`btn ${quiet ? "btn-ghost" : "btn-primary"} w-full`} disabled={busy || !accepted} onClick={start} data-testid={fake ? "card-fake" : "card-start"}>
             {busy ? "Bitte warten…" : fake ? (change ? "Testkarte ändern" : "Testkarte hinterlegen") : change ? ZP.cardChange : ZP.cardSave}
           </button>
         </>

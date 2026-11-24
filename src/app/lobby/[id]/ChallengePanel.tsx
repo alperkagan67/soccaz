@@ -4,7 +4,7 @@ import { ActionButton } from "@/components/ActionButton";
 import { acceptChallengeAction, declineChallengeAction } from "@/server/matchmaking-actions";
 
 /** Direkt-Herausforderung: Das herausgeforderte Team nimmt an oder lehnt ab, das herausfordernde kann zurückziehen. */
-export function ChallengePanel({ matchId, homeName, awayName, role, deadlineText }: { matchId: string; homeName: string; awayName: string; role: "target" | "challenger" | "viewer"; deadlineText: string }) {
+export function ChallengePanel({ matchId, homeName, awayName, role, deadlineText, main = false }: { main?: boolean; matchId: string; homeName: string; awayName: string; role: "target" | "challenger" | "viewer"; deadlineText: string }) {
   return (
     <section className="card space-y-3 border-ink" aria-label="Herausforderung" data-testid="challenge-panel">
       <div>
@@ -15,12 +15,12 @@ export function ChallengePanel({ matchId, homeName, awayName, role, deadlineText
       </div>
       {role === "target" && (
         <div className="flex flex-wrap gap-2">
-          <ActionButton action={acceptChallengeAction.bind(null, matchId)} label="Herausforderung annehmen" className="btn btn-primary !min-h-10 !px-4 text-sm" />
-          <ActionButton action={declineChallengeAction.bind(null, matchId)} label="Ablehnen" confirm="Herausforderung wirklich ablehnen?" className="btn btn-danger !min-h-10 !px-4 text-sm" />
+          <ActionButton action={acceptChallengeAction.bind(null, matchId)} label="Herausforderung annehmen" className={`btn ${main ? "btn-primary" : "btn-ghost"} text-sm`} />
+          <ActionButton action={declineChallengeAction.bind(null, matchId)} label="Ablehnen" confirm="Herausforderung wirklich ablehnen?" className="btn btn-danger text-sm" />
         </div>
       )}
       {role === "challenger" && <ActionButton action={declineChallengeAction.bind(null, matchId)} label="Herausforderung zurückziehen" confirm="Herausforderung wirklich zurückziehen?" />}
-      {role === "viewer" && <p className="text-xs text-muted">Nur die Admins von {awayName} können annehmen.</p>}
+      {role === "viewer" && <p className="text-sm text-muted">Nur die Admins von {awayName} können annehmen.</p>}
     </section>
   );
 }

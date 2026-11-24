@@ -10,7 +10,7 @@ export type Role = "gast" | "spieler" | "neuling" | "admin1";
  */
 export const UMFANG = ((): "baseline" | "voll" => "baseline")(); // Funktionsaufruf, damit TypeScript den Vergleich mit "voll" nicht als unmöglich ablehnt
 export const ROLLEN: Role[] = UMFANG === "voll" ? ["gast", "spieler", "neuling", "admin1"] : ["gast", "spieler", "neuling"]; // neuling = angemeldet, Einrichtung (/willkommen) noch offen
-const KERNSEITEN = new Set(["gast-start", "gast-hallen", "gast-spiel-gespielt", "gast-suche", "gast-turniere", "gast-einladung", "spieler-app", "spieler-lobby", "spieler-spiel-gespielt", "spieler-suche", "spieler-turniere", "neuling-willkommen"]); // M3: Suche, Turniere, Einladung, Willkommen (Backlog 227)
+const KERNSEITEN = new Set(["gast-start", "gast-hallen", "gast-spiel-gespielt", "gast-suche", "gast-turniere", "gast-einladung", "gast-lobby", "spieler-app", "spieler-lobby", "spieler-spiel-gespielt", "spieler-suche", "spieler-turniere", "neuling-willkommen"]); // M3: Suche, Turniere, Einladung, Willkommen (Backlog 227)
 export type PageEntry = { id: string; role: Role; path: string };
 export type World = { pages: PageEntry[]; players: { spieler: { email: string; name: string }; neuling: { email: string; name: string }; admin1?: { email: string; name: string } } };
 
@@ -63,6 +63,7 @@ export async function seedWorld(tag: string): Promise<World> {
     { id: "gast-spiel-gespielt", role: "gast", path: `/spiele/${playedId}` },
     { id: "gast-team", role: "gast", path: `/teams/${home.slug}` },
     { id: "gast-einladung", role: "gast", path: `/einladung/${inviteToken}` },
+    { id: "gast-lobby", role: "gast", path: `/lobby/${lobbyId}` },
     { id: "spieler-app", role: "spieler", path: "/app" },
     { id: "spieler-suche", role: "spieler", path: "/suche" },
     { id: "spieler-turniere", role: "spieler", path: "/turniere" },

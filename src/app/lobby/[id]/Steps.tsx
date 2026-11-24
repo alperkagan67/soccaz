@@ -20,7 +20,7 @@ export function Steps({ current, decisions, title }: { current: 1 | 2 | 3 | 4; d
       </ol>
       {decisions.length > 0 && (
         <div>
-          <p className="mb-2 text-xs text-muted">{title}</p>
+          <p className="mb-2 text-sm text-muted">{title}</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {decisions.map((d) => (
               <div key={d.teamId} className={`rounded-lg border p-3 text-sm ${d.active ? "border-ink" : d.done ? "border-accent/50" : "border-line"}`} data-testid="team-decision" data-done={d.done}>

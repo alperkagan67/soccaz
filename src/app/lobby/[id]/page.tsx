@@ -23,7 +23,9 @@ import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/serv
 import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
 import { chargeFailureText } from "@/lib/charge-failure-text";
 import { graceText } from "@/lib/grace";
-import { guestRosterView, initialsOf } from "@/lib/guest-roster";
+import { lobbySicht } from "@/lib/lobby-namen";
+import { lobbyStand } from "@/lib/lobby-stand";
+import { isVenueManager } from "@/server/venue-access-rules";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
 import { canViewLobby, getLobby } from "@/server/lobby";
@@ -40,6 +42,7 @@ import { SchedulingPanel } from "./SchedulingPanel";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
 import { CoverButton, CoverCoveringCard, ReleaseCover } from "./CoverShare";
+import { LobbyRoster, ParticipantName } from "./LobbyRoster";
 
 export const metadata: Metadata = { title: "Lobby", robots: { index: false } };
 
@@ -156,6 +159,41 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     .filter((t) => canAdminTeam(t.id) && hasFreeSlot(t.count, capacity))
     .map((t) => ({ teamId: t.id, name: t.name }));
 
+  // AC-17 (Backlog 216): reiner Hallenbetreiber (venue_access, weder Teilnehmer noch Team-Admin noch Plattform-Admin) sieht namenfrei; die Abfrage läuft nur, wenn sie etwas ändern kann
+  const mayBeHall = Boolean(user) && !v.participant && v.adminOf.length === 0 && !v.platformAdmin;
+  const hallOperator = mayBeHall && user ? await isVenueManager(user.id) : false;
+  const sicht = lobbySicht({ userId: user?.id ?? null, hallOperator, participant: Boolean(v.participant), teamAdmin: v.adminOf.length > 0, platformAdmin: v.platformAdmin });
+  const finalTeams = [
+    { id: match.homeId, name: match.homeName, final: match.homeFinalAt },
+    { id: match.awayId, name: match.awayName, final: match.awayFinalAt },
+  ].map((t) => {
+    const list = participants.filter((p) => p.teamId === t.id);
+    const paid = list.filter((p) => p.paid).length;
+    const ready = list.filter((p) => p.ready).length;
+    return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: t.id === myFinalTeamId && list.length >= MIN_READY_PER_TEAM && // nur für das eigene Team true: das andere Team liegt nie im Payload (auch nicht für Gäste)
+       ready === list.length && (cardOn ? teamCardsReady[t.id] === true : !payments.enabled || paid === list.length) };
+  });
+  const myFinal = finalTeams.find((t) => t.id === myFinalTeamId);
+  const stand = lobbyStand({
+    signedIn: Boolean(user),
+    status: match.status,
+    active,
+    planning: open,
+    challengePending,
+    challengeRole: v.adminOf.includes(match.awayId) ? "target" : v.adminOf.includes(match.homeId) ? "challenger" : "viewer",
+    participant: Boolean(v.participant),
+    hasTeam: Boolean(v.participant?.teamId),
+    ready: v.participant?.ready ?? false,
+    canJoin: v.canJoin,
+    canJoinAsSubstitute: v.canJoinAsSubstitute,
+    teamFull: v.teamFull,
+    cardOn,
+    cardReady: hasCard(user?.id ?? ""),
+    chargeFailed: Boolean(myFailure),
+    minReady: MIN_READY_PER_TEAM,
+    finalTeam: myFinal ? { confirmed: myFinal.confirmed, complete: myFinal.complete } : null,
+  });
+
   let inviteUrl: string | null = null;
   // Dieselbe Regel wie auf dem Server (canManageInvite): Team-Admin des Heim-Teams oder Plattform-Admin, nicht jeder Admin des Gast-Teams
   const inviteManager = Boolean(isPrivate && user && (v.platformAdmin || v.adminOf.includes(match.homeId)));
@@ -186,27 +224,26 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           {active && !open && <> · <span className="text-ink"><Countdown startsAtIso={match.startsAt.toISOString()} /></span></>}
         </p>
         <p className={`text-sm font-semibold ${status.tone}`} data-testid="match-status">{status.label}</p>
-        {!isPrivate && <p className="text-xs text-muted" data-testid="win-chance">
+        {!isPrivate && <p className="text-sm text-muted" data-testid="win-chance">
           Spielstärke: {match.homeName} Elo {strength[match.homeId].elo}, {match.awayName} Elo {strength[match.awayId].elo} · Siegchance {winChanceHome} % zu {100 - winChanceHome} %
         </p>}
-        {!user && (
-          <p className="text-sm">
-            <Link href={`/anmelden?next=${encodeURIComponent(`/lobby/${match.id}`)}`} className="text-accent-fg underline">Anmelden</Link>, um beizutreten oder dein Team herauszufordern.
-          </p>
-        )}
-        {!active && match.status !== "cancelled" && (
-          <Link href={`/spiele/${match.id}`} className="btn btn-primary mt-2">Zur Spielseite</Link>
-        )}
       </header>
 
+      <section className="card space-y-2" aria-label="Dein Stand" data-testid="lobby-stand" data-aktion={stand.aktion ?? "keine"}>
+        <h2 className="font-semibold">Dein Stand</h2>
+        <p className="text-sm" data-testid="lobby-stand-text">{stand.zeile}</p>
+        {stand.aktion === "anmelden" && <Link href={`/anmelden?next=${encodeURIComponent(`/lobby/${match.id}`)}`} className="btn btn-primary w-full sm:w-auto" data-testid="lobby-stand-anmelden">Anmelden</Link>}
+        {stand.aktion === "spielseite" && <Link href={`/spiele/${match.id}`} className="btn btn-primary w-full sm:w-auto">Zur Spielseite</Link>}
+      </section>
+
       {isPrivate && inviteUrl && (
-        <ShareLink url={inviteUrl} title="Einladungslink zum Spiel" shareText={`Privatspiel #${match.number} auf Socaz: komm dazu!`} testId="game-invite" hint={`${participants.length} von ${match.maxPlayers ?? 10} Plätzen belegt. Wer den Link öffnet, meldet sich an oder registriert sich und landet direkt in diesem Spiel.`} />
+        <ShareLink url={inviteUrl} title="Einladungslink zum Spiel" shareText={`Privatspiel #${match.number} auf Socaz: komm dazu!`} testId="game-invite" quiet hint={`${participants.length} von ${match.maxPlayers ?? 10} Plätzen belegt. Wer den Link öffnet, meldet sich an oder registriert sich und landet direkt in diesem Spiel.`} />
       )}
       {inviteManager && match.status !== "cancelled" && (
         <section className="flex flex-wrap items-center gap-2" data-testid="invite-admin">
-          {inviteUrl && <ActionButton action={revokeGameInviteAction.bind(null, match.id)} label="Link zurückziehen" confirm="Der bisherige Link wird sofort ungültig. Wer schon im Spiel ist, bleibt drin." />}
-          <ActionButton action={regenerateGameInviteAction.bind(null, match.id)} label={inviteUrl ? "Neuen Link erzeugen" : "Einladungslink erzeugen"} confirm={inviteUrl ? "Der bisherige Link wird ungültig, ein neuer Link wird erzeugt." : undefined} />
-          {!inviteUrl && <p className="text-xs text-muted">Es gibt gerade keinen gültigen Einladungslink.</p>}
+          {inviteUrl && <ActionButton action={revokeGameInviteAction.bind(null, match.id)} label="Link zurückziehen" confirm="Der bisherige Link wird sofort ungültig. Wer schon im Spiel ist, bleibt drin." className="btn btn-ghost text-sm" />}
+          <ActionButton action={regenerateGameInviteAction.bind(null, match.id)} label={inviteUrl ? "Neuen Link erzeugen" : "Einladungslink erzeugen"} confirm={inviteUrl ? "Der bisherige Link wird ungültig, ein neuer Link wird erzeugt." : undefined} className="btn btn-ghost text-sm" />
+          {!inviteUrl && <p className="text-sm text-muted">Es gibt gerade keinen gültigen Einladungslink.</p>}
         </section>
       )}
       {isPrivate && v.canManage && active && <PrivateTools matchId={match.id} waiting={pendingStrangers.length} assigned={participants.filter((p) => p.teamId).length} />}
@@ -216,6 +253,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           matchId={match.id}
           homeName={match.homeName}
           awayName={match.awayName}
+          main={stand.aktion === "annehmen"}
           role={v.adminOf.includes(match.awayId) ? "target" : v.adminOf.includes(match.homeId) ? "challenger" : "viewer"}
           deadlineText={match.schedulingDeadline ? `${formatDateTime(match.schedulingDeadline)} Uhr` : "–"}
         />
@@ -230,8 +268,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <ul className="grid gap-1 text-sm sm:grid-cols-2">
             {hallCheck.map((h) => (
               <li key={h.venueId} className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2" data-testid="hall-request" data-state={h.status}>
-                <span>{h.name} <span className="text-xs text-muted">{h.city}</span></span>
-                <span className={`text-xs font-semibold ${h.status === "confirmed" ? "text-accent-fg" : h.status === "declined" ? "text-ink" : "text-ink"}`}>
+                <span>{h.name} <span className="text-sm text-muted">{h.city}</span></span>
+                <span className={`text-sm font-semibold ${h.status === "confirmed" ? "text-accent-fg" : h.status === "declined" ? "text-ink" : "text-ink"}`}>
                   {h.status === "confirmed" ? "Frei" : h.status === "declined" ? "Belegt" : h.status === "pending" ? "Wartet auf Antwort" : "Ohne Bestätigung"}
                 </span>
               </li>
@@ -308,7 +346,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
 
       {active && open && mode === "participant" && (
         <section className="card space-y-2" data-testid="ready-later">
-          <button className="btn btn-primary w-full" disabled>Bereit machen</button>
+          <button className="btn btn-ghost w-full" disabled>Bereit machen</button>
           <p className="text-sm text-muted">{scheduling ? "Du bist in der Lobby. Bereit machen kannst du, sobald die Captains Uhrzeit und Halle gewählt haben." : "Du bist in der Lobby. Bereit machen kannst du, sobald die Halle feststeht."}</p>
         </section>
       )}
@@ -319,6 +357,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           mode={mode}
           ready={v.participant?.ready ?? false}
           hasTeam={Boolean(v.participant?.teamId)}
+          main={stand.aktion}
           card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), priceCents: payments.priceCents ?? null, estimateCents, estimateFixed, stored: storedCard, failure: myFailure } : null}
         />
       )}
@@ -372,16 +411,16 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
               <h2 className="font-semibold">
                 {isPrivate ? t.name : <Link href={`/teams/${t.slug}`} className="hover:text-accent-fg">{t.name}</Link>}
               </h2>
-              <span className="text-xs text-muted">{isPrivate ? "" : `Elo ${strength[t.id].elo}${strength[t.id].matches === 0 ? " (geschätzt)" : ""} · `}{t.count} von {capacity} · bereit {t.ready}/{MIN_READY_PER_TEAM}</span>
+              <span className="text-sm text-muted">{isPrivate ? "" : `Elo ${strength[t.id].elo}${strength[t.id].matches === 0 ? " (geschätzt)" : ""} · `}{t.count} von {capacity} · bereit {t.ready}/{MIN_READY_PER_TEAM}</span>
             </div>
             <ul className="space-y-2 text-sm">
-              {participants.filter((p) => p.teamId === t.id).map((p) => (
+              {participants.filter((p) => p.teamId === t.id).map((p, i) => (
                 <li key={p.userId} className="flex items-center justify-between gap-2">
                   <span>
-                    {user ? p.name : initialsOf(p.name)}
-                    {p.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-xs text-accent-fg">Profi</span>}
-                    {p.isSubstitute && <span className="ml-2 text-xs text-muted">Ersatz</span>}
-                    {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
+                    <ParticipantName name={p.name} sicht={sicht} index={i} />
+                    {p.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-sm text-accent-fg">Profi</span>}
+                    {p.isSubstitute && <span className="ml-2 text-sm text-muted">Ersatz</span>}
+                    {p.userId === user?.id && <span className="ml-2 text-sm text-muted">(du)</span>}
                   </span>
                   <span className="flex items-center gap-2">
                     {cardOn ? (cardDisplays[p.userId] ? <CardLight status={cardDisplays[p.userId].covered && !canAdminTeam(t.id) ? "covered" : cardDisplays[p.userId].status} /> : null) : canSeeLights ? <PlayerLight light={lightFor(p, confirmed)} paymentsOn={payments.enabled} showLabel /> : null}
@@ -395,32 +434,12 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
               {Array.from({ length: Math.max(capacity - t.count, 0) }, (_, i) => (
                 <li key={`free-${i}`} className="flex items-center justify-between gap-2 text-muted" data-testid="free-slot">
                   <span>Wartet auf Spieler {t.count + i + 1}</span>
-                  <span className="text-xs">frei</span>
+                  <span className="text-sm">frei</span>
                 </li>
               ))}
             </ul>
-            {!isPrivate && !user && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
-              // Gäste (nicht angemeldet): nur Anzahl und Initialen, keine Namen, Links, Positionen oder Elo (Vertrag 012 AC-12, 013 Sichtbarkeitsmatrix)
-              <div className="border-t border-line pt-2" data-testid={`roster-${t.slug}`}>
-                <p className="text-xs text-muted">
-                  Weitere Teammitglieder (noch nicht in der Lobby): {guestRosterView(roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId))).count} · {guestRosterView(roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId))).initials.join(" ")}
-                </p>
-              </div>
-            )}
-            {!isPrivate && user && roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).length > 0 && (
-              <div className="border-t border-line pt-2" data-testid={`roster-${t.slug}`}>
-                <p className="mb-1 text-xs text-muted">Weitere Teammitglieder (noch nicht in der Lobby)</p>
-                <ul className="space-y-1 text-sm text-muted">
-                  {roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId)).map((m) => (
-                    <li key={m.userId} className="flex items-center justify-between gap-2">
-                      <Link href={`/spieler/${m.userId}`} className="hover:text-accent-fg">{m.name}</Link>
-                      <span className="text-xs">{[m.position, m.elo ? `Elo ${m.elo}` : null, m.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {!isPrivate && active && v.adminOf.includes(t.id) && <InviteBox teamId={t.id} teamName={t.name} />}
+            {!isPrivate && <LobbyRoster teamSlug={t.slug} members={roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId))} sicht={sicht} />}
+            {!isPrivate && active && v.adminOf.includes(t.id) && <InviteBox teamId={t.id} teamName={t.name} quiet />}
           </section>
         ))}
       </div>
@@ -429,9 +448,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         <section className="card space-y-2">
           <h2 className="font-semibold">{isPrivate ? "Spieler warten auf ihr Team" : "Ersatzspieler warten auf Zuweisung"}</h2>
           <ul className="space-y-2 text-sm">
-            {pendingStrangers.map((p) => (
+            {pendingStrangers.map((p, i) => (
               <li key={p.userId} className="flex items-center justify-between gap-2">
-                <span>{user ? p.name : initialsOf(p.name)}{p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}</span>
+                <span><ParticipantName name={p.name} sicht={sicht} index={i} />{p.userId === user?.id && <span className="ml-2 text-sm text-muted">(du)</span>}</span>
                 {active && v.canManage && p.userId !== user?.id && (
                   <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={assignTargets} />
                 )}
@@ -449,16 +468,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           payable={cardOn && payments.priceCents !== null && payments.priceCents > 0}
           amountText={estimateCents !== null ? formatEuro(estimateCents) : null}
           myTeamId={myFinalTeamId}
-          teams={[
-            { id: match.homeId, name: match.homeName, final: match.homeFinalAt },
-            { id: match.awayId, name: match.awayName, final: match.awayFinalAt },
-          ].map((t) => {
-            const list = participants.filter((p) => p.teamId === t.id);
-            const paid = list.filter((p) => p.paid).length;
-            const ready = list.filter((p) => p.ready).length;
-            return { id: t.id, name: t.name, confirmed: Boolean(t.final), ready, paid, total: list.length, complete: t.id === myFinalTeamId && list.length >= MIN_READY_PER_TEAM && // nur für das eigene Team true: das andere Team liegt nie im Payload (auch nicht für Gäste)
-               ready === list.length && (cardOn ? teamCardsReady[t.id] === true : !payments.enabled || paid === list.length) };
-          })}
+          primary={stand.aktion === "final"}
+          teams={finalTeams}
         />
       )}
 

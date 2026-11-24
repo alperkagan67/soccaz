@@ -45,20 +45,20 @@ export function SchedulingPanel({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span>
                   <span className="font-semibold">{o.label}</span>
-                  <span className="block text-xs text-muted">{o.proposedBy === "system" ? "Vorschlag aus euren Zeitfenstern" : `Vorschlag von ${o.proposedBy}`}</span>
+                  <span className="block text-sm text-muted">{o.proposedBy === "system" ? "Vorschlag aus euren Zeitfenstern" : `Vorschlag von ${o.proposedBy}`}</span>
                 </span>
                 {myTeamId && (
                   <span className="flex items-center gap-2">
                     {myVote === o.id ? (
-                      <span className="text-xs font-semibold text-accent-fg">Deine Wahl</span>
+                      <span className="text-sm font-semibold text-accent-fg">Deine Wahl</span>
                     ) : (
-                      <ActionButton action={voteOptionAction.bind(null, matchId, o.id)} label="Dafür stimmen" className="btn btn-primary !min-h-9 !px-3 text-xs" />
+                      <ActionButton action={voteOptionAction.bind(null, matchId, o.id)} label="Dafür stimmen" className="btn btn-ghost text-sm" />
                     )}
                     {o.proposedByTeamId === myTeamId && <ActionButton action={withdrawOptionAction.bind(null, matchId, o.id)} label="Zurückziehen" />}
                   </span>
                 )}
               </div>
-              <p className="mt-2 flex flex-wrap gap-2 text-xs">
+              <p className="mt-2 flex flex-wrap gap-2 text-sm">
                 {teams.map((t) => (
                   <span key={t.id} className={o.votedTeamIds.includes(t.id) ? "text-accent-fg" : "text-muted"}>
                     {o.votedTeamIds.includes(t.id) ? "✓" : "○"} {nameOf(t.id)}
