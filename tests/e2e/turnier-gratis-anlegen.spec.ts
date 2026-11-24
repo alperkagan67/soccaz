@@ -17,7 +17,7 @@ test("Veranstalter legt ein kostenloses Turnier an: Gratis-Hinweis statt Preisfe
   expect(flags.every((f) => f.value !== true), "Zahlungen sind in dieser Umgebung AUS").toBe(true);
 
   await org.goto("/app/turniere/neu");
-  await expect(org.getByTestId("free-explainer")).toContainText("Eine Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.", { timeout: 60_000 });
+  await expect(org.getByTestId("free-explainer")).toContainText("Die Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.", { timeout: 60_000 });
   await expect(org.getByTestId("fee-explainer")).toHaveCount(0);
   await expect(org.getByLabel(/Hallenpreis/)).toHaveCount(0);
   await expect(org.locator("body")).not.toContainText("Treuhandkonto");
@@ -32,7 +32,7 @@ test("Veranstalter legt ein kostenloses Turnier an: Gratis-Hinweis statt Preisfe
   const flow = org.getByTestId("free-flow");
   await expect(flow).toBeVisible();
   await expect(flow).toContainText("Teams melden sich über den Einladungslink an");
-  await expect(flow).toContainText("Eine Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.");
+  await expect(flow).toContainText("Die Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.");
   await expect(org.getByTestId("pricing-box")).toHaveCount(0);
   const [t] = await query<{ total_cents: number; hourly_cents: number; venue_id: string | null }>("select total_cents, hourly_cents, venue_id from tournaments where name = $1", [`Gratis-Cup ${run}`]);
   expect(t).toEqual({ total_cents: 0, hourly_cents: 0, venue_id: null });

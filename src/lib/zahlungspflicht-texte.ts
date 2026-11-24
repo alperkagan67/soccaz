@@ -13,9 +13,11 @@ export const ZAHLUNGSPFLICHT = ZAHLUNGSPFLICHT_VARIANTEN[ZAHLUNGSPFLICHT_AKTIV];
 /** Knopfname = sichtbarer Text (kein abweichendes aria-label): Aktionswort, Gedankenstrich, Formel. Der Aktionswort-Anfang bleibt erhalten ("Ich bin bereit", "Bereit", "Anteil übernehmen"). */
 export const mitZahlungspflicht = (aktion: string, variante: ZahlungspflichtVariante = ZAHLUNGSPFLICHT_AKTIV) => `${aktion} – ${ZAHLUNGSPFLICHT_VARIANTEN[variante]}`;
 
+import { ZAHLUNGEN_AUS_HINWEIS } from "./zahlungen-aus";
+
 export const ZP = {
   /** Gratis-Turnier (Zahlungen AUS, Entscheid t2q 2026-11-24): Hinweis im Formular und auf der Turnierseite. Keine Zahlung über Soccaz; eine Teilnahmegebühr (falls es sie gibt) regelt der Veranstalter außerhalb. ENTWURF. */
-  tournamentFreeNote: "Das Turnier ist auf Soccaz kostenlos. Eine Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.",
+  tournamentFreeNote: `Das Turnier ist auf Soccaz kostenlos. ${ZAHLUNGEN_AUS_HINWEIS}`, // EINE Quelle für den Hinweissatz: src/lib/zahlungen-aus.ts
   /** Ablauf eines kostenlosen Turniers (Turnierseite, Anmeldung und Vorbereitung). */
   tournamentFreeSteps: [
     "Teams melden sich über den Einladungslink an: Der Captain wählt sein Team.",
