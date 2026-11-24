@@ -57,3 +57,18 @@ describe("Revanche und PWA-Startmenü (Review R-T425)", () => {
     }
   });
 });
+
+describe("Startwarnung (Review R-T426)", () => {
+  it("Produktion: Warnung bei fehlend, leer, true, yes; keine bei 1 und bewusst 0; außerhalb Produktion nie", async () => {
+    const { turnierOnlyWarnung } = await import("@/lib/turnier-only");
+    for (const v of [undefined, "", "true", "yes", "2", " 1"]) expect(turnierOnlyWarnung({ NODE_ENV: "production", TURNIER_ONLY: v }), String(v)).toBe(true);
+    for (const v of ["1", "0"]) expect(turnierOnlyWarnung({ NODE_ENV: "production", TURNIER_ONLY: v }), v).toBe(false);
+    expect(turnierOnlyWarnung({ NODE_ENV: "development", TURNIER_ONLY: undefined })).toBe(false);
+  });
+  it("Rauchtest sendet Basic-Auth nur aus SMOKE_BASIC_AUTH der Umgebung", async () => {
+    const { readFileSync } = await import("node:fs");
+    const q = readFileSync("scripts/smoke-turnier-only.mjs", "utf8");
+    expect(q).toContain("process.env.SMOKE_BASIC_AUTH");
+    expect(q).toContain("Authorization: `Basic ");
+  });
+});

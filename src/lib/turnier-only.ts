@@ -22,3 +22,8 @@ export function pfadGesperrt(pathname: string): boolean {
   if (NUR_EXAKT.includes(p)) return true;
   return GESPERRT.some((x) => p === x || p.startsWith(`${x}/`));
 }
+
+/** Startwarnung in Produktion: bei jedem Wert ausser "1" (an) und "0" (bewusst aus) – auch bei fehlender Variable, leerem Wert, "true" oder "yes", die NICHT einschalten. */
+export function turnierOnlyWarnung(env: { NODE_ENV?: string; TURNIER_ONLY?: string }): boolean {
+  return env.NODE_ENV === "production" && env.TURNIER_ONLY !== "1" && env.TURNIER_ONLY !== "0";
+}

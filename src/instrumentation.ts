@@ -1,12 +1,13 @@
 import type { Instrumentation } from "next";
+import { turnierOnlyWarnung } from "@/lib/turnier-only";
 
 /** Wird beim Start des Servers einmal ausgeführt: Fehlerüberwachung und Zeitplaner. */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
   // Turnier 12.12.: In Produktion MUSS die Betriebsart ausdrücklich gesetzt sein (TURNIER_ONLY=1 oder =0); ohne die Variable bleibt der Betrieb offen und das steht hier im Protokoll (ohne Wert, ohne Geheimnis).
-  if (process.env.NODE_ENV === "production" && process.env.TURNIER_ONLY === undefined) {
-    console.warn("[start] WARNUNG: TURNIER_ONLY ist in Produktion nicht gesetzt (1 = nur Turniere, 0 = alles offen). Pflichtvariable im Betriebsablauf.");
+  if (turnierOnlyWarnung(process.env)) {
+    console.warn("[start] WARNUNG: TURNIER_ONLY ist in Produktion nicht gesetzt oder ungültig (nur 1 schaltet ein; 1 = nur Turniere, 0 = bewusst alles offen). Pflichtvariable im Betriebsablauf.");
   }
 
   if (process.env.SENTRY_DSN) {

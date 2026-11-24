@@ -23,8 +23,11 @@ export function pruefeSeite(kind, status, body) {
   return "unbekannte Art";
 }
 
+// Staging mit Zugangsschutz: SMOKE_BASIC_AUTH=<benutzer>:<passwort> nur aus der Umgebung (nie ausgeben)
 async function holen(base, pfad) {
-  const res = await fetch(new URL(pfad, base), { redirect: "manual", headers: { "user-agent": "socaz-smoke-turnier-only" } });
+  const basic = process.env.SMOKE_BASIC_AUTH ?? "";
+  const headers = { "user-agent": "socaz-smoke-turnier-only", ...(basic ? { Authorization: `Basic ${Buffer.from(basic).toString("base64")}` } : {}) };
+  const res = await fetch(new URL(pfad, base), { redirect: "manual", headers });
   const body = res.headers.get("content-type")?.includes("text/event-stream") ? "" : await res.text();
   return { status: res.status, body };
 }
