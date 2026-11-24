@@ -414,6 +414,13 @@
       "when": 1795472788028,
       "tag": "0058_ops_execute",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1795510558137,
+      "tag": "0059_turnier_ablehnen",
+      "breakpoints": true
     }
   ]
 }

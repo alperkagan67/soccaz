@@ -19,8 +19,9 @@ import { recordLateCancel } from "./stats";
 import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
 import { startChargesInBackground } from "./payments/charge-trigger";
 import { chargeAmount } from "./payments/charge-run";
-import { CHARGES_LOCKED, assertNotLegacyMoney, hasPaidSeat, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
-import { priceFor } from "./pricing";
+import { CHARGES_LOCKED, displayPriceCents, assertNotLegacyMoney, hasPaidSeat, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
+import { preisZustand } from "@/lib/zahlungspflicht";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 import { minPaidPlayers } from "./settings";
 import { shareCents, shareFor } from "@/lib/money";
 import { secureRandom, shuffle } from "@/lib/tournament";
@@ -129,7 +130,7 @@ export async function getLobby(matchId: string, viewer?: Viewer | null) {
 
   const payEnabled = await paymentsEnabled();
   const minPaid = await minPaidPlayers();
-  const priceCents = match.priceCents ?? (await priceFor(db, null, match.durationMin))?.priceCents ?? null;
+  const priceCents = await displayPriceCents(db, match);
   // Privatspiel und neues Teamspiel: Anteil = Preis ÷ eingeteilte Spieler (bzw. der feste Anteil); Altspiel: Reservierung mit Mindestzahl
   const newModel = usesFixedShareModel(match);
   const privateShare = match.kind === "private" && priceCents ? await privateShareNow(db, match, priceCents) : null;
@@ -324,6 +325,8 @@ export async function finalConfirm(userId: string, matchId: string) {
       .where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin"), inArray(teamMembers.teamId, [match.homeTeamId, match.awayTeamId])));
     if (!admin) throw new DomainError("Nur der Captain kann die Lobby zum Schluss bestätigen.");
     const card = await cardModeActive(tx, match);
+    // Backlog 233 (R-T365d): im Kartenmodell nie bestaetigen (= zahlungspflichtig zusagen), solange der Preis unbekannt ist; der Preis, den die Seite zeigt, ist derselbe (displayPriceCents)
+    if (preisZustand(card, await displayPriceCents(tx, match)) === "offen") throw new DomainError(ZP.finalPriceOpen);
     if (!(await teamComplete(tx, matchId, admin.teamId))) {
       throw new DomainError(card ? `Es müssen mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle in deinem Team bereit sein und eine Karte hinterlegt haben.` : `Es müssen mindestens ${MIN_READY_PER_TEAM} Spieler da sein und alle in deinem Team bereit und bezahlt.`);
     }

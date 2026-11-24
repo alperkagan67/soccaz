@@ -94,7 +94,7 @@ export function MyActions({ matchId, mode, ready, hasTeam, main = null, card }: 
                   )}
                   {fall === "freigabe" && (
                     <div className="space-y-3" data-testid="authorize-section">
-                      <p className="text-sm">Deine Bank braucht eine Freigabe der Zahlung. Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p>
+                      <p className="text-sm">Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p> {/* der Grund ("Die Bank braucht deine Freigabe der Zahlung.") steht schon oben in charge-failed-reason: nicht zweimal */}
                       <AuthorizeButton matchId={matchId} fake={card.fake} quiet={main !== "freigeben"} />
                       <details className="group" data-testid="charge-failed-other-card">
                         <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-sm font-semibold underline">
