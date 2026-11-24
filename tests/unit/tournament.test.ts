@@ -230,3 +230,13 @@ describe("Zeitplan auf zwei Plätzen", () => {
     expect(planSchedule([{ stage: "ko:16", games: 8 }, { stage: "ko:8", games: 4 }, ...rounds8.slice(1)], new Date(), 240).blocks).toHaveLength(8);
   });
 });
+
+describe("koWinner mit decidedBy (Tie-Break PR 1a)", () => {
+  it("Golden Goal entscheidet über den Plan-Stand, Neunmeter über shootoutWinner; Gleichstand ohne Entscheidung bleibt offen", () => {
+    expect(koWinner({ a: "x", b: "y", scoreA: 3, scoreB: 2, decidedBy: "gg" })).toBe("x");
+    expect(koWinner({ a: "x", b: "y", scoreA: 2, scoreB: 2, shootoutWinner: "y", decidedBy: "9m" })).toBe("y");
+    expect(koWinner({ a: "x", b: "y", scoreA: 2, scoreB: 2, decidedBy: "9m" })).toBeNull(); // 9m ohne Sieger: ungültig
+    expect(koWinner({ a: "x", b: "y", scoreA: 2, scoreB: 2, decidedBy: "gg" })).toBeNull(); // gg ohne Tor: ungültig
+    expect(koWinner({ a: "x", b: "y", scoreA: 2, scoreB: 2 })).toBeNull();
+  });
+});

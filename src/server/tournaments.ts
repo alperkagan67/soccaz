@@ -593,19 +593,34 @@ export async function advanceFromMatch(tx: Tx, matchId: string): Promise<void> {
   await completeKo(tx, t, tm, winner);
 }
 
-/** Bei Gleichstand im K.-o.-Spiel trägt der Veranstalter den Sieger des Siebenmeterschießens ein. */
-export async function decideShootout(userId: string, tournamentId: string, tournamentMatchId: string, winnerTeamId: string) {
+/**
+ * Tie-Break bei Gleichstand im K.-o.-Spiel (Entscheid t2q 2026-11-27): der Veranstalter (oder Plattform-Admin) trägt EINE Entscheidung ein:
+ * `gg` = Golden Goal (das Tor wird im Turnierplan dem Sieger gutgeschrieben, z. B. 2:2 -> 3:2; das Spiel selbst mit Elo und Statistik bleibt unverändert),
+ * `9m` = Neunmeter (der Stand bleibt, der Sieger wird gesetzt). Nur K.-o.-Spiele, nur bei offenem Gleichstand; danach rückt der Sieger weiter bzw. das Finale beendet das Turnier.
+ */
+export async function decideTie(userId: string, tournamentId: string, tournamentMatchId: string, kind: "gg" | "9m", winnerTeamId: string) {
+  if (kind !== "gg" && kind !== "9m") throw new DomainError("Unbekannte Art der Entscheidung.");
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann das eintragen.");
     if (t.status !== "running") throw new DomainError("Das Turnier läuft nicht.");
     const [tm] = await tx.select().from(tournamentMatches).where(and(eq(tournamentMatches.id, tournamentMatchId), eq(tournamentMatches.tournamentId, tournamentId)));
-    if (!tm || tm.scoreA === null || tm.scoreA !== tm.scoreB || tm.shootoutWinner) throw new DomainError("Hier ist kein Siebenmeterschießen offen.");
+    if (!tm || tm.scoreA === null || tm.scoreA !== tm.scoreB || tm.shootoutWinner || tm.decidedBy) throw new DomainError("Hier ist kein Gleichstand offen.");
+    if (!tm.stage.startsWith("ko:")) throw new DomainError("Golden Goal und Neunmeter gibt es nur in K.-o.-Spielen.");
     if (winnerTeamId !== tm.teamA && winnerTeamId !== tm.teamB) throw new DomainError("Das Team spielt in diesem Spiel nicht.");
-    await tx.update(tournamentMatches).set({ shootoutWinner: winnerTeamId }).where(eq(tournamentMatches.id, tm.id));
-    await audit(userId, "tournament.shootout", "tournament", tournamentId, { after: { matchId: tm.id, winnerTeamId } }, tx);
+    const set =
+      kind === "9m"
+        ? { shootoutWinner: winnerTeamId, decidedBy: "9m" as const }
+        : { decidedBy: "gg" as const, ...(winnerTeamId === tm.teamA ? { scoreA: tm.scoreA + 1 } : { scoreB: (tm.scoreB ?? 0) + 1 }) };
+    await tx.update(tournamentMatches).set(set).where(eq(tournamentMatches.id, tm.id));
+    await audit(userId, "tournament.tiebreak", "tournament", tournamentId, { after: { matchId: tm.id, kind, winnerTeamId } }, tx);
     await completeKo(tx, t, tm, winnerTeamId);
   });
+}
+
+/** Alter Name (Neunmeter/Siebenmeterschießen), bleibt für bestehende Aufrufer und die Oberfläche bis PR 1b. */
+export function decideShootout(userId: string, tournamentId: string, tournamentMatchId: string, winnerTeamId: string) {
+  return decideTie(userId, tournamentId, tournamentMatchId, "9m", winnerTeamId);
 }
 
 async function finishTournament(tx: Tx, t: T, winnerId: string) {
@@ -1019,7 +1034,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const semis = matchRows.filter((m) => m.stage === "ko:4");
   const losers = semis.flatMap((m) => {
     if (!m.teamA || !m.teamB || m.scoreA === null || m.scoreB === null) return [];
-    const w = koWinner({ a: m.teamA, b: m.teamB, scoreA: m.scoreA, scoreB: m.scoreB, shootoutWinner: m.shootoutWinner });
+    const w = koWinner({ a: m.teamA, b: m.teamB, scoreA: m.scoreA, scoreB: m.scoreB, shootoutWinner: m.shootoutWinner, decidedBy: m.decidedBy });
     return w ? [w === m.teamA ? m.teamB : m.teamA] : [];
   });
   const ids = entries.map((e) => e.teamId);
