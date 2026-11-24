@@ -10,7 +10,7 @@ import { assertNoFakeInProduction, getPaymentProvider } from "./provider";
 import { cardModeActive } from "../wallet";
 import { fakeCardAllowed } from "./mode";
 import { fakeAuthorizeCore, fakeAuthorizeTournamentCore } from "./fake-authorize";
-import { assertSpielOffen } from "../turnier-only";
+import { assertBereichOffen, assertSpielOffen } from "../turnier-only";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -66,6 +66,7 @@ export async function fakeAuthorizeAction(matchId: string, outcome: "ok" | "fail
  * als signiertes Fake-Ereignis durch handleStripeWebhook, nie direkt.
  */
 export async function fakeAuthorizeTournamentAction(tournamentId: string, outcome: "ok" | "fail"): Promise<{ error?: string }> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   assertNoFakeInProduction();
   if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
   const provider = await getPaymentProvider();
@@ -81,6 +82,7 @@ export async function fakeAuthorizeTournamentAction(tournamentId: string, outcom
  * Gleiche Sperren wie fakeCardReadyAction (PAYMENTS_FAKE=1, nie Produktion, Anbieter muss der FakeProvider sein).
  */
 export async function fakeTournamentCardAction(): Promise<{ error?: string }> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   assertNoFakeInProduction();
   if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
   const provider = await getPaymentProvider();

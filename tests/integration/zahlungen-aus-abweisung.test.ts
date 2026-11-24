@@ -6,7 +6,7 @@ import { KOMMT_BALD_TEXT } from "@/lib/turnier-only";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { setSetting } from "@/server/settings";
-import { addPlayer, cleanup, makeMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
 
 // Turnier 12.12.: "Zahlungen AUS in Produktion" ist die Absicherung gegen Geld im Pilot. Belegt wird serverseitig: bei payments_enabled = false und card_payments_enabled = false weisen ALLE Karten- und
 // Zahlungsaktionen ab, ohne einen Anbieter-Aufruf (kein Kunde, kein SetupIntent, kein clientSecret). Zusätzlich mit TURNIER_ONLY=1: Lobby-Spiele sind für diese Aktionen schon vor dem Dienst gesperrt.
@@ -16,6 +16,7 @@ vi.mock("next/navigation", () => ({ redirect: (url: string) => { throw new Error
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
 const { createCardSetupAction, applyStoredCardForLobby } = await import("@/server/payments/card-actions");
+const { fakeAuthorizeTournamentAction, fakeTournamentCardAction } = await import("@/server/payments/fake-card-actions");
 const { createAuthorizationAction, createTournamentAuthorizationAction } = await import("@/server/payments/authorize-actions");
 const { fakeCardReadyAction, fakeAuthorizeAction } = await import("@/server/payments/fake-card-actions");
 
@@ -75,5 +76,24 @@ describe("Zahlungen AUS (payments_enabled und card_payments_enabled aus): server
     await expect(fakeCardReadyAction(match.id)).rejects.toThrow(KOMMT_BALD_TEXT);
     await expect(fakeAuthorizeAction(match.id, "ok")).rejects.toThrow(KOMMT_BALD_TEXT);
     expect(anbieterAufrufe()).toBe(0);
+  });
+});
+
+describe("TURNIER_ONLY=1: auch Karte im Konto (ohne Spiel) und Turnier-Zahlungsaktionen sind gesperrt, Plattform-Admin ausgenommen", () => {
+  it("Spieler: alles gesperrt, kein Anbieteraufruf", async () => {
+    process.env.TURNIER_ONLY = "1";
+    process.env.PAYMENTS_FAKE = "1";
+    await lobby();
+    await expect(createCardSetupAction({ mandateAccepted: true })).rejects.toThrow(KOMMT_BALD_TEXT);
+    await expect(createTournamentAuthorizationAction("00000000-0000-0000-0000-000000000000")).rejects.toThrow(KOMMT_BALD_TEXT);
+    await expect(fakeAuthorizeTournamentAction("00000000-0000-0000-0000-000000000000", "ok")).rejects.toThrow(KOMMT_BALD_TEXT);
+    await expect(fakeTournamentCardAction()).rejects.toThrow(KOMMT_BALD_TEXT);
+    expect(anbieterAufrufe()).toBe(0);
+  });
+  it("Plattform-Admin: nicht durch die Betriebsart gesperrt (die Dienste entscheiden selbst, bei Zahlungen AUS weisen sie ab)", async () => {
+    process.env.TURNIER_ONLY = "1";
+    currentUserId = (await makeUser("zadm", "admin")).id;
+    const r = await createCardSetupAction({ mandateAccepted: true });
+    expect(r.ok).toBe(false); // abgewiesen vom Dienst (Karten-Schalter aus), nicht von der Sperre
   });
 });

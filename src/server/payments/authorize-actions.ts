@@ -3,7 +3,7 @@
 import { requireUser } from "../session";
 import { DomainError } from "../teams";
 import { getAuthorizationSecret, getTournamentAuthorizationSecret } from "./authorize";
-import { assertSpielOffen } from "../turnier-only";
+import { assertBereichOffen, assertSpielOffen } from "../turnier-only";
 
 export type AuthorizationState = { ok: true; clientSecret: string } | { ok: false; error: string };
 
@@ -26,6 +26,7 @@ export async function createAuthorizationAction(matchId: string): Promise<Author
 
 /** Wie createAuthorizationAction, fuer eine Turnier-Zeile (M5-5): nur der Nutzer selbst, Secret nur in dieser Antwort, neutrale Fehler. */
 export async function createTournamentAuthorizationAction(tournamentId: string): Promise<AuthorizationState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich (im Turnierbetrieb gibt es keine Zahlung)
   const user = await requireUser("/app");
   try {
     const r = await getTournamentAuthorizationSecret(user.id, typeof tournamentId === "string" ? tournamentId : "");

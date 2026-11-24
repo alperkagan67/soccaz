@@ -141,3 +141,19 @@ describe("alle 'use server'-Dateien sind klassifiziert (neue Datei = rot)", () =
     }
   });
 });
+
+describe("Zusatz t2q: Karten-Einrichtung im Konto, Turnier-Zahlungsaktionen und Spielfotos", () => {
+  it("createCardSetupAction ohne Spiel ist gesperrt (assertBereichOffen), mit Spiel je Spiel", () => {
+    const code = src("src/server/payments/card-actions.ts");
+    expect(code).toMatch(/if \(typeof input\?\.matchId === "string"\) await assertSpielOffen\(input\.matchId\);\n\s*else await assertBereichOffen\(\);/);
+  });
+  it("Turnier-Zahlungsaktionen sind gesperrt (im Turnierbetrieb gibt es keine Zahlung)", () => {
+    const auth = exporte(src("src/server/payments/authorize-actions.ts"));
+    expect(auth.find((e) => e.name === "createTournamentAuthorizationAction")?.erste).toMatch(/^await assertBereichOffen\(\);/);
+    const fake = exporte(src("src/server/payments/fake-card-actions.ts"));
+    for (const n of ["fakeAuthorizeTournamentAction", "fakeTournamentCardAction"]) expect(fake.find((e) => e.name === n)?.erste, n).toMatch(/^await assertBereichOffen\(\);/);
+  });
+  it("Upload von Spielfotos (kind match_photo) prüft das Spiel serverseitig", () => {
+    expect(src("src/app/api/media/route.ts")).toMatch(/parsed\.data\.kind === "match_photo" && \(await spielGesperrt\(parsed\.data\.refId\)\)\) return gesperrteAntwort\(\);/);
+  });
+});
