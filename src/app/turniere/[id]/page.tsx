@@ -133,6 +133,18 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         </section>
       )}
 
+      {(inRegistration || inPayment) && free && (
+        <section className="card space-y-1 text-sm" aria-label="Ablauf des Turniers" data-testid="free-flow">
+          <h2 className="font-semibold">Ablauf des Turniers</h2>
+          <ol className="list-decimal space-y-0.5 pl-5 text-muted">
+            {ZP.tournamentFreeSteps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <p className="text-xs text-muted">{ZP.tournamentFreeNote}</p>
+        </section>
+      )}
+
       {(inRegistration || inPayment || t.status === "running") && !free && (
         <section className="card space-y-1 text-sm" aria-label="So wird bezahlt" data-testid="pricing-box">
           <h2 className="font-semibold">So läuft es ab</h2>

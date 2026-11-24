@@ -49,6 +49,7 @@
     "4": [
       "community.spec.ts",
       "halle-turnier.spec.ts",
+      "turnier-gratis-anlegen.spec.ts",
       "turnier-freilose.spec.ts",
       "turnier-ablehnen.spec.ts",
       "halle.spec.ts",

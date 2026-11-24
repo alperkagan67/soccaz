@@ -133,6 +133,7 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
   const orgId = (await query<{ id: string }>("select id from users where email = $1", [`tnorg-${run}@test.local`]))[0].id;
 
   // ohne Freischaltung kein Anlegen, dafür der Hinweis, wie man Veranstalter wird
+  await setPlatformSetting("payments_enabled", true); // Zahlungen AUS = kostenloses Turnier ohne Preisfeld (Gratis-Turnier PR A): dieser Test legt ein Turnier mit Hallenpreis an
   await org.goto("/app/turniere/neu");
   await expect(org.getByText(/nur freigeschaltete Veranstalter/)).toBeVisible();
   await expect(org.getByTestId("organizer-info")).toContainText("Socaz-Admin an oder schreib uns eine E-Mail");
@@ -143,7 +144,7 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
   await org.goto("/app/turniere/neu");
   await org.waitForLoadState("networkidle");
   await org.getByLabel("Name des Turniers").fill(`E2E Cup ${run}`);
-  await org.getByLabel("Anzahl Teams (4 bis 32)").fill("4");
+  await org.getByLabel("Anzahl Teams (4 bis 16)").fill("4");
   await org.getByLabel("Spielort").fill("Soccerhalle Test");
   await org.getByLabel("Termin (Beginn)").fill(futureLocal(6, "12:00"));
   await org.getByLabel("Anmeldeschluss").fill(futureLocal(4, "12:00"));

@@ -1,4 +1,5 @@
 import type { Instrumentation } from "next";
+import { STARTSPERRE_MELDUNG, startVerboten } from "./lib/startsperre";
 
 /** Wird beim Start des Servers einmal ausgeführt: Fehlerüberwachung und Zeitplaner. */
 export async function register() {
@@ -12,6 +13,17 @@ export async function register() {
       tracesSampleRate: 0,
       sendDefaultPii: false,
     });
+  }
+
+  // Startsperre (fail closed): PAYMENTS_FAKE=1 in Produktion/Staging verweigert den Start; nicht beim Build, nicht im Dev-/Test-Server (src/lib/startsperre.ts)
+  if (startVerboten()) {
+    console.error(JSON.stringify({ level: "fatal", message: STARTSPERRE_MELDUNG }));
+    if (process.env.SENTRY_DSN) {
+      const Sentry = await import("@sentry/node");
+      Sentry.captureException(new Error(STARTSPERRE_MELDUNG));
+      await Sentry.flush(2000);
+    }
+    throw new Error(STARTSPERRE_MELDUNG);
   }
 
   const enabled = process.env.ENABLE_SCHEDULER ?? (process.env.NODE_ENV === "production" ? "1" : "0");

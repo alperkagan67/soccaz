@@ -85,6 +85,7 @@ export async function createTournament(userId: string, input: TournamentInput) {
   if (!Number.isInteger(input.maxTeams) || input.maxTeams < MIN_TOURNAMENT_TEAMS || input.maxTeams > MAX_TOURNAMENT_TEAMS) throw new DomainError(`${MIN_TOURNAMENT_TEAMS} bis ${MAX_TOURNAMENT_TEAMS} Teams.`);
   if (!Number.isInteger(input.durationMin) || input.durationMin < 30 || input.durationMin > 720 || input.durationMin % 15 !== 0) throw new DomainError("Das Turnier dauert 30 Minuten bis 12 Stunden (in 15-Minuten-Schritten).");
   let hourly = input.hourlyCents ?? null;
+  if (hourly === null && (await zahlungenAus())) hourly = 0; // Zahlungen AUS: kostenlos, kein Standardpreis noetig (Gratis-Turnier, Entscheid t2q 2026-11-24)
   if (hourly === null) {
     const standard = await priceFor(db, null, 60);
     if (!standard) throw new DomainError("Für die Halle gibt es keinen Standardpreis. Bitte gib den Hallenpreis pro Stunde an.");
