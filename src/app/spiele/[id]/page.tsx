@@ -13,6 +13,8 @@ import { matchPhotosEnabled } from "@/lib/media-flags";
 import { RatingReveal } from "@/components/RatingReveal";
 import { getRatingReveal } from "@/server/rating-reveal";
 import { canViewMatch, getMatchPage } from "@/server/results";
+import { KommtBald } from "@/components/KommtBald";
+import { spielGesperrt } from "@/server/turnier-only";
 import { PersonName } from "@/components/PersonName";
 import { autorLabel, personRef } from "@/lib/lobby-namen";
 import { getCurrentUser } from "@/server/session";
@@ -35,6 +37,9 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   if (!page) notFound();
   // Nicht öffentlich sichtbare Spiele (Privatspiel, private Herausforderung): Existenz nicht verraten, gleiche Antwort wie bei einem nicht vorhandenen Spiel
   if (!canViewMatch(page)) notFound();
+
+  // TURNIER_ONLY: nur Spiele eines Turniers (serverseitige Zuordnung, Ergebnis melden) bleiben offen; alle anderen Spiele zeigen "Kommt bald" (Plattform-Admin ausgenommen)
+  if (await spielGesperrt(id)) return <KommtBald />;
 
   const { match, events, live, result, phase, participants } = page;
   const v = page.viewer;
@@ -77,7 +82,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
             <a href={`/api/karte/${match.id}`} className="text-accent-fg underline" download>Spielbericht als Bild</a>
           </p>
         )}
-        {v?.mySide && match.status === "played" && (
+        {v?.mySide && match.status === "played" && match.kind !== "tournament" && (
           <p className="text-center text-sm">
             <Link href={`/app/suche/neu?gegner=${v.mySide === "home" ? match.awaySlug : match.homeSlug}`} className="text-accent-fg underline">Revanche anfragen</Link>
           </p>
