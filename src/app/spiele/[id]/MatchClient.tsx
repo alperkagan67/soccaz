@@ -29,7 +29,7 @@ function useRun() {
       try {
         setError((await fn())?.error);
       } catch {
-        setError("Das hat nicht geklappt. Es wurde nichts gespeichert. Bitte versuche es noch einmal."); // nie still verschlucken (Live-Demo-Fund 2026-11-26)
+        setError("Das hat nicht geklappt. Lade die Seite neu und prüfe den Stand, bevor du es noch einmal versuchst."); // nie still verschlucken (Live-Demo-Fund 2026-11-26); "nichts gespeichert" nur dort, wo es atomar belegt ist (Ergebnis eintragen mit Toren)
       }
     });
   };
@@ -98,7 +98,7 @@ export function Recorder({ matchId, home, away, players, hasEvents }: { matchId:
   );
 }
 
-export function SubmitResultForm({ matchId, home, away, homeScore, awayScore, final = false }: { matchId: string; home: string; away: string; homeScore: number; awayScore: number; final?: boolean }) {
+export function SubmitResultForm({ matchId, home, away, homeScore, awayScore, final = false, quiet = false }: { matchId: string; home: string; away: string; homeScore: number; awayScore: number; final?: boolean; quiet?: boolean }) {
   const { error, pending, run } = useRun();
   const hydrated = useHydrated(); // Klick vor der Hydration wäre ein GET mit den Torständen in der Adresse
   const [h, setH] = useState(String(homeScore));
@@ -141,7 +141,7 @@ export function SubmitResultForm({ matchId, home, away, homeScore, awayScore, fi
         <>
           <p className="text-xs text-muted">Als Veranstalter oder Admin trägst du das Endergebnis direkt ein: Es gilt sofort und lässt sich nicht ändern.</p>
           <ConfirmDialog
-            trigger={{ label: "Endergebnis eintragen", variant: "primary" }}
+            trigger={{ label: "Endergebnis eintragen", variant: quiet ? "secondary" : "primary" }}
             title="Endergebnis eintragen?"
             body="Das Ergebnis ist endgültig und lässt sich nicht ändern. Das Turnier geht sofort weiter."
             consequence={`${home} ${Number(h)} : ${Number(a)} ${away}`}
@@ -154,7 +154,7 @@ export function SubmitResultForm({ matchId, home, away, homeScore, awayScore, fi
       ) : (
         <>
           <p className="text-xs text-muted">Das andere Team bestätigt das Ergebnis. Antwortet es 48 Stunden nicht, gilt es automatisch.</p>
-          <button className={`btn btn-primary w-full ${pending ? "disabled:opacity-60" : ""}`} disabled={pending || !hydrated} data-testid="result-submit">{pending ? "Bitte warten…" : "Ergebnis melden"}</button>
+          <button className={`btn ${quiet ? "btn-ghost" : "btn-primary"} w-full ${pending ? "disabled:opacity-60" : ""}`} disabled={pending || !hydrated} data-testid="result-submit">{pending ? "Bitte warten…" : "Ergebnis melden"}</button>
         </>
       )}
       <ErrorText message={error} />
@@ -307,6 +307,9 @@ export function EndMatchPanel({ matchId, home, away, homeScore, awayScore, final
     <section className="card space-y-2" aria-label="Abpfiff" data-testid="end-match">
       <h2 className="font-semibold">Abpfiff</h2>
       <p className="text-sm text-muted">{final ? "Beendet das Spiel mit dem aktuellen Spielstand. Das Ergebnis gilt sofort." : "Meldet das Spiel mit dem aktuellen Spielstand als beendet. Das andere Team bestätigt."}</p>
+      {homeScore === awayScore && (
+        <p className="text-sm font-semibold" data-testid="end-match-draw">Unentschieden: In einem K.-o.-Spiel entscheidet danach das Siebenmeterschießen. Der Veranstalter trägt den Sieger ein; bis dahin rückt niemand weiter.</p>
+      )}
       <ConfirmDialog
         trigger={{ label: "Abpfiff", variant: "primary" }}
         title="Spiel beenden?"

@@ -98,7 +98,7 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
   const canManage = platformAdmin || adminOf.length > 0 || tournamentOrganizer;
   const started = match.startsAt.getTime() <= Date.now();
   const openAny = match.status === "lobby" || match.status === "confirmed";
-  const referee = (platformAdmin && adminOf.length === 0) || tournamentOrganizer; // Schiedsrichter: Planzeit nur Richtwert (siehe isReferee)
+  const referee = match.kind === "tournament" && ((platformAdmin && adminOf.length === 0) || tournamentOrganizer); // Schiedsrichter nur im Turnierspiel: Planzeit nur Richtwert (siehe isReferee)
   const openForPlay = openAny && (started || referee);
 
   // Auf welcher Seite steht die Person? (für Bestätigen oder Widersprechen)
@@ -274,7 +274,7 @@ function requireStarted(match: MatchRow) {
  * Schiedsrichter-Rechte: Plattform-Admin ohne Team im Spiel und der Veranstalter des Turniers. Fuer sie ist die geplante Anstosszeit nur ein Richtwert (Turniertag laeuft vor oder nach dem Plan, Live-Demo-Fund 2026-11-26:
  * der Eintrag scheiterte mit "Das Spiel hat noch nicht begonnen."); Captains und Team-Admins duerfen erst ab dem Planbeginn.
  */
-const isReferee = (ctx: { platformAdmin: boolean; side: "home" | "away" | null; organizer: boolean }) => (ctx.platformAdmin && !ctx.side) || ctx.organizer;
+const isReferee = (ctx: { platformAdmin: boolean; side: "home" | "away" | null; organizer: boolean }, match: MatchRow) => match.kind === "tournament" && ((ctx.platformAdmin && !ctx.side) || ctx.organizer); // NUR im Turnierspiel: Team- und Privatspiele bleiben an den Planbeginn gebunden
 
 export type EventInput = { type: "goal" | "yellow_card" | "red_card"; teamId: string; scorerId?: string | null; minute?: number | null };
 
@@ -284,7 +284,7 @@ type AdminCtx = { platformAdmin: boolean; side: "home" | "away" | null; organize
 async function recordEventIn(tx: Tx, userId: string, matchId: string, match: MatchRow, ctx: AdminCtx, input: EventInput) {
   {
     if (!ctx.platformAdmin && !ctx.side && !ctx.organizer) throw new DomainError("Nur Team-Admins und der Veranstalter können Ereignisse erfassen.");
-    if (!isReferee(ctx)) requireStarted(match);
+    if (!isReferee(ctx, match)) requireStarted(match);
     if (input.teamId !== match.homeTeamId && input.teamId !== match.awayTeamId) throw new DomainError("Ungültiges Team.");
     const [pending] = await tx.select({ matchId: matchResults.matchId }).from(matchResults).where(eq(matchResults.matchId, matchId));
     if (pending) throw new DomainError("Das Endergebnis ist schon gemeldet.");
@@ -346,7 +346,7 @@ async function finishMatch(tx: Tx, match: MatchRow, actorId: string | null) {
 async function submitResultIn(tx: Tx, userId: string, matchId: string, match: MatchRow, ctx: AdminCtx, homeScore: number, awayScore: number) {
   {
     if (!ctx.platformAdmin && !ctx.side && !ctx.organizer) throw new DomainError("Nur Team-Admins können das Ergebnis melden.");
-    if (!isReferee(ctx)) requireStarted(match);
+    if (!isReferee(ctx, match)) requireStarted(match);
     const [existing] = await tx.select().from(matchResults).where(eq(matchResults.matchId, matchId));
 
     const bothSides = match.kind === "private" && (await isAdminOfBoth(tx, userId, match));

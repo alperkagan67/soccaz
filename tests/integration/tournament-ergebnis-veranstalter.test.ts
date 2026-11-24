@@ -6,7 +6,7 @@ import { sql } from "drizzle-orm";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { endMatch, submitResult, submitScore } from "@/server/results";
 import { maybeGenerateBracket } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeMatch, makeTeam, makeUser } from "./helpers";
 
 // Live-Demo-Fund (t2q 2026-11-26): Veranstalter/Admin (ohne Team) tragen ein Turnierspiel ueber 'Ergebnis melden' (submitResult) und 'Ergebnis eintragen' (submitScore) ein, das Spiel blieb 'confirmed'.
 // URSACHE: requireStarted() in submitResult/recordEvent/decideResult: die Spiele eines Turniers haben die GEPLANTE Anstosszeit (Spielplan, meist spaeter); davor wirft jede Aktion 'Das Spiel hat noch nicht begonnen.'
@@ -216,6 +216,47 @@ describe("'Ergebnis eintragen' (submitScore) atomar: Tore und Ergebnis in EINER 
     expect(dialog).toContain("} catch {");
     expect(dialog).toContain("Das Ergebnis konnte nicht gespeichert werden");
     expect(dialog).toContain('{error && <p className="error" role="alert">{error}</p>}');
-    expect(readFileSync("src/app/spiele/[id]/MatchClient.tsx", "utf8")).toContain("Es wurde nichts gespeichert");
+    expect(readFileSync("src/app/spiele/[id]/MatchClient.tsx", "utf8")).toContain("Lade die Seite neu und prüfe den Stand"); // ehrlich: bei Abpfiff/Kampflos kann der Server gespeichert haben
+  });
+});
+
+describe("Rechte: Schiedsrichter nur im EIGENEN Turnierspiel (R-T435/R-T436, Berechtigungsänderung)", () => {
+  it("fremder Veranstalter (eines ANDEREN Turniers): kein Eintrag, keine Ereignisse, kein Abpfiff, kein Kampflos", async () => {
+    const { t } = await turnier(4);
+    const fremd = await turnier(4); // anderes Turnier mit eigenem Veranstalter
+    const first = (await rows(t.id)).filter((r) => r.matchId && r.stage === "ko:4")[0];
+    const { recordEvent } = await import("@/server/results");
+    const { forfeitTournamentMatch } = await import("@/server/tournaments");
+    await expect(submitResult(fremd.org.id, first.matchId!, 1, 0)).rejects.toThrow(/Nur Team-Admins/);
+    await expect(recordEvent(fremd.org.id, first.matchId!, { type: "goal", teamId: first.teamA! })).rejects.toThrow(/Nur Team-Admins/);
+    await expect(endMatch(fremd.org.id, first.matchId!)).rejects.toThrow(/Nur Team-Admins/);
+    await expect(forfeitTournamentMatch(fremd.org.id, t.id, first.id, first.teamA!)).rejects.toThrow(/Nur der Veranstalter/);
+    expect((await gameOf(first.matchId!)).status).toBe("confirmed");
+    expect(await db.select().from(matchResults).where(eq(matchResults.matchId, first.matchId!))).toHaveLength(0);
+  });
+  it("Team-/Privatspiel (kein Turnier): Plattform-Admin ohne Team UND Captain bleiben VOR dem Anstoß gesperrt (Planzeit gilt weiter)", async () => {
+    const { match, adminA } = await makeMatch({ hoursAhead: 72 });
+    const admin = await makeUser("er-adm2", "admin");
+    const { recordEvent } = await import("@/server/results");
+    await expect(submitResult(admin.id, match.id, 1, 0)).rejects.toThrow(/noch nicht begonnen/);
+    await expect(recordEvent(admin.id, match.id, { type: "goal", teamId: match.homeTeamId })).rejects.toThrow(/noch nicht begonnen/);
+    await expect(submitResult(adminA.id, match.id, 1, 0)).rejects.toThrow(/noch nicht begonnen/);
+    expect(await db.select().from(matchResults).where(eq(matchResults.matchId, match.id))).toHaveLength(0);
+  });
+});
+
+describe("Abpfiff bei 0:0 im K.-o.-Spiel: Unentschieden, Bracket rückt erst mit dem Siebenmeterschießen weiter", () => {
+  it("0:0: das Folgespiel bekommt KEIN Team, bis der Veranstalter den Sieger des Siebenmeterschießens einträgt", async () => {
+    const { t, org } = await turnier(4);
+    const { decideShootout } = await import("@/server/tournaments");
+    const first = (await rows(t.id)).filter((r) => r.matchId && r.stage === "ko:4")[0];
+    await endMatch(org.id, first.matchId!);
+    const after = (await rows(t.id)).find((r) => r.id === first.id)!;
+    expect([after.scoreA, after.scoreB, after.shootoutWinner]).toEqual([0, 0, null]);
+    const finalVorher = (await rows(t.id)).find((r) => r.stage === "ko:2")!;
+    expect([finalVorher.teamA, finalVorher.teamB].filter(Boolean)).toHaveLength(0); // niemand rückt weiter
+    await decideShootout(org.id, t.id, first.id, first.teamB!);
+    const finalNachher = (await rows(t.id)).find((r) => r.stage === "ko:2")!;
+    expect([finalNachher.teamA, finalNachher.teamB]).toContain(first.teamB);
   });
 });

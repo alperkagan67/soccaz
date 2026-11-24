@@ -55,6 +55,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const reveal = user ? await getRatingReveal(match.id, user.id) : null; // nur die eigene Wertungsänderung, nur nach einem bestätigten Ergebnis (AC-20, AC-17)
   const photos = (await listMatchPhotos(match.id)).map((p) => ({ id: p.id, mine: p.ownerId === user?.id }));
 
+  const abpfiff = Boolean(v?.canRecord) && match.kind === "tournament"; // Abpfiff im Turnierspiel: Veranstalter/Admin (final) oder Team-Admin ab Planbeginn (meldet)
   return (
     <div className="space-y-4">
       <header className="space-y-2">
@@ -111,17 +112,40 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
       {v?.canRecord && <Recorder matchId={match.id} home={home} away={away} players={participants} hasEvents={events.length > 0} />}
 
       {/* Abpfiff im Turnierspiel: Veranstalter/Admin (final) oder Team-Admin ab Planbeginn (meldet) */}
-      {v?.canRecord && match.kind === "tournament" && <EndMatchPanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={goalsFromEvents.home} awayScore={goalsFromEvents.away} final={!v.mySide && v.canManage} />}
+      {abpfiff && v && <EndMatchPanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={goalsFromEvents.home} awayScore={goalsFromEvents.away} final={!v.mySide && v.canManage} />}
 
+      {/* AC-30: eine Hauptaktion je Ansicht. Im Turnierspiel mit Abpfiff ist "Abpfiff" die Hauptaktion; die Eingabe von Hand liegt ruhig und eingeklappt darunter */}
+      {abpfiff ? (
+        <details className="card" data-testid="manual-result">
+          <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Ergebnis von Hand eintragen</summary>
+          <div className="space-y-3 pt-3">
       {v?.canSubmit && !result?.disputed && !result && (
         <section className="card space-y-2">
           <p className="text-sm text-muted">Das Ergebnis kannst du jederzeit eintragen, auch nach dem Spiel, mit Torschützen:</p>
-          <ScoreDialog matchId={match.id} home={home} away={away} players={participants} existing={events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))} />
+          <ScoreDialog quiet={abpfiff} matchId={match.id} home={home} away={away} players={participants} existing={events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))} />
         </section>
       )}
 
       {v?.canSubmit && !result?.disputed && (
-        <SubmitResultForm matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} final={!v.mySide && v.canManage} />
+        <SubmitResultForm quiet={abpfiff} matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} final={!v.mySide && v.canManage} />
+      )}
+
+          </div>
+        </details>
+      ) : (
+        <>
+      {v?.canSubmit && !result?.disputed && !result && (
+        <section className="card space-y-2">
+          <p className="text-sm text-muted">Das Ergebnis kannst du jederzeit eintragen, auch nach dem Spiel, mit Torschützen:</p>
+          <ScoreDialog quiet={abpfiff} matchId={match.id} home={home} away={away} players={participants} existing={events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))} />
+        </section>
+      )}
+
+      {v?.canSubmit && !result?.disputed && (
+        <SubmitResultForm quiet={abpfiff} matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} final={!v.mySide && v.canManage} />
+      )}
+
+        </>
       )}
 
       {v?.canConfirm && result && (

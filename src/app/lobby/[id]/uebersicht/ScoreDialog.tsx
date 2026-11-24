@@ -8,7 +8,7 @@ type Player = { userId: string; name: string; teamId: string | null };
 type Goal = { teamId: string; scorerId: string; minute: string };
 
 /** Pop-up: Tore je Team eintragen, optional den Torschützen markieren. Der Captain meldet das Ergebnis, der andere Captain bestätigt. */
-export function ScoreDialog({ matchId, home, away, players, existing }: { matchId: string; home: Team; away: Team; players: Player[]; existing: { teamId: string; scorer: string | null }[] }) {
+export function ScoreDialog({ matchId, home, away, players, existing, quiet = false }: { matchId: string; home: Team; away: Team; players: Player[]; existing: { teamId: string; scorer: string | null }[]; quiet?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [error, setError] = useState<string>();
@@ -37,7 +37,7 @@ export function ScoreDialog({ matchId, home, away, players, existing }: { matchI
 
   return (
     <>
-      <button type="button" className="btn btn-primary w-full" onClick={() => ref.current?.showModal()} data-testid="open-score">Ergebnis eintragen</button>
+      <button type="button" className={`btn ${quiet ? "btn-ghost" : "btn-primary"} w-full`} onClick={() => ref.current?.showModal()} data-testid="open-score">Ergebnis eintragen</button>
       <dialog ref={ref} className="m-auto w-[min(32rem,calc(100vw-2rem))] rounded-2xl border border-line bg-panel p-0 text-ink backdrop:bg-black/70" aria-label="Ergebnis eintragen" data-testid="score-dialog">
         <div className="space-y-4 p-4">
           <div className="flex items-start justify-between gap-2">
