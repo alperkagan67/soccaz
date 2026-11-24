@@ -18,6 +18,7 @@ import { formatEuro } from "@/lib/money";
 import { ZP, betragszeile } from "@/lib/zahlungspflicht-texte";
 import { AuthorizeButton } from "./AuthorizeButton";
 import { CardForm } from "./CardForm";
+import type { LobbyAktion } from "@/lib/lobby-stand";
 
 type Result = { error?: string; needsTopupCents?: number } | undefined;
 
@@ -55,13 +56,15 @@ type MyActionsProps = {
   mode: "participant" | "join" | "substitute" | "full" | "guest" | "none";
   ready: boolean;
   hasTeam: boolean;
+  /** Die EINE Hauptaktion der Lobby (lobbyStand): nur ihr Knopf ist btn-primary, alle anderen sind ruhig (AC-30). */
+  main?: LobbyAktion;
   /** Nur gesetzt, wenn Zahlungen eingeschaltet sind. */
   /** Wie viele Spieler des eigenen Teams haben schon bezahlt? Bereit geht erst, wenn alle bezahlt haben. */
   /** Nur im Kartenmodell (Schalter card_payments_enabled EIN): Karte hinterlegen, Vertrag 012. */
   card?: { ready: boolean; mandateText: string; fake: boolean; priceCents: number | null; estimateCents: number | null; estimateFixed: boolean; stored: { brand: string | null; last4: string } | null; failure?: { text: string; until: string | null; expired: boolean; authorize?: boolean } | null } | null;
 };
 
-export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProps) {
+export function MyActions({ matchId, mode, ready, hasTeam, main = null, card }: MyActionsProps) {
   const { error, pending, run } = useRun();
   const busy = pending ? "opacity-60" : "";
   const payable = Boolean(card) && card?.priceCents != null && card.priceCents > 0; // Zahlungspflicht nur im Kartenmodell UND bei einem Preis > 0: kostenlos (0) und noch kein Preis (null) bekommen den schlichten Text, nie die Formel
@@ -84,11 +87,11 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
                         <div className="space-y-2" data-testid="authorize-section">
                           <p className="text-sm">Deine Bank braucht eine Freigabe der Zahlung. Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p>
                           <AuthorizeButton matchId={matchId} fake={card.fake} />
-                          <p className="text-xs text-muted">Oder ändere deine Karte:</p>
+                          <p className="text-sm text-muted">Oder ändere deine Karte:</p>
                         </div>
                       )}
                       {!card.failure.authorize && <p className="text-sm text-muted">Ändere deine Karte, damit die Zahlung klappt.{card.failure.until ? ` Du hast ${card.failure.until} Zeit.` : ""}</p>}
-                      <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change />
+                      <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change quiet={Boolean(card.failure.authorize)} />
                     </>
                   )}
                 </div>
@@ -98,18 +101,18 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
                   <p className="text-sm text-muted" data-testid="card-hint">
                     {payable ? <>Schritt 1: Karte hinterlegen. {betragszeile(card.estimateCents != null ? formatEuro(card.estimateCents) : null, card.estimateFixed)} Bis dahin wird nichts abgebucht.</> : card.priceCents === 0 ? ZP.gameFree : ZP.priceUnknown}
                   </p>
-                  <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={card.stored} />
+                  <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={card.stored} quiet={main !== "karte"} />
                 </>
               )}
               {card?.ready && <p className="text-sm text-accent-fg" data-testid="card-ready-text">Deine Karte ist hinterlegt.{payable ? " Dein Anteil wird zur Frist abgebucht." : ""}</p>}
               <button
-                className={`btn w-full ${ready ? "btn-ghost" : "btn-primary"} ${busy}`}
+                className={`btn w-full ${!ready && main === "bereit" ? "btn-primary" : "btn-ghost"} ${busy}`}
                 disabled={pending || (!ready && Boolean(card && !card.ready))}
                 onClick={() => run(() => setReadyAction(matchId, !ready))}
               >
                 {ready ? ZP.gameNotReady : payable ? ZP.gameReady : ZP.gameReadyFree}
               </button>
-              {!ready && payable && <p className="text-xs text-muted" data-testid="ready-amount">{betragszeile(card?.estimateCents != null ? formatEuro(card.estimateCents) : null, Boolean(card?.estimateFixed))}</p>}
+              {!ready && payable && <p className="text-sm text-muted" data-testid="ready-amount">{betragszeile(card?.estimateCents != null ? formatEuro(card.estimateCents) : null, Boolean(card?.estimateFixed))}</p>}
             </>
           ) : (
             <p className="text-sm text-muted">Du wartest auf die Zuweisung durch einen Team-Admin.</p>
@@ -120,17 +123,17 @@ export function MyActions({ matchId, mode, ready, hasTeam, card }: MyActionsProp
         </>
       )}
       {mode === "join" && (
-        <button className={`btn btn-primary w-full ${busy}`} disabled={pending} onClick={() => run(() => joinLobbyAction(matchId))}>
+        <button className={`btn ${main === "beitreten" ? "btn-primary" : "btn-ghost"} w-full ${busy}`} disabled={pending} onClick={() => run(() => joinLobbyAction(matchId))}>
           Dem Spiel beitreten
         </button>
       )}
       {mode === "join" && (
-        <p className="text-xs text-muted" data-testid="join-hint">{ZP.hintLater}</p>
+        <p className="text-sm text-muted" data-testid="join-hint">{ZP.hintLater}</p>
       )}
       {mode === "substitute" && (
         <>
           <p className="text-sm text-muted">Dir fehlt ein Team? Biete dich als Ersatzspieler an, ein Team-Admin weist dich zu.</p>
-          <button className={`btn btn-primary w-full ${busy}`} disabled={pending} onClick={() => run(() => joinAsSubstituteAction(matchId))}>
+          <button className={`btn ${main === "ersatz" ? "btn-primary" : "btn-ghost"} w-full ${busy}`} disabled={pending} onClick={() => run(() => joinAsSubstituteAction(matchId))}>
             Als Ersatzspieler anbieten
           </button>
         </>
@@ -180,7 +183,7 @@ export function VenueForm({ matchId, venue }: { matchId: string; venue: string }
         <input id="venue" value={value} onChange={(e) => { setValue(e.target.value); setDirty(true); }} maxLength={120} className="field" placeholder="z. B. Soccerhalle Buer, Hauptstr. 1" />
         <button className="btn btn-ghost" disabled={pending || !hydrated} data-testid="venue-save">{pending ? "…" : "Speichern"}</button>
       </div>
-      {saved && !error && <p className="text-xs text-accent-fg">Gespeichert.</p>}
+      {saved && !error && <p className="text-sm text-accent-fg">Gespeichert.</p>}
       <ErrorText message={error} />
     </form>
   );
@@ -203,17 +206,17 @@ export function ParticipantActions({
   return (
     <span className="flex flex-wrap items-center justify-end gap-1">
       {assignTo.map((t) => (
-        <button key={t.teamId} className="btn btn-ghost !min-h-8 !px-2 text-xs" disabled={pending} onClick={() => run(() => assignSubstituteAction(matchId, userId, t.teamId))}>
+        <button key={t.teamId} className="btn btn-ghost text-sm" disabled={pending} onClick={() => run(() => assignSubstituteAction(matchId, userId, t.teamId))}>
           Zu {t.name}
         </button>
       ))}
       {canUnassign && (
-        <button className="btn btn-ghost !min-h-8 !px-2 text-xs" disabled={pending} onClick={() => run(() => unassignParticipantAction(matchId, userId))}>
+        <button className="btn btn-ghost text-sm" disabled={pending} onClick={() => run(() => unassignParticipantAction(matchId, userId))}>
           In den Pool
         </button>
       )}
       {canRemove && (
-        <button className="btn btn-danger !min-h-8 !px-2 text-xs" disabled={pending} aria-label="Spieler entfernen" onClick={() => confirm("Spieler entfernen?") && run(() => removeParticipantAction(matchId, userId))}>
+        <button className="btn btn-danger text-sm" disabled={pending} aria-label="Spieler entfernen" onClick={() => confirm("Spieler entfernen?") && run(() => removeParticipantAction(matchId, userId))}>
           Entfernen
         </button>
       )}

@@ -22,16 +22,16 @@ export function VenueBox({ name, address, city, when, lat, lng }: { name: string
 
   return (
     <section className="card space-y-3" aria-label="Spielort" data-testid="venue-box">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted">Spielort</h2>
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Spielort</h2>
       <div>
         <p className="text-lg font-bold" data-testid="venue-name">{name}</p>
         <p className="select-all text-sm" data-testid="venue-address">{full || "Adresse noch nicht hinterlegt"}</p>
         <p className="mt-1 text-sm text-muted" data-testid="venue-time">{when} Uhr</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={copy} className="btn btn-ghost !min-h-9 !px-3 text-sm">{copied ? "Kopiert" : "Adresse kopieren"}</button>
-        <a href={google} target="_blank" rel="noopener noreferrer" className="btn btn-primary !min-h-9 !px-3 text-sm">Google Maps</a>
-        <a href={apple} target="_blank" rel="noopener noreferrer" className="btn btn-ghost !min-h-9 !px-3 text-sm">Apple Maps</a>
+        <button type="button" onClick={copy} className="btn btn-ghost text-sm">{copied ? "Kopiert" : "Adresse kopieren"}</button>
+        <a href={google} target="_blank" rel="noopener noreferrer" className="btn btn-ghost text-sm">Google Maps</a>
+        <a href={apple} target="_blank" rel="noopener noreferrer" className="btn btn-ghost text-sm">Apple Maps</a>
       </div>
     </section>
   );

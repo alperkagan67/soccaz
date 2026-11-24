@@ -42,7 +42,7 @@ export function VetoPanel({
         {!done && (
           <p className={`mt-1 text-sm font-semibold ${myTurn ? "text-accent-fg" : "text-ink"}`} data-testid="veto-turn">
             {myTurn ? "Du bist dran: banne eine Halle." : `${nameOf(turnTeamId)} ist dran.`}
-            <span className="ml-2 text-xs font-normal text-muted">bis {deadlineText}, danach bannt das System zufällig</span>
+            <span className="ml-2 text-sm font-normal text-muted">bis {deadlineText}, danach bannt das System zufällig</span>
           </p>
         )}
       </div>
@@ -54,26 +54,26 @@ export function VetoPanel({
               <div className="flex items-start justify-between gap-2">
                 <span>
                   <span className={`block font-semibold ${banned ? "line-through" : ""}`}>{h.name}</span>
-                  <span className="block text-xs text-muted">
+                  <span className="block text-sm text-muted">
                     {h.city}
                     {h.partner ? " · Partner" : ""}
                     {!h.verified ? " · Angaben ungeprüft" : ""}
                   </span>
                   {h.website && (
-                    <a href={h.website} target="_blank" rel="noopener noreferrer nofollow" className="text-xs text-accent-fg underline">
+                    <a href={h.website} target="_blank" rel="noopener noreferrer nofollow" className="text-sm text-accent-fg underline">
                       Webseite
                     </a>
                   )}
                 </span>
                 {h.picked ? (
-                  <span className="text-xs font-semibold text-accent-fg">Gewählt</span>
+                  <span className="text-sm font-semibold text-accent-fg">Gewählt</span>
                 ) : banned ? (
-                  <span className="text-right text-xs text-muted">
+                  <span className="text-right text-sm text-muted">
                     Bann {h.banOrder}
                     <span className="block">{nameOf(h.bannedByTeam)}{h.bannedAuto ? " (automatisch)" : ""}</span>
                   </span>
                 ) : (
-                  myTurn && <ActionButton action={banHallAction.bind(null, matchId, h.venueId)} label="Bannen" confirm={`${h.name} bannen?`} className="btn btn-danger !min-h-9 !px-3 text-xs" />
+                  myTurn && <ActionButton action={banHallAction.bind(null, matchId, h.venueId)} label="Bannen" confirm={`${h.name} bannen?`} className="btn btn-danger text-sm" />
                 )}
               </div>
             </li>

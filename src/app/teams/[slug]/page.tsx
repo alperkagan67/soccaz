@@ -19,8 +19,10 @@ import { getCurrentUser } from "@/server/session";
 import { leaguesOfTeam } from "@/server/leagues";
 import { sponsorsOfTeam } from "@/server/sponsors";
 import { isTeamAdmin } from "@/server/teams";
+import { isVenueManager } from "@/server/venue-access-rules";
 import { InviteBox } from "./InviteBox";
 import { LeaveTeam, MemberControls, TeamSettings } from "./TeamManage";
+import { TopScorers } from "./TopScorers";
 
 export async function generateMetadata({ params }: PageProps<"/teams/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -64,7 +66,10 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   const members = roster.members;
   const admin = user ? await isTeamAdmin(user.id, team.id) : false;
   // Karten und Zeilen: die Sichtbarkeit entscheidet der Server (playerCardFor), Gäste bekommen weiter KEINE Namen und KEINE Wertung (getTeamRosterView liest für sie nichts); die Teamwertung ist nur eine Zahl
-  const viewer = cardViewerFor({ userId: user?.id ?? null, hallOperator: false, participant: user ? members.some((m) => m.userId === user.id) : false, teamAdmin: admin, platformAdmin: isPlatformAdmin(user) });
+  // Backlog 216 (013 M3 5a): hallOperator aus venue_access; ein reiner Betreiber (weder Mitglied noch Team-Admin noch Plattform-Admin) bekommt die namenfreie Sicht, die Abfrage läuft nur, wenn sie etwas ändern kann
+  const isMember = user ? members.some((m) => m.userId === user.id) : false;
+  const hallOperator = user && !isMember && !admin && !isPlatformAdmin(user) ? await isVenueManager(user.id) : false;
+  const viewer = cardViewerFor({ userId: user?.id ?? null, hallOperator, participant: isMember, teamAdmin: admin, platformAdmin: isPlatformAdmin(user) });
   const teamCard = teamCardFor({ name: team.name, slug: team.slug, color: team.color ?? null, memberElos: await getTeamMemberElos(team.id) }, RATING);
   const isMyTeam = myTeams.some((t) => t.id === team.id); // das eigene Team kann man nicht herausfordern
   const canChallenge = !isMyTeam && myTeams.length > 0;
@@ -149,19 +154,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         </p>
       )}
 
-      {profile.topScorers.length > 0 && (
-        <section className="space-y-2" aria-label="Torjäger">
-          <h2 className="text-lg font-semibold">Torjäger</h2>
-          <ol className="space-y-1 text-sm">
-            {profile.topScorers.map((s, i) => (
-              <li key={s.id} className="flex justify-between">
-                <span><span className="mr-2 text-muted">{i + 1}.</span><Link href={`/spieler/${s.id}`} className="hover:text-accent-fg">{s.name}</Link></span>
-                <span className="font-semibold">{s.goals} Tore</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+      <TopScorers scorers={profile.topScorers} viewer={viewer} />
 
       {admin && <InviteBox teamId={team.id} teamName={team.name} />}
       {admin && <ImageUpload kind="team_logo" refId={team.id} label={team.logoUrl ? "Logo ändern" : "Logo hochladen"} />}
