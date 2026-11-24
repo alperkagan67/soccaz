@@ -10,7 +10,7 @@ import { euroForCsv, toCsv } from "@/lib/csv";
 import { formatEuro } from "@/lib/money";
 import { audit } from "./audit";
 import { ensureRefundRow } from "./payments/charge";
-import { sendPendingRefunds } from "./payments/refund";
+import { REFUND_WRITTEN_OFF, sendPendingRefunds } from "./payments/refund";
 import { creditWallet, totalWalletLiability, trialBalance } from "./ledger";
 import { notifyUsers } from "./notifications";
 import { cardPaymentsEnabled, paymentsEnabled, tournamentPaymentsActive } from "./settings";
@@ -30,7 +30,7 @@ export const CANCEL_ALARM_MS = 60 * 60_000;
  * Enthält nur IDs und Codes, keine Personendaten.
  */
 export async function getRefundAlerts(now: Date = new Date()) {
-  const failedRefunds = await db.select({ id: paymentRefunds.id, matchId: paymentRefunds.matchId, code: paymentRefunds.failureCode, amountCents: paymentRefunds.amountCents }).from(paymentRefunds).where(eq(paymentRefunds.status, "failed"));
+  const failedRefunds = await db.select({ id: paymentRefunds.id, matchId: paymentRefunds.matchId, code: paymentRefunds.failureCode, amountCents: paymentRefunds.amountCents }).from(paymentRefunds).where(and(eq(paymentRefunds.status, "failed"), sql`${paymentRefunds.failureCode} is distinct from ${REFUND_WRITTEN_OFF}`)); // abgeschrieben (Backlog 192) = aufgelöst, kein Alarm mehr
   const unknownRefunds = await db.select({ id: paymentRefunds.id, matchId: paymentRefunds.matchId }).from(paymentRefunds).where(and(eq(paymentRefunds.status, "pending"), eq(paymentRefunds.failureCode, "unknown_outcome")));
   const stuckCancels = await db
     .select({ matchId: matches.id, since: matches.cancelRequestedAt })

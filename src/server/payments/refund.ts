@@ -10,6 +10,7 @@
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, paymentCharges, paymentProfiles, paymentRefunds, users } from "@/db/schema";
+import { canUser } from "@/lib/roles";
 import { audit } from "../audit";
 import { post } from "../ledger";
 import { chargeAccountFor } from "../commission";
@@ -22,6 +23,9 @@ import { getPaymentProvider, PaymentIdempotencyError } from "./provider";
 import { OPEN_DISPUTE_STATUSES } from "./dispute";
 import { matchIdOf } from "./charge-context";
 import { applyTournamentRefund, runTournamentRefunds } from "./tournament-refund";
+
+/** Marker (failure_code) einer fehlgeschlagenen Erstattung, die Admin 1 bewusst abgeschrieben hat (Backlog 192): reine Buchungsmarkierung, keine Geldbewegung. Kein neuer Status, daher keine Migration. */
+export const REFUND_WRITTEN_OFF = "written_off";
 
 /** Eine beanspruchte Erstattungszeile gilt so lange als "in Arbeit". */
 export const REFUND_LEASE_MS = 60_000;
@@ -42,6 +46,7 @@ export type RefundReport = {
   paymentIntentId: string | null;
   metadata: { matchId: string | null; tournamentId?: string | null; userId: string | null; chargeId: string | null };
   failureCode: string | null;
+  direct?: true; // Ergebnis des eigenen Sendens (sendRefund), nicht eines Webhooks: nur dieses darf eine Neuversuch-Zeile mit derselben Stripe-Erstattung wieder auf failed setzen
 };
 
 export type ApplyRefundResult = { status: "applied" | "already" | "ignored"; reason?: string; matchId?: string };
@@ -109,8 +114,13 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
     if (r.refundId && row.refundId === null) await tx.update(paymentRefunds).set({ refundId: r.refundId, updatedAt: new Date() }).where(eq(paymentRefunds.id, row.id));
     return { status: "applied", matchId: matchIdOf(row) };
   }
-  // failed: manuell zu klären (Admin-Alarm). Die Zeile wird nie automatisch erneut gesendet.
-  if (row.status === "failed" && row.failureCode === cleanCode(r.failureCode)) return { status: "already", matchId: matchIdOf(row) };
+  // failed: manuell zu klären (Admin-Alarm). Die Zeile wird nie automatisch erneut gesendet (Neuversuch oder Abschreiben nur durch Admin 1: retryFailedRefund / writeOffFailedRefund).
+  // Review R-T376 (Hinweis 1): ein spaetes oder doppelt zugestelltes failed der ALTEN Erstattung (vor einem Neuversuch) darf die neu angeforderte Zeile nicht wieder auf failed setzen
+  if (row.status === "pending" && r.refundId && !r.direct) {
+    const [old] = (await tx.execute(sql`select 1 from audit_log where action = 'refund.retry' and after ->> 'refundRowId' = ${row.id} and after ->> 'previousRefundId' = ${r.refundId} limit 1`)).rows;
+    if (old) return { status: "already", matchId: matchIdOf(row) };
+  }
+  if (row.status === "failed" && (row.failureCode === cleanCode(r.failureCode) || row.failureCode === REFUND_WRITTEN_OFF)) return { status: "already", matchId: matchIdOf(row) }; // ein verspätetes failed hebt ein bewusstes Abschreiben nicht auf
   await tx
     .update(paymentRefunds)
     .set({ status: "failed", refundId: row.refundId ?? (r.refundId || null), failureCode: cleanCode(r.failureCode) ?? "refund_failed", updatedAt: new Date() })
@@ -261,7 +271,7 @@ async function sendRefund(c: ClaimedRefund): Promise<void> {
     return; // Ergebnis unbekannt: Zeile bleibt pending, der nächste Lauf sendet mit demselben Schlüssel erneut (bis zur 20-Stunden-Grenze)
   }
   await db.transaction((tx) =>
-    applyRefundInTx(tx, { outcome: res.status, refundId: res.id || null, amountCents: c.amountCents, currency: "eur", paymentIntentId: c.paymentIntentId, metadata: { matchId: c.matchId, userId: c.userId, chargeId: c.chargeId }, failureCode: res.failureCode }),
+    applyRefundInTx(tx, { outcome: res.status, direct: true, refundId: res.id || null, amountCents: c.amountCents, currency: "eur", paymentIntentId: c.paymentIntentId, metadata: { matchId: c.matchId, userId: c.userId, chargeId: c.chargeId }, failureCode: res.failureCode }),
   );
 }
 
@@ -316,9 +326,10 @@ export async function finalizeCancel(matchId: string): Promise<boolean> {
     const charges = await tx.select().from(paymentCharges).where(eq(paymentCharges.matchId, matchId));
     if (charges.some((c) => c.status === "pending")) return false; // unterwegs (processing) oder unbekannt: erst klären
     const refunds = await tx.select().from(paymentRefunds).where(eq(paymentRefunds.matchId, matchId));
-    const refunded = new Set(refunds.filter((r) => r.status === "succeeded" || r.status === "cancelled_dispute").map((r) => r.chargeId)); // cancelled_dispute: Streit verloren, nichts mehr zu erstatten (M4a)
+    const settled = (r: (typeof refunds)[number]) => r.status === "succeeded" || r.status === "cancelled_dispute" || (r.status === "failed" && r.failureCode === REFUND_WRITTEN_OFF); // cancelled_dispute: Streit verloren, nichts mehr zu erstatten (M4a); abgeschrieben: Admin 1 hat die fehlgeschlagene Erstattung bewusst aufgelöst (Backlog 192)
+    const refunded = new Set(refunds.filter(settled).map((r) => r.chargeId));
     if (charges.some((c) => c.status === "succeeded" && !refunded.has(c.id))) return false;
-    if (refunds.some((r) => r.status !== "succeeded" && r.status !== "cancelled_dispute")) return false; // auch weitere Erstattungen (Doppelabbuchung / spaeter Erfolg) muessen durch sein
+    if (refunds.some((r) => !settled(r))) return false; // auch weitere Erstattungen (Doppelabbuchung / spaeter Erfolg) muessen durch sein
     await cancelMatchTx(tx, m, null, m.cancelReason ?? "Das Spiel wurde abgesagt.", { afterRefund: true });
     await audit(null, "match.cancel_completed", "match", matchId, { after: { refunds: refunds.length } }, tx);
     await tx.execute(sql`select pg_notify('lobby', ${matchId})`);
@@ -326,3 +337,86 @@ export async function finalizeCancel(matchId: string): Promise<boolean> {
   });
 }
 
+
+async function requireOwner(actorId: string) {
+  const [actor] = await db.select({ role: users.role, isOwner: users.isOwner }).from(users).where(eq(users.id, actorId));
+  if (!canUser(actor, "finance")) throw new DomainError("Nur Admin 1 darf eine fehlgeschlagene Erstattung neu versuchen oder abschreiben.");
+}
+
+/** Sperrt Spiel und Zeile (Reihenfolge wie überall) und prüft: Spiel-Erstattung, Status failed, nicht abgeschrieben. */
+async function lockFailedRefund(tx: Tx, refundRowId: string) {
+  const [probe] = await tx.select({ matchId: paymentRefunds.matchId, tournamentId: paymentRefunds.tournamentId }).from(paymentRefunds).where(eq(paymentRefunds.id, refundRowId));
+  if (!probe) throw new DomainError("Erstattung nicht gefunden.");
+  if (probe.tournamentId !== null || probe.matchId === null) throw new DomainError("Das ist eine Turnier-Erstattung: sie wird nicht hier, sondern im Turnier geklärt.");
+  await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, probe.matchId)).for("update");
+  const [row] = await tx.select().from(paymentRefunds).where(eq(paymentRefunds.id, refundRowId)).for("update");
+  if (!row || row.status !== "failed") throw new DomainError("Diese Erstattung ist nicht (mehr) fehlgeschlagen: sie wurde schon neu versucht, erledigt oder von jemand anderem entschieden.");
+  if (row.failureCode === REFUND_WRITTEN_OFF) throw new DomainError("Diese Erstattung wurde bereits abgeschrieben.");
+  return { row, matchId: probe.matchId };
+}
+
+/** Neuer Stripe-Idempotenzschluessel je Neuversuch (<alt>:r1, :r2, ...): Stripe liefert bei GLEICHEM Schluessel 24 Stunden lang die ALTE Antwort ohne neue Erstattung (Review R-T376, P1). */
+export const nextRetryKey = (key: string) => {
+  const m = /^(.*):r([0-9]+)$/.exec(key);
+  return m ? `${m[1]}:r${Number(m[2]) + 1}` : `${key}:r1`;
+};
+
+/**
+ * Backlog 192: Admin 1 versucht eine fehlgeschlagene Ausnahme-Erstattung erneut. Dieselbe Zeile, aber ein NEUER Idempotenzschlüssel (nextRetryKey; nie eine zweite Zeile: UNIQUE je Abbuchung; die alte Erstattung ist von Stripe als failed bestätigt),
+ * der Versand läuft über den bestehenden Weg (claimRefund/sendRefund, Ergebnis über applyRefundInTx wie der Webhook). Ein bedingtes UPDATE (status = failed) macht zwei gleichzeitige
+ * Neuversuche zu einem; Stripe selbst lehnt eine zweite Erstattung über den Abbuchungsbetrag ab. Ein Neuversuch bei einem Zahlungsstreit (charge_disputed) ist gesperrt.
+ */
+export async function retryFailedRefund(actorId: string, refundRowId: string): Promise<void> {
+  await requireOwner(actorId);
+  const matchId = await db.transaction(async (tx) => {
+    const { row, matchId: mId } = await lockFailedRefund(tx, refundRowId);
+    if (row.failureCode === "charge_disputed") throw new DomainError("Zu dieser Zahlung läuft oder lief ein Zahlungsstreit: ein Neuversuch ist nicht möglich. Bitte den Streit klären oder die Erstattung abschreiben.");
+    const [charge] = await tx.select().from(paymentCharges).where(eq(paymentCharges.id, row.chargeId));
+    if (!charge || charge.status !== "succeeded") throw new DomainError("Die zugehörige Abbuchung ist nicht (mehr) erfolgreich: kein Neuversuch.");
+    const changed = await tx
+      .update(paymentRefunds)
+      .set({ status: "pending", refundId: null, failureCode: null, attemptStartedAt: null, idempotencyKey: nextRetryKey(row.idempotencyKey), updatedAt: new Date() })
+      .where(and(eq(paymentRefunds.id, row.id), eq(paymentRefunds.status, "failed")))
+      .returning({ id: paymentRefunds.id });
+    if (changed.length !== 1) throw new DomainError("Diese Erstattung wurde gerade von jemand anderem bearbeitet.");
+    await audit(actorId, "refund.retry", "match", mId, { after: { refundRowId: row.id, previousCode: row.failureCode, previousRefundId: row.refundId, previousKey: row.idempotencyKey, amountCents: row.amountCents } }, tx);
+    return mId;
+  });
+  // Nach dem Commit senden (nie ein Stripe-Aufruf in der Transaktion); scheitert der Versand, holt der Job runRefunds es nach
+  await sendPendingRefunds(matchId).catch(() => undefined);
+  const [after] = await db.select({ status: paymentRefunds.status, code: paymentRefunds.failureCode }).from(paymentRefunds).where(eq(paymentRefunds.id, refundRowId));
+  if (after?.status === "failed") throw new DomainError("Stripe hat die Erstattung wieder abgelehnt (Code " + (after.code ?? "unbekannt") + "). Der Alarm bleibt bestehen.");
+  await finalizeCancel(matchId).catch(() => undefined); // wartete eine angeforderte Absage nur auf diese Zeile, jetzt abschliessen (sonst holt es der Job nach)
+}
+
+/**
+ * Backlog 192: Admin 1 schreibt eine fehlgeschlagene Erstattung bewusst ab. NUR eine Buchungsmarkierung (failure_code = written_off): es bewegt sich kein Geld, es wird nichts an Stripe gesendet
+ * und nichts im Hauptbuch gebucht; es ist keine Entscheidung zu Recht oder Steuer. Pflicht-Grund und Protokoll; danach ist die Zeile aufgelöst (kein Alarm, die Absage darf durch).
+ */
+export async function writeOffFailedRefund(actorId: string, refundRowId: string, reason: string): Promise<void> {
+  const text = reason.trim();
+  if (text.length < 3) throw new DomainError("Bitte einen Grund angeben (mindestens 3 Zeichen).");
+  if (text.length > 200) throw new DomainError("Der Grund darf höchstens 200 Zeichen lang sein.");
+  await requireOwner(actorId);
+  const matchId = await db.transaction(async (tx) => {
+    const { row, matchId: mId } = await lockFailedRefund(tx, refundRowId);
+    const changed = await tx
+      .update(paymentRefunds)
+      .set({ failureCode: REFUND_WRITTEN_OFF, updatedAt: new Date() })
+      .where(and(eq(paymentRefunds.id, row.id), eq(paymentRefunds.status, "failed"), sql`${paymentRefunds.failureCode} is distinct from ${REFUND_WRITTEN_OFF}`))
+      .returning({ id: paymentRefunds.id });
+    if (changed.length !== 1) throw new DomainError("Diese Erstattung wurde gerade von jemand anderem bearbeitet.");
+    await audit(actorId, "refund.written_off", "match", mId, { after: { refundRowId: row.id, previousCode: row.failureCode, amountCents: row.amountCents, reason: text } }, tx);
+    return mId;
+  });
+  // Eine Absage, die nur auf diese Zeile wartete, jetzt abschließen (ohne Netzaufruf; finalizeCancel ist idempotent)
+  await finalizeCancel(matchId).catch(() => undefined);
+}
+
+/** Fehlgeschlagene (nicht abgeschriebene) Erstattungen eines Spiels für Admin 1: nur IDs, Betrag, Code; keine Personendaten. */
+export async function listFailedRefundsOfMatch(matchId: string) {
+  return db
+    .select({ id: paymentRefunds.id, amountCents: paymentRefunds.amountCents, code: paymentRefunds.failureCode })
+    .from(paymentRefunds)
+    .where(and(eq(paymentRefunds.matchId, matchId), eq(paymentRefunds.status, "failed"), sql`${paymentRefunds.failureCode} is distinct from ${REFUND_WRITTEN_OFF}`));
+}
