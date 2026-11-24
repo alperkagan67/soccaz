@@ -5,6 +5,7 @@ const NAME = "Zorro Vollname";
 const page = vi.hoisted(() => ({
   value: null as unknown,
 }));
+vi.mock("@/server/turnier-only", () => ({ spielGesperrt: async () => false, bereichGesperrt: async () => false, gesperrteAntwort: () => new Response("gesperrt", { status: 403 }) }));
 vi.mock("@/server/results", () => ({ getMatchPage: async () => page.value }));
 const subscribers = vi.hoisted(() => ({ cbs: [] as Array<() => void> }));
 vi.mock("@/server/realtime", () => ({

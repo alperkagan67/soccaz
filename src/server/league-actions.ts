@@ -11,6 +11,7 @@ import { applyToProEvent, cancelProEvent, createProEvent, drawProEvent, withdraw
 import { requirePermission, requireUser } from "./session";
 import { assignJersey, createSponsor, removeJersey, setSponsorActive } from "./sponsors";
 import { DomainError } from "./teams";
+import { assertBereichOffen } from "./turnier-only";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -33,6 +34,7 @@ async function teamIdBySlug(slug: string): Promise<string> {
 // ---- Ligen -----------------------------------------------------------------------------------
 
 export async function createLeagueAction(_prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/ligen");
   const result = await guarded(async () => void (await createLeague(admin.id, { name: str(f, "name"), city: str(f, "city") || null, startsOn: str(f, "startsOn"), endsOn: str(f, "endsOn"), openJoin: f.get("openJoin") === "on" })));
   revalidatePath("/admin/ligen");
@@ -41,6 +43,7 @@ export async function createLeagueAction(_prev: ActionState, f: FormData): Promi
 }
 
 export async function addLeagueTeamAction(leagueId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/ligen");
   const result = await guarded(async () => {
     if (!(await addTeamToLeague(admin.id, leagueId, await teamIdBySlug(str(f, "slug"))))) throw new DomainError("Das Team ist schon dabei.");
@@ -51,6 +54,7 @@ export async function addLeagueTeamAction(leagueId: string, _prev: ActionState, 
 }
 
 export async function removeLeagueTeamAction(leagueId: string, teamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/ligen");
   const result = await guarded(() => removeTeamFromLeague(admin.id, leagueId, teamId));
   revalidatePath("/admin/ligen");
@@ -59,6 +63,7 @@ export async function removeLeagueTeamAction(leagueId: string, teamId: string): 
 }
 
 export async function finishLeagueAction(leagueId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/ligen");
   const result = await guarded(async () => void (await finishLeague(admin.id, leagueId)));
   revalidatePath("/admin/ligen");
@@ -68,6 +73,7 @@ export async function finishLeagueAction(leagueId: string): Promise<ActionState>
 }
 
 export async function joinLeagueAction(leagueId: string, teamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/ligen/${leagueId}`);
   const result = await guarded(() => joinLeague(user.id, leagueId, teamId));
   revalidatePath(`/ligen/${leagueId}`);
@@ -75,6 +81,7 @@ export async function joinLeagueAction(leagueId: string, teamId: string): Promis
 }
 
 export async function leaveLeagueAction(leagueId: string, teamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/ligen/${leagueId}`);
   const result = await guarded(() => leaveLeague(user.id, leagueId, teamId));
   revalidatePath(`/ligen/${leagueId}`);
@@ -84,6 +91,7 @@ export async function leaveLeagueAction(leagueId: string, teamId: string): Promi
 // ---- Profi-Tag -------------------------------------------------------------------------------
 
 export async function createProEventAction(_prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/profitag");
   const result = await guarded(async () => {
     const startsAt = parseBerlinLocal(str(f, "startsAt"));
@@ -106,6 +114,7 @@ export async function createProEventAction(_prev: ActionState, f: FormData): Pro
 }
 
 export async function drawProEventAction(eventId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/profitag");
   const result = await guarded(async () => void (await drawProEvent(admin.id, eventId)));
   revalidatePath("/admin/profitag");
@@ -114,6 +123,7 @@ export async function drawProEventAction(eventId: string): Promise<ActionState> 
 }
 
 export async function cancelProEventAction(eventId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/profitag");
   const result = await guarded(() => cancelProEvent(admin.id, eventId));
   revalidatePath("/admin/profitag");
@@ -122,6 +132,7 @@ export async function cancelProEventAction(eventId: string): Promise<ActionState
 }
 
 export async function applyProEventAction(eventId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/profitag/${eventId}`);
   const result = await guarded(() => applyToProEvent(user.id, eventId, str(f, "teamId")));
   revalidatePath(`/profitag/${eventId}`);
@@ -129,6 +140,7 @@ export async function applyProEventAction(eventId: string, _prev: ActionState, f
 }
 
 export async function withdrawProApplicationAction(eventId: string, teamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/profitag/${eventId}`);
   const result = await guarded(() => withdrawProApplication(user.id, eventId, teamId));
   revalidatePath(`/profitag/${eventId}`);
@@ -138,6 +150,7 @@ export async function withdrawProApplicationAction(eventId: string, teamId: stri
 // ---- Sponsoren -------------------------------------------------------------------------------
 
 export async function createSponsorAction(_prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/sponsoren");
   const result = await guarded(async () =>
     void (await createSponsor(admin.id, { name: str(f, "name"), url: str(f, "url"), kind: str(f, "kind") as "sponsor" | "jersey", tagline: str(f, "tagline"), startsOn: str(f, "startsOn") || null, endsOn: str(f, "endsOn") || null })),
@@ -147,6 +160,7 @@ export async function createSponsorAction(_prev: ActionState, f: FormData): Prom
 }
 
 export async function toggleSponsorAction(id: string, active: boolean): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/sponsoren");
   const result = await guarded(() => setSponsorActive(admin.id, id, active));
   revalidatePath("/admin/sponsoren");
@@ -154,6 +168,7 @@ export async function toggleSponsorAction(id: string, active: boolean): Promise<
 }
 
 export async function assignJerseyAction(sponsorId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/sponsoren");
   const result = await guarded(async () => assignJersey(admin.id, await teamIdBySlug(str(f, "slug")), sponsorId));
   revalidatePath("/admin/sponsoren");
@@ -161,6 +176,7 @@ export async function assignJerseyAction(sponsorId: string, _prev: ActionState, 
 }
 
 export async function removeJerseyAction(sponsorId: string, teamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const admin = await requirePermission("admin", "/admin/sponsoren");
   const result = await guarded(() => removeJersey(admin.id, teamId, sponsorId));
   revalidatePath("/admin/sponsoren");
