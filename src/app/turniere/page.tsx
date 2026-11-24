@@ -43,7 +43,7 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
       ) : (
         <ul className="card divide-y divide-line" data-testid="tournament-list">
           {list.map((t) => {
-            const open = t.status === "registration" && t.teams < t.maxTeams;
+            const open = t.status === "registration" && t.teams < t.maxTeams && !t.deadlinePassed;
             return (
               <li key={t.id} className="space-y-2 py-3 first:pt-0 last:pb-0" data-testid="tournament-row">
                 <Link href={`/turniere/${t.id}`} className="block space-y-1 hover:text-accent-fg">

@@ -67,6 +67,8 @@ describe("Turnier-Anmelden: nur Captain und offen (Anzeige), Hinweis für alle a
   it("die Liste zeigt 'Team anmelden' nur bei offener, nicht voller Anmeldung und Captain; sonst 'Nur Captains melden Teams an'", () => {
     const s = src("src/app/turniere/page.tsx");
     expect(s).toContain('t.status === "registration" && t.teams < t.maxTeams');
+    expect(s).toContain('t.teams < t.maxTeams && !t.deadlinePassed'); // nach Anmeldeschluss kein Knopf (R-T370 a)
+    expect(src("src/server/tournaments.ts")).toContain("deadlinePassed: sql<boolean>"); // Liste liefert den Anmeldeschluss
     expect(s).toMatch(/captain \? \(/);
     expect(s).toContain("Nur Captains melden Teams an");
     expect(s).toContain('data-testid="tournament-register"');

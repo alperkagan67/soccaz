@@ -884,6 +884,7 @@ export async function listTournaments(filter: { city?: string; viewerId?: string
       startsOn: tournaments.startsOn,
       format: tournaments.format,
       status: tournaments.status,
+      deadlinePassed: sql<boolean>`coalesce(${tournaments.registrationDeadline} <= now(), false)`, // Anmeldeschluss vorbei (wie deadlinePassed oben)
       maxTeams: tournaments.maxTeams,
       entryFeeCents: tournaments.entryFeeCents,
       isPrivate: tournaments.isPrivate,
