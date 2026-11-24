@@ -32,6 +32,9 @@ async function pruefeSeite(page: Page, label: string) {
   expect(await page.locator("main .btn-primary:visible").count(), `${label}: höchstens eine Hauptaktion`).toBeLessThanOrEqual(1);
   const kleine = await page.locator("main .btn:visible").evaluateAll((els) => els.map((e) => ({ text: (e as HTMLElement).innerText.trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44));
   expect(kleine, `${label}: Knöpfe mindestens 44 px hoch`).toEqual([]);
+  // Pilot-P2 (PR A): auch die Knöpfe der Fußzeile (Sprachumschalter) mindestens 44 px hoch und breit
+  const kleineFuss = await page.locator("footer button:visible").evaluateAll((els) => els.map((e) => ({ text: (e as HTMLElement).innerText.trim().slice(0, 20), h: Math.round(e.getBoundingClientRect().height), w: Math.round(e.getBoundingClientRect().width) })).filter((x) => x.h < 44 || x.w < 44));
+  expect(kleineFuss, `${label}: Knöpfe der Fußzeile mindestens 44 px`).toEqual([]);
 }
 
 for (const view of VIEWS) {

@@ -7,7 +7,7 @@ export function LanguageSwitch({ current, label }: { current: Locale; label: str
     <div className="flex items-center gap-2" role="group" aria-label={label}>
       {LOCALES.map((locale) => (
         <form key={locale} action={setLocaleAction.bind(null, locale)}>
-          <button className={locale === current ? "font-semibold text-ink" : "hover:text-ink"} aria-pressed={locale === current} lang={locale}>
+          <button className={`inline-flex min-h-11 min-w-11 items-center justify-center px-2 ${locale === current ? "font-semibold text-ink" : "hover:text-ink"}`} aria-pressed={locale === current} lang={locale}>
             {LOCALE_NAMES[locale]}
           </button>
         </form>
