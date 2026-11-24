@@ -22,7 +22,11 @@ test("Halle lehnt ab (Hinweis endgueltig), Veranstalter sieht nur die Kategorie 
   const org = await (await browser.newContext()).newPage();
   await newUser(boss, "abm");
   await newUser(org, "abo");
-  const [bossId, orgId] = [await userIdByEmail(`abm-${run}@test.local`), await userIdByEmail(`abo-${run}@test.local`)];
+  const cap = await (await browser.newContext()).newPage();
+  const fremd = await (await browser.newContext()).newPage();
+  await newUser(cap, "abc");
+  await newUser(fremd, "abf");
+  const [bossId, orgId, capId] = [await userIdByEmail(`abm-${run}@test.local`), await userIdByEmail(`abo-${run}@test.local`), await userIdByEmail(`abc-${run}@test.local`)];
   await query("update users set is_organizer = true where id = $1", [orgId]);
   const [halle] = await query<{ id: string }>("insert into venues (name, city, is_partner, active) values ($1, 'Essen', true, true) returning id", [venueName]);
   await query("insert into venue_access (venue_id, user_id, status, assigned_at) values ($1, $2, 'active', now())", [halle.id, bossId]);
@@ -32,6 +36,10 @@ test("Halle lehnt ab (Hinweis endgueltig), Veranstalter sieht nur die Kategorie 
     [orgId, tournamentName, halle.id],
   );
 
+  const [team] = await query<{ id: string }>("insert into teams (name, slug, city, created_by) values ($1, $2, 'Essen', $3) returning id", [`Abl-Team ${run}`, `abl-team-${run}`, capId]);
+  await query("insert into team_members (team_id, user_id, role) values ($1, $2, 'admin')", [team.id, capId]);
+  await query("insert into tournament_teams (tournament_id, team_id, captain_id) values ($1, $2, $3)", [t.id, team.id, capId]);
+
   // --- Halle: Ablehnen mit Hinweis ---
   await boss.goto("/halle");
   const card = boss.getByTestId("tournament-confirmation").filter({ hasText: tournamentName });
@@ -39,6 +47,7 @@ test("Halle lehnt ab (Hinweis endgueltig), Veranstalter sieht nur die Kategorie 
   await boss.waitForLoadState("networkidle");
   await card.getByTestId("tournament-decline").locator("summary").click();
   await expect(card.getByTestId("decline-final-note")).toHaveText(/Die Ablehnung ist endgültig\./, { timeout: 20_000 }); // vor dem Absenden
+  await expect(card.getByRole("radio")).toHaveCount(4); // die vier Kategorien
   await card.getByRole("radio", { name: "Belegt" }).check();
   await card.getByLabel("Anmerkung").fill(FREITEXT);
   await clickReady(card.getByRole("button", { name: "Ablehnung senden" }));
@@ -54,6 +63,24 @@ test("Halle lehnt ab (Hinweis endgueltig), Veranstalter sieht nur die Kategorie 
   const ev = await query<{ kind: string; round: number; reason_code: string }>("select kind, round, reason_code from booking_evidence where tournament_id = $1", [t.id]);
   expect(ev).toEqual([{ kind: "declined", round: 1, reason_code: "belegt" }]);
 
+  // --- Sicht: Gast und Fremder lesen weder Kategorie noch Ablehnung (HTML und RSC); der Captain nur den neutralen Satz ---
+  const gast = await (await browser.newContext()).newPage();
+  const sichtbar = async (page: typeof gast) => {
+    const html = await (await page.request.get(`/turniere/${t.id}`)).text();
+    const rsc = await (await page.request.get(`/turniere/${t.id}`, { headers: { RSC: "1" } })).text();
+    return [html, rsc];
+  };
+  for (const page of [gast, fremd]) {
+    const bodies = await sichtbar(page);
+    expect(bodies[0]).toContain(tournamentName); // Positivkontrolle: das Turnier ist lesbar
+    for (const body of bodies) for (const verboten of ["Belegt", "abgelehnt", "Grund:", "kann das Turnier nicht ausrichten", FREITEXT]) expect(body, verboten).not.toContain(verboten);
+  }
+  await cap.goto(`/turniere/${t.id}`);
+  await expect(cap.getByTestId("venue-declined-team")).toHaveText("Die Halle kann das Turnier nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.", { timeout: 60_000 });
+  await expect(cap.getByTestId("venue-declined")).toHaveCount(0);
+  const capBody = await cap.locator("body").innerText();
+  for (const verboten of ["Belegt", "Grund:", "hat abgelehnt", venueName, FREITEXT]) expect(capBody, verboten).not.toContain(verboten);
+
   // --- Veranstalter: nur die Kategorie, zwei Wege, eine Hauptaktion, 44 px ---
   await org.goto(`/turniere/${t.id}`);
   const box = org.getByTestId("venue-declined");
@@ -66,6 +93,7 @@ test("Halle lehnt ab (Hinweis endgueltig), Veranstalter sieht nur die Kategorie 
     expect(body).not.toContain("Spieler abm"); // keine Person der Halle
   }
   await expect(box.locator(".btn-primary")).toHaveCount(1);
+  await expect(org.locator("main .btn-primary:visible")).toHaveCount(1); // AC-30 seitenweit: im Zustand abgelehnt/Zahlungsphase genau EINE Hauptaktion
   const wahl = box.getByRole("button", { name: "Andere Halle wählen" });
   const absagen = box.getByRole("button", { name: "Turnier absagen" });
   await expect(wahl).toHaveClass(/btn-primary/);

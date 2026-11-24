@@ -55,6 +55,11 @@ export function hallDeclinedText(tournamentName: string, venueName: string, code
   return `${venueName} kann ${tournamentName} nicht ausrichten (Grund: ${DECLINE_LABELS[code]}). Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.`;
 }
 
+/** Mitteilung an die Captains bei einer Ablehnung: NEUTRAL, ohne Halle und ohne Kategorie (die Kategorie sieht nur der Veranstalter, Plan 5, AC-17). */
+export function hallDeclinedCaptainText(tournamentName: string): string {
+  return `Die Halle kann ${tournamentName} nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.`;
+}
+
 const NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht zusagen.";
 /** Meldung an die Halle: die Ablehnung ist endgueltig (Entscheid t2q); Wortlaut auch fuer Hinweis und Rueckmeldung der Oberflaeche (PR 2). Entwurf, keine Rechtsaussage. */
 export { HALL_DECLINE_FINAL }; // Wortlaut in src/lib/hall-decline.ts (auch die Oberflaeche nutzt ihn)
@@ -159,8 +164,10 @@ export async function declineTournamentVenue(userId: string, tournamentId: strin
       await tx.transaction(async (sp) => {
         const [v] = await sp.select({ name: venues.name }).from(venues).where(eq(venues.id, t.venueId!));
         const captains = await sp.select({ captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
-        const recipients = [...new Set([t.organizerId, ...captains.map((c) => c.captainId)])].filter((x): x is string => Boolean(x));
-        await notifyUsers(recipients, { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedText(t.name, v?.name ?? "Die Halle", check.code), url: `/turniere/${t.id}` }, sp);
+        const others = [...new Set(captains.map((c) => c.captainId))].filter((x): x is string => Boolean(x) && x !== t.organizerId);
+        // Veranstalter: Halle und Kategorie; Captains: nur der neutrale Satz
+        await notifyUsers([t.organizerId], { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedText(t.name, v?.name ?? "Die Halle", check.code), url: `/turniere/${t.id}` }, sp);
+        if (others.length > 0) await notifyUsers(others, { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedCaptainText(t.name), url: `/turniere/${t.id}` }, sp);
       });
     } catch {
       /* die Ablehnung gilt; die Mitteilung ist Zugabe */
