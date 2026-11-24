@@ -4,6 +4,7 @@ import { LiveIndicator } from "@/components/LiveIndicator";
 import { BoardSection } from "@/components/BoardSection";
 import { MyGames } from "@/components/MyGames";
 import { Challenges } from "@/components/Challenges";
+import { SPIELART_TEXT } from "@/lib/spielarten-texte";
 import { CITIES, filterSchema } from "@/lib/validation";
 import { myChallenges } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
@@ -20,20 +21,39 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
   const challenges = user?.onboardedAt ? await myChallenges(user.id) : { incoming: [], outgoing: [] };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold">Offene Lobbys anderer Teams <LiveIndicator eventsUrl="/api/spiele/stream" /></h1>
-          <p className="text-sm text-muted">Alles öffentlich: Wer spielt gegen wen, wer sucht einen Gegner, wer ist schon in der Lobby. Jedes Spiel hat eine Nummer.</p>
-        </div>
-        <Link href="/matchmaking" className="btn btn-primary !min-h-9">Lobby aufmachen</Link>
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold">Offene Lobbys anderer Teams <LiveIndicator eventsUrl="/api/spiele/stream" /></h1>
+        <p className="text-sm text-muted">Alles öffentlich: Wer spielt gegen wen, wer sucht einen Gegner, wer ist schon in der Lobby. Jedes Spiel hat eine Nummer.</p>
       </div>
+
+      {/* Auswahlschritt "Spiel suchen" (013 M3, Entscheid t2q): Teamspiel, Privatspiel oder Turnier, ohne neue URL. Genau eine Hauptaktion (Lobby aufmachen), die anderen Wege ruhig. */}
+      <section aria-labelledby="modes-h" className="card space-y-3" data-testid="search-modes">
+        <h2 id="modes-h" className="text-lg font-semibold">Was möchtest du spielen?</h2>
+        <ul className="grid gap-4 sm:grid-cols-3">
+          <li className="space-y-2" data-testid="search-mode-team">
+            <h3 className="font-semibold">{SPIELART_TEXT.team.title}</h3>
+            <p className="text-sm text-muted">{SPIELART_TEXT.team.text}</p>
+            <Link href="/matchmaking" className="btn btn-primary">Lobby aufmachen</Link>
+          </li>
+          <li className="space-y-2" data-testid="search-mode-private">
+            <h3 className="font-semibold">{SPIELART_TEXT.private.title}</h3>
+            <p className="text-sm text-muted">{SPIELART_TEXT.private.text}</p>
+            <Link href={user ? "/app/privatspiel/neu" : "/anmelden?next=/app/privatspiel/neu"} className="btn btn-ghost">Privatspiel anlegen</Link>
+          </li>
+          <li className="space-y-2" data-testid="search-mode-tournament">
+            <h3 className="font-semibold">{SPIELART_TEXT.tournament.title}</h3>
+            <p className="text-sm text-muted">{SPIELART_TEXT.tournament.text}</p>
+            <Link href="/turniere" className="btn btn-ghost">Turniere ansehen</Link>
+          </li>
+        </ul>
+      </section>
 
       {user?.onboardedAt && <MyGames userId={user.id} />}
 
       <Challenges incoming={challenges.incoming} outgoing={challenges.outgoing} />
 
-      <form className="card grid grid-cols-2 gap-3 sm:grid-cols-3" method="get">
+      <form className="card grid grid-cols-2 gap-3 sm:grid-cols-3" method="get" aria-label="Lobbys filtern">
         <div>
           <label className="label" htmlFor="city">Stadt</label>
           <select id="city" name="city" defaultValue={filter.city ?? ""} className="field">
@@ -59,7 +79,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
           <label className="label" htmlFor="art">Art</label>
           <select id="art" name="art" defaultValue={one(raw.art) ?? ""} className="field">
             <option value="">Lobbys und Suchen</option>
-            <option value="lobby">Nur Lobbys (Spiel steht)</option>
+            <option value="lobby">Nur Lobbys (Gegner gefunden)</option>
             <option value="suche">Nur Gegnersuchen</option>
           </select>
         </div>
@@ -82,7 +102,7 @@ export default async function SearchPage({ searchParams }: PageProps<"/suche">) 
           </select>
         </div>
         <div className="col-span-2 flex gap-2 sm:col-span-3">
-          <button className="btn btn-primary flex-1">Filtern</button>
+          <button className="btn btn-ghost flex-1">Filtern</button>
           {active && <Link href="/suche" className="btn btn-ghost">Zurücksetzen</Link>}
         </div>
       </form>
