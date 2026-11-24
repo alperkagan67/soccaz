@@ -162,6 +162,8 @@ Erwartet: Smoke-Test (Schritt 5) wieder grün. **Datenbankänderungen gehen nur 
 ## 10. Staging ist anders
 Staging nur mit `sh scripts/staging-compose.sh …` starten (Zugangsschutz, Banner, noindex); nur Stripe-Testschlüssel; nie auf dem Produktionsserver. Vollständiger Ablauf: `pilot-staging-checkliste.md`.
 
+**Veranstalter-Recht entzogen:** Entzug des Veranstalter-Rechts stoppt keine laufenden Turniere; zum Stoppen: Turnier absagen (Admin). Die Rechte im Turnier hängen am Veranstalter des Turniers, das Plattform-Recht steuert nur das Anlegen neuer Turniere.
+
 ## 10a. Staging-Seed für die Generalprobe (Teams 3 bis 6, nur Staging)
 Für das Gratis-Turnier mit 6 Teams sind Teams 1 und 2 **echte** Konten; Teams 3 bis 6 legt `scripts/staging-seed.mjs` mit **erfundenen** Konten an (`probe-t3-s1@staging.invalid` …, Namen „Probe Konto T3-1“, Teams „Probe-Team 3“ bis „Probe-Team 6“; `.invalid` ist nie zustellbar, es wird nie Post verschickt). Das Skript hat eine **eigene Sperre** und verweigert ohne Umgebungsmarke (Schritt 3a), bei `APP_URL` = `socaz.de` oder `www.socaz.de` und ohne ausdrückliche Bestätigung. Ein Staging unter einer Unteradresse (z. B. `staging.socaz.de`) ist erlaubt.
 ```

@@ -31,7 +31,8 @@
       "lobby.spec.ts",
       "pwa.spec.ts",
       "ui-buttons.spec.ts",
-      "konto-hinweis.spec.ts"
+      "konto-hinweis.spec.ts",
+      "turnier-tag.spec.ts"
     ],
     "3": [
       "admin-hallen-anfragen.spec.ts",
@@ -45,7 +46,8 @@
       "results.spec.ts",
       "team-color.spec.ts",
       "teamspiel-ablauf.spec.ts",
-      "gast-sicht-gesamt.spec.ts"
+      "gast-sicht-gesamt.spec.ts",
+      "turnier-tag-16.spec.ts"
     ],
     "4": [
       "community.spec.ts",

@@ -187,7 +187,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             )}
             {!(declined && inPayment) && <ActionButton action={cancelTournamentAction.bind(null, t.id)} label="Turnier absagen" confirm="Turnier absagen? Alle bezahlten Anteile werden vollständig erstattet." className="btn btn-danger !min-h-11 !px-4 text-sm" />}
           </div>
-          <p className="text-xs text-muted">Bis zum Anmeldeschluss kannst du Teams entfernen und durch neue ersetzen. Danach kannst du mit weniger Teams starten (mindestens 4) oder absagen. Wenn in der Zahlungsphase jemand nicht zahlt, öffne die Kader wieder: Alles wird erstattet und der Preis neu berechnet.</p>
+          <p className="text-xs text-muted">{noMoney ? "Du kannst Teams entfernen und durch neue ersetzen, solange der Spielplan noch nicht steht. Mit weniger Teams startest du über den Knopf „Anmeldung schließen“ (mindestens 4), oder du sagst das Turnier ab." : "Bis zum Anmeldeschluss kannst du Teams entfernen und durch neue ersetzen. Danach kannst du mit weniger Teams starten (mindestens 4) oder absagen. Wenn in der Zahlungsphase jemand nicht zahlt, öffne die Kader wieder: Alles wird erstattet und der Preis neu berechnet."}</p>
         </section>
       )}
 

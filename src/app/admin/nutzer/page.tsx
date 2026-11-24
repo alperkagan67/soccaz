@@ -44,6 +44,8 @@ export default async function AdminUsers({ searchParams }: PageProps<"/admin/nut
         <button className="btn btn-primary col-span-2">Filtern</button>
       </form>
 
+      <p className="text-xs text-muted" data-testid="organizer-revoke-note">Entzug des Veranstalter-Rechts stoppt keine laufenden Turniere; zum Stoppen: Turnier absagen (Admin).</p>
+
       {rows.length === 0 ? (
         <p className="card text-muted">Keine Nutzer gefunden.</p>
       ) : (
