@@ -24,7 +24,7 @@ import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
 import { chargeFailureText } from "@/lib/charge-failure-text";
 import { graceText } from "@/lib/grace";
 import { lobbySicht, personRef } from "@/lib/lobby-namen";
-import { lobbyStand } from "@/lib/lobby-stand";
+import { lobbyStand, mainTermOption } from "@/lib/lobby-stand";
 import { lobbyFehlerFall } from "@/lib/lobby-fehler";
 import { isVenueManager } from "@/server/venue-access-rules";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
@@ -274,7 +274,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           teams={[{ id: match.homeId, name: match.homeName }, { id: match.awayId, name: match.awayName }]}
           myTeamId={myAdminTeam}
           main={stand.aktion === "vorschlagen"}
-          mainOptionId={stand.aktion === "abstimmen" ? (scheduling.options.find((o) => !(myAdminTeam && o.votedTeamIds.includes(myAdminTeam)))?.id ?? null) : null}
+          mainOptionId={stand.aktion === "abstimmen" ? mainTermOption(scheduling.options, myAdminTeam, myAdminTeam === match.homeId ? match.awayId : match.homeId) : null}
           deadlineText={match.schedulingDeadline ? `${formatDateTime(match.schedulingDeadline)} Uhr` : "–"}
           minStart={scheduling.minStart}
           slots={slots}

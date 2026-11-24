@@ -32,6 +32,15 @@ export type LobbyStandInput = {
   finalTeam: { confirmed: boolean; complete: boolean } | null;
 };
 
+/**
+ * Welche Option bekommt "Dafür stimmen" als Hauptaktion? Zuerst die Option, für die das ANDERE Team schon gestimmt hat (eine Zustimmung führt direkt zum Termin), sonst die früheste (die Liste ist nach Uhrzeit sortiert).
+ * Hat das eigene Team schon gestimmt oder gibt es keine Option, gibt es keine Hauptoption. Bei mehreren offenen Optionen führt dazu "Dein Stand" mit dem Satz; die übrigen Knöpfe bleiben ruhig.
+ */
+export function mainTermOption(options: readonly { id: string; votedTeamIds: readonly string[] }[], myTeamId: string | null, otherTeamId: string | null): string | null {
+  if (!myTeamId || options.some((o) => o.votedTeamIds.includes(myTeamId))) return null;
+  return (otherTeamId ? options.find((o) => o.votedTeamIds.includes(otherTeamId)) : undefined)?.id ?? options[0]?.id ?? null;
+}
+
 export type LobbyStand = { zeile: string; aktion: LobbyAktion };
 
 export function lobbyStand(s: LobbyStandInput): LobbyStand {
@@ -49,7 +58,7 @@ export function lobbyStand(s: LobbyStandInput): LobbyStand {
     if (s.isCaptain && s.planningPhase === "termin") {
       if ((s.optionCount ?? 0) === 0) return { zeile: "Nächster Schritt: einen Terminvorschlag machen.", aktion: "vorschlagen" };
       if (s.myVoted) return { zeile: "Du hast gewählt. Wir warten auf das andere Team, bis dahin kannst du deine Wahl ändern.", aktion: null };
-      return { zeile: "Nächster Schritt: einem Terminvorschlag zustimmen oder selbst einen machen. Stimmt das andere Team auch zu, steht der Termin.", aktion: "abstimmen" };
+      return { zeile: "Nächster Schritt: einem Terminvorschlag zustimmen oder selbst einen machen. Wählt das andere Team dieselbe Uhrzeit, steht der Termin.", aktion: "abstimmen" };
     }
     if (s.isCaptain && s.planningPhase === "veto") return { zeile: s.myTurn ? "Nächster Schritt: eine Halle bannen." : "Das andere Team ist beim Bannen dran.", aktion: null };
     if (s.isCaptain && s.planningPhase === "hallen") return { zeile: "Die Hallen werden angefragt. Danach bannt ihr abwechselnd Hallen.", aktion: null };
