@@ -75,3 +75,12 @@ describe("Turnier-Anmelden: nur Captain und offen (Anzeige), Hinweis für alle a
     expect(s).toContain("isCaptainOfAnyTeam");
   });
 });
+
+describe("Impeccable-Lauf M3: Knöpfe in GameModes haben senkrechten Innenabstand (cramped-padding bei Umbruch, Start und /app)", () => {
+  it("jeder Knopf (btn btn-...) in GameModes trägt !py-2: bricht ein Label um, sitzt der Text nicht mehr am Rand", () => {
+    const code = src("src/components/GameModes.tsx");
+    const alle = [...code.matchAll(/btn btn-[a-z]+[^"]*"/g)].map((m) => m[0]);
+    expect(alle.length).toBeGreaterThanOrEqual(4); // zwei Zweige von main plus zwei ruhige Knöpfe
+    for (const b of alle) expect(b, b).toMatch(/!py-2/);
+  });
+});
