@@ -13,7 +13,7 @@ import { finalConfirm, setReady, teamComplete } from "@/server/lobby";
 import { cancelUnderfilledLobbies, closeLobbiesAtDeadline } from "@/server/scheduled";
 import { setSetting } from "@/server/settings";
 import { cardModeActive } from "@/server/wallet";
-import { addPlayer, cleanup, makeMatch, makeTeam, makeUser, reloadMatch } from "./helpers";
+import { addPlayer, cleanup, makeMatch, makeTeam, makeUser, reloadMatch, tokenOf } from "./helpers";
 
 const nid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 12)}`;
 
@@ -255,7 +255,7 @@ describe("Turnier mit Preis, Preis wird bei Zahlungen AUS fixiert", () => {
       for (let i = 0; i < t.maxTeams; i++) {
         const captain = await makeUser("cap");
         const team = await makeTeam(captain.id, "Turnier");
-        await registerTeam(captain.id, t.id, team.id);
+        await registerTeam(captain.id, t.id, team.id, await tokenOf(t.id));
         for (let k = 1; k < 4; k++) {
           const p = await makeUser("pl");
           await db.insert(teamMembers).values({ teamId: team.id, userId: p.id, role: "player" });

@@ -12,7 +12,7 @@ import { handleStripeWebhook } from "@/server/payments/webhook";
 import { setSetting } from "@/server/settings";
 import { takeOverTournamentShare } from "@/server/tournament-card";
 import { closeTournamentsAtDeadline, createTournament, joinAsPlayer, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
 beforeAll(() => setSetting(null, "payments_enabled", true));
@@ -59,7 +59,7 @@ async function organizer() {
 async function squad(tid: string, size = 4): Promise<Squad> {
   const captain = await makeUser("cap");
   const team = await makeTeam(captain.id, "Turnier");
-  await registerTeam(captain.id, tid, team.id);
+  await registerTeam(captain.id, tid, team.id, await tokenOf(tid));
   const players = [captain];
   for (let i = 1; i < size; i++) {
     const p = await makeUser("pl");

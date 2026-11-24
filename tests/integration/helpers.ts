@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { db } from "@/db";
 import { matchParticipants, matches, paymentProfiles, teamMembers, teams, users } from "@/db/schema";
 import { venueAccess, venues } from "@/db/schema-finance";
+import { tournaments } from "@/db/schema-league";
 import { cleanupTestData } from "../cleanup";
 import { currentRoundOf } from "@/server/evidence";
 import { setReady } from "@/server/lobby";
@@ -202,4 +203,10 @@ export async function chargeGame(g: { match: { id: string } }, now: Date = new D
 export async function seedWalletBalance(userId: string, cents: number, opts: { from?: "bank" | "revenue" | "clearing"; kind?: "adjustment" | "topup" | "refund"; matchId?: string; paymentId?: string } = {}) {
   const { post } = await import("@/server/ledger");
   await db.transaction((tx) => post(tx, { debit: { account: opts.from ?? "bank" }, credit: { account: "wallet", userId }, amountCents: cents, kind: opts.kind ?? "adjustment", matchId: opts.matchId, paymentId: opts.paymentId, idempotencyKey: `seedwallet-${randomUUID()}`, reason: "Test-Altsaldo" }));
+}
+
+/** Einladungstoken eines Turniers (private Turniere: Anmeldung eines Teams braucht ihn serverseitig). */
+export async function tokenOf(tournamentId: string): Promise<string | null> {
+  const [t] = await db.select({ token: tournaments.inviteToken }).from(tournaments).where(eq(tournaments.id, tournamentId));
+  return t?.token ?? null;
 }

@@ -10,7 +10,7 @@ import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { berlinTime, notifyResumedGames } from "@/server/pause-notify";
 import { resumeUntil } from "@/server/pause-resume";
 import { setSetting } from "@/server/settings";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 import { resumeCycle } from "./pause-helpers";
 
 const staleOnce = vi.hoisted(() => ({ arm: false, used: false }));
@@ -60,7 +60,7 @@ const resumeNotes = async (userId: string) => (await db.select().from(notificati
 async function squad(tid: string, withCards = false) {
   const captain = await makeUser("cap");
   const team = await makeTeam(captain.id, "Turnier");
-  await registerTeam(captain.id, tid, team.id);
+  await registerTeam(captain.id, tid, team.id, await tokenOf(tid));
   const players = [captain];
   for (let i = 1; i < 4; i++) {
     const p = await makeUser("pl");
