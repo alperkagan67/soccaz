@@ -37,7 +37,8 @@ async function axeViolations(page: Page) {
 }
 
 async function userPage(browser: Browser, key: string, viewport: { width: number; height: number }) {
-  const page = await (await browser.newContext({ viewport })).newPage();
+  // reducedMotion: kein Messen mitten im Farbübergang des Weiter-Knopfes (Backlog 247)
+  const page = await (await browser.newContext({ viewport, reducedMotion: "reduce" })).newPage();
   await newUser(page, key);
   return page;
 }

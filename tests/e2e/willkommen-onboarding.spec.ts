@@ -34,7 +34,8 @@ async function axeViolations(page: Page) {
 /** Neues Konto, angemeldet, noch nicht eingerichtet (der Zugang führt auf /willkommen). */
 async function freshUser(browser: Browser, key: string, viewport: { width: number; height: number } = VIEWPORTS.desktop) {
   const email = `${key}-${run}@test.local`;
-  const page = await (await browser.newContext({ viewport })).newPage();
+  // reducedMotion: axe misst color-contrast sonst mitten im 150-ms-Übergang des Weiter-Knopfes (gesperrt -> aktiv), siehe Backlog 247
+  const page = await (await browser.newContext({ viewport, reducedMotion: "reduce" })).newPage();
   await devLogin(page, email, `Spieler ${key}`);
   await page.waitForURL(/\/willkommen/, { timeout: 90_000 });
   return { page, email };
