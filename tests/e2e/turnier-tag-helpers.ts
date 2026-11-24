@@ -88,11 +88,13 @@ export async function enterFinalByHand(page: Page, m: OpenMatch, a: number, b: n
   await page.goto(`/spiele/${m.match_id}`);
   await page.waitForLoadState("networkidle");
   await page.getByTestId("manual-result").locator("summary").click();
+  await expectCleanPhonePage(page, "Spielseite (Handeingabe offen)");
   await page.getByTestId("manual-result").getByRole("spinbutton", { name: m.na, exact: true }).fill(String(a));
   await page.getByTestId("manual-result").getByRole("spinbutton", { name: m.nb, exact: true }).fill(String(b));
   await page.getByTestId("manual-result").getByRole("button", { name: "Endergebnis eintragen" }).click();
   const dialog = confirmDialog(page);
   await expect(dialog.getByTestId("confirm-consequence")).toContainText(`${m.na} ${a} : ${b} ${m.nb}`);
+  expect(zahlungsWorte((await dialog.textContent()) ?? ""), "Zahlungswort im Dialog Endergebnis").toEqual([]);
   await dialog.getByRole("button", { name: "Endgültig eintragen" }).click();
   await waitDecided(m.id);
 }
@@ -103,6 +105,7 @@ export async function goalsThenAbpfiff(page: Page, m: OpenMatch, a: number, b: n
   for (let i = 0; i < b; i++) await query("insert into match_events (match_id, type, team_id) values ($1, 'goal', $2)", [m.match_id, m.team_b]);
   await page.goto(`/spiele/${m.match_id}`);
   await page.waitForLoadState("networkidle");
+  await expectCleanPhonePage(page, "Spielseite vor dem Abpfiff");
   const panel = page.getByTestId("end-match");
   await expect(panel.getByRole("button", { name: "Abpfiff", exact: true })).toHaveCount(1);
   await expect(page.getByTestId("manual-result")).not.toHaveAttribute("open", ""); // AC-30: die Handeingabe liegt eingeklappt darunter
@@ -112,6 +115,7 @@ export async function goalsThenAbpfiff(page: Page, m: OpenMatch, a: number, b: n
   const dialog = confirmDialog(page);
   await expect(dialog.getByTestId("confirm-consequence")).toContainText(`${m.na} ${a} : ${b} ${m.nb}`);
   await expect(dialog).toContainText("endgültig");
+  expect(zahlungsWorte((await dialog.textContent()) ?? ""), "Zahlungswort im Abpfiff-Dialog").toEqual([]);
   if (opts.failFirst) {
     // Fehlerpfad: die Server-Aktion scheitert (Netz weg): die Meldung bleibt im Dialog sichtbar, nichts wird still verschluckt, nichts ist entschieden
     const block = (route: import("@playwright/test").Route) => (route.request().method() === "POST" ? route.abort() : route.continue());
@@ -122,6 +126,9 @@ export async function goalsThenAbpfiff(page: Page, m: OpenMatch, a: number, b: n
     await page.unroute(/\/spiele\//, block);
   }
   await dialog.getByRole("button", { name: "Endgültig beenden" }).click();
+  await waitDecided(m.id);
+  await page.reload();
+  await expectCleanPhonePage(page, "Spielseite nach dem Abpfiff");
 }
 
 /** Unentschieden im K.-o.-Spiel: Sieger des Siebenmeterschießens auf der Turnierseite eintragen. */
@@ -140,7 +147,8 @@ export async function forfeitOnPage(page: Page, tid: string, m: OpenMatch, winne
   await page.waitForLoadState("networkidle");
   const matchBox = page.getByTestId("tournament-match").filter({ hasText: m.na }).filter({ hasText: m.nb });
   await matchBox.getByTestId("forfeit").locator("summary").click();
-  page.once("dialog", (d) => void d.accept());
+  await expectCleanPhonePage(page, "Bracket mit Kampflos-Auswahl");
+  page.once("dialog", (d) => { expect(zahlungsWorte(d.message()), "Zahlungswort in der Kampflos-Rueckfrage").toEqual([]); void d.accept(); });
   await matchBox.getByRole("button", { name: `${winnerName} gewinnt kampflos (3:0)` }).click();
   await waitDecided(m.id);
 }
