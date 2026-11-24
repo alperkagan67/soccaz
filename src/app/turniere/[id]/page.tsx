@@ -34,6 +34,7 @@ import { hasOpenTournamentAuthorization } from "@/server/payments/authorize";
 import { TournamentVenuePick } from "./TournamentVenuePick";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { DECLINE_LABELS, isDeclineCode } from "@/lib/hall-decline";
+import { istGratis } from "@/lib/gratis";
 import { TournamentCard } from "./TournamentCard";
 import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 
@@ -59,7 +60,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const { sicht } = await getViewerSicht({ participant: Boolean(v?.myTeamId), teamAdmin: Boolean(v?.captainTeamId || v?.isOrganizer) });
   const manage = Boolean(v?.isOrganizer);
   const priceFixed = pricing.shareCents !== null;
-  const free = pricing.totalCents === 0 || (priceFixed && pricing.shareCents === 0);
+  const free = istGratis({ totalCents: pricing.totalCents, finalShareCents: pricing.shareCents }); // EINE Regel mit dem Server (src/lib/gratis.ts)
   const inRegistration = t.status === "registration";
   const inPayment = t.status === "payment";
   const allLocked = teams.length === t.maxTeams && teams.every((x) => x.ready);

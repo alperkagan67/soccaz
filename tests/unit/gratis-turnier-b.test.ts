@@ -43,7 +43,7 @@ describe("Texte", () => {
 
 describe("Quelltext-Pins (Verhalten in den Integrationstests)", () => {
   it("Frist-Job: nur Turniere mit Preis > 0 sind Kandidaten; Scheduler ruft die neue Erinnerung", () => {
-    expect(src("src/server/tournaments.ts")).toContain("sql`coalesce(${tournaments.totalCents}, 0) > 0`");
+    expect(src("src/server/tournaments.ts")).toContain("not ${sql.raw(GRATIS_SQL)}");
     expect(src("src/server/scheduled.ts")).toContain("notifyFreeTournamentReminders(now)");
   });
   it("Formular: Anmeldeschluss nur bei Gratis vorbelegt, nur solange das Feld leer ist; Hinweis", () => {
@@ -55,5 +55,24 @@ describe("Quelltext-Pins (Verhalten in den Integrationstests)", () => {
     const p = src("src/app/turniere/[id]/page.tsx");
     expect(p).toMatch(/inRegistration && free && teams\.filter\(\(x\) => x\.ready\)\.length >= 4/);
     expect(p).toContain("inRegistration && !free && data.deadlinePassed");
+  });
+});
+
+describe("EINE Regel 'Gratis' (R-T430)", () => {
+  it("istGratis: Hallenkosten 0 oder Anteil 0; Preis null (Altturnier) ist nicht gratis", async () => {
+    const { istGratis, GRATIS_SQL } = await import("@/lib/gratis");
+    expect(istGratis({ totalCents: 0, finalShareCents: null })).toBe(true);
+    expect(istGratis({ totalCents: 16000, finalShareCents: 0 })).toBe(true);
+    expect(istGratis({ totalCents: 16000, finalShareCents: null })).toBe(false);
+    expect(istGratis({ totalCents: 16000, finalShareCents: 800 })).toBe(false);
+    expect(istGratis({ totalCents: null, finalShareCents: null })).toBe(false);
+    expect(GRATIS_SQL).toContain("coalesce(total_cents, -1) = 0"); // NULL darf die Bedingung nicht zu NULL machen (sonst wuerde der Frist-Job bezahlte Turniere ohne festen Anteil auslassen)
+  });
+  it("Seite und Server nutzen dieselbe Quelle", () => {
+    expect(src("src/app/turniere/[id]/page.tsx")).toContain("istGratis({ totalCents: pricing.totalCents, finalShareCents: pricing.shareCents })");
+    const s = src("src/server/tournaments.ts");
+    expect(s).toContain("istGratis(t)");
+    expect(s).not.toMatch(/\(t\.totalCents \?\? 0\) === 0/);
+    expect(s).toContain("not ${sql.raw(GRATIS_SQL)}");
   });
 });

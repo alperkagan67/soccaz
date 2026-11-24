@@ -26,6 +26,7 @@ import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "./settings";
 import { zahlungenAus } from "./zahlungen-aus";
+import { GRATIS_SQL, istGratis } from "@/lib/gratis";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
 export const MIN_TOURNAMENT_TEAMS = 4;
@@ -310,7 +311,7 @@ async function maybeFixPrice(tx: Tx, t: T) {
   if (cardMode && !fresh.venueId) throw new DomainError("Für dieses Turnier ist noch keine Partnerhalle gewählt. Der Veranstalter muss zuerst eine Halle wählen.");
   await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
   // Gratis-Turnier (Preis 0, Entscheid t2q 2026-11-24): der zweite Klick "Bereit" entfaellt, nach "vollzaehlig" gilt jedes Team als bereit; das Bracket entsteht gleich unten (alle Plaetze belegt = Anmeldung geschlossen, alle Teams vollzaehlig)
-  if ((fresh.totalCents ?? 0) === 0 && share === 0) await tx.update(tournamentTeams).set({ paidReadyAt: new Date() }).where(eq(tournamentTeams.tournamentId, t.id));
+  if (istGratis({ totalCents: fresh.totalCents, finalShareCents: share })) await tx.update(tournamentTeams).set({ paidReadyAt: new Date() }).where(eq(tournamentTeams.tournamentId, t.id));
   if (cardMode && fresh.venueId) {
     const frozen = await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
     // Entscheid t2q A: Zugangsinhaber der Halle erfahren beim Fixieren, dass eine Zusage gefragt ist (entprellt, im Savepoint; dynamischer Import gegen den Importkreis)
@@ -382,7 +383,7 @@ export async function closeWithJoinedTeams(userId: string, tournamentId: string)
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann das.");
     if (!registrationOpen(t)) throw new DomainError("Das Turnier läuft schon oder ist beendet.");
-    const free = (t.totalCents ?? 0) === 0; // Gratis: Anmeldung jederzeit schliessen und mit den BEREITEN (vollzaehligen) Teams starten; bezahlte Turniere: erst nach dem Anmeldeschluss, mit allen angemeldeten Teams
+    const free = istGratis(t); // Gratis: Anmeldung jederzeit schliessen und mit den BEREITEN (vollzaehligen) Teams starten; bezahlte Turniere: erst nach dem Anmeldeschluss, mit allen angemeldeten Teams
     if (!free && !deadlinePassed(t)) throw new DomainError("Das geht erst nach dem Anmeldeschluss.");
     const entries = await tx.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, tournamentId));
     const notReady = free ? entries.filter((e) => !e.readyAt) : [];
@@ -419,13 +420,13 @@ export async function notifyFreeTournamentReminders(now: Date = new Date()): Pro
   const candidates = await db
     .select({ id: tournaments.id })
     .from(tournaments)
-    .where(and(eq(tournaments.status, "registration"), isNull(tournaments.bracketGeneratedAt), sql`coalesce(${tournaments.totalCents}, 0) = 0`, isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`, sql`${tournaments.startsAt} <= ${horizon}`));
+    .where(and(eq(tournaments.status, "registration"), isNull(tournaments.bracketGeneratedAt), sql.raw(GRATIS_SQL), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`, sql`${tournaments.startsAt} <= ${horizon}`));
   let sent = 0;
   for (const { id } of candidates) {
     try {
       sent += await db.transaction(async (tx) => {
         const t = await lockTournament(tx, id);
-        if (!registrationOpen(t) || (t.totalCents ?? 0) !== 0 || !t.startsAt || t.startsAt.getTime() <= now.getTime() || t.startsAt.getTime() > horizon.getTime()) return 0;
+        if (!registrationOpen(t) || !istGratis(t) || !t.startsAt || t.startsAt.getTime() <= now.getTime() || t.startsAt.getTime() > horizon.getTime()) return 0;
         const [done] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, "tournament.free_reminder.24h"), eq(auditLog.entityId, id))).limit(1);
         if (done) return 0;
         const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, id));
@@ -460,7 +461,7 @@ export async function notifyRegistrationDeadlines(now: Date = new Date()): Promi
         const t = await lockTournament(tx, id);
         if (!registrationOpen(t) || !t.registrationDeadline || t.registrationDeadline.getTime() > now.getTime()) return 0;
         const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, id));
-        const free = (t.totalCents ?? 0) === 0;
+        const free = istGratis(t);
         if (n >= t.maxTeams && !free) return 0; // Gratis: auch bei vollem Turnier melden, solange nicht alle Teams vollzaehlig sind
         const url = `/turniere/${id}`;
         const title = "Anmeldeschluss erreicht";
@@ -772,7 +773,7 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
   const candidates = await db
     .select()
     .from(tournaments)
-    .where(and(inArray(tournaments.status, ["registration", "payment"]), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`, sql`coalesce(${tournaments.totalCents}, 0) > 0`)); // Gratis-Turniere (Preis 0) werden NIE automatisch abgesagt (Entscheid t2q 2026-11-24): der Veranstalter entscheidet, Erinnerungen siehe notifyFreeTournamentReminders
+    .where(and(inArray(tournaments.status, ["registration", "payment"]), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`, sql`not ${sql.raw(GRATIS_SQL)}`)); // Gratis-Turniere (Preis 0) werden NIE automatisch abgesagt (Entscheid t2q 2026-11-24): der Veranstalter entscheidet, Erinnerungen siehe notifyFreeTournamentReminders
   let cancelled = 0;
   const preResume = await resumeUntil(); // nur für die Kandidatenauswahl: die Entscheidung liest unter der Turniersperre frisch
   for (const c of candidates) {
