@@ -90,6 +90,13 @@ describe("dashboardStand: Dein Stand und die eine Hauptaktion", () => {
         }
       }
     }
+    it("abgelaufene Fristen werden vor der Auswahl gefiltert: nie die dringendste Hauptaktion", () => {
+      const s = st([g(72)], [{ ...ch(-1), id: "alt" }]); // Frist vor einer Stunde abgelaufen
+      expect(s.action.label).toBe("Zur Lobby");
+      expect(s.second).toBeUndefined();
+      expect(st([], [{ ...ch(-1), id: "alt" }]).action.label).toBe("Spiel suchen"); // ohne Spiel und ohne lebende Herausforderung: wie ohne
+      expect(st([g(72)], [{ ...ch(-1), id: "alt" }, ch(48, "neu")]).action.label).toBe("Herausforderung ansehen"); // nur die lebende zählt, Singular
+    });
     it("die Lobby der Herausforderung selbst ist kein zweites Spiel: keine zweite Zeile mit demselben Spiel", () => {
       const s = st([{ ...g(72), id: "r1" }], [ch(48)]); // ch() trägt href /lobby/r1
       expect(s.second).toBeUndefined();
@@ -173,6 +180,7 @@ describe("Stilregel /app (AC-30): höchstens eine Hauptaktion, kein Guthaben, Te
   it("Dringlichkeit in der Seite: zweite Zeile stand-second mit ruhigem Knopf, Anker für die Liste der Herausforderungen", () => {
     const page = readFileSync(join(process.cwd(), "src/app/app/page.tsx"), "utf8");
     expect(page).toContain('data-testid="stand-second"');
+    expect(page).toContain("mt-2 flex flex-wrap items-center justify-between gap-2"); // 390 px: Text und Knopf brechen um (Sichtprüfung: Knopf unter dem Text)
     expect(page).toMatch(/<LinkButton href={stand.second.action.href} size="sm">/);
     expect(readFileSync(join(process.cwd(), "src/components/Challenges.tsx"), "utf8")).toContain('id="herausforderungen"');
   });

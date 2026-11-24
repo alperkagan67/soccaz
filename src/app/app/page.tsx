@@ -25,7 +25,7 @@ export default async function DashboardPage() {
   const user = await requireUser("/app");
   const [myTeams, games, challenges, current, failures] = await Promise.all([listMyTeams(user.id), myMatches(user.id), myChallenges(user.id), myCurrent(user.id), myChargeFailures(user.id)]);
   const now = new Date();
-  const stand = dashboardStand({ games: current.games, open: current.open, teamCount: myTeams.length, incoming: challenges.incoming.map((c) => ({ id: c.id, fromTeam: c.fromTeam, toTeam: c.toTeam, startsAt: c.startsAt, href: c.href, deadline: c.href ? c.startsAt : null })), now }, formatDateTime);
+  const stand = dashboardStand({ games: current.games, open: current.open, teamCount: myTeams.length, incoming: challenges.incoming.map((c) => ({ id: c.id, fromTeam: c.fromTeam, toTeam: c.toTeam, startsAt: c.startsAt, href: c.href, deadline: c.href ? c.startsAt : null })), now }, formatDateTime); // Frist: bei Lobby-Herausforderungen ist startsAt die Antwortfrist der wartenden Lobby (requests.ts: deadline ?? Anstoß), bei Spielsuchen der angefragte Anstoß und damit keine Antwortfrist
   const groups = groupByKind(games, now);
   const firstName = user.name.split(" ")[0];
 

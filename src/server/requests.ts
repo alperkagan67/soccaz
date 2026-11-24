@@ -324,7 +324,7 @@ export async function myChallenges(userId: string): Promise<{ incoming: Challeng
     const to = names.get(m.away);
     if (!from || !to) continue;
     const isTarget = (await isAdmin(db, userId, m.away)) === true;
-    const row: ChallengeRow = { href: `/lobby/${m.id}`, id: m.id, startsAt: m.deadline ?? m.startsAt, durationMin: 60, city: "", fromTeam: from.name, fromSlug: from.slug, toTeam: to.name, toSlug: to.slug, myTeamId: isTarget ? m.away : m.home, note: null };
+    const row: ChallengeRow = { href: `/lobby/${m.id}`, id: m.id, startsAt: m.deadline ?? m.startsAt /* Antwortfrist der wartenden Lobby (Terminwahl-Frist), sonst Anstoß */, durationMin: 60, city: "", fromTeam: from.name, fromSlug: from.slug, toTeam: to.name, toSlug: to.slug, myTeamId: isTarget ? m.away : m.home, note: null };
     (isTarget ? incoming : outgoing).unshift(row);
   }
   return { incoming, outgoing };

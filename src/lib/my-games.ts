@@ -89,7 +89,10 @@ function challengeEntry(incoming: readonly StandChallenge[], formatDate: (d: Dat
 export function dashboardStand(input: { games: readonly StandGame[]; open: readonly StandOpen[]; teamCount: number; incoming?: readonly StandChallenge[]; now?: Date }, formatDate: (d: Date) => string): Stand {
   // Die Lobby, in der die Herausforderung selbst wartet (href), ist kein eigenes Spiel: sie steht nicht zusätzlich als "Nächstes Spiel" da
   const next = input.games.find((g) => !input.incoming?.some((c) => c.href === `/lobby/${g.id}`));
-  const ch = input.incoming && input.incoming.length > 0 ? challengeEntry(input.incoming, formatDate) : null;
+  // Abgelaufene Fristen (deadline <= jetzt) zählen nicht: sie wären sonst die dringendste Hauptaktion für etwas, das nicht mehr beantwortet werden kann
+  const nowMs = (input.now ?? new Date()).getTime();
+  const live = input.incoming?.filter((c) => !c.deadline || c.deadline.getTime() > nowMs) ?? [];
+  const ch = live.length > 0 ? challengeEntry(live, formatDate) : null;
   const gameEntry = next
     ? {
         line: `Nächstes Spiel: #${next.number} ${next.home} gegen ${next.away}`,
@@ -98,9 +101,9 @@ export function dashboardStand(input: { games: readonly StandGame[]; open: reado
       }
     : null;
   if (ch && gameEntry && next) {
-    const now = (input.now ?? new Date()).getTime();
+    const now = nowMs;
     const gameAt = next.timeOpen ? null : next.startsAt.getTime();
-    const deadline = Math.min(...input.incoming!.map((c) => c.deadline?.getTime() ?? Infinity));
+    const deadline = Math.min(...live.map((c) => c.deadline?.getTime() ?? Infinity));
     const gameFirst = gameAt === null ? !Number.isFinite(deadline) : gameAt - now <= DAY_MS || !Number.isFinite(deadline) || gameAt <= deadline;
     if (gameFirst) return { ...gameEntry, second: { line: ch.line, action: ch.action } };
     return { ...ch, second: { line: gameEntry.line, action: gameEntry.action } };
