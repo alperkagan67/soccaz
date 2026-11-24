@@ -69,8 +69,9 @@ describe("Zusatz security-Review (#397)", () => {
     expect(gr.indexOf("if (!mitglied) return null;")).toBeLessThan(gr.indexOf("const entries = await db"));
     expect(s).toContain("tokenOk, // der gelieferte Token ist gültig");
   });
-  it("neutrale Seite trägt selbst noindex", () => {
-    expect(src("src/components/EinladungUngueltig.tsx")).toContain('<meta name="robots" content="noindex, nofollow" />');
+  it("noindex hat EINE Quelle: das statische metadata der Turnierseite; die neutrale Komponente setzt kein zweites robots-Meta", () => {
+    expect(src("src/components/EinladungUngueltig.tsx")).not.toMatch(/<meta/);
+    expect(src("src/app/turniere/[id]/page.tsx")).toContain("robots: { index: false }");
   });
 });
 

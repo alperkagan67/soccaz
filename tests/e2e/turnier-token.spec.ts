@@ -29,6 +29,7 @@ test("privates Turnier: ohne/falscher Token = neutrale Seite (gleich wie unbekan
     expect(antworten.at(-1), pfad).not.toContain(t.name);
     expect(await gast.locator("main").innerHTML(), pfad).not.toContain("falsch"); // im sichtbaren Teil kein Token (die eigene Adresse steht nur im technischen Seitenzustand von Next) // der falsche Token wird nirgends zurückgegeben oder weitergereicht
     expect(await gast.locator('a[href*="?t="], a[href*="&t="]').count(), pfad).toBe(0);
+    await expect(gast.locator('meta[name="robots"]'), pfad).toHaveCount(1); // genau EINE robots-Quelle
     await expect(gast.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
   }
   expect(new Set(antworten).size, "unbekannt und falscher Token sehen identisch aus").toBe(1);
