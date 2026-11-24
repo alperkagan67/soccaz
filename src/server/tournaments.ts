@@ -25,6 +25,7 @@ import { venueAccessHolderIds } from "./venue-access-rules";
 import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "./settings";
+import { zahlungenAus } from "./zahlungen-aus";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
 export const MIN_TOURNAMENT_TEAMS = 4;
@@ -83,6 +84,7 @@ export async function createTournament(userId: string, input: TournamentInput) {
   if (!Number.isInteger(input.maxTeams) || input.maxTeams < MIN_TOURNAMENT_TEAMS || input.maxTeams > MAX_TOURNAMENT_TEAMS) throw new DomainError(`${MIN_TOURNAMENT_TEAMS} bis ${MAX_TOURNAMENT_TEAMS} Teams.`);
   if (!Number.isInteger(input.durationMin) || input.durationMin < 30 || input.durationMin > 720 || input.durationMin % 15 !== 0) throw new DomainError("Das Turnier dauert 30 Minuten bis 12 Stunden (in 15-Minuten-Schritten).");
   let hourly = input.hourlyCents ?? null;
+  if (hourly === null && (await zahlungenAus())) hourly = 0; // Zahlungen AUS: kostenlos, kein Standardpreis noetig (Gratis-Turnier, Entscheid t2q 2026-11-24)
   if (hourly === null) {
     const standard = await priceFor(db, null, 60);
     if (!standard) throw new DomainError("Für die Halle gibt es keinen Standardpreis. Bitte gib den Hallenpreis pro Stunde an.");
@@ -188,7 +190,7 @@ export async function joinAsPlayer(userId: string, tournamentId: string, teamId:
     const [member] = await tx.select({ userId: teamMembers.userId }).from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
     if (!member) throw new DomainError("Nur Mitglieder des Teams können dem Turnier beitreten. Tritt zuerst über den Einladungslink des Teams bei.");
     const [existing] = await tx.select({ teamId: tournamentPlayers.teamId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
-    if (existing) throw new DomainError("Du bist schon im Turnier-Kader.");
+    if (existing) throw new DomainError(existing.teamId === teamId ? "Du bist schon im Turnier-Kader." : "Du bist schon in einem anderen Team dieses Turniers. Ein Konto spielt je Turnier nur in einem Team.");
     const [{ n }] = await tx.select({ n: count() }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
     if (n >= MAX_PER_TEAM) throw new DomainError("Der Kader ist voll.");
     await tx.insert(tournamentPlayers).values({ tournamentId, teamId, userId });
