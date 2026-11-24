@@ -28,6 +28,9 @@ async function pruefeSeite(page: Page, label: string) {
     return out;
   });
   expect(tiny, `${label}: keine Schrift unter 12 px`).toEqual([]);
+  // Pilot-P2 (PR C): Fußzeilenlinks mindestens 14 px (text-sm), nicht mehr 12 px
+  const kleineSchrift = await page.locator("footer a:visible").evaluateAll((els) => els.map((e) => ({ text: (e as HTMLElement).innerText.trim().slice(0, 20), px: parseFloat(getComputedStyle(e).fontSize) })).filter((x) => x.px < 14));
+  expect(kleineSchrift, `${label}: Fußzeilenlinks mindestens 14 px`).toEqual([]);
   // Lauf 3 (P2-2), AC-30 b und AC-3: höchstens EINE Hauptaktion je Seite, jeder Knopf mindestens 44 px hoch
   expect(await page.locator("main .btn-primary:visible").count(), `${label}: höchstens eine Hauptaktion`).toBeLessThanOrEqual(1);
   const kleine = await page.locator("main .btn:visible").evaluateAll((els) => els.map((e) => ({ text: (e as HTMLElement).innerText.trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44));

@@ -135,8 +135,8 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false, o
     return (
       <div className="space-y-3" data-testid="card-stored">
         <p className="text-sm">Gespeicherte Karte: <strong>{stored.brand ? `${stored.brand} ` : ""}•••• {stored.last4}</strong></p>
-        <label className="flex items-start gap-2 text-sm" htmlFor="card-mandate-stored">
-          <input id="card-mandate-stored" type="checkbox" className="mt-1" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+        <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm" htmlFor="card-mandate-stored">
+          <input id="card-mandate-stored" type="checkbox" className="mt-0.5 size-6 shrink-0" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
           <span data-testid="card-mandate">{mandateText}</span>
         </label>
         <button className={`btn ${quiet ? "btn-ghost" : "btn-primary"} w-full`} disabled={busy || !accepted} onClick={useStored} data-testid="card-use-stored">{busy ? "Bitte warten…" : ZP.cardUseStored}</button>
@@ -154,8 +154,8 @@ export function CardForm({ matchId, mandateText, fake, stored, change = false, o
         </Elements>
       ) : (
         <>
-          <label className="flex items-start gap-2 text-sm" htmlFor="card-mandate">
-            <input id="card-mandate" type="checkbox" className="mt-1" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1 text-sm" htmlFor="card-mandate">
+            <input id="card-mandate" type="checkbox" className="mt-0.5 size-6 shrink-0" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
             <span data-testid="card-mandate">{mandateText}</span>
           </label>
           <button className={`btn ${quiet ? "btn-ghost" : "btn-primary"} w-full`} disabled={busy || !accepted} onClick={start} data-testid={fake ? "card-fake" : "card-start"}>

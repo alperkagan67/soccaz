@@ -5,7 +5,7 @@ import { LanguageSwitch } from "./LanguageSwitch";
 export async function Footer() {
   const { locale, t } = await getT();
   return (
-    <footer className="mx-auto w-full max-w-3xl space-y-3 px-4 pb-24 text-xs text-muted sm:px-6 sm:pb-8">
+    <footer className="mx-auto w-full max-w-3xl space-y-3 px-4 pb-24 text-sm text-muted sm:px-6 sm:pb-8">
       <nav aria-label={t("footer.legal")} className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line pt-4">
         <Link href="/hilfe" className="inline-flex min-h-11 items-center hover:text-ink">{t("footer.help")}</Link>
         <Link href="/kontakt" className="inline-flex min-h-11 items-center hover:text-ink">{t("footer.contact")}</Link>
