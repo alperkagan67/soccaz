@@ -208,3 +208,36 @@ describe.skipIf(!TOOLS)(`Restore-Probe mit echter Sicherung${TOOLS ? "" : ` (ÜB
     expect(r.stdout + r.stderr).not.toMatch(/@example\.|@test\./);
   }, 300_000);
 });
+
+// CI #301: der Pool auf die Wegwerf-Datenbank hatte beim DROP ... WITH (FORCE) noch eine ruhende Verbindung; ohne Fehler-Handler starb das Skript mit "Unhandled error event".
+describe("Wegwerf-Pool: DROP trotz offener Verbindung (ohne Werkzeuge lauffähig)", () => {
+  const dbName = `restore_check_pooltest_${process.pid}`;
+  it("Pool hat einen Fehler-Handler, wird als globalThis.pool eingetragen, überlebt das Trennen und wird vor dem DROP geschlossen", async () => {
+    const { makeScratchPool, closeScratchPools } = await import("../../scripts/restore-test.mjs");
+    const prev = (globalThis as { pool?: unknown }).pool; // der Pool von src/db in diesem Testprozess
+    const admin = new pg.Client({ connectionString: adminUrl });
+    await admin.connect();
+    try {
+      await admin.query(`create database "${dbName}"`);
+      const pool = makeScratchPool(withDatabase(url, dbName));
+      expect(pool.listenerCount("error")).toBeGreaterThan(0);
+      expect((globalThis as { pool?: unknown }).pool).toBe(pool);
+      await pool.query("select 1"); // Verbindung ruht jetzt im Pool
+      await admin.query(`drop database "${dbName}" with (force)`); // trennt die ruhende Verbindung: ohne Handler "Unhandled error event"
+      await new Promise((r) => setTimeout(r, 300));
+      await closeScratchPools(pool);
+      expect((globalThis as { pool?: unknown }).pool).toBeUndefined();
+      // closeScratchPools schließt wirklich: eine ruhende Verbindung ist danach weg (nicht erst durch den DROP)
+      await admin.query(`create database "${dbName}"`);
+      const pool2 = makeScratchPool(withDatabase(url, dbName));
+      await pool2.query("select 1");
+      expect(pool2.totalCount).toBe(1);
+      await closeScratchPools(pool2);
+      expect(pool2.totalCount).toBe(0);
+    } finally {
+      (globalThis as { pool?: unknown }).pool = prev;
+      await admin.query(`drop database if exists "${dbName}" with (force)`);
+      await admin.end();
+    }
+  });
+});

@@ -23,6 +23,29 @@ const die = (msg, code = 2) => {
   process.exit(code);
 };
 
+/**
+ * EIN Pool auf die Wegwerf-Datenbank für alle Prüfungen. Er wird auch als globalThis.pool eingetragen: src/db (Beweisketten-Export) nutzt dann genau diesen Pool,
+ * statt einen eigenen ohne Fehler-Handler zu öffnen (CI #301: ruhende Verbindung eines fremden Pools wurde beim DROP ... WITH (FORCE) getrennt, "Unhandled error event", Skript tot).
+ * Der Handler fängt bis zum Schließen Trennungen ab (ohne Ausgabe: die Meldung könnte Verbindungsdaten enthalten).
+ */
+export function makeScratchPool(url) {
+  const p = new pg.Pool({ connectionString: url, max: 2 });
+  p.on("error", () => {});
+  globalThis.pool = p;
+  return p;
+}
+
+/** Schließt ALLE Pools auf die Wegwerf-Datenbank VOR dem DROP: den eigenen und, falls vorhanden, den als globalThis.pool eingetragenen der Anwendung. */
+export async function closeScratchPools(pool) {
+  const app = globalThis.pool;
+  await pool?.end().catch(() => null);
+  if (app && app !== pool) {
+    app.on("error", () => {});
+    await app.end().catch(() => null);
+  }
+  globalThis.pool = undefined;
+}
+
 export function parseArgs(argv) {
   const o = { file: null, manifest: null, headHash: undefined, count: undefined, keep: false, strict: false, showErrors: false, help: false };
   for (let i = 0; i < argv.length; i++) {
@@ -145,13 +168,11 @@ async function main() {
       results.push({ id: "restore", status: "FAIL", text: `${format === "custom" ? "pg_restore" : "psql"} endete mit Code ${r.code}${args.showErrors ? `:\n${r.err.slice(0, 2000)}` : " (Fehlertext mit --show-errors)"}${restoreHint(r.err) ? ` ${restoreHint(r.err)}` : ""}` });
     } else {
       results.push({ id: "restore", status: "PASS", text: "Sicherung eingespielt." });
-      pool = new pg.Pool({ connectionString: scratchUrl, max: 2 });
-      pool.on("error", () => {}); // Leerlauf-Verbindungen werden beim Löschen der Wegwerf-Datenbank getrennt: kein Absturz
+      pool = makeScratchPool(scratchUrl);
       await checks(pool, scratchUrl, manifest, args, results);
     }
   } finally {
-    if (pool) await pool.end().catch(() => null);
-    await globalThis.pool?.end().catch(() => null); // Pool der Anwendung (src/db), den der Beweisketten-Export geöffnet hat
+    await closeScratchPools(pool);
     if (args.keep) console.log(`Wegwerf-Datenbank ${name} bleibt (--keep); später löschen.`);
     else if (scratchNameOk(name)) await admin.query(`drop database if exists "${name}" with (force)`).catch(() => console.error(`Wegwerf-Datenbank ${name} konnte nicht gelöscht werden: von Hand löschen.`));
     await admin.end().catch(() => null);
