@@ -23,11 +23,11 @@ const fake = (over: Record<string, { status: number; body: string }> = {}, seen:
 
 describe("scripts/smoke.mjs", () => {
   it("alles in Ordnung: alle Prüfungen bestanden; /spiele nur mit --turnier-only", async () => {
-    expect(buildChecks().map((c: { path: string }) => c.path)).toEqual(["/api/health", "/anmelden", "/turniere", "/impressum", "/robots.txt"]);
+    expect(buildChecks().map((c: { path: string }) => c.path)).toEqual(["/api/health", "/anmelden", "/anmelden", "/anmelden", "/turniere", "/impressum", "/robots.txt"]);
     expect(buildChecks({ turnierOnly: true }).map((c: { path: string }) => c.path)).toContain("/spiele");
     const r = await runSmoke({ base: "https://socaz.de/", fetchImpl: fake(), turnierOnly: true });
     expect(r.ok).toBe(true);
-    expect(r.results).toHaveLength(6);
+    expect(r.results).toHaveLength(8);
   });
   it("Fehlerfälle: Datenbank down, falscher Status, fehlender Inhalt, Server nicht erreichbar", async () => {
     expect((await runSmoke({ base: "https://x.de", fetchImpl: fake({ "/api/health": { status: 503, body: '{"status":"error"}' } }) })).ok).toBe(false);
@@ -38,6 +38,14 @@ describe("scripts/smoke.mjs", () => {
     const down = await runSmoke({ base: "https://x.de", fetchImpl: (async () => { throw Object.assign(new Error("x"), { name: "TypeError" }); }) as unknown as typeof fetch });
     expect(down.ok).toBe(false);
     expect(down.results[0]?.detail).toContain("nicht erreichbar");
+  });
+  it("Anmeldeseite: kein Dev-Login in Produktion; Apple-Knopf nur mit --apple", async () => {
+    const dev = await runSmoke({ base: "https://x.de", fetchImpl: fake({ "/anmelden": { status: 200, body: "Mit Google anmelden. Dev-Login (nur lokal)" } }) });
+    expect(dev.results.find((x: { what: string }) => x.what.includes("Dev-Login"))?.ok).toBe(false);
+    const mitApple = fake({ "/anmelden": { status: 200, body: "Mit Google anmelden. Mit Apple anmelden" } });
+    expect((await runSmoke({ base: "https://x.de", fetchImpl: mitApple })).ok).toBe(false); // Apple-Knopf ohne Schalter
+    expect((await runSmoke({ base: "https://x.de", fetchImpl: mitApple, apple: true })).ok).toBe(true);
+    expect((await runSmoke({ base: "https://x.de", fetchImpl: fake(), apple: true })).ok).toBe(false); // Schalter an, Knopf fehlt
   });
   it("Zugangsschutz (Staging): Basic-Auth nur aus dem Parameter, nie in der Ergebnisausgabe", async () => {
     const seen: { url: string; auth?: string }[] = [];

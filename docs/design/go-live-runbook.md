@@ -46,6 +46,12 @@ grep -c "^PAYMENTS_FAKE=" .env
 ```
 Erwartet: `1` und `0`. (`.env` nie ausgeben oder verschicken.)
 
+**PAUSE-Prüfpunkt: `PAYMENTS_FAKE` ist nicht gesetzt** (Pflicht vor jedem Start und nach jedem Update; Treffer = **STOPP**, nicht starten). Zusätzlich zur `.env` auch die Umgebung des **laufenden** Containers prüfen (nach dem Start, Schritt 4):
+```
+docker compose exec -T app sh -c 'test -z "$PAYMENTS_FAKE" && echo OK || echo STOPP'
+```
+Erwartet: `OK`. `STOPP` = Variable aus `.env` und aus Compose-Dateien entfernen, neu starten, erneut prüfen. Die Anwendung selbst **startet in Produktion nicht**, wenn `PAYMENTS_FAKE=1` gesetzt ist (Startsperre; Meldung im Log `PAYMENTS_FAKE=1 ist in Produktion verboten`). Das gilt auch für Staging.
+
 ## 4. Starten und Migration
 ```
 docker compose up -d --build        # Staging: sh scripts/staging-compose.sh up -d --build
@@ -58,7 +64,7 @@ Erwartet: `db`, `app`, `caddy`, `backup` laufen; `migrate` ist beendet (`Exited 
 ```
 node scripts/smoke.mjs https://socaz.de --turnier-only
 ```
-Erwartet: jede Zeile `OK`, am Ende `Alle Prüfungen bestanden`, Ende-Code 0. (Prüft `/api/health`, Anmeldeseite, `/turniere`, `/impressum`, `/robots.txt` und mit `--turnier-only` die „kommt bald“-Seite unter `/spiele`.) Das Skript braucht nur Node 22 (`node -v`); es nutzt keine Schlüssel.
+Erwartet: jede Zeile `OK`, am Ende `Alle Prüfungen bestanden`, Ende-Code 0. (Prüft `/api/health`, Anmeldeseite, `/turniere`, `/impressum`, `/robots.txt` und mit `--turnier-only` die „kommt bald“-Seite unter `/spiele`.) Zusätzlich prüft es, dass `/anmelden` **keinen Dev-Login** zeigt (in Produktion und Staging darf es ihn nie geben). Ist die Apple-Anmeldung eingeschaltet (`APPLE_LOGIN_ENABLED=1`), rufen Sie mit `--apple` auf: dann **muss** der Apple-Knopf da sein, sonst darf er **nicht** da sein. Das Skript braucht nur Node 22 (`node -v`); es nutzt keine Schlüssel.
 
 ## 6. Admin 1 festlegen (einmalig)
 1. **Einmal mit Google anmelden** (`https://socaz.de/anmelden`), damit das Konto existiert.
@@ -69,6 +75,9 @@ docker compose run --rm -e OWNER_EMAIL=<ihre-google-adresse> migrate node script
 docker compose run --rm -e OWNER_EMAIL=<ihre-google-adresse> migrate node scripts/set-owner.mjs --yes
 ```
 Erwartet: der Trockenlauf nennt nur Host und Datenbankname, `--yes` meldet Erfolg. (Der Aufruf über den `migrate`-Dienst ist eine **Annahme**: bei der Generalprobe belegen; sonst `BETRIEB.md`, „Admin 1 festlegen“.)
+
+## 6a. Apple-Anmeldung (nur falls eingeschaltet: `APPLE_LOGIN_ENABLED=1`)
+Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate). **Erneuerung spätestens alle 5 Monate.** Tragen Sie das **Ablaufdatum** in der Betriebsdoku ein (`docs/BETRIEB.md`, Abschnitt „Apple-Anmeldung“, Zeile „Client-Secret gültig bis: <Datum>“) und legen Sie sich **zwei Kalendereinträge** an: 4 Wochen vor Ablauf und am Tag vor Ablauf. Läuft das Secret ab, schlägt die Apple-Anmeldung still fehl (Google bleibt unberührt). Prüfung nach der Erneuerung: Smoke-Test mit `--apple` und eine echte Anmeldung.
 
 ## 7. Sicherung (Backup) und Wiederherstellungsprobe
 - Läuft automatisch: täglich 03:30 UTC, 14 Tage in `./backups`. Sofort: `docker compose exec backup sh /backup-loop.sh once`; Erwartet: neue Datei `backups/socaz-…sql.gz`.
