@@ -19,7 +19,7 @@ function Games({ games }: { games: ClockGame[] }) {
         <li key={g.court} className="flex gap-1.5">
           <span className="shrink-0 text-muted">Platz {g.court}</span>
           <span className="truncate">
-            {g.fun ? "Just for fun: " : ""}
+            {g.fun ? "Spaßspiel: " : ""}
             {g.nameA && g.nameB ? (g.matchId ? <Link href={`/spiele/${g.matchId}`} className="text-accent-fg underline">{g.nameA} – {g.nameB}</Link> : `${g.nameA} – ${g.nameB}`) : "Verlierer der Halbfinals"}
           </span>
         </li>
