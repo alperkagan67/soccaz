@@ -8,7 +8,11 @@ import { formatDateTime } from "@/lib/time";
 import { InviteBox } from "@/app/teams/[slug]/InviteBox";
 import { leaveQueueAction, openLobbyJoinAction } from "@/server/matchmaking-actions";
 import { getOpenLobby } from "@/server/matchmaking";
+import { PersonName } from "@/components/PersonName";
+import { initialsOf } from "@/lib/guest-roster";
+import { personRef } from "@/lib/lobby-namen";
 import { getCurrentUser } from "@/server/session";
+import { getViewerSicht } from "@/server/viewer-sicht";
 
 export const metadata: Metadata = { title: "Offene Lobby", robots: { index: false } };
 
@@ -18,6 +22,8 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
   const user = await getCurrentUser();
   const lobby = await getOpenLobby(entryId, user?.id ?? null);
   if (!lobby) notFound();
+  // AC-17 (Entscheid t2q 2026-11-24): Spielernamen nur für Angemeldete; Gäste und reine Betreiber sehen Initialen (Rest-Kader nur Anzahl und Initialen), ohne Link
+  const { sicht } = await getViewerSicht({ participant: lobby.viewer.isMember, teamAdmin: lobby.viewer.isAdmin });
   if (lobby.status === "matched" && lobby.matchId) redirect(`/lobby/${lobby.matchId}`);
   const open = lobby.status === "waiting";
   const joined = lobby.members.filter((m) => m.joined);
@@ -43,10 +49,10 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
           <span className="text-xs text-muted">{lobby.joinedCount} von {lobby.slots} Plätzen</span>
         </div>
         <ul className="space-y-2 text-sm">
-          {joined.map((m) => (
-            <li key={m.userId} className="flex items-center justify-between gap-2" data-testid="open-lobby-player">
+          {joined.map((m, i) => (
+            <li key={personRef(sicht, m.userId, m.name, i).key} className="flex items-center justify-between gap-2" data-testid="open-lobby-player">
               <span>
-                <Link href={`/spieler/${m.userId}`} className="hover:text-accent-fg">{m.name}</Link>
+                <PersonName person={personRef(sicht, m.userId, m.name, i)} />
                 {m.isAdmin && <span className="ml-2 text-xs text-muted">Captain</span>}
                 {m.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
               </span>
@@ -67,8 +73,8 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
           <div className="border-t border-line pt-2">
             <p className="mb-1 text-xs text-muted">Im Team, aber noch nicht in der Lobby</p>
             <ul className="space-y-1 text-sm text-muted">
-              {lobby.members.filter((m) => !m.joined).map((m) => (
-                <li key={m.userId}>{m.name}</li>
+              {lobby.members.filter((m) => !m.joined).map((m, i) => (
+                <li key={sicht === "member" ? m.userId : `r${i}`}>{sicht === "member" ? m.name : initialsOf(m.name)}</li>
               ))}
             </ul>
           </div>

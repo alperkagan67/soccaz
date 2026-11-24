@@ -142,11 +142,16 @@ test("Profile: Steckbrief, Form, Elo-Verlauf, Direktvergleich", async ({ browser
   await query("insert into match_participants (match_id, user_id, team_id) values ($1, $2, $3), ($4, $2, $3)", [m1, idA, teamA.id, m2]);
 
   const anon = await (await browser.newContext()).newPage();
+  // Spielerprofil: für Gäste nicht öffentlich (AC-17, Entscheid t2q 2026-11-24: Anmeldung mit Rücksprung), Angemeldete sehen es
   await anon.goto(`/spieler/${idA}`);
-  await expect(anon.getByTestId("bio")).toContainText(`Spiele seit zehn Jahren ${run}`);
-  await expect(anon.getByTestId("sparkline")).toContainText("1000 → 1012");
-  await expect(anon.getByTestId("form")).toBeVisible();
-  await expect(anon.getByText("Siegquote")).toBeVisible();
+  await expect(anon).toHaveURL(new RegExp(`/anmelden\\?next=${encodeURIComponent(`/spieler/${idA}`)}`));
+  const viewer = await (await browser.newContext()).newPage();
+  await newUser(viewer, "bprof");
+  await viewer.goto(`/spieler/${idA}`);
+  await expect(viewer.getByTestId("bio")).toContainText(`Spiele seit zehn Jahren ${run}`);
+  await expect(viewer.getByTestId("sparkline")).toContainText("1000 → 1012");
+  await expect(viewer.getByTestId("form")).toBeVisible();
+  await expect(viewer.getByText("Siegquote")).toBeVisible();
 
   await anon.goto(`/teams/${teamA.slug}`);
   // Backlog B-b AC-2: Gäste sehen Teamname, Stadt und Spielerzahl, aber keine Spielernamen
@@ -215,7 +220,9 @@ test("Spielerprofil wie ein Gamer-Profil: Spitzname, Nummer, Farbe, kommende und
     await query("insert into match_participants (match_id, user_id, team_id) values ($1, $2, $3)", [m, id, team]);
   }
 
+  // `anon` ist hier ein angemeldeter Betrachter: das Profil ist für Gäste nicht öffentlich (AC-17, Entscheid t2q 2026-11-24)
   const anon = await (await browser.newContext()).newPage();
+  await newUser(anon, "bgam");
   await anon.goto(`/spieler/${id}`);
   await expect(anon.getByTestId("nickname")).toContainText("Der Hammer");
   const card = anon.getByTestId("gamer-card");

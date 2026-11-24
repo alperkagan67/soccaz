@@ -181,6 +181,9 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     status: match.status,
     active,
     planning: open,
+    planningPhase: scheduling ? "termin" : planning ? (match.vetoStatus === "running" ? "veto" : "hallen") : null,
+    isCaptain: v.adminOf.includes(match.homeId) || v.adminOf.includes(match.awayId),
+    myTurn: Boolean(veto && veto.status === "running" && myAdminTeam && veto.turnTeamId === myAdminTeam),
     challengePending,
     challengeRole: v.adminOf.includes(match.awayId) ? "target" : v.adminOf.includes(match.homeId) ? "challenger" : "viewer",
     participant: Boolean(v.participant),
@@ -238,17 +241,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         {stand.aktion === "spielseite" && <Link href={`/spiele/${match.id}`} className="btn btn-primary w-full sm:w-auto">Zur Spielseite</Link>}
       </section>
 
-      {isPrivate && inviteUrl && (
-        <ShareLink url={inviteUrl} title="Einladungslink zum Spiel" shareText={`Privatspiel #${match.number} auf Socaz: komm dazu!`} testId="game-invite" quiet hint={`${participants.length} von ${match.maxPlayers ?? 10} Plätzen belegt. Wer den Link öffnet, meldet sich an oder registriert sich und landet direkt in diesem Spiel.`} />
-      )}
-      {inviteManager && match.status !== "cancelled" && (
-        <section className="flex flex-wrap items-center gap-2" data-testid="invite-admin">
-          {inviteUrl && <ActionButton action={revokeGameInviteAction.bind(null, match.id)} label="Link zurückziehen" confirm="Der bisherige Link wird sofort ungültig. Wer schon im Spiel ist, bleibt drin." className="btn btn-ghost text-sm" />}
-          <ActionButton action={regenerateGameInviteAction.bind(null, match.id)} label={inviteUrl ? "Neuen Link erzeugen" : "Einladungslink erzeugen"} confirm={inviteUrl ? "Der bisherige Link wird ungültig, ein neuer Link wird erzeugt." : undefined} className="btn btn-ghost text-sm" />
-          {!inviteUrl && <p className="text-sm text-muted">Es gibt gerade keinen gültigen Einladungslink.</p>}
-        </section>
-      )}
-      {isPrivate && v.canManage && active && <PrivateTools matchId={match.id} waiting={pendingStrangers.length} assigned={participants.filter((p) => p.teamId).length} />}
+      {/* Handlungsbereich: die Hauptaktion steht direkt unter Dein Stand (Impeccable Lauf 2, P1-2), im Fluss, keine feste Leiste */}
 
       {challengePending && (
         <ChallengePanel
@@ -259,25 +252,6 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           role={v.adminOf.includes(match.awayId) ? "target" : v.adminOf.includes(match.homeId) ? "challenger" : "viewer"}
           deadlineText={match.schedulingDeadline ? `${formatDateTime(match.schedulingDeadline)} Uhr` : "–"}
         />
-      )}
-
-      {step && <Steps current={step} decisions={decisions} title={decisionTitle} />}
-
-      {hallCheck && (
-        <section className="card space-y-2" aria-label="Hallen-Anfrage" data-testid="hall-check">
-          <h2 className="font-semibold">Hallen werden angefragt</h2>
-          <p className="text-sm text-muted">Der Termin steht. Die Hallen bestätigen, ob sie zu diesem Termin frei sind. Ist eine Halle belegt, scheidet sie aus. Danach folgt das Veto{match.vetoTurnDeadline ? ` (Antwort bis ${formatDateTime(match.vetoTurnDeadline)} Uhr)` : ""}.</p>
-          <ul className="grid gap-1 text-sm sm:grid-cols-2">
-            {hallCheck.map((h) => (
-              <li key={h.venueId} className="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2" data-testid="hall-request" data-state={h.status}>
-                <span>{h.name} <span className="text-sm text-muted">{h.city}</span></span>
-                <span className={`text-sm font-semibold ${h.status === "confirmed" ? "text-accent-fg" : h.status === "declined" ? "text-ink" : "text-ink"}`}>
-                  {h.status === "confirmed" ? "Frei" : h.status === "declined" ? "Belegt" : h.status === "pending" ? "Wartet auf Antwort" : "Ohne Bestätigung"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
       )}
 
       {veto && (
@@ -297,6 +271,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           matchId={match.id}
           teams={[{ id: match.homeId, name: match.homeName }, { id: match.awayId, name: match.awayName }]}
           myTeamId={myAdminTeam}
+          main={stand.aktion === "vorschlagen"}
           deadlineText={match.schedulingDeadline ? `${formatDateTime(match.schedulingDeadline)} Uhr` : "–"}
           minStart={scheduling.minStart}
           slots={slots}
@@ -305,11 +280,80 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
+      {active && !open && stand.aktion === "final" && (
+        <FinalConfirm
+          matchId={match.id}
+          paymentsOn={payments.enabled && !cardOn}
+          minPlayers={MIN_READY_PER_TEAM}
+          payable={cardOn && payments.priceCents !== null && payments.priceCents > 0}
+          amountText={estimateCents !== null ? formatEuro(estimateCents) : null}
+          myTeamId={myFinalTeamId}
+          primary={stand.aktion === "final"}
+          teams={finalTeams}
+        />
+      )}
+
+      {active && !open && (
+        <MyActions
+          matchId={match.id}
+          mode={mode}
+          ready={v.participant?.ready ?? false}
+          hasTeam={Boolean(v.participant?.teamId)}
+          main={stand.aktion}
+          card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), priceCents: payments.priceCents ?? null, estimateCents, estimateFixed, stored: storedCard, failure: myFailure } : null}
+        />
+      )}
+
+      <LobbyCaptainBarFor
+        role={{ active, canManage: v.canManage, adminTeams: v.adminOf.length, platformAdmin: v.platformAdmin }}
+          teams={teamsView.filter((t) => canAdminTeam(t.id)).map((t) => ({ id: t.id, name: t.name, count: t.count, ready: t.ready, cardsReady: cardOn ? teamCardsReady[t.id] === true : null }))}
+          failures={failedForManager.map((f) => ({
+            ...f,
+            step: cover.canCover.includes(f.userId) ? <CoverButton matchId={match.id} targetUserId={f.userId} targetName={f.name} amounts={coverAmounts} mandateText={coverMandate} /> : null,
+          }))}
+        >
+          {!isPrivate && teamsView.filter((t) => v.adminOf.includes(t.id)).map((t) => <InviteBox key={t.id} teamId={t.id} teamName={t.name} quiet />)}
+      </LobbyCaptainBarFor>
+
+      {isPrivate && inviteUrl && (
+        <ShareLink url={inviteUrl} title="Einladungslink zum Spiel" shareText={`Privatspiel #${match.number} auf Socaz: komm dazu!`} testId="game-invite" quiet hint={`${participants.length} von ${match.maxPlayers ?? 10} Plätzen belegt. Wer den Link öffnet, meldet sich an oder registriert sich und landet direkt in diesem Spiel.`} />
+      )}
+
+      {inviteManager && match.status !== "cancelled" && (
+        <section className="flex flex-wrap items-center gap-2" data-testid="invite-admin">
+          {inviteUrl && <ActionButton action={revokeGameInviteAction.bind(null, match.id)} label="Link zurückziehen" confirm="Der bisherige Link wird sofort ungültig. Wer schon im Spiel ist, bleibt drin." className="btn btn-ghost text-sm" />}
+          <ActionButton action={regenerateGameInviteAction.bind(null, match.id)} label={inviteUrl ? "Neuen Link erzeugen" : "Einladungslink erzeugen"} confirm={inviteUrl ? "Der bisherige Link wird ungültig, ein neuer Link wird erzeugt." : undefined} className="btn btn-ghost text-sm" />
+          {!inviteUrl && <p className="text-sm text-muted">Es gibt gerade keinen gültigen Einladungslink.</p>}
+        </section>
+      )}
+
+      {isPrivate && v.canManage && active && <PrivateTools matchId={match.id} waiting={pendingStrangers.length} assigned={participants.filter((p) => p.teamId).length} />}
+
+      {step && <Steps current={step} decisions={decisions} title={decisionTitle} />}
+
+      {hallCheck && (
+        <section className="card space-y-2" aria-label="Hallen-Anfrage" data-testid="hall-check">
+          <h2 className="font-semibold">Hallen werden angefragt</h2>
+          <p className="text-sm text-muted">Der Termin steht. Die Hallen bestätigen, ob sie zu diesem Termin frei sind. Ist eine Halle belegt, scheidet sie aus. Danach folgt das Veto{match.vetoTurnDeadline ? ` (Antwort bis ${formatDateTime(match.vetoTurnDeadline)} Uhr)` : ""}.</p>
+          <ul className="grid gap-x-4 divide-y divide-line text-sm sm:grid-cols-2 sm:divide-y-0">
+            {hallCheck.map((h) => (
+              <li key={h.venueId} className="flex items-center justify-between gap-2 py-2" data-testid="hall-request" data-state={h.status}>
+                <span>{h.name} <span className="text-sm text-muted">{h.city}</span></span>
+                <span className={`text-sm font-semibold ${h.status === "confirmed" ? "text-accent-fg" : h.status === "declined" ? "text-ink" : "text-ink"}`}>
+                  {h.status === "confirmed" ? "Frei" : h.status === "declined" ? "Belegt" : h.status === "pending" ? "Wartet auf Antwort" : "Ohne Bestätigung"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {match.status === "lobby" && active && !open && (
         <p className="card text-sm text-muted">
           Das Spiel ist angesetzt und die Halle wird gebucht, sobald in beiden Teams mindestens {MIN_READY_PER_TEAM} bereit sind.
         </p>
       )}
+
       {match.status === "cancelled" && <p className="card text-sm text-ink">Dieses Spiel wurde abgesagt.</p>}
 
       {!open && match.venueName && <VenueBox name={match.venueName} address={match.venueAddress} city={match.venueCity} when={formatDateTime(match.startsAt)} lat={match.venueLat} lng={match.venueLng} />}
@@ -352,28 +396,6 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <p className="text-sm text-muted">{scheduling ? "Du bist in der Lobby. Bereit machen kannst du, sobald die Captains Uhrzeit und Halle gewählt haben." : "Du bist in der Lobby. Bereit machen kannst du, sobald die Halle feststeht."}</p>
         </section>
       )}
-
-      {active && !open && (
-        <MyActions
-          matchId={match.id}
-          mode={mode}
-          ready={v.participant?.ready ?? false}
-          hasTeam={Boolean(v.participant?.teamId)}
-          main={stand.aktion}
-          card={cardOn && mode === "participant" ? { ready: hasCard(user?.id ?? ""), mandateText: MANDATE_TEXT, fake: fakeCardAllowed(), priceCents: payments.priceCents ?? null, estimateCents, estimateFixed, stored: storedCard, failure: myFailure } : null}
-        />
-      )}
-
-      <LobbyCaptainBarFor
-        role={{ active, canManage: v.canManage, adminTeams: v.adminOf.length, platformAdmin: v.platformAdmin }}
-          teams={teamsView.filter((t) => canAdminTeam(t.id)).map((t) => ({ id: t.id, name: t.name, count: t.count, ready: t.ready, cardsReady: cardOn ? teamCardsReady[t.id] === true : null }))}
-          failures={failedForManager.map((f) => ({
-            ...f,
-            step: cover.canCover.includes(f.userId) ? <CoverButton matchId={match.id} targetUserId={f.userId} targetName={f.name} amounts={coverAmounts} mandateText={coverMandate} /> : null,
-          }))}
-        >
-          {!isPrivate && teamsView.filter((t) => v.adminOf.includes(t.id)).map((t) => <InviteBox key={t.id} teamId={t.id} teamName={t.name} quiet />)}
-      </LobbyCaptainBarFor>
 
       {(cover.covering || cover.covered || cover.pairs.length > 0) && (
         <section className="card space-y-2" data-testid="cover-status">
@@ -459,7 +481,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         </section>
       )}
 
-      {active && !open && (
+      {active && !open && stand.aktion !== "final" && (
         <FinalConfirm
           matchId={match.id}
           paymentsOn={payments.enabled && !cardOn}
@@ -467,7 +489,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           payable={cardOn && payments.priceCents !== null && payments.priceCents > 0}
           amountText={estimateCents !== null ? formatEuro(estimateCents) : null}
           myTeamId={myFinalTeamId}
-          primary={stand.aktion === "final"}
+          primary={false}
           teams={finalTeams}
         />
       )}

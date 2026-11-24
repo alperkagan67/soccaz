@@ -96,7 +96,11 @@ test("Einstellungen: Profil, privates Profil, Profilbild, Datenexport, Konto lö
   // privat: Fremde sehen nichts, man selbst schon
   const anon = await (await browser.newContext()).newPage();
   await anon.goto(`/spieler/${id}`);
-  await expect(anon.getByText("Dieses Profil ist nicht öffentlich.")).toBeVisible();
+  await expect(anon).toHaveURL(new RegExp("/anmelden")); // Gäste: Anmeldung (AC-17, Entscheid t2q 2026-11-24)
+  const fremd = await (await browser.newContext()).newPage();
+  await newUser(fremd, "kfremd");
+  await fremd.goto(`/spieler/${id}`);
+  await expect(fremd.getByText("Dieses Profil ist nicht öffentlich.")).toBeVisible();
   await page.goto(`/spieler/${id}`);
   await expect(page.getByRole("heading", { name: `Neuer Name ${run}` })).toBeVisible();
   await expect(page.getByText(/Dein Profil ist privat/)).toBeVisible();
