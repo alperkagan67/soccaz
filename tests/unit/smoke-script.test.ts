@@ -32,7 +32,7 @@ describe("scripts/smoke.mjs", () => {
   it("Fehlerfälle: Datenbank down, falscher Status, fehlender Inhalt, Server nicht erreichbar", async () => {
     expect((await runSmoke({ base: "https://x.de", fetchImpl: fake({ "/api/health": { status: 503, body: '{"status":"error"}' } }) })).ok).toBe(false);
     const leer = await runSmoke({ base: "https://x.de", fetchImpl: fake({ "/anmelden": { status: 200, body: "nichts" } }) });
-    expect(leer.results.find((x: { path: string }) => x.path === "/anmelden").detail).toContain("Inhalt");
+    expect(leer.results.find((x: { path: string }) => x.path === "/anmelden")?.detail).toContain("Inhalt");
     const ohneBald = await runSmoke({ base: "https://x.de", turnierOnly: true, fetchImpl: fake({ "/spiele": { status: 200, body: "Alle Spiele" } }) });
     expect(ohneBald.ok).toBe(false);
     const down = await runSmoke({ base: "https://x.de", fetchImpl: (async () => { throw Object.assign(new Error("x"), { name: "TypeError" }); }) as unknown as typeof fetch });
