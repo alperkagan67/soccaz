@@ -3,6 +3,8 @@ import Link from "next/link";
 import { LiveIndicator } from "@/components/LiveIndicator";
 import { formatDateTime } from "@/lib/time";
 import { getScoreboard } from "@/server/results";
+import { KommtBald } from "@/components/KommtBald";
+import { bereichGesperrt } from "@/server/turnier-only";
 
 export const metadata: Metadata = { title: "Livescore" };
 
@@ -39,6 +41,7 @@ function Section({ title, rows, showScore, empty }: { title: string; rows: Row[]
 }
 
 export default async function ScoreboardPage() {
+  if (await bereichGesperrt()) return <KommtBald />; // TURNIER_ONLY: die Liste aller Spiele ist gesperrt (Spiele eines Turniers sind über ihre Turnierseite erreichbar)
   const { live, upcoming, finished } = await getScoreboard();
   return (
     <div className="space-y-6">

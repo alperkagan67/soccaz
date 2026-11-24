@@ -16,6 +16,7 @@ import { HALL_TEXTS, describeHallDbFailure, pgCodeOf } from "@/lib/hall-answer-e
 import { acceptChallenge, challengeTeam, declineChallenge } from "./challenges";
 import { DomainError } from "./teams";
 import { planDecline } from "@/lib/hall-decline";
+import { assertBereichOffen } from "./turnier-only";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -30,6 +31,7 @@ async function guarded(fn: () => Promise<void>): Promise<ActionState> {
 const str = (f: FormData, key: string) => String(f.get(key) ?? "").trim();
 
 export async function joinQueueAction(_prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/matchmaking");
   const windows: { from: Date; to: Date }[] = [];
   for (let i = 1; i <= MAX_WINDOWS; i++) {
@@ -57,6 +59,7 @@ export async function joinQueueAction(_prev: ActionState, f: FormData): Promise<
 }
 
 export async function leaveQueueAction(teamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/matchmaking");
   const result = await guarded(() => leaveQueue(user.id, teamId));
   revalidatePath("/matchmaking");
@@ -66,6 +69,7 @@ export async function leaveQueueAction(teamId: string): Promise<ActionState> {
 }
 
 export async function proposeOptionAction(matchId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/${matchId}`);
   const startsAt = parseBerlinLocal(str(f, "startsAt"));
   if (!startsAt) return { error: "Bitte gib Datum und Uhrzeit an." };
@@ -75,6 +79,7 @@ export async function proposeOptionAction(matchId: string, _prev: ActionState, f
 }
 
 export async function voteOptionAction(matchId: string, optionId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/${matchId}`);
   const result = await guarded(() => voteOption(user.id, matchId, optionId));
   revalidatePath(`/lobby/${matchId}`);
@@ -82,6 +87,7 @@ export async function voteOptionAction(matchId: string, optionId: string): Promi
 }
 
 export async function withdrawOptionAction(matchId: string, optionId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/${matchId}`);
   const result = await guarded(() => withdrawOption(user.id, matchId, optionId));
   revalidatePath(`/lobby/${matchId}`);
@@ -89,6 +95,7 @@ export async function withdrawOptionAction(matchId: string, optionId: string): P
 }
 
 export async function banHallAction(matchId: string, venueId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/${matchId}`);
   const result = await guarded(() => banHall(user.id, matchId, venueId));
   revalidatePath(`/lobby/${matchId}`);
@@ -97,6 +104,7 @@ export async function banHallAction(matchId: string, venueId: string): Promise<A
 
 /** Nimmt eine offene Suche an und führt bei Erfolg direkt in die Lobby. */
 export async function acceptSearchAction(entryId: string, teamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/matchmaking");
   let matchId: string;
   try {
@@ -112,6 +120,7 @@ export async function acceptSearchAction(entryId: string, teamId: string): Promi
 
 /** Direkt-Herausforderung: Ein Klick erzeugt die Lobby und führt dorthin. */
 export async function challengeTeamAction(myTeamId: string, targetTeamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/suche");
   let matchId: string;
   try {
@@ -126,6 +135,7 @@ export async function challengeTeamAction(myTeamId: string, targetTeamId: string
 }
 
 export async function acceptChallengeAction(matchId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/${matchId}`);
   const result = await guarded(() => acceptChallenge(user.id, matchId));
   revalidatePath(`/lobby/${matchId}`);
@@ -133,6 +143,7 @@ export async function acceptChallengeAction(matchId: string): Promise<ActionStat
 }
 
 export async function declineChallengeAction(matchId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/${matchId}`);
   const result = await guarded(() => declineChallenge(user.id, matchId));
   revalidatePath(`/lobby/${matchId}`);
@@ -158,6 +169,7 @@ async function hallAnswer(fn: () => Promise<HallAnswerResult>): Promise<ActionSt
 
 /** Hallenbetreiber: Anfrage bestätigen (frei). `round` ist die Runde, die der Betreiber gesehen hat (veraltete Seiten werden abgelehnt). */
 export async function answerHallAction(matchId: string, venueId: string, accept: boolean, round: number | null): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/halle");
   const result = await hallAnswer(() => answerHallRequest(user.id, matchId, venueId, accept, { round: round ?? undefined }));
   revalidatePath("/halle");
@@ -170,6 +182,7 @@ export async function answerHallAction(matchId: string, venueId: string, accept:
  * Die Weiche HALL_DECLINE_WIRED (R-T238) ist an: Grund und Runde werden gespeichert/geprüft; ohne Anbindung hätte die Aktion nur „Ablehnen mit Grund folgt“ gemeldet.
  */
 export async function declineHallAction(matchId: string, venueId: string, round: number | null, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/halle");
   const plan = planDecline({ code: String(formData.get("reasonCode") ?? ""), text: String(formData.get("reason") ?? "") });
   if (plan.kind === "invalid") return { fieldErrors: plan.fieldErrors }; // nur am Feld: `Form` zeigt dazu den Hinweis, ein zweiter Alarm würde doppelt vorgelesen
@@ -182,6 +195,7 @@ export async function declineHallAction(matchId: string, venueId: string, round:
 
 /** Teammitglied tritt der offenen Lobby bei oder verlässt sie. */
 export async function openLobbyJoinAction(entryId: string, join: boolean): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/offen/${entryId}`);
   const result = await guarded(() => setOpenLobbyJoined(user.id, entryId, join));
   revalidatePath(`/lobby/offen/${entryId}`);

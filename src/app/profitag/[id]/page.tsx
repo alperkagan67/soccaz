@@ -8,8 +8,10 @@ import { getProEvent } from "@/server/pro-events";
 import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
 import { ApplyForm } from "./ApplyForm";
+import { turnierOnlyOn } from "@/lib/turnier-only";
 
 export async function generateMetadata({ params }: PageProps<"/profitag/[id]">): Promise<Metadata> {
+  if (turnierOnlyOn()) return { title: "Kommt bald", robots: { index: false, follow: false } }; // TURNIER_ONLY: keine Daten des gesperrten Bereichs im Titel, keine Abfrage
   const { id } = await params;
   const data = await getProEvent(id);
   return { title: data ? data.event.title : "Profi-Tag nicht gefunden" };

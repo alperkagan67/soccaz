@@ -142,3 +142,6 @@ Die Lobby und die Teamseite gaben für Gäste die **Nutzerkennung als React-Schl
 - Die Probe nutzt Teamnamen ohne Personennamen; ein Team, das seinen Namen nach einer Person nennt, wird nicht erkannt (Teamnamen sind keine Personennamen, Entscheid t2q).
 - `/api/media/<id>` liefert Bilder nur noch Angemeldeten (Backlog 243); bereits früher öffentlich zwischengespeicherte Bilder: Go-Live-Audit G31-013.
 - Bereits ausgelieferte Altbestände (Caches, Suchmaschinen): Go-Live-Audit G31-013 und Rechtsliste („Sichtbarkeit von Spielernamen“).
+
+## Betriebsart TURNIER_ONLY (Turnier 12.12.)
+Bei `TURNIER_ONLY=1` zeigen die gesperrten Bereiche (Liste: `src/lib/turnier-only.ts`) für Gast, Spieler und Captain die statische Ruheseite „Kommt bald“ (Status 200, noindex, keine Personendaten, keine Datenabfrage der gesperrten Seite); ihre Live-Kanäle antworten 403. Die Registry bleibt unverändert: die Ruheseite ist eine Hülle (`layout.tsx` mit `BereichGate`) um bestehende Routen, keine neue Route. Die Wirkung je Rolle prüfen `tests/integration/turnier-only.test.ts` (Gast, Spieler, Plattform-Admin) und der Rauchtest `scripts/smoke-turnier-only.mjs` gegen eine laufende Instanz.
