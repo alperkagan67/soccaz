@@ -4,6 +4,8 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { formatEuro, shareFor } from "@/lib/money";
 import { priceFor } from "@/server/pricing";
+import { zahlungenAus } from "@/server/zahlungen-aus";
+import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 
 export const metadata: Metadata = { title: "Hilfe und Fragen" };
 
@@ -18,6 +20,7 @@ function Q({ q, children }: { q: string; children: React.ReactNode }) {
 
 export default async function HelpPage() {
   await connection();
+  const aus = await zahlungenAus(); // Modus Zahlungen AUS (Go-live): kein Abschnitt zu Preis und Zahlung, nur der Hinweissatz
   const [p60, p90] = await Promise.all([priceFor(db, null, 60), priceFor(db, null, 90)]);
   const e = (c: number | undefined) => (c === undefined ? "–" : formatEuro(c));
 
@@ -61,7 +64,7 @@ export default async function HelpPage() {
           <p className="text-xs">Die Hallenliste stammt zunächst aus OpenStreetMap und ist nicht geprüft: Ob eine Halle frei und buchbar ist und was sie kostet, bestätigt die Buchung. Fehlt eine Halle, schreib uns über die Kontaktseite.</p>
         </Q>
         <Q q="Was ist die Lobby?">
-          <p>Die Seite zu eurem Spiel. Dort trägt sich jeder Spieler ein und klickt „Bereit“. Fünf Spieler pro Team plus ein Ersatz. Sind in beiden Teams genug Spieler bereit, ist das Spiel angesetzt und die Halle wird gebucht. Der Preis steht fest, sobald beide Captains bestätigt haben. Klappt das nicht, sagen wir es rechtzeitig vor dem Anstoß automatisch ab und es wird nichts berechnet.</p>
+          <p>Die Seite zu eurem Spiel. Dort trägt sich jeder Spieler ein und klickt „Bereit“. Fünf Spieler pro Team plus ein Ersatz. Sind in beiden Teams genug Spieler bereit, ist das Spiel angesetzt und die Halle wird gebucht. {aus ? "Klappt das nicht, sagen wir es rechtzeitig vor dem Anstoß automatisch ab." : "Der Preis steht fest, sobald beide Captains bestätigt haben. Klappt das nicht, sagen wir es rechtzeitig vor dem Anstoß automatisch ab und es wird nichts berechnet."}</p>
         </Q>
         <Q q="Was ist, wenn bei uns jemand fehlt?">
           <p>Ist die Lobby öffentlich, können sich fremde Spieler als Ersatz eintragen. Ein Team-Admin weist sie dem Team zu. Auf der Seite „Mitspieler gesucht“ tragen sich Spieler für einen Tag ein, die Lust auf ein Spiel haben.</p>
@@ -71,25 +74,34 @@ export default async function HelpPage() {
         </Q>
       </section>
 
-      <section className="space-y-2" id="geld">
-        <h2 className="text-lg font-semibold">Geld und Zahlung</h2>
-        <Q q="Was kostet das?">
-          <p>Die Anmeldung und alle Funktionen sind kostenlos. Bezahlt wird nur die Halle: <strong>{e(p60?.priceCents)}</strong> für 60 Minuten, <strong>{e(p90?.priceCents)}</strong> für 90 Minuten. Der Preis wird durch alle zahlenden Spieler geteilt.</p>
-        </Q>
-        <Q q="Wie viel zahle ich genau?">
-          <p>Dein Anteil ist der Hallenpreis geteilt durch die Zahl der zahlenden Spieler. Du machst dich bereit; abgerechnet wird erst zur Frist. Je mehr mitspielen, desto weniger zahlt jeder. Bei 12 Spielern sind es {p60 ? e(shareFor(p60.priceCents, 12)) : "–"}.</p>
-        </Q>
-        <Q q="Wie bezahle ich?">
-          <p>Dein Anteil wird zur Frist abgerechnet, vorher wird nichts berechnet. Wie du bezahlst, siehst du in der Lobby. Einen Beleg als PDF bekommst du automatisch.</p>
-        </Q>
-        <Q q="Wann bekomme ich mein Geld zurück?">
-          <ul className="list-disc space-y-1 pl-5">
-            <li>Bis 24 Stunden vor Anstoß abmelden: Es wird nichts berechnet.</li>
-            <li>Später abmelden: Du bekommst es zurück, sobald ein Ersatzspieler deinen Platz bezahlt hat.</li>
-            <li>Spiel abgesagt oder zu wenige Spieler: Ein bereits gezahlter Betrag wird erstattet, auf dem Zahlungsweg, den du genutzt hast.</li>
-          </ul>
-        </Q>
-      </section>
+      {aus ? (
+        <section className="space-y-2" id="geld">
+          <h2 className="text-lg font-semibold">Teilnahme und Gebühr</h2>
+          <Q q="Was kostet die Teilnahme?">
+            <p>Die Anmeldung und alle Funktionen von Soccaz sind kostenlos. {ZAHLUNGEN_AUS_HINWEIS}</p>
+          </Q>
+        </section>
+      ) : (
+        <section className="space-y-2" id="geld">
+          <h2 className="text-lg font-semibold">Geld und Zahlung</h2>
+          <Q q="Was kostet das?">
+            <p>Die Anmeldung und alle Funktionen sind kostenlos. Bezahlt wird nur die Halle: <strong>{e(p60?.priceCents)}</strong> für 60 Minuten, <strong>{e(p90?.priceCents)}</strong> für 90 Minuten. Der Preis wird durch alle zahlenden Spieler geteilt.</p>
+          </Q>
+          <Q q="Wie viel zahle ich genau?">
+            <p>Dein Anteil ist der Hallenpreis geteilt durch die Zahl der zahlenden Spieler. Du machst dich bereit; abgerechnet wird erst zur Frist. Je mehr mitspielen, desto weniger zahlt jeder. Bei 12 Spielern sind es {p60 ? e(shareFor(p60.priceCents, 12)) : "–"}.</p>
+          </Q>
+          <Q q="Wie bezahle ich?">
+            <p>Dein Anteil wird zur Frist abgerechnet, vorher wird nichts berechnet. Wie du bezahlst, siehst du in der Lobby. Einen Beleg als PDF bekommst du automatisch.</p>
+          </Q>
+          <Q q="Wann bekomme ich mein Geld zurück?">
+            <ul className="list-disc space-y-1 pl-5">
+              <li>Bis 24 Stunden vor Anstoß abmelden: Es wird nichts berechnet.</li>
+              <li>Später abmelden: Du bekommst es zurück, sobald ein Ersatzspieler deinen Platz bezahlt hat.</li>
+              <li>Spiel abgesagt oder zu wenige Spieler: Ein bereits gezahlter Betrag wird erstattet, auf dem Zahlungsweg, den du genutzt hast.</li>
+            </ul>
+          </Q>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Spielstärke und Ranglisten</h2>
@@ -113,7 +125,7 @@ export default async function HelpPage() {
           <p>Standardmäßig ist es öffentlich (Name, Stadt, Position, Statistik, Teams). In den Einstellungen kannst du es auf privat stellen. Dein Geburtsdatum und deine E-Mail sieht niemand.</p>
         </Q>
         <Q q="Wie lösche ich mein Konto?">
-          <p>In den Einstellungen unter „Deine Daten“. Vorher darf keine Zahlung offen sein und ein Restbetrag muss über den Support geklärt sein, du darfst in keinem kommenden Spiel stehen und kein Team allein verwalten. Dort kannst du auch alle deine Daten herunterladen.</p>
+          <p>In den Einstellungen unter „Deine Daten“. {aus ? "Du darfst dafür in keinem kommenden Spiel stehen und kein Team allein verwalten." : "Vorher darf keine Zahlung offen sein und ein Restbetrag muss über den Support geklärt sein, du darfst in keinem kommenden Spiel stehen und kein Team allein verwalten."} Dort kannst du auch alle deine Daten herunterladen.</p>
         </Q>
         <Q q="Es funktioniert etwas nicht. Wen frage ich?">
           <p>Schreib uns über die <Link href="/kontakt" className="text-accent-fg underline">Kontaktseite</Link>.</p>
