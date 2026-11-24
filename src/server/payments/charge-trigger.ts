@@ -50,11 +50,10 @@ const inFlight = new Set<Promise<void>>();
 
 /**
  * Aufruf von finalConfirm (statt triggerChargesInBackground direkt). Verhalten ohne Testmodus: unveraendert der Hintergrundlauf. Im Testmodus: (1) der Lauf wird registriert und ist mit
- * drainBackgroundCharges abwartbar; (2) mit CHARGE_TRIGGER_BACKGROUND=off wird er gar nicht gestartet (E2E, Dev-Server). Das Promise wird nie abgelehnt (Fehlerisolierung wie zuvor).
+ * drainBackgroundCharges abwartbar; Das Promise wird nie abgelehnt (Fehlerisolierung wie zuvor).
  */
 export function startChargesInBackground(matchId: string): Promise<void> {
   if (!chargeTriggerTestHookActive()) return triggerChargesInBackground(matchId);
-  if (process.env.CHARGE_TRIGGER_BACKGROUND === "off") return Promise.resolve();
   const run = triggerChargesInBackground(matchId);
   inFlight.add(run);
   void run.finally(() => inFlight.delete(run));

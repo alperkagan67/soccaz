@@ -24,29 +24,24 @@ afterEach(() => {
 });
 
 describe("Testhaken Hintergrundlauf: Produktion", () => {
-  it("in Produktion ist der Haken nie aktiv, auch nicht mit PAYMENTS_FAKE oder CHARGE_TRIGGER_BACKGROUND=off", async () => {
+  it("in Produktion ist der Haken nie aktiv, auch nicht mit PAYMENTS_FAKE=1", async () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("PAYMENTS_FAKE", "1");
-    vi.stubEnv("CHARGE_TRIGGER_BACKGROUND", "off");
     expect(chargeTriggerTestHookActive()).toBe(false);
     const d = deferred();
     runCharges.mockReturnValue(d.promise);
     const p = startChargesInBackground("m1");
-    expect(runCharges).toHaveBeenCalledTimes(1); // der Lauf startet trotz "off" (Schalter wirkungslos)
-    let drained = false;
-    void drainBackgroundCharges().then(() => {
-      drained = true;
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(drained).toBe(true); // drain wartet in Produktion NICHT auf den Lauf
+    expect(runCharges).toHaveBeenCalledTimes(1); // in Produktion startet der Lauf wie immer
+    // drain kehrt in Produktion sofort zurueck, obwohl der Lauf noch haengt (Gegenprobe: ein Timer, der erst nach dem Aufruf feuert, gewinnt NICHT gegen drain)
+    const winner = await Promise.race([drainBackgroundCharges().then(() => "drain"), new Promise((r) => setTimeout(() => r("timer"), 50))]);
+    expect(winner).toBe("drain");
     d.resolve();
     await p;
   });
 });
 
 describe("Testhaken Hintergrundlauf: Testmodus", () => {
-  it("Hook aus (Testmodus, kein Schalter): der Lauf startet wie bisher; drain wartet, bis er fertig ist", async () => {
+  it("Testmodus: der Lauf startet wie bisher und ist registriert; drain wartet, bis er fertig ist", async () => {
     vi.stubEnv("NODE_ENV", "test");
     expect(chargeTriggerTestHookActive()).toBe(true);
     const d = deferred();
@@ -62,14 +57,6 @@ describe("Testhaken Hintergrundlauf: Testmodus", () => {
     d.resolve();
     await drain;
     expect(drained).toBe(true);
-  });
-
-  it("CHARGE_TRIGGER_BACKGROUND=off startet im Testmodus gar keinen Lauf", async () => {
-    vi.stubEnv("NODE_ENV", "test");
-    vi.stubEnv("CHARGE_TRIGGER_BACKGROUND", "off");
-    await startChargesInBackground("m3");
-    expect(runCharges).not.toHaveBeenCalled();
-    await drainBackgroundCharges();
   });
 
   it("PAYMENTS_FAKE=1 ausserhalb von Produktion schaltet den Haken ein (Dev-Server der E2E-Tests)", () => {
@@ -104,7 +91,6 @@ describe("Testhaken Hintergrundlauf: Quelltext", () => {
     const src = read("src/server/payments/charge-trigger.ts");
     expect(src).toContain('if (process.env.NODE_ENV === "production") return false;');
     expect(src.split("chargeTriggerTestHookActive()").length - 1).toBeGreaterThanOrEqual(3); // Definition, start, drain
-    expect(src.split("CHARGE_TRIGGER_BACKGROUND").length - 1).toBe(2); // Kommentar und genau EINE Pruefung, und die steht nach der Testmodus-Pruefung
-    expect(src.indexOf("if (!chargeTriggerTestHookActive()) return triggerChargesInBackground(matchId);")).toBeLessThan(src.indexOf('process.env.CHARGE_TRIGGER_BACKGROUND === "off"'));
+    expect(src).not.toContain("CHARGE_TRIGGER_BACKGROUND"); // kein zweiter Schalter im Zahlungspfad
   });
 });
