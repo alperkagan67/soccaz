@@ -100,8 +100,8 @@ export type ReviewStatus = "visible" | "hidden" | "removed";
 
 /**
  * Bewertung einer Halle durch einen Spieler, der dort gespielt hat: fuenf Kategorien (1 bis 5) und ein optionaler Text (3 bis 500 Zeichen, ohne Links, E-Mail-Adressen und Telefonnummern).
- * Genau EIN Bezug: ein Spiel (match_id) ODER ein Turnier (tournament_id). Eindeutig je Spiel und Nutzer bzw. je Turnier, Halle und Nutzer. Konto loeschen: user_id wird NULL und der Text entfernt (Entscheid
- * t2q 2026-11-24); die Zahlen bleiben anonym im Durchschnitt. Die frueheren Sterne-Kommentare (comments, target_type venue) bleiben unberuehrt und getrennt.
+ * Genau EIN Bezug: ein Spiel (match_id) ODER ein Turnier (tournament_id). Eindeutig je Spiel und Nutzer bzw. je Turnier, Halle und Nutzer. Konto loeschen: deleteAccount (account.ts) anonymisiert das Konto und LOESCHT ES NIE, deshalb setzt es body und user_id ausdruecklich auf NULL (der Fremdschluessel ON DELETE SET NULL waere nur
+ * ein Netz, falls je ein Konto geloescht wird; Entscheid t2q 2026-11-24); die Zahlen bleiben anonym im Durchschnitt. Die frueheren Sterne-Kommentare (comments, target_type venue) bleiben unberuehrt und getrennt.
  */
 export const venueReviews = pgTable(
   "venue_reviews",

@@ -17,6 +17,11 @@ const POSITIV: [string, "link" | "email" | "phone"][] = [
   ["01761234567", "phone"],
   ["1234567890", "phone"],
   ["Kontakt 00 49 201 123456", "phone"],
+  ["Mail an HALLE.DE bitte", "link"], // Endung komplett groß
+  ["0201​123456 rufen", "phone"], // Zero-Width-Zeichen mitten in der Nummer (security-Review #365)
+  ["０２０１１２３４５６ bitte", "phone"], // Vollbreite Ziffern (NFKC)
+  ["Ruf an 0201–123456", "phone"], // Gedankenstrich als Trenner
+  ["w​ww.halle.de", "link"], // Zero-Width im Protokoll
 ];
 const NEGATIV: string[] = [
   "Das Spiel endete 3:1 für uns",
@@ -41,11 +46,20 @@ const NEGATIV: string[] = [
   "Es gab gut.Mehr davon",
   "10 Minuten Fahrt, 5 Parkplätze",
   "Umkleide Nr. 2.",
+  "Super Halle, ok.Me danach", // Leerzeichen nach dem Punkt vergessen, Großbuchstabe: kein Link (Entscheid: Muster verengt, Endung klein oder komplett groß)
+  "Es war gut.At the end",
+  "Siehe Nr.Ch dazu",
 ];
+// Bekannte Grenzen (security-Review #365): hier geht die Prüfung bewusst DURCH, das fängt die Moderation (Melden) auf. Ändert sich das Verhalten, bitte Plan und Audit (G33-010) mitziehen.
+const BEKANNTE_GRENZE: string[] = ["Meine Nummer 151 1234567", "49 151 12345678", "Halle.De ist die Seite", "null zwei null eins eins zwei drei"];
 
 describe("findContact: Link, E-Mail, Telefonnummer", () => {
   for (const [text, art] of POSITIV) it(`trifft (${art}): ${text}`, () => expect(findContact(text)).toBe(art));
   for (const text of NEGATIV) it(`trifft NICHT: ${text}`, () => expect(findContact(text)).toBeNull());
+});
+
+describe("bekannte Grenzen (nicht erkannt, Moderation)", () => {
+  for (const text of BEKANNTE_GRENZE) it(`geht durch: ${text}`, () => expect(findContact(text)).toBeNull());
 });
 
 describe("checkReviewText", () => {

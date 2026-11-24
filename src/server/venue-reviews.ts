@@ -30,6 +30,12 @@ const toReviewable = (kind: "match" | "tournament", targetId: string, r: Row): R
   const endedAt = new Date(r.ended_at);
   return { kind, targetId, venueId: r.venue_id, venueName: r.venue_name, endedAt, deadline: new Date(endedAt.getTime() + REVIEW_WINDOW_DAYS * 86_400_000) };
 };
+/**
+ * "Hat am Turnier dort gespielt" (security-Review #365): ein Eintrag in tournament_players genügt NICHT (auch Nichtzahler oder ein Team ohne Spiel stünden dort). Verlangt wird: der Spieler hat
+ * Geld eingezahlt (paid_cents > 0) ODER sein Team hat an einem gespielten Turnierspiel teilgenommen (tournament_matches.played_at). Bekannte Grenze: ein Spieler seines Teams, das spielte, aber selbst nicht
+ * auf dem Platz stand, gilt als "dabei" (der Plan kennt keine Aufstellung je Turnierspiel).
+ */
+const playedInTournament = sql`(tp.paid_cents > 0 or exists (select 1 from tournament_matches tm where tm.tournament_id = t.id and tm.played_at is not null and (tm.team_a = tp.team_id or tm.team_b = tp.team_id)))`;
 /** Ende eines Turniers: Abrechnung, sonst Anstoß plus Dauer. */
 const tournamentEnd = sql`coalesce(t.settled_at, t.starts_at + make_interval(mins => coalesce(t.duration_min, 0)))`;
 
@@ -51,7 +57,7 @@ export async function reviewEligibility(userId: string, target: ReviewTarget, op
           from tournaments t
           join tournament_players tp on tp.tournament_id = t.id and tp.user_id = ${userId}
           join venues v on v.id = t.venue_id and v.approval_status = 'approved'
-          where t.id = ${target.id} and t.status = 'finished' and t.venue_id is not null
+          where t.id = ${target.id} and t.status = 'finished' and t.venue_id is not null and ${playedInTournament}
             and ${now} >= ${tournamentEnd} and ${now} < ${tournamentEnd} + make_interval(days => ${REVIEW_WINDOW_DAYS})`);
   const row = (rows.rows as Row[])[0];
   return row ? toReviewable(target.kind, target.id, row) : null;
@@ -74,7 +80,7 @@ export async function listReviewable(userId: string, opts: { now?: Date } = {}):
     from tournaments t
     join tournament_players tp on tp.tournament_id = t.id and tp.user_id = ${userId}
     join venues v on v.id = t.venue_id and v.approval_status = 'approved'
-    where t.status = 'finished' and t.venue_id is not null
+    where t.status = 'finished' and t.venue_id is not null and ${playedInTournament}
       and ${now} >= ${tournamentEnd} and ${now} < ${tournamentEnd} + make_interval(days => ${REVIEW_WINDOW_DAYS})
       and not exists (select 1 from venue_reviews r where r.tournament_id = t.id and r.venue_id = t.venue_id and r.user_id = ${userId})`);
   const out = [

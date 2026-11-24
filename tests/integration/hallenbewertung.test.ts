@@ -4,7 +4,8 @@ import { db } from "@/db";
 import { auditLog, matchParticipants, matches } from "@/db/schema";
 import { venueReviews } from "@/db/schema-content";
 import { venues } from "@/db/schema-finance";
-import { tournamentPlayers, tournaments } from "@/db/schema-league";
+import { tournamentMatches, tournamentPlayers, tournaments } from "@/db/schema-league";
+import { deleteAccount, exportMyData } from "@/server/account";
 import { REVIEW_CONTACT_MESSAGE } from "@/lib/review-text";
 import { REVIEW_SCORE_MESSAGE } from "@/lib/venue-review";
 import { REVIEW_ALREADY, REVIEW_NOT_POSSIBLE, ReviewInputError, listReviewable, reviewEligibility, submitVenueReview } from "@/server/venue-reviews";
@@ -36,7 +37,8 @@ async function playedMatch(over: Partial<typeof matches.$inferInsert> = {}, venu
   await db.update(matches).set({ venueId: v.id, status: "played", finalizedAt, ...over }).where(eq(matches.id, g.match.id));
   return { ...g, v, finalizedAt };
 }
-async function tournamentOf(playerIds: string[], over: Partial<typeof tournaments.$inferInsert> = {}) {
+/** Turnier mit Spielern eines Teams; standardmäßig hat das Team ein Turnierspiel gespielt (security-Review #365: nur ein Eintrag in tournament_players genügt nicht). */
+async function tournamentOf(playerIds: string[], over: Partial<typeof tournaments.$inferInsert> = {}, opts: { played?: boolean } = {}) {
   const org = await makeUser("borg");
   const { makeTeam } = await import("./helpers");
   const team = await makeTeam(org.id, "Turnierteam");
@@ -59,6 +61,7 @@ async function tournamentOf(playerIds: string[], over: Partial<typeof tournament
     } as typeof tournaments.$inferInsert)
     .returning();
   for (const userId of playerIds) await db.insert(tournamentPlayers).values({ tournamentId: t.id, teamId: team.id, userId });
+  if (opts.played !== false) await db.insert(tournamentMatches).values({ tournamentId: t.id, stage: "round", round: 1, slot: 1, teamA: team.id, playedAt: new Date(Date.now() - DAY) });
   return { org, team, v, t };
 }
 const rows = (where: ReturnType<typeof eq>) => db.select().from(venueReviews).where(where);
@@ -185,6 +188,17 @@ describe("Turnier: eine Bewertung je Turnier, Halle und Nutzer; 'hat am Turnier 
     const z = await tournamentOf([player.id]);
     await expect(submitVenueReview(player.id, { kind: "tournament", id: z.t.id, scores: GOOD })).resolves.toHaveProperty("id");
   });
+  it("'hat gespielt' beim Turnier: ein Eintrag in tournament_players allein genügt NICHT (kein gespieltes Turnierspiel des Teams und keine Einzahlung), mit Einzahlung oder gespieltem Spiel ja", async () => {
+    const player = await makeUser("tplayer3");
+    const ohne = await tournamentOf([player.id], {}, { played: false });
+    await expect(submitVenueReview(player.id, { kind: "tournament", id: ohne.t.id, scores: GOOD })).rejects.toThrow(REVIEW_NOT_POSSIBLE);
+    expect(await listReviewable(player.id)).toEqual([]);
+    await db.update(tournamentPlayers).set({ paidCents: 500 }).where(and(eq(tournamentPlayers.tournamentId, ohne.t.id), eq(tournamentPlayers.userId, player.id)));
+    await expect(submitVenueReview(player.id, { kind: "tournament", id: ohne.t.id, scores: GOOD })).resolves.toHaveProperty("id"); // Einzahlung
+    const mit = await tournamentOf([player.id]); // das Team hat gespielt
+    expect((await listReviewable(player.id)).map((r) => r.targetId)).toEqual([mit.t.id]);
+    await expect(submitVenueReview(player.id, { kind: "tournament", id: mit.t.id, scores: GOOD })).resolves.toHaveProperty("id");
+  });
   it("Frist beim Turnier ab Abrechnung (settled_at), sonst ab Anstoß plus Dauer", async () => {
     const player = await makeUser("tplayer2");
     const settled = new Date(Date.now() - 10 * DAY);
@@ -237,6 +251,20 @@ describe("Migration 0060: CHECKs und UNIQUEs in der Datenbank", () => {
     const base = { venueId: g.v.id, matchId: g.match.id, floor: 3, changingRooms: 3, cleanliness: 3, showers: 3, parking: 3 };
     await db.insert(venueReviews).values([{ ...base, userId: null }, { ...base, userId: null }]);
     expect(await rows(eq(venueReviews.matchId, g.match.id))).toHaveLength(2);
+  });
+});
+
+describe("Konto löschen und Datenexport (security-Review #365)", () => {
+  it("Export enthält die eigenen Bewertungen; deleteAccount entfernt Text und Nutzerbezug, die Zahlen bleiben anonym (das Konto wird nie gelöscht, der Fremdschlüssel SET NULL wirkt nicht)", async () => {
+    const g = await playedMatch();
+    await submitVenueReview(g.adminA.id, { kind: "match", id: g.match.id, scores: GOOD, text: "Duschen waren kalt, sonst top" });
+    const export1 = await exportMyData(g.adminA.id);
+    expect(export1.venueReviews).toHaveLength(1);
+    expect(export1.venueReviews[0]).toMatchObject({ venueId: g.v.id, matchId: g.match.id, floor: 4, showers: 2, body: "Duschen waren kalt, sonst top" });
+    await deleteAccount(g.adminA.id);
+    const [r] = await rows(eq(venueReviews.matchId, g.match.id));
+    expect(r).toMatchObject({ userId: null, body: null, floor: 4, changingRooms: 3, cleanliness: 5, showers: 2, parking: 4, status: "visible" });
+    expect((await exportMyData(g.adminA.id)).venueReviews).toHaveLength(0); // kein Bezug mehr zum Konto
   });
 });
 
