@@ -84,10 +84,10 @@ describe("Live-Kanäle und Sitemap", () => {
 
 // Sicherheitsreview 0c2269a (Punkt 5): ALLE "use server"-Dateien aufzählen. Eine neue Aktionsdatei (oder eine Datei, die ihre Klassifizierung verliert) lässt den Test rot werden, statt unbemerkt ungeschützt zu bleiben.
 import { readdirSync, statSync } from "node:fs";
-function useServerDateien(dir = join(root, "src"), out: string[] = []): string[] {
+function dateienMitUseServer(dir = join(root, "src"), out: string[] = []): string[] {
   for (const n of readdirSync(dir)) {
     const p = join(dir, n);
-    if (statSync(p).isDirectory()) useServerDateien(p, out);
+    if (statSync(p).isDirectory()) dateienMitUseServer(p, out);
     else if (/\.(ts|tsx)$/.test(n) && /^\s*["']use server["']/.test(readFileSync(p, "utf8").slice(0, 40))) out.push(p.slice(root.length + 1).split(sep).join("/"));
   }
   return out;
@@ -114,7 +114,7 @@ const OFFEN: Record<string, string> = {
 };
 
 describe("alle 'use server'-Dateien sind klassifiziert (neue Datei = rot)", () => {
-  const gefunden = useServerDateien().sort();
+  const gefunden = dateienMitUseServer().sort();
   it("jede Datei steht in genau einer Liste (gesperrt, je Spiel, gemischt, offen mit Grund)", () => {
     const bekannt = new Set([...GESPERRT_KOMPLETT, ...JE_SPIEL, ...Object.keys(GEMISCHT), ...Object.keys(OFFEN)]);
     expect(gefunden.filter((f) => !bekannt.has(f)), "neue 'use server'-Datei: sperren oder mit Grund in OFFEN eintragen").toEqual([]);
