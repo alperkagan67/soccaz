@@ -44,6 +44,7 @@ docker compose -f docker-compose.yml -f docker-compose.staging.yml config > /dev
 docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
 docker compose ps
 ```
+**ACHTUNG: Staging nur mit dem Staging-Override starten.** Ein einfaches `docker compose up` startet **ohne** Zugangsschutz, Banner und noindex. Am sichersten: `sh scripts/staging-compose.sh up -d --build` (setzt den Override immer).
 (Der erste Befehl prüft ohne Start: fehlt der Zugangsschutz in der `.env`, bricht er mit „… fehlt“ ab. Ab hier jeden `docker compose`-Befehl auf Staging mit `-f docker-compose.yml -f docker-compose.staging.yml` geben, oder einmal `export COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml` setzen.)
 Erwartet: `config` ohne Fehler; `db`, `app`, `caddy`, `backup` laufen; `migrate` ist beendet mit `Exited (0)`.
 
@@ -70,7 +71,7 @@ curl -s -o /dev/null -w "%{http_code}
 curl -s https://<staging-adresse>/robots.txt -u <Benutzer>
 ```
 Erwartet: erster Befehl **401** (ohne Zugang gesperrt); zweiter **200** (`curl` fragt das Passwort ab, es steht nicht im Verlauf); dritter **400** (Webhook ist ohne Zugang erreichbar und wird erst von der Signaturprüfung abgewiesen, **nicht** 401); vierter zeigt `Disallow: /`.
-**Erster Staging-Login (belegt eine ANNAHME):** im Browser die Adresse öffnen, Benutzer und Passwort eingeben, dann „Mit Google anmelden“. Erwartet: Google fragt nach dem Konto und die Rückleitung landet **angemeldet** auf der Seite, ohne zweite Passwortabfrage und ohne 401. Misslingt es (401 bei der Rückleitung), **stoppen und melden**: dann braucht `/api/auth/*` eine Ausnahme im `Caddyfile.staging`.
+**Erster Staging-Login (belegt eine ANNAHME):** im Browser die Adresse öffnen, Benutzer und Passwort eingeben, dann „Mit Google anmelden“. Erwartet: Google fragt nach dem Konto und die Rückleitung landet **angemeldet** auf der Seite, ohne zweite Passwortabfrage und ohne 401. Misslingt es (401 bei der Rückleitung), **stoppen und melden**: **Fallback** ist eine Ausnahme für `/api/auth/*` im `Caddyfile.staging`. Das ist das größte Funktionsrisiko des Zugangsschutzes: bitte in Chrome **und** Safari **und** Firefox (iPhone/Android) je einmal anmelden. Kosmetisch: der Abruf der App-Beschreibung (`manifest`) vor der Passwortabfrage kann 401 liefern; das ist gewollt und stört nicht.
 
 **S8 Erstes Admin-Konto** (Vorprobe C9/C10; einmalige, benannte Ausnahme laut `BETRIEB.md`)
 1. Admin 1 öffnet `https://<staging-adresse>/anmelden` und meldet sich einmal an.
