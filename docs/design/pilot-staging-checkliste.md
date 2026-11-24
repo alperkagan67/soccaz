@@ -140,7 +140,7 @@ Wo beide Dokumente dasselbe beschreiben, gilt das **Runbook**; die Checkliste bl
 |---|---|---|
 | 1 | **Widerspruch Zahlungen:** S11 schaltet `payments_enabled` und `card_payments_enabled` **AN**, das Runbook (4a) und der Generalprobe-Plan verlangen beide **AUS** | S11 gilt nur für den Pilot mit Karten; Turnier-Generalprobe: AUS (oben markiert) |
 | 2 | **Widerspruch Schlüssel:** S2/S3 verlangen `sk_test_`/`pk_test_`, das Runbook sagt „`STRIPE_*` leer lassen“ | Pilot: Testschlüssel; Turnier: leer (oben markiert) |
-| 3 | **Fehlt hier:** `TURNIER_ONLY=1`, Startwarnung, Umgebungsmarke (Runbook 3a), Staging-Seed (Runbook 10a), Smoke-Skript (`smoke.mjs`, `smoke-turnier-only.mjs`), beide-Schalter-Prüfung (4a) | nur im Runbook; für die Generalprobe gilt dessen Reihenfolge |
+| 3 | **Fehlt hier:** `TURNIER_ONLY=1`, Startwarnung, Umgebungsmarke (Runbook Schritt 3) und Staging-Seed (Runbook Schritt 10); beide stehen mit dem Staging-Seed-PR als eigene Abschnitte 3a und 10a im Runbook, bis dahin gelten sie als „folgen“, Smoke-Skript (`smoke.mjs`, `smoke-turnier-only.mjs`), beide-Schalter-Prüfung (4a) | nur im Runbook; für die Generalprobe gilt dessen Reihenfolge |
 | 4 | **Dopplung Admin 1:** S8 und Runbook 6 beschreiben dasselbe; S8 gibt die Adresse **verdeckt** ein (`read -r -s`), das Runbook schrieb sie in die Befehlszeile | Runbook 6 ist auf die verdeckte Eingabe angeglichen; Einzelheiten weiter hier in S8 |
 | 5 | **Dopplung Erreichbarkeit:** S6 (`curl …/api/health`) und Runbook 5 (Smoke-Skript) | Smoke-Skript ersetzt S6 vollständig; Staging mit Zugangsschutz: `SMOKE_BASIC_AUTH` (nur `smoke.mjs`; `smoke-turnier-only.mjs` kennt kein Passwort) |
 | 6 | **Dopplung Sicherung:** S12 und Runbook 7 | beide gleich; Restore-Probe nur einmal pflegen: Runbook 7 |
