@@ -6,7 +6,7 @@ import { auditLog, matchParticipants, matchResults, matches, notifications, paym
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLead } from "@/lib/deadlines";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
-import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, planSchedule, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
+import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, scheduleFromRows, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
@@ -469,13 +469,10 @@ export async function maybeGenerateBracket(tx: Tx, t: T) {
   await audit(null, "tournament.bracket", "tournament", t.id, { after: { teams: entries.length } }, tx);
 }
 
-/** Zeitplan der K.-o.-Runden aus den Spielzeilen (null ohne Starttermin oder bei anderen Formaten). */
-function scheduleOf(t: T, rows: { stage: string }[]) {
-  if (!t.startsAt || rows.length === 0 || rows.some((r) => !r.stage.startsWith("ko:"))) return null;
-  const counts = new Map<string, number>();
-  for (const r of rows) counts.set(r.stage, (counts.get(r.stage) ?? 0) + 1);
-  const rounds = [...counts].map(([stage, games]) => ({ stage, games })).sort((a, b) => Number(b.stage.slice(3)) - Number(a.stage.slice(3)));
-  return planSchedule(rounds, t.startsAt, t.durationMin ?? 120);
+/** Zeitplan der K.-o.-Runden aus den Spielzeilen (null ohne Starttermin oder bei anderen Formaten). Plan-Slots sind auf die ECHTEN Slots der Zeilen abgebildet (Freilose, scheduleFromRows). */
+function scheduleOf(t: T, rows: { stage: string; slot: number }[]) {
+  if (!t.startsAt) return null;
+  return scheduleFromRows(rows, t.startsAt, t.durationMin ?? 120);
 }
 
 /** Für jede Paarung, deren beide Teams feststehen, entsteht ein echtes Spiel (Captain meldet, der andere bestätigt). */
@@ -485,7 +482,7 @@ async function createGames(tx: Tx, t: T) {
     .from(tournamentMatches)
     .where(and(eq(tournamentMatches.tournamentId, t.id), isNull(tournamentMatches.matchId), isNotNull(tournamentMatches.teamA), isNotNull(tournamentMatches.teamB)))
     .orderBy(asc(tournamentMatches.round), asc(tournamentMatches.slot));
-  const plan = scheduleOf(t, await tx.select({ stage: tournamentMatches.stage }).from(tournamentMatches).where(eq(tournamentMatches.tournamentId, t.id)));
+  const plan = scheduleOf(t, await tx.select({ stage: tournamentMatches.stage, slot: tournamentMatches.slot }).from(tournamentMatches).where(eq(tournamentMatches.tournamentId, t.id)));
   const base = (t.startsAt ?? new Date()).getTime();
   for (const tm of open) {
     const block = plan?.blocks.find((b) => b.games.some((g) => !g.fun && g.stage === tm.stage && g.slot === tm.slot));
@@ -1050,10 +1047,14 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
         label: b.label,
         startIso: b.startsAt.toISOString(),
         endIso: b.endsAt.toISOString(),
-        games: b.games.map((g) => {
-          if (g.fun) return { court: g.court, fun: true, matchId: null, nameA: losers[0] ? nameOf.get(losers[0]) ?? "?" : null, nameB: losers[1] ? nameOf.get(losers[1]) ?? "?" : null };
-          const m = matchRows.find((x) => x.stage === g.stage && x.slot === g.slot)!;
-          return { court: g.court, fun: false, matchId: m.matchId, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null };
+        games: b.games.flatMap((g) => {
+          if (g.fun) return [{ court: g.court, fun: true, matchId: null, nameA: losers[0] ? nameOf.get(losers[0]) ?? "?" : null, nameB: losers[1] ? nameOf.get(losers[1]) ?? "?" : null }];
+          const m = matchRows.find((x) => x.stage === g.stage && x.slot === g.slot);
+          if (!m) {
+            console.error("getTournament: Planpaarung ohne Spielzeile ausgelassen", { tournamentId: t.id, stage: g.stage, slot: g.slot }); // ohne Namen; sollte nie vorkommen (scheduleFromRows bildet auf echte Zeilen ab)
+            return []; // defensiv: die Seite stürzt nie ab
+          }
+          return [{ court: g.court, fun: false, matchId: m.matchId, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null }];
         }),
       })),
     },

@@ -259,3 +259,27 @@ export function planSchedule(rounds: { stage: string; games: number }[], startsA
   });
   return { slotMinutes, blocks };
 }
+
+/**
+ * Zeitplan aus den VORHANDENEN Spielzeilen der K.-o.-Runden (null ohne Zeilen oder bei anderen Stufen). Freilose entfernen Paarungen der ersten Runde, die übrigen Zeilen behalten ihre Position im Bracket
+ * als slot (Lücken, z. B. 1 und 3). planSchedule nummeriert 0..n-1: Plan-Slot i wird deshalb auf die i-te vorhandene Zeile der Runde abgebildet (sortiert nach slot); so passen Plan und Zeilen für alle
+ * Verbraucher zusammen (Anzeige, Plätze und Zeiten, Anlegen der Spiele). Das Spaß-Spiel der Halbfinal-Verlierer gibt es nur mit zwei echten Halbfinal-Zeilen (bei einem Freilos im Halbfinale, z. B. 3 Teams, nicht).
+ */
+export function scheduleFromRows(rows: { stage: string; slot: number }[], startsAt: Date, durationMin: number): { slotMinutes: number; blocks: PlannedBlock[] } | null {
+  if (rows.length === 0 || rows.some((r) => !r.stage.startsWith("ko:"))) return null;
+  const slots = new Map<string, number[]>();
+  for (const r of rows) slots.set(r.stage, [...(slots.get(r.stage) ?? []), r.slot]);
+  for (const list of slots.values()) list.sort((a, b) => a - b);
+  const rounds = [...slots].map(([stage, list]) => ({ stage, games: list.length })).sort((a, b) => Number(b.stage.slice(3)) - Number(a.stage.slice(3)));
+  const plan = planSchedule(rounds, startsAt, durationMin);
+  const semis = slots.get("ko:4")?.length ?? 0;
+  const blocks = plan.blocks.map((b) => ({
+    ...b,
+    games: b.games.flatMap((g) => {
+      if (g.fun) return semis >= 2 ? [g] : []; // kein Verliererpaar ohne zwei echte Halbfinals
+      const real = slots.get(g.stage)?.[g.slot];
+      return real === undefined ? [] : [{ ...g, slot: real }];
+    }),
+  }));
+  return { slotMinutes: plan.slotMinutes, blocks };
+}
