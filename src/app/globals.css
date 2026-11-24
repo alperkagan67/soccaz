@@ -200,7 +200,8 @@ h1, h2, h3 {
   justify-content: center;
   gap: 0.5rem;
   min-height: 44px; /* Touch-Ziel */
-  padding: 0 1.1rem;
+  /* 0.25rem oben und unten: bricht die Beschriftung um, sitzt der Text sonst am Rand (Impeccable cramped-padding 3,5 px, Lauf 1 und 2); ein Einzeiler bleibt bei 44 px (min-height), nur Mehrzeiler werden 8 px höher */
+  padding: 0.25rem 1.1rem;
   border-radius: 10px;
   border: 1px solid transparent;
   font-weight: 600;
