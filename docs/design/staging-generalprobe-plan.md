@@ -40,7 +40,12 @@ Voraussetzung: **Zahlungen AUS**, das Turnier hat Preis 0, `TURNIER_ONLY=1`. Auf
 Jede Auffälligkeit: Datum, Gerät, Seite, Screenshot ohne Personendaten ins **Testprotokoll** (Abschnitt 8).
 
 ## 4. Lasttest-Light (Di 1.12. nachmittags, [A])
-Ziel ist **nicht** Belastbarkeit bis zum Äußersten, sondern: trägt der kleine Server **100 Spieler** (Turnier: bis 16 Teams, ca. 100 Spieler)? Ein kleines Node-Skript (`scripts/last-light.mjs`, **noch zu bauen**, nur lesende Gast-Anfragen, kein Schreiben): z. B. 50 gleichzeitige Verbindungen, 2 Minuten, Mischung aus `/turniere`, Turnierseite, `/api/health`, `/hilfe`. **Meldemodus** (Zeiten werden berichtet, nicht als Grenze durchgesetzt): Antwortzeit (Median, p95), Fehlerquote, Speicher und CPU des Servers (`docker stats`). **No-Go-Signal:** Fehlerquote über 1 % oder p95 über 3 s bei 50 Verbindungen auf dem gewählten Server.
+Ziel ist **nicht** Belastbarkeit bis zum Äußersten, sondern: trägt der Server **100 Spieler** (Turnier: bis 16 Teams, ca. 100 Spieler)? Das Skript **`scripts/last-light.mjs` ist gebaut** (#388, Erklärung und Rechnung: `docs/design/groesse-turnier-12-12.md`): nur **lesende** GET-Anfragen auf öffentliche Seiten (Start, Turniere, Hilfe, Teams, Anmelden, Impressum), keine Anmeldung, **verweigert die Produktion** ohne `--produktion-bestaetigt` (nicht benutzen), höchstens 100 Verbindungen, bricht bei über 20 % Fehlern ab. Auf **Staging mit der Servergröße der Produktion**, ein Lauf nach dem anderen, Zugangsschutz über `SMOKE_BASIC_AUTH` in der eigenen Shell:
+```
+node scripts/last-light.mjs https://<Staging-Adresse> --gleichzeitig 20 --anfragen 300
+node scripts/last-light.mjs https://<Staging-Adresse> --gleichzeitig 60 --anfragen 1000
+```
+Erwartet: Bericht mit Antwortzeiten (p50, p95, max), Fehlerrate und Status je Gruppe, am Ende `ERGEBNIS: IM RAHMEN`, Ende-Code 0. Währenddessen auf dem Server `docker stats` beobachten. **Schwellen für „im Rahmen“** (aus der Größen-Doku): **p95 unter 1,5 s bei 60 gleichzeitig, Fehlerrate unter 1 %, kein Abbruch, CPU des App-Containers unter 80 %, Speicher unter 60 %** des Servers. **Liegen die Werte darüber:** erst eine Servergröße hoch, dann erneut messen; bleibt es danach darüber: **No-Go** (Kriterium 6). Hinweise: ein 3xx zählt im Skript als „ok“ (viele 301/302 in der Statuszeile = Adresse prüfen); bei lauter 401 fehlt `SMOKE_BASIC_AUTH`. Die **Live-Verbindungen** eines Spiels (`--sse`) prüft der dritte Lauf der Größen-Doku; er braucht eine Anmeldung von Hand und ist **optional**. Die Messung erfasst nur öffentliche Seiten, **nicht** die angemeldeten Spielseiten: der Puffer in der Empfehlung (Servergröße 4 vCPU/8 GB für den Turnierzeitraum) bleibt dafür bestehen.
 
 ## 5. Backup/Restore-Probe (Di 1.12. abends)
 1. [A]/[N] `docker compose exec backup sh /backup-loop.sh once`, Erwartet: `socaz-<zeit>.sql.gz` und `.manifest.json`.
@@ -60,7 +65,7 @@ Voraussetzung: Apple Developer Program aktiv, Services ID, Schlüssel, Client Se
 | 3 | Gratis-Turnier mit 6 Teams komplett durchgespielt (Gast, Captain, Veranstalter), **kein Zahlungswort** | [N] [P] | Protokoll, Screenshots |
 | 4 | Bedienung auf **iPhone und Android** ohne blockierenden Fehler | [N] [P] | Protokoll |
 | 5 | Google-Anmeldung auf Staging in Chrome/Safari/Firefox ohne zweite Passwortabfrage | [N] | Protokoll |
-| 6 | Lasttest-Light besteht (Fehlerquote ≤ 1 %, p95 ≤ 3 s bei 50 Verbindungen) | [A] | Zahlen |
+| 6 | Lasttest-Light „im Rahmen“ (Abschnitt 4: p95 unter 1,5 s bei 60 gleichzeitig, Fehlerrate unter 1 %, kein Abbruch; sonst eine Größe hoch und erneut messen) | [A] | Bericht des Skripts, `docker stats` |
 | 7 | Restore-Probe `PASS`, Server-Backup eingeschaltet | [A] [N] | Ausgabe |
 | 8 | Apple: getestet und OK **oder** Rückfall „nur Google“ ausdrücklich entschieden | [N] | Protokoll mit Datum |
 | 9 | Keine offenen Fehler der Stufe „blockiert“; offene kleine Fehler mit Entscheid (später beheben) | [A] [N] | Fehlerliste |
@@ -73,4 +78,4 @@ Eine Datei (nicht im Repository, keine Personendaten, keine Schlüssel): je Zeil
 1. **Q1 ENTSCHIEDEN (t2q):** Teams 1 und 2 echte Konten (Google und Apple), Teams 3 bis 6 per Staging-Seed mit eigener harter Sperre (Umgebungsmarke, nicht Produktion, ausdrückliche Bestätigung); `seed-guard`/`db-guard` bleiben unberührt. Die Ausnahme vom Grundsatz „keine SQL-Schreibzugriffe“ gilt nur für dieses Skript auf Staging.
 2. **Q2 Partner:** Wer ist die zweite Person, die Handy und Captain-Rolle übernimmt (Zeit Mo bis Mi)?
 3. **Q3 Server:** Zwei Server (Produktion und Staging) oder Staging nach der Probe wieder löschen (Anbieter-Vorlage)?
-4. **Q4 Lasttest-Skript:** `scripts/last-light.mjs` darf ein Agent bauen (kleiner Doku-/Skript-PR im Freeze, nur Test)?
+4. **Q4 Lasttest-Skript: erledigt** (`scripts/last-light.mjs` gebaut und gemergt, #388; Abschnitt 4).
