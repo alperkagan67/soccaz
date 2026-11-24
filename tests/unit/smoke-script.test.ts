@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-// @ts-expect-error reine .mjs-Datei ohne Typen
 import { buildChecks, runSmoke } from "../../scripts/smoke.mjs";
 
 // Go-live-Runbook Schritt 5: Smoke-Skript ohne Secrets. Der Abruf wird mit einer Attrappe ersetzt, es gibt kein Netz im Test.
@@ -38,7 +37,7 @@ describe("scripts/smoke.mjs", () => {
     expect(ohneBald.ok).toBe(false);
     const down = await runSmoke({ base: "https://x.de", fetchImpl: (async () => { throw Object.assign(new Error("x"), { name: "TypeError" }); }) as unknown as typeof fetch });
     expect(down.ok).toBe(false);
-    expect(down.results[0].detail).toContain("nicht erreichbar");
+    expect(down.results[0]?.detail).toContain("nicht erreichbar");
   });
   it("Zugangsschutz (Staging): Basic-Auth nur aus dem Parameter, nie in der Ergebnisausgabe", async () => {
     const seen: { url: string; auth?: string }[] = [];
@@ -48,6 +47,6 @@ describe("scripts/smoke.mjs", () => {
   });
   it("Quelltext: keine Schlüssel, keine .env-Zugriffe, keine feste Adresse", () => {
     const src = readFileSync(path.join(process.cwd(), "scripts/smoke.mjs"), "utf8");
-    expect(src).not.toMatch(/readFileSync|.env["'`]|DATABASE_URL|sk_live|sk_test|AUTH_SECRET/);
+    expect(src).not.toMatch(/readFileSync|\.env["'`]|DATABASE_URL|sk_live|sk_test|AUTH_SECRET/);
   });
 });
