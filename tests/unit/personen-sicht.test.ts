@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PersonName } from "@/components/PersonName";
-import { autorLabel, personRef, vornameInitial, type LobbySicht } from "@/lib/lobby-namen";
+import { autorLabel, personRef, veranstalterLabel, vornameInitial, type LobbySicht } from "@/lib/lobby-namen";
 
 // AC-17 (Entscheid t2q 2026-11-24), PR B: Personen in öffentlichen Listen: Name und Link nur für Angemeldete; Gast und reiner Betreiber Initialen ohne Link, und der Listenschlüssel trägt keine Kennung (React-Schlüssel stehen in der RSC-Nutzlast).
 const ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
@@ -82,5 +82,16 @@ describe("vornameInitial: Schreibweisen (R-T380)", () => {
     expect(vornameInitial("Hans Peter Müller Lüdenscheid")).toBe("Hans L.");
     expect(vornameInitial("Max 😀")).toBe("Max 😀.");
     expect(vornameInitial("😀 Max")).toBe("😀 M.");
+  });
+});
+
+describe("veranstalterLabel: Veranstalter überall 'Vorname + Initial' (Entscheid t2q 2026-11-24)", () => {
+  it("Angemeldete: voller Name; Gast und Betreiber: Vorname + Initial, nie der Nachname", () => {
+    expect(veranstalterLabel("Alper Kagan", "member")).toBe("Alper Kagan");
+    for (const s of ["guest", "hall"] as const) {
+      expect(veranstalterLabel("Alper Kagan", s)).toBe("Alper K.");
+      expect(veranstalterLabel("Alper Kagan", s)).not.toContain("Kagan");
+      expect(veranstalterLabel("Kagan, Alper", s)).toBe("Alper K.");
+    }
   });
 });

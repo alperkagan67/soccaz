@@ -23,7 +23,7 @@ import { getCardDisplays, getStoredCardDisplay, getTeamCardsReady } from "@/serv
 import { audienceFor, canSeeAnyStatus } from "@/lib/card-visibility";
 import { chargeFailureText } from "@/lib/charge-failure-text";
 import { graceText } from "@/lib/grace";
-import { lobbySicht } from "@/lib/lobby-namen";
+import { lobbySicht, personRef } from "@/lib/lobby-namen";
 import { lobbyStand } from "@/lib/lobby-stand";
 import { lobbyFehlerFall } from "@/lib/lobby-fehler";
 import { isVenueManager } from "@/server/venue-access-rules";
@@ -437,7 +437,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
             </div>
             <ul className="space-y-2 text-sm">
               {participants.filter((p) => p.teamId === t.id).map((p, i) => (
-                <li key={p.userId} className="flex items-center justify-between gap-2">
+                <li key={personRef(sicht, p.userId, p.name, i).key} className="flex items-center justify-between gap-2">
                   <span>
                     <ParticipantName name={p.name} sicht={sicht} index={i} />
                     {p.isVerifiedPro && <span className="ml-2 rounded bg-accent-soft px-1.5 py-0.5 text-sm text-accent-fg">Profi</span>}
@@ -470,7 +470,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           <h2 className="font-semibold">{isPrivate ? "Spieler warten auf ihr Team" : "Ersatzspieler warten auf Zuweisung"}</h2>
           <ul className="space-y-2 text-sm">
             {pendingStrangers.map((p, i) => (
-              <li key={p.userId} className="flex items-center justify-between gap-2">
+              <li key={personRef(sicht, p.userId, p.name, i).key} className="flex items-center justify-between gap-2">
                 <span><ParticipantName name={p.name} sicht={sicht} index={i} />{p.userId === user?.id && <span className="ml-2 text-sm text-muted">(du)</span>}</span>
                 {active && v.canManage && p.userId !== user?.id && (
                   <ParticipantActions matchId={match.id} userId={p.userId} canRemove assignTo={assignTargets} />
