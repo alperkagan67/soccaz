@@ -107,6 +107,20 @@ describe("Freilose: Plan und Spielzeilen passen zusammen (2 bis 32 Teams)", () =
     expect(scheduleFromRows([{ stage: "group:A", slot: 0 }], START, 120)).toBeNull();
   });
 
+  it("Konkretes Beispiel (6 Teams): die beiden Spiele der ersten Runde liegen auf den ECHTEN Positionen 1 und 3, Plätze 1 und 2, im ersten Block; das Viertelfinale folgt 36 + 5 Minuten später", () => {
+    const rows = knockout(ids(6));
+    const plan = scheduleFromRows(rows, START, 120)!;
+    expect(plan.blocks[0].startsAt.toISOString()).toBe(START.toISOString());
+    expect(plan.blocks[0].games.map((g) => ({ stage: g.stage, slot: g.slot, court: g.court }))).toEqual([
+      { stage: "ko:8", slot: 1, court: 1 },
+      { stage: "ko:8", slot: 3, court: 2 },
+    ]);
+    expect(plan.blocks[1].startsAt.getTime() - START.getTime()).toBe(41 * 60_000);
+    expect(plan.blocks[1].games.map((g) => ({ stage: g.stage, slot: g.slot }))).toEqual([{ stage: "ko:4", slot: 0 }, { stage: "ko:4", slot: 1 }]);
+    // beide Zeilen der ersten Runde finden ihren Block über (stage, slot)
+    for (const r of rows.filter((x) => x.stage === "ko:8")) expect(plan.blocks[0].games.some((g) => g.stage === r.stage && g.slot === r.slot)).toBe(true);
+  });
+
   it("Zeiten (6 Teams): Blockzahl und Slotlänge kommen aus den echten Spielen, nicht aus dem vollen Bracket mit Phantom-Spielen", () => {
     const mapped = scheduleFromRows(knockout(ids(6)), START, 120)!;
     expect(mapped.blocks).toHaveLength(3); // ko:8 (2 Spiele), ko:4 (2 Spiele), Finale: je ein Block
