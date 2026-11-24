@@ -220,14 +220,17 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             <div className="card space-y-2 text-sm" data-testid="schedule">
               <h3 className="font-semibold">Spielplan</h3>
               <p className="text-xs text-muted">
-                Zwei Plätze, gebucht von {formatDateTime(new Date(data.schedule.blocks[0].startIso))} bis {new Date(data.schedule.blocks[data.schedule.blocks.length - 1].endIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr.
-                {" "}Jedes Spiel dauert {data.schedule.slotMinutes} Minuten, dazwischen {data.schedule.gapMinutes} Minuten Pause zum Einwechseln. Im Finale bleibt ein Platz frei: Dort spielen die Verlierer der Halbfinals nur zum Spaß.
+                Zwei Plätze, Beginn {formatDateTime(new Date(data.schedule.blocks[0].startIso))}, Ende des Plans {new Date(data.schedule.endIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr.
+                {" "}Jedes Spiel dauert {data.schedule.slotMinutes} Minuten, danach {data.schedule.gapMinutes} Minuten Puffer zum Einwechseln (bei Gleichstand im K.-o.: Golden Goal, danach Neunmeter). Im Finale bleibt ein Platz frei: Dort spielen die Verlierer der Halbfinals nur zum Spaß.
               </p>
+              {manage && data.schedule.overMinutes > 0 && (
+                <p className="text-xs font-semibold" data-testid="schedule-over">Hinweis: Der Plan dauert {data.schedule.totalMinutes} Minuten, die gebuchte Hallenzeit ist {data.schedule.overMinutes} Minuten kürzer. Bitte mehr Hallenzeit buchen oder Spielzeit und Puffer verkürzen.</p>
+              )}
               <ol className="space-y-1.5">
                 {data.schedule.blocks.map((b, i) => (
                   <li key={i} className="rounded-lg border border-line p-2">
                     <p className="text-xs font-semibold">
-                      {new Date(b.startIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr · {b.label}
+                      {new Date(b.startIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} bis {new Date(b.endIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr · {b.label}{(data.schedule?.gapMinutes ?? 0) > 0 ? ` · Puffer ${data.schedule?.gapMinutes} Min` : ""}
                     </p>
                     <ul className="text-xs text-muted">
                       {b.games.map((g) => (

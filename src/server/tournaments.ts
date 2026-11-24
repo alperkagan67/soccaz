@@ -6,7 +6,8 @@ import { auditLog, matchParticipants, matchResults, matches, notifications, paym
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLead } from "@/lib/deadlines";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
-import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, scheduleFromRows, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
+import { GAP_MAX_MINUTEN, GAP_MIN_MINUTEN, GAP_STANDARD_MINUTEN } from "@/lib/turnier-grenzen";
+import { planFits, secureRandom, shuffle, finalSharePerPlayer, scheduleFromRows, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
@@ -62,6 +63,8 @@ export type TournamentInput = {
   hourlyCents?: number | null;
   isPrivate?: boolean;
   matchMinutes?: number;
+  /** Puffer zwischen zwei Spielen in Minuten (0062; Standard 5). */
+  gapMinutes?: number;
 };
 
 /** Der endgültige Preis pro Spieler: erst bekannt, wenn alle Teams vollzählig gemeldet haben (Phase "Zahlung"). */
@@ -107,6 +110,8 @@ export async function createTournament(userId: string, input: TournamentInput) {
   }
   const matchMinutes = input.matchMinutes ?? 15;
   if (!Number.isInteger(matchMinutes) || matchMinutes < 5 || matchMinutes > 90) throw new DomainError("Eine Spielzeit dauert 5 bis 90 Minuten.");
+  const gapMinutes = input.gapMinutes ?? GAP_STANDARD_MINUTEN;
+  if (!Number.isInteger(gapMinutes) || gapMinutes < GAP_MIN_MINUTEN || gapMinutes > GAP_MAX_MINUTEN) throw new DomainError(`Der Puffer zwischen zwei Spielen dauert ${GAP_MIN_MINUTEN} bis ${GAP_MAX_MINUTEN} Minuten.`);
   const [row] = await db
     .insert(tournaments)
     .values({
@@ -127,6 +132,7 @@ export async function createTournament(userId: string, input: TournamentInput) {
       isPrivate: input.isPrivate ?? true,
       inviteToken: randomBytes(16).toString("base64url"),
       matchMinutes,
+      gapMinutes,
     })
     .returning();
   await audit(userId, "tournament.create", "tournament", row.id, { after: { ...row, inviteToken: undefined } });
@@ -531,7 +537,7 @@ export async function maybeGenerateBracket(tx: Tx, t: T) {
 /** Zeitplan der K.-o.-Runden aus den Spielzeilen (null ohne Starttermin oder bei anderen Formaten). Plan-Slots sind auf die ECHTEN Slots der Zeilen abgebildet (Freilose, scheduleFromRows). */
 function scheduleOf(t: T, rows: { stage: string; slot: number }[]) {
   if (!t.startsAt) return null;
-  return scheduleFromRows(rows, t.startsAt, t.durationMin ?? 120);
+  return scheduleFromRows(rows, t.startsAt, t.matchMinutes, t.gapMinutes); // Spielzeit + Puffer; die Hallenzeit ist nur ein Fenster (planFits)
 }
 
 /** Für jede Paarung, deren beide Teams feststehen, entsteht ein echtes Spiel (Captain meldet, der andere bestätigt). */
@@ -545,7 +551,7 @@ async function createGames(tx: Tx, t: T) {
   const base = (t.startsAt ?? new Date()).getTime();
   for (const tm of open) {
     const block = plan?.blocks.find((b) => b.games.some((g) => !g.fun && g.stage === tm.stage && g.slot === tm.slot));
-    const startsAt = block?.startsAt ?? new Date(base + (tm.round - 1) * (t.matchMinutes + 10) * 60_000);
+    const startsAt = block?.startsAt ?? new Date(base + (tm.round - 1) * (t.matchMinutes + t.gapMinutes) * 60_000);
     const minutes = plan ? plan.slotMinutes : t.matchMinutes;
     const [game] = await tx
       .insert(matches)
@@ -1102,7 +1108,10 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
     bracketVisible,
     schedule: plan && {
       slotMinutes: plan.slotMinutes,
-      gapMinutes: GAP_MIN,
+      gapMinutes: plan.gapMinutes,
+      totalMinutes: plan.totalMinutes,
+      endIso: plan.endsAt.toISOString(),
+      overMinutes: planFits(plan, t.durationMin ?? 120).overMinutes,
       blocks: plan.blocks.map((b) => ({
         label: b.label,
         startIso: b.startsAt.toISOString(),

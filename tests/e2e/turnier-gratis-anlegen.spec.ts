@@ -28,6 +28,13 @@ test("Veranstalter legt ein kostenloses Turnier an: Gratis-Hinweis statt Preisfe
   // Anmeldeschluss: Vorschlag 4 Tage vor Beginn (Gratis PR B), das Feld wird nicht von Hand gefuellt
   await expect(org.getByLabel("Anmeldeschluss")).toHaveValue(`${day(8)}T10:00`);
   await expect(org.getByTestId("deadline-hint")).toContainText("4 Tage vor Beginn");
+  // Spielplan 15 + 5: Puffer-Feld (Standard 5) mit Hinweis, Live-Hinweis zur Plandauer gegen die Hallenzeit
+  await expect(org.locator("#gapMinutes")).toHaveValue("5");
+  await expect(org.getByTestId("gap-hint")).toContainText("Golden Goal");
+  await expect(org.getByTestId("plan-hint")).toContainText("Der Spielplan dauert höchstens 75 Minuten, gebucht sind 180 Minuten."); // 8 Teams, 15 + 5, Standard 3 Stunden
+  await org.locator("#durationHours").fill("1");
+  await expect(org.getByTestId("plan-hint")).toContainText("15 Minuten länger als die Hallenzeit"); // 75 gegen 60 Minuten
+  await org.locator("#durationHours").fill("3");
   await org.waitForLoadState("networkidle");
   await org.getByRole("button", { name: "Turnier anlegen" }).click();
   await expect(org).toHaveURL(/\/turniere\/[0-9a-f-]{36}/, { timeout: 60_000 });
