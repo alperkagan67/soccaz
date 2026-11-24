@@ -6,7 +6,9 @@ Alles läuft mit Docker Compose: App, PostgreSQL, Caddy (HTTPS) und eine täglic
 
 1. Server mit Ubuntu 24.04, Docker und Docker Compose installieren, Domain per A-Record auf die Server-IP legen.
 2. Repository klonen: `git clone https://github.com/alperkagan67/soccaz.git && cd soccaz`
-3. Konfiguration anlegen: `cp .env.production.example .env` und alle Werte eintragen (Datenbankpasswort, Domain, `AUTH_SECRET`, Google, `JOB_SECRET`).
+3. Konfiguration anlegen: `cp .env.example .env`. **Eine eigene Produktionsvorlage gibt es nicht**; `.env.example` enthält Entwicklungswerte: jeden Wert durch einen Produktionswert ersetzen und fehlende Namen ergänzen (Datenbankpasswort, Domain, `AUTH_SECRET`, Google, `JOB_SECRET`, `TURNIER_ONLY`; vollständige Liste: `docs/design/go-live-runbook.md` Schritt 3). `.env` nie ausgeben oder verschicken.
+
+Für das Turnier (12.12.) gilt der **Einseiter `docs/design/go-live-runbook.md`** (Befehl und Erwartet je Schritt); dieser Abschnitt bleibt die allgemeine Beschreibung.
 4. Starten: `docker compose up -d --build`
 5. Prüfen: `https://deine-domain/api/health` liefert `{"status":"ok"}`.
 6. Den ersten Admin festlegen (einmalig, nach der ersten Anmeldung):

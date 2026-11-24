@@ -6,6 +6,8 @@ Stand: 2026-11-24 · Code-Stand `origin/main` 18d082e · Verfasser: worker-4 · 
 
 **Begriffe:** *Server* = der gemietete Rechner. *Compose* = das Programm, das alle Teile (App, Datenbank, Webserver, Sicherung) zusammen startet. *Webhook* = die Rückmeldung von Stripe an unsere Seite („Zahlung ging durch“). *Caddy* = der Webserver, der das HTTPS-Schloss (verschlüsselte Verbindung) besorgt. Befehle tippst du auf dem Server (per SSH) im Ordner der Installation.
 
+**Geltungsbereich (Abgleich mit dem Go-live-Runbook, 2026-11-24):** Diese Checkliste beschreibt den **Pilot mit Stripe-Testkarten** (Zahlungen AN). Für die **Turnier-Generalprobe 30.11. bis 2.12.** (Zahlungen **AUS**, `TURNIER_ONLY=1`, kein Stripe) gilt `go-live-runbook.md` zusammen mit `staging-generalprobe-plan.md`; die Schritte **S3 (Stripe-Schlüssel), S9, S10 und S11 entfallen dort** (siehe Abschnitt „Abgleich mit dem Go-live-Runbook“ am Ende). Der Aufbau bis S8 und S12 ist in beiden Dokumenten derselbe und wird nur im **Runbook** weitergepflegt; Abweichungen stehen unten.
+
 ## Vorher bereithalten (Nutzer)
 - [ ] Ein kleiner Server (Ubuntu 24.04, Docker und Docker Compose installiert), **nur für Staging**. Ein zweiter Mieter auf dem Produktionsserver ist nicht vorgesehen; läuft Staging doch auf demselben Rechner, braucht es einen anderen Projektnamen (`docker compose -p …`) und andere Ports (siehe Lücke 7).
 - [ ] Eine eigene Adresse (z. B. `staging.<deine-domain>`), per A-Eintrag auf die Server-Nummer gelegt.
@@ -24,15 +26,16 @@ git log --oneline -1
 ```
 Erwartet: letzte Zeile ist der abgestimmte Stand von `main` (Nummer vom Task Manager vorgegeben).
 
-**S2 Einstellungen anlegen** (Namen siehe `.env.production.example`; Werte nur auf dem Server)
+**S2 Einstellungen anlegen** (Namen siehe Runbook Schritt 3; Werte nur auf dem Server). Eine Produktionsvorlage `.env.production.example` gibt es **nicht**; `.env.example` ist die einzige Vorlage und enthält **Entwicklungswerte**: jeden Wert ersetzen, fehlende Namen ergänzen, unbekannte Zeilen melden.
 ```
-cp .env.production.example .env
+cp .env.example .env
+chmod 600 .env
 nano .env
 ```
 Eintragen: `POSTGRES_PASSWORD`, `APP_URL` (`https://<staging-adresse>`), `SITE_ADDRESS` (nur die Adresse, ohne `https://`), `AUTH_SECRET` (zufällig, z. B. `openssl rand -base64 32`), `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `JOB_SECRET` (zufällig), `STRIPE_SECRET_KEY` (`sk_test_`), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_test_`), `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` (Pflicht für Impressum, sonst Hinweis auf der Seite), dazu für den Zugangsschutz `STAGING_BASIC_AUTH_USER` und `STAGING_BASIC_AUTH_HASH` (bcrypt-Hash, **in einfachen Anführungszeichen**; Erzeugung: `docker run --rm -it caddy:2-alpine caddy hash-password`, das Passwort wird verdeckt abgefragt und landet nicht im Verlauf). **Optional/aus:** `OPERATOR_TAX_ID`, `RESEND_API_KEY`, `EMAIL_FROM` (der Mail-Dienst steht noch in `FEHLT-NOCH.md`). **Nicht** eintragen: `PAYMENTS_FAKE`, `STRIPE_WEBHOOK_SECRET` (alter Pfad, entfällt), `SOCAZ_REQUIRE_A2` (vor A2), `DATABASE_URL_OPS` (vor A2), `MATCH_PHOTOS_ENABLED` (Standard aus), keinen Live-Schlüssel (`sk_live_`).
 Erwartet: Datei gespeichert, `chmod 600 .env` gesetzt.
 
-**S3 Schlüssel prüfen, ohne sie zu zeigen** (Vorprobe A4, A6)
+**S3 Schlüssel prüfen, ohne sie zu zeigen** (Vorprobe A4, A6; **nur Pilot mit Karten**: in der Turnier-Generalprobe sind die Stripe-Namen leer, geprüft wird stattdessen Runbook 3: `TURNIER_ONLY=1`, kein `PAYMENTS_FAKE`)
 ```
 grep -c "^PAYMENTS_FAKE=" .env
 grep -o "^STRIPE_SECRET_KEY=.\{8\}" .env
@@ -85,21 +88,21 @@ docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs --yes
 ```
 (Die Adresse wird verdeckt eingegeben und exportiert, damit sie nicht in der Befehlszeile und im Verlauf steht; im SQL-Befehl darüber steht sie einmal, danach den Verlauf löschen: `history -c`.) Erwartet: erster Aufruf zeigt nur Host und Datenbankname (Trockenlauf), zweiter meldet Erfolg; `/admin` ist für Admin 1 erreichbar, für andere Konten nicht. (`set-owner` läuft im Hilfsdienst `migrate`, dort steht die Datenbank-Adresse schon; der Wert wird nie ausgegeben. `BETRIEB.md` beschreibt nur den Aufruf ohne Compose, siehe Lücke 11.)
 
-**S9 Stripe-Webhook einrichten** (Vorprobe B1)
+**S9 Stripe-Webhook einrichten** (Vorprobe B1; **nur Pilot mit Karten**, entfällt bei Zahlungen AUS)
 Stripe-Dashboard, **Testmodus**, Entwickler, Webhooks, „Endpunkt hinzufügen“: Adresse `https://<staging-adresse>/api/stripe/webhook`; Ereignisse: `setup_intent.succeeded`, `setup_intent.setup_failed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.requires_action`, `charge.updated` sowie für Erstattungen `refund.created`, `refund.updated`, `refund.failed`, `charge.refund.updated`, `charge.refunded` (ohne sie bleiben asynchrone Erstattungen auf „angefordert“ stehen: Absage nach Abbuchung, Spiel B, Nachrücker-Absage) und für Zahlungsstreit `charge.dispute.created`, `.updated`, `.funds_withdrawn`, `.funds_reinstated`, `.closed`. Das angezeigte Signaturgeheimnis (`whsec_…`) kommt als `STRIPE_CARD_WEBHOOK_SECRET` in die `.env`, dann:
 ```
 docker compose up -d --build app
 ```
 Erwartet: Endpunkt „Aktiv“; **der alte Endpunkt `/api/webhooks/stripe` ist nicht angelegt** (sonst doppelte Meldungen).
 
-**S10 Webhook testen** (Vorprobe B2 bis B5)
+**S10 Webhook testen** (Vorprobe B2 bis B5; **nur Pilot mit Karten**, entfällt bei Zahlungen AUS)
 ```
 stripe trigger setup_intent.succeeded
 curl -s -o /dev/null -w "%{http_code}" -X POST -H "stripe-signature: t=1,v1=00" -d "{}" https://<staging-adresse>/api/stripe/webhook
 ```
 Erwartet: im Dashboard unter dem Endpunkt ein Zustellversuch mit **200**; der zweite Befehl (falsche Signatur) gibt **400**.
 
-**S11 Schalter für Karten** (`pilot-daten-plan.md` Schritt 12, Vorprobe A8): als Admin 1 `/admin/einstellungen`: `payments_enabled` **AN** und `card_payments_enabled` **AN** (nur ohne offene bezahlte Spiele). Nicht „Zahlungen AUS“ (dann sind alle Spiele gratis).
+**S11 Schalter für Karten** (**nur Pilot mit Karten**; bei der Turnier-Generalprobe bleiben **beide** Schalter AUS, Runbook 4a) (`pilot-daten-plan.md` Schritt 12, Vorprobe A8): als Admin 1 `/admin/einstellungen`: `payments_enabled` **AN** und `card_payments_enabled` **AN** (nur ohne offene bezahlte Spiele). Nicht „Zahlungen AUS“ (dann sind alle Spiele gratis).
 Erwartet: beide AN; in einer Lobby erscheint das Karten-Formular (Vorprobe B7).
 
 **S12 Sicherung und Probe** (Vorprobe G1, G2)
@@ -130,3 +133,16 @@ Danach: Zeitplaner prüfen (Vorprobe A9), Daten anlegen nach `pilot-daten-plan.m
 - **Vorprobe Teil A** (`pilot-vorprobe.md`): A1 = S6, A2 = S4, A3 = S5, A4/A6 = S3, A8 = S11, A9 = nach S12, A10 = S7. **Teil B**: B1 = S9, B2 bis B5 = S10, B7 = S11. **Teil G**: G1/G2 = S12.
 - **Pilot-Daten-Plan**: nach S12 (Schritt 0 Admin = S8, Schritt 12 Schalter = S11, danach Halle, Konten, Teams, Spiele A und B).
 - Die Reihenfolge ist also: **S1 bis S12 → Daten → Vorprobe (T-1) → Pilot**. Stichtage: Stripe-Update bis T-14, Staging bis T-7 (`pilot-plan.md` 12).
+
+## Abgleich mit dem Go-live-Runbook (Dopplungen und Widersprüche, 2026-11-24)
+Wo beide Dokumente dasselbe beschreiben, gilt das **Runbook**; die Checkliste bleibt die Pilot-Fassung mit Karten.
+| # | Fund | Auflösung |
+|---|---|---|
+| 1 | **Widerspruch Zahlungen:** S11 schaltet `payments_enabled` und `card_payments_enabled` **AN**, das Runbook (4a) und der Generalprobe-Plan verlangen beide **AUS** | S11 gilt nur für den Pilot mit Karten; Turnier-Generalprobe: AUS (oben markiert) |
+| 2 | **Widerspruch Schlüssel:** S2/S3 verlangen `sk_test_`/`pk_test_`, das Runbook sagt „`STRIPE_*` leer lassen“ | Pilot: Testschlüssel; Turnier: leer (oben markiert) |
+| 3 | **Fehlt hier:** `TURNIER_ONLY=1`, Startwarnung, Umgebungsmarke (Runbook 3a), Staging-Seed (Runbook 10a), Smoke-Skript (`smoke.mjs`, `smoke-turnier-only.mjs`), beide-Schalter-Prüfung (4a) | nur im Runbook; für die Generalprobe gilt dessen Reihenfolge |
+| 4 | **Dopplung Admin 1:** S8 und Runbook 6 beschreiben dasselbe; S8 gibt die Adresse **verdeckt** ein (`read -r -s`), das Runbook schrieb sie in die Befehlszeile | Runbook 6 ist auf die verdeckte Eingabe angeglichen; Einzelheiten weiter hier in S8 |
+| 5 | **Dopplung Erreichbarkeit:** S6 (`curl …/api/health`) und Runbook 5 (Smoke-Skript) | Smoke-Skript ersetzt S6 vollständig; Staging mit Zugangsschutz: `SMOKE_BASIC_AUTH` (nur `smoke.mjs`; `smoke-turnier-only.mjs` kennt kein Passwort) |
+| 6 | **Dopplung Sicherung:** S12 und Runbook 7 | beide gleich; Restore-Probe nur einmal pflegen: Runbook 7 |
+| 7 | **Anmeldung:** Checkliste „Google **oder** Testkonten“ | Nutzerentscheid: Google **und** Apple (Vorbereiten, oben angepasst); ohne Dev-Login (Smoke prüft es) |
+| 8 | **Vorlage `.env.production.example`** wurde in BETRIEB, Compose-Kopf und S2 genannt, existiert aber nicht (Backlog 260) | auf `.env.example` umgestellt, mit Hinweis auf die Entwicklungswerte; Lücke 2 unten bleibt als Begründung |
