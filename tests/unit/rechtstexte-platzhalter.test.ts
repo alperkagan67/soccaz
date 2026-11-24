@@ -69,6 +69,7 @@ describe("Rechtsseiten: keine erfundenen Rechtsangaben im Quelltext", () => {
     const ds = readFileSync("src/app/datenschutz/page.tsx", "utf8");
     expect(ds).toContain("PLATZHALTER.aufsicht");
     expect(ds).toContain("zahlungenAus");
+    expect(ds).toContain("[ENTWURF, vom Betreiber zu bestätigen: Soccaz verarbeitet dazu keine Daten.]"); // Rechtsaussage bleibt sichtbar als Entwurf, bis der Nutzer sie bestätigt
     expect(ds).toMatch(/aus \? [\s\S]*Teilnahmegebühr/);
   });
 });

@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS } from "../../scripts/smoke.mjs";
+import { PLATZHALTER } from "@/lib/legal";
+import { ANDERE_PLATZHALTER, BETREIBER_PLATZHALTER, ENTWURF_MARKE, buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS } from "../../scripts/smoke.mjs";
 import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Go-live-Runbook Schritt 5: Smoke-Skript ohne Secrets. Der Abruf wird mit einer Attrappe ersetzt, es gibt kein Netz im Test.
@@ -117,6 +118,19 @@ describe("scripts/smoke.mjs --go-live (Rechtstexte)", () => {
     const r = await goLive("Muster GmbH [PLATZHALTER: Umsatzsteuer-Identifikationsnummer, falls vorhanden]", "Aufsicht [PLATZHALTER: zuständige Datenschutzaufsichtsbehörde]");
     expect(r.ok).toBe(true);
     expect(r.results.filter((x: { what: string }) => x.what.includes("HINWEIS")).length).toBe(2);
+  });
+  it("ein [ENTWURF …]-Satz (unbestätigte Rechtsaussage) = FEHLER", async () => {
+    const r = await goLive("Muster GmbH", "Teilnahmegebühr [ENTWURF, vom Betreiber zu bestätigen: Soccaz verarbeitet dazu keine Daten.]");
+    expect(r.ok).toBe(false);
+    expect(r.results.some((x: { path: string; ok: boolean }) => x.path === "/datenschutz" && !x.ok)).toBe(true);
+  });
+  it("die Marken des Skripts treffen die ECHTEN Platzhalter aus src/lib/legal.ts (Umbenennung darf --go-live nicht still grün lassen)", () => {
+    for (const p of [PLATZHALTER.name, PLATZHALTER.address, PLATZHALTER.email]) expect(BETREIBER_PLATZHALTER.test(p), p).toBe(true);
+    for (const p of [PLATZHALTER.steuerId, PLATZHALTER.aufsicht, PLATZHALTER.streit]) {
+      expect(BETREIBER_PLATZHALTER.test(p), p).toBe(false);
+      expect(ANDERE_PLATZHALTER.test(p), p).toBe(true);
+    }
+    expect(ENTWURF_MARKE.test("[ENTWURF, vom Betreiber zu bestätigen: x]")).toBe(true);
   });
   it("alles eingetragen: bestanden ohne Hinweis; ohne --go-live keine Prüfung", async () => {
     const r = await goLive("Muster GmbH, Musterstr. 1", "Verantwortlich: Muster GmbH");

@@ -3,7 +3,7 @@
 // Aufruf:  node scripts/smoke.mjs https://socaz.de [--turnier-only]
 //   --apple         Apple-Anmeldung ist eingeschaltet (APPLE_LOGIN_ENABLED=1): /anmelden MUSS den Apple-Knopf zeigen; ohne die Option darf er NICHT erscheinen
 //   --zahlungen-aus Zahlungen AUS (Produktion, beide Zahlungsschalter aus): Turnierliste, Hilfe und die erste Turnierseite dürfen KEIN Zahlungswort enthalten (Wortliste wie src/lib/zahlungen-aus.ts), Liste und Hilfe nennen den Hinweissatz
-//   --go-live       Rechtstexte: /impressum und /datenschutz dürfen KEINEN Platzhalter für Name, Anschrift oder E-Mail des Betreibers mehr enthalten (FEHLER); übrige Platzhalter (Steuer-ID, Streitbeilegung, Aufsichtsbehörde) erscheinen als HINWEIS bis zur Rechtsprüfung
+//   --go-live       Rechtstexte: /impressum und /datenschutz dürfen KEINEN Platzhalter für Name, Anschrift oder E-Mail des Betreibers und keinen [ENTWURF …]-Satz mehr enthalten (FEHLER); übrige Platzhalter (Steuer-ID, Streitbeilegung, Aufsichtsbehörde) erscheinen als HINWEIS bis zur Rechtsprüfung
 //   --turnier-only  zusätzlich: /spiele zeigt die "kommt bald"-Seite (Produktion mit TURNIER_ONLY=1)
 // Staging mit Zugangsschutz: Umgebungsvariable SMOKE_BASIC_AUTH=<benutzer>:<passwort> (nur in der eigenen Shell setzen, nie ausgeben).
 // Ausgabe: je Prüfung eine Zeile OK/FEHLER (nur Pfad und Status, nie Inhalte); Ende-Code 0 = alles bestanden, 1 = mindestens ein Fehler, 2 = falscher Aufruf.
@@ -36,6 +36,11 @@ export function zahlungsWorte(text) {
   const rein = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ").replace(FUSSBALL_KARTEN, " ");
   return ZAHLUNGSWORTE.filter((re) => re.test(rein)).map((re) => re.source);
 }
+
+// Marken der Rechtstexte (Platzhalter aus src/lib/legal.ts): exportiert, damit tests/unit sie gegen die echten Konstanten prüft (eine Umbenennung darf --go-live nicht still grün lassen)
+export const BETREIBER_PLATZHALTER = /\[PLATZHALTER: (Name|Anschrift|E-Mail)/;
+export const ANDERE_PLATZHALTER = /\[PLATZHALTER:/;
+export const ENTWURF_MARKE = /\[ENTWURF/; // ausdrücklicher Entwurf einer Rechtsaussage (bis der Nutzer sie bestätigt): FEHLER, damit sie nicht live geht
 
 /** Die Prüfungen: Pfad, erwarteter Status, optionale Inhaltsprüfung (nur Ja/Nein, der Inhalt wird nie ausgegeben). */
 export function buildChecks({ turnierOnly = false, apple = false } = {}) {
@@ -98,15 +103,14 @@ export async function runSmoke({ base, turnierOnly = false, apple = false, zahlu
   }
   if (goLive) {
     // Rechtstexte vor dem Go-live: Betreiberangaben müssen eingetragen sein (OPERATOR_*); die übrigen Platzhalter sind ein Hinweis bis zur Rechtsprüfung (kein Fehler)
-    const BETREIBER = /\[PLATZHALTER: (Name|Anschrift|E-Mail)/;
-    const ANDERE = /\[PLATZHALTER:/;
     for (const pfad of ["/impressum", "/datenschutz"]) {
       try {
         const res = await fetchImpl(root + pfad, { headers, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS) });
         const text = sichtText(await res.text());
         if (res.status !== 200) results.push({ path: pfad, what: "Go-live: Rechtstext erreichbar", ok: false, detail: `Status ${res.status} statt 200` });
-        else if (BETREIBER.test(text)) results.push({ path: pfad, what: "Go-live: Betreiberangaben eingetragen", ok: false, detail: "enthält noch [PLATZHALTER …] für Name, Anschrift oder E-Mail (OPERATOR_NAME, OPERATOR_ADDRESS, OPERATOR_EMAIL setzen)" });
-        else results.push({ path: pfad, what: ANDERE.test(text) ? "Go-live: Betreiberangaben eingetragen; HINWEIS: weitere [PLATZHALTER …] stehen noch bis zur Rechtsprüfung (Steuer-ID, Streitbeilegung, Aufsichtsbehörde)" : "Go-live: Betreiberangaben eingetragen, keine Platzhalter", ok: true, detail: "" });
+        else if (ENTWURF_MARKE.test(text)) results.push({ path: pfad, what: "Go-live: Rechtsaussagen bestätigt", ok: false, detail: "enthält noch einen [ENTWURF …]-Satz (Bestätigung durch den Nutzer fehlt)" });
+        else if (BETREIBER_PLATZHALTER.test(text)) results.push({ path: pfad, what: "Go-live: Betreiberangaben eingetragen", ok: false, detail: "enthält noch [PLATZHALTER …] für Name, Anschrift oder E-Mail (OPERATOR_NAME, OPERATOR_ADDRESS, OPERATOR_EMAIL setzen)" });
+        else results.push({ path: pfad, what: ANDERE_PLATZHALTER.test(text) ? "Go-live: Betreiberangaben eingetragen; HINWEIS: weitere [PLATZHALTER …] stehen noch bis zur Rechtsprüfung (Steuer-ID, Streitbeilegung, Aufsichtsbehörde)" : "Go-live: Betreiberangaben eingetragen, keine Platzhalter", ok: true, detail: "" });
       } catch (e) {
         results.push({ path: pfad, what: "Go-live: Rechtstext erreichbar", ok: false, detail: `nicht erreichbar (${e && e.name ? e.name : "Fehler"})` });
       }

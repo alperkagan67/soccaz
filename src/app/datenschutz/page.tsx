@@ -32,7 +32,7 @@ export default async function DatenschutzPage() {
           </li>
           <li>Spielbetrieb: Teams, Mitgliedschaften, Lobbys, Ergebnisse, Tore, gelbe und rote Karten, Statistiken, Abzeichen und Bewertungen.</li>
           {aus ? (
-            <li>Teilnahmegebühr: {ZAHLUNGEN_AUS_HINWEIS} Soccaz verarbeitet dazu keine Daten.</li>
+            <li>Teilnahmegebühr: {ZAHLUNGEN_AUS_HINWEIS} <Platzhalter>[ENTWURF, vom Betreiber zu bestätigen: Soccaz verarbeitet dazu keine Daten.]</Platzhalter></li>
           ) : (
             <li>Zahlungen: Buchungen, Belege. Zahlungsdaten (z. B. Kartennummern) verarbeitet ausschließlich der Zahlungsdienstleister Stripe, nicht wir.</li>
           )}
