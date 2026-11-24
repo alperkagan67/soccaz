@@ -6,6 +6,7 @@ import { auditLog, matchParticipants, matchResults, matches, notifications, paym
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLead } from "@/lib/deadlines";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
+import { NEUNMETER_MAX_TREFFER, TIEBREAK_TITEL, tiebreakText } from "@/lib/turnier-grenzen";
 import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, scheduleFromRows, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
@@ -587,7 +588,7 @@ export async function advanceFromMatch(tx: Tx, matchId: string): Promise<void> {
   await tx.update(tournamentMatches).set({ scoreA: result.homeScore, scoreB: result.awayScore, playedAt: new Date() }).where(eq(tournamentMatches.id, tm.id));
   const winner = koWinner({ a: tm.teamA, b: tm.teamB, scoreA: result.homeScore, scoreB: result.awayScore });
   if (!winner) {
-    await notifyUsers([t.organizerId], { type: "system", title: "Siebenmeterschießen eintragen", body: `${t.name}: Ein Spiel endete unentschieden. Bitte trage den Sieger ein.`, url: `/turniere/${t.id}` }, tx);
+    await notifyUsers([t.organizerId], { type: "system", title: TIEBREAK_TITEL, body: tiebreakText(t.name), url: `/turniere/${t.id}` }, tx);
     return;
   }
   await completeKo(tx, t, tm, winner);
@@ -598,8 +599,14 @@ export async function advanceFromMatch(tx: Tx, matchId: string): Promise<void> {
  * `gg` = Golden Goal (das Tor wird im Turnierplan dem Sieger gutgeschrieben, z. B. 2:2 -> 3:2; das Spiel selbst mit Elo und Statistik bleibt unverändert),
  * `9m` = Neunmeter (der Stand bleibt, der Sieger wird gesetzt). Nur K.-o.-Spiele, nur bei offenem Gleichstand; danach rückt der Sieger weiter bzw. das Finale beendet das Turnier.
  */
-export async function decideTie(userId: string, tournamentId: string, tournamentMatchId: string, kind: "gg" | "9m", winnerTeamId: string) {
+export async function decideTie(userId: string, tournamentId: string, tournamentMatchId: string, kind: "gg" | "9m", winnerTeamId: string, counts?: { a: number; b: number }) {
   if (kind !== "gg" && kind !== "9m") throw new DomainError("Unbekannte Art der Entscheidung.");
+  // Neunmeter-Treffer (optional, nur Anzeige): nur bei 9m, beide gesetzt, ganze Zahlen 0 bis 50 (wie der CHECK der Datenbank)
+  if (counts !== undefined) {
+    const ok = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= NEUNMETER_MAX_TREFFER;
+    if (kind !== "9m") throw new DomainError("Trefferzahlen gibt es nur bei Neunmetern.");
+    if (!counts || !ok(counts.a) || !ok(counts.b)) throw new DomainError(`Die Treffer beider Teams müssen ganze Zahlen von 0 bis ${NEUNMETER_MAX_TREFFER} sein.`);
+  }
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann das eintragen.");
@@ -610,7 +617,7 @@ export async function decideTie(userId: string, tournamentId: string, tournament
     if (winnerTeamId !== tm.teamA && winnerTeamId !== tm.teamB) throw new DomainError("Das Team spielt in diesem Spiel nicht.");
     const set =
       kind === "9m"
-        ? { shootoutWinner: winnerTeamId, decidedBy: "9m" as const }
+        ? { shootoutWinner: winnerTeamId, decidedBy: "9m" as const, ...(counts ? { shootoutA: counts.a, shootoutB: counts.b } : {}) }
         : { decidedBy: "gg" as const, ...(winnerTeamId === tm.teamA ? { scoreA: tm.scoreA + 1 } : { scoreB: (tm.scoreB ?? 0) + 1 }) };
     await tx.update(tournamentMatches).set(set).where(eq(tournamentMatches.id, tm.id));
     await audit(userId, "tournament.tiebreak", "tournament", tournamentId, { after: { matchId: tm.id, kind, winnerTeamId } }, tx);

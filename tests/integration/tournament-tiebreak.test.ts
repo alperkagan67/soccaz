@@ -120,3 +120,34 @@ describe("decideTie: Abweisungen", () => {
     await expect(decideTie(org.id, t.id, m.id, "gg", m.teamA!)).rejects.toThrow(/K\.-o\.-Spiele/);
   });
 });
+
+describe("decideTie: Trefferzahlen und Überschreiben", () => {
+  it("9m mit Trefferzahlen: shootout_a/b gesetzt (z. B. 4:3 bei Sieger A)", async () => {
+    const { t, org } = await turnier();
+    const m = await unentschieden(t.id, org);
+    await decideTie(org.id, t.id, m.id, "9m", m.teamA!, { a: 4, b: 3 });
+    const after = (await rows(t.id)).find((r) => r.id === m.id)!;
+    expect([after.decidedBy, after.shootoutA, after.shootoutB]).toEqual(["9m", 4, 3]);
+  });
+  it("Trefferzahlen: nur bei 9m, beide gesetzt, ganze Zahlen 0 bis 50, sonst abgewiesen und nichts gespeichert", async () => {
+    const { t, org } = await turnier();
+    const m = await unentschieden(t.id, org);
+    await expect(decideTie(org.id, t.id, m.id, "gg", m.teamA!, { a: 1, b: 0 })).rejects.toThrow(/nur bei Neunmetern/);
+    for (const bad of [{ a: -1, b: 2 }, { a: 51, b: 2 }, { a: 1.5, b: 2 }, { a: 3 } as unknown as { a: number; b: number }, { a: NaN, b: 1 }]) {
+      await expect(decideTie(org.id, t.id, m.id, "9m", m.teamA!, bad)).rejects.toThrow(/ganze Zahlen von 0 bis 50/);
+    }
+    const nochOffen = (await rows(t.id)).find((r) => r.id === m.id)!;
+    expect([nochOffen.decidedBy, nochOffen.shootoutWinner, nochOffen.shootoutA]).toEqual([null, null, null]);
+    await decideTie(org.id, t.id, m.id, "9m", m.teamA!, { a: 0, b: 50 }); // Grenzen gelten
+    expect((await rows(t.id)).find((r) => r.id === m.id)!.shootoutB).toBe(50);
+  });
+  it("der 9m-Sieger wird beim zweiten Aufruf (anderer Sieger) NICHT überschrieben", async () => {
+    const { t, org } = await turnier();
+    const m = await unentschieden(t.id, org);
+    await decideTie(org.id, t.id, m.id, "9m", m.teamA!);
+    await expect(decideTie(org.id, t.id, m.id, "9m", m.teamB!)).rejects.toThrow(/kein Gleichstand/);
+    await expect(decideTie(org.id, t.id, m.id, "gg", m.teamB!)).rejects.toThrow(/kein Gleichstand/);
+    const after = (await rows(t.id)).find((r) => r.id === m.id)!;
+    expect([after.shootoutWinner, after.decidedBy]).toEqual([m.teamA, "9m"]);
+  });
+});

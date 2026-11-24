@@ -143,6 +143,6 @@ export async function setOrganizerAction(userId: string, value: boolean): Promis
 }
 
 /** Veranstalter/Admin: Tie-Break bei Gleichstand im K.-o.-Spiel (Golden Goal oder Neunmeter, Sieger). */
-export async function decideTieAction(tournamentId: string, tournamentMatchId: string, kind: "gg" | "9m", winnerTeamId: string): Promise<ActionState> {
-  return touch(tournamentId, (uid) => decideTie(uid, tournamentId, tournamentMatchId, kind, winnerTeamId));
+export async function decideTieAction(tournamentId: string, tournamentMatchId: string, kind: "gg" | "9m", winnerTeamId: string, counts?: { a: number; b: number }): Promise<ActionState> {
+  return touch(tournamentId, (uid) => decideTie(uid, tournamentId, tournamentMatchId, kind, winnerTeamId, counts));
 }
