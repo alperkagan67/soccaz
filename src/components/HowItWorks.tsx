@@ -4,7 +4,6 @@ import { db } from "@/db";
 import { formatEuro } from "@/lib/money";
 import { getT } from "@/server/locale";
 import { priceFor } from "@/server/pricing";
-import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 import { zahlungenAus } from "@/server/zahlungen-aus";
 
 const STEPS = ["s1", "s2", "s3", "s4"] as const;
@@ -48,7 +47,7 @@ export async function HowItWorks() {
       </ol>
       <div className="card space-y-1">
         <h3 className="font-semibold">{t(aus ? "how.fee.title" : "how.price.title")}</h3>
-        <p className="text-sm text-muted">{aus ? `${t("how.fee.text")} ${ZAHLUNGEN_AUS_HINWEIS}` : t("how.price.text", { price60: price ? formatEuro(price.priceCents) : "–" })}</p>
+        <p className="text-sm text-muted">{aus ? t("how.fee.text") : t("how.price.text", { price60: price ? formatEuro(price.priceCents) : "–" })}</p>
         <Link href="/hilfe" className="text-sm text-accent-fg underline">{t("how.more")}</Link>
       </div>
     </section>

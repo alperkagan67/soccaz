@@ -39,7 +39,9 @@ export default async function AgbPage() {
         {aus ? (
           <>
             <h2>4. Absage und Abmeldung</h2>
-            <p>Bis 24 Stunden vor Anstoß kann man sich abmelden. Sagt ein Team das Spiel ab oder kommt die Mindestzahl an Spielern nicht zusammen, findet das Spiel nicht statt. Gesetzliche Rechte bleiben unberührt.</p>
+            <p>
+              <Platzhalter>[ENTWURF, vom Betreiber zu bestätigen: Bis 24 Stunden vor Anstoß kann man sich abmelden. Sagt ein Team das Spiel ab oder kommt die Mindestzahl an Spielern nicht zusammen, findet das Spiel nicht statt.]</Platzhalter> Gesetzliche Rechte bleiben unberührt.
+            </p>
           </>
         ) : (
           <>

@@ -1,6 +1,8 @@
 // Mehrsprachigkeit: Deutsch ist die Hauptsprache, Englisch deckt die zentralen Seiten ab (Navigation, Start, Anmeldung, Fußzeile).
 // Die Sprache wird ausdrücklich gewählt (Cookie, bei Angemeldeten auch im Profil). Der Browser-Header entscheidet nie, damit die deutsche Oberfläche stabil bleibt.
 
+import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
+
 export const LOCALES = ["de", "en"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "de";
@@ -72,7 +74,7 @@ const de = {
   "how.s4.text": "Tore werden direkt am Spielfeldrand erfasst. Danach gibt es Statistik, Abzeichen, Rangliste und den Spieler des Spiels.",
   "how.leadAus": "In vier Schritten vom Team zum Spiel. Kostenlos anmelden.",
   "how.fee.title": "Teilnahme und Gebühr",
-  "how.fee.text": "Die Anmeldung und alle Funktionen sind kostenlos.",
+  "how.fee.text": `Die Anmeldung und alle Funktionen sind kostenlos. ${ZAHLUNGEN_AUS_HINWEIS}`,
   "how.price.title": "Was kostet das?",
   "how.price.text": "Die Anmeldung und alle Funktionen sind kostenlos. Du zahlst nur deinen Anteil an der Hallenmiete: Halle {price60} für 60 Minuten, geteilt durch alle zahlenden Spieler. Den Rest erledigen wir.",
   "how.more": "Alles genau erklärt: Hilfe und Fragen",
@@ -182,7 +184,7 @@ const en: Record<MessageKey, string> = {
   "how.s4.text": "Goals are recorded right at the pitch. Afterwards you get stats, badges, rankings and the player of the match.",
   "how.leadAus": "From team to match in four steps. Sign up for free.",
   "how.fee.title": "Taking part and fees",
-  "how.fee.text": "Signing up and all features are free.",
+  "how.fee.text": "Signing up and all features are free. The organiser handles any participation fee outside of Soccaz.",
   "how.price.title": "What does it cost?",
   "how.price.text": "Signing up and all features are free. You only pay your share of the hall: {price60} for 60 minutes, split between all paying players. We handle the rest.",
   "how.more": "Everything explained: help and questions",

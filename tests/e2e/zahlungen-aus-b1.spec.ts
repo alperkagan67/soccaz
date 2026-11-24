@@ -5,6 +5,7 @@ import { zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Zahlungen AUS PR B Teil 1 (Go-live, Pflicht vor Freeze): Seiten, die ein Turnier-Nutzer als Gast, im Onboarding und angemeldet sieht, enthalten KEIN Zahlungswort (Wortliste src/lib/zahlungen-aus.ts,
 // inkl. title/aria-label/alt). Lobby- und Teamspiel-Seiten sind nachrangig und nicht Teil dieser Liste (Turnier-Modus sperrt sie ohnehin). Die Zahlungswort-Liste der Turnierseiten prüft zahlungen-aus-matrix.spec.ts.
+test.describe.configure({ mode: "serial" }); // der Schalter payments_enabled wird im AN-Test kurz umgelegt
 test.setTimeout(180_000);
 test.beforeAll(async () => {
   await setPlatformSetting("payments_enabled", false);
@@ -67,4 +68,26 @@ test("Zahlungen AUS: Onboarding (/willkommen) und angemeldete Seiten ohne Zahlun
   await newUser(fertig, "b1ok");
   await scan(fertig, NUTZER_SEITEN, funde);
   expect(funde, funde.join("\n")).toEqual([]);
+});
+
+test("Zahlungen AN (Gegenprobe): die alten Texte bleiben auf Startseite, AGB, Hausordnung und in den Einstellungen", async ({ browser }) => {
+  await setPlatformSetting("payments_enabled", true);
+  try {
+    const gast = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    const text = async (pfad: string) => {
+      await gast.goto(pfad);
+      return sichtbarerText(gast);
+    };
+    expect(await text("/"), "Startseite").toContain("Was kostet das?");
+    const agb = await text("/agb");
+    for (const alt of ["Preise und Zahlung", "Absage und Erstattung", "wickelt auf Wunsch die Bezahlung der Hallenmiete ab"]) expect(agb, `AGB: ${alt}`).toContain(alt);
+    expect(agb).not.toContain("[ENTWURF"); // die Entwurf-Marken gehören nur zum AUS-Zweig
+    expect(await text("/hausordnung"), "Hausordnung").toContain("offene Zahlungen und Reservierungen");
+    const nutzer = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    await newUser(nutzer, "b1an");
+    await nutzer.goto("/app/einstellungen");
+    expect(await sichtbarerText(nutzer), "Einstellungen").toContain("Ergebnissen und Zahlungen bekommst du immer");
+  } finally {
+    await setPlatformSetting("payments_enabled", false);
+  }
 });
