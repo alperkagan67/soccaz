@@ -58,6 +58,10 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   expect(ownLights.every((l) => l !== null)).toBe(true);
   expect(ownLights).toContain("red");
   await expect(member.getByTestId("light-legend")).toBeVisible();
+  // Pilot-P2: Team- und Spielerlinks in der Liste mindestens 44 px hoch (Touch-Ziel)
+  const linkHoehen = await memberCard.locator("[data-testid=board-team] a:visible, [data-testid=board-player] a:visible").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+  expect(linkHoehen.length).toBeGreaterThan(0);
+  expect(linkHoehen.filter((h) => h < 44)).toEqual([]);
   await expect(card.getByRole("link", { name: "Zur Lobby" })).toBeVisible(); // in einer Lobby stehen schon beide Teams: kein Herausfordern mehr
 
   // Bestätigtes Spiel: die Bereiten werden grün
