@@ -3,10 +3,6 @@
     "IMPECCABLE_LIVE_COPY_AGENT": "chat"
   },
   "permissions": {
-    "allow": [
-      "Bash(node scripts/worktree-cleanup.mjs)",
-      "Bash(node scripts/worktree-cleanup.mjs --apply)"
-    ],
     "deny": [
       "Bash(git push --force*)",
       "Bash(git push -f*)",
