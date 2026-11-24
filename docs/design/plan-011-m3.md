@@ -88,3 +88,16 @@ PR 1 etwa 1 Tag, PR 2 etwa 0,5 Tag (+ zwei Läufe), PR 3 etwa 1 Tag (+ Impeccabl
 - **PR 1 (jetzt, kein Schema):** `src/server/venue-reporting.ts` mit `listVenueBookings` und `listVenuePayouts` („Durchlaufgeld, vorgemerkt“), Zugriff nur über `venue-access-rules.ts`, Standardmonate und Monatsauswahl, Integrationstest AC-5 (Mandantentrennung, keine Namen, kein Veranstalter, Summen gegen das Hauptbuch), Mutationen, security-reviewer.
 - **PR 2:** zurückgestellt (Weg A) oder hinter dem Schalter (Weg B), nach Entscheid t2q.
 - **PR 3 (Oberfläche):** nach dem Pilot mit 013 M6. **PR 4:** Dokumentation und E2E, soweit es keine Oberfläche braucht; die AC-5-Zelle des E2E folgt mit PR 3.
+
+## 10. Entscheid t2q: Variante A (2026-11-24), Plan gekürzt
+
+**Variante A gilt, kein Feature-Schalter.** Der Rechnungsabruf durch Betreiber (frühere PR 2 `/api/rechnungen/[id]` für Betreiber und `listVenueInvoices`) wird **nicht ausgeliefert**, bis der Steuerberater die Rechnungsvorlage freigegeben hat. Auslöser steht als Backlog-Zeile 256 („Nutzerliste Nr. 4 erledigt, Rechnungsvorlage freigegeben“). Die Abschnitte 1 bis 4 und der Schnitt in Abschnitt 3 sind insoweit überholt; **maßgeblich ist dieser Schnitt:**
+
+| PR | Inhalt | Stand |
+|---|---|---|
+| **1** | `src/server/venue-reporting.ts` (`listVenueBookings`, `listVenuePayouts`), Mandantentrennung über `venueIdsOf`, keine Personendaten, kein Veranstalter, kein Rechnungsbezug (Pin im Test), Monatsansicht; Integrationstest AC-5 mit zwei Mutationen | gebaut, Branch `feat-venue-reporting` |
+| **2'** | Kalender und Sperrzeiten (AC-12, M4-Anteil): Tabelle, serverseitige Ablehnung gesperrter Zeiten, Eingabe durch den Betreiber; **Migration frühestens 0062** (nach 0060 und 0061), nie parallel zu einer anderen Schema-Aufgabe; Zahlungs-/Beweisnähe: keine Berührung des Beweisprotokolls, aber Auswirkung auf Buchbarkeit, daher security-reviewer | nach Freigabe eines eigenen Plans |
+| **3** | Oberfläche `/halle` (Buchungen, Durchlaufgeld), Impeccable-Pflicht | mit 013 M6 nach dem Pilot |
+| *zurückgestellt* | Rechnungsliste und PDF-Zugang für Betreiber (Auth-nah, security, zwei Läufe) | erst nach Steuerberater-Freigabe |
+
+Aufwand nach der Kürzung: PR 1 etwa 1 Tag (erledigt), PR 2' etwa 2 Tage, PR 3 etwa 1 Tag.
