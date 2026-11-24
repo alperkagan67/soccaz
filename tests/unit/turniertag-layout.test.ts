@@ -13,6 +13,10 @@ describe("M1 Bracket", () => {
   });
   it("Abstand der Spalten bleibt 32 px (die Verbindungslinien sind je 16 px lang)", () => {
     expect(b).toContain("gap-x-8");
+    expect(b).toContain('<span className="min-w-0 break-words">{name ??'); // lange Teamnamen brechen um statt mit Auslassungspunkten abgeschnitten zu werden
+    expect(b).not.toContain('<span className="truncate">{name ??');
+    expect(b).not.toMatch(/min-h-8/); // Siebenmeter-Sieger-Knöpfe 44 px
+    expect(b.match(/btn btn-primary !min-h-11 !px-2 text-xs/g)?.length).toBe(2);
     expect(b).toContain("-right-4 top-1/2 h-px w-4");
   });
 });
@@ -23,7 +27,7 @@ describe("M3, N1 Formular", () => {
     expect(f).toMatch(/grid grid-cols-1 gap-3 sm:grid-cols-2">\s*<div>\s*<label className="label" htmlFor="startsAt">/);
   });
   it("Fehler ohne Feldbezug werden ins Bild geholt und tragen role=alert", () => {
-    expect(f).toContain('errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" })');
+    expect(f).toContain('errorRef.current?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })'); // ohne Animation bei reduzierter Bewegung
     expect(f).toMatch(/<p ref=\{errorRef\} className="error" role="alert" tabIndex=\{-1\}>/);
   });
   it("Checkbox 'Öffentlich zeigen': die ganze Zeile ist mindestens 44 px hoch", () => {
@@ -63,6 +67,8 @@ describe("N8 Anmeldung geschlossen", () => {
     expect(p).toContain('data-testid="anmeldung-geschlossen"');
     expect(p).toContain("Die Anmeldung ist geschlossen.");
     expect(p).toContain("Anmelden und zu deinem Team");
+    expect(p).toContain("v.registerableTeams.length > 0 && !data.deadlinePassed && <RegisterForm"); // kein Anmelde-Formular nach dem Anmeldeschluss
+    expect(p).toContain("Der Anmeldeschluss ist vorbei. Du kannst jetzt starten oder das Turnier absagen."); // Veranstalter: kein Widerspruch zum Knopf "Anmeldung schließen und starten"
     expect(p).toMatch(/\{inRegistration && data\.deadlinePassed && \(/);
   });
 });

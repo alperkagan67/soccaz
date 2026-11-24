@@ -15,7 +15,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
   const errorRef = useRef<HTMLParagraphElement>(null);
   // Fehler ohne Feldbezug (z. B. Anmeldeschluss nach dem Beginn) stehen unter dem Knopf: ins Bild holen, sonst sieht ihn der Veranstalter auf dem Handy nicht
   useEffect(() => {
-    if (state?.error) errorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (state?.error) errorRef.current?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [state]);
   return (
     <form action={formAction} onSubmit={onSubmit} className="card space-y-4">

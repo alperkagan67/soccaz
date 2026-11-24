@@ -63,7 +63,7 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
             const winB = done && (m.scoreB! > m.scoreA! || (m.scoreA === m.scoreB && m.shootoutWinner === m.teamB));
             const row = (name: string | null, score: number | null, win: boolean, badge?: ReactNode) => (
               <div className={`flex items-center justify-between gap-2 px-3 py-1.5 ${win ? "font-bold text-accent-fg" : ""}`}>
-                <span className="truncate">{name ?? <span className="text-muted">offen</span>}</span>
+                <span className="min-w-0 break-words">{name ?? <span className="text-muted">offen</span>}</span>
                 {badge}
                 <span className="font-heading tabular-nums">{score ?? ""}</span>
               </div>
@@ -89,8 +89,8 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
                     <div className="space-y-1 border-t border-line p-2 text-center text-xs" data-testid="shootout">
                       <p className="text-muted">Unentschieden: Sieger im Siebenmeterschießen</p>
                       <div className="flex flex-wrap justify-center gap-1">
-                        <ActionButton action={decideShootoutAction.bind(null, tournamentId, m.id, m.teamA)} label={m.nameA ?? ""} className="btn btn-primary !min-h-8 !px-2 text-xs" />
-                        <ActionButton action={decideShootoutAction.bind(null, tournamentId, m.id, m.teamB)} label={m.nameB ?? ""} className="btn btn-primary !min-h-8 !px-2 text-xs" />
+                        <ActionButton action={decideShootoutAction.bind(null, tournamentId, m.id, m.teamA)} label={m.nameA ?? ""} className="btn btn-primary !min-h-11 !px-2 text-xs" />
+                        <ActionButton action={decideShootoutAction.bind(null, tournamentId, m.id, m.teamB)} label={m.nameB ?? ""} className="btn btn-primary !min-h-11 !px-2 text-xs" />
                       </div>
                     </div>
                   )}
