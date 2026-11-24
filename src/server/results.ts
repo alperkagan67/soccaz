@@ -97,7 +97,9 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
   const tournamentOrganizer = Boolean(viewer) && adminOf.length === 0 && (await isTournamentOrganizer(db, viewer!.id, { id: match.id, kind: match.kind }));
   const canManage = platformAdmin || adminOf.length > 0 || tournamentOrganizer;
   const started = match.startsAt.getTime() <= Date.now();
-  const openForPlay = (match.status === "lobby" || match.status === "confirmed") && started;
+  const openAny = match.status === "lobby" || match.status === "confirmed";
+  const referee = (platformAdmin && adminOf.length === 0) || tournamentOrganizer; // Schiedsrichter: Planzeit nur Richtwert (siehe isReferee)
+  const openForPlay = openAny && (started || referee);
 
   // Auf welcher Seite steht die Person? (für Bestätigen oder Widersprechen)
   const mySide: "home" | "away" | null = adminOf.includes(match.homeId) ? "home" : adminOf.includes(match.awayId) ? "away" : null;
@@ -128,7 +130,7 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
           mySide,
           membership,
           canUploadPhoto: started && match.status !== "cancelled" && participants.some((p) => p.userId === viewer.id),
-          canRecord: (platformAdmin || adminOf.length > 0) && openForPlay && !result,
+          canRecord: (platformAdmin || adminOf.length > 0 || tournamentOrganizer) && openForPlay && !result,
           canSubmit: canManage && openForPlay && (!result || submitterSide === mySide || platformAdmin || tournamentOrganizer),
           canConfirm: Boolean(result && !result.disputed && match.status !== "played" && mySide && submitterSide && mySide !== submitterSide),
           canDispute: Boolean(result && !result.disputed && match.status !== "played" && mySide && submitterSide && mySide !== submitterSide),
@@ -268,12 +270,21 @@ function requireStarted(match: MatchRow) {
   if (match.startsAt.getTime() > Date.now()) throw new DomainError("Das Spiel hat noch nicht begonnen.");
 }
 
+/**
+ * Schiedsrichter-Rechte: Plattform-Admin ohne Team im Spiel und der Veranstalter des Turniers. Fuer sie ist die geplante Anstosszeit nur ein Richtwert (Turniertag laeuft vor oder nach dem Plan, Live-Demo-Fund 2026-11-26:
+ * der Eintrag scheiterte mit "Das Spiel hat noch nicht begonnen."); Captains und Team-Admins duerfen erst ab dem Planbeginn.
+ */
+const isReferee = (ctx: { platformAdmin: boolean; side: "home" | "away" | null; organizer: boolean }) => (ctx.platformAdmin && !ctx.side) || ctx.organizer;
+
 export type EventInput = { type: "goal" | "yellow_card" | "red_card"; teamId: string; scorerId?: string | null; minute?: number | null };
 
-export function recordEvent(userId: string, matchId: string, input: EventInput) {
-  return mutateMatch(userId, matchId, PLAYING, async (tx, match, ctx) => {
-    if (!ctx.platformAdmin && !ctx.side) throw new DomainError("Nur Team-Admins können Ereignisse erfassen.");
-    requireStarted(match);
+type AdminCtx = { platformAdmin: boolean; side: "home" | "away" | null; organizer: boolean };
+
+/** Ein Ereignis in der Transaktion des Aufrufers erfassen (recordEvent und submitScore: Tore und Ergebnis in EINER Transaktion). */
+async function recordEventIn(tx: Tx, userId: string, matchId: string, match: MatchRow, ctx: AdminCtx, input: EventInput) {
+  {
+    if (!ctx.platformAdmin && !ctx.side && !ctx.organizer) throw new DomainError("Nur Team-Admins und der Veranstalter können Ereignisse erfassen.");
+    if (!isReferee(ctx)) requireStarted(match);
     if (input.teamId !== match.homeTeamId && input.teamId !== match.awayTeamId) throw new DomainError("Ungültiges Team.");
     const [pending] = await tx.select({ matchId: matchResults.matchId }).from(matchResults).where(eq(matchResults.matchId, matchId));
     if (pending) throw new DomainError("Das Endergebnis ist schon gemeldet.");
@@ -293,12 +304,16 @@ export function recordEvent(userId: string, matchId: string, input: EventInput) 
       .values({ matchId, type: input.type, teamId: input.teamId, userId: input.scorerId ?? null, minute, createdBy: userId })
       .returning();
     await audit(userId, `event.${input.type}`, "match", matchId, { after: event }, tx);
-  });
+  }
+}
+
+export function recordEvent(userId: string, matchId: string, input: EventInput) {
+  return mutateMatch(userId, matchId, PLAYING, (tx, match, ctx) => recordEventIn(tx, userId, matchId, match, ctx, input));
 }
 
 export function undoLastEvent(userId: string, matchId: string) {
   return mutateMatch(userId, matchId, PLAYING, async (tx, match, ctx) => {
-    if (!ctx.platformAdmin && !ctx.side) throw new DomainError("Nur Team-Admins können Ereignisse zurücknehmen.");
+    if (!ctx.platformAdmin && !ctx.side && !ctx.organizer) throw new DomainError("Nur Team-Admins und der Veranstalter können Ereignisse zurücknehmen.");
     const [pending] = await tx.select({ matchId: matchResults.matchId }).from(matchResults).where(eq(matchResults.matchId, matchId));
     if (pending) throw new DomainError("Das Endergebnis ist schon gemeldet.");
     const [last] = await tx.select().from(matchEvents).where(eq(matchEvents.matchId, matchId)).orderBy(desc(matchEvents.createdAt)).limit(1);
@@ -327,11 +342,11 @@ async function finishMatch(tx: Tx, match: MatchRow, actorId: string | null) {
   }
 }
 
-export function submitResult(userId: string, matchId: string, homeScore: number, awayScore: number) {
-  validateScores(homeScore, awayScore);
-  return mutateMatch(userId, matchId, [...PLAYING, "disputed"], async (tx, match, ctx) => {
+/** Das Ergebnis in der Transaktion des Aufrufers melden bzw. (Veranstalter/Admin) endgueltig eintragen. */
+async function submitResultIn(tx: Tx, userId: string, matchId: string, match: MatchRow, ctx: AdminCtx, homeScore: number, awayScore: number) {
+  {
     if (!ctx.platformAdmin && !ctx.side && !ctx.organizer) throw new DomainError("Nur Team-Admins können das Ergebnis melden.");
-    requireStarted(match);
+    if (!isReferee(ctx)) requireStarted(match);
     const [existing] = await tx.select().from(matchResults).where(eq(matchResults.matchId, matchId));
 
     const bothSides = match.kind === "private" && (await isAdminOfBoth(tx, userId, match));
@@ -372,7 +387,12 @@ export function submitResult(userId: string, matchId: string, homeScore: number,
       { type: "result.confirm", title: "Bitte Ergebnis bestätigen", body: `Gemeldet: ${home} ${homeScore} : ${awayScore} ${away}. Ohne Antwort gilt es nach 48 Stunden automatisch.`, url: `/spiele/${matchId}` },
       tx,
     );
-  });
+  }
+}
+
+export function submitResult(userId: string, matchId: string, homeScore: number, awayScore: number) {
+  validateScores(homeScore, awayScore);
+  return mutateMatch(userId, matchId, [...PLAYING, "disputed"], (tx, match, ctx) => submitResultIn(tx, userId, matchId, match, ctx, homeScore, awayScore));
 }
 
 export function confirmResult(userId: string, matchId: string) {
@@ -436,7 +456,7 @@ export function decideResult(adminId: string, matchId: string, home: number, awa
   if (text.length < 3) throw new DomainError("Bitte gib eine Begründung an (mindestens 3 Zeichen).");
   return mutateMatch(adminId, matchId, [...PLAYING, "disputed"], async (tx, match, ctx) => {
     if (!ctx.platformAdmin && !ctx.organizer) throw new DomainError("Nur Plattform-Admins und der Veranstalter des Turniers können entscheiden.");
-    requireStarted(match);
+    // Planzeit nur Richtwert: wer entscheiden darf, darf jederzeit (Turniertag)
     await upsertFinal(tx, match, adminId, home, away, text);
   });
 }
@@ -483,11 +503,31 @@ export type GoalInput = { teamId: string; scorerId?: string | null; minute?: num
 const MAX_GOALS_PER_SUBMIT = 30;
 
 /** Der Captain trägt Tore (mit optionalem Torschützen) ein und meldet damit das Endergebnis. Das andere Team bestätigt. */
-export async function submitScore(userId: string, matchId: string, goals: GoalInput[]) {
+/**
+ * Ergebnis aus Toren eintragen: die Tor-Ereignisse UND das Ergebnis in EINER Transaktion (Live-Demo-Fund 2026-11-26: ein Tor wurde gespeichert, der Abschluss nicht). Scheitert der Abschluss, wird auch kein Tor gespeichert;
+ * die Meldung geht an den Aufrufer (Formular zeigt sie an).
+ */
+export function submitScore(userId: string, matchId: string, goals: GoalInput[]) {
   if (goals.length > MAX_GOALS_PER_SUBMIT) throw new DomainError(`Bitte höchstens ${MAX_GOALS_PER_SUBMIT} Tore auf einmal eintragen.`);
-  for (const g of goals) await recordEvent(userId, matchId, { type: "goal", teamId: g.teamId, scorerId: g.scorerId ?? null, minute: g.minute ?? null });
+  return mutateMatch(userId, matchId, [...PLAYING, "disputed"], async (tx, match, ctx) => {
+    if (goals.length > 0 && !PLAYING.includes(match.status)) throw new DomainError("Dazu ist das Spiel in einem falschen Zustand.");
+    for (const g of goals) await recordEventIn(tx, userId, matchId, match, ctx, { type: "goal", teamId: g.teamId, scorerId: g.scorerId ?? null, minute: g.minute ?? null });
+    const events = await tx.select({ teamId: matchEvents.teamId }).from(matchEvents).where(and(eq(matchEvents.matchId, matchId), eq(matchEvents.type, "goal")));
+    const home = events.filter((e) => e.teamId === match.homeTeamId).length;
+    const away = events.filter((e) => e.teamId === match.awayTeamId).length;
+    validateScores(home, away);
+    await submitResultIn(tx, userId, matchId, match, ctx, home, away);
+  });
+}
+
+/**
+ * Abpfiff (Turnierspiel, Live-Demo-Fund 2026-11-26): beendet das Spiel mit dem Spielstand aus den erfassten Toren. Veranstalter und Plattform-Admin (ohne Team) tragen damit SOFORT das Endergebnis ein (jederzeit);
+ * ein Team-Admin meldet es ab dem Planbeginn (das andere Team bestaetigt). Dieselben Regeln und derselbe Weg wie "Ergebnis melden" (submitResult): kein zweiter Pfad. Ein 0:0 im K.-o.-Spiel ist ein Unentschieden
+ * (Siebenmeterschiessen durch den Veranstalter).
+ */
+export async function endMatch(userId: string, matchId: string) {
   const [m] = await db.select({ home: matches.homeTeamId, away: matches.awayTeamId }).from(matches).where(eq(matches.id, matchId));
   if (!m) throw new DomainError("Spiel nicht gefunden.");
-  const events = await db.select({ teamId: matchEvents.teamId }).from(matchEvents).where(and(eq(matchEvents.matchId, matchId), eq(matchEvents.type, "goal")));
-  await submitResult(userId, matchId, events.filter((e) => e.teamId === m.home).length, events.filter((e) => e.teamId === m.away).length);
+  const goals = await db.select({ teamId: matchEvents.teamId }).from(matchEvents).where(and(eq(matchEvents.matchId, matchId), eq(matchEvents.type, "goal")));
+  return submitResult(userId, matchId, goals.filter((e) => e.teamId === m.home).length, goals.filter((e) => e.teamId === m.away).length);
 }

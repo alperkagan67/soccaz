@@ -23,10 +23,15 @@ export function ScoreDialog({ matchId, home, away, players, existing }: { matchI
   function submit() {
     setError(undefined);
     start(async () => {
-      const result = await submitScoreAction(matchId, goals.map((g) => ({ teamId: g.teamId, scorerId: g.scorerId || null, minute: g.minute ? Number(g.minute) : null })));
-      if (result?.error) return setError(result.error);
-      setGoals([]);
-      ref.current?.close();
+      try {
+        const result = await submitScoreAction(matchId, goals.map((g) => ({ teamId: g.teamId, scorerId: g.scorerId || null, minute: g.minute ? Number(g.minute) : null })));
+        if (result?.error) return setError(result.error);
+        setGoals([]);
+        ref.current?.close();
+      } catch {
+        // ein unerwarteter Serverfehler darf NIE still verschluckt werden (Live-Demo-Fund 2026-11-26): die Meldung bleibt im Dialog stehen, nichts wurde gespeichert (Tore und Ergebnis laufen in einer Transaktion)
+        setError("Das Ergebnis konnte nicht gespeichert werden. Es wurde nichts gespeichert. Bitte versuche es noch einmal.");
+      }
     });
   }
 

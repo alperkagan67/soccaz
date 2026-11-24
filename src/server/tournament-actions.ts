@@ -12,7 +12,7 @@ import { setTournamentVenue } from "./tournament-venue";
 import { triggerTournamentChargesInBackground } from "./payments/tournament-charge";
 import { isPlatformAdmin } from "@/lib/roles";
 import { releaseTournamentCover, takeOverTournamentShare } from "./tournament-card";
-import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
+import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, forfeitTournamentMatch, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -64,6 +64,15 @@ async function touch(id: string, action: (userId: string) => Promise<void>): Pro
   const user = await requireUser(`/turniere/${id}`);
   const result = await guarded(() => action(user.id));
   revalidatePath(`/turniere/${id}`);
+  revalidatePath("/turniere");
+  return result;
+}
+
+/** Veranstalter/Admin: ein Turnierspiel kampflos fuer ein Team werten (3:0), normaler Finalisierungsweg. */
+export async function forfeitMatchAction(tournamentId: string, tournamentMatchId: string, winnerTeamId: string): Promise<ActionState> {
+  const user = await requireUser(`/turniere/${tournamentId}`);
+  const result = await guarded(() => forfeitTournamentMatch(user.id, tournamentId, tournamentMatchId, winnerTeamId));
+  revalidatePath(`/turniere/${tournamentId}`);
   revalidatePath("/turniere");
   return result;
 }

@@ -120,5 +120,12 @@ Erwartet: Smoke-Test (Schritt 5) wieder grün. **Datenbankänderungen gehen nur 
 ## 9. Update im Betrieb
 `git pull && docker compose up -d --build`, danach Smoke-Test. Nach Code-Freeze nur Fehlerbehebungen, jede mit Sicherung davor.
 
+## 9a. Turniertag: Ergebnis falsch eingetragen (Entscheidungsbaum)
+Eine Ergebnis-Korrektur NACH der Finalisierung gibt es bis nach dem 12.12. nicht in der Oberfläche (Elo, Statistik, Abzeichen, Ligatabellen und das Bracket lassen sich nicht zurückrechnen; Backlog 262). Daher:
+1. **Ergebnis gemeldet, vom anderen Team noch nicht bestätigt (Status offen):** der Veranstalter öffnet das Spiel und nutzt „Endgültig entscheiden“ (Pflicht-Begründung, Audit).
+2. **Ergebnis schon endgültig, das Folgespiel ist noch nicht gespielt:** NICHT selbst eingreifen; Admin 1 (der Nutzer) entscheidet das Vorgehen. Kein Agent ändert Produktionsdaten.
+3. **Notfall am Turniertag:** der Veranstalter notiert den richtigen Spielstand außerhalb von Soccaz (Zettel oder Nachricht) und spielt weiter; die Korrektur folgt nach dem Turnier.
+Vorbeugung: der Veranstalter trägt Endergebnisse nur über den Dialog „Endergebnis eintragen“ ein (große Anzeige „A 3 : 2 B“, „endgültig“) oder über „Abpfiff“; ein Team, das nicht antritt, wird mit „Kampflos werten“ (3:0) gewertet.
+
 ## 10. Staging ist anders
 Staging nur mit `sh scripts/staging-compose.sh …` starten (Zugangsschutz, Banner, noindex); nur Stripe-Testschlüssel; nie auf dem Produktionsserver. Vollständiger Ablauf: `pilot-staging-checkliste.md`.

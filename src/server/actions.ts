@@ -256,6 +256,10 @@ export async function submitScoreAction(matchId: string, goals: results.GoalInpu
   revalidatePath(`/lobby/${matchId}/uebersicht`);
   return state;
 }
+export async function endMatchAction(matchId: string) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: nur Turnier-Spiele
+  return matchAction(matchId, (id) => results.endMatch(id, matchId));
+}
 export async function confirmResultAction(matchId: string) {
   await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   const state = await matchAction(matchId, (id) => results.confirmResult(id, matchId));

@@ -154,3 +154,23 @@ describe("Erinnerungen an den Veranstalter (ohne Namen Dritter)", () => {
     expect((await bodies(early.org.id)).filter((b) => b.includes(early.t.name))).toHaveLength(0);
   });
 });
+
+describe("PR C: Team entfernen nach dem Anmeldeschluss (Gratis) und Mitteilung 'Euer Spielplan steht'", () => {
+  it("Gratis: der Veranstalter entfernt nach dem Anmeldeschluss ein Team (solange kein Bracket); bezahlt: weiter gesperrt", async () => {
+    const { withdrawTeam } = await import("@/server/tournaments");
+    const free = await setup({ n: 5, ready: 5, max: 8, deadlineInDays: -1, startInDays: 3 });
+    await withdrawTeam(free.org.id, free.t.id, free.caps[4].teamId);
+    expect(await teamsOf(free.t.id)).toHaveLength(4);
+    const paid = await setup({ n: 5, ready: 5, max: 8, free: false, deadlineInDays: -1, startInDays: 3 });
+    await expect(withdrawTeam(paid.org.id, paid.t.id, paid.caps[4].teamId)).rejects.toThrow(/Anmeldeschluss/);
+  });
+  it("Gratis: nach dem Bracket bekommen die Spieler 'Euer Spielplan steht' (type system), NICHT 'Der Preis steht fest'", async () => {
+    const { t, caps } = await setup({ n: 4, ready: 3 });
+    await setRosterComplete(caps[3].id, t.id, true);
+    expect((await row(t.id)).status).toBe("running");
+    const notes = await db.select().from(notifications).where(eq(notifications.userId, caps[0].id));
+    const mine = notes.filter((n) => n.body.includes(t.name));
+    expect(mine.some((n) => n.title === "Euer Spielplan steht" && n.type === "system")).toBe(true);
+    expect(mine.some((n) => n.title === "Der Preis steht fest")).toBe(false);
+  });
+});

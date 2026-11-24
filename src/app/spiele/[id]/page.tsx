@@ -23,7 +23,7 @@ import { ScoreDialog } from "@/app/lobby/[id]/uebersicht/ScoreDialog";
 import { MatchPhotos } from "./MatchPhotos";
 import { StreamEmbed } from "./StreamEmbed";
 import { StreamForm } from "./StreamForm";
-import { ConfirmPanel, DecidePanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
+import { ConfirmPanel, DecidePanel, EndMatchPanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
 export const metadata: Metadata = { title: "Spiel" };
 
@@ -110,6 +110,9 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
 
       {v?.canRecord && <Recorder matchId={match.id} home={home} away={away} players={participants} hasEvents={events.length > 0} />}
 
+      {/* Abpfiff im Turnierspiel: Veranstalter/Admin (final) oder Team-Admin ab Planbeginn (meldet) */}
+      {v?.canRecord && match.kind === "tournament" && <EndMatchPanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={goalsFromEvents.home} awayScore={goalsFromEvents.away} final={!v.mySide && v.canManage} />}
+
       {v?.canSubmit && !result?.disputed && !result && (
         <section className="card space-y-2">
           <p className="text-sm text-muted">Das Ergebnis kannst du jederzeit eintragen, auch nach dem Spiel, mit Torschützen:</p>
@@ -118,7 +121,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
       )}
 
       {v?.canSubmit && !result?.disputed && (
-        <SubmitResultForm matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} />
+        <SubmitResultForm matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} final={!v.mySide && v.canManage} />
       )}
 
       {v?.canConfirm && result && (

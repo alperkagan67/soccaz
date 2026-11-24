@@ -76,3 +76,16 @@ describe("EINE Regel 'Gratis' (R-T430)", () => {
     expect(s).toContain("not ${sql.raw(GRATIS_SQL)}");
   });
 });
+
+describe("PR C Quelltext-Pins", () => {
+  it("Frist-Job: unter der Sperre erneut 'if (istGratis(t)) return;' (Race dicht)", () => {
+    expect(src("src/server/tournaments.ts")).toMatch(/if \(istGratis\(t\)\) return; \/\/ Gratis-Turniere sagt dieser Job NIE ab/);
+  });
+  it("Veranstalter-Endergebnis nur mit Bestätigungsdialog (grosse Anzeige, 'endgültig'); Abpfiff ebenso", () => {
+    const m = src("src/app/spiele/[id]/MatchClient.tsx");
+    expect(m).toMatch(/title="Endergebnis eintragen\?"[\s\S]*consequenceLarge[\s\S]*confirmLabel="Endgültig eintragen"/);
+    expect(m).toMatch(/title="Spiel beenden\?"[\s\S]*consequenceLarge/);
+    expect(m).toContain("endgültig");
+    expect(src("src/app/spiele/[id]/page.tsx")).toContain("final={!v.mySide && v.canManage}");
+  });
+});
