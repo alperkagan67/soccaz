@@ -11,6 +11,7 @@ import { listOpenAuthorizations } from "@/server/payments/authorize";
 import { requireUser } from "@/server/session";
 import { DeleteAccountForm, ProfileForm } from "./ProfileForm";
 import { PrefsForm } from "./PrefsForm";
+import { zahlungenAus } from "@/server/zahlungen-aus";
 import { PushToggle } from "./PushToggle";
 import { CardChange } from "./CardChange";
 
@@ -76,7 +77,7 @@ export default async function SettingsPage() {
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Benachrichtigungen</h2>
         <PushToggle vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null} />
-        <PrefsForm push={prefs.push} email={prefs.email} disabledTypes={prefs.disabledTypes} />
+        <PrefsForm push={prefs.push} email={prefs.email} disabledTypes={prefs.disabledTypes} aus={await zahlungenAus()} />
       </section>
 
       <section className="space-y-2">

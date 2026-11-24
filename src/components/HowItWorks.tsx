@@ -4,19 +4,21 @@ import { db } from "@/db";
 import { formatEuro } from "@/lib/money";
 import { getT } from "@/server/locale";
 import { priceFor } from "@/server/pricing";
+import { zahlungenAus } from "@/server/zahlungen-aus";
 
 const STEPS = ["s1", "s2", "s3", "s4"] as const;
 
 /** Die Plattform in vier Schritten, so einfach wie möglich. Der Preis kommt aus den echten Preisregeln. */
 export async function HowItWorks() {
   const { t } = await getT();
+  const aus = await zahlungenAus(); // Zahlungen AUS (Go-live): keine Preis- und Zahlungsaussage, nur der Hinweissatz
   const price = await priceFor(db, null, 60);
   const [counts] = (await db.execute(sql`select (select count(*)::int from teams where archived_at is null) as teams, (select count(*)::int from users where onboarded_at is not null and banned_at is null) as players, (select count(*)::int from matches where status = 'played') as games`)).rows as { teams: number; players: number; games: number }[];
   return (
     <section className="space-y-4" aria-labelledby="how-h" data-testid="how-it-works">
       <div className="space-y-1">
         <h2 id="how-h" className="text-lg font-semibold">{t("how.title")}</h2>
-        <p className="text-muted">{t("how.lead")}</p>
+        <p className="text-muted">{t(aus ? "how.leadAus" : "how.lead")}</p>
       </div>
       <ul className="grid grid-cols-3 gap-2 text-center" aria-label="Socaz in Zahlen" data-testid="platform-stats">
         {[
@@ -44,8 +46,8 @@ export async function HowItWorks() {
         ))}
       </ol>
       <div className="card space-y-1">
-        <h3 className="font-semibold">{t("how.price.title")}</h3>
-        <p className="text-sm text-muted">{t("how.price.text", { price60: price ? formatEuro(price.priceCents) : "–" })}</p>
+        <h3 className="font-semibold">{t(aus ? "how.fee.title" : "how.price.title")}</h3>
+        <p className="text-sm text-muted">{aus ? t("how.fee.text") : t("how.price.text", { price60: price ? formatEuro(price.priceCents) : "–" })}</p>
         <Link href="/hilfe" className="text-sm text-accent-fg underline">{t("how.more")}</Link>
       </div>
     </section>

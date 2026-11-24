@@ -105,7 +105,7 @@ describe("scripts/smoke.mjs --zahlungen-aus (beide Zahlungsschalter AUS)", () =>
 
 describe("scripts/smoke.mjs --go-live (Rechtstexte)", () => {
   const seite = (body: string) => ({ status: 200, body: `<main>${body}</main>` });
-  const goLive = (impressum: string, datenschutz: string) => runSmoke({ base: "https://x.de", goLive: true, fetchImpl: fake({ "/impressum": seite(impressum), "/datenschutz": seite(datenschutz) }) });
+  const goLive = (impressum: string, datenschutz: string) => runSmoke({ base: "https://x.de", goLive: true, fetchImpl: fake({ "/impressum": seite(impressum), "/datenschutz": seite(datenschutz), "/agb": seite("AGB Entwurf ohne Marke") }) });
   it("Platzhalter für Name, Anschrift oder E-Mail = FEHLER (Betreiberangaben fehlen)", async () => {
     for (const platzhalter of ["[PLATZHALTER: Name oder Firma des Betreibers]", "[PLATZHALTER: Anschrift des Betreibers (Straße, Postleitzahl, Ort)]", "[PLATZHALTER: E-Mail-Adresse des Betreibers]"]) {
       const r = await goLive(`Impressum ${platzhalter}`, "Datenschutz ok");
