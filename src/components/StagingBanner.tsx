@@ -2,8 +2,8 @@ import { connection } from "next/server";
 import { isStaging, STAGING_BANNER_TEXT } from "@/lib/staging";
 
 /**
- * Kleiner Streifen ganz oben, nur auf Staging (APP_ENV=staging). Liest die Umgebung zur Anfragezeit (connection), nicht beim Bauen. Farben nur aus den Tokens (Text --ink auf --panel-2, im
- * Kontrasttest AC-27 gemessen), Schrift 14 px (--fs-sm), Symbol und Wort zusammen.
+ * Kleiner Streifen ganz oben, nur auf Staging (APP_ENV=staging). Liest die Umgebung zur Anfragezeit (connection), nicht beim Bauen. Farben nur aus den Tokens (Text --ink auf --panel-2; Kontrast ≥ 4,5:1 hell und dunkel belegt
+ * tests/unit/staging-verhalten.test.ts aus den Token-Werten; der Seiten-Kontrastlauf AC-27 läuft ohne APP_ENV=staging und sieht das Banner nicht), Schrift 14 px (--fs-sm), Symbol und Wort zusammen.
  */
 export async function StagingBanner() {
   await connection();
