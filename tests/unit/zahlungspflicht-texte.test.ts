@@ -94,7 +94,7 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
 
   it("Turnier: im pausierten Kartenfluss keine Formel und ein Hinweis, der die Pause nennt; Anteil uebernehmen zeigt den Betrag, wo er vorliegt (dieselbe Rechnung wie die Abbuchung)", () => {
     const page = read("src/app/turniere/[id]/page.tsx");
-    expect(page).toContain("tournamentReadyLabel({ cardMode: data.cardMode, free, paused: Boolean(data.paymentsPaused) })");
+    expect(page).toContain("tournamentReadyLabel({ cardMode: data.cardMode, free: noMoney, paused: Boolean(data.paymentsPaused) })");
     expect(page).toContain("data.paymentsPaused ? ZP.tournamentReadyPause");
     expect(page).toContain("chargeAmount(pricing.totalCents ?? null, pricing.shareCents)"); // Turnier: dieselbe Funktion wie die Abbuchung (tournament-charge hat denselben Mindestbetrag)
     expect(read("src/app/turniere/[id]/TournamentCard.tsx")).toContain("consequence={coverAmounts ? coverConsequence(m.name, coverAmounts) : undefined}");

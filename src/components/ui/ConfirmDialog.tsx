@@ -17,6 +17,8 @@ export type ConfirmDialogProps = {
   body: string;
   /** Betrag oder Folge, die sichtbar bleiben soll (z. B. „12,00 € werden abgebucht“); erscheint hervorgehoben mit dem Wort „Folge“. */
   consequence?: string;
+  /** Die Folge GROSS anzeigen (z. B. der Spielstand "A 3 : 2 B" vor einem endgueltigen Ergebnis). */
+  consequenceLarge?: boolean;
   /** Benennt die Handlung („Spieler entfernen“), nie nur „OK“. */
   confirmLabel: string;
   /** Standard „Abbrechen“. */
@@ -48,7 +50,7 @@ function errorText(result: ActionState | void): string | undefined {
   return fields.length > 0 ? fields.join(" ") : undefined;
 }
 
-export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel, cancelLabel, onConfirmAction, danger = false, confirmText, consent, field, focusAfterSuccessAction }: ConfirmDialogProps) {
+export function ConfirmDialog({ trigger, title, body, consequence, consequenceLarge = false, confirmLabel, cancelLabel, onConfirmAction, danger = false, confirmText, consent, field, focusAfterSuccessAction }: ConfirmDialogProps) {
   const id = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -148,8 +150,8 @@ export function ConfirmDialog({ trigger, title, body, consequence, confirmLabel,
           </h2>
           <p id={`${id}-body`}>{body}</p>
           {consequence && (
-            <p className="rounded-lg border-2 border-line px-3 py-2 font-semibold" data-testid="confirm-consequence">
-              <span className="text-muted">{t("ui.confirmConsequence")}: </span>
+            <p className={`rounded-lg border-2 border-line px-3 py-2 font-semibold ${consequenceLarge ? "text-center font-heading text-2xl" : ""}`} data-testid="confirm-consequence">
+              {!consequenceLarge && <span className="text-muted">{t("ui.confirmConsequence")}: </span>}
               {consequence}
             </p>
           )}

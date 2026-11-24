@@ -6,12 +6,13 @@ import type { ActionState } from "@/lib/validation";
 import { parseEuro } from "@/lib/money";
 import { parseBerlinLocal } from "@/lib/time";
 import { requirePermission, requireUser } from "./session";
+import { zahlungenAus } from "./zahlungen-aus";
 import { DomainError } from "./teams";
 import { setTournamentVenue } from "./tournament-venue";
 import { triggerTournamentChargesInBackground } from "./payments/tournament-charge";
 import { isPlatformAdmin } from "@/lib/roles";
 import { releaseTournamentCover, takeOverTournamentShare } from "./tournament-card";
-import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
+import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, forfeitTournamentMatch, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -27,7 +28,11 @@ const str = (f: FormData, key: string) => String(f.get(key) ?? "").trim();
 
 export async function createTournamentAction(_prev: ActionState, f: FormData): Promise<ActionState> {
   const user = await requireUser("/app/turniere/neu");
-  const hourly = str(f, "hourlyRent") === "" ? undefined : parseEuro(str(f, "hourlyRent"));
+  // Zahlungen AUS (Go-live, Entscheid t2q 2026-11-24): das Turnier ist IMMER kostenlos, ein von Hand gesendeter Preis wird ignoriert (sonst entstuende ein Turnier mit Preis im pausierten Kartenfluss, den das Formular nicht kennt);
+  // das Teamlimit "bis 16" gilt hier serverseitig (Formular: max 16; der Kern bleibt bei 32 fuer bezahlte Turniere).
+  const free = await zahlungenAus();
+  if (free && Number(str(f, "maxTeams")) > 16) return { error: "Für dieses Turnier sind bis zu 16 Teams möglich.", fieldErrors: { maxTeams: "Höchstens 16 Teams." } };
+  const hourly = free ? 0 : str(f, "hourlyRent") === "" ? undefined : parseEuro(str(f, "hourlyRent"));
   if (hourly === null) return { error: "Bitte gib den Hallenpreis als Betrag an, z. B. 80 oder 95,50.", fieldErrors: { hourlyRent: "Ungültiger Betrag." } };
   const hours = Number(str(f, "durationHours").replace(",", "."));
   if (!Number.isFinite(hours) || hours <= 0) return { error: "Bitte gib die Dauer der Halle in Stunden an, z. B. 3 oder 2,5.", fieldErrors: { durationHours: "Ungültige Dauer." } };
@@ -59,6 +64,15 @@ async function touch(id: string, action: (userId: string) => Promise<void>): Pro
   const user = await requireUser(`/turniere/${id}`);
   const result = await guarded(() => action(user.id));
   revalidatePath(`/turniere/${id}`);
+  revalidatePath("/turniere");
+  return result;
+}
+
+/** Veranstalter/Admin: ein Turnierspiel kampflos fuer ein Team werten (3:0), normaler Finalisierungsweg. */
+export async function forfeitMatchAction(tournamentId: string, tournamentMatchId: string, winnerTeamId: string): Promise<ActionState> {
+  const user = await requireUser(`/turniere/${tournamentId}`);
+  const result = await guarded(() => forfeitTournamentMatch(user.id, tournamentId, tournamentMatchId, winnerTeamId));
+  revalidatePath(`/turniere/${tournamentId}`);
   revalidatePath("/turniere");
   return result;
 }

@@ -1,9 +1,11 @@
 import { initialsOf } from "@/lib/guest-roster";
 import { getMatchPage } from "@/server/results";
+import { gesperrteAntwort, spielGesperrt } from "@/server/turnier-only";
 
 /** Spielstand als JSON für Overlays und andere Werkzeuge. Nur für öffentliche Spiele, frei abrufbar, ohne Anmeldung: Torschützen daher immer nur als Initialen (AC-17, Entscheid t2q 2026-11-24; Produktfolge: Werkzeuge, die `player` als Namen lesen, sehen Initialen). */
 export async function GET(_request: Request, ctx: RouteContext<"/api/spiele/[id]/live">) {
   const { id } = await ctx.params;
+  if (await spielGesperrt(id)) return gesperrteAntwort(); // TURNIER_ONLY: gesperrter Bereich (Live-Kanal)
   const page = await getMatchPage(id, null);
   if (!page || page.match.visibility !== "public") return Response.json({ error: "Nicht gefunden" }, { status: 404, headers: { "Access-Control-Allow-Origin": "*" } });
   const { match, live, result, phase } = page;

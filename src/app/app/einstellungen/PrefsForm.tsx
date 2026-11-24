@@ -5,7 +5,7 @@ import { NOTIFICATION_TYPES, type NotificationType } from "@/lib/notification-ty
 import { SubmitButton } from "@/components/FormBits";
 import { useFormAction } from "@/components/useFormAction";
 
-export function PrefsForm({ push, email, disabledTypes }: { push: boolean; email: boolean; disabledTypes: string[] }) {
+export function PrefsForm({ push, email, disabledTypes, aus = false }: { push: boolean; email: boolean; disabledTypes: string[]; aus?: boolean }) {
   const { state, pending, onSubmit, formAction } = useFormAction(savePrefsAction);
   const optional = (Object.keys(NOTIFICATION_TYPES) as NotificationType[]).filter((t) => NOTIFICATION_TYPES[t].optional);
 
@@ -24,7 +24,7 @@ export function PrefsForm({ push, email, disabledTypes }: { push: boolean; email
             {NOTIFICATION_TYPES[t].label}
           </label>
         ))}
-        <p className="text-xs text-muted">Wichtige Hinweise zu Absagen, Ergebnissen und Zahlungen bekommst du immer.</p>
+        <p className="text-xs text-muted">Wichtige Hinweise zu Absagen und Ergebnissen{aus ? "" : " und Zahlungen"} bekommst du immer.</p>
       </fieldset>
       <SubmitButton pending={pending}>Speichern</SubmitButton>
       {!pending && state && !state.error && <p className="text-sm text-accent-fg" role="status">Gespeichert.</p>}

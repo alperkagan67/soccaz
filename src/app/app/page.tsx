@@ -15,6 +15,8 @@ import { myCurrent } from "@/server/mygame";
 import { myChargeFailures } from "@/server/my-games";
 import { myChallenges } from "@/server/requests";
 import { requireUser } from "@/server/session";
+import { gesperrtFuerNutzer } from "@/lib/turnier-only";
+import { TurnierDashboard } from "./TurnierDashboard";
 import { listMyTeams } from "@/server/teams";
 
 export const metadata: Metadata = { title: "Meine Spiele" };
@@ -23,6 +25,7 @@ export const metadata: Metadata = { title: "Meine Spiele" };
 // Meine Spiele nach Spielart gruppiert (Zeile mit Zustandswort), Meine Teams. Kein Kontostand (AC-14). Alle Test-IDs bleiben (AC-5).
 export default async function DashboardPage() {
   const user = await requireUser("/app");
+  if (gesperrtFuerNutzer(user)) return <TurnierDashboard user={user} />; // TURNIER_ONLY: nur Meine Turniere und Meine Teams, keine Spiele/Herausforderungen
   const [myTeams, games, challenges, current, failures] = await Promise.all([listMyTeams(user.id), myMatches(user.id), myChallenges(user.id), myCurrent(user.id), myChargeFailures(user.id)]);
   const now = new Date();
   const stand = dashboardStand({ games: current.games, open: current.open, teamCount: myTeams.length, incoming: challenges.incoming.map((c) => ({ id: c.id, fromTeam: c.fromTeam, toTeam: c.toTeam, startsAt: c.startsAt, href: c.href, deadline: c.href ? c.startsAt : null })), now }, formatDateTime); // Frist: bei Lobby-Herausforderungen ist startsAt die Antwortfrist der wartenden Lobby (requests.ts: deadline ?? Anstoß), bei Spielsuchen der angefragte Anstoß und damit keine Antwortfrist

@@ -13,6 +13,8 @@ import { matchPhotosEnabled } from "@/lib/media-flags";
 import { RatingReveal } from "@/components/RatingReveal";
 import { getRatingReveal } from "@/server/rating-reveal";
 import { canViewMatch, getMatchPage } from "@/server/results";
+import { KommtBald } from "@/components/KommtBald";
+import { spielGesperrt } from "@/server/turnier-only";
 import { PersonName } from "@/components/PersonName";
 import { autorLabel, personRef } from "@/lib/lobby-namen";
 import { getCurrentUser } from "@/server/session";
@@ -21,7 +23,7 @@ import { ScoreDialog } from "@/app/lobby/[id]/uebersicht/ScoreDialog";
 import { MatchPhotos } from "./MatchPhotos";
 import { StreamEmbed } from "./StreamEmbed";
 import { StreamForm } from "./StreamForm";
-import { ConfirmPanel, DecidePanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
+import { ConfirmPanel, DecidePanel, EndMatchPanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
 export const metadata: Metadata = { title: "Spiel" };
 
@@ -35,6 +37,9 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   if (!page) notFound();
   // Nicht öffentlich sichtbare Spiele (Privatspiel, private Herausforderung): Existenz nicht verraten, gleiche Antwort wie bei einem nicht vorhandenen Spiel
   if (!canViewMatch(page)) notFound();
+
+  // TURNIER_ONLY: nur Spiele eines Turniers (serverseitige Zuordnung, Ergebnis melden) bleiben offen; alle anderen Spiele zeigen "Kommt bald" (Plattform-Admin ausgenommen)
+  if (await spielGesperrt(id)) return <KommtBald />;
 
   const { match, events, live, result, phase, participants } = page;
   const v = page.viewer;
@@ -50,6 +55,9 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const reveal = user ? await getRatingReveal(match.id, user.id) : null; // nur die eigene Wertungsänderung, nur nach einem bestätigten Ergebnis (AC-20, AC-17)
   const photos = (await listMatchPhotos(match.id)).map((p) => ({ id: p.id, mine: p.ownerId === user?.id }));
 
+  // Abpfiff im Turnierspiel NUR fuer Veranstalter/Admin (Schiedsrichter, Endergebnis sofort endgueltig). Captains behalten ihr Formular (Felder sichtbar, Ergebnis melden, der Gegner bestaetigt): sonst lagen ihre Felder
+  // eingeklappt und die E2E-Strecken der Captains fanden sie nicht (CI #387). So bleibt es bei einer Hauptaktion je Rolle.
+  const abpfiff = Boolean(v?.canRecord) && match.kind === "tournament" && !v?.mySide && Boolean(v?.canManage);
   return (
     <div className="space-y-4">
       <header className="space-y-2">
@@ -77,7 +85,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
             <a href={`/api/karte/${match.id}`} className="text-accent-fg underline" download>Spielbericht als Bild</a>
           </p>
         )}
-        {v?.mySide && match.status === "played" && (
+        {v?.mySide && match.status === "played" && match.kind !== "tournament" && (
           <p className="text-center text-sm">
             <Link href={`/app/suche/neu?gegner=${v.mySide === "home" ? match.awaySlug : match.homeSlug}`} className="text-accent-fg underline">Revanche anfragen</Link>
           </p>
@@ -105,15 +113,41 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
 
       {v?.canRecord && <Recorder matchId={match.id} home={home} away={away} players={participants} hasEvents={events.length > 0} />}
 
+      {/* Abpfiff im Turnierspiel: Veranstalter/Admin */}
+      {abpfiff && v && <EndMatchPanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={goalsFromEvents.home} awayScore={goalsFromEvents.away} final={!v.mySide && v.canManage} />}
+
+      {/* AC-30: eine Hauptaktion je Ansicht. Im Turnierspiel mit Abpfiff ist "Abpfiff" die Hauptaktion; die Eingabe von Hand liegt ruhig und eingeklappt darunter */}
+      {abpfiff ? (
+        <details className="card" data-testid="manual-result">
+          <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Ergebnis von Hand eintragen</summary>
+          <div className="space-y-3 pt-3">
       {v?.canSubmit && !result?.disputed && !result && (
         <section className="card space-y-2">
           <p className="text-sm text-muted">Das Ergebnis kannst du jederzeit eintragen, auch nach dem Spiel, mit Torschützen:</p>
-          <ScoreDialog matchId={match.id} home={home} away={away} players={participants} existing={events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))} />
+          <ScoreDialog quiet={abpfiff} matchId={match.id} home={home} away={away} players={participants} existing={events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))} />
         </section>
       )}
 
       {v?.canSubmit && !result?.disputed && (
-        <SubmitResultForm matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} />
+        <SubmitResultForm quiet={abpfiff} matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} final={!v.mySide && v.canManage} />
+      )}
+
+          </div>
+        </details>
+      ) : (
+        <>
+      {v?.canSubmit && !result?.disputed && !result && (
+        <section className="card space-y-2">
+          <p className="text-sm text-muted">Das Ergebnis kannst du jederzeit eintragen, auch nach dem Spiel, mit Torschützen:</p>
+          <ScoreDialog quiet={abpfiff} matchId={match.id} home={home} away={away} players={participants} existing={events.filter((e) => e.type === "goal").map((e) => ({ teamId: e.teamId, scorer: e.scorer }))} />
+        </section>
+      )}
+
+      {v?.canSubmit && !result?.disputed && (
+        <SubmitResultForm quiet={abpfiff} matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} final={!v.mySide && v.canManage} />
+      )}
+
+        </>
       )}
 
       {v?.canConfirm && result && (
@@ -159,7 +193,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
           <ol className="space-y-2 text-sm">
             {events.map((e, i) => (
               <li key={e.id} className="flex items-center gap-2">
-                <span className="w-9 text-right tabular-nums text-muted">{e.minute}&apos;</span>
+                <span className="w-9 text-right tabular-nums text-muted">{e.minute !== null && e.minute !== undefined ? `${e.minute}'` : ""}</span>
                 <span className={`size-2.5 rounded-full ${EVENT_TONE[e.type]}`} aria-hidden />
                 <span>
                   <strong>{EVENT_LABEL[e.type]}</strong> {e.userId && e.scorer ? <PersonName person={personRef(sicht, e.userId, e.scorer, i)} /> : (e.scorer ? autorLabel(e.scorer, sicht) : "Unbekannt")} <span className="text-muted">({teamName(e.teamId)})</span>

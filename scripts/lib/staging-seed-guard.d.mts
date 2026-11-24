@@ -1,0 +1,10 @@
+export const MARKER_KEY: string;
+export const MARKER_WERT: string;
+export const BESTAETIGUNG_NAME: string;
+export const BESTAETIGUNG_WERT: string;
+export const PRODUKTIONS_HOSTS: string[];
+export const MAIL_DOMAIN: string;
+export function hostVon(adresse: unknown): string | null;
+export function istProduktionsAdresse(adresse: unknown): boolean;
+export function pruefeStagingSeed(args: { marker: unknown; appUrl: unknown; authUrl?: unknown; bestaetigung: unknown }): void;
+export function planStagingSeed(): { slug: string; name: string; spieler: { email: string; name: string; position: string; captain: boolean }[] }[];
