@@ -25,7 +25,8 @@ export function PlayerLight({ light, paymentsOn = true, showLabel = false }: { l
   const label = lightLabel(light, paymentsOn);
   return (
     <span className="inline-flex items-center gap-1.5" title={label} data-light={light}>
-      <span className="inline-block size-3 rounded-full" style={{ background: COLOR[light], boxShadow: `0 0 6px ${COLOR[light]}88` }} aria-hidden />
+      {/* Leuchtpunkt dezent (Look-Entscheid t2q, Richtung F: Leucht-Effekte erwünscht): 4 px, 33 % Deckkraft; Träger der Aussage sind die Wörter */}
+      <span className="inline-block size-3 rounded-full" style={{ background: COLOR[light], boxShadow: `0 0 4px ${COLOR[light]}55` }} aria-hidden />
       {showLabel ? <span className="text-xs text-muted">{label}</span> : <span className="sr-only">{label}</span>}
     </span>
   );
