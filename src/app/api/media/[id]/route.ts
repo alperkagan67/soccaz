@@ -4,12 +4,15 @@ import { DomainError } from "@/server/teams";
 
 export async function GET(_request: Request, ctx: RouteContext<"/api/media/[id]">) {
   const { id } = await ctx.params;
-  const row = await getMedia(id);
-  if (!row) return new Response("Nicht gefunden", { status: 404 });
+  // Bilder nur für Angemeldete (Entscheid t2q 2026-11-24, Backlog 243): ohne Anmeldung dieselbe Antwort wie bei einem unbekannten Bild (kein Existenz-Orakel)
+  const user = await getCurrentUser();
+  const row = user ? await getMedia(id) : null;
+  if (!row) return new Response("Nicht gefunden", { status: 404, headers: { "Cache-Control": "no-store" } });
   return new Response(new Uint8Array(row.data), {
     headers: {
       "Content-Type": row.mime,
-      "Cache-Control": "public, max-age=31536000, immutable", // jedes Bild hat eine eigene ID, Änderungen bekommen eine neue
+      "Cache-Control": "private, max-age=31536000, immutable", // nur im Browser des Angemeldeten, nie in gemeinsamen Caches (CDN); jedes Bild hat eine eigene ID, Änderungen bekommen eine neue
+      Vary: "Cookie",
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; sandbox",
     },

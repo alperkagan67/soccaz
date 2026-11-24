@@ -99,7 +99,7 @@ describe("PlayerCard je Rolle (AC-17), Rohtext des HTML und der Props, nicht nur
 });
 
 describe("TeamCard (AC-19)", () => {
-  const team = { name: "Die Wilden Kerle", slug: "die-wilden-kerle", color: "yellow", memberElos: [1000, 1100, 1400] };
+  const team = { name: "Die Wilden Kerle", slug: "die-wilden-kerle", color: "yellow", memberElos: [1000, 1100, 1400, 1200] };
 
   it("zeigt Teamname, Initialen, Teamfarbe als Fläche mit lesbarer Schrift und die Teamwertung als Zahl; keine Einzelwertungen", () => {
     const d = teamCardFor(team);
@@ -112,10 +112,18 @@ describe("TeamCard (AC-19)", () => {
     expect(out).toContain("DK"); // erster und letzter Namensteil ("Die Wilden Kerle"), alt "DW" (C3a: eine Initialen-Regel)
   });
 
-  it("kleines Team: keine Zahl, ein Hinweis (die Teamwertung wäre sonst eine Einzelwertung)", () => {
-    const out = renderToStaticMarkup(createElement(TeamCard, { data: teamCardFor({ ...team, memberElos: [1900] }) }));
-    expect(out).not.toContain("team-card-rating");
-    expect(out).toContain("Teamwertung ab 3 Spielern");
+  it("kleines Team (1 bis 3 Mitglieder): keine Zahl, 'Noch keine Teamwertung' (die Teamwertung wäre sonst zurückrechenbar)", () => {
+    for (const memberElos of [[1900], [1900, 1000], [1900, 1000, 1400]]) {
+      const out = renderToStaticMarkup(createElement(TeamCard, { data: teamCardFor({ ...team, memberElos }) }));
+      expect(out, `${memberElos.length} Mitglieder`).not.toContain("team-card-rating");
+      expect(out).toContain("Noch keine Teamwertung (ab 4 Spielern)");
+      expect(out).not.toMatch(/Teamwertung \d/);
+    }
+  });
+  it("vier Mitglieder: die Zahl steht da (ganzzahlig), der Hinweis nicht", () => {
+    const out = renderToStaticMarkup(createElement(TeamCard, { data: teamCardFor(team) }));
+    expect(out).toMatch(/data-testid="team-card-rating"[^>]*>\d+</);
+    expect(out).not.toContain("Noch keine Teamwertung");
   });
 
   it("auf jeder der 12 Teamfarben ist die Schrift des Kartenobjekts lesbar (>= 4,5:1)", () => {

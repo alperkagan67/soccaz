@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -11,6 +11,13 @@ import { postComment } from "@/server/content";
 import { addPlayer, cleanup, makeMatch, makeTeam, makeUser, seedWalletBalance } from "./helpers";
 
 afterAll(cleanup);
+// Spielfotos sind standardmäßig AUS (Entscheid t2q 2026-11-24, Backlog 243); die Tests der Grenzen und Rechte schalten sie ausdrücklich ein, ein eigener Test prüft den Standard
+beforeAll(() => {
+  vi.stubEnv("MATCH_PHOTOS_ENABLED", "1");
+});
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 const png = (w = 600, h = 400) => sharp({ create: { width: w, height: h, channels: 3, background: "#2ecc71" } }).png().toBuffer();
 
@@ -56,6 +63,21 @@ describe("Bilder", () => {
 
     const p = await addPlayer(m.match.id, m.home.id, "fotograf");
     await expect(storeImage({ id: p.id, role: "player" }, "match_photo", m.match.id, file)).rejects.toThrow(/Berechtigung/); // Spiel noch nicht angepfiffen
+  });
+
+  it("Spielfotos sind standardmäßig aus: kein Hochladen (auch nicht für Mitspieler nach Anpfiff), die Liste ist leer", async () => {
+    const { matches } = await import("@/db/schema");
+    const { listMatchPhotos } = await import("@/server/media");
+    const m = await makeMatch({ hoursAhead: 72 });
+    await db.update(matches).set({ startsAt: new Date(Date.now() - 3_600_000) }).where(eq(matches.id, m.match.id));
+    const p = await addPlayer(m.match.id, m.home.id, "foto-aus");
+    vi.stubEnv("MATCH_PHOTOS_ENABLED", "");
+    try {
+      await expect(storeImage({ id: p.id, role: "player" }, "match_photo", m.match.id, await png())).rejects.toThrow(/noch nicht verfügbar/);
+      expect(await listMatchPhotos(m.match.id)).toEqual([]);
+    } finally {
+      vi.stubEnv("MATCH_PHOTOS_ENABLED", "1");
+    }
   });
 
   it("Spielfotos: nach Anpfiff, begrenzt, entfernbar", async () => {

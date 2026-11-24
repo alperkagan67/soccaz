@@ -33,7 +33,7 @@ async function seed(): Promise<Seed> {
   const y = await seedUser("gsy", NAME_Y);
   const m = await seedUser("gsm", NAME_M);
   const rival = await seedUser("gsr", "Gegner Beispiel");
-  // Profilbilder: ihre Pfade dürfen in keiner Gast-Seite stehen (Backlog 243: /api/media ist öffentlich, die Verweise darauf sind es nicht)
+  // Profilbilder: ihre Pfade dürfen in keiner Gast-Seite stehen (Backlog 243: /api/media liefert nur noch Angemeldeten Bilder, Gäste bekommen auch keine Verweise)
   const avatare = [z, y, m].map(() => `/api/media/${randomUUID()}`);
   for (const [i, u] of [z, y, m].entries()) await query("update users set avatar_url = $1 where id = $2", [avatare[i], u]);
   const mk = async (name: string, slug: string, admin: string) => {

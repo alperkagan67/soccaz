@@ -25,7 +25,7 @@ export function TeamCard({ data, className = "" }: { data: TeamCardData; classNa
               Teamwertung <span data-testid="team-card-rating" className="font-bold tabular-nums">{data.teamRating}</span>
             </>
           ) : (
-            `Teamwertung ab ${TEAM_RATING_MIN_MEMBERS} Spielern`
+            `Noch keine Teamwertung (ab ${TEAM_RATING_MIN_MEMBERS} Spielern)`
           )}
         </p>
       </div>

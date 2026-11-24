@@ -214,7 +214,7 @@ export async function listPlayers(filter: { q?: string; city?: string; page?: nu
 }
 
 /**
- * Elo-Werte der Mitglieder OHNE Namen und Kennungen, nur für die Teamwertung (Durchschnitt, erst ab drei Mitgliedern, siehe teamCardFor). Der Aufrufer reduziert sie auf EINE Zahl;
+ * Elo-Werte der Mitglieder OHNE Namen und Kennungen, nur für die Teamwertung (Durchschnitt, erst ab vier Mitgliedern, siehe teamCardFor). Der Aufrufer reduziert sie auf EINE Zahl;
  * die Werte selbst gehen nie in die Seite. Unabhängig vom Betrachter, weil die Teamwertung (wie die Team-Elo) öffentlich ist.
  * Bekannte Grenze: wer ein Team der Größe drei beobachtet, kann aus Beitritt und Austritt die Wertung der Wechselnden grob zurückrechnen (Teamwertung ist dann die Summe).
  */
