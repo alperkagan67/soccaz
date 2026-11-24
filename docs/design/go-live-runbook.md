@@ -122,3 +122,21 @@ Erwartet: Smoke-Test (Schritt 5) wieder grün. **Datenbankänderungen gehen nur 
 
 ## 10. Staging ist anders
 Staging nur mit `sh scripts/staging-compose.sh …` starten (Zugangsschutz, Banner, noindex); nur Stripe-Testschlüssel; nie auf dem Produktionsserver. Vollständiger Ablauf: `pilot-staging-checkliste.md`.
+
+## 11. Am Turniertag: falsches Ergebnis, Kampflos, Rückzug (Entscheidungsbaum)
+**Grundregel:** **Kein Agent ändert Produktionsdaten** (kein SQL, kein Skript, kein „kurz geradeziehen“). Korrekturen macht der **Veranstalter in der Oberfläche** oder der **Nutzer als Admin 1**; jeder Eingriff steht im Protokoll (Audit). Im Zweifel: **nichts anfassen**, Stand notieren, melden.
+
+### 11.1 Ergebnis falsch eingetragen
+| Lage | Wer | Vorgehen | Erwartet |
+|---|---|---|---|
+| **(1) Das Ergebnis ist noch nicht endgültig** (ein Captain hat gemeldet, das andere Team hat noch nicht bestätigt, oder es gibt einen Widerspruch; das Spiel steht nicht auf „beendet“) | **Veranstalter** (oder Admin 1) | Spielseite des Spiels öffnen (aus dem Bracket), Kasten **„Plattform-Entscheidung“**: richtigen Spielstand eintragen, **Begründung** (mindestens 3 Zeichen), **Entscheiden** | Das Spiel zeigt den Endstand, der Sieger rückt im Bracket weiter; im Audit steht „result.decide“ mit altem und neuem Stand. Geht nur, wenn das Spiel schon begonnen hat |
+| **(2) Das Ergebnis ist schon endgültig** (bestätigt, entschieden oder nach 48 Stunden automatisch bestätigt) **und das Folgespiel ist noch nicht gespielt** | **Nutzer als Admin 1** entscheidet das Vorgehen | **Nicht selbst herumklicken.** Die Oberfläche hat dafür **keinen** Korrekturweg. Stand notieren (Spiel, falscher und richtiger Stand, Uhrzeit), melden; Admin 1 entscheidet mit dem Task Manager, ob das Folgespiel mit dem notierten richtigen Stand gespielt wird (Anzeige weicht dann ab) oder wartet. **Kein Agent ändert Daten.** | Entscheidung mit Datum im Testprotokoll/Turnierprotokoll |
+| **(3) Notfall: die Spielstand-Anzeige stimmt nicht, das Turnier läuft weiter** | **Veranstalter** | Den **richtigen** Stand **extern notieren** (Zettel, Foto der Tafel) und das Turnier **auf Basis des notierten Stands** weiterführen. **Korrektur nach dem Turnier.** | Notizliste vollständig; nach dem Turnier meldet der Veranstalter sie dem Task Manager |
+**Echte Korrektur** eines endgültigen Ergebnisses (mit Rückrechnung von Elo, Statistik, Abzeichen und Folgespiel) gibt es **erst nach dem 12.12.** (Backlog); bis dahin gilt (2) und (3).
+
+### 11.2 Kampflos werten (Gegner ist nicht erschienen)
+**Veranstalter-Knopf „Kampflos werten“** am Spiel: der Gegner rückt weiter, Ergebnis **3:0**, im Audit vermerkt. **Stand: dieser Knopf ist noch nicht auf `main`**; er gilt ab dem Merge des zugehörigen PR (Task Manager nennt ihn). **Bis dahin:** 11.1 (1) mit dem Ergebnis 3:0 und der Begründung „kampflos“. Vor der Entscheidung kurz abwarten (vereinbarte Wartezeit) und beide Captains fragen.
+
+### 11.3 Team zieht zurück
+- **Vor dem Start des Brackets** (Gratis-Turnier): das Team wird **entfernt** (Captain: „Team abmelden“ in der Turnierseite, oder der **Veranstalter** nimmt es heraus; nach dem **Anmeldeschluss** kann der Veranstalter keine Teams mehr ersetzen, dann **„Anmeldung schließen“**, damit mit den angemeldeten Teams, mindestens 4, gespielt wird). Erwartet: das Team steht nicht mehr in der Liste, die übrigen Teams sehen es; im Audit „tournament.withdraw“.
+- **Nach dem Start des Brackets** gibt es **keine Abmeldung mehr** („Nach dem Start ist keine Abmeldung mehr möglich“). Zieht ein Team dann zurück: für **kommende** Spiele **Kampflos werten** (11.2); bereits gespielte Spiele bleiben stehen.
