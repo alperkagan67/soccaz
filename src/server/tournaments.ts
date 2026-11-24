@@ -991,7 +991,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
   if (!t) return null;
   // Zugang zu einem privaten Turnier ZUERST und billig prüfen (Veranstalter/Admin, gültiger Token, sonst Mitglied eines angemeldeten Teams nur für Eingeloggte): so kostet "privat ohne Zugang" nicht mehr Abfragen als "unbekannt"
-  if (t.isPrivate && !(viewer && (viewer.id === t.organizerId || viewer.role === "admin")) && !tokenGueltig(t.inviteToken, token)) {
+  if (t.isPrivate && !(viewer && (viewer.id === t.organizerId || isPlatformAdmin(viewer))) && !tokenGueltig(t.inviteToken, token)) {
     const mitglied = viewer
       ? (await db.select({ one: sql<number>`1` }).from(teamMembers).innerJoin(tournamentTeams, eq(tournamentTeams.teamId, teamMembers.teamId)).where(and(eq(teamMembers.userId, viewer.id), eq(tournamentTeams.tournamentId, id))).limit(1)).length > 0
       : false;
