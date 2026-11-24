@@ -7,6 +7,7 @@ import { recordExpense, updateBookingJob, type BookingPatch, type BookingStatus 
 import { setVenueCommission } from "./commission";
 import { parseVatMode } from "@/lib/invoice";
 import { manualRefund } from "./finance";
+import { retryFailedRefund, writeOffFailedRefund } from "./payments/refund";
 import { requirePermission } from "./session";
 import { setSetting } from "./settings";
 import { DomainError } from "./teams";
@@ -65,6 +66,18 @@ export async function manualRefundAction(matchId: string, userId: string, _prev:
   const cents = euro(fd, "amount");
   if (cents === null) return { error: "Bitte einen Betrag in Euro angeben." };
   const result = await guarded("finance", `/admin/finanzen/spiel/${matchId}`, (actor) => manualRefund(actor, matchId, userId, cents, text(fd, "reason")));
+  if (result?.ok) revalidatePath("/admin/finanzen");
+  return result;
+}
+
+/** Backlog 192: fehlgeschlagene Ausnahme-Erstattung neu versuchen (nur Admin 1: Berechtigung "finance" und noch einmal in der Funktion). */
+export async function retryRefundAction(matchId: string, refundRowId: string, _prev: ActionState, _fd: FormData): Promise<ActionState> {
+  return refreshOnError(await guarded("finance", `/admin/finanzen/spiel/${matchId}`, (actor) => retryFailedRefund(actor, refundRowId)), `/admin/finanzen/spiel/${matchId}`);
+}
+
+/** Backlog 192: fehlgeschlagene Erstattung bewusst abschreiben (nur Buchungsmarkierung, Pflicht-Grund). */
+export async function writeOffRefundAction(matchId: string, refundRowId: string, _prev: ActionState, fd: FormData): Promise<ActionState> {
+  const result = refreshOnError(await guarded("finance", `/admin/finanzen/spiel/${matchId}`, (actor) => writeOffFailedRefund(actor, refundRowId, text(fd, "reason"))), `/admin/finanzen/spiel/${matchId}`);
   if (result?.ok) revalidatePath("/admin/finanzen");
   return result;
 }

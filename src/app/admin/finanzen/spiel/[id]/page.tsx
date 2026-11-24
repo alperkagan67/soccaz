@@ -5,7 +5,8 @@ import { ActionForm } from "@/components/ActionForm";
 import { formatEuro } from "@/lib/money";
 import { formatDateTime } from "@/lib/time";
 import { matchEntries, matchHeader, matchMoneyOf, playerFinance } from "@/server/finance";
-import { manualRefundAction, recordExpenseAction } from "@/server/admin-finance-actions";
+import { manualRefundAction, recordExpenseAction, retryRefundAction, writeOffRefundAction } from "@/server/admin-finance-actions";
+import { listFailedRefundsOfMatch } from "@/server/payments/refund";
 import { requirePermission } from "@/server/session";
 
 export const metadata: Metadata = { title: "Admin: Spiel-Finanzen" };
@@ -17,7 +18,7 @@ export default async function MatchFinancePage({ params }: PageProps<"/admin/fin
   await requirePermission("finance", `/admin/finanzen/spiel/${id}`);
   const header = await matchHeader(id);
   if (!header) notFound();
-  const [players, entries, money] = await Promise.all([playerFinance(id), matchEntries(id), matchMoneyOf([id])]);
+  const [players, entries, money, failedRefunds] = await Promise.all([playerFinance(id), matchEntries(id), matchMoneyOf([id]), listFailedRefundsOfMatch(id)]);
   const { revenueCents: revenue, costCents: cost } = money.get(id)!; // dieselbe Rechenstelle wie die Spieleliste (Kartenmodell: Einnahmen aus den Hauptbuch-Konten, nicht aus den Spieler-Beträgen)
 
   return (
@@ -74,6 +75,27 @@ export default async function MatchFinancePage({ params }: PageProps<"/admin/fin
           </ul>
         )}
       </section>
+
+      {failedRefunds.length > 0 && (
+        <section className="space-y-2" data-testid="failed-refunds">
+          <h2 className="text-lg font-semibold">Fehlgeschlagene Erstattungen</h2>
+          <p className="text-sm text-muted">Solange eine Erstattung offen ist, kann das Spiel nicht abgesagt werden. Neu versuchen sendet dieselbe Erstattung noch einmal (nie doppelt). Abschreiben ist nur eine Buchungsmarkierung: es wird kein Geld bewegt und nichts an Stripe gesendet; Grund und Protokoll sind Pflicht.</p>
+          <ul className="space-y-2">
+            {failedRefunds.map((r) => (
+              <li key={r.id} className="card space-y-2" data-testid={`failed-refund-${r.id}`}>
+                <p className="font-semibold">{formatEuro(r.amountCents)} <span className="text-xs text-muted">Code {r.code ?? "unbekannt"}</span></p>
+                <ActionForm action={retryRefundAction.bind(null, id, r.id)} submit="Erstattung neu versuchen" className="flex items-end gap-2" successText="Erstattung neu angefordert." />
+                <ActionForm action={writeOffRefundAction.bind(null, id, r.id)} submit="Abschreiben" className="grid grid-cols-[1fr_auto] items-end gap-2" successText="Abgeschrieben.">
+                  <div>
+                    <label className="label" htmlFor={`wo-${r.id}`}>Grund zum Abschreiben</label>
+                    <input id={`wo-${r.id}`} name="reason" className="field" required minLength={3} maxLength={200} />
+                  </div>
+                </ActionForm>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Ausgabe zu diesem Spiel</h2>
