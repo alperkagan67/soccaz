@@ -25,8 +25,8 @@ Annahmen: bis zu 100 Spieler plus Zuschauer, **gleichzeitig angemeldet auf Spiel
 
 ## 3. Empfehlung Mindestgröße
 
-- **Mindestens: 2 vCPU und 4 GB RAM** (die Größe aus `docs/BETRIEB.md`, Hetzner CX22). Das reicht nach der Rechnung für 16 Teams und 100 Spieler, mit Engpass nur bei der gleichzeitigen Neu-Darstellung (Spitzen von 1 bis 3 s).
-- **Empfohlen für den Turnierzeitraum (Fr 11.12. bis So 13.12.): 4 vCPU und 8 GB RAM** (eine Stufe größer), weil es billig ist (nur für die Tage; Hetzner erlaubt die Größenänderung mit kurzem Neustart) und die Spitzen halbiert (zwei Kerne für Node-Darstellung, Datenbank und Caddy bekommen eigene Luft). Entscheidung über die Kosten beim Nutzer.
+- **Mindestens: 2 vCPU und 4 GB RAM** (Richtwert; der konkrete Servertyp und der Anbieter stehen in `docs/design/anbieter-vorlage.md`, nicht hier). Das reicht nach der Rechnung für 16 Teams und 100 Spieler, mit Engpass nur bei der gleichzeitigen Neu-Darstellung (Spitzen von 1 bis 3 s).
+- **Empfohlen für den Turnierzeitraum (Fr 11.12. bis So 13.12.): 4 vCPU und 8 GB RAM** (eine Stufe größer), weil es billig ist (nur für die Tage; ob und wie der Anbieter eine Größenänderung erlaubt, steht in der Anbieter-Vorlage) und die Spitzen halbiert (zwei Kerne für Node-Darstellung, Datenbank und Caddy bekommen eigene Luft). Entscheidung über die Kosten beim Nutzer.
 - **Nicht nötig:** zweiter App-Server, Lastverteiler, Pool-Änderung, Postgres-Tuning. Nicht anfassen vor dem 12.12.
 
 ## 4. Messen auf Staging (vor dem Code-Freeze-Test, Generalprobe 30.11. bis 2.12.)
@@ -40,6 +40,8 @@ node scripts/last-light.mjs https://<Staging-Adresse> --gleichzeitig 30 --anfrag
 ```
 
 Der dritte Lauf prüft die Live-Verbindungen eines Spiels (die Events-Route verlangt Anmeldung und Berechtigung: ohne Anmeldung kommt 401/403 und zählt als "abgewiesen"; für einen echten Haltetest ein Turnierspiel mit Anmeldung von Hand öffnen und parallel die Messung laufen lassen). Das Skript macht **nur GET**, **verweigert die Produktion** (ohne `--produktion-bestaetigt`), bricht bei Fehlerrate über 20 % ab und hält höchstens 100 Verbindungen gleichzeitig.
+
+**Zielprüfung:** Das Skript läuft nur gegen localhost und Staging-Unteradressen der eigenen Domain; alles andere braucht `--fremdes-ziel-bestaetigt`, die Produktion `--produktion-bestaetigt`. Der Zugangsschutz (`SMOKE_BASIC_AUTH`) geht nur an erlaubte Ziele. Weiterleitungen werden nicht verfolgt: **viele 3xx in der Status-Zeile** heißen, dass die Adresse nicht stimmt (Weiterleitung auf eine Anmeldung oder einen fremden Host): dann Adresse prüfen, die Antwortzeiten sind in dem Fall wertlos.
 
 **Auswertung (Schwellen für "im Rahmen"):** p95 unter 1,5 s bei 60 gleichzeitig, Fehlerrate unter 1 %, kein Abbruch. Während des Laufs auf dem Staging-Server `docker stats` beobachten (CPU-Auslastung des App-Containers unter 80 %, Speicher unter 60 % des Servers). Liegen die Werte darüber: erst eine Größe hoch, dann erneut messen.
 

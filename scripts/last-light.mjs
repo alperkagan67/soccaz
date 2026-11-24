@@ -6,7 +6,8 @@
 //   --sse-pfad /pfad      Live-Kanal (Standard /api/spiele/stream; bei TURNIER_ONLY=1 antwortet er 403: dann zählt er als abgewiesen)
 //   --sse-sekunden N      so lange bleiben die Live-Verbindungen offen (Standard 10, höchstens 120)
 //   --max-fehlerrate X    Abbruch, sobald die Fehlerrate über X liegt (Standard 0.2; erst ab 20 Antworten)
-//   --produktion-bestaetigt  Pflicht-Flag, falls die Adresse die Produktion ist (socaz.de); ohne das Flag verweigert das Skript
+//   --produktion-bestaetigt  Pflicht-Flag, falls die Adresse die Produktion ist; ohne das Flag verweigert das Skript
+//   --fremdes-ziel-bestaetigt  Pflicht-Flag für alles außer localhost und Staging-Unteradressen der eigenen Domain (Allowlist); der Zugangsschutz-Header geht nie an solche Ziele
 // Sicherheit: NUR GET auf feste öffentliche Seiten, keine Schreibzugriffe, keine Anmeldung, keine Inhalte in der Ausgabe. Zugangsschutz der Staging-Seite: SMOKE_BASIC_AUTH=<benutzer>:<passwort>
 // nur aus der Umgebung (wird nie ausgegeben). Ausgabe: kurzer Bericht (Antwortzeiten p50/p95/max, Fehlerrate, Status je Gruppe, Live-Verbindungen).
 // Exit 0 = Fehlerrate im Rahmen, 1 = abgebrochen oder Fehlerrate zu hoch, 2 = falsche Benutzung oder verweigertes Ziel.
@@ -26,8 +27,12 @@ export const PRODUKTIONS_HOSTS = [PRODUKTION, `www.${PRODUKTION}`];
 
 const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-/** Prüft das Ziel. Rückgabe { ok: true, base } oder { ok: false, grund }. Reine Funktion. */
-export function pruefeZiel(eingabe, { produktionBestaetigt = false } = {}) {
+/**
+ * Prüft das Ziel. Rückgabe { ok: true, base, erlaubt } oder { ok: false, grund }. Reine Funktion.
+ * STANDARD = Allowlist: nur localhost/127.0.0.1/[::1] und Staging-Unteradressen der eigenen Domain (nicht Produktion). Alles andere (fremde Dienste, IP-Adressen, Aliasse) nur mit --fremdes-ziel-bestaetigt;
+ * die Produktion nur mit --produktion-bestaetigt. `erlaubt` = Ziel steht auf der Allowlist: NUR dann geht der Zugangsschutz-Header (SMOKE_BASIC_AUTH) mit.
+ */
+export function pruefeZiel(eingabe, { produktionBestaetigt = false, fremdesZielBestaetigt = false } = {}) {
   if (typeof eingabe !== "string" || eingabe.trim() === "") return { ok: false, grund: "Keine Adresse angegeben." };
   let u;
   try {
@@ -41,8 +46,16 @@ export function pruefeZiel(eingabe, { produktionBestaetigt = false } = {}) {
   const loopback = LOOPBACK.has(host) || LOOPBACK.has(u.host.toLowerCase().replace(/:\d+$/, ""));
   if (u.protocol !== "https:" && !(u.protocol === "http:" && loopback)) return { ok: false, grund: "Nur https (http nur für localhost)." };
   const istProduktion = PRODUKTIONS_HOSTS.includes(host) || host.replace(/^www\./, "") === PRODUKTION; // Staging-Unteradressen sind erlaubt
+  const staging = host.endsWith(`.${PRODUKTION}`) && !istProduktion;
+  const erlaubt = loopback || staging;
+  if (!istProduktion && !erlaubt && !fremdesZielBestaetigt) return { ok: false, grund: "Diese Adresse steht nicht auf der Liste der Test-Ziele (nur localhost und Staging-Unteradressen der eigenen Domain). Fremde Dienste oder IP-Adressen nur mit --fremdes-ziel-bestaetigt; nie gegen Dritte ohne Erlaubnis." };
   if (istProduktion && !produktionBestaetigt) return { ok: false, grund: `Das ist die PRODUKTION (${PRODUKTION}). Der Lasttest läuft nur gegen Staging; für Produktion ist --produktion-bestaetigt nötig.` };
-  return { ok: true, base: `${u.protocol}//${u.host}` };
+  return { ok: true, base: `${u.protocol}//${u.host}`, erlaubt };
+}
+
+/** Der Zugangsschutz-Header geht NUR an Ziele der Allowlist (nie an fremde Hosts oder die Produktion: ein Tippfehler darf den Staging-Zugang nicht verraten). */
+export function kopfFuer(ziel, basic) {
+  return basic && ziel.ok && ziel.erlaubt ? { Authorization: `Basic ${Buffer.from(basic).toString("base64")}` } : {};
 }
 
 /** Prüft Zahlenoptionen und Obergrenzen. Rückgabe { ok: true, werte } oder { ok: false, grund }. */
@@ -60,11 +73,12 @@ export function pruefeLimits({ gleichzeitig = 20, anfragen = 200, sse = 0, sseSe
 }
 
 export function parseArgs(argv) {
-  const out = { ziel: undefined, produktionBestaetigt: false, optionen: {}, unbekannt: [] };
+  const out = { ziel: undefined, produktionBestaetigt: false, fremdesZielBestaetigt: false, optionen: {}, unbekannt: [] };
   const zahl = (s) => (s === undefined || s.trim() === "" ? NaN : Number(s));
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--produktion-bestaetigt") out.produktionBestaetigt = true;
+    else if (a === "--fremdes-ziel-bestaetigt") out.fremdesZielBestaetigt = true;
     else if (a === "--gleichzeitig") out.optionen.gleichzeitig = zahl(argv[++i]);
     else if (a === "--anfragen") out.optionen.anfragen = zahl(argv[++i]);
     else if (a === "--sse") out.optionen.sse = zahl(argv[++i]);
@@ -110,7 +124,17 @@ export async function lauf({ base, headers = {}, gleichzeitig, anfragen, sse = 0
     sseAufgaben.push(
       (async () => {
         try {
-          const res = await fetchImpl(base + ssePfad, { method: "GET", headers: { ...kopf, accept: "text/event-stream" }, signal: sseStopp.signal });
+          // eigenes Signal: Abbruch beim Beenden ODER nach TIMEOUT_MS ohne Antwort-Köpfe (der Timer endet, sobald sie da sind; der offene Strom darf danach beliebig lange laufen)
+          const eigen = new AbortController();
+          const stoppen = () => eigen.abort();
+          sseStopp.signal.addEventListener("abort", stoppen, { once: true });
+          const timer = setTimeout(stoppen, TIMEOUT_MS);
+          let res;
+          try {
+            res = await fetchImpl(base + ssePfad, { method: "GET", headers: { ...kopf, accept: "text/event-stream" }, redirect: "manual", signal: eigen.signal });
+          } finally {
+            clearTimeout(timer);
+          }
           if (res.status === 200 && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
             live.verbunden += 1;
             try {
@@ -195,12 +219,12 @@ export function bericht(r, { base, gleichzeitig }) {
 
 async function main() {
   const a = parseArgs(process.argv.slice(2));
-  const nutzung = "Aufruf: node scripts/last-light.mjs <https://staging-adresse> [--gleichzeitig N] [--anfragen N] [--sse N] [--sse-pfad /pfad] [--sse-sekunden N] [--max-fehlerrate X] [--produktion-bestaetigt]";
+  const nutzung = "Aufruf: node scripts/last-light.mjs <https://staging-adresse> [--gleichzeitig N] [--anfragen N] [--sse N] [--sse-pfad /pfad] [--sse-sekunden N] [--max-fehlerrate X] [--produktion-bestaetigt] [--fremdes-ziel-bestaetigt]";
   if (a.unbekannt.length > 0) {
     console.error(`Unbekannte Angabe: ${a.unbekannt.join(" ")}\n${nutzung}`);
     process.exit(2);
   }
-  const ziel = pruefeZiel(a.ziel, { produktionBestaetigt: a.produktionBestaetigt });
+  const ziel = pruefeZiel(a.ziel, { produktionBestaetigt: a.produktionBestaetigt, fremdesZielBestaetigt: a.fremdesZielBestaetigt });
   if (!ziel.ok) {
     console.error(`${ziel.grund}\n${nutzung}`);
     process.exit(2);
@@ -216,7 +240,7 @@ async function main() {
     process.exit(2);
   }
   const basic = process.env.SMOKE_BASIC_AUTH ?? "";
-  const headers = basic ? { Authorization: `Basic ${Buffer.from(basic).toString("base64")}` } : {};
+  const headers = kopfFuer(ziel, basic); // nur an Ziele der Allowlist
   const r = await lauf({ base: ziel.base, headers, ssePfad, ...limits.werte });
   console.log(bericht(r, { base: ziel.base, gleichzeitig: limits.werte.gleichzeitig }));
   process.exit(r.abgebrochen || r.fehlerrate > r.maxFehlerrate ? 1 : 0);

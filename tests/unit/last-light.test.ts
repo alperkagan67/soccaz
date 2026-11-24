@@ -1,8 +1,8 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { execFile } from "node:child_process";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { bericht, lauf, MAX_ANFRAGEN, MAX_VERBINDUNGEN, parseArgs, perzentil, pruefeLimits, pruefeZiel } from "../../scripts/last-light.mjs";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { bericht, kopfFuer, lauf, MAX_ANFRAGEN, MAX_VERBINDUNGEN, parseArgs, perzentil, pruefeLimits, pruefeZiel } from "../../scripts/last-light.mjs";
 
 // Lasttest-Light: Verweigerungsfälle, Grenzen, nur GET, Abbruch bei Fehlerrate, Live-Verbindungen, keine Zugangsdaten in der Ausgabe
 const skript = (args: string[], env: Record<string, string> = {}) =>
@@ -20,16 +20,43 @@ describe("pruefeZiel: Produktion und unsichere Ziele werden verweigert", () => {
     }
   });
   it("Staging-Unteradressen sind erlaubt; ähnlich aussehende fremde Adressen sind keine Produktion, aber auch kein Freibrief für http", () => {
-    expect(pruefeZiel("https://staging.socaz.de")).toEqual({ ok: true, base: "https://staging.socaz.de" });
-    expect(pruefeZiel("https://staging-socaz.example.org")).toMatchObject({ ok: true });
+    expect(pruefeZiel("https://staging.socaz.de")).toMatchObject({ ok: true, base: "https://staging.socaz.de" });
+    expect(pruefeZiel("https://a.staging.socaz.de")).toMatchObject({ ok: true, erlaubt: true });
     expect(pruefeZiel("http://staging.socaz.de").ok).toBe(false);
   });
   it("nur https; http nur für localhost; keine Zugangsdaten, Pfade, Abfragen, Anker; keine Müll-Eingaben", () => {
-    expect(pruefeZiel("http://127.0.0.1:3101")).toEqual({ ok: true, base: "http://127.0.0.1:3101" });
+    expect(pruefeZiel("http://127.0.0.1:3101")).toMatchObject({ ok: true, base: "http://127.0.0.1:3101" });
     expect(pruefeZiel("http://localhost:3101")).toMatchObject({ ok: true });
     for (const z of ["http://example.org", "ftp://example.org", "file:///etc/passwd", "https://user:pw@staging.example.org", "https://staging.example.org/pfad", "https://staging.example.org/?x=1", "https://staging.example.org/#a", "", "   ", "kein url", undefined, 5]) {
       expect(pruefeZiel(z as string).ok, String(z)).toBe(false);
     }
+  });
+});
+
+describe("pruefeZiel: Allowlist (security-Review): fremde Hosts, IP-Adressen und Aliasse nur mit eigenem Flag", () => {
+  const fremd = ["https://example.org", "https://staging-socaz.example.org", "https://evil-socaz.de", "https://socaz.de.evil.example", "https://203.0.113.7", "https://[2001:db8::1]", "https://staging.socaz.de.evil.example", "https://xn--socaz-9ua.de"];
+  it("fremde Dienste, IPs, ähnlich klingende Namen: standardmäßig verweigert; mit --fremdes-ziel-bestaetigt erlaubt, aber NICHT auf der Allowlist", () => {
+    for (const z of fremd) {
+      const r = pruefeZiel(z);
+      expect(r.ok, z).toBe(false);
+      expect(r.ok === false && r.grund, z).toMatch(/fremdes-ziel-bestaetigt/);
+      const ja = pruefeZiel(z, { fremdesZielBestaetigt: true });
+      expect(ja, z).toMatchObject({ ok: true, erlaubt: false });
+    }
+  });
+  it("Allowlist: localhost und Staging-Unteradressen der eigenen Domain; Produktion bleibt eigener Fall (nur mit --produktion-bestaetigt, nie auf der Allowlist)", () => {
+    for (const z of ["http://localhost:3101", "http://127.0.0.1:3101", "https://staging.socaz.de", "https://a.b.socaz.de"]) expect(pruefeZiel(z), z).toMatchObject({ ok: true, erlaubt: true });
+    expect(pruefeZiel("https://socaz.de", { produktionBestaetigt: true })).toMatchObject({ ok: true, erlaubt: false });
+    expect(pruefeZiel("https://socaz.de", { fremdesZielBestaetigt: true }).ok).toBe(false); // das Fremd-Flag öffnet die Produktion NICHT
+  });
+  it("Zugangsschutz-Header nur für Allowlist-Ziele: nie an fremde Hosts oder die Produktion", () => {
+    const basic = "u:geheimespasswort";
+    expect(kopfFuer(pruefeZiel("https://staging.socaz.de"), basic).Authorization).toMatch(/^Basic /);
+    expect(kopfFuer(pruefeZiel("http://127.0.0.1:3101"), basic).Authorization).toMatch(/^Basic /);
+    expect(kopfFuer(pruefeZiel("https://example.org", { fremdesZielBestaetigt: true }), basic)).toEqual({});
+    expect(kopfFuer(pruefeZiel("https://socaz.de", { produktionBestaetigt: true }), basic)).toEqual({});
+    expect(kopfFuer(pruefeZiel("https://staging.socaz.de"), "")).toEqual({});
+    expect(kopfFuer({ ok: false }, basic)).toEqual({});
   });
 });
 
@@ -131,6 +158,29 @@ describe("lauf mit Fake-fetch", () => {
     expect(text).not.toContain(kopf.Authorization);
   });
 
+  it("Live-Verbindungen: redirect manual, Signal vorhanden; ohne Antwort-Köpfe nach dem Zeitlimit zählt die Verbindung als Fehler (kein Hängen)", async () => {
+    const gesehen: { redirect?: string; signal: boolean }[] = [];
+    const fetchImpl = async (url: string, init: RequestInit) => {
+      if (new URL(url).pathname === "/api/spiele/stream") {
+        gesehen.push({ redirect: init.redirect, signal: Boolean(init.signal) });
+        return new Promise<Response>((_res, rej) => init.signal?.addEventListener("abort", () => rej(new DOMException("abort", "AbortError")))); // antwortet nie
+      }
+      return antwort(200);
+    };
+    vi.useFakeTimers();
+    try {
+      const p = lauf({ base: "https://s.example.org", gleichzeitig: 1, anfragen: 3, sse: 2, sseSekunden: 20, fetchImpl: fetchImpl as never });
+      await vi.advanceTimersByTimeAsync(16_000); // Zeitlimit (15 s) der Verbindungen läuft ab, der Lauf selbst hält noch bis 20 s
+      await vi.advanceTimersByTimeAsync(6_000);
+      const r = await p;
+      expect(gesehen).toHaveLength(2);
+      expect(gesehen.every((g) => g.redirect === "manual" && g.signal)).toBe(true);
+      expect(r.live).toMatchObject({ gewuenscht: 2, verbunden: 0, fehler: 2 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("Live-Verbindungen: verbunden, abgewiesen (403) und abgerissen werden getrennt gezählt", async () => {
     let i = 0;
     const strom = () => {
@@ -168,6 +218,8 @@ describe("Skript (eigener Prozess)", () => {
   it("verweigert Produktion (Exit 2, nichts angefragt), falsche Benutzung (Exit 2); sauberer Lauf gegen lokalen Server Exit 0 nur mit GET", async () => {
     expect((await skript(["https://socaz.de"])).code).toBe(2);
     expect((await skript(["https://www.socaz.de", "--anfragen", "5"])).code).toBe(2);
+    expect((await skript(["https://example.org", "--anfragen", "5"])).code).toBe(2); // fremdes Ziel ohne eigenes Flag
+    expect((await skript(["https://203.0.113.7", "--anfragen", "5"])).code).toBe(2);
     expect((await skript([])).code).toBe(2);
     expect((await skript([url(), "--gleichzeitig", "101"])).code).toBe(2);
     expect((await skript([url(), "--quatsch"])).code).toBe(2);
