@@ -74,7 +74,7 @@ export const ROUTEN: Record<string, Eintrag> = {
   "/not-found": s("404-Seite"),
   "/api/health": s("Zustandsabfrage ohne Daten"),
   "/api/sponsor/[id]": s("Weiterleitung auf die Sponsor-Adresse, zählt den Klick"),
-  "/api/media/[id]": { art: "ausnahme", grund: "liefert Bilder öffentlich per UUID (Profilbilder, Spielfotos; Gesichter, keine Namen): Backlog 243, Produktfrage Sichtbarkeitsmatrix 013" },
+  "/api/media/[id]": a("Bilder (Profilbild, Teamlogo) nur für Angemeldete, ohne Anmeldung 404 wie ein unbekanntes Bild (Backlog 243, Entscheid t2q 2026-11-24); Spielfotos sind aus"),
   // --- Nur Angemeldete / Admins ---
   "/admin": a(ADMIN),
   "/admin/beweis": a(ADMIN),

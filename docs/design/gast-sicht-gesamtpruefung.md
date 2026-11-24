@@ -10,8 +10,8 @@ Zweck: Als **Gast** (nicht angemeldet) steht in keiner öffentlichen Seite und i
 - **Gast-Probe mit Seed:** `tests/e2e/gast-sicht-gesamt.spec.ts` (eine bestehende E2E-Instanz, kein eigener Server, ein Test) legt Personen mit erkennbaren Namen an („Zorro Vollname…“, „Kapitan Vollname…“, „Mitspieler Vollname…“) in allen Rollen (Kommentar-Autor, Torschütze, Spieler des Spiels, Rangliste, Mitspieler, Turnier-Veranstalter, Captain und Spieler, Lobby, offene Lobby, Privatspiel-Veranstalter) und ruft **jede** Route der Registry als Gast ab: HTML, RSC-Nutzlast (Header `RSC: 1`), JSON, SSE (erste Nachricht), Bild-Antworten (Typ), `robots.txt`, `sitemap.xml`.
 - **Vakuum-Schutz:** Jede Probe belegt, dass die Seite antwortet (Status) und ihren Marker trägt; bei Seiten mit Personen müssen die Initialen („>ZV<“) im Gast-HTML **vorkommen**, die RSC-Nutzlast ist nicht leer. Erst danach gelten die Negativprüfungen (kein Name, kein Nachname, keine Kennung; der Fehlertext nennt den Treffer samt Umgebung).
 - **Angemeldet-Routen:** der Gast bekommt Status 401, 403, 404 oder 405 oder landet im Browser **exakt** auf `/anmelden` (nie ein Textvergleich mit „Anmelden“); Belege, Rechnungen und das Beweisprotokoll werden mit **echten Kennungen** abgerufen (erwartet 401, 401, 404), damit ein fehlender Zugangsschutz ein PDF liefern würde statt eines unterscheidbaren 404. Zusätzlich prüft der Unit-Test, dass jede angemeldet geführte Route in Datei oder Layout einen Zugangsschutz hat.
-- **Profilbilder:** die Seed-Personen haben ein Profilbild (`/api/media/<UUID>`); dieser Pfad darf in keiner Gast-Seite stehen (Spielfotos sind bewusst öffentlich, Backlog 243).
-- **Benannte Ausnahmen** (nie stillschweigend): die eigene Kennung im Weiterleitungsziel `/anmelden?next=/spieler/<id>` und „Zorro V.“ als Veranstalter der Einladung (`AUSNAHME` in der Spec); `/api/media/<id>` (Backlog 243).
+- **Profilbilder:** die Seed-Personen haben ein Profilbild (`/api/media/<UUID>`); dieser Pfad darf in keiner Gast-Seite stehen (Teamlogo für Gäste weggelassen, Spielfotos aus, Backlog 243).
+- **Benannte Ausnahmen** (nie stillschweigend): die eigene Kennung im Weiterleitungsziel `/anmelden?next=/spieler/<id>` und „Zorro V.“ als Veranstalter der Einladung (`AUSNAHME` in der Spec).
 - **Mutationen** (rot, danach grün): Kommentar-Autor mit Namen, Live-JSON mit Namen, React-Schlüssel mit Nutzerkennung in der Lobby, neue Route ohne Eintrag.
 
 ## Fund beim ersten Lauf (behoben im selben PR)
@@ -133,12 +133,12 @@ Die Lobby und die Teamseite gaben für Gäste die **Nutzerkennung als React-Schl
 
 | Route | Kanal und Beleg | Test |
 |---|---|---|
-| `/api/media/[id]` | liefert Bilder öffentlich per UUID (Profilbilder, Spielfotos; Gesichter, keine Namen): Backlog 243, Produktfrage Sichtbarkeitsmatrix 013 | gast-sicht-routen.test.ts (Eintrag mit Begründung) |
+| `/api/media/[id]` | seit Backlog 243 (Entscheid t2q 2026-11-24) nur für Angemeldete: Gast 404 wie bei einem unbekannten Bild, Antwort `private`; Teamlogo für Gäste weggelassen, Spielfotos aus | `medien-nur-angemeldet.test.ts`, Registry-Eintrag `angemeldet` (gast-sicht-routen.test.ts) |
 
 ## Grenzen
 
 - Geprüft wird der **Gast** (nicht angemeldet). Die Sicht des reinen Hallenbetreibers und der Rollen Spieler, Captain und Plattform-Admin je Seite belegen die Rollentests der PRs A bis D (`kommentar-namen`, `namen-listen`, `spielbericht-namen`, `spieler-profil-gast`).
 - **Bilder:** die Probe prüft nur den Typ (`image/png`) der Antwort; der Inhalt (Torschützen als Initialen) ist per Quelltext-Pin und Funktionstest gesichert (`match-card-namen.test.ts`).
 - Die Probe nutzt Teamnamen ohne Personennamen; ein Team, das seinen Namen nach einer Person nennt, wird nicht erkannt (Teamnamen sind keine Personennamen, Entscheid t2q).
-- `/api/media/<id>` liefert Bilder öffentlich per UUID (Gesichter ohne Namen): Backlog 243.
+- `/api/media/<id>` liefert Bilder nur noch Angemeldeten (Backlog 243); bereits früher öffentlich zwischengespeicherte Bilder: Go-Live-Audit G31-013.
 - Bereits ausgelieferte Altbestände (Caches, Suchmaschinen): Go-Live-Audit G31-013 und Rechtsliste („Sichtbarkeit von Spielernamen“).

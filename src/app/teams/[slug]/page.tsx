@@ -77,7 +77,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        {team.logoUrl && <Image src={team.logoUrl} alt={`Logo von ${team.name}`} width={72} height={72} unoptimized className="mb-2 size-[72px] rounded-xl object-cover" />}
+        {user && team.logoUrl && <Image src={team.logoUrl} alt={`Logo von ${team.name}`} width={72} height={72} unoptimized className="mb-2 size-[72px] rounded-xl object-cover" />}
         <h1 className="text-3xl font-bold">
           <TeamColorDot color={team.color} slug={team.slug} className="mr-2 !size-4" />
           {team.name}

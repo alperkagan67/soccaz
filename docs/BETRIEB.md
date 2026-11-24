@@ -94,6 +94,8 @@ curl -X POST -H "x-job-secret: $JOB_SECRET" https://deine-domain/api/jobs/send-r
 
 ## Umgebungen
 
+- Spielfotos sind bis zum Social-Media-Teil **aus** (Entscheid t2q 2026-11-24, Backlog 243); die Umgebungsvariable heißt `MATCH_PHOTOS_ENABLED` (nur der Name steht hier; `1` schaltet ein, Standard aus). Profilbild und Teamlogo sind nur für Angemeldete abrufbar.
+
 - **Lokal:** `npm run dev` mit Postgres (siehe README).
 - **Staging:** zweite Compose-Installation auf einem kleinen Server mit eigener Domain und Test-Zugangsdaten. Das Geld-System wird nie gegen die Produktion getestet.
 - **Produktion:** wie oben.

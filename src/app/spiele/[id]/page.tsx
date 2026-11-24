@@ -9,6 +9,7 @@ import { parseStreamUrl } from "@/lib/stream";
 import { formatDateTime } from "@/lib/time";
 import { PHASE_LABEL } from "@/lib/result-rules";
 import { listMatchPhotos } from "@/server/media";
+import { matchPhotosEnabled } from "@/lib/media-flags";
 import { RatingReveal } from "@/components/RatingReveal";
 import { getRatingReveal } from "@/server/rating-reveal";
 import { canViewMatch, getMatchPage } from "@/server/results";
@@ -148,7 +149,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
         />
       )}
 
-      <MatchPhotos matchId={match.id} photos={photos} canUpload={v?.canUploadPhoto ?? false} canModerate={v?.platformAdmin ?? false} />
+      {matchPhotosEnabled() && <MatchPhotos matchId={match.id} photos={photos} canUpload={v?.canUploadPhoto ?? false} canModerate={v?.platformAdmin ?? false} />}
 
       <section className="card space-y-2">
         <h2 className="font-semibold">Spielverlauf</h2>
