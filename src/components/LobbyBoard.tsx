@@ -29,7 +29,7 @@ function TeamColumn({ team, players, ready, free, loggedIn }: { team: BoardTeam;
   return (
     <div className="space-y-2" data-testid="board-team">
       <div>
-        <Link href={`/teams/${team.slug}`} className="font-semibold hover:text-accent-fg">
+        <Link href={`/teams/${team.slug}`} className="inline-flex min-h-11 items-center font-semibold hover:text-accent-fg">
           {team.name}
         </Link>
         {team.verified && <span className="ml-2 rounded bg-accent-soft px-1 py-0.5 text-xs text-accent-fg">Verifiziert</span>}
@@ -45,10 +45,12 @@ function TeamColumn({ team, players, ready, free, loggedIn }: { team: BoardTeam;
           {players.map((p) => (
             <li key={p.userId} className="flex items-center justify-between gap-2" data-testid="board-player" data-light={p.light ?? undefined}>
               {loggedIn ? (
-                <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">
-                  {p.name}
-                  {p.isSubstitute && <span className="ml-1 text-xs text-muted">Ersatz</span>}
-                  {p.isPro && <span className="ml-1 text-xs text-accent-fg">Profi</span>}
+                <Link href={`/spieler/${p.userId}`} className="flex min-h-11 min-w-0 items-center hover:text-accent-fg">
+                  <span className="min-w-0 truncate">
+                    {p.name}
+                    {p.isSubstitute && <span className="ml-1 text-xs text-muted">Ersatz</span>}
+                    {p.isPro && <span className="ml-1 text-xs text-accent-fg">Profi</span>}
+                  </span>
                 </Link>
               ) : (
                 <span className="min-w-0 truncate">{p.name}</span>
@@ -132,7 +134,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2" data-testid="board-team">
           <div>
-            <Link href={`/teams/${s.team.slug}`} className="font-semibold hover:text-accent-fg">{s.team.name}</Link>
+            <Link href={`/teams/${s.team.slug}`} className="inline-flex min-h-11 items-center font-semibold hover:text-accent-fg">{s.team.name}</Link>
             {s.team.verified && <span className="ml-2 rounded bg-accent-soft px-1 py-0.5 text-xs text-accent-fg">Verifiziert</span>}
             <p className="text-xs text-muted">
               Elo {s.team.elo}
@@ -142,7 +144,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
           <ul className="space-y-1 text-sm">
             {s.roster.map((p) => (
               <li key={p.userId} className="flex items-center justify-between gap-2">
-                {loggedIn ? <Link href={`/spieler/${p.userId}`} className="min-w-0 truncate hover:text-accent-fg">{p.name}</Link> : <span className="min-w-0 truncate">{p.name}</span>}
+                {loggedIn ? <Link href={`/spieler/${p.userId}`} className="flex min-h-11 min-w-0 items-center hover:text-accent-fg"><span className="min-w-0 truncate">{p.name}</span></Link> : <span className="min-w-0 truncate">{p.name}</span>}
                 <span className="shrink-0 text-xs text-muted">{[p.position, p.elo ? `Elo ${p.elo}` : null, p.isAdmin ? "Admin" : null].filter(Boolean).join(" · ")}</span>
               </li>
             ))}
@@ -151,7 +153,7 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
         {challenge && s.target ? (
           <div className="space-y-1 rounded-lg border border-dashed border-line p-3 text-sm" data-testid="challenge-target">
             <p className="text-xs text-muted">Herausgefordert wird</p>
-            <Link href={`/teams/${s.target.slug}`} className="font-semibold hover:text-accent-fg">{s.target.name}</Link>
+            <Link href={`/teams/${s.target.slug}`} className="inline-flex min-h-11 items-center font-semibold hover:text-accent-fg">{s.target.name}</Link>
             <p className="text-xs text-muted">
               Elo {s.target.elo}
               {s.target.playedMatches === 0 ? " (geschätzt)" : ""} · Stärke {s.target.strength}/5 · {s.target.members} im Kader
