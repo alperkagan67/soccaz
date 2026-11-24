@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Pilot-P2 PR C (Plan docs/design/pilot-offen-plan.md): Mandats-Kästchen mit Touch-Ziel, Fußzeile text-sm, BottomNav bewusst unverändert (Look-Liste). Quelltext-Pins; das Verhalten prüfen lobby-captain.spec und ui-seiten.spec.
+// Pilot-P2 PR C (Plan docs/design/pilot-offen-plan.md): Mandats-Kästchen mit Touch-Ziel, Fußzeile text-sm, BottomNav bewusst unverändert (Look-Liste). NUR Quelltext-Pins (bricht bei Umbenennung, beweist kein Verhalten); die Verhaltensprüfung ist E2E: `lobby-captain.spec` (Kästchen ≥ 24 px, Label ≥ 44 px, Klick auf den Text schaltet um) und `ui-seiten.spec` (Fußzeilenlinks ≥ 14 px).
 const src = (f: string) => readFileSync(join(__dirname, "..", "..", f), "utf8");
 
 describe("Mandats-Kästchen (CardForm)", () => {
