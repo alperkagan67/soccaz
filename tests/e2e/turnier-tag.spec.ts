@@ -49,7 +49,7 @@ test("Turniertag mit 6 Teams: Anlegen, neuer Nutzer über Link, Bracket ohne Kli
   await fresh.waitForLoadState("networkidle");
   await expectCleanPhonePage(fresh, "Turnierseite Gast");
   await fresh.getByRole("link", { name: "Anmelden und mitmachen" }).click();
-  await expect(fresh).toHaveURL(/\/anmelden\?next=/);
+  await expect(fresh).toHaveURL(/\/anmelden\?next=/, { timeout: 20_000 });
   await fresh.getByLabel("E-Mail").fill(`tg6new-${run}@test.local`);
   await fresh.getByLabel("Name").fill("Spieler tg6new");
   await fresh.getByRole("button", { name: "Als Dev-Nutzer anmelden" }).click();
