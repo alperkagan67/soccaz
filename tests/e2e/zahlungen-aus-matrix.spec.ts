@@ -50,6 +50,10 @@ async function seiten(browser: Browser, t: Awaited<ReturnType<typeof seedTournam
   out.liste = await main(gast);
   await gast.goto("/hilfe");
   out.hilfe = await main(gast);
+  await gast.goto("/datenschutz");
+  out.datenschutz = await main(gast);
+  await gast.goto("/impressum");
+  out.impressum = await main(gast);
   await captain.goto(`/turniere/${t.id}`);
   await expect(captain.getByTestId("tournament-lobby")).toBeVisible({ timeout: 60_000 });
   out.turnierCaptain = await main(captain);
@@ -67,6 +71,12 @@ for (const preis of [0, 8000]) {
     if (preis === 0) expect(zahlungsWorte(s.lobbyCaptain), `Teamlobby (Captain): ${s.lobbyCaptain.replace(/\s+/g, " ")}`).toEqual([]);
     expect(zahlungsWorte(s.liste), "Turnierliste").toEqual([]);
     expect(zahlungsWorte(s.hilfe), "Hilfe").toEqual([]);
+    // Rechtstexte (Go-live): bei AUS ohne Zahlungswörter und ohne Zahlungsdienstleister; nie ein erfundener Wert, fehlende Betreiberangaben sind als Platzhalter markiert
+    expect(zahlungsWorte(s.datenschutz), "Datenschutz").toEqual([]);
+    expect(zahlungsWorte(s.impressum), "Impressum").toEqual([]);
+    expect(s.datenschutz).not.toContain("Stripe");
+    expect(s.datenschutz).toContain(ZAHLUNGEN_AUS_HINWEIS);
+    expect(s.impressum).toContain("Angaben gemäß § 5 DDG");
     expect(s.hilfe).toContain(ZAHLUNGEN_AUS_HINWEIS);
     expect(s.liste).toContain(ZAHLUNGEN_AUS_HINWEIS);
     if (preis === 0) {
@@ -97,6 +107,7 @@ for (const preis of [0, 8000]) {
     const t = await seedTournament(`an${preis}`, preis);
     const s = await seiten(browser, t);
     expect(s.hilfe).toContain("Geld und Zahlung");
+    expect(s.datenschutz).toContain("Stripe"); // Gegenprobe: bei AN nennt die Datenschutzerklärung den Zahlungsdienstleister
     expect(s.hilfe).not.toContain(ZAHLUNGEN_AUS_HINWEIS);
     expect(s.liste).not.toContain(ZAHLUNGEN_AUS_HINWEIS);
     // Preis 0 bei AN: Teamlobby ohne Zahlungswörter (Turnier ohne Preis zeigt nie Zahlungstexte)

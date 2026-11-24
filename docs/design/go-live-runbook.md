@@ -20,6 +20,7 @@ Bei Ihrem Domain-Anbieter einen **A-Eintrag** `socaz.de` (und `www`, falls gewü
 nslookup socaz.de
 ```
 Erwartet: die Server-IP. (Warten Sie bei Abweichung, DNS braucht Minuten bis Stunden; zu früh starten erzeugt nur Zertifikatsfehler, kein Schaden.)
+**Reihenfolge Rechtstexte (Pflicht): Schritt 3 UND 4 (git clone, `.env` mit `OPERATOR_*`, Start) vor dem A-Eintrag, Schritt 5 Prüfpunkt 1 (Staging-Probe mit denselben `OPERATOR_*`-Werten) davor, Prüfpunkt 2 danach.** So ist die Seite nie mit Platzhalter-Impressum unter der echten Adresse erreichbar. Nach dem A-Eintrag folgt Prüfpunkt 2 (Schritt 5) **vor** der Bekanntgabe der Adresse.
 
 ## 3. Code holen und Einstellungen anlegen
 ```
@@ -97,6 +98,22 @@ Erwartet: jede Zeile `OK`, am Ende `Alle Prüfungen bestanden`, Ende-Code 0.
 node scripts/smoke-turnier-only.mjs https://socaz.de
 ```
 Erwartet: jede Zeile `PASS`, am Ende `ERGEBNIS: BESTANDEN`, Ende-Code 0. Er prüft ohne Anmeldung: die gesperrten Seiten (`/spiele`, `/matchmaking`, `/suche`, `/hallen`, `/rangliste`, `/mitspieler`, `/ligen`) antworten 200 mit „Kommt bald“ und `noindex` (kein 404), der Live-Kanal `/api/spiele/stream` antwortet 403, `/turniere`, `/hilfe`, `/impressum`, `/teams` bleiben offen. **Nicht für Staging mit Zugangsschutz:** dieses Skript kennt kein Passwort (alle Zeilen `FAIL`, Status 401); dort nur `smoke.mjs` mit `SMOKE_BASIC_AUTH` und die Sperrpfade einmal von Hand im Browser öffnen. **Gilt ab dem Merge von `feat/turnier-only`:** `TURNIER_ONLY` und die „kommt bald“-Seite unter `/spiele` gibt es erst danach; **bis dahin den Smoke-Test ohne `--turnier-only` aufrufen** und die Variable in der `.env` noch nicht verlangen. (Prüft `/api/health`, Anmeldeseite, `/turniere`, `/impressum`, `/robots.txt` und mit `--turnier-only` die „kommt bald“-Seite unter `/spiele`.) Zusätzlich prüft es, dass `/anmelden` **keinen Dev-Login** zeigt (in Produktion und Staging darf es ihn nie geben). Ist die Apple-Anmeldung eingeschaltet (`APPLE_LOGIN_ENABLED=1`), rufen Sie mit `--apple` auf: dann **muss** der Apple-Knopf da sein, sonst darf er **nicht** da sein. Das Skript braucht nur Node 22 (`node -v`); es nutzt keine Schlüssel.
+
+**Rechtstexte-Prüfung (PFLICHT, zwei Prüfpunkte, jeder mit Befehl und Erwartet):**
+
+1. **Staging-Probe, VOR dem A-Eintrag** (mit denselben `OPERATOR_*`-Werten wie später in Produktion; Zugangsschutz über `SMOKE_BASIC_AUTH`):
+```
+node scripts/smoke.mjs https://<Staging-Adresse> --go-live
+```
+Erwartet: die Zeilen `Go-live: …` für `/impressum` und `/datenschutz` sind `OK`, **kein** `FEHLER` (kein `[PLATZHALTER: Name|Anschrift|E-Mail …]`, kein `[ENTWURF …]`-Satz), Ende-Code 0. Grün ist **Voraussetzung für den A-Eintrag** (Schritt 2).
+
+2. **Produktion, NACH dem A-Eintrag und VOR der Bekanntgabe der Adresse** (Einladungen, Link an Teilnehmer, Social Media; die DNS-Einträge stehen dann schon, das https-Zertifikat holt Caddy erst **nach dem A-Eintrag**, aber niemand kennt die Adresse):
+```
+node scripts/smoke.mjs https://socaz.de --go-live
+```
+Erwartet: wie oben, Ende-Code 0. Meldet das Skript zuerst nur **NICHT ERREICHBAR**: 2 bis 5 Minuten warten (Caddy holt das Zertifikat nach dem A-Eintrag) und wiederholen. Erst ein **echtes `FEHLER`** (Platzhalter oder Entwurf) heißt: Adresse **nicht** bekanntgeben, `OPERATOR_*` bzw. Bestätigung nachholen, neu starten, erneut prüfen.
+
+Die übrigen Platzhalter (Steuer-ID, Streitbeilegung, Aufsichtsbehörde) erscheinen als `HINWEIS` bis zur Rechtsprüfung. Die Rechtsaussagen bestätigt der Nutzer, kein Agent.
 
 ## 5a. Turnierablauf prüfen (Handarbeit im Browser; schreibend nur auf Staging)
 Das Smoke-Skript prüft nur, was ein Gast **lesend** sieht. Die Turnierwege unten brauchen eine Anmeldung und schreiben Daten: **auf Staging** (Generalprobe) durchspielen, in **Produktion nur ansehen, nie auslösen**. Deshalb gibt es dafür **keine** Smoke-Punkte (ein Skript würde in Produktion Turniere anlegen oder schließen).

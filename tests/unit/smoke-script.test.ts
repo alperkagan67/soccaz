@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS } from "../../scripts/smoke.mjs";
+import { PLATZHALTER } from "@/lib/legal";
+import { ANDERE_PLATZHALTER, BETREIBER_PLATZHALTER, ENTWURF_MARKE, buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS } from "../../scripts/smoke.mjs";
 import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Go-live-Runbook Schritt 5: Smoke-Skript ohne Secrets. Der Abruf wird mit einer Attrappe ersetzt, es gibt kein Netz im Test.
@@ -99,5 +100,43 @@ describe("scripts/smoke.mjs --zahlungen-aus (beide Zahlungsschalter AUS)", () =>
   });
   it("sichtText: nur Hauptbereich, keine Skripte und Tags", () => {
     expect(sichtText(html("A &amp; B <b>fett</b>")).trim()).toBe("A & B fett");
+  });
+});
+
+describe("scripts/smoke.mjs --go-live (Rechtstexte)", () => {
+  const seite = (body: string) => ({ status: 200, body: `<main>${body}</main>` });
+  const goLive = (impressum: string, datenschutz: string) => runSmoke({ base: "https://x.de", goLive: true, fetchImpl: fake({ "/impressum": seite(impressum), "/datenschutz": seite(datenschutz) }) });
+  it("Platzhalter für Name, Anschrift oder E-Mail = FEHLER (Betreiberangaben fehlen)", async () => {
+    for (const platzhalter of ["[PLATZHALTER: Name oder Firma des Betreibers]", "[PLATZHALTER: Anschrift des Betreibers (Straße, Postleitzahl, Ort)]", "[PLATZHALTER: E-Mail-Adresse des Betreibers]"]) {
+      const r = await goLive(`Impressum ${platzhalter}`, "Datenschutz ok");
+      expect(r.ok, platzhalter).toBe(false);
+      expect(r.results.some((x: { path: string; ok: boolean }) => x.path === "/impressum" && !x.ok)).toBe(true);
+    }
+    expect((await goLive("ok", "Verantwortlicher [PLATZHALTER: Name oder Firma des Betreibers]")).ok).toBe(false);
+  });
+  it("nur weitere Platzhalter (Steuer-ID, Streitbeilegung, Aufsicht) = bestanden mit HINWEIS", async () => {
+    const r = await goLive("Muster GmbH [PLATZHALTER: Umsatzsteuer-Identifikationsnummer, falls vorhanden]", "Aufsicht [PLATZHALTER: zuständige Datenschutzaufsichtsbehörde]");
+    expect(r.ok).toBe(true);
+    expect(r.results.filter((x: { what: string }) => x.what.includes("HINWEIS")).length).toBe(2);
+  });
+  it("ein [ENTWURF …]-Satz (unbestätigte Rechtsaussage) = FEHLER", async () => {
+    const r = await goLive("Muster GmbH", "Teilnahmegebühr [ENTWURF, vom Betreiber zu bestätigen: Soccaz verarbeitet dazu keine Daten.]");
+    expect(r.ok).toBe(false);
+    expect(r.results.some((x: { path: string; ok: boolean }) => x.path === "/datenschutz" && !x.ok)).toBe(true);
+  });
+  it("die Marken des Skripts treffen die ECHTEN Platzhalter aus src/lib/legal.ts (Umbenennung darf --go-live nicht still grün lassen)", () => {
+    for (const p of [PLATZHALTER.name, PLATZHALTER.address, PLATZHALTER.email]) expect(BETREIBER_PLATZHALTER.test(p), p).toBe(true);
+    for (const p of [PLATZHALTER.steuerId, PLATZHALTER.aufsicht, PLATZHALTER.streit]) {
+      expect(BETREIBER_PLATZHALTER.test(p), p).toBe(false);
+      expect(ANDERE_PLATZHALTER.test(p), p).toBe(true);
+    }
+    expect(ENTWURF_MARKE.test("[ENTWURF, vom Betreiber zu bestätigen: x]")).toBe(true);
+  });
+  it("alles eingetragen: bestanden ohne Hinweis; ohne --go-live keine Prüfung", async () => {
+    const r = await goLive("Muster GmbH, Musterstr. 1", "Verantwortlich: Muster GmbH");
+    expect(r.ok).toBe(true);
+    expect(r.results.some((x: { what: string }) => x.what.includes("HINWEIS"))).toBe(false);
+    const ohne = await runSmoke({ base: "https://x.de", fetchImpl: fake({ "/impressum": seite("[PLATZHALTER: Name oder Firma des Betreibers]") }) });
+    expect(ohne.results.some((x: { what: string }) => x.what.startsWith("Go-live"))).toBe(false);
   });
 });

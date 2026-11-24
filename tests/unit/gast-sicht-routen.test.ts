@@ -85,6 +85,7 @@ describe("Einträge sind vollständig", () => {
     // Daten-Module, die ausschließlich Team-, Liga-, Hallen- oder Termin-Namen liefern (geprüft: sie importieren users nicht): je Route benannt statt pauschal erlaubt
     const ERLAUBT: Record<string, string[]> = {
       "/anmelden": ["locale", "session"],
+      "/datenschutz": ["zahlungen-aus"], // Schalter Zahlungen AUS (nur Anzeige, keine Personendaten)
       "/hilfe": ["pricing", "zahlungen-aus"], // Preisliste und der Schalter Zahlungen AUS (nur Anzeige, keine Personendaten)
       "/ligen": ["leagues"],
       "/ligen/[id]": ["leagues", "league-actions", "requests", "session"], // Tabelle mit Teamnamen; session/requests nur für die Beitrittsschaltfläche der Team-Admins
