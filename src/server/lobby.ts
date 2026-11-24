@@ -17,7 +17,7 @@ import { createBookingJob, withdrawBookingJob } from "./booking";
 import { hasLongLead } from "@/lib/deadlines";
 import { recordLateCancel } from "./stats";
 import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
-import { triggerChargesInBackground } from "./payments/charge-trigger";
+import { startChargesInBackground } from "./payments/charge-trigger";
 import { chargeAmount } from "./payments/charge-run";
 import { CHARGES_LOCKED, assertNotLegacyMoney, hasPaidSeat, cardModeActive, fixShare, hasChargeRows, isDeadlineModel, joinClosed, leaveClosed, leadStart, onParticipantLeaves, privateShareNow, settleMatch, recalcShares, refundOnCancel, reserveShare, seatedCount, shareToCharge, usesFixedShareModel } from "./wallet";
 import { priceFor } from "./pricing";
@@ -365,7 +365,7 @@ export async function finalConfirm(userId: string, matchId: string) {
   });
   // Nach dem Commit, ohne zu warten: Kartenspiel mit kurzem Vorlauf wird sofort abgebucht (der Auslöser prüft Modus, Frist und Voraussetzungen selbst).
   // Fehler oder Hänger dort berühren die Bestätigung nie; der 5-Minuten-Job (card-charges) holt nach.
-  if (bothConfirmed) void triggerChargesInBackground(matchId);
+  if (bothConfirmed) void startChargesInBackground(matchId); // Testhaken (nur Testmodus): charge-trigger.ts, Backlog 190
 }
 
 async function assertNoCharges(tx: Tx, matchId: string) {
