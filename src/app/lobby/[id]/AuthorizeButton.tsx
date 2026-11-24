@@ -21,7 +21,8 @@ function getStripe(): Promise<Stripe | null> | null {
  * Stripe.js (handleNextAction) schliesst die Pruefung ab. Das Ergebnis im Browser bucht NICHTS: gebucht wird allein ueber den Webhook; die Seite laedt danach neu. Das Secret
  * liegt nur im Speicher dieser Funktion (kein State, kein Log, keine URL). Mit `fake` (nur Tests) gibt es stattdessen zwei Knoepfe, die ein Fake-Webhook-Ereignis ausloesen.
  */
-export function AuthorizeButton({ matchId, target, fake }: ({ matchId: string; target?: undefined } | { matchId?: undefined; target: { tournamentId: string } }) & { fake: boolean }) {
+export function AuthorizeButton({ matchId, target, fake, quiet = false }: ({ matchId: string; target?: undefined } | { matchId?: undefined; target: { tournamentId: string } }) & { fake: boolean; quiet?: boolean }) {
+  const main = quiet ? "btn btn-ghost" : "btn btn-primary"; // quiet: ein anderer Knopf ist die Hauptaktion (AC-30)
   const tournamentId = target?.tournamentId;
   const router = useRouter();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -77,7 +78,7 @@ export function AuthorizeButton({ matchId, target, fake }: ({ matchId: string; t
     <div className="space-y-2" data-testid="authorize">
       {fake ? (
         <>
-          <button className="btn btn-primary w-full" disabled={busy} onClick={() => startFake("ok")} data-testid="authorize-fake">
+          <button className={`${main} w-full`} disabled={busy} onClick={() => startFake("ok")} data-testid="authorize-fake">
             {busy ? "Bitte warten…" : "Zahlung freigeben (Test)"}
           </button>
           <button className="btn btn-ghost w-full" disabled={busy} onClick={() => startFake("fail")} data-testid="authorize-fake-fail">
@@ -85,7 +86,7 @@ export function AuthorizeButton({ matchId, target, fake }: ({ matchId: string; t
           </button>
         </>
       ) : (
-        <button className="btn btn-primary w-full" disabled={busy} onClick={start} data-testid="authorize-start">
+        <button className={`${main} w-full`} disabled={busy} onClick={start} data-testid="authorize-start">
           {busy ? "Bitte warten…" : ZP.authorize}
         </button>
       )}

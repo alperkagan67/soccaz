@@ -21,9 +21,9 @@ export function Steps({ current, decisions, title }: { current: 1 | 2 | 3 | 4; d
       {decisions.length > 0 && (
         <div>
           <p className="mb-2 text-sm text-muted">{title}</p>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-x-4 divide-y divide-line sm:grid-cols-2 sm:divide-y-0">
             {decisions.map((d) => (
-              <div key={d.teamId} className={`rounded-lg border p-3 text-sm ${d.active ? "border-ink" : d.done ? "border-accent/50" : "border-line"}`} data-testid="team-decision" data-done={d.done}>
+              <div key={d.teamId} className={`py-2 text-sm ${d.active ? "border-l-4 border-ink pl-3" : ""}`} data-testid="team-decision" data-done={d.done}>
                 <p className="font-semibold">{d.teamName}</p>
                 <p className={d.done ? "text-accent-fg" : "text-muted"}>
                   {d.done ? "✓ " : "○ "}

@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import { matchEvents, matchResults, matches, teams, users } from "@/db/schema";
+import { scorerLine } from "@/lib/match-card-text";
 import { formatDate } from "@/lib/time";
 
 export const CARD_SIZE = { width: 1200, height: 630 };
@@ -25,7 +26,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 const plain = () => new ImageResponse(<Frame><div style={{ display: "flex", fontSize: 72, fontWeight: 800 }}>Socaz</div></Frame>, CARD_SIZE);
 
-/** Spielbericht-Karte: Ergebnis, Torschützen, Datum. Nur für öffentliche Spiele; sonst eine neutrale Karte ohne Namen. */
+/** Spielbericht-Karte: Ergebnis, Torschützen (nur Initialen), Datum. Nur für öffentliche Spiele; sonst eine neutrale Karte ohne Namen. Produktfolge: die Karte zeigt Initialen statt Namen. */
 export async function matchCard(matchId: string): Promise<ImageResponse> {
   await connection();
   if (!/^[0-9a-f-]{36}$/i.test(matchId)) return plain();
@@ -45,11 +46,7 @@ export async function matchCard(matchId: string): Promise<ImageResponse> {
     .from(matchEvents)
     .leftJoin(users, eq(users.id, matchEvents.userId))
     .where(eq(matchEvents.matchId, matchId));
-  const scorers = goals
-    .filter((g) => g.name)
-    .sort((a, b) => (a.minute ?? 0) - (b.minute ?? 0))
-    .slice(0, 6)
-    .map((g) => `${g.name} ${g.minute}'`);
+  const scorers = scorerLine(goals); // nur Initialen (AC-17): die Karte ist öffentlich und kennt keinen Betrachter
   const played = m.status === "played" && m.homeScore !== null;
 
   return new ImageResponse(
@@ -63,7 +60,7 @@ export async function matchCard(matchId: string): Promise<ImageResponse> {
           <div style={{ display: "flex", fontSize: played ? 140 : 80, fontWeight: 900, color: GREEN, padding: "0 20px" }}>{played ? `${m.homeScore}:${m.awayScore}` : "vs"}</div>
           <div style={{ display: "flex", flex: 1, fontSize: 54, fontWeight: 800 }}>{m.awayName}</div>
         </div>
-        <div style={{ display: "flex", fontSize: 28, color: "#cfe3d8", minHeight: 40 }}>{scorers.join("  ·  ")}</div>
+        <div style={{ display: "flex", fontSize: 28, color: "#cfe3d8", minHeight: 40 }}>{scorers}</div>
       </Frame>
     ),
     CARD_SIZE,

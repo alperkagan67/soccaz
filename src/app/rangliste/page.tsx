@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
+import { PersonName } from "@/components/PersonName";
+import { personRef } from "@/lib/lobby-namen";
 import { berlinMonthRange } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
 import { cityChallenge, pastChampions } from "@/server/city-challenge";
 import { leaderboards } from "@/server/profiles";
+import { getViewerSicht } from "@/server/viewer-sicht";
 
 export const metadata: Metadata = { title: "Rangliste" };
 
@@ -13,6 +16,7 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
   const sp = await searchParams;
   const city = typeof sp.city === "string" && (CITIES as readonly string[]).includes(sp.city) ? sp.city : undefined;
   const range = berlinMonthRange(typeof sp.monat === "string" ? sp.monat : undefined);
+  const { sicht } = await getViewerSicht(); // AC-17: Spielernamen und Links nur für Angemeldete, sonst Initialen und Zahlen
   const [data, cities, champions] = await Promise.all([leaderboards({ city, monthStart: range.from, monthEnd: range.to }), cityChallenge(range.from, range.to), pastChampions(3)]);
 
   return (
@@ -128,19 +132,20 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
           <p className="text-sm text-muted">Noch keine Tore.</p>
         ) : (
           <ol className="space-y-2">
-            {data.scorers.map((p, i) => (
-              <li key={p.id} className="card flex items-center justify-between">
+            {data.scorers.map((p, i) => {
+              const person = personRef(sicht, p.id, p.name, i);
+              return (
+              <li key={person.key} className="card flex items-center justify-between">
                 <span>
                   <span className="mr-2 text-muted">{i + 1}.</span>
-                  <Link href={`/spieler/${p.id}`} className="font-semibold hover:text-accent-fg">
-                    {p.name}
-                  </Link>
+                  <PersonName person={person} className="font-semibold" />
                 </span>
                 <span className="font-bold">
                   {p.goals} <span className="text-xs font-normal text-muted">in {p.matches} Spielen</span>
                 </span>
               </li>
-            ))}
+              );
+            })}
           </ol>
         )}
       </section>
@@ -153,17 +158,18 @@ export default async function RankingPage({ searchParams }: PageProps<"/ranglist
           <p className="text-sm text-muted">Noch kein Spieler hat 5 Spiele.</p>
         ) : (
           <ol className="space-y-2">
-            {data.playerElo.map((p, i) => (
-              <li key={p.id} className="card flex items-center justify-between">
+            {data.playerElo.map((p, i) => {
+              const person = personRef(sicht, p.id, p.name, i);
+              return (
+              <li key={person.key} className="card flex items-center justify-between">
                 <span>
                   <span className="mr-2 text-muted">{i + 1}.</span>
-                  <Link href={`/spieler/${p.id}`} className="font-semibold hover:text-accent-fg">
-                    {p.name}
-                  </Link>
+                  <PersonName person={person} className="font-semibold" />
                 </span>
                 <span className="font-bold">{p.elo}</span>
               </li>
-            ))}
+              );
+            })}
           </ol>
         )}
       </section>

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { db } from "./index";
+import { attachPoolErrorHandler } from "./pool-error";
 
 // G25-009 Etappe B (Plan docs/design/g25-009-db-rollenmodell.md Abschnitt 5, 10.6): ZWEITER Verbindungspool fuer die Rolle soccaz_ops. NUR fuer die zwei Beweisprotokoll-Funktionen
 // evidence_set_setting (Admin-Schalter, src/server/evidence-admin.ts) und evidence_late_attempt (Antwort nach Fristende, src/server/veto.ts); sonst nirgends importieren (ESLint: no-restricted-imports).
@@ -40,7 +41,7 @@ function opsDb(env: Record<string, string | undefined> = process.env): OpsDb | t
   }
   if (!cached || cached.key !== c.url) {
     void g.opsPool?.end().catch(() => null); // alter Pool (andere URL): sauber schliessen
-    g.opsPool = new Pool({ connectionString: c.url, max: OPS_POOL_MAX, connectionTimeoutMillis: OPS_CONNECT_TIMEOUT_MS });
+    g.opsPool = attachPoolErrorHandler(new Pool({ connectionString: c.url, max: OPS_POOL_MAX, connectionTimeoutMillis: OPS_CONNECT_TIMEOUT_MS }), "ops");
     cached = { key: c.url, db: drizzle(g.opsPool) };
   }
   return cached.db;

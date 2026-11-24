@@ -17,6 +17,7 @@ export function ActionForm({
   successText = "Gespeichert.",
   keepOnSuccess = false,
   danger = false,
+  quiet = false,
 }: {
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   submit: string;
@@ -25,6 +26,8 @@ export function ActionForm({
   successText?: string;
   keepOnSuccess?: boolean;
   danger?: boolean;
+  /** quiet: ein anderer Knopf der Ansicht ist die Hauptaktion (AC-30), dieser ist ruhig. */
+  quiet?: boolean;
 }) {
   const { state, pending, onSubmit, formAction } = useFormAction(action);
   const ref = useRef<HTMLFormElement>(null);
@@ -36,7 +39,7 @@ export function ActionForm({
   return (
     <form ref={ref} action={formAction} onSubmit={onSubmit} className={className}>
       {children}
-      <button className={`btn ${danger ? "btn-danger" : "btn-primary"} w-full disabled:opacity-60`} disabled={pending}>
+      <button className={`btn ${danger ? "btn-danger" : quiet ? "btn-ghost" : "btn-primary"} w-full disabled:opacity-60`} disabled={pending}>
         {pending ? "Bitte warten…" : submit}
       </button>
       {state?.error && <p className="error" role="alert">{state.error}</p>}

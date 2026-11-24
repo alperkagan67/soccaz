@@ -12,7 +12,10 @@ import { listMatchPhotos } from "@/server/media";
 import { RatingReveal } from "@/components/RatingReveal";
 import { getRatingReveal } from "@/server/rating-reveal";
 import { canViewMatch, getMatchPage } from "@/server/results";
+import { PersonName } from "@/components/PersonName";
+import { autorLabel, personRef } from "@/lib/lobby-namen";
 import { getCurrentUser } from "@/server/session";
+import { getViewerSicht } from "@/server/viewer-sicht";
 import { ScoreDialog } from "@/app/lobby/[id]/uebersicht/ScoreDialog";
 import { MatchPhotos } from "./MatchPhotos";
 import { StreamEmbed } from "./StreamEmbed";
@@ -34,6 +37,8 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
 
   const { match, events, live, result, phase, participants } = page;
   const v = page.viewer;
+  // AC-17 (Entscheid t2q 2026-11-24): Spieler des Spiels und Torschützen im Spielverlauf nur für Angemeldete mit Name und Link, sonst Initialen ohne Link; Beteiligte (Teilnehmer, Team-Admin, Veranstalter, Plattform-Admin) sehen Namen wie immer
+  const { sicht } = await getViewerSicht({ participant: participants.some((p) => p.userId === user?.id) || Boolean(v?.mySide), teamAdmin: Boolean(v?.canManage) });
   const home = { id: match.homeId, name: match.homeName };
   const away = { id: match.awayId, name: match.awayName };
   const shown = result && (match.status === "played" || result.confirmedHome || result.confirmedAway) ? { home: result.homeScore, away: result.awayScore } : live;
@@ -124,7 +129,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
 
       {page.mvp && (
         <p className="card text-sm" data-testid="mvp-winner">
-          Spieler des Spiels: <Link href={`/spieler/${page.mvp.id}`} className="font-semibold text-accent-fg">{page.mvp.name}</Link>
+          Spieler des Spiels: <PersonName person={personRef(sicht, page.mvp.id, page.mvp.name, 0)} className="font-semibold text-accent-fg" linkClass="" />
         </p>
       )}
       {page.voting.canVote && (
@@ -151,12 +156,12 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
           <p className="text-sm text-muted">{phase === "upcoming" ? "Das Spiel hat noch nicht begonnen." : "Noch keine Ereignisse."}</p>
         ) : (
           <ol className="space-y-2 text-sm">
-            {events.map((e) => (
+            {events.map((e, i) => (
               <li key={e.id} className="flex items-center gap-2">
                 <span className="w-9 text-right tabular-nums text-muted">{e.minute}&apos;</span>
                 <span className={`size-2.5 rounded-full ${EVENT_TONE[e.type]}`} aria-hidden />
                 <span>
-                  <strong>{EVENT_LABEL[e.type]}</strong> {e.userId && e.scorer ? <Link href={`/spieler/${e.userId}`} className="hover:text-accent-fg">{e.scorer}</Link> : (e.scorer ?? "Unbekannt")} <span className="text-muted">({teamName(e.teamId)})</span>
+                  <strong>{EVENT_LABEL[e.type]}</strong> {e.userId && e.scorer ? <PersonName person={personRef(sicht, e.userId, e.scorer, i)} /> : (e.scorer ? autorLabel(e.scorer, sicht) : "Unbekannt")} <span className="text-muted">({teamName(e.teamId)})</span>
                 </span>
               </li>
             ))}
