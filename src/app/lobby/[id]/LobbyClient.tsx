@@ -19,6 +19,7 @@ import { ZP, betragszeile } from "@/lib/zahlungspflicht-texte";
 import { AuthorizeButton } from "./AuthorizeButton";
 import { CardForm } from "./CardForm";
 import type { LobbyAktion } from "@/lib/lobby-stand";
+import { lobbyFehlerFall } from "@/lib/lobby-fehler";
 
 type Result = { error?: string; needsTopupCents?: number } | undefined;
 
@@ -67,6 +68,7 @@ type MyActionsProps = {
 export function MyActions({ matchId, mode, ready, hasTeam, main = null, card }: MyActionsProps) {
   const { error, pending, run } = useRun();
   const busy = pending ? "opacity-60" : "";
+  const fall = card?.failure ? lobbyFehlerFall(card.failure) : null;
   const payable = Boolean(card) && card?.priceCents != null && card.priceCents > 0; // Zahlungspflicht nur im Kartenmodell UND bei einem Preis > 0: kostenlos (0) und noch kein Preis (null) bekommen den schlichten Text, nie die Formel
 
   return (
@@ -76,22 +78,27 @@ export function MyActions({ matchId, mode, ready, hasTeam, main = null, card }: 
           {hasTeam ? (
             <>
               {card?.failure && (
-                <div className="space-y-3 rounded-lg border border-line p-3" role="alert" data-testid="charge-failed">
+                <div className="space-y-3" role="alert" data-testid="charge-failed">
                   <p className="font-semibold">Abbuchung fehlgeschlagen</p>
                   <p className="text-sm" data-testid="charge-failed-reason">{card.failure.text}</p>
-                  {card.failure.expired ? (
-                    <p className="text-sm text-muted" data-testid="charge-failed-expired">Das Zeitfenster ist abgelaufen. Dein Platz wird neu vergeben.</p>
-                  ) : (
-                    <>
-                      {card.failure.authorize && (
-                        <div className="space-y-2" data-testid="authorize-section">
-                          <p className="text-sm">Deine Bank braucht eine Freigabe der Zahlung. Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p>
-                          <AuthorizeButton matchId={matchId} fake={card.fake} />
-                          <p className="text-sm text-muted">Oder ändere deine Karte:</p>
+                  {/* EIN nächster Schritt je Fall (lobby-fehler.ts): abgelaufen = keiner, Freigabe = Freigabe-Knopf (andere Karte nur eingeklappt), sonst Karte ändern */}
+                  {fall === "abgelaufen" && <p className="text-sm text-muted" data-testid="charge-failed-expired">Das Zeitfenster ist abgelaufen. Dein Platz wird neu vergeben.</p>}
+                  {fall === "freigabe" && (
+                    <div className="space-y-3" data-testid="authorize-section">
+                      <p className="text-sm">Deine Bank braucht eine Freigabe der Zahlung. Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p>
+                      <AuthorizeButton matchId={matchId} fake={card.fake} quiet={main !== "freigeben"} />
+                      <details data-testid="charge-failed-other-card">
+                        <summary className="btn btn-ghost w-full cursor-pointer">Stattdessen eine andere Karte hinterlegen</summary>
+                        <div className="pt-3">
+                          <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change quiet />
                         </div>
-                      )}
-                      {!card.failure.authorize && <p className="text-sm text-muted">Ändere deine Karte, damit die Zahlung klappt.{card.failure.until ? ` Du hast ${card.failure.until} Zeit.` : ""}</p>}
-                      <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change quiet={Boolean(card.failure.authorize)} />
+                      </details>
+                    </div>
+                  )}
+                  {fall === "karte" && (
+                    <>
+                      <p className="text-sm text-muted">Ändere deine Karte, damit die Zahlung klappt.{card.failure.until ? ` Du hast ${card.failure.until} Zeit.` : ""}</p>
+                      <CardForm matchId={matchId} mandateText={card.mandateText} fake={card.fake} stored={null} change quiet={main !== "karte"} />
                     </>
                   )}
                 </div>
@@ -105,14 +112,18 @@ export function MyActions({ matchId, mode, ready, hasTeam, main = null, card }: 
                 </>
               )}
               {card?.ready && <p className="text-sm text-accent-fg" data-testid="card-ready-text">Deine Karte ist hinterlegt.{payable ? " Dein Anteil wird zur Frist abgebucht." : ""}</p>}
-              <button
-                className={`btn w-full ${!ready && main === "bereit" ? "btn-primary" : "btn-ghost"} ${busy}`}
-                disabled={pending || (!ready && Boolean(card && !card.ready))}
-                onClick={() => run(() => setReadyAction(matchId, !ready))}
-              >
-                {ready ? ZP.gameNotReady : payable ? ZP.gameReady : ZP.gameReadyFree}
-              </button>
-              {!ready && payable && <p className="text-sm text-muted" data-testid="ready-amount">{betragszeile(card?.estimateCents != null ? formatEuro(card.estimateCents) : null, Boolean(card?.estimateFixed))}</p>}
+              {!card?.failure && (
+                <>
+                <button
+                  className={`btn w-full ${!ready && main === "bereit" ? "btn-primary" : "btn-ghost"} ${busy}`}
+                  disabled={pending || (!ready && Boolean(card && !card.ready))}
+                  onClick={() => run(() => setReadyAction(matchId, !ready))}
+                >
+                  {ready ? ZP.gameNotReady : payable ? ZP.gameReady : ZP.gameReadyFree}
+                </button>
+                {!ready && payable && <p className="text-sm text-muted" data-testid="ready-amount">{betragszeile(card?.estimateCents != null ? formatEuro(card.estimateCents) : null, Boolean(card?.estimateFixed))}</p>}
+                </>
+              )}
             </>
           ) : (
             <p className="text-sm text-muted">Du wartest auf die Zuweisung durch einen Team-Admin.</p>

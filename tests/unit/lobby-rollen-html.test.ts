@@ -115,3 +115,18 @@ describe("Teamseite je Rolle: Torjäger und Kader-Zeilen", () => {
     expect(team).not.toContain("topScorers.map");
   });
 });
+
+describe("Captain-Leiste: nur Team-Admin, Veranstalter und Plattform-Admin (5b)", () => {
+  it("die Seite rendert die Leiste nur für diese Rollen; Fehlerzeilen kommen nur aus cardDisplays (Server-Sicht je Betrachter), nie aus Rohdaten", () => {
+    const lobby = src("src/app/lobby/[id]/page.tsx");
+    expect(lobby).toContain("{active && (v.canManage || v.adminOf.length > 0 || v.platformAdmin) && (");
+    expect(lobby).toContain("<LobbyCaptainBar");
+    expect(lobby).toContain("const failedForManager = Object.entries(cardDisplays).filter(([id, d]) => d.status === \"failed\" && id !== user?.id)");
+    expect(lobby).toContain("cardDisplays = cardOn ? await getCardDisplays(match.id, (p) => audienceFor(cardViewer, p)) : {}");
+    expect(lobby).not.toContain("data-testid=\"charge-failed-captain\""); // das Test-ID-Markup liegt in der Komponente, die Seite hat keinen zweiten Fehlerblock
+  });
+  it("kein Fehlerblock für Gäste und Hallenbetreiber: die Leiste und der eigene Fehlerblock hängen an Rollen, nicht an der Anmeldung allein", () => {
+    const lobby = src("src/app/lobby/[id]/page.tsx");
+    expect(lobby).toContain("const myDisplay = user ? cardDisplays[user.id] : undefined;");
+  });
+});
