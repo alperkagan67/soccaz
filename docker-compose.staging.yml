@@ -1,0 +1,14 @@
+# Staging-Ergänzung (Pilot, nur Testumgebung). Start:
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+# Prüfen ohne Start: docker compose -f docker-compose.yml -f docker-compose.staging.yml config
+# Zugangsschutz fail closed: ohne STAGING_BASIC_AUTH_USER und STAGING_BASIC_AUTH_HASH (bcrypt-Hash, in der .env in EINFACHEN Anführungszeichen) bricht Compose ab; es gibt keinen Standardwert.
+services:
+  caddy:
+    environment:
+      STAGING_BASIC_AUTH_USER: ${STAGING_BASIC_AUTH_USER:?STAGING_BASIC_AUTH_USER fehlt (Staging startet nie ohne Zugangsschutz)}
+      STAGING_BASIC_AUTH_HASH: ${STAGING_BASIC_AUTH_HASH:?STAGING_BASIC_AUTH_HASH fehlt (Staging startet nie ohne Zugangsschutz)}
+    volumes:
+      - ./Caddyfile.staging:/etc/caddy/Caddyfile:ro
+  app:
+    environment:
+      APP_ENV: staging
