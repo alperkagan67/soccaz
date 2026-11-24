@@ -7,7 +7,7 @@ Stand: 2026-11-27 · Verfasser: worker-4 · Status: **Skizze** für den Bau von 
 Ziel: Der Turniertag (12.12.) als **ein durchgehender Ablauf** automatisiert absichern, in zwei Größen (6 und 16 Teams), auf dem Handy (390 px), mit **neuem Nutzer über den Einladungslink**. Zahlungen sind **AUS** (Standard der CI, `global-setup`), die Spec setzt keinen Zahlungsschalter.
 
 ## 1. Rahmen und Lage im Repo
-- Neue Datei `tests/e2e/turnier-tag.spec.ts` (nach Bau: in `tests/e2e-shards.json` eintragen, Notiz einzeilig; `node scripts/e2e-shards.mjs check`). Zwei `test()` mit `test.setTimeout(300_000)`: **6 Teams** (Standard, Shard 4) und **16 Teams** (Obergrenze, **eigener Shard-Eintrag** in `tests/e2e-shards.json`; es gibt kein `@slow`).
+- Neue Datei `tests/e2e/turnier-tag.spec.ts` (nach Bau: in `tests/e2e-shards.json` eintragen, Notiz einzeilig; `node scripts/e2e-shards.mjs check`). Zwei `test()` mit `test.setTimeout(300_000)`: **6 Teams** (Standard, Shard 4) und **16 Teams** (Obergrenze, **eigene Spec-Datei in einem bestehenden Shard** (nicht in dem des 6-Teams-Tests; die CI-Matrix ist fest 1 bis 5, `ci.yml` ist NEEDS-USER, es gibt **keinen 6. Shard**); es gibt kein `@slow`).
 - Seeding **per SQL** (Muster `zahlungen-aus-matrix.spec.ts` `seedTournament`, `seedUser`): Veranstalter (`is_organizer = true`), N Teams mit je 5 Spielern und einem Captain, ein Turnier mit `total_cents = 0`, `max_teams = N`, Status `registration`. Nur **eine** Schleife über die Teams ist echte Bedienung (siehe 2.2), der Rest per SQL, damit die Laufzeit stabil bleibt.
 - Anmeldung nur über `devLogin` (Dev-Login existiert nur außerhalb der Produktion; Smoke prüft, dass er dort fehlt).
 - Viewport `390 × 844` für **alle** Kontexte (`browser.newContext({ viewport })`), nie nur Desktop.
@@ -40,11 +40,13 @@ Ziel: Der Turniertag (12.12.) als **ein durchgehender Ablauf** automatisiert abs
 3. **Unentschieden** im K.-o.-Spiel: Hinweis „Siebenmeterschießen“ (`end-match-draw`); Veranstalter trägt den Sieger ein („Entscheiden“, Runbook 11.1).
 4. **Kampflos:** am Bracket unter „Kampflos werten“ (`data-testid=forfeit`) „X gewinnt kampflos (3:0)“ → Rückfrage → **Erwartet:** 3:0, Gegner rückt weiter, Audit-Eintrag.
 5. **Fehlerpfad:** Serveraktion erzwingen zu scheitern (Route blockieren, `page.route`) → Meldung bleibt im Dialog sichtbar („Lade die Seite neu und prüfe den Stand…“), nichts verschwindet still.
-7. **Captain-Pfad (a):** Captain A meldet das Ergebnis (Formular), Captain B bestätigt → Ergebnis endgültig, Sieger rückt weiter.
-8. **Negativ (b):** der Captain sieht **kein** `end-match` und **kein** `manual-result`.
-9. **Negativ (c):** ein Veranstalter, der im Spiel selbst Team-Admin ist, sieht **keinen** Abpfiff (er handelt wie ein Captain).
-10. **AC-30 (d):** `.btn-primary` genau **1** je Ansicht, auch in der Captain-Ansicht (Veranstalter ohne aufgeklapptes `manual-result`).
 6. Bis zum Finale weiterspielen (6 Teams: 3 Runden mit Freilosen; 16 Teams: 4 Runden) → **Erwartet:** Turnier „beendet“, Sieger sichtbar.
+
+**B) Captain und Negativfälle:**
+1. **Captain-Pfad (a):** Captain A meldet das Ergebnis (Formular), Captain B bestätigt → Ergebnis endgültig, Sieger rückt weiter.
+2. **Negativ (b):** der Captain sieht **kein** `end-match` und **kein** `manual-result`.
+3. **Negativ (c):** ein Veranstalter, der im Spiel selbst Team-Admin ist, sieht **keinen** Abpfiff (er handelt wie ein Captain).
+4. **AC-30 (d):** `.btn-primary` genau **1** je Ansicht, auch in der Captain-Ansicht (Veranstalter ohne aufgeklapptes `manual-result`).
 
 ## 3. Prüfpunkte quer über alle Schritte
 - **Wortscan** (`zahlungsWorte`, inkl. `title`/`aria-label`) auf jeder besuchten Turnierseite: nirgends Bezahlen/Ampel/Preis/Karte.
@@ -65,7 +67,7 @@ Ziel: Der Turniertag (12.12.) als **ein durchgehender Ablauf** automatisiert abs
 | Captain ohne Veranstalterrecht: „Anmeldung schließen“ | Knopf **nicht** sichtbar, Aufruf per Action abgewiesen |
 
 ## 5. Offene Punkte vor dem Bau (Entscheide)
-1. **Laufzeit (entschieden, t2q):** zwei Specs, 6 Teams in Shard 4, 16 Teams als eigener Shard-Eintrag. Erwartung 3 bis 5 Minuten je Spec.
+1. **Laufzeit (entschieden, t2q):** zwei Specs, 6 Teams in Shard 4, 16 Teams in einer eigenen Spec-Datei in einem anderen bestehenden Shard (kein 6. Shard). Erwartung 3 bis 5 Minuten je Spec.
 2. **Zeitabhängiges:** die 24-h-Erinnerung läuft im Frist-Job (`scheduled.ts`, Funktion `notifyFreeTournamentReminders`), **nicht** als eigener `JOBS`-Eintrag: den Aufrufweg vor dem Bau prüfen; Empfänger ist **nur der Veranstalter**. Uhr nicht verstellen.
 3. **Apple-Hinweistext** wird nur geprüft, wenn `APPLE_LOGIN_ENABLED` im Lauf gesetzt ist (zwei Zustände wie bei der Zustand-Matrix: Flag aus = Google-Konto, an = Google- oder Apple-Konto).
 4. Der Fall „Veranstalter-Recht entzogen mitten im Turnier“ braucht eine Produktentscheidung (Abschnitt 4, Zeile 5), keine Annahme im Test.
