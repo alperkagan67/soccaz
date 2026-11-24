@@ -367,7 +367,7 @@ Vorschlag: (a) Der Task Manager führt nach jedem Merge ein Worktree-Aufräum-Sk
 
 Wer ändert: `AGENTS-SETUP.md` (3a: Task Manager und Worker), `CLAUDE.md` (Konventionen, ein Halbsatz); Regel-PR (Nutzer mergt). Sammelkandidat, nächster Regel-PR (Entscheid t2q: JA).
 
-**Status:** offen (Sammelkandidat, noch kein Regel-PR).
+**Status:** offen (Sammelkandidat, noch kein Regel-PR). Vermerk (Entscheid Nutzer via t2q): die Allow-Regel für das Skript steht NUR lokal in der `settings.local.json` des Nutzers (nicht versioniert); der Aufruf nur aus dem Hauptrepo auf `main` mit absolutem Pfad steht in `docs/BETRIEB.md` (Abschnitt „Aufräum-Skript für Worktrees“). Der AGENTS-SETUP-3a-Anteil (Task Manager führt Trockenlauf und `--apply` nach jedem Merge und im Herzschlag aus) folgt im nächsten Regel-PR.
 
 ## 31. Zahlungsformeln und Zahlungspflicht-Texte nie ungated; Zustand-Matrix im Review
 
