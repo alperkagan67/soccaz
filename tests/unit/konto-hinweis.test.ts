@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MESSAGES, translator } from "@/lib/i18n";
 import { zahlungsWorte } from "@/lib/zahlungen-aus";
@@ -76,5 +77,20 @@ describe("Texte (i18n) und Wortscan", () => {
   it("die Adressen sind https und gehören den Anbietern", () => {
     expect(GOOGLE_KONTO_URL).toBe("https://accounts.google.com/signup");
     expect(APPLE_KONTO_URL).toBe("https://account.apple.com");
+  });
+});
+
+describe("Einladungstext zum Teilen (WhatsApp)", () => {
+  // Der Satz steht VOR der Adresse, die Adresse am Ende: ein Satzpunkt hinter der URL könnte sonst Teil des Links werden
+  it("CopyLink und InviteBox: kontoSatz vor dem Text, URL als letztes Zeichen der Nachricht", () => {
+    const vorne = "${kontoSatz ? `${kontoSatz} ` : \"\"}";
+    for (const [datei, text] of [
+      ["src/app/turniere/[id]/CopyLink.tsx", "Turnier ${title} auf Socaz: ${url}`"],
+      ["src/app/teams/[slug]/InviteBox.tsx", "Komm in mein Team ${teamName} auf Socaz: ${url}`"],
+    ] as const) {
+      const src = readFileSync(datei, "utf8");
+      expect(src, datei).toContain(vorne + text);
+      expect(src, datei).not.toContain("${url}${kontoSatz");
+    }
   });
 });

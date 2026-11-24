@@ -32,7 +32,7 @@ export function InviteBox({ teamId, teamName, quiet = false, kontoSatz }: { team
   }
 
   const whatsapp = url
-    ? `https://wa.me/?text=${encodeURIComponent(`Komm in mein Team ${teamName} auf Socaz: ${url}${kontoSatz ? ` ${kontoSatz}` : ""}`)}`
+    ? `https://wa.me/?text=${encodeURIComponent(`${kontoSatz ? `${kontoSatz} ` : ""}Komm in mein Team ${teamName} auf Socaz: ${url}`)}`
     : "#";
 
   return (
