@@ -20,7 +20,7 @@ Bei Ihrem Domain-Anbieter einen **A-Eintrag** `socaz.de` (und `www`, falls gewü
 nslookup socaz.de
 ```
 Erwartet: die Server-IP. (Warten Sie bei Abweichung, DNS braucht Minuten bis Stunden; zu früh starten erzeugt nur Zertifikatsfehler, kein Schaden.)
-**Reihenfolge Rechtstexte (Pflicht): den A-Eintrag erst setzen, wenn (1) die `OPERATOR_*`-Werte in der Server-Umgebung stehen (`.env`, Schritt 3: dafür Schritt 3 vorab auf dem Server erledigen) und (2) die Staging-Probe mit denselben `OPERATOR_*`-Werten grün ist (Schritt 5, Prüfpunkt 1).** So ist die Seite nie mit Platzhalter-Impressum unter der echten Adresse erreichbar. Nach dem A-Eintrag folgt Prüfpunkt 2 (Schritt 5) **vor** der Bekanntgabe der Adresse.
+**Reihenfolge Rechtstexte (Pflicht): Schritt 3 UND 4 (git clone, `.env` mit `OPERATOR_*`, Start) vor dem A-Eintrag, Schritt 5 Prüfpunkt 1 (Staging-Probe mit denselben `OPERATOR_*`-Werten) davor, Prüfpunkt 2 danach.** So ist die Seite nie mit Platzhalter-Impressum unter der echten Adresse erreichbar. Nach dem A-Eintrag folgt Prüfpunkt 2 (Schritt 5) **vor** der Bekanntgabe der Adresse.
 
 ## 3. Code holen und Einstellungen anlegen
 ```
@@ -107,11 +107,11 @@ node scripts/smoke.mjs https://<Staging-Adresse> --go-live
 ```
 Erwartet: die Zeilen `Go-live: …` für `/impressum` und `/datenschutz` sind `OK`, **kein** `FEHLER` (kein `[PLATZHALTER: Name|Anschrift|E-Mail …]`, kein `[ENTWURF …]`-Satz), Ende-Code 0. Grün ist **Voraussetzung für den A-Eintrag** (Schritt 2).
 
-2. **Produktion, NACH dem A-Eintrag und VOR der Bekanntgabe der Adresse** (Einladungen, Link an Teilnehmer, Social Media; die DNS-Einträge stehen dann schon, Zertifikat und https gibt es erst danach, aber niemand kennt die Adresse):
+2. **Produktion, NACH dem A-Eintrag und VOR der Bekanntgabe der Adresse** (Einladungen, Link an Teilnehmer, Social Media; die DNS-Einträge stehen dann schon, das https-Zertifikat holt Caddy erst **nach dem A-Eintrag**, aber niemand kennt die Adresse):
 ```
 node scripts/smoke.mjs https://socaz.de --go-live
 ```
-Erwartet: wie oben, Ende-Code 0. Bei `FEHLER`: Adresse **nicht** bekanntgeben, `OPERATOR_*` bzw. Bestätigung nachholen, neu starten, erneut prüfen.
+Erwartet: wie oben, Ende-Code 0. Meldet das Skript zuerst nur **NICHT ERREICHBAR**: 2 bis 5 Minuten warten (Caddy holt das Zertifikat nach dem A-Eintrag) und wiederholen. Erst ein **echtes `FEHLER`** (Platzhalter oder Entwurf) heißt: Adresse **nicht** bekanntgeben, `OPERATOR_*` bzw. Bestätigung nachholen, neu starten, erneut prüfen.
 
 Die übrigen Platzhalter (Steuer-ID, Streitbeilegung, Aufsichtsbehörde) erscheinen als `HINWEIS` bis zur Rechtsprüfung. Die Rechtsaussagen bestätigt der Nutzer, kein Agent.
 
