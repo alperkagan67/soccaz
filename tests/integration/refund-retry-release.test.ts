@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -5,7 +6,7 @@ import { auditLog, matchParticipants, matches, paymentCharges, paymentDisputes, 
 import { getRefundAlerts, manualRefund, matchMoneyOf } from "@/server/finance";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
-import { adminCancelMatch, listFailedRefundsOfMatch, retryFailedRefund, writeOffFailedRefund } from "@/server/payments/refund";
+import { adminCancelMatch, listFailedRefundsOfMatch, nextRetryKey, retryFailedRefund, writeOffFailedRefund } from "@/server/payments/refund";
 import { handleStripeWebhook } from "@/server/payments/webhook";
 import { addPlayer, cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -19,6 +20,7 @@ beforeEach(async () => {
   owner = await makeUser("rr_owner", "owner");
 });
 afterEach(async () => {
+  provider.beforeRefundResult = null; // der Haken darf bei einem Testfehler nicht gesetzt bleiben
   setPaymentProviderForTests(null);
   await cleanup();
 });
@@ -39,6 +41,11 @@ async function paidCharge(m: Game, seat: { id: string }) {
   return row;
 }
 const refundRow = async (chargeId: string) => (await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, chargeId)))[0];
+/** Stripe-Erstattungs-id des Neuversuchs im Fake: re_fake_<sha256(neuer Schluessel)[0..16]> (deterministisch, wie fake.ts). */
+const retryRefundId = (row: { idempotencyKey: string }) => "re_fake_" + createHash("sha256").update(nextRetryKey(row.idempotencyKey)).digest("hex").slice(0, 16);
+/** Signiertes refund.updated; jede Zustellung bekommt eine NEUE Ereignis-id (eine Wiederholung mit derselben id waere ein Duplikat und wird uebersprungen). */
+const refundEvent = (m: Game, u: { id: string }, charge: { id: string; paymentIntentId: string | null }, refundId: string, status: "succeeded" | "pending" | "failed") =>
+  provider.signEvent({ id: nid("evt_rr"), type: "refund.updated", object: { id: refundId, amount: 800, currency: "eur", status, payment_intent: charge.paymentIntentId, metadata: { matchId: m.match.id, userId: u.id, chargeId: charge.id } } });
 const refundCalls = () => provider.calls.filter((c) => c.method === "createRefund");
 const auditOf = (matchId: string, action: string) => db.select().from(auditLog).where(and(eq(auditLog.entityId, matchId), eq(auditLog.action, action)));
 const revenue = async (m: Game) => (await matchMoneyOf([m.match.id])).get(m.match.id)!.revenueCents;
@@ -115,21 +122,76 @@ describe("Neuversuch einer fehlgeschlagenen Ausnahme-Erstattung (Admin 1)", () =
     expect(await revenue(m)).toBe(0);
   });
 
-  it("Neuversuch parallel zum Webhook refund.updated (succeeded): nie doppelt gebucht, Endzustand succeeded, Hauptbuch genau eine Rueckbuchung", async () => {
+  it("Neuversuch parallel zum Webhook refund.updated (id des Neuversuchs): in JEDER Reihenfolge Endzustand succeeded, genau eine Rueckbuchung, nie Doppel", async () => {
     const { m, u, charge, row } = await failedSetup("r5");
-    provider.setRefundOutcome(u.id, "pending"); // Stripe nimmt den Neuversuch an, Ergebnis kommt per Webhook
-    const ev = provider.signEvent({ id: nid("evt_rr"), type: "refund.updated", object: { id: "re_rr_1", amount: 800, currency: "eur", status: "succeeded", payment_intent: charge.paymentIntentId, metadata: { matchId: m.match.id, userId: u.id, chargeId: charge.id } } });
+    provider.setRefundOutcome(u.id, "pending"); // Stripe nimmt den Neuversuch an, das Ergebnis kommt per Webhook
+    const newId = retryRefundId(row);
+    const ev = refundEvent(m, u, charge, newId, "succeeded");
     const results = await Promise.allSettled([retryFailedRefund(owner.id, row.id), handleStripeWebhook(ev.rawBody, ev.signature), handleStripeWebhook(ev.rawBody, ev.signature)]);
     for (const r of results) if (r.status === "rejected") expect(String(r.reason?.message ?? r.reason)).not.toMatch(/deadlock|40P01|could not serialize/i);
-    // falls der Webhook vor dem Neuversuch lief, ist die Zeile schon succeeded (dann weist der Neuversuch ab); sonst wirkt er. In beiden Faellen genau eine Rueckbuchung.
+    // Je nach Reihenfolge war das Ereignis VOR dem Neuversuch (Zeile noch failed mit der id des alten Versuchs: es gehoert zu keiner bekannten Erstattung und wird ignoriert) oder danach (succeeded).
+    // Im ersten Fall liefert Stripe das Ergebnis erneut (neue Ereignis-id, gleiche Erstattungs-id): dann ist die Zeile succeeded. Das Endergebnis ist in allen Reihenfolgen gleich.
     const final = await refundRow(charge.id);
     expect(final.status === "succeeded" || final.status === "pending").toBe(true);
     if (final.status === "pending") {
-      expect((await handleStripeWebhook(ev.rawBody, ev.signature)).status).toBe(200);
+      const again = refundEvent(m, u, charge, newId, "succeeded");
+      expect((await handleStripeWebhook(again.rawBody, again.signature)).status).toBe(200);
     }
-    expect((await refundRow(charge.id)).status).toBe("succeeded");
+    const end = await refundRow(charge.id);
+    expect(end).toMatchObject({ status: "succeeded", refundId: newId });
     expect(await revenue(m)).toBe(0);
     expect(await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, charge.id))).toHaveLength(1);
+  });
+
+  describe("Neuversuch und Webhook, feste Reihenfolge (kein Zeitverhalten)", () => {
+    it("Ereignis VOR dem Neuversuch: ignoriert (Zeile bleibt failed), nach dem Neuversuch und erneuter Zustellung succeeded", async () => {
+      const { m, u, charge, row } = await failedSetup("o1");
+      provider.setRefundOutcome(u.id, "pending");
+      const newId = retryRefundId(row);
+      const early = refundEvent(m, u, charge, newId, "succeeded");
+      expect((await handleStripeWebhook(early.rawBody, early.signature)).status).toBe(200);
+      expect(await refundRow(charge.id)).toMatchObject({ status: "failed", refundId: row.refundId }); // id passt nicht zur Zeile: ignoriert
+      await retryFailedRefund(owner.id, row.id);
+      expect((await refundRow(charge.id)).status).toBe("pending");
+      const again = refundEvent(m, u, charge, newId, "succeeded");
+      expect((await handleStripeWebhook(again.rawBody, again.signature)).status).toBe(200);
+      expect(await refundRow(charge.id)).toMatchObject({ status: "succeeded", refundId: newId });
+      expect(await revenue(m)).toBe(0);
+    });
+
+    it("Ereignis MITTEN im Versand (Sendefenster): succeeded durch das Ereignis, das spaetere Ergebnis 'pending' setzt die Zeile NICHT zurueck", async () => {
+      const { m, u, charge, row } = await failedSetup("o2");
+      provider.setRefundOutcome(u.id, "pending");
+      const newId = retryRefundId(row);
+      let delivered = 0;
+      provider.beforeRefundResult = async () => {
+        const mid = refundEvent(m, u, charge, newId, "succeeded");
+        expect((await handleStripeWebhook(mid.rawBody, mid.signature)).status).toBe(200);
+        delivered++;
+        expect(await refundRow(charge.id)).toMatchObject({ status: "succeeded", refundId: newId }); // schon vor dem eigenen Ergebnis
+      };
+      await retryFailedRefund(owner.id, row.id);
+      provider.beforeRefundResult = null;
+      expect(delivered).toBe(1);
+      expect(await refundRow(charge.id)).toMatchObject({ status: "succeeded", refundId: newId }); // Monotonie: kein Rueckfall auf pending
+      expect(await revenue(m)).toBe(0);
+      expect(await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, charge.id))).toHaveLength(1);
+    });
+
+    it("Ereignis NACH dem Neuversuch: succeeded; eine zweite Zustellung desselben Ergebnisses aendert nichts (genau eine Rueckbuchung)", async () => {
+      const { m, u, charge, row } = await failedSetup("o3");
+      provider.setRefundOutcome(u.id, "pending");
+      const newId = retryRefundId(row);
+      await retryFailedRefund(owner.id, row.id);
+      for (let i = 0; i < 2; i++) {
+        const ev = refundEvent(m, u, charge, newId, "succeeded");
+        expect((await handleStripeWebhook(ev.rawBody, ev.signature)).status).toBe(200);
+      }
+      expect(await refundRow(charge.id)).toMatchObject({ status: "succeeded", refundId: newId });
+      expect(await revenue(m)).toBe(0);
+      const bookings = await db.select().from(auditLog).where(and(eq(auditLog.entityId, m.match.id), eq(auditLog.action, "refund.succeeded")));
+      expect(bookings).toHaveLength(1);
+    });
   });
 
   it("spaetes oder doppeltes failed der ALTEN Erstattung nach einem Neuversuch setzt die neue Zeile nicht wieder auf failed (Review R-T376)", async () => {
