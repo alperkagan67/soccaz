@@ -15,7 +15,7 @@ Bindende Reihenfolge (Nutzerbedingung 2, Backlog 63): M2 → M2b → 012 M3b bis
 | 013 M3: Navigation, Start, Spiel suchen, `/app` „Meine Spiele“, Lobby „Dein Stand“ mit EINER Hauptaktion, Fehlerzustand mit EINEM Schritt, Captain-Leiste | gemergt: PR 1 bis 5b (#281, #284, #290, #293, #302, #310) |
 | Zahlungstexte nach § 312j BGB (zentral, nur bei echter Abbuchung) | gemergt (#286), **ENTWURF, Rechtsprüfung offen**; im Pilot sichtbar, Teilnehmende wissen: Test |
 | AC-27 Kontrastmessung verbindlich (Handy 390 und Desktop 1280, hell/dunkel) | gemergt (#271), main-Lauf ohne Verstoß |
-| Restore-Probe (E8 Werkzeug) | gemergt (#301); Probelauf mit echter Hoster-Sicherung steht aus (Nutzer, Abschnitt 15) |
+| Restore-Probe (E8 Werkzeug) | gemergt (#301), in der CI belegt; Probelauf mit echter Hoster-Sicherung steht aus (Nutzer, Abschnitt 15) |
 | **Namen-PRs (Sichtbarkeit, Entscheid t2q 2026-11-24):** PR A Kommentare (Gäste und reine Betreiber: Initialen, kein Link) | **gemergt:** PR A #306 (Kommentare), PR B #315 (Listen), PR C #318 (Spielbericht, Live-Schnittstelle), PR D #320 (Spielerprofil für Gäste nicht öffentlich); das Gäste-Szenario (Block 1b) ist freigegeben (Stand und Beleg: `m3-abschluss-pilot-check.md`) |
 | Impeccable-Engine-Lauf 2 (Lobby-Zustände Fehlerzustand und Captain-Leiste, hell, `/willkommen`, Einladung) | **erledigt** (#314: keine P0, vier P1, zwölf P2); P1 1, 2, 4 behoben mit dem Lobby-Fix #317, **P1-3 (Knopf-Innenabstand im Baustein `btn`, w4) offen**; danach ein kleiner Lauf 3 (Hell, Lücken aus Lauf 2); Einzelheiten und offene P2 in `m3-abschluss-pilot-check.md` |
 | E2E im Stripe-Testmodus grün (012 AC-17), Browser-Tests unter 10 Minuten je Teil (013 AC-11) | in der CI; Shards liegen knapp um 10 Minuten (Notiz in `tests/e2e-shards.json`), der Task Manager prüft vor dem Termin |
@@ -183,7 +183,7 @@ Nur NAMEN und Entscheidungen; Werte (Schlüssel, Passwörter, Adressen) gehören
 - [ ] **Stripe-Testmodus-Zugang:** im Stripe-Dashboard im Testmodus `STRIPE_SECRET_KEY` (`sk_test_`), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_test_`) und für Staging einen Webhook-Endpunkt `https://<staging-domain>/api/stripe/webhook` mit eigenem `STRIPE_CARD_WEBHOOK_SECRET` bereitstellen und in der Staging-Umgebung eintragen (nie ins Repo). Testkarten aus Abschnitt 5 gegen die Stripe-Seite prüfen.
 - [ ] **Staging-Server, Domain, `APP_URL`** bereitstellen; **Google-OAuth-Client** für Staging (zusätzliche Weiterleitungs-Adresse) oder Testkonten-Weg wählen (Frage 2, 6).
 - [ ] **Admin 1** für Staging festlegen (`OWNER_EMAIL`, `scripts/set-owner.mjs`, BETRIEB), Zwei-Faktor am Google-Konto.
-- [ ] **Backup-Ziel** für Staging; die Hoster-Sicherung für den E8-Probelauf (Restore-Probe mit der echten Sicherung) bereitstellen, den Lauf führt der Nutzer aus (Anleitung BETRIEB).
+- [ ] **Backup-Ziel** für Staging; die Hoster-Sicherung für den E8-Probelauf bereitstellen (das Werkzeug ist in der CI belegt, offen ist nur der Lauf mit der echten Sicherung), den Lauf führt der Nutzer aus (Anleitung BETRIEB).
 - [ ] **Zugangsschutz** für Staging entscheiden (Frage 7).
 - [ ] **Handys und Geräte:** je Spieler ein eigenes Handy (Android und iPhone gemischt, nach Möglichkeit), ein zweites Gerät ohne Konto für den Gast, ein Laptop für die Spielleitung/Technik; geladen, Mobilfunkempfang in der Halle geprüft.
 - [ ] **Zeitfenster:** T-3 Spiel A/B anlegen lassen, T-2 Abbuchung prüfen lassen, T-1 Vorprobe, Abend ca. 3 Stunden, T+1 Aufräumen, T+3 Gate G.
