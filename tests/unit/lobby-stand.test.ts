@@ -5,7 +5,7 @@ import { lobbyStand, type LobbyStandInput } from "@/lib/lobby-stand";
 const basis: LobbyStandInput = {
   signedIn: true, status: "lobby", active: true, planning: false, challengePending: false, challengeRole: "viewer",
   participant: true, hasTeam: true, ready: false, canJoin: false, canJoinAsSubstitute: false, teamFull: false,
-  cardOn: false, cardReady: false, chargeFailed: false, minReady: 4, finalTeam: null,
+  cardOn: false, cardReady: false, chargeFailure: null, minReady: 4, finalTeam: null,
 };
 const mit = (o: Partial<LobbyStandInput>) => lobbyStand({ ...basis, ...o });
 
@@ -33,10 +33,12 @@ describe("lobbyStand: Hauptaktion je Rolle", () => {
     expect(mit({ ready: true, finalTeam: { confirmed: false, complete: false } }).aktion).toBeNull();
     expect(mit({ ready: true, finalTeam: { confirmed: true, complete: true } }).aktion).toBeNull();
   });
-  it("Abgesagt: keine Aktion; vorbei: Zur Spielseite; eigener Abbuchungsfehler: Lösung folgt in 5b, hier keine zweite Hauptaktion", () => {
+  it("Abgesagt: keine Aktion; vorbei: Zur Spielseite; eigener Abbuchungsfehler: EIN Schritt je Fall (5b)", () => {
     expect(mit({ status: "cancelled", active: false }).aktion).toBeNull();
     expect(mit({ status: "played", active: false }).aktion).toBe("spielseite");
-    expect(mit({ cardOn: true, chargeFailed: true }).aktion).toBeNull();
+    expect(mit({ cardOn: true, chargeFailure: "abgelaufen" }).aktion).toBeNull(); // nichts zu tun, der Platz wird neu vergeben
+    expect(mit({ cardOn: true, chargeFailure: "freigabe" }).aktion).toBe("freigeben");
+    expect(mit({ cardOn: true, chargeFailure: "karte" }).aktion).toBe("karte");
   });
 });
 
@@ -51,7 +53,9 @@ describe("lobbyStand: Zeile ohne Rechtsfolge, in jedem Zustand der Matrix", () =
     ["Gast", { signedIn: false, participant: false }],
     ["Captain komplett", { ready: true, finalTeam: { confirmed: false, complete: true } }],
     ["Captain bestätigt", { ready: true, finalTeam: { confirmed: true, complete: true } }],
-    ["Fehlerzustand", { cardOn: true, chargeFailed: true }],
+    ["Fehlerzustand abgelaufen", { cardOn: true, chargeFailure: "abgelaufen" }],
+    ["Fehlerzustand Freigabe", { cardOn: true, chargeFailure: "freigabe" }],
+    ["Fehlerzustand Karte", { cardOn: true, chargeFailure: "karte" }],
   ];
   for (const [name, o] of zustaende) {
     it(name, () => {

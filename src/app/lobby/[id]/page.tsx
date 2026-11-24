@@ -25,6 +25,7 @@ import { chargeFailureText } from "@/lib/charge-failure-text";
 import { graceText } from "@/lib/grace";
 import { lobbySicht } from "@/lib/lobby-namen";
 import { lobbyStand } from "@/lib/lobby-stand";
+import { lobbyFehlerFall } from "@/lib/lobby-fehler";
 import { isVenueManager } from "@/server/venue-access-rules";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
 import { expectedScore } from "@/lib/elo";
@@ -43,6 +44,7 @@ import { LiveIndicator } from "@/components/LiveIndicator";
 import { CancelForm, Countdown, MyActions, ParticipantActions, VenueForm } from "./LobbyClient";
 import { CoverButton, CoverCoveringCard, ReleaseCover } from "./CoverShare";
 import { LobbyRoster, ParticipantName } from "./LobbyRoster";
+import { LobbyCaptainBarFor } from "./LobbyCaptainBar";
 
 export const metadata: Metadata = { title: "Lobby", robots: { index: false } };
 
@@ -189,7 +191,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     teamFull: v.teamFull,
     cardOn,
     cardReady: hasCard(user?.id ?? ""),
-    chargeFailed: Boolean(myFailure),
+    chargeFailure: myFailure ? lobbyFehlerFall(myFailure) : null,
     minReady: MIN_READY_PER_TEAM,
     finalTeam: myFinal ? { confirmed: myFinal.confirmed, complete: myFinal.complete } : null,
   });
@@ -362,18 +364,16 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
         />
       )}
 
-      {failedForManager.length > 0 && (
-        <section className="card space-y-2" role="alert" aria-label="Abbuchung fehlgeschlagen" data-testid="charge-failed-captain">
-          <h2 className="font-semibold">Abbuchung fehlgeschlagen</h2>
-          <ul className="space-y-1 text-sm">
-            {failedForManager.map((f) => (
-              <li key={f.userId} data-testid="charge-failed-player">
-                <strong>{f.name}</strong>: {f.text} {f.authorizing && f.until ? `Die Bank braucht eine Freigabe der Zahlung; der Spieler kann sie in der Lobby geben (${f.until}).` : f.until ? `Der Spieler kann in der Lobby seine Karte ändern (${f.until}).` : "Das Zeitfenster ist abgelaufen."}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <LobbyCaptainBarFor
+        role={{ active, canManage: v.canManage, adminTeams: v.adminOf.length, platformAdmin: v.platformAdmin }}
+          teams={teamsView.filter((t) => canAdminTeam(t.id)).map((t) => ({ id: t.id, name: t.name, count: t.count, ready: t.ready, cardsReady: cardOn ? teamCardsReady[t.id] === true : null }))}
+          failures={failedForManager.map((f) => ({
+            ...f,
+            step: cover.canCover.includes(f.userId) ? <CoverButton matchId={match.id} targetUserId={f.userId} targetName={f.name} amounts={coverAmounts} mandateText={coverMandate} /> : null,
+          }))}
+        >
+          {!isPrivate && teamsView.filter((t) => v.adminOf.includes(t.id)).map((t) => <InviteBox key={t.id} teamId={t.id} teamName={t.name} quiet />)}
+      </LobbyCaptainBarFor>
 
       {(cover.covering || cover.covered || cover.pairs.length > 0) && (
         <section className="card space-y-2" data-testid="cover-status">
@@ -439,7 +439,6 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
               ))}
             </ul>
             {!isPrivate && <LobbyRoster teamSlug={t.slug} members={roster[t.id].filter((m) => !participants.some((p) => p.userId === m.userId))} sicht={sicht} />}
-            {!isPrivate && active && v.adminOf.includes(t.id) && <InviteBox teamId={t.id} teamName={t.name} quiet />}
           </section>
         ))}
       </div>
