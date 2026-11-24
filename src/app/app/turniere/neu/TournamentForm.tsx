@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { FieldError, SubmitButton } from "@/components/FormBits";
 import { anmeldeschlussVorschlag } from "@/lib/anmeldeschluss";
 import { planFits, planMinutesForTeams } from "@/lib/tournament";
-import { GAP_MAX_MINUTEN, GAP_MIN_MINUTEN, GAP_STANDARD_MINUTEN } from "@/lib/turnier-grenzen";
+import { GAP_MAX_MINUTEN, GAP_MIN_MINUTEN, GAP_STANDARD_MINUTEN, tieBreakHinweis } from "@/lib/turnier-grenzen";
 import { useFormAction } from "@/components/useFormAction";
 import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
@@ -21,7 +21,8 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
     if (dauer === null || !(plan.hours > 0)) return null;
     const halle = Math.round(plan.hours * 60);
     const { overMinutes } = planFits({ totalMinutes: dauer }, halle);
-    return { dauer, halle, overMinutes };
+    const bloecke = Math.round((dauer + plan.gap) / (plan.slot + plan.gap));
+    return { dauer, halle, overMinutes, reine: bloecke * plan.slot };
   })();
   return (
     <form
@@ -112,11 +113,11 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
         </div>
         <div>
           <label className="label" htmlFor="gapMinutes">Puffer zwischen den Spielen (Minuten)</label>
-          <input id="gapMinutes" name="gapMinutes" type="number" min={GAP_MIN_MINUTEN} max={GAP_MAX_MINUTEN} defaultValue={GAP_STANDARD_MINUTEN} className="field" />
-          <p className="mt-1 text-xs text-muted" data-testid="gap-hint">Zum Einwechseln. Bei Gleichstand im K.-o. läuft im Puffer das Golden Goal (2 Minuten), danach Neunmeter.</p>
+          <input id="gapMinutes" name="gapMinutes" type="number" min={GAP_MIN_MINUTEN} max={GAP_MAX_MINUTEN} step={1} defaultValue={GAP_STANDARD_MINUTEN} className="field" required />
+          <p className="mt-1 text-xs text-muted" data-testid="gap-hint">Zeit zwischen zwei Spielen, um das nächste Team einzuwechseln. {tieBreakHinweis(plan.gap)}</p>
           {planText && (
             <p className="mt-1 text-xs text-muted" data-testid="plan-hint">
-              Der Spielplan dauert höchstens {planText.dauer} Minuten, gebucht sind {planText.halle} Minuten.{planText.overMinutes > 0 ? ` Der Plan ist ${planText.overMinutes} Minuten länger als die Hallenzeit: bitte mehr Hallenzeit buchen oder Spielzeit und Puffer verkürzen.` : ""}
+              Der Spielplan dauert höchstens {planText.dauer} Minuten, gebucht sind {planText.halle} Minuten. Zeiten ohne Puffer: {planText.reine} Minuten.{planText.overMinutes > 0 ? ` Der Plan ist ${planText.overMinutes} Minuten länger als die Hallenzeit: bitte mehr Hallenzeit buchen oder Spielzeit und Puffer verkürzen.` : ""}
             </p>
           )}
         </div>

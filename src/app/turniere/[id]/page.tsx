@@ -38,6 +38,7 @@ import { istGratis } from "@/lib/gratis";
 import { TournamentCard } from "./TournamentCard";
 import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 import { zahlungenAus } from "@/server/zahlungen-aus";
+import { tieBreakHinweis } from "@/lib/turnier-grenzen";
 import { KontoHinweis, kontoSatz } from "@/components/KontoHinweis";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
@@ -221,10 +222,10 @@ export default async function TournamentPage({ params, searchParams }: PageProps
               <h3 className="font-semibold">Spielplan</h3>
               <p className="text-xs text-muted">
                 Zwei Plätze, Beginn {formatDateTime(new Date(data.schedule.blocks[0].startIso))}, Ende des Plans {new Date(data.schedule.endIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr.
-                {" "}Jedes Spiel dauert {data.schedule.slotMinutes} Minuten, danach {data.schedule.gapMinutes} Minuten Puffer zum Einwechseln (bei Gleichstand im K.-o.: Golden Goal, danach Neunmeter). Im Finale bleibt ein Platz frei: Dort spielen die Verlierer der Halbfinals nur zum Spaß.
+                {" "}Jedes Spiel dauert {data.schedule.slotMinutes} Minuten, danach {data.schedule.gapMinutes} Minuten Puffer zum Einwechseln. {tieBreakHinweis(data.schedule.gapMinutes)} Im Finale bleibt ein Platz frei: Dort spielen die Verlierer der Halbfinals nur zum Spaß.
               </p>
               {manage && data.schedule.overMinutes > 0 && (
-                <p className="text-xs font-semibold" data-testid="schedule-over">Hinweis: Der Plan dauert {data.schedule.totalMinutes} Minuten, die gebuchte Hallenzeit ist {data.schedule.overMinutes} Minuten kürzer. Bitte mehr Hallenzeit buchen oder Spielzeit und Puffer verkürzen.</p>
+                <p className="text-sm font-semibold" data-testid="schedule-over">Hinweis: Der Plan dauert {data.schedule.totalMinutes} Minuten, die gebuchte Hallenzeit ist {data.schedule.overMinutes} Minuten kürzer. Bitte mehr Hallenzeit buchen oder Spielzeit und Puffer verkürzen.</p>
               )}
               <ol className="space-y-1.5">
                 {data.schedule.blocks.map((b, i) => (
