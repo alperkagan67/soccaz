@@ -49,7 +49,7 @@ export default async function DashboardPage() {
             kind="error"
             title="Abbuchung fehlgeschlagen"
             reason={`Für dein Spiel #${failures[0].number}${failures.length > 1 ? ` und ${failures.length - 1} weitere` : ""} konnte deine Karte nicht belastet werden: ändere die Karte oder gib die Zahlung bei deiner Bank frei.`}
-            action={{ label: "Karte ändern", href: `/lobby/${failures[0].matchId}` }}
+            action={{ label: "Karte in der Lobby ändern", href: `/lobby/${failures[0].matchId}` }}
           />
         </div>
       )}

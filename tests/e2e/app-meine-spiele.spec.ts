@@ -57,7 +57,7 @@ test("Spieler mit Spiel: Gruppe Teamspiele mit Zustandswort, Dein Stand führt z
   await expect(a).toHaveURL(/\/lobby\/[0-9a-f-]{36}$/);
 });
 
-test("Fehlgeschlagene Abbuchung: nur die Person selbst sieht den Fehlerzustand mit Karte ändern, Dritte nie", async ({ browser }) => {
+test("Fehlgeschlagene Abbuchung: nur die Person selbst sieht den Fehlerzustand mit Link zur Karte in der Lobby, Dritte nie", async ({ browser }) => {
   const { a, b, matchId } = await setupLobby(browser, "m3f");
   const idA = await userIdOf(`m3fa-${run}@test.local`);
   await query("insert into match_participants (match_id, user_id, team_id, card_status) values ($1, $2, (select home_team_id from matches where id = $1), 'failed') on conflict (match_id, user_id) do update set card_status = 'failed'", [matchId, idA]);
@@ -65,7 +65,7 @@ test("Fehlgeschlagene Abbuchung: nur die Person selbst sieht den Fehlerzustand m
   const fehler = a.getByTestId("charge-failed-self");
   await expect(fehler).toBeVisible();
   await expect(fehler.getByRole("alert")).toContainText("Abbuchung fehlgeschlagen");
-  await expect(fehler.getByRole("link", { name: "Karte ändern" })).toHaveAttribute("href", `/lobby/${matchId}`);
+  await expect(fehler.getByRole("link", { name: "Karte in der Lobby ändern" })).toHaveAttribute("href", `/lobby/${matchId}`);
   // Dritte (der andere Captain) sehen den Fehlerzustand von A nicht
   await b.goto("/app");
   await expect(b.getByTestId("charge-failed-self")).toHaveCount(0);
