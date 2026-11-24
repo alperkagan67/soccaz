@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { closeContexts, closeTestDb, devLogin, run } from "./helpers";
 import { seedAdmin, seedOwner } from "./helpers-db";
+import { clickReady } from "./flows";
 
 // Vertrag 009 M3c, Admin-Seite Beweisprotokoll: Zugriff nur Admin 1, a11y (axe) in hellem und dunklem Modus; Admin 2 wird weitergeleitet, die Routen antworten 404.
 // ENTWURF, NICHT GELAUFEN (ohne Datenbank/Browser geschrieben). Die Seite ist degradiert gebaut (Admin wird in 013 M7 neu gebaut, Impeccable AC-15 offen, Backlog 125).
@@ -87,10 +88,10 @@ test("Beweispflicht einschalten: Schritt 1 Uhrenquelle, Schritt 2 Pflicht, Grund
     await box.getByRole("button", { name: "Uhrenquelle auf Datenbank stellen" }).click();
     expect(await box.getByLabel(/Grund/).evaluate((el) => (el as HTMLTextAreaElement).validity.valueMissing)).toBe(true);
     await box.getByLabel(/Grund/).fill("App nutzt Datenbankzeit");
-    await box.getByRole("button", { name: "Uhrenquelle auf Datenbank stellen" }).click();
+    await clickReady(box.getByRole("button", { name: "Uhrenquelle auf Datenbank stellen" }));
     await expect(box.getByRole("button", { name: "Beweispflicht einschalten" })).toBeVisible();
     await box.getByLabel(/Grund/).fill("Go-live");
-    await box.getByRole("button", { name: "Beweispflicht einschalten" }).click();
+    await clickReady(box.getByRole("button", { name: "Beweispflicht einschalten" }));
     await expect(page.getByTestId("switch-done")).toBeVisible();
     await expect(page.getByTestId("evidence-switch-state")).toContainText("eingeschaltet");
     await expect(box.getByRole("button")).toHaveCount(0); // kein Ausschalten über die Oberfläche
@@ -101,6 +102,7 @@ test("Beweispflicht einschalten: Schritt 1 Uhrenquelle, Schritt 2 Pflicht, Grund
 
 // Welle 4 (Formulare vor der Hydration, Backlog 224): die Admin-Formulare der Bausteine ActionForm (Einstellungen, Notabschaltung Kartenzahlung) und ui/Form (Beweis-Schalter) senden vor der Hydration nativ POST an die
 // Server-Aktion, nie GET mit den Feldern (Grund, Einstellungen) in der Adresse. Geprüft wird das vom Server gelieferte HTML (nur Lesen, es wird nichts geschaltet).
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Admin-Formulare vor der Hydration: ActionForm und ui/Form senden nativ POST", async ({ browser }) => {
   const page = await login(browser, "fw4", true, "/admin/einstellungen");
   // Je Seite Gruppen von Knopftexten: von jeder Gruppe muss mindestens ein Formular vorhanden sein (die Notabschaltung zeigt je nach Schalterstand "ausschalten" ODER "wieder einschalten")

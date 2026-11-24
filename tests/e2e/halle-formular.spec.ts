@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { closeContexts, createTeam, newUser, run } from "./helpers";
 import { query, userIdByEmail } from "./helpers-db";
+import { clickReady } from "./flows";
 
 // 011 M2b: /halle Ablehnen-Formular, Tastatur, Tippflächen, Fristanzeige, Namenfreiheit. Braucht die Datenbank (Lauf frei) und ist im Zwischenstand NICHT gelaufen.
 // Angebunden (M2a-2): die Ablehnung speichert Kategorie und Anmerkung im Beweisprotokoll (Datenbank-Trigger beim COMMIT).
@@ -50,26 +51,26 @@ test("Ablehnen-Formular: Fehler am Feld, Fokus auf die Radiogruppe, sonstiges br
   await inquiry.getByText("Halle ist belegt (Grund angeben)").click();
 
   // ohne Grund: Fehler unter der Gruppe, Fokus auf den ersten Radioknopf
-  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
+  await clickReady(inquiry.getByRole("button", { name: "Ablehnung senden" }));
   await expect(inquiry.getByTestId("error-reasonCode")).toContainText("Bitte wähle einen Grund.");
   await expect(inquiry.getByRole("radio", { name: "Belegt" })).toBeFocused();
 
   // „Sonstiges“ ohne Anmerkung: das Textfeld ist Pflicht (required), der Browser hält das Absenden an und springt auf das Feld (native Prüfung, kein Serveraufruf)
   await inquiry.getByRole("radio", { name: "Sonstiges" }).check();
-  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
+  await clickReady(inquiry.getByRole("button", { name: "Ablehnung senden" }));
   await expect(inquiry.getByLabel(/Anmerkung/)).toBeFocused();
   expect(await inquiry.getByLabel(/Anmerkung/).evaluate((el) => (el as HTMLTextAreaElement).validity.valueMissing)).toBe(true);
 
   // zu kurze Anmerkung (2 Zeichen): die Eingabeprüfung der Aktion meldet den Fehler am Feld (aria-invalid, Fokus)
   await inquiry.getByLabel(/Anmerkung/).fill("ab");
-  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
+  await clickReady(inquiry.getByRole("button", { name: "Ablehnung senden" }));
   await expect(inquiry.getByTestId("error-reason")).toContainText("3 bis 200 Zeichen");
   await expect(inquiry.getByLabel(/Anmerkung/)).toHaveAttribute("aria-invalid", "true");
   await expect(inquiry.getByLabel(/Anmerkung/)).toBeFocused();
 
   // gültige Eingabe: die Ablehnung wird gespeichert, mit Kategorie und bereinigter Anmerkung im Beweisprotokoll (Anmerkung nur in der Nebentabelle)
   await inquiry.getByLabel(/Anmerkung/).fill("  Platz   gesperrt ");
-  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
+  await clickReady(inquiry.getByRole("button", { name: "Ablehnung senden" }));
   await expect(inquiryOf(boss, "1")).toHaveCount(0);
   // die einzige angefragte Halle ist belegt: „keine Halle frei“ löscht die Anfragezeilen (der Beweiseintrag bleibt), die Teams wählen einen neuen Termin
   expect(await query("select 1 from match_hall_requests where match_id = $1 and venue_id = $2", [matchId, venueId])).toHaveLength(0);
@@ -153,7 +154,7 @@ test("Struktur (a11y): eine h1, je Karte eine h2, Gruppe mit Namen, Radios und T
   await expect(inquiry.getByRole("button", { name: "Ablehnung senden" })).toBeVisible();
 
   // Fehler: Meldung als Alarm, der erste Radioknopf verweist per aria-describedby auf sie
-  await inquiry.getByRole("button", { name: "Ablehnung senden" }).click();
+  await clickReady(inquiry.getByRole("button", { name: "Ablehnung senden" }));
   await expect(inquiry.getByTestId("error-reasonCode")).toBeVisible();
   await expect(inquiry.getByRole("alert").filter({ hasText: "Bitte wähle einen Grund." })).toHaveCount(1); // genau ein Alarm, kein doppelt vorgelesener zweiter
   const describedBy = await inquiry.getByRole("radio", { name: "Belegt" }).getAttribute("aria-describedby");
@@ -215,7 +216,7 @@ test("Antwort nach Fristende: neutraler Text, Zeile bleibt, genau ein late_attem
   const inquiry = inquiryOf(boss, "8");
   await boss.waitForLoadState("networkidle");
   await query("update matches set veto_turn_deadline = now() - interval '1 minute' where id = $1", [matchId]); // die Seite zeigt noch den Stand beim Laden
-  await inquiry.getByRole("button", { name: "Halle ist frei" }).click();
+  await clickReady(inquiry.getByRole("button", { name: "Halle ist frei" }));
   // je nach Zeitpunkt der Revalidierung als Meldung am Knopf (Alarm) oder als Hinweis der danach abgelaufen angezeigten Karte: der Text ist in beiden Fällen derselbe
   await expect(boss.getByText("Die Antwortfrist ist abgelaufen").first()).toBeVisible();
   const [row] = await query<{ status: string }>("select status from match_hall_requests where match_id = $1 and venue_id = $2", [matchId, venueId]);

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { setupLobby } from "./flows";
+import { setupLobby, clickWhenReady } from "./flows";
 import { closeContexts, closeTestDb, run } from "./helpers";
 import { query, setPlatformSetting, userIdByEmail } from "./helpers-db";
 
@@ -121,7 +121,7 @@ test("Gespeicherte Karte: 'Andere Karte hinterlegen' setzt die Zustimmung zurüc
   await seedStoredCard(`kua-${run}@test.local`, `alt${run}`);
   await a.goto(`/lobby/${matchId}`);
   await a.getByLabel(/Ich erlaube Soccaz/).check();
-  await a.getByRole("button", { name: "Andere Karte hinterlegen" }).click();
+  await clickWhenReady(a, "Andere Karte hinterlegen");
   await expect(a.getByTestId("card-form")).toBeVisible();
   await expect(a.getByLabel(/Ich erlaube Soccaz/)).not.toBeChecked();
   await expect(a.getByTestId("card-fake")).toBeDisabled();

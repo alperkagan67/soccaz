@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { closeContexts, closeTestDb, devLogin, run } from "./helpers";
 import { query, seedOwner } from "./helpers-db";
+import { clickReady } from "./flows";
 
 // 013 v3 AC-31, Nacharbeit der Admin-Ansicht (Review w2): Freischalten und Ablehnen per Dialog, Erfolgsmeldung mit Fokus außerhalb der Zeile, Name im zugänglichen Namen der Knöpfe,
 // Pflichtgrund mit Zähler am Feld, "schon entschieden" (zweiter Admin war schneller). Nur CI (Shard in tests/e2e-shards.json); lokal nicht gelaufen.
@@ -66,7 +67,7 @@ test("Abbrechen gibt den Fokus an den öffnenden Knopf zurück; nichts wird geä
   await opener.click();
   const dialog = page.getByTestId("confirm-dialog").filter({ visible: true });
   await expect(dialog.getByRole("textbox", { name: /Grund der Ablehnung/ })).toBeFocused(); // Startfokus mit Feld = das Feld
-  await dialog.getByRole("button", { name: "Abbrechen" }).click();
+  await clickReady(dialog.getByRole("button", { name: "Abbrechen" }));
   await expect(opener).toBeFocused();
   const [v] = await query<{ approval_status: string }>("select approval_status from venues where name = $1", [hall("C")]);
   expect(v.approval_status).toBe("requested");
@@ -113,7 +114,7 @@ test("schon entschieden (zweiter Admin war schneller): Meldung im Statusbereich,
   await row(page, hall("C")).getByRole("button", { name: /Freischalten/ }).click();
   await query("update venues set approval_status = 'rejected', approval_reason = 'anderer Admin', active = false where id = $1", [v.id]); // jemand anderes hat entschieden
   const dialog = page.getByTestId("confirm-dialog").filter({ visible: true });
-  await dialog.getByRole("button", { name: "Halle freischalten" }).click();
+  await clickReady(dialog.getByRole("button", { name: "Halle freischalten" }));
   await expect(page.getByTestId("requests-status")).toContainText("keine offene Anfrage");
   await expect(row(page, hall("C"))).toHaveCount(0);
 });

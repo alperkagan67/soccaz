@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { clickWhenReady, setupLobby } from "./flows";
+import { clickWhenReady, setupLobby, clickReady } from "./flows";
 import { closeContexts, closeTestDb, devLogin, run } from "./helpers";
 import { callJob, query, seedAdmin, setConfirmDeadline, startMatchNow } from "./helpers-db";
 
@@ -28,26 +28,26 @@ test("Spieltag: Tore live erfassen, rückgängig, Ergebnis melden, Widerspruch, 
 
   // Tor für Heim mit Torschütze: Stand 1:0, auch bei B ohne Neuladen
   await clickWhenReady(a, `Tor ${nameA}`);
-  await a.getByRole("dialog").getByRole("button", { name: "Spieler r1a" }).click();
+  await clickReady(a.getByRole("dialog").getByRole("button", { name: "Spieler r1a" }));
   await expect(a.getByLabel("Spielstand 1 zu 0")).toBeVisible();
   await expect(b.getByLabel("Spielstand 1 zu 0")).toBeVisible({ timeout: 15_000 });
 
   // Tor für Gast, Torschütze unbekannt: 1:1, dann rückgängig: 1:0
   await clickWhenReady(a, `Tor ${nameB}`);
-  await a.getByRole("dialog").getByRole("button", { name: "Unbekannt" }).click();
+  await clickReady(a.getByRole("dialog").getByRole("button", { name: "Unbekannt" }));
   await expect(a.getByLabel("Spielstand 1 zu 1")).toBeVisible();
   await clickWhenReady(a, "Letzte Aktion rückgängig");
   await expect(a.getByLabel("Spielstand 1 zu 0")).toBeVisible();
 
   // Gelbe Karte wird erfasst, verändert den Spielstand nicht
-  await a.getByRole("button", { name: "Gelb" }).first().click();
-  await a.getByRole("dialog").getByRole("button", { name: "Spieler r1a" }).click();
+  await clickReady(a.getByRole("button", { name: "Gelb" }).first());
+  await clickReady(a.getByRole("dialog").getByRole("button", { name: "Spieler r1a" }));
   await expect(a.getByText("Gelbe Karte")).toBeVisible();
   await expect(a.getByLabel("Spielstand 1 zu 0")).toBeVisible();
 
   // Endergebnis melden: Felder sind mit dem Spielstand vorbelegt
   await expect(a.getByLabel(nameA, { exact: true })).toHaveValue("1");
-  await a.getByRole("button", { name: "Ergebnis melden" }).click();
+  await clickWhenReady(a, "Ergebnis melden");
   await expect(a.getByText(/Gemeldetes Ergebnis/)).toBeVisible();
   await expect(a.getByRole("button", { name: `Tor ${nameA}` })).toHaveCount(0); // keine Erfassung mehr
 
@@ -55,7 +55,7 @@ test("Spieltag: Tore live erfassen, rückgängig, Ergebnis melden, Widerspruch, 
   await expect(b.getByRole("button", { name: "Widersprechen" })).toBeVisible({ timeout: 15_000 });
   await b.getByRole("button", { name: "Widersprechen" }).click();
   await b.getByLabel(/Warum stimmt das Ergebnis nicht/).fill("Wir haben 2:1 gewonnen");
-  await b.getByRole("button", { name: "Widerspruch senden" }).click();
+  await clickWhenReady(b, "Widerspruch senden");
   await expect(b.getByText("Das Ergebnis ist strittig").first()).toBeVisible();
   await expect(a.getByText("Das Ergebnis ist strittig").first()).toBeVisible({ timeout: 15_000 });
 
@@ -71,7 +71,7 @@ test("Spieltag: Tore live erfassen, rückgängig, Ergebnis melden, Widerspruch, 
   await adm.getByLabel(nameA, { exact: true }).fill("1");
   await adm.getByLabel(nameB, { exact: true }).fill("2");
   await adm.getByLabel(/Begründung/).fill("Torprotokoll geprüft");
-  await adm.getByRole("button", { name: "Endgültig entscheiden" }).click();
+  await clickWhenReady(adm, "Endgültig entscheiden");
   await expect(adm.getByLabel("Spielstand 1 zu 2")).toBeVisible();
   await expect(adm.getByText("Beendet", { exact: true })).toBeVisible();
   await expect(a.getByLabel("Spielstand 1 zu 2")).toBeVisible({ timeout: 15_000 });
@@ -106,7 +106,7 @@ test("Spieltag: Ergebnis wird vom Gegner bestätigt", async ({ browser }) => {
     await b.reload();
     await expect(b.getByRole("button", { name: "Bestätigen" })).toBeVisible({ timeout: 4000 });
   }).toPass({ timeout: 40_000 });
-  await b.getByRole("button", { name: "Bestätigen" }).click();
+  await clickWhenReady(b, "Bestätigen");
   await expect(b.getByLabel("Spielstand 3 zu 2")).toBeVisible();
   await expect(b.getByText("Beendet", { exact: true })).toBeVisible();
   await expect(a.getByText("Beendet", { exact: true })).toBeVisible({ timeout: 15_000 });
@@ -156,6 +156,7 @@ test("Job-Schnittstelle ist geschützt", async ({ baseURL }) => {
 // Welle 5 (Formulare vor der Hydration, Backlog 224): Formulare mit eigenem Client-Handler (kein action) sperren ihren Absende-Knopf bis zur Hydration und haben method="post": ein Klick davor sendet nie ein GET mit den
 // Feldern (Hallenfeld, Torstände). Geprüft: das Server-HTML hat den Knopf gesperrt und das Formular mit method="POST"; im Browser WIRD der Knopf nach der Hydration bedienbar (kein dauerhaft gesperrter Zustand).
 // Grenze: ohne JavaScript bleibt der Knopf gesperrt (kein Datenleck, aber auch keine Aktion).
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Hallenfeld und Ergebnis melden: Knopf bis zur Hydration gesperrt, method=post, danach bedienbar", async ({ browser }) => {
   const { a, matchId } = await setupLobby(browser, "fw5");
   const sperre = async (pfad: string, testid: string) => {

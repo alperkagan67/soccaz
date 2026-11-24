@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, futureLocal, newUser, run } from "./helpers";
-import { acceptChallenge } from "./flows";
+import { acceptChallenge, clickWhenReady, clickReady } from "./flows";
 import { query } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
@@ -56,7 +56,7 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   await a.goto("/matchmaking");
   await expect(a.getByTestId("my-queue")).toContainText("wartet auf einen Gegner");
   // Abbrechen und wieder anstellen funktioniert
-  await a.getByRole("button", { name: "Suche abbrechen" }).click();
+  await clickWhenReady(a, "Suche abbrechen");
   await expect(a.getByTestId("my-queue")).toHaveCount(0);
   await enter(a);
   await expect(a).toHaveURL(/\/lobby\/offen\//, { timeout: 30_000 });
@@ -106,7 +106,7 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   await a.waitForLoadState("networkidle");
   const options = a.getByTestId("option");
   expect(await options.count()).toBeGreaterThanOrEqual(1);
-  await options.first().getByRole("button", { name: "Dafür stimmen" }).click();
+  await clickReady(options.first().getByRole("button", { name: "Dafür stimmen" }));
   await expect(options.first()).toContainText("Deine Wahl");
   await expect(a.getByTestId("scheduling")).toBeVisible(); // Gegner hat noch nicht gewählt
 
@@ -190,7 +190,7 @@ test("Spielsuche zeigt den Kader des suchenden Teams, Lobby auch den Rest des ge
 
   await a.goto("/app/suche/neu");
   await a.getByLabel(/Anstoß/).fill(futureLocal(9));
-  await a.getByRole("button", { name: "Spielsuche erstellen" }).click();
+  await clickWhenReady(a, "Spielsuche erstellen");
   await expect(a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
   const url = a.url();
 

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, newUser, run } from "./helpers";
 import { query } from "./helpers-db";
+import { clickWhenReady } from "./flows";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -73,7 +74,7 @@ test("Teamverwaltung: Admin ernennen, bearbeiten, Mitglied verlässt, Auflösen"
   // Bearbeiten
   await admin.getByText("Team verwalten").click();
   await admin.getByLabel("Teamname").fill(`${name} neu`);
-  await admin.getByRole("button", { name: "Änderungen speichern" }).click();
+  await clickWhenReady(admin, "Änderungen speichern");
   await expect(admin.getByText("Gespeichert.")).toBeVisible();
   await expect(admin.getByRole("heading", { name: `${name} neu` })).toBeVisible();
 
@@ -114,13 +115,13 @@ test("Profile: Steckbrief, Form, Elo-Verlauf, Direktvergleich", async ({ browser
   await a.goto("/app/einstellungen");
   await a.waitForLoadState("networkidle");
   await a.getByLabel("Steckbrief (optional)").fill(`Spiele seit zehn Jahren ${run}`);
-  await a.getByRole("button", { name: "Profil speichern" }).click();
+  await clickWhenReady(a, "Profil speichern");
   await expect(a.getByText("Gespeichert.").first()).toBeVisible();
   await a.goto(`/teams/${teamA.slug}`);
   await a.waitForLoadState("networkidle");
   await a.getByText("Team verwalten").click();
   await a.getByLabel("Über uns (optional)").fill(`Wir spielen dienstags ${run}`);
-  await a.getByRole("button", { name: "Änderungen speichern" }).click();
+  await clickWhenReady(a, "Änderungen speichern");
   await expect(a.getByText("Gespeichert.")).toBeVisible();
   await a.reload();
   await expect(a.getByTestId("bio")).toContainText(`Wir spielen dienstags ${run}`);
@@ -208,7 +209,7 @@ test("Spielerprofil wie ein Gamer-Profil: Spitzname, Nummer, Farbe, kommende und
   await a.getByLabel("Starker Fuß").selectOption("links");
   await a.getByLabel("Lieblingsverein").fill("FC Schalke");
   await a.getByText("Violett").evaluate((el) => (el.closest("label")!.querySelector("input") as HTMLInputElement).click());
-  await a.getByRole("button", { name: "Profil speichern" }).click();
+  await clickWhenReady(a, "Profil speichern");
   await expect(a.getByText("Gespeichert.").first()).toBeVisible();
 
   // ein kommendes Spiel und zwölf gespielte (zwei Seiten Verlauf)

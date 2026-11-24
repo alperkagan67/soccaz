@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { devLogin, onboard, run, closeContexts } from "./helpers";
+import { clickWhenReady } from "./flows";
 
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
@@ -14,7 +15,7 @@ test("Team gründen, Link erzeugen, zweiter Spieler tritt bei", async ({ browser
 
   await a.getByRole("link", { name: "Team gründen" }).first().click();
   await a.getByLabel("Teamname").fill(`FC Test ${run}`);
-  await a.getByRole("button", { name: "Team gründen" }).click();
+  await clickWhenReady(a, "Team gründen");
   await expect(a).toHaveURL(/\/teams\/fc-test-/);
   await expect(a.getByRole("heading", { name: `FC Test ${run}` })).toBeVisible();
 
@@ -37,7 +38,7 @@ test("Team gründen, Link erzeugen, zweiter Spieler tritt bei", async ({ browser
   await onboard(b, "1998-01-01");
   // nach dem Onboarding zurück zum Einladungslink
   await expect(b).toHaveURL(/\/einladung\//);
-  await b.getByRole("button", { name: "Team beitreten" }).click();
+  await clickWhenReady(b, "Team beitreten");
   await expect(b).toHaveURL(/\/teams\/fc-test-/);
   await expect(b.getByText("Spieler Ben")).toBeVisible();
   await expect(b.getByText("Kader (2)")).toBeVisible();
@@ -48,7 +49,7 @@ test("Team gründen, Link erzeugen, zweiter Spieler tritt bei", async ({ browser
   // Doppelter Teamname wird abgelehnt
   await a.goto("/app/teams/neu");
   await a.getByLabel("Teamname").fill(`fc test ${run}`);
-  await a.getByRole("button", { name: "Team gründen" }).click();
+  await clickWhenReady(a, "Team gründen");
   await expect(a.getByText("bereits vergeben")).toBeVisible();
 });
 
