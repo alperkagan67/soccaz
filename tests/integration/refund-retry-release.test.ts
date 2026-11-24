@@ -126,6 +126,16 @@ describe("Neuversuch einer fehlgeschlagenen Ausnahme-Erstattung (Admin 1)", () =
     expect(await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, charge.id))).toHaveLength(1);
   });
 
+  it("spaetes oder doppeltes failed der ALTEN Erstattung nach einem Neuversuch setzt die neue Zeile nicht wieder auf failed (Review R-T376)", async () => {
+    const { m, u, charge, row } = await failedSetup("r8");
+    provider.setRefundOutcome(u.id, "pending");
+    await retryFailedRefund(owner.id, row.id);
+    expect((await refundRow(charge.id)).status).toBe("pending");
+    const late = provider.signEvent({ id: nid("evt_rr"), type: "refund.updated", object: { id: row.refundId as string, amount: 800, currency: "eur", status: "failed", failure_reason: "unknown", payment_intent: charge.paymentIntentId, metadata: { matchId: m.match.id, userId: u.id, chargeId: charge.id } } });
+    expect((await handleStripeWebhook(late.rawBody, late.signature)).status).toBe(200);
+    expect((await refundRow(charge.id)).status).toBe("pending");
+  });
+
   it("nur fehlgeschlagene Zeilen: succeeded, pending und unbekannte IDs werden abgewiesen", async () => {
     const m = await makeMatch({ hoursAhead: 72, priceCents: 8000, costCents: 8000, legacy: true });
     const u = await addPlayer(m.match.id, m.home.id, "r6");

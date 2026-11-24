@@ -79,7 +79,7 @@ export default async function MatchFinancePage({ params }: PageProps<"/admin/fin
       {failedRefunds.length > 0 && (
         <section className="space-y-2" data-testid="failed-refunds">
           <h2 className="text-lg font-semibold">Fehlgeschlagene Erstattungen</h2>
-          <p className="text-sm text-muted">Solange eine Erstattung offen ist, kann das Spiel nicht abgesagt werden. Neu versuchen sendet dieselbe Erstattung noch einmal (nie doppelt). Abschreiben ist nur eine Buchungsmarkierung: es wird kein Geld bewegt und nichts an Stripe gesendet; Grund und Protokoll sind Pflicht.</p>
+          <p className="text-sm text-muted">Solange eine Erstattung offen ist, kann das Spiel nicht abgesagt werden. Neu versuchen sendet dieselbe Erstattung noch einmal (nie doppelt). Innerhalb von etwa 24 Stunden liefert Stripe dabei oft nur das alte Ergebnis; dann hilft nur Abschreiben oder Warten. Abschreiben ist nur eine Buchungsmarkierung: es wird kein Geld bewegt und nichts an Stripe gesendet; Grund und Protokoll sind Pflicht.</p>
           <ul className="space-y-2">
             {failedRefunds.map((r) => (
               <li key={r.id} className="card space-y-2" data-testid={`failed-refund-${r.id}`}>

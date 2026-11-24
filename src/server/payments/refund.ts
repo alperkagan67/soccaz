@@ -46,6 +46,7 @@ export type RefundReport = {
   paymentIntentId: string | null;
   metadata: { matchId: string | null; tournamentId?: string | null; userId: string | null; chargeId: string | null };
   failureCode: string | null;
+  direct?: true; // Ergebnis des eigenen Sendens (sendRefund), nicht eines Webhooks: nur dieses darf eine Neuversuch-Zeile mit derselben Stripe-Erstattung wieder auf failed setzen
 };
 
 export type ApplyRefundResult = { status: "applied" | "already" | "ignored"; reason?: string; matchId?: string };
@@ -114,6 +115,11 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
     return { status: "applied", matchId: matchIdOf(row) };
   }
   // failed: manuell zu klären (Admin-Alarm). Die Zeile wird nie automatisch erneut gesendet (Neuversuch oder Abschreiben nur durch Admin 1: retryFailedRefund / writeOffFailedRefund).
+  // Review R-T376 (Hinweis 1): ein spaetes oder doppelt zugestelltes failed der ALTEN Erstattung (vor einem Neuversuch) darf die neu angeforderte Zeile nicht wieder auf failed setzen
+  if (row.status === "pending" && r.refundId && !r.direct) {
+    const [old] = (await tx.execute(sql`select 1 from audit_log where action = 'refund.retry' and after ->> 'refundRowId' = ${row.id} and after ->> 'previousRefundId' = ${r.refundId} limit 1`)).rows;
+    if (old) return { status: "already", matchId: matchIdOf(row) };
+  }
   if (row.status === "failed" && (row.failureCode === cleanCode(r.failureCode) || row.failureCode === REFUND_WRITTEN_OFF)) return { status: "already", matchId: matchIdOf(row) }; // ein verspätetes failed hebt ein bewusstes Abschreiben nicht auf
   await tx
     .update(paymentRefunds)
@@ -265,7 +271,7 @@ async function sendRefund(c: ClaimedRefund): Promise<void> {
     return; // Ergebnis unbekannt: Zeile bleibt pending, der nächste Lauf sendet mit demselben Schlüssel erneut (bis zur 20-Stunden-Grenze)
   }
   await db.transaction((tx) =>
-    applyRefundInTx(tx, { outcome: res.status, refundId: res.id || null, amountCents: c.amountCents, currency: "eur", paymentIntentId: c.paymentIntentId, metadata: { matchId: c.matchId, userId: c.userId, chargeId: c.chargeId }, failureCode: res.failureCode }),
+    applyRefundInTx(tx, { outcome: res.status, direct: true, refundId: res.id || null, amountCents: c.amountCents, currency: "eur", paymentIntentId: c.paymentIntentId, metadata: { matchId: c.matchId, userId: c.userId, chargeId: c.chargeId }, failureCode: res.failureCode }),
   );
 }
 
@@ -367,7 +373,7 @@ export async function retryFailedRefund(actorId: string, refundRowId: string): P
       .where(and(eq(paymentRefunds.id, row.id), eq(paymentRefunds.status, "failed")))
       .returning({ id: paymentRefunds.id });
     if (changed.length !== 1) throw new DomainError("Diese Erstattung wurde gerade von jemand anderem bearbeitet.");
-    await audit(actorId, "refund.retry", "match", mId, { after: { refundRowId: row.id, previousCode: row.failureCode, amountCents: row.amountCents } }, tx);
+    await audit(actorId, "refund.retry", "match", mId, { after: { refundRowId: row.id, previousCode: row.failureCode, previousRefundId: row.refundId, amountCents: row.amountCents } }, tx);
     return mId;
   });
   // Nach dem Commit senden (nie ein Stripe-Aufruf in der Transaktion); scheitert der Versand, holt der Job runRefunds es nach
