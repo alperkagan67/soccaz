@@ -60,7 +60,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <GameModes signedIn={Boolean(user)} />
+      <GameModes signedIn={Boolean(user)} quiet />
 
       <HowItWorks />
 

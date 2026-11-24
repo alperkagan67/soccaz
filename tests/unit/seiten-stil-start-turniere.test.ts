@@ -28,9 +28,11 @@ describe("AC-30 e: höchstens vier Schriftgrößen (base als Fließtext zählt m
 
 describe("AC-30 b: eine Hauptaktion je Ansicht", () => {
   it("Start: genau ein btn-primary (Angemeldete: Weiter zu Meine Spiele, Gäste: Jetzt starten), GameModes und HowItWorks keins", () => {
-    expect(count(START, /\bbtn-primary\b/g)).toBe(1);
+    expect(count(["src/app/page.tsx", "src/components/HowItWorks.tsx"], /\bbtn-primary\b/g)).toBe(1);
     expect(src("src/app/page.tsx")).toMatch(/btn btn-primary" data-testid="home-main-action"/);
-    expect(count(["src/components/GameModes.tsx", "src/components/HowItWorks.tsx"], /\bbtn-primary\b/g)).toBe(0);
+    expect(count(["src/components/HowItWorks.tsx"], /\bbtn-primary\b/g)).toBe(0);
+    // GameModes hat btn-primary nur im Nicht-quiet-Zweig (PR 4); die Startseite setzt quiet
+    expect(src("src/app/page.tsx")).toMatch(/<GameModes signedIn=\{Boolean\(user\)\} quiet \/>/);
   });
   it("Turnierliste: keine Hauptaktion in den Zeilen (Team anmelden ist ruhig)", () => {
     expect(count(TURNIERE, /\bbtn-primary\b/g)).toBe(0);
