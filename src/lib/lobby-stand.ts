@@ -2,6 +2,7 @@
 // Die Knöpfe selbst bleiben in ihren Bausteinen (Handler unverändert); die Seite reicht `aktion` an sie weiter, nur der Besitzer der Hauptaktion ist btn-primary, alle anderen btn-ghost.
 // Keine Zahlungs-Rechtsfolge in der Zeile: Preis- und Zusagetexte stehen NUR in zahlungspflicht-texte.ts.
 import type { LobbyFehlerFall } from "./lobby-fehler";
+import { ZP } from "./zahlungspflicht-texte";
 
 export type LobbyAktion = "anmelden" | "annehmen" | "beitreten" | "ersatz" | "karte" | "freigeben" | "abstimmen" | "vorschlagen" | "bereit" | "final" | "spielseite" | null;
 
@@ -25,6 +26,8 @@ export type LobbyStandInput = {
   canJoinAsSubstitute: boolean;
   teamFull: boolean;
   cardOn: boolean; // Kartenmodell für dieses Spiel
+  /** Kartenmodell und Preis unbekannt (preisZustand = offen, src/lib/zahlungspflicht.ts): die Letzte Bestätigung ist noch nicht möglich, Dein Stand nennt den Grund statt einer Hauptaktion (Backlog 233, R-T409). */
+  priceOpen?: boolean;
   cardReady: boolean;
   chargeFailure: LobbyFehlerFall | null; // eigene Abbuchung fehlgeschlagen: Fall (lobby-fehler.ts), sonst null
   minReady: number;
@@ -65,7 +68,10 @@ export function lobbyStand(s: LobbyStandInput): LobbyStand {
     return { zeile: s.participant ? "Die Captains wählen Uhrzeit und Halle. Bereit machen kannst du danach." : "Die Captains wählen Uhrzeit und Halle.", aktion: null };
   }
   // Captain mit komplett bereitem Team bestätigt, auch ohne selbst in der Lobby zu stehen (complete verlangt, dass alle Eingeteilten bereit sind)
-  if (s.finalTeam && !s.finalTeam.confirmed && s.finalTeam.complete) return { zeile: "Dein Team ist komplett bereit. Nächster Schritt: die Letzte Bestätigung.", aktion: "final" };
+  if (s.finalTeam && !s.finalTeam.confirmed && s.finalTeam.complete) {
+    if (s.priceOpen) return { zeile: `Dein Team ist komplett bereit. ${ZP.finalPriceOpen}`, aktion: null }; // keine Hauptaktion, solange der Server die Bestätigung abweist
+    return { zeile: "Dein Team ist komplett bereit. Nächster Schritt: die Letzte Bestätigung.", aktion: "final" };
+  }
   if (!s.participant) {
     if (s.canJoin) return { zeile: "Du bist noch nicht dabei. Nächster Schritt: dem Spiel beitreten.", aktion: "beitreten" };
     if (s.teamFull) return { zeile: "Für dein Team ist kein Platz mehr frei.", aktion: null };

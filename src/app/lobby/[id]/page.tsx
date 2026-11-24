@@ -25,6 +25,7 @@ import { chargeFailureText } from "@/lib/charge-failure-text";
 import { graceText } from "@/lib/grace";
 import { lobbySicht, personRef } from "@/lib/lobby-namen";
 import { lobbyStand, mainTermOption } from "@/lib/lobby-stand";
+import { istZahlungspflichtig, preisZustand } from "@/lib/zahlungspflicht";
 import { lobbyFehlerFall } from "@/lib/lobby-fehler";
 import { isVenueManager } from "@/server/venue-access-rules";
 import { MANDATE_TEXT } from "@/server/payments/card-setup";
@@ -195,6 +196,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
     canJoinAsSubstitute: v.canJoinAsSubstitute,
     teamFull: v.teamFull,
     cardOn,
+    priceOpen: preisZustand(cardOn, payments.priceCents) === "offen",
     cardReady: hasCard(user?.id ?? ""),
     chargeFailure: myFailure ? lobbyFehlerFall(myFailure) : null,
     minReady: MIN_READY_PER_TEAM,
@@ -288,7 +290,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           matchId={match.id}
           paymentsOn={payments.enabled && !cardOn}
           minPlayers={MIN_READY_PER_TEAM}
-          payable={cardOn && payments.priceCents !== null && payments.priceCents > 0}
+          payable={istZahlungspflichtig(cardOn, payments.priceCents)}
+          priceOpen={preisZustand(cardOn, payments.priceCents) === "offen"}
           amountText={estimateCents !== null ? formatEuro(estimateCents) : null}
           myTeamId={myFinalTeamId}
           primary={stand.aktion === "final"}
@@ -489,7 +492,8 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           matchId={match.id}
           paymentsOn={payments.enabled && !cardOn}
           minPlayers={MIN_READY_PER_TEAM}
-          payable={cardOn && payments.priceCents !== null && payments.priceCents > 0}
+          payable={istZahlungspflichtig(cardOn, payments.priceCents)}
+          priceOpen={preisZustand(cardOn, payments.priceCents) === "offen"}
           amountText={estimateCents !== null ? formatEuro(estimateCents) : null}
           myTeamId={myFinalTeamId}
           primary={false}

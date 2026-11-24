@@ -1,5 +1,6 @@
 // Zusage der Halle fuer Turniere (Vertrag 012, M5-7b, Plan 19.3/19.11/19.12). Der Betreiber einer Halle MIT Zugang sagt ein fixiertes Turnier zu (Snapshot "Zugang noetig"); ohne Zusage ist es
-// nie abbuchbar (hallZusageOk) und wird zur Frist abgesagt. Es gibt KEIN "Ablehnen" (Entscheid t2q F4, Backlog 161): Nicht-Zusage = Absage zur Frist, dafuer die Erinnerung 24 h und 6 h vorher.
+// nie abbuchbar (hallZusageOk) und wird zur Frist abgesagt. Backlog 161 (Plan docs/design/plan-turnier-ablehnen.md): die Halle kann auch ABLEHNEN (declineTournamentVenue, nur Grund-Kategorie, kein Freitext
+// an Teams); die Ablehnung sagt nichts ab: Frist-Absage wie bisher, der Veranstalter waehlt eine andere Halle (reopenRosters + setTournamentVenue) oder sagt selbst ab.
 //
 // Beweisprotokoll: kein App-Aufruf einer Beweisfunktion in dieser Transaktion (Zaehlersperre vor dem COMMIT waere ein Deadlock-Muster). Der Eintrag entsteht durch den DEFERRABLE-Trigger auf
 // tournaments (Nachlieferung 009 M3, Migration 0054, Variante T): UPDATE venue_confirmed_at NULL -> Wert. DIESE Datei setzt nur die Spalten.
@@ -9,10 +10,12 @@ import { db } from "@/db";
 import { auditLog, paymentCharges } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { tournamentTeams, tournaments } from "@/db/schema-league";
+import { DECLINE_LABELS, validateDecline } from "@/lib/hall-decline";
 import { formatEuro } from "@/lib/money";
 import { formatDateTime } from "@/lib/time";
 import { audit } from "./audit";
 import { notifyUsers } from "./notifications";
+import { hasTournamentChargeRows } from "./payments/tournament-cancel";
 import { DomainError } from "./teams";
 import type { Tx } from "./tx";
 import { chargeDueAt, lockTournament } from "./tournaments";
@@ -37,7 +40,25 @@ export function hallReminderText(tournamentName: string, hours: number): string 
   return `${tournamentName}: Die Halle hat noch nicht zugesagt. Ohne Zusage fällt das Turnier aus. Die Frist ist in etwa ${hours} Stunden.`;
 }
 
+/**
+ * Erinnerung nach einer Ablehnung der Halle (Plan 4): nennt keine Rechtsfolge, keine Namen Dritter, nie den Freitext. "kann nicht ausrichten" statt "abgesagt": das Turnier selbst ist NICHT abgesagt.
+ * Zwei Fassungen: nur der Veranstalter kann eine andere Halle waehlen oder das Turnier absagen, die Captains erfahren nur, dass er entscheidet.
+ */
+export function hallDeclinedReminderText(tournamentName: string, hours: number, forOrganizer = true): string {
+  return forOrganizer
+    ? `${tournamentName}: Die Halle kann das Turnier nicht ausrichten. Wähle eine andere Halle oder sage das Turnier ab. Die Frist ist in etwa ${hours} Stunden.`
+    : `${tournamentName}: Die Halle kann das Turnier nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab. Die Frist ist in etwa ${hours} Stunden.`;
+}
+
+/** Mitteilung an Veranstalter und Captains bei einer Ablehnung: Turnier, Halle und die Kategorie in Worten; nie der Freitext, nie der Betreiber. */
+export function hallDeclinedText(tournamentName: string, venueName: string, code: keyof typeof DECLINE_LABELS): string {
+  return `${venueName} kann ${tournamentName} nicht ausrichten (Grund: ${DECLINE_LABELS[code]}). Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.`;
+}
+
 const NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht zusagen.";
+/** Meldung an die Halle: die Ablehnung ist endgueltig (Entscheid t2q); Wortlaut auch fuer Hinweis und Rueckmeldung der Oberflaeche (PR 2). Entwurf, keine Rechtsaussage. */
+export const HALL_DECLINE_FINAL = "Die Ablehnung ist endgültig. Bitte den Veranstalter, die Halle erneut zu wählen.";
+const DECLINE_NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht ablehnen.";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -64,6 +85,9 @@ export async function confirmTournamentVenue(userId: string, tournamentId: strin
     if (!t.venueId || !(await hasVenueAccess(t.venueId, userId, tx))) throw new DomainError(NOT_POSSIBLE);
     if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt) throw new DomainError(NOT_POSSIBLE);
     if (t.venueConfirmedAt) return { confirmed: false }; // schon zugesagt: nichts aendern, kein Fehler
+    // Entscheid t2q (2026-11-24): die Entscheidung der Halle je Anfrage ist ENDGUELTIG (append-only, Veranstalter und Teams sind evtl. schon informiert). Will die Halle doch, waehlt der Veranstalter sie erneut
+    // (neue Anfrage, neuer Beweiseintrag; der Hallenwechsel setzt die Ablehnung zurueck). Die Meldung geht nur an einen Berechtigten (Zugang zur Halle ist oben geprueft).
+    if (t.venueDeclinedAt) throw new DomainError(HALL_DECLINE_FINAL);
     const now = opts.now ?? (await dbNow(tx));
     const due = await chargeDueAt(tx, t);
     // dieselbe Regel wie die Abbuchungspruefung (zusageRequired): verlangt sie eine Zusage, nimmt diese Aktion sie an (Snapshot true ODER Live-Pflicht vor der Frist)
@@ -91,12 +115,66 @@ export async function confirmTournamentVenue(userId: string, tournamentId: strin
   });
 }
 
+/**
+ * Ablehnung der Halle mit Grund (Backlog 161, Plan 2/3). Gleiche Berechtigung wie die Zusage (aktiver Zugang zur Halle DES Turniers, Reihenfolge Pruefung ohne Sperre -> Turniersperre -> Berechtigung erneut) und
+ * dieselbe neutrale Antwort bei jedem Mangel. Erlaubt nur: Status payment, kein Bracket, nicht abgeschlossen, Snapshot verlangt die Zusage, Frist nicht vorbei, noch keine Zusage und KEINE Abbuchungszeile
+ * (ab der ersten Abbuchung bleibt nur die Absage durch Admin 1 mit Erstattung). Idempotent: schon abgelehnt = nichts zu tun. Setzt nur die Spalten (Compare-and-set); den Beweiseintrag
+ * 'declined' schreibt der Trigger beim Commit. Der Freitext geht als Sitzungswert in die Transaktion (nur Beweisprotokoll), nie in Mitteilungen.
+ */
+export async function declineTournamentVenue(userId: string, tournamentId: string, input: { code?: string | null; text?: string | null }, opts: { now?: Date } = {}): Promise<{ declined: boolean }> {
+  return db.transaction(async (tx) => {
+    if (typeof tournamentId !== "string" || !UUID.test(tournamentId)) throw new DomainError(DECLINE_NOT_POSSIBLE);
+    const [pre] = await tx.select({ venueId: tournaments.venueId }).from(tournaments).where(eq(tournaments.id, tournamentId));
+    if (!pre?.venueId || !(await hasVenueAccess(pre.venueId, userId, tx))) throw new DomainError(DECLINE_NOT_POSSIBLE);
+    let t: Awaited<ReturnType<typeof lockTournament>>;
+    try {
+      t = await lockTournament(tx, tournamentId);
+    } catch (error) {
+      if (error instanceof DomainError) throw new DomainError(DECLINE_NOT_POSSIBLE);
+      throw error;
+    }
+    if (!t.venueId || !(await hasVenueAccess(t.venueId, userId, tx))) throw new DomainError(DECLINE_NOT_POSSIBLE);
+    // erst NACH der Berechtigung: Eingabefehler (Kategorie fehlt, "sonstiges" ohne Begruendung) sind Meldungen an den Betreiber
+    const check = validateDecline(input);
+    if (!check.ok) throw new DomainError(Object.values(check.fieldErrors)[0] ?? DECLINE_NOT_POSSIBLE);
+    if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt || t.venueConfirmedAt) throw new DomainError(DECLINE_NOT_POSSIBLE);
+    if (t.venueDeclinedAt) return { declined: false }; // schon abgelehnt: nichts aendern
+    if (await hasTournamentChargeRows(tx, t.id)) throw new DomainError(DECLINE_NOT_POSSIBLE); // ab der ersten Abbuchungszeile gesperrt (Entscheid t2q b)
+    const now = opts.now ?? (await dbNow(tx));
+    const due = await chargeDueAt(tx, t);
+    if (!(await zusageRequired(tx, t, due))) throw new DomainError(DECLINE_NOT_POSSIBLE);
+    if (due && now.getTime() >= due.getTime()) throw new DomainError("Die Frist ist vorbei. Das Turnier wird nicht mehr abgelehnt.");
+    if (check.text) {
+      // Freitext nur fuer den Trigger (Beweisprotokoll); Name der Sitzungsvariable baut die Datenbank (wie veto.ts), gilt bis zum Transaktionsende
+      await tx.execute(sql`select set_config(evidence_session_key('evidence_reason', ${t.id}::uuid, ${t.venueId}::uuid), ${check.text}, true)`);
+    }
+    const updated = await tx
+      .update(tournaments)
+      .set({ venueDeclinedAt: sql`now()`, venueDeclinedBy: userId, venueDeclineCode: check.code })
+      .where(and(eq(tournaments.id, t.id), isNull(tournaments.venueDeclinedAt), isNull(tournaments.venueConfirmedAt)))
+      .returning({ id: tournaments.id });
+    if (updated.length === 0) return { declined: false };
+    await audit(userId, "tournament.venue_decline", "tournament", t.id, { after: { venueId: t.venueId, code: check.code } }, tx); // nie der Freitext
+    try {
+      await tx.transaction(async (sp) => {
+        const [v] = await sp.select({ name: venues.name }).from(venues).where(eq(venues.id, t.venueId!));
+        const captains = await sp.select({ captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
+        const recipients = [...new Set([t.organizerId, ...captains.map((c) => c.captainId)])].filter((x): x is string => Boolean(x));
+        await notifyUsers(recipients, { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedText(t.name, v?.name ?? "Die Halle", check.code), url: `/turniere/${t.id}` }, sp);
+      });
+    } catch {
+      /* die Ablehnung gilt; die Mitteilung ist Zugabe */
+    }
+    return { declined: true };
+  });
+}
+
 async function dbNow(tx: Pick<typeof db, "execute">): Promise<Date> {
   const r = await tx.execute(sql`select now() as n`);
   return new Date((r.rows as { n: Date | string }[])[0].n);
 }
 
-export type HallConfirmation = { tournamentId: string; name: string; venueName: string; startsAt: Date | null; durationMin: number; teams: number; rentCents: number | null; due: Date | null };
+export type HallConfirmation = { tournamentId: string; name: string; venueName: string; startsAt: Date | null; durationMin: number; teams: number; rentCents: number | null; due: Date | null; declined: boolean; chargesStarted: boolean };
 
 /**
  * Turniere, die der Betreiber zusagen kann (Entscheid F1/F3): eigene Hallen, Status payment, eingefrorene Halle mit Snapshot "Zugang noetig", Zusage fehlt, Frist nicht vorbei. NAMENFREI:
@@ -119,6 +197,8 @@ export async function listTournamentConfirmations(userId: string, nowOverride?: 
       venueId: tournaments.venueId,
       snapshot: tournaments.venueAccessRequiredSnapshot,
       teams: sql<number>`(select count(*)::int from tournament_teams x where x.tournament_id = ${tournaments.id})`,
+      declinedAt: tournaments.venueDeclinedAt,
+      chargesStarted: sql<boolean>`exists (select 1 from payment_charges c where c.tournament_id = ${tournaments.id})`,
     })
     .from(tournaments)
     .innerJoin(venues, eq(venues.id, tournaments.venueId))
@@ -131,7 +211,7 @@ export async function listTournamentConfirmations(userId: string, nowOverride?: 
     if (due && now.getTime() >= due.getTime()) continue;
     // dieselbe Regel wie Abbuchungspruefung und Zusage (zusageRequired): auch ein Turnier mit Live-Pflicht (Zugang ohne Einloesen entstanden, N2) steht in der Liste
     if (!(await zusageRequired(db, { id: r.id, venueId: r.venueId, venueAccessRequiredSnapshot: r.snapshot, venueConfirmedAt: null }, due))) continue;
-    out.push({ tournamentId: r.id, name: r.name, venueName: r.venueName, startsAt: r.startsAt, durationMin: r.durationMin ?? 0, teams: Number(r.teams), rentCents: r.totalCents, due });
+    out.push({ tournamentId: r.id, name: r.name, venueName: r.venueName, startsAt: r.startsAt, durationMin: r.durationMin ?? 0, teams: Number(r.teams), rentCents: r.totalCents, due, declined: r.declinedAt !== null, chargesStarted: Boolean(r.chargesStarted) });
   }
   return out;
 }
@@ -164,7 +244,13 @@ export async function notifyHallConfirmReminders(nowOverride?: Date): Promise<nu
         if (done) return;
         const captains = await tx.select({ captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
         const recipients = [...new Set([t.organizerId, ...captains.map((x) => x.captainId)])].filter((x): x is string => Boolean(x));
-        await notifyUsers(recipients, { type: "system", title: "Halle hat noch nicht zugesagt", body: hallReminderText(t.name, stage), url: `/turniere/${t.id}` }, tx);
+        if (t.venueDeclinedAt) {
+          const others = recipients.filter((x) => x !== t.organizerId);
+          await notifyUsers([t.organizerId], { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedReminderText(t.name, stage, true), url: `/turniere/${t.id}` }, tx);
+          if (others.length > 0) await notifyUsers(others, { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedReminderText(t.name, stage, false), url: `/turniere/${t.id}` }, tx);
+        } else {
+          await notifyUsers(recipients, { type: "system", title: "Halle hat noch nicht zugesagt", body: hallReminderText(t.name, stage), url: `/turniere/${t.id}` }, tx);
+        }
         if (NOTIFY_ACCESS_HOLDERS && t.venueId) {
           // Savepoint (R-T247 c): ein Fehler bei den Zugangsinhabern darf weder die Erinnerung an den Veranstalter noch den Marker kippen
           try {

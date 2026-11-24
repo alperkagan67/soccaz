@@ -107,7 +107,7 @@ Jede Messung geht als Zeile in die Feedback-Liste (Spalte „Messwert“), nicht
 | Karte fehlt | Spieler ist beigetreten, keine Karte | „Dein Stand“: „Nächster Schritt: Karte hinterlegen“; Bereit gesperrt | Teamstand „nicht alle Karten hinterlegt“ | live |
 | Freigabe nötig | Testkarte 3-D-Secure | „Zahlung freigeben“ (einzige Hauptaktion), „Stattdessen eine andere Karte hinterlegen“ eingeklappt, Frist | Zeile „Abbuchung fehlgeschlagen“ mit Frist des Spielers bzw. „Anteil übernehmen“ | live (Fenster läuft) |
 | Abgelehnt | Testkarte abgelehnt/nicht gedeckt | Grund im Klartext, „Karte ändern“ als einzige Hauptaktion | wie oben | live (Fenster läuft) |
-| Fenster abgelaufen | Fenster vorbei, keine Lösung | Grund, „Das Zeitfenster ist abgelaufen. Dein Platz wird neu vergeben“, keine Aktion | Zeile „Der Platz wird neu vergeben“ | Spiel B, nur Ansicht |
+| Fenster abgelaufen | Fenster vorbei, keine Lösung | Grund, „Das Zeitfenster ist abgelaufen. Dein Platz wird neu vergeben“, **keine Hauptaktion**, nur der ruhige Link „Andere Spiele suchen“ (Ghost, Entscheid t2q 2026-11-24) | Zeile „Der Platz wird neu vergeben“ | Spiel B, nur Ansicht |
 | Nachrücker/Auto-Absage | Fenster abgelaufen, Warteliste | Nachrücker eingesetzt bzw. Spiel abgesagt, Erstattung | Meldung | Spiel B, nur Ansicht |
 Erwartung in jedem Fall: genau EINE orange Hauptaktion je Ansicht, Dritte sehen nur „Zahlung ausstehend“ ohne Grund (AC-6, AC-12, AC-20).
 

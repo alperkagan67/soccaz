@@ -32,6 +32,12 @@ describe("lobbyStand: Hauptaktion je Rolle", () => {
     expect(mit({ participant: false, finalTeam: { confirmed: false, complete: true } }).aktion).toBe("final");
     expect(mit({ ready: true, finalTeam: { confirmed: false, complete: false } }).aktion).toBeNull();
     expect(mit({ ready: true, finalTeam: { confirmed: true, complete: true } }).aktion).toBeNull();
+    // Backlog 233 (R-T409): Preis offen im Kartenmodell: keine Hauptaktion "final", Dein Stand nennt den Grund; mit bekanntem Preis wie bisher
+    const offen = mit({ cardOn: true, priceOpen: true, ready: true, finalTeam: { confirmed: false, complete: true } });
+    expect(offen.aktion).toBeNull();
+    expect(offen.zeile).toContain("Der Preis steht noch nicht fest");
+    expect(mit({ participant: false, cardOn: true, priceOpen: true, finalTeam: { confirmed: false, complete: true } }).aktion).toBeNull(); // auch der Captain ohne eigenen Platz
+    expect(mit({ cardOn: true, priceOpen: false, ready: true, finalTeam: { confirmed: false, complete: true } }).aktion).toBe("final");
   });
   it("Abgesagt: keine Aktion; vorbei: Zur Spielseite; eigener Abbuchungsfehler: EIN Schritt je Fall (5b)", () => {
     expect(mit({ status: "cancelled", active: false }).aktion).toBeNull();

@@ -58,6 +58,10 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   expect(ownLights.every((l) => l !== null)).toBe(true);
   expect(ownLights).toContain("red");
   await expect(member.getByTestId("light-legend")).toBeVisible();
+  // Pilot-P2: Team- und Spielerlinks in der Liste mindestens 44 px hoch (Touch-Ziel)
+  const linkHoehen = await memberCard.locator("[data-testid=board-team] a:visible, [data-testid=board-player] a:visible").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
+  expect(linkHoehen.length).toBeGreaterThan(0);
+  expect(linkHoehen.filter((h) => h < 44)).toEqual([]);
   await expect(card.getByRole("link", { name: "Zur Lobby" })).toBeVisible(); // in einer Lobby stehen schon beide Teams: kein Herausfordern mehr
 
   // Bestätigtes Spiel: die Bereiten werden grün
@@ -124,4 +128,35 @@ test("Spielsuche mit festem Termin steht mit Nummer, Kader und Herausfordern öf
   await b.goto(`/suche/${requestId}`);
   await acceptChallenge(b);
   await expect(b.getByTestId("game-number").filter({ hasText: "Spiel #" })).toContainText(`Spiel #${number}`);
+});
+
+// Pilot-P2 (PR B, R-T410): auch die Links der Suchkarten (Team, Herausforderungs-Ziel, Kader der offenen Suche) mindestens 44 px; je ein Bild Handy/Desktop zur Dichte (Anhang des Tests)
+test("Suchkarten: Team-, Ziel- und Kader-Links mindestens 44 px, Karte bleibt auf dem Handy bedienbar", async ({ browser }, testInfo) => {
+  const c = await (await browser.newContext()).newPage();
+  await newUser(c, "bsc");
+  const zielName = `Board Ziel ${run}`;
+  await createTeam(c, zielName);
+    const d = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await newUser(d, "bsd");
+  const fordertName = `Board Fordert ${run}`;
+  await createTeam(d, fordertName);
+  // Herausforderung an genau ein Team (SearchCard mit challenge-target): direkt angelegt, weil die Oberfläche heute eine Lobby statt einer Anfrage erzeugt
+  const ids = await query<{ id: string; name: string }>("select id, name from teams where name = any($1)", [[zielName, fordertName]]);
+  const zielId = ids.find((x) => x.name === zielName)!.id;
+  const fordertId = ids.find((x) => x.name === fordertName)!.id;
+  await query("insert into match_requests (team_id, city, starts_at, duration_min, strength, visibility, status, target_team_id) values ($1, 'Essen', now() + interval '8 days', 60, 3, 'public', 'open', $2)", [fordertId, zielId]);
+
+  await d.goto("/suche");
+  const karte = d.getByTestId("lobby-board").getByTestId("board-entry").filter({ hasText: fordertName });
+  await expect(karte).toBeVisible();
+  await expect(karte.getByTestId("challenge-target")).toBeVisible();
+  testInfo.annotations.push({ type: "karten-hoehe-390", description: String(Math.round((await karte.boundingBox())!.height)) });
+  await karte.screenshot({ path: testInfo.outputPath("suchkarte-390.png") });
+  await d.setViewportSize({ width: 1280, height: 900 });
+  await karte.screenshot({ path: testInfo.outputPath("suchkarte-1280.png") });
+  await d.setViewportSize({ width: 390, height: 844 });
+  const hoehen = await karte.locator("[data-testid=board-team] a:visible, [data-testid=challenge-target] a:visible").evaluateAll((els) => els.map((e) => ({ text: (e as HTMLElement).innerText.trim().slice(0, 24), h: Math.round(e.getBoundingClientRect().height) })));
+  expect(hoehen.length, "Team- und Zielteam-Link vorhanden").toBeGreaterThanOrEqual(2);
+  expect(hoehen.filter((x) => x.h < 44), "Links unter 44 px").toEqual([]);
+  expect(await d.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true); // kein seitliches Scrollen
 });

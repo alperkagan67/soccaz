@@ -100,7 +100,7 @@ describe("Streutext-Sperre: die Zahlungsknoepfe nutzen NUR die Konstanten", () =
     expect(read("src/app/turniere/[id]/TournamentCard.tsx")).toContain("consequence={coverAmounts ? coverConsequence(m.name, coverAmounts) : undefined}");
     expect(ZP.tournamentReadyPause).toContain("pausiert");
     const lobby = read("src/app/lobby/[id]/page.tsx");
-    expect(lobby).toContain("payable={cardOn && payments.priceCents !== null && payments.priceCents > 0}"); // FinalConfirm: Formel nur bei Zahlungspflicht (Kartenmodell, Preis > 0)
+    expect(lobby).toContain("payable={istZahlungspflichtig(cardOn, payments.priceCents)}"); // FinalConfirm: Formel nur bei Zahlungspflicht (Kartenmodell, Preis > 0), eine Quelle: src/lib/zahlungspflicht.ts (Backlog 233)
     expect(lobby).toContain("payments.chargeCents"); // EINE Quelle fuer alle Betraege der Lobby-Seite (lobby.ts: chargeAmount(price, finalShareCents ?? shareToCharge)), keine Inline-Rechnung
     expect(lobby).not.toMatch(/shareCents\(|shareDivisor\(|cardShareCents/);
     expect(lobby).toContain("estimateCents !== null ? <>{estimateFixed"); // die Kosten-Zeile zeigt denselben Betrag wie der Knopf

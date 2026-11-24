@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useHydrated } from "@/components/useHydrated";
 import {
@@ -83,11 +84,17 @@ export function MyActions({ matchId, mode, ready, hasTeam, main = null, card }: 
                     <p className="font-semibold">Abbuchung fehlgeschlagen</p>
                     <p className="text-sm" data-testid="charge-failed-reason">{card.failure.text}</p>
                   </div>
-                  {/* EIN nächster Schritt je Fall (lobby-fehler.ts): abgelaufen = keiner, Freigabe = Freigabe-Knopf (andere Karte nur eingeklappt), sonst Karte ändern */}
-                  {fall === "abgelaufen" && <p className="text-sm text-muted" data-testid="charge-failed-expired">Das Zeitfenster ist abgelaufen. Dein Platz wird neu vergeben.</p>}
+                  {/* EIN nächster Schritt je Fall (lobby-fehler.ts): abgelaufen = keiner (nur der ruhige Link „Andere Spiele suchen“, keine Hauptaktion), Freigabe = Freigabe-Knopf (andere Karte nur eingeklappt), sonst Karte ändern */}
+                  {fall === "abgelaufen" && (
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted" data-testid="charge-failed-expired">Das Zeitfenster ist abgelaufen. Dein Platz wird neu vergeben.</p>
+                      {/* ruhiger Ausweg (Ghost, KEINE zweite Hauptaktion; „Dein Stand“ bleibt ohne Aktion): Pilot-P2, Lauf 2 P2-7 */}
+                      <Link href="/suche" className="btn btn-ghost" data-testid="charge-failed-search">Andere Spiele suchen</Link>
+                    </div>
+                  )}
                   {fall === "freigabe" && (
                     <div className="space-y-3" data-testid="authorize-section">
-                      <p className="text-sm">Deine Bank braucht eine Freigabe der Zahlung. Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p>
+                      <p className="text-sm">Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p> {/* der Grund ("Die Bank braucht deine Freigabe der Zahlung.") steht schon oben in charge-failed-reason: nicht zweimal */}
                       <AuthorizeButton matchId={matchId} fake={card.fake} quiet={main !== "freigeben"} />
                       <details className="group" data-testid="charge-failed-other-card">
                         <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-sm font-semibold underline">

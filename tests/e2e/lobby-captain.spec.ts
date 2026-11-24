@@ -87,6 +87,12 @@ test("Fehlerzustand Karte: genau ein Primary (Karte ändern); abgelaufenes Fenst
   await query("update payment_charges set grace_until = now() - interval '5 minutes' where match_id = $1", [matchId]);
   await a.reload();
   await expect(a.getByTestId("charge-failed-expired")).toBeVisible({ timeout: 60_000 });
+  // ruhiger Ausweg statt Sackgasse (Pilot-P2): Ghost-Link, 44 px, KEINE Hauptaktion
+  const ausweg = a.getByTestId("charge-failed-search");
+  await expect(ausweg).toHaveText("Andere Spiele suchen");
+  await expect(ausweg).toHaveClass(/btn-ghost/);
+  await expect(ausweg).toHaveAttribute("href", "/suche");
+  expect((await ausweg.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(a.getByTestId("lobby-stand")).toHaveAttribute("data-aktion", "keine");
   await expect(a.locator("main .btn-primary")).toHaveCount(0);
 });
