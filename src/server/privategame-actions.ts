@@ -7,10 +7,12 @@ import { parseBerlinLocal } from "@/lib/time";
 import { INVITE_FORBIDDEN, createPrivateGame, isUuid, parseRentInput, regenerateGameInvite, revokeGameInvite } from "./privategame";
 import { requireUser } from "./session";
 import { DomainError } from "./teams";
+import { assertBereichOffen } from "./turnier-only";
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? "").trim();
 
 export async function createPrivateGameAction(_prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/app/privatspiel/neu");
   const startsAt = parseBerlinLocal(str(f, "startsAt"));
   if (!startsAt) return { error: "Bitte gib Datum und Uhrzeit an." };
@@ -49,10 +51,12 @@ async function inviteAction(matchId: string, run: (userId: string) => Promise<un
 
 /** Der Veranstalter zieht den Einladungslink zurück. */
 export async function revokeGameInviteAction(matchId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   return inviteAction(matchId, (uid) => revokeGameInvite(uid, matchId));
 }
 
 /** Der Veranstalter erzeugt einen neuen Einladungslink; der alte wird ungültig. */
 export async function regenerateGameInviteAction(matchId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   return inviteAction(matchId, (uid) => regenerateGameInvite(uid, matchId));
 }

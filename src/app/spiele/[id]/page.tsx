@@ -13,6 +13,8 @@ import { matchPhotosEnabled } from "@/lib/media-flags";
 import { RatingReveal } from "@/components/RatingReveal";
 import { getRatingReveal } from "@/server/rating-reveal";
 import { canViewMatch, getMatchPage } from "@/server/results";
+import { KommtBald } from "@/components/KommtBald";
+import { bereichGesperrt } from "@/server/turnier-only";
 import { PersonName } from "@/components/PersonName";
 import { autorLabel, personRef } from "@/lib/lobby-namen";
 import { getCurrentUser } from "@/server/session";
@@ -35,6 +37,9 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   if (!page) notFound();
   // Nicht öffentlich sichtbare Spiele (Privatspiel, private Herausforderung): Existenz nicht verraten, gleiche Antwort wie bei einem nicht vorhandenen Spiel
   if (!canViewMatch(page)) notFound();
+
+  // TURNIER_ONLY: nur Spiele eines Turniers (Ergebnis melden) bleiben offen; alle anderen Spiele zeigen "Kommt bald" (Plattform-Admin ausgenommen)
+  if (page.match.kind !== "tournament" && (await bereichGesperrt())) return <KommtBald />;
 
   const { match, events, live, result, phase, participants } = page;
   const v = page.viewer;

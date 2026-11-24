@@ -5,6 +5,7 @@ import type { ActionState } from "@/lib/validation";
 import { addClip, deleteClip } from "./clips";
 import { requireUser } from "./session";
 import { DomainError } from "./teams";
+import { assertBereichOffen, assertSpielOffen } from "./turnier-only";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -17,6 +18,7 @@ async function guarded(fn: () => Promise<void>): Promise<ActionState> {
 }
 
 export async function addClipAction(matchId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/${matchId}/uebersicht`);
   const result = await guarded(() => addClip(user.id, matchId, { url: String(f.get("url") ?? ""), title: String(f.get("title") ?? "") }));
   revalidatePath(`/lobby/${matchId}/uebersicht`);
@@ -24,6 +26,7 @@ export async function addClipAction(matchId: string, _prev: ActionState, f: Form
 }
 
 export async function deleteClipAction(matchId: string, clipId: string): Promise<ActionState> {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/lobby/${matchId}/uebersicht`);
   const result = await guarded(() => deleteClip(user.id, clipId, user.role === "admin"));
   revalidatePath(`/lobby/${matchId}/uebersicht`);
