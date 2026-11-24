@@ -1,6 +1,6 @@
-# G25-009 A2: Definer-Umstellung, Marker-Härtung, Entzug und URL-Wechsel (ENTWURF v5.2, nicht anwenden)
+# G25-009 A2: Definer-Umstellung, Marker-Härtung, Entzug und URL-Wechsel (ENTWURF v5.3, nicht anwenden)
 
-Status: **PLAN/ENTWURF v5.2** (v5.2 nach dem zweiten Delta-Review des security-reviewers, letzte Runde vor dem Merge; v5.1 nach dem Delta-Review des security-reviewers zu v5; Autor v2 bis v4: worker-1; v5: worker-2 als Editor, 2026-11-24, nach den Reviews w3 R-T395 und security-reviewer, beide REVIEW-CHANGES mit der Aussage „als Plan tragfähig“). Keine Migration unter `drizzle/`, nichts angewendet. Bau erst nach erneutem Review des Entwurfs (security-reviewer Pflicht, w3) **und** Hoster-Spike (NEEDS-USER, `docs/design/go-live-nutzerliste.md` Nr. 5); **Anwendung in Produktion** erst nach dem Spike. Bezug: `g25-009-db-rollenmodell.md` Abschnitte 5, 8, 10; Backlog 228 (1) und (2); GO-LIVE-AUDIT G25-009 und G25-009-B.
+Status: **PLAN/ENTWURF v5.3** (v5.3: drei kleine Nachträge nach w3 R-T397; v5.2 nach dem zweiten Delta-Review des security-reviewers, letzte Runde vor dem Merge; v5.1 nach dem Delta-Review des security-reviewers zu v5; Autor v2 bis v4: worker-1; v5: worker-2 als Editor, 2026-11-24, nach den Reviews w3 R-T395 und security-reviewer, beide REVIEW-CHANGES mit der Aussage „als Plan tragfähig“). Keine Migration unter `drizzle/`, nichts angewendet. Bau erst nach erneutem Review des Entwurfs (security-reviewer Pflicht, w3) **und** Hoster-Spike (NEEDS-USER, `docs/design/go-live-nutzerliste.md` Nr. 5); **Anwendung in Produktion** erst nach dem Spike. Bezug: `g25-009-db-rollenmodell.md` Abschnitte 5, 8, 10; Backlog 228 (1) und (2); GO-LIVE-AUDIT G25-009 und G25-009-B.
 
 ## 0. Änderungen v4 zu v5 (für das erneute Review)
 
@@ -49,6 +49,14 @@ Status: **PLAN/ENTWURF v5.2** (v5.2 nach dem zweiten Delta-Review des security-r
 | (4) | Runner: `SET` **awaitet**, zurückgelesen, **Direktverbindung geprüft**, im Produktionsmodus Abbruch bei fehlendem Wert | 4 (M3), 8 Punkt 13 |
 | (5) | `db-a2.mjs` stellt auch die **Tabellenrechte** aus M3 wieder her (Restore mit `--no-privileges` verliert sie) | 4a, 8 Punkt 9 |
 | (6) | **Ein** Schalter-Parser `scripts/lib/a2-switch.mjs` für Skripte und `src/instrumentation.ts` | 4 (M3), 11, 8 Punkt 11 |
+
+### Änderungen v5.2 zu v5.3 (w3 R-T397, drei Nits)
+
+| Punkt | Inhalt | Wo |
+|---|---|---|
+| (a) | Compose: `migrate` und `app` bekommen heute dieselbe `DATABASE_URL` (Superuser): eigene Variable `DATABASE_URL_MIGRATE` für den Dienst `migrate` | 6 Schritt 3, 11 |
+| (b) | `db-roles.mjs` und `db-owner.mjs` laufen auf dem Server-Host, nicht im `migrate`-Container | 6 Schritt 2 |
+| (c) | Release-Hinweis: Staging braucht `SOCAZ_REQUIRE_A2=0` ausdrücklich; Sätze in BETRIEB, `pilot-plan.md` 4.1 und `pilot-vorprobe.md` (Zeile A5) als Aufgabe im A2-PR | 11 |
 
 ## 1. Ist (gelesen aus dem Repo)
 - `evidence_set_setting(text,text,uuid,text)` und `evidence_late_attempt(uuid,uuid,uuid)` (0054) sind `LANGUAGE plpgsql`, **SECURITY INVOKER**, ohne festen `search_path`.
@@ -110,11 +118,11 @@ Der Ops-Pool ruft nur die ersten beiden Funktionen, der App-Pool keine der Ops- 
 ## 6. Deploy-Reihenfolge (w4 R-T361, Variante b; bindend; v5 mit Befehlen)
 Voraussetzung ist die Anmeldung als Betreiber auf dem Server; die Befehle stehen in `docs/BETRIEB.md` (Abschnitte „Update“ und „Sicherung und Wiederherstellung“, dort wird mit A2 ein Unterabschnitt „A2-Deploy“ ergänzt, Aufgabe im Bau). Platzhalter in spitzen Klammern; Zugangsdaten nie im Befehl, nur aus der Umgebung.
 1. **Vorher sichern:** `docker compose exec backup sh /backup-loop.sh once` (Manifest prüfen).
-2. **Rollen VOR `migrate`:** `node scripts/db-roles.mjs --apply` mit der Admin-Verbindung des Hosters (nicht aus der App-Umgebung); Passwörter nur aus der Umgebung. Rollen prüfen: `select rolname from pg_roles where rolname in ('soccaz_owner','soccaz_migrate','soccaz_app','soccaz_ops')` (vier Zeilen).
+2. **Rollen VOR `migrate`:** `node scripts/db-roles.mjs --apply` mit der Admin-Verbindung des Hosters. Beide Skripte (`db-roles.mjs`, später `db-owner.mjs`) laufen **auf dem Server-Host im Repo-Checkout mit Node** (nicht im `migrate`-Container und nicht im App-Container); die Admin-URL steht **nur in der Umgebung dieser Sitzung** (nicht in `.env`, nicht im Repo, nicht in der App-Umgebung); Passwörter nur aus der Umgebung. Rollen prüfen: `select rolname from pg_roles where rolname in ('soccaz_owner','soccaz_migrate','soccaz_app','soccaz_ops')` (vier Zeilen).
 3. **EIN Wartungsfenster, die alte Instanz zuerst stoppen:**
    - `git pull` und `docker compose build app migrate`
    - `docker compose stop app` (keine laufende alte Instanz während der Migration)
-   - `docker compose run --rm -e SOCAZ_REQUIRE_A2=1 migrate` (Direktverbindung zur Datenbank, nicht über den Pooler; der Wert `1` entspricht `on`, Abbildung in Abschnitt 4) (Standardbefehl `node scripts/migrate.mjs`: M1, M2, M3)
+   - `docker compose run --rm -e SOCAZ_REQUIRE_A2=1 migrate` (Direktverbindung zur Datenbank, nicht über den Pooler; der Wert `1` entspricht `on`, Abbildung in Abschnitt 4; der Dienst `migrate` liest nach A2 **`DATABASE_URL_MIGRATE`** (Rolle `soccaz_migrate`), nicht mehr die gemeinsame `DATABASE_URL`, siehe Abschnitt 11) (Standardbefehl `node scripts/migrate.mjs`: M1, M2, M3)
    - `node scripts/db-owner.mjs --apply` für Tabellen und übrige Objekte (Reihenfolge gegen BETRIEB geklärt, Abschnitt 4 „Eigentum“)
    - neue Umgebung der App: `DATABASE_URL` auf `soccaz_app`, `DATABASE_URL_OPS` auf `soccaz_ops`, `SOCAZ_REQUIRE_A2=1` (Abschnitt 7), `sslmode` in beiden Adressen gleich
    - `docker compose up -d app`
@@ -169,6 +177,8 @@ Drei Migrationen mit Down ca. 2 bis 3 Tage, Tests ca. 3 Tage, Runner `db-a2.mjs`
 - **Nie parallel zu einem anderen Migrations-PR** (Nummern- und Schema-Konflikt, Beweisprotokoll-Pfad); Tasks mit **Schema-Annahmen ruhen** vom Baustart bis zum Merge (CLAUDE.md: Migrationen laufen nie parallel zu anderen Tasks mit Schema-Annahmen).
 - **Nummernregel:** die Nummern 0059 bis 0061 sind eine Annahme; beim Baustart gilt die nächste freie Nummer in `drizzle/` und im Journal, und es bleibt bei **M1 < M2 < M3** (Reihenfolge der Nummern = Reihenfolge der Anwendung; ein Nummernsprung dazwischen ist erlaubt, eine Umordnung nicht).
 - **Down-Skripte** (`drizzle/down/…_down.sql`) für alle drei **im selben PR**, mit den Eigenschaften aus Abschnitt 4 und Test 8 Punkt 7.
+- **`docker-compose.yml`, Datenbankzugänge (v5.3, a):** heute bekommen der Dienst `migrate` (Zeile 27) und der Dienst `app` (Zeile 43) **dieselbe** `DATABASE_URL` des Datenbank-Superusers. Nach A2 muss `migrate` als `soccaz_migrate` laufen und `app` als `soccaz_app` (dazu `DATABASE_URL_OPS` für den Ops-Pool). Im Bau: eigene Variable **`DATABASE_URL_MIGRATE`** für `migrate` (der Runner `scripts/migrate.mjs` liest sie vor `DATABASE_URL`, ohne sie fällt er auf `DATABASE_URL` zurück: Entwicklung und CI bleiben unverändert); `app` bekommt `DATABASE_URL` (Rolle `soccaz_app`) und `DATABASE_URL_OPS`; die Passwörter der drei Rollen stehen **nur in der Umgebung des Servers**. Ohne diese Trennung scheitert `docker compose up` (`depends_on` `migrate`, falsche Rolle) oder die App bliebe Superuser (Härtung wirkungslos); der Start-Check prüft die Rolle der Pools (Abschnitt 7 Punkt 4).
+- **Release-Hinweis (v5.3, c):** nach dem A2-Release startet **jede** Instanz mit `NODE_ENV=production` ohne `SOCAZ_REQUIRE_A2` **nicht** (Exit 78); Staging braucht `SOCAZ_REQUIRE_A2=0` **ausdrücklich**. Aufgabe im A2-PR (je ein Satz): `docs/BETRIEB.md` (Abschnitt Update), `docs/design/pilot-plan.md` Abschnitt 4.1 (Umgebung) und `docs/design/pilot-vorprobe.md` (Zeile A5 prüft `NODE_ENV=production`: dort die Variable ergänzen).
 - **Umgebungsänderungen durch den Start-Check (v5.1, Punkt 4):** (1) `docker-compose.yml` (Dienst `app`) reicht `SOCAZ_REQUIRE_A2` an die App durch (normale Repo-Datei, im Bau); (2) ein künftiger CI-/E2E-Schritt mit `next start` oder `NODE_ENV=production` bekommt `SOCAZ_REQUIRE_A2=0` (**NEEDS-USER**: `.github/workflows/`, `playwright.config`/`scripts/ci-gate.mjs` und `tests/e2e/helpers.ts` sind Schutzdateien; die heutige CI nutzt den Dev-Server und ist nicht betroffen); (3) Eintrag in GO-LIVE-AUDIT G25-009-B: „`SOCAZ_REQUIRE_A2` = `1` in Produktion, `0` nur bewusst in Staging“ (durch den Task Manager). Die Liste steht auch in `docs/BETRIEB.md` (A2-Deploy).
 - Neue Dateien im selben PR: `scripts/db-a2.mjs`, `scripts/lib/a2-switch.mjs` (mit `a2-switch.d.mts`), die Änderung von `scripts/migrate.mjs`, `src/instrumentation.ts` und die Down-Skripte mit Journalzeile.
 - Der Runner `scripts/db-a2.mjs`, die Änderung von `scripts/migrate.mjs` (Verbindungsoption), die Instrumentation (Start-Check) und die BETRIEB-Abschnitte (A2-Deploy, Restore-Ablauf, Betriebstext Exit 75/78) gehören **in denselben PR**: ein Deploy, ein Review.
