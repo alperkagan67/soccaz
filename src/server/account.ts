@@ -5,7 +5,7 @@ import { matchParticipants, matches, notifications, paymentCharges, paymentDispu
 import { evidenceActor, ledgerEntries, payments, receipts } from "@/db/schema-finance";
 import { tournamentMatches, tournamentPlayers, tournaments } from "@/db/schema-league";
 import { lockGamesNoWait } from "./tournaments";
-import { comments, media } from "@/db/schema-content";
+import { comments, media, venueReviews } from "@/db/schema-content";
 import { mvpVotes, playerStats, userBadges, userReliability } from "@/db/schema-community";
 import { CITIES } from "@/lib/validation";
 import { ACCENTS, FEET } from "@/lib/profile-options";
@@ -108,7 +108,7 @@ export async function exportMyData(userId: string) {
     .select({ id: users.id, email: users.email, name: users.name, bio: users.bio, city: users.city, position: users.position, profilePublic: users.profilePublic, locale: users.locale, createdAt: users.createdAt, onboardedAt: users.onboardedAt, termsAcceptedAt: users.termsAcceptedAt })
     .from(users)
     .where(eq(users.id, userId));
-  const [memberships, participations, myComments, stats, badges, reliability, ledger, myPayments, myReceipts, myNotifications, votes] = await Promise.all([
+  const [memberships, participations, myComments, stats, badges, reliability, ledger, myPayments, myReceipts, myNotifications, votes, myReviews] = await Promise.all([
     db.select({ team: teams.name, role: teamMembers.role, joinedAt: teamMembers.joinedAt }).from(teamMembers).innerJoin(teams, eq(teams.id, teamMembers.teamId)).where(eq(teamMembers.userId, userId)),
     db.select({ matchId: matchParticipants.matchId, readyAt: matchParticipants.readyAt, noShow: matchParticipants.noShow }).from(matchParticipants).where(eq(matchParticipants.userId, userId)),
     db.select({ targetType: comments.targetType, targetId: comments.targetId, body: comments.body, rating: comments.rating, status: comments.status, createdAt: comments.createdAt }).from(comments).where(eq(comments.authorId, userId)),
@@ -123,9 +123,13 @@ export async function exportMyData(userId: string) {
     db.select({ number: receipts.number, kind: receipts.kind, amountCents: receipts.amountCents, issuedAt: receipts.issuedAt }).from(receipts).where(eq(receipts.userId, userId)),
     db.select({ type: notifications.type, title: notifications.title, body: notifications.body, createdAt: notifications.createdAt }).from(notifications).where(eq(notifications.userId, userId)).limit(500),
     db.select({ matchId: mvpVotes.matchId, candidateId: mvpVotes.candidateId, at: mvpVotes.at }).from(mvpVotes).where(eq(mvpVotes.voterId, userId)),
+    db
+      .select({ venueId: venueReviews.venueId, matchId: venueReviews.matchId, tournamentId: venueReviews.tournamentId, floor: venueReviews.floor, changingRooms: venueReviews.changingRooms, cleanliness: venueReviews.cleanliness, showers: venueReviews.showers, parking: venueReviews.parking, body: venueReviews.body, status: venueReviews.status, createdAt: venueReviews.createdAt })
+      .from(venueReviews)
+      .where(eq(venueReviews.userId, userId)),
   ]);
   const card = await exportCardData(userId);
-  return { exportedAt: new Date().toISOString(), card, user, memberships, participations, comments: myComments, stats: stats[0] ?? null, badges, reliability: reliability[0] ?? null, ledger, payments: myPayments, receipts: myReceipts, notifications: myNotifications, mvpVotes: votes };
+  return { exportedAt: new Date().toISOString(), card, user, memberships, participations, comments: myComments, stats: stats[0] ?? null, badges, reliability: reliability[0] ?? null, ledger, payments: myPayments, receipts: myReceipts, notifications: myNotifications, mvpVotes: votes, venueReviews: myReviews };
 }
 
 /**
@@ -246,6 +250,8 @@ export async function deleteAccount(userId: string) {
 
     await tx.delete(teamMembers).where(eq(teamMembers.userId, userId));
     await tx.delete(comments).where(eq(comments.authorId, userId));
+    // Hallenbewertungen (010 M1, Entscheid t2q 2026-11-24): Text ENTFERNEN, Nutzerbezug loeschen; nur die Zahlen bleiben anonym im Durchschnitt. Das Konto wird nie geloescht (nur anonymisiert), der Fremdschluessel ON DELETE SET NULL wirkt hier nie.
+    await tx.update(venueReviews).set({ body: null, userId: null }).where(eq(venueReviews.userId, userId));
     await tx.delete(media).where(and(eq(media.ownerId, userId), inArray(media.kind, ["avatar", "match_photo"])));
     await tx.delete(notifications).where(eq(notifications.userId, userId));
     await tx.execute(sql`delete from push_subscriptions where user_id = ${userId}`);
