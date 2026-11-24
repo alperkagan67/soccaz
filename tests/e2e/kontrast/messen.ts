@@ -27,6 +27,8 @@ type Item = {
   needPixel: boolean;
   /** Das Element liegt in einem Vorfahren mit position fixed oder sticky (Kopfzeile, untere Leiste): sein Grund ist die Leiste selbst und wird mit ihr gemessen. */
   inFixed?: boolean;
+  /** Ein Vorfahre hat position fixed (nicht nur sticky): im Ganzseiten-Bild sitzt so ein Element nicht an seiner Bildschirmstelle (der Bildschirm wird dafür auf die Seitenhöhe vergrößert, untere Leisten rutschen ans Seitenende); es wird darum aus einem Bildschirm-Bild bei Scrollstand 0 gemessen. */
+  fixedPos?: boolean;
   /** Bei Text: die Zeilenrechtecke des TEXTES (Range über die Textknoten), nie das Rechteck des ganzen Elements; sonst das Elementrechteck. */
   rects: Rect[];
   /** Clip-Rechtecke (Innenfläche) der Vorfahren mit overflow ungleich visible: der Text wird in Node darauf zugeschnitten (truncate, ellipsis, line-clamp, Scrollbereiche). */
@@ -138,6 +140,10 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
     return out;
   };
   /** Hintergrundschichten (unten zuerst) und ob ein Bild/Verlauf oder ein überlappendes Element dahinter liegt. */
+  function inFixedPos(el: Element): boolean {
+    for (let e: Element | null = el; e; e = e.parentElement) if (getComputedStyle(e).position === "fixed") return true;
+    return false;
+  }
   function inFixedBar(el: Element): boolean {
     for (let e: Element | null = el; e; e = e.parentElement) {
       const p = getComputedStyle(e).position;
@@ -203,6 +209,7 @@ function collectInPage(maxFocus: number): { items: Item[]; errors: string[] } {
         base,
         needPixel: b.needPixel || rects.some((rc) => overlapped(el, rc)),
         inFixed: inFixedBar(el),
+        fixedPos: inFixedPos(el),
         rects,
         clips: clipsOf(el),
         disabled: el.closest("[disabled], [aria-disabled='true']") !== null,
@@ -394,10 +401,13 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         // Text unsichtbar schalten, damit nur der Grund gemessen wird. Feste und klebende Leisten (untere Leiste, Kopfzeile) und die Dev-Anzeige von Next liegen im Ganzseiten-Bild an der Stelle des ERSTEN Bildschirms
         // und decken dort Text darunter ab (Artefakt, kein Befund: beim Scrollen ist der Text frei). Darum zwei Bilder: A ohne diese Leisten für Text außerhalb der Leisten, B mit Leisten für Text in den Leisten.
         const style = await page.addStyleTag({ content: "*,*::before,*::after{color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important;caret-color:transparent!important}nextjs-portal,[data-nextjs-toast],[data-nextjs-dev-tools-button]{display:none!important}" });
+        let pngView: Buffer | null = null;
         let pngBar: Buffer | null = null;
         let pngFree: Buffer | null = null;
         try {
-          pngBar = needIdx.some((i) => items[i].inFixed) ? await page.screenshot({ fullPage: true, animations: "disabled" }) : null;
+          // fixed: Bildschirm-Bild bei Scrollstand 0 (dort liegt die Leiste wirklich); nur sticky: Ganzseiten-Bild mit Leisten
+          pngView = needIdx.some((i) => items[i].fixedPos) ? await page.screenshot({ fullPage: false, animations: "disabled" }) : null;
+          pngBar = needIdx.some((i) => items[i].inFixed && !items[i].fixedPos) ? await page.screenshot({ fullPage: true, animations: "disabled" }) : null;
           const hidden = await page.evaluate(() => {
             const out: HTMLElement[] = [];
             for (const el of Array.from(document.body.querySelectorAll("*")) as HTMLElement[]) {
@@ -427,8 +437,9 @@ export async function measurePage(page: Page, meta: PageMeta, maxFocus = 30): Pr
         }
         const plans = needIdx.map((i) => planSamples(items[i].rects, MAX_PIXELS));
         const sampled: number[][] = new Array(needIdx.length);
-        for (const [bar, shot] of [[true, pngBar], [false, pngFree]] as const) {
-          const ks = needIdx.map((_, k) => k).filter((k) => Boolean(items[needIdx[k]].inFixed) === bar);
+        const sourceOf = (k: number) => (items[needIdx[k]].fixedPos ? "view" : items[needIdx[k]].inFixed ? "bar" : "free");
+        for (const [source, shot] of [["view", pngView], ["bar", pngBar], ["free", pngFree]] as const) {
+          const ks = needIdx.map((_, k) => k).filter((k) => sourceOf(k) === source);
           if (ks.length === 0 || !shot) continue;
           const part = await page.evaluate(samplePixels, { b64: shot.toString("base64"), rects: ks.map((k) => plans[k].rects), per: ks.map((k) => plans[k].perRect) });
           ks.forEach((k, j) => (sampled[k] = part[j]));

@@ -19,7 +19,7 @@ import { ALL_MATCHES, mayAnnounceToAll, subscribeToLobby } from "@/server/realti
 import { GET as eventsGET } from "@/app/api/spiele/[id]/events/route";
 import { teamCard } from "@/server/cards";
 import { setSetting } from "@/server/settings";
-import { runChargesIfDue } from "@/server/payments/charge-trigger";
+import { drainBackgroundCharges, runChargesIfDue } from "@/server/payments/charge-trigger";
 import { ledgerEntries } from "@/db/schema-finance";
 import { fixShare, privateListLocked, shareToCharge } from "@/server/wallet";
 import { cleanup, makeMatch, makeUser, reloadMatch, seedShare } from "./helpers";
@@ -819,6 +819,7 @@ describe("Privatspiel im Kartenmodell (Gegenstücke zu AC-4, AC-6, AC-8)", () =>
 
   it("AC-8: weniger als 48 Stunden vor Anstoß werden Austritt und Rauswurf abgelehnt (nach dem Fixieren); Bereit bleibt möglich, Fremde kommen nicht hinein", async () => {
     const g = await fixedCard(9, 12); // zwölf Plätze, zehn belegt: nur die Sperre kann einen Beitritt verhindern
+    await drainBackgroundCharges(); // Hintergrundlauf von finalConfirm abwarten (Testhaken, Backlog 190): kein Wettlauf mehr mit dem Test
     // Wettlauf beseitigen (gleiche Familie wie CI #202 Lauf 4): finalConfirm startet im Hintergrund die Abbuchung (void triggerChargesInBackground). Mit Anstoß in 24 h wäre sie sofort fällig und könnte
     // payment_charges anlegen, dann würfe der Austritt "Abbuchung begonnen" statt "48 Stunden". Deshalb VOR dem Zeitsprung ein Platz ohne Karte: das Spiel ist nie abbuchungsbereit (cards_missing),
     // egal wann der Hintergrundlauf auswertet; der Test prüft hart, dass keine Abbuchungszeile existiert.

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
-import { acceptChallenge } from "./flows";
+import { acceptChallenge, clickLinkUntilUrl } from "./flows";
 import { query } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
@@ -71,8 +71,7 @@ test("Offene Lobbys: öffentlich mit Nummer, Ampel pro Spieler, Stärke und Hera
   expect(afterOwn).toContain("green");
 
   // Die Lobby selbst ist für Gäste lesbar, mit Nummer und Ampel
-  await card.getByRole("link", { name: "Zur Lobby" }).click();
-  await expect(anon).toHaveURL(new RegExp(`/lobby/${matchId}$`));
+  await clickLinkUntilUrl(anon, card.getByRole("link", { name: "Zur Lobby" }), new RegExp(`/lobby/${matchId}$`));
   await expect(anon.getByTestId("game-number").filter({ hasText: "Spiel #" }).locator("visible=true")).toContainText(`Spiel #${number}`);
   await expect(anon.getByTestId("win-chance").locator("visible=true")).toContainText("Siegchance");
   // Gaeste: keine Legende, keine Ampel je Person (AC-12/AC-20); die vorige Seite bleibt im Cache verborgen im DOM

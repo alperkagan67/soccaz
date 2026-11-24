@@ -7,6 +7,7 @@ import { matches } from "@/db/schema";
 import { audit } from "../audit";
 import { notifyResumedGames } from "../pause-notify";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "../settings";
+import { fakeCardAllowed } from "./mode";
 import { bookOpenFees } from "./charge";
 import { runErasureTasks } from "./erasure";
 import { retryTournamentChargesInWindow, runTournamentChargesDue } from "./tournament-charge";
@@ -32,6 +33,37 @@ export function triggerChargesInBackground(matchId: string): Promise<void> {
       console.error("triggerCharges: Fehler", error instanceof Error ? error.name : "Fehler"); // keine Spiel- oder Nutzerdaten ins Log
     },
   );
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// Testhaken fuer den Hintergrundlauf (Backlog 190, Entscheid t2q): NUR im Testmodus wirksam, in Produktion unerreichbar (dann ist der Aufruf exakt der alte void-Aufruf).
+// Testmodus = NODE_ENV=test (Vitest) oder PAYMENTS_FAKE=1 ausserhalb von Produktion (Dev-Server der E2E-Tests, Quelle fakeCardAllowed). In Produktion (NODE_ENV=production) ist beides falsch.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+/** Ist der Testhaken aktiv? In Produktion immer false. */
+export function chargeTriggerTestHookActive(): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  return process.env.NODE_ENV === "test" || fakeCardAllowed();
+}
+
+const inFlight = new Set<Promise<void>>();
+
+/**
+ * Aufruf von finalConfirm (statt triggerChargesInBackground direkt). Verhalten ohne Testmodus: unveraendert der Hintergrundlauf. Im Testmodus: (1) der Lauf wird registriert und ist mit
+ * drainBackgroundCharges abwartbar; Das Promise wird nie abgelehnt (Fehlerisolierung wie zuvor).
+ */
+export function startChargesInBackground(matchId: string): Promise<void> {
+  if (!chargeTriggerTestHookActive()) return triggerChargesInBackground(matchId);
+  const run = triggerChargesInBackground(matchId);
+  inFlight.add(run);
+  void run.finally(() => inFlight.delete(run));
+  return run;
+}
+
+/** Wartet im Testmodus auf alle laufenden Hintergrundlaeufe (auch auf solche, die dabei neu starten). Ausserhalb des Testmodus: tut nichts. */
+export async function drainBackgroundCharges(): Promise<void> {
+  if (!chargeTriggerTestHookActive()) return;
+  while (inFlight.size > 0) await Promise.all([...inFlight]);
 }
 
 /**
