@@ -25,7 +25,7 @@ export default async function DashboardPage() {
   const user = await requireUser("/app");
   const [myTeams, games, challenges, current, failures] = await Promise.all([listMyTeams(user.id), myMatches(user.id), myChallenges(user.id), myCurrent(user.id), myChargeFailures(user.id)]);
   const now = new Date();
-  const stand = dashboardStand({ games: current.games, open: current.open, teamCount: myTeams.length }, formatDateTime);
+  const stand = dashboardStand({ games: current.games, open: current.open, teamCount: myTeams.length, incoming: challenges.incoming }, formatDateTime);
   const groups = groupByKind(games, now);
   const firstName = user.name.split(" ")[0];
 

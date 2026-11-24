@@ -62,6 +62,17 @@ describe("dashboardStand: Dein Stand und die eine Hauptaktion", () => {
     expect(s.detail).toContain("10.01. 18:00 Uhr");
     expect(s.action).toEqual({ label: "Zur Lobby", href: "/lobby/g1" });
   });
+  it("eingehende Herausforderung ist die Hauptaktion (Lauf 3): vor Spiel und Lobby, mit Frist, bei mehreren die Zahl", () => {
+    const c = { id: "r1", fromTeam: "Heim", toTeam: "Gast", startsAt: at(2) };
+    const s = dashboardStand({ games: [game], open: [], teamCount: 1, incoming: [c] }, fmt);
+    expect(s.line).toBe("Dein Team ist herausgefordert: Heim gegen Gast");
+    expect(s.action).toEqual({ label: "Herausforderung ansehen", href: "/suche/r1" });
+    const l = dashboardStand({ games: [], open: [], teamCount: 1, incoming: [{ ...c, href: "/lobby/m1" }] }, fmt);
+    expect(l.action.href).toBe("/lobby/m1");
+    expect(l.detail).toContain("Antwort bis");
+    expect(dashboardStand({ games: [], open: [], teamCount: 1, incoming: [c, { ...c, id: "r2" }] }, fmt).detail).toBe("2 Herausforderungen warten auf eure Antwort.");
+    expect(dashboardStand({ games: [game], open: [], teamCount: 1, incoming: [] }, fmt).action.href).toBe("/lobby/g1"); // ohne Herausforderung wie bisher
+  });
   it("Uhrzeit offen wird benannt", () => {
     expect(dashboardStand({ games: [{ ...game, timeOpen: true }], open: [], teamCount: 1 }, fmt).detail).toContain("Uhrzeit noch offen");
   });

@@ -60,13 +60,24 @@ export function matchHref(row: { id: string; status: MatchStatus; startsAt: Date
 
 export type StandGame = { id: string; number: number; home: string; away: string; startsAt: Date; timeOpen: boolean; phase: string };
 export type StandOpen = { id: string; number: number; team: string };
+export type StandChallenge = { id: string; fromTeam: string; toTeam: string; startsAt: Date; href?: string };
 export type Stand = { line: string; detail?: string; action: { label: string; href: string } };
 
 /**
  * „Dein Stand“ und die EINE Hauptaktion von `/app` (Umbauplan: Wo bin ich, was ist mein Stand, was ist der eine nächste Schritt).
- * Reihenfolge: nächstes Spiel, eigene offene Lobby, sonst ohne Team „Team gründen“, sonst „Spiel suchen“. Nie ein Guthaben, nie der Zahlstatus eines anderen.
+ * Reihenfolge: eingehende Herausforderung, nächstes Spiel, eigene offene Lobby, sonst ohne Team „Team gründen“, sonst „Spiel suchen“. Nie ein Guthaben, nie der Zahlstatus eines anderen.
  */
-export function dashboardStand(input: { games: readonly StandGame[]; open: readonly StandOpen[]; teamCount: number }, formatDate: (d: Date) => string): Stand {
+export function dashboardStand(input: { games: readonly StandGame[]; open: readonly StandOpen[]; teamCount: number; incoming?: readonly StandChallenge[] }, formatDate: (d: Date) => string): Stand {
+  // Eine eingehende Herausforderung wartet auf Antwort und ist die eine Hauptaktion (Lauf 3: in der Liste darunter ist "Ansehen und annehmen" ruhig)
+  const c = input.incoming?.[0];
+  if (c) {
+    const n = input.incoming!.length;
+    return {
+      line: `Dein Team ist herausgefordert: ${c.fromTeam} gegen ${c.toTeam}`,
+      detail: n > 1 ? `${n} Herausforderungen warten auf eure Antwort.` : c.href ? `Antwort bis ${formatDate(c.startsAt)} Uhr` : `${formatDate(c.startsAt)} Uhr`,
+      action: { label: "Herausforderung ansehen", href: c.href ?? `/suche/${c.id}` },
+    };
+  }
   const next = input.games[0];
   if (next) {
     return {

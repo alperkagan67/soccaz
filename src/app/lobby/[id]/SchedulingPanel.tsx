@@ -17,7 +17,10 @@ export function SchedulingPanel({
   slots,
   dayText,
   main = false,
+  mainOptionId = null,
 }: {
+  /** Option, deren "Dafür stimmen" die Hauptaktion ist (lobbyStand: abstimmen); alle anderen Stimm-Knöpfe sind ruhig. */
+  mainOptionId?: string | null;
   /** Hauptaktion der Ansicht (lobbyStand): nur dann ist "Vorschlag machen" orange. */
   main?: boolean;
   matchId: string;
@@ -55,7 +58,7 @@ export function SchedulingPanel({
                     {myVote === o.id ? (
                       <span className="text-sm font-semibold text-accent-fg">Deine Wahl</span>
                     ) : (
-                      <ActionButton action={voteOptionAction.bind(null, matchId, o.id)} label="Dafür stimmen" className="btn btn-ghost text-sm" />
+                      <ActionButton action={voteOptionAction.bind(null, matchId, o.id)} label="Dafür stimmen" className={`btn ${o.id === mainOptionId ? "btn-primary" : "btn-ghost"} text-sm`} />
                     )}
                     {o.proposedByTeamId === myTeamId && <ActionButton action={withdrawOptionAction.bind(null, matchId, o.id)} label="Zurückziehen" className="btn btn-ghost text-sm" />}
                   </span>

@@ -3,7 +3,7 @@
 // Keine Zahlungs-Rechtsfolge in der Zeile: Preis- und Zusagetexte stehen NUR in zahlungspflicht-texte.ts.
 import type { LobbyFehlerFall } from "./lobby-fehler";
 
-export type LobbyAktion = "anmelden" | "annehmen" | "beitreten" | "ersatz" | "karte" | "freigeben" | "vorschlagen" | "bereit" | "final" | "spielseite" | null;
+export type LobbyAktion = "anmelden" | "annehmen" | "beitreten" | "ersatz" | "karte" | "freigeben" | "abstimmen" | "vorschlagen" | "bereit" | "final" | "spielseite" | null;
 
 export type LobbyStandInput = {
   signedIn: boolean;
@@ -14,6 +14,8 @@ export type LobbyStandInput = {
   planningPhase?: "termin" | "hallen" | "veto" | null;
   isCaptain?: boolean; // Team-Admin eines der beiden Teams (darf in der Planung handeln)
   myTurn?: boolean; // im Veto: das eigene Team ist am Zug
+  optionCount?: number; // Termin: Zahl der Vorschläge
+  myVoted?: boolean; // Termin: das eigene Team hat schon für einen Vorschlag gestimmt
   challengePending: boolean;
   challengeRole: "target" | "challenger" | "viewer";
   participant: boolean;
@@ -30,6 +32,15 @@ export type LobbyStandInput = {
   finalTeam: { confirmed: boolean; complete: boolean } | null;
 };
 
+/**
+ * Welche Option bekommt "Dafür stimmen" als Hauptaktion? Zuerst die Option, für die das ANDERE Team schon gestimmt hat (eine Zustimmung führt direkt zum Termin), sonst die früheste (die Liste ist nach Uhrzeit sortiert).
+ * Hat das eigene Team schon gestimmt oder gibt es keine Option, gibt es keine Hauptoption. Bei mehreren offenen Optionen führt dazu "Dein Stand" mit dem Satz; die übrigen Knöpfe bleiben ruhig.
+ */
+export function mainTermOption(options: readonly { id: string; votedTeamIds: readonly string[] }[], myTeamId: string | null, otherTeamId: string | null): string | null {
+  if (!myTeamId || options.some((o) => o.votedTeamIds.includes(myTeamId))) return null;
+  return (otherTeamId ? options.find((o) => o.votedTeamIds.includes(otherTeamId)) : undefined)?.id ?? options[0]?.id ?? null;
+}
+
 export type LobbyStand = { zeile: string; aktion: LobbyAktion };
 
 export function lobbyStand(s: LobbyStandInput): LobbyStand {
@@ -43,7 +54,12 @@ export function lobbyStand(s: LobbyStandInput): LobbyStand {
   }
   if (s.planning) {
     // Impeccable Lauf 2, P1-4: der Captain sieht den Schritt, nicht nur "wartet". Termin: Vorschlag machen ist die Hauptaktion (Zustimmen bleibt ruhig). Veto: Bannen ist je Halle ein ruhiger Knopf, keine orange Hauptaktion.
-    if (s.isCaptain && s.planningPhase === "termin") return { zeile: "Nächster Schritt: die Uhrzeit wählen. Mach einen Vorschlag oder stimme einem Vorschlag zu.", aktion: "vorschlagen" };
+    // Termin (Lauf 3, P2-1): Zustimmen zu einem Vorschlag ist die Standardaktion; die Stimme ist unverbindlich (kein Geld, keine Zusage, kein Bereit) und bis zur Einigung änderbar; erst wenn beide Teams dieselbe Uhrzeit wählen, steht der Termin und die Hallenanfrage beginnt.
+    if (s.isCaptain && s.planningPhase === "termin") {
+      if ((s.optionCount ?? 0) === 0) return { zeile: "Nächster Schritt: einen Terminvorschlag machen.", aktion: "vorschlagen" };
+      if (s.myVoted) return { zeile: "Du hast gewählt. Wir warten auf das andere Team, bis dahin kannst du deine Wahl ändern.", aktion: null };
+      return { zeile: "Nächster Schritt: einem Terminvorschlag zustimmen oder selbst einen machen. Wählt das andere Team dieselbe Uhrzeit, steht der Termin.", aktion: "abstimmen" };
+    }
     if (s.isCaptain && s.planningPhase === "veto") return { zeile: s.myTurn ? "Nächster Schritt: eine Halle bannen." : "Das andere Team ist beim Bannen dran.", aktion: null };
     if (s.isCaptain && s.planningPhase === "hallen") return { zeile: "Die Hallen werden angefragt. Danach bannt ihr abwechselnd Hallen.", aktion: null };
     return { zeile: s.participant ? "Die Captains wählen Uhrzeit und Halle. Bereit machen kannst du danach." : "Die Captains wählen Uhrzeit und Halle.", aktion: null };

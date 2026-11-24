@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { lobbyStand, type LobbyStandInput } from "@/lib/lobby-stand";
+import { lobbyStand, mainTermOption, type LobbyStandInput } from "@/lib/lobby-stand";
 
 // 013 M3, Lobby-Fix nach Impeccable-Lauf 2: P1-1 keine Karte in Karte, P1-2 Hauptaktion in der ersten Ansicht (Reihenfolge), P1-4 Captain in der Planung sieht den Schritt.
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -29,11 +29,26 @@ const basis: LobbyStandInput = {
 };
 const mit = (o: Partial<LobbyStandInput>) => lobbyStand({ ...basis, ...o });
 
+describe("mainTermOption: welche Option trägt 'Dafür stimmen' als Hauptaktion", () => {
+  const o = (id: string, votes: string[] = []) => ({ id, votedTeamIds: votes });
+  it("zuerst die Option, für die das ANDERE Team schon gestimmt hat, sonst die früheste; nach der eigenen Stimme oder ohne Option keine", () => {
+    expect(mainTermOption([o("a"), o("b", ["gegner"]), o("c")], "ich", "gegner")).toBe("b");
+    expect(mainTermOption([o("a"), o("b"), o("c")], "ich", "gegner")).toBe("a");
+    expect(mainTermOption([o("a"), o("b", ["ich"])], "ich", "gegner")).toBeNull();
+    expect(mainTermOption([], "ich", "gegner")).toBeNull();
+    expect(mainTermOption([o("a")], null, "gegner")).toBeNull();
+  });
+});
+
 describe("P1-4: Captain in der Planung sieht den Schritt in Dein Stand", () => {
-  it("Termin: Captain bekommt 'Nächster Schritt: die Uhrzeit wählen' und die Hauptaktion vorschlagen; Nicht-Captain den bisherigen Text ohne Aktion", () => {
-    const c = mit({});
-    expect(c.zeile).toContain("Nächster Schritt: die Uhrzeit wählen");
-    expect(c.aktion).toBe("vorschlagen");
+  it("Termin: Captain mit Vorschlägen: Zustimmen ist die Hauptaktion (abstimmen); ohne Vorschlag: vorschlagen; nach der eigenen Stimme: keine (wartet); Nicht-Captain den bisherigen Text ohne Aktion", () => {
+    const c = mit({ optionCount: 2, myVoted: false });
+    expect(c.zeile).toContain("Nächster Schritt: einem Terminvorschlag zustimmen oder selbst einen machen");
+    expect(c.zeile).toContain("Wählt das andere Team dieselbe Uhrzeit, steht der Termin."); // Wortlaut der Server-Regel (lockIfAgreed)
+    expect(c.aktion).toBe("abstimmen");
+    expect(mit({ optionCount: 0 })).toEqual({ zeile: "Nächster Schritt: einen Terminvorschlag machen.", aktion: "vorschlagen" });
+    expect(mit({ optionCount: 2, myVoted: true }).aktion).toBeNull();
+    expect(mit({ optionCount: 2, myVoted: true }).zeile).toContain("Du hast gewählt");
     const n = mit({ isCaptain: false });
     expect(n.aktion).toBeNull();
     expect(n.zeile).toContain("Die Captains wählen Uhrzeit und Halle");
@@ -92,7 +107,7 @@ describe("P1-1: Karte in Karte aufgelöst (gerendertes HTML je Baustein)", () =>
     expect(veto.match(/data-testid="hall"/g)).toHaveLength(2);
     expect(primaries(veto)).toBe(0); // Bannen ist je Halle ruhig (danger), keine orange Hauptaktion
   });
-  it("Terminwahl: 'Vorschlag machen' ist nur mit main orange, 'Dafür stimmen' immer ruhig", async () => {
+  it("Terminwahl: genau EIN Primary: 'Dafür stimmen' der Hauptoption (abstimmen) ODER 'Vorschlag machen' (vorschlagen), alle anderen ruhig", async () => {
     const { SchedulingPanel } = await import("../../src/app/lobby/[id]/SchedulingPanel");
     const teams = [{ id: "a", name: "Heim" }, { id: "b", name: "Gast" }];
     const options = [{ id: "o1", label: "Sa 20:00 Uhr", proposedBy: "system" as const, proposedByTeamId: null, votedTeamIds: [] }];
@@ -101,6 +116,15 @@ describe("P1-1: Karte in Karte aufgelöst (gerendertes HTML je Baustein)", () =>
     expect(primaries(render(false, "a"))).toBe(0);
     expect(primaries(render(undefined, "a"))).toBe(0);
     expect(primaries(render(true, null))).toBe(0); // Nicht-Captain hat keinen Vorschlag-Knopf
+    // abstimmen: die Hauptoption trägt den einen Primary, Vorschlag machen bleibt sichtbar, aber ruhig
+    const two = [...options, { id: "o2", label: "Sa 21:00 Uhr", proposedBy: "Heim", proposedByTeamId: "a", votedTeamIds: [] }];
+    const abst = renderToStaticMarkup(createElement(SchedulingPanel, { matchId: "m", options: two, teams, myTeamId: "a", deadlineText: "morgen", minStart: "2026-12-01T18:00", slots: [], dayText: null, mainOptionId: "o1" }));
+    expect(primaries(abst)).toBe(1);
+    expect(abst).toContain("Vorschlag machen"); // zweite Aktion bleibt sichtbar
+    expect(abst).toMatch(/btn btn-primary text-sm[^>]*>Dafür stimmen/);
+    expect(abst.match(/btn btn-ghost text-sm[^>]*>Dafür stimmen/g)).toHaveLength(1); // die andere Option ruhig
+    const keine = renderToStaticMarkup(createElement(SchedulingPanel, { matchId: "m", options: two, teams, myTeamId: "a", deadlineText: "morgen", minStart: "2026-12-01T18:00", slots: [], dayText: null }));
+    expect(primaries(keine)).toBe(0); // schon gestimmt oder keine Hauptaktion: nichts orange
   });
   it("Fehlerzustand: die Zusammenfassung der anderen Karte ist kein Knopf mit Rahmen (summary ohne btn)", () => {
     const s = src(`${dir}/LobbyClient.tsx`);

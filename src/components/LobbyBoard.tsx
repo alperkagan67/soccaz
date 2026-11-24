@@ -95,15 +95,15 @@ function MatchCard({ m, mine, shareBase, loggedIn }: { m: BoardMatch; mine: Mine
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {targetAdmin && (
-          <Link href={`/lobby/${m.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm" data-testid="accept-challenge">
+          <Link href={`/lobby/${m.id}`} className="btn btn-ghost text-sm" data-testid="accept-challenge">
             Herausforderung annehmen
           </Link>
         )}
-        <Link href={`/lobby/${m.id}`} className={targetAdmin ? "btn btn-ghost !min-h-9 !px-3 text-sm" : "btn btn-primary !min-h-9 !px-3 text-sm"}>
+        <Link href={`/lobby/${m.id}`} className="btn btn-ghost text-sm">
           Zur Lobby
         </Link>
         {m.strangers > 0 && <span className="text-xs text-muted">{m.strangers} Ersatzspieler warten auf Zuweisung</span>}
-        <a href={`https://wa.me/?text=${encodeURIComponent(`Spiel #${m.number}: ${m.home.name} gegen ${m.away.name} auf Socaz ${url}`)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted underline">
+        <a href={`https://wa.me/?text=${encodeURIComponent(`Spiel #${m.number}: ${m.home.name} gegen ${m.away.name} auf Socaz ${url}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-sm text-muted underline">
           Teilen
         </a>
       </div>
@@ -192,35 +192,35 @@ function SearchCard({ s, loggedIn, mine, myWaitingTeamIds, shareBase }: { s: Boa
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {forMe && (
-          <Link href={`/suche/${s.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm" data-testid="accept-challenge">
+          <Link href={`/suche/${s.id}`} className="btn btn-ghost text-sm" data-testid="accept-challenge">
             Herausforderung annehmen
           </Link>
         )}
-        {challenge && !forMe && !own && loggedIn && candidates.length > 0 && <ChallengeNow target={{ id: s.team.id, name: s.team.name }} teams={candidates.map((t) => ({ id: t.id, name: t.name }))} />}
+        {challenge && !forMe && !own && loggedIn && candidates.length > 0 && <ChallengeNow quiet target={{ id: s.team.id, name: s.team.name }} teams={candidates.map((t) => ({ id: t.id, name: t.name }))} />}
         {challenge && !forMe && !own && !loggedIn && (
-          <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${s.team.slug}`)}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
+          <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${s.team.slug}`)}`} className="btn btn-ghost text-sm">
             Anmelden und {s.team.name} herausfordern
           </Link>
         )}
         {challenge && !forMe && !own && loggedIn && candidates.length === 0 && <span className="text-xs text-muted">Um herauszufordern, brauchst du ein Team, bei dem du Admin bist.</span>}
-        {challenge && !forMe && !own && <Link href={`/suche/${s.id}`} className="text-xs text-accent-fg underline">Details</Link>}
+        {challenge && !forMe && !own && <Link href={`/suche/${s.id}`} className="inline-flex min-h-11 items-center text-sm text-accent-fg underline">Details</Link>}
         {!loggedIn && !challenge && (
-          <Link href={`/anmelden?next=${encodeURIComponent(s.sub === "queue" ? "/matchmaking#offen" : `/suche/${s.id}`)}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
+          <Link href={`/anmelden?next=${encodeURIComponent(s.sub === "queue" ? "/matchmaking#offen" : `/suche/${s.id}`)}`} className="btn btn-ghost text-sm">
             Anmelden und Team herausfordern
           </Link>
         )}
         {loggedIn && !own && s.sub === "request" && candidates.length > 0 && (
-          <Link href={`/suche/${s.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm">
+          <Link href={`/suche/${s.id}`} className="btn btn-ghost text-sm">
             Team herausfordern
           </Link>
         )}
         {loggedIn && !own && !challenge && candidates.length === 0 && <span className="text-xs text-muted">Um anzutreten, brauchst du ein Team, bei dem du Admin bist.</span>}
-        <a href={`https://wa.me/?text=${encodeURIComponent(`Spiel #${s.number}: ${s.team.name} ${challenge && s.target ? `fordert ${s.target.name} heraus` : "sucht einen Gegner"} auf Socaz ${target}`)}`} target="_blank" rel="noopener noreferrer" className="text-xs text-muted underline">
+        <a href={`https://wa.me/?text=${encodeURIComponent(`Spiel #${s.number}: ${s.team.name} ${challenge && s.target ? `fordert ${s.target.name} heraus` : "sucht einen Gegner"} auf Socaz ${target}`)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-sm text-muted underline">
           Teilen
         </a>
       </div>
       {loggedIn && !own && s.sub === "queue" && candidates.length > 0 && (
-        <AcceptSearch entryId={s.id} teams={candidates} opponent={{ name: s.team.name, elo: s.team.elo, wantMin: s.wantStrengthMin, wantMax: s.wantStrengthMax }} label="Team herausfordern" />
+        <AcceptSearch quiet entryId={s.id} teams={candidates} opponent={{ name: s.team.name, elo: s.team.elo, wantMin: s.wantStrengthMin, wantMax: s.wantStrengthMax }} label="Team herausfordern" />
       )}
     </li>
   );
