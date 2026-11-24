@@ -63,8 +63,12 @@ export async function clickLinkUntilUrl(page: Page, link: Locator, url: RegExp) 
   }).toPass({ timeout: 25_000 });
 }
 
+/**
+ * Klick auf einen Knopf, nachdem React ihn übernommen hat (Flake-Familie 223, Backlog 241). Knöpfe mit onClick (Lobby: beitreten, Ersatzspieler, bereit; Ergebnis: Tor) tun vor der Hydration NICHTS: der Klick geht verloren, ein Warten auf die Folge (5 s) scheitert.
+ * waitHydrated prüft Sichtbarkeit (20 s, Kaltstart) und Hydration des Knopfs und seines Formulars; geklickt wird einmal (kein zweiter Klick auf Knöpfe, die etwas auslösen).
+ */
 export async function clickWhenReady(page: Page, name: string | RegExp) {
   const button = page.getByRole("button", { name });
-  await expect(button).toBeVisible();
+  await waitHydrated(button);
   await button.click();
 }
