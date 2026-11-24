@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { coverConsequence, coverDialogBody } from "@/lib/cover-text";
 import { DEFAULT_LOCALE, MESSAGES, translate } from "@/lib/i18n";
+import { ZP } from "../../src/lib/zahlungspflicht-texte";
 
 // Die Server-Aktionen brauchen Sitzung und Datenbank: für die Markup-Tests durch Attrappen ersetzt (Verhalten: Integrationstests und E2E).
 vi.mock("@/server/actions", () => ({ takeOverShareAction: vi.fn(), releaseCoverAction: vi.fn() }));
@@ -76,7 +77,7 @@ describe("CoverButton (Markup)", () => {
   });
   it("die Bestätigung ist ohne Zustimmung gesperrt (Pflicht-Haken)", () => {
     const d = button().slice(button().indexOf("<dialog"));
-    expect(d).toMatch(/<button[^>]*disabled=""[^>]*>Anteil übernehmen<\/button>/);
+    expect(d).toMatch(new RegExp(`<button[^>]*disabled=""[^>]*>${ZP.coverConfirm}</button>`)); // Bestätigungsknopf mit der Zahlungspflicht-Formel (Entwurf, zahlungspflicht-texte.ts)
   });
   it("kein Preis bekannt (kostenlos): Dialog ohne Betragszeile, aber mit Text und Zustimmung", () => {
     const m = button({ amounts: null });
