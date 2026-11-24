@@ -6,7 +6,9 @@ Alles läuft mit Docker Compose: App, PostgreSQL, Caddy (HTTPS) und eine täglic
 
 1. Server mit Ubuntu 24.04, Docker und Docker Compose installieren, Domain per A-Record auf die Server-IP legen.
 2. Repository klonen: `git clone https://github.com/alperkagan67/soccaz.git && cd soccaz`
-3. Konfiguration anlegen: `cp .env.production.example .env` und alle Werte eintragen (Datenbankpasswort, Domain, `AUTH_SECRET`, Google, `JOB_SECRET`).
+3. Konfiguration anlegen: `cp .env.example .env`. **Eine eigene Produktionsvorlage gibt es nicht**; `.env.example` enthält Entwicklungswerte: jeden Wert durch einen Produktionswert ersetzen und fehlende Namen ergänzen (Datenbankpasswort, Domain, `AUTH_SECRET`, Google, `JOB_SECRET`, `TURNIER_ONLY`; vollständige Liste: `docs/design/go-live-runbook.md` Schritt 3). `.env` nie ausgeben oder verschicken.
+
+Für das Turnier (12.12.) gilt der **Einseiter `docs/design/go-live-runbook.md`** (Befehl und Erwartet je Schritt); dieser Abschnitt bleibt die allgemeine Beschreibung.
 4. Starten: `docker compose up -d --build`
 5. Prüfen: `https://deine-domain/api/health` liefert `{"status":"ok"}`.
 6. Den ersten Admin festlegen (einmalig, nach der ersten Anmeldung):
@@ -49,7 +51,7 @@ Autorisierte Weiterleitungs-URI: `https://deine-domain/api/auth/callback/google`
 
 ## Apple-Anmeldung (nur falls `APPLE_LOGIN_ENABLED=1`)
 
-Die Apple-Anmeldung ist noch nicht im Code; dieser Abschnitt hält den Betrieb fest, sobald sie eingeschaltet wird. Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate Gültigkeit): **Erneuerung spätestens alle 5 Monate**, Erinnerung im Kalender 4 Wochen und 1 Tag vor Ablauf.
+Die Apple-Anmeldung ist im Code (Schalter `APPLE_LOGIN_ENABLED=1` plus `AUTH_APPLE_ID` und `AUTH_APPLE_SECRET`; ohne alle drei gibt es weder Knopf noch Anbieter). Das Secret erzeugt `node scripts/apple-client-secret.mjs <.p8>` lokal (Umgebung `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `AUTH_APPLE_ID`). Konten werden nur über die Apple-Kennung zugeordnet; eine E-Mail, die schon zu einem Google-Konto gehört, wird mit Hinweis abgewiesen (keine automatische Zusammenführung). Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate Gültigkeit): **Erneuerung spätestens alle 5 Monate**, Erinnerung im Kalender 4 Wochen und 1 Tag vor Ablauf.
 
 - **Client-Secret gültig bis: <Datum eintragen, sobald erzeugt>**
 - Erneuerung: neues Secret erzeugen, nur in der Server-`.env` eintragen, neu starten, Smoke-Test mit `--apple`, echte Anmeldung prüfen, hier das neue Datum eintragen.

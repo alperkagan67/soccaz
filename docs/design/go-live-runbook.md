@@ -95,10 +95,12 @@ Erwartet: jede Zeile `PASS`, am Ende `ERGEBNIS: BESTANDEN`, Ende-Code 0. Er prü
 2. Konto zum Admin machen (Adresse nur als Wert am Server eintragen):
 ```
 docker compose exec db psql -U socaz -c "update users set role='admin' where email='<ihre-google-adresse>'"
-docker compose run --rm -e OWNER_EMAIL=<ihre-google-adresse> migrate node scripts/set-owner.mjs
-docker compose run --rm -e OWNER_EMAIL=<ihre-google-adresse> migrate node scripts/set-owner.mjs --yes
+read -r -s OWNER_EMAIL; export OWNER_EMAIL     # Adresse verdeckt eingeben, Eingabe mit Enter beenden
+docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs
+docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs --yes
+unset OWNER_EMAIL; history -c
 ```
-Erwartet: der Trockenlauf nennt nur Host und Datenbankname, `--yes` meldet Erfolg. (Der Aufruf über den `migrate`-Dienst ist eine **Annahme**: bei der Generalprobe belegen; sonst `BETRIEB.md`, „Admin 1 festlegen“.)
+Erwartet: der Trockenlauf nennt nur Host und Datenbankname, `--yes` meldet Erfolg. (Der Aufruf über den `migrate`-Dienst ist eine **Annahme**: bei der Generalprobe belegen; sonst `BETRIEB.md`, „Admin 1 festlegen“. Die Adresse steht dank verdeckter Eingabe nur einmal im SQL-Befehl; deshalb danach `history -c`.)
 
 ## 6a. Apple-Anmeldung (nur falls eingeschaltet: `APPLE_LOGIN_ENABLED=1`)
 Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate). **Erneuerung spätestens alle 5 Monate.** Tragen Sie das **Ablaufdatum** in der Betriebsdoku ein (`docs/BETRIEB.md`, Abschnitt „Apple-Anmeldung“, Zeile „Client-Secret gültig bis: <Datum>“) und legen Sie sich **zwei Kalendereinträge** an: 4 Wochen vor Ablauf und am Tag vor Ablauf. Läuft das Secret ab, schlägt die Apple-Anmeldung still fehl (Google bleibt unberührt). Prüfung nach der Erneuerung: Smoke-Test mit `--apple` und eine echte Anmeldung.

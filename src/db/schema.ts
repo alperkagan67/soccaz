@@ -30,6 +30,7 @@ export const users = pgTable(
   {
   id: uuid("id").primaryKey().defaultRandom(),
   googleId: text("google_id").unique(),
+  appleId: text("apple_id"), // Apple-sub (Anmeldung mit Apple); Zuordnung NUR darüber, nie über die E-Mail; teil-eindeutiger Index users_apple_id_unique
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   avatarUrl: text("avatar_url"),
@@ -57,6 +58,7 @@ export const users = pgTable(
   },
   (t) => [
     uniqueIndex("users_one_owner").on(t.isOwner).where(sql`${t.isOwner}`), // höchstens ein Admin 1
+    uniqueIndex("users_apple_id_unique").on(t.appleId).where(sql`${t.appleId} is not null`), // eine Apple-Kennung gehört höchstens einem Konto
     check("users_owner_is_admin", sql`not ${t.isOwner} or ${t.role} = 'admin'`), // Admin 1 ist immer Plattform-Admin
   ],
 );
