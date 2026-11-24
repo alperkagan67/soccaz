@@ -62,16 +62,68 @@ describe("dashboardStand: Dein Stand und die eine Hauptaktion", () => {
     expect(s.detail).toContain("10.01. 18:00 Uhr");
     expect(s.action).toEqual({ label: "Zur Lobby", href: "/lobby/g1" });
   });
-  it("eingehende Herausforderung ist die Hauptaktion (Lauf 3): vor Spiel und Lobby, mit Frist, bei mehreren die Zahl", () => {
-    const c = { id: "r1", fromTeam: "Heim", toTeam: "Gast", startsAt: at(2) };
-    const s = dashboardStand({ games: [game], open: [], teamCount: 1, incoming: [c] }, fmt);
-    expect(s.line).toBe("Dein Team ist herausgefordert: Heim gegen Gast");
-    expect(s.action).toEqual({ label: "Herausforderung ansehen", href: "/suche/r1" });
-    const l = dashboardStand({ games: [], open: [], teamCount: 1, incoming: [{ ...c, href: "/lobby/m1" }] }, fmt);
-    expect(l.action.href).toBe("/lobby/m1");
-    expect(l.detail).toContain("Antwort bis");
-    expect(dashboardStand({ games: [], open: [], teamCount: 1, incoming: [c, { ...c, id: "r2" }] }, fmt).detail).toBe("2 Herausforderungen warten auf eure Antwort.");
-    expect(dashboardStand({ games: [game], open: [], teamCount: 1, incoming: [] }, fmt).action.href).toBe("/lobby/g1"); // ohne Herausforderung wie bisher
+  describe("Dringlichkeit (Entscheid t2q 2026-11-24): früherer Stichtag gewinnt, Spiel innerhalb 24 h und Gleichstand: Spiel", () => {
+    const NOW = new Date("2026-12-01T12:00:00Z");
+    const H = 3_600_000;
+    const inH = (h: number) => new Date(NOW.getTime() + h * H);
+    const g = (h: number | null) => ({ ...game, startsAt: inH(h ?? 5), timeOpen: h === null });
+    const ch = (deadlineH: number | null, id = "r1") => ({ id, fromTeam: "Heim", toTeam: "Gast", startsAt: inH(48), ...(deadlineH === null ? {} : { href: `/lobby/${id}` }), deadline: deadlineH === null ? null : inH(deadlineH) });
+    const st = (games: ReturnType<typeof g>[], incoming: ReturnType<typeof ch>[]) => dashboardStand({ games, open: [], teamCount: 1, incoming, now: NOW }, fmt);
+
+    // Matrix: {Spiel in 2 h, Spiel in 3 Tagen} x {Herausforderung läuft in 1 h ab, in 2 Tagen, ohne Frist} x {1, 2 Herausforderungen}
+    for (const spielH of [2, 72]) {
+      for (const frist of [1, 48, null] as const) {
+        for (const n of [1, 2]) {
+          const incoming = n === 1 ? [ch(frist)] : [ch(frist), ch(frist === null ? null : frist + 5, "r2")];
+          const erwartetSpiel = spielH === 2 || frist === null; // Spiel innerhalb 24 h oder Herausforderung ohne Frist: Spiel
+          const stand = st([g(spielH)], incoming);
+          it(`Spiel in ${spielH} h, Herausforderung ${frist === null ? "ohne Frist" : `Frist in ${frist} h`}, ${n} Herausforderung(en) -> ${erwartetSpiel ? "Spiel" : "Herausforderung"} ist die Hauptaktion`, () => {
+            const label = n > 1 ? `Herausforderungen ansehen (${n})` : "Herausforderung ansehen";
+            if (erwartetSpiel) {
+              expect(stand.action).toEqual({ label: "Zur Lobby", href: "/lobby/g1" });
+              expect(stand.second?.action.label).toBe(label); // die Herausforderung bleibt sichtbar (nie verdeckt)
+            } else {
+              expect(stand.action.label).toBe(label);
+              expect(stand.second?.action).toEqual({ label: "Zur Lobby", href: "/lobby/g1" }); // das Spiel bleibt sichtbar
+            }
+          });
+        }
+      }
+    }
+    it("abgelaufene Fristen werden vor der Auswahl gefiltert: nie die dringendste Hauptaktion", () => {
+      const s = st([g(72)], [{ ...ch(-1), id: "alt" }]); // Frist vor einer Stunde abgelaufen
+      expect(s.action.label).toBe("Zur Lobby");
+      expect(s.second).toBeUndefined();
+      expect(st([], [{ ...ch(-1), id: "alt" }]).action.label).toBe("Spiel suchen"); // ohne Spiel und ohne lebende Herausforderung: wie ohne
+      expect(st([g(72)], [{ ...ch(-1), id: "alt" }, ch(48, "neu")]).action.label).toBe("Herausforderung ansehen"); // nur die lebende zählt, Singular
+    });
+    it("die Lobby der Herausforderung selbst ist kein zweites Spiel: keine zweite Zeile mit demselben Spiel", () => {
+      const s = st([{ ...g(72), id: "r1" }], [ch(48)]); // ch() trägt href /lobby/r1
+      expect(s.second).toBeUndefined();
+      expect(s.action.label).toBe("Herausforderung ansehen");
+      expect(st([{ ...g(72), id: "r1" }, { ...g(100), id: "g9" }], [ch(48)]).second?.action.href).toBe("/lobby/g9"); // ein echtes eigenes Spiel bleibt
+    });
+    it("Ziele: eine Herausforderung führt direkt hin, mehrere zur Liste auf /app", () => {
+      expect(st([], [ch(48)]).action.href).toBe("/lobby/r1");
+      expect(st([], [ch(null)]).action.href).toBe("/suche/r1");
+      expect(st([], [ch(48), ch(60, "r2")]).action).toEqual({ label: "Herausforderungen ansehen (2)", href: "/app#herausforderungen" });
+    });
+    it("Gleichstand der Stichtage: das Spiel; Uhrzeit des Spiels offen: die Herausforderung mit Frist, ohne Frist das Spiel", () => {
+      expect(st([g(72)], [ch(72)]).action.label).toBe("Zur Lobby");
+      expect(st([g(72)], [ch(71)]).action.label).toBe("Herausforderung ansehen");
+      expect(st([g(null)], [ch(48)]).action.label).toBe("Herausforderung ansehen");
+      expect(st([g(null)], [ch(null)]).action.label).toBe("Zur Lobby");
+    });
+    it("bei mehreren Herausforderungen zählt die früheste Frist; ohne Herausforderung oder ohne Spiel wie bisher (kein zweiter Eintrag)", () => {
+      expect(st([g(72)], [ch(100), ch(30, "r2")]).action.label).toBe("Herausforderungen ansehen (2)"); // 30 h < 72 h
+      expect(st([], [ch(100), { ...ch(30, "r2"), fromTeam: "Frueh" }]).line).toContain("Frueh"); // die Zeile nennt die Herausforderung mit der frühesten Frist
+      const nurSpiel = st([g(72)], []);
+      expect(nurSpiel.second).toBeUndefined();
+      expect(nurSpiel.action.href).toBe("/lobby/g1");
+      const nurHerausforderung = st([], [ch(48)]);
+      expect(nurHerausforderung.second).toBeUndefined();
+      expect(nurHerausforderung.line).toBe("Dein Team ist herausgefordert: Heim gegen Gast");
+    });
   });
   it("Uhrzeit offen wird benannt", () => {
     expect(dashboardStand({ games: [{ ...game, timeOpen: true }], open: [], teamCount: 1 }, fmt).detail).toContain("Uhrzeit noch offen");
@@ -124,6 +176,13 @@ describe("Stilregel /app (AC-30): höchstens eine Hauptaktion, kein Guthaben, Te
     const nav = /<nav aria-label="Schnellzugriff"[\s\S]*?<\/nav>/.exec(page)?.[0] ?? "";
     expect(nav).not.toBe("");
     expect(nav).not.toContain("Lobby aufmachen");
+  });
+  it("Dringlichkeit in der Seite: zweite Zeile stand-second mit ruhigem Knopf, Anker für die Liste der Herausforderungen", () => {
+    const page = readFileSync(join(process.cwd(), "src/app/app/page.tsx"), "utf8");
+    expect(page).toContain('data-testid="stand-second"');
+    expect(page).toContain("mt-2 flex flex-wrap items-center justify-between gap-2"); // 390 px: Text und Knopf brechen um (Sichtprüfung: Knopf unter dem Text)
+    expect(page).toMatch(/<LinkButton href={stand.second.action.href} size="sm">/);
+    expect(readFileSync(join(process.cwd(), "src/components/Challenges.tsx"), "utf8")).toContain('id="herausforderungen"');
   });
   it("bestehende Test-IDs bleiben: my-games, my-game, my-open-lobby (MyGames), first-steps, game-modes, mode-*", () => {
     expect(myGames).toMatch(/data-testid="my-games"/);
