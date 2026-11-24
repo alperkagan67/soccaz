@@ -367,7 +367,17 @@ Vorschlag: (a) Der Task Manager führt nach jedem Merge ein Worktree-Aufräum-Sk
 
 Wer ändert: `AGENTS-SETUP.md` (3a: Task Manager und Worker), `CLAUDE.md` (Konventionen, ein Halbsatz); Regel-PR (Nutzer mergt). Sammelkandidat, nächster Regel-PR (Entscheid t2q: JA).
 
-**Status:** offen (Sammelkandidat, noch kein Regel-PR).
+**Status:** offen (Sammelkandidat, noch kein Regel-PR). Vermerk (Entscheid Nutzer via t2q): die Allow-Regel für das Skript steht NUR lokal in der `settings.local.json` des Nutzers (nicht versioniert); der Aufruf nur aus dem Hauptrepo auf `main` mit absolutem Pfad steht in `docs/BETRIEB.md` (Abschnitt „Aufräum-Skript für Worktrees“). Der AGENTS-SETUP-3a-Anteil (Task Manager führt Trockenlauf und `--apply` nach jedem Merge und im Herzschlag aus) folgt im nächsten Regel-PR.
+
+## 31. Zahlungsformeln und Zahlungspflicht-Texte nie ungated; Zustand-Matrix im Review
+
+Anlass: Beim Button-PR (§ 312j BGB, R-T365 bis R-T365c) stand dreimal derselbe Fehler in verschiedenen Knöpfen: Die Zahlungsformel („zahlungspflichtig zusagen“, „Danach wird dein Anteil abgebucht“) erschien auch dort, wo nichts abgebucht wird. Erst bei „Ich bin bereit“ (Gratisspiel im Kartenmodell lieferte `shareCents = null` statt 0, der Test übergab den Wert 0, den die Seite nie liefert), dann bei der Betragszeile (vorläufiger Betrag als Abbuchung dargestellt), zuletzt bei `FinalConfirm` (#281, für jedes aktive Spiel gerendert, auch bei Preis 0, Zahlungen AUS, Pause und Altmodell). Eine falsche Zahlungszusage ist eine Rechtsfolge, kein Schönheitsfehler.
+
+Vorschlag: (a) Texte mit Rechtsfolge (Zahlungspflicht, Abbuchung, Betrag, Frist) werden nur angezeigt, wenn die Abbuchung wirklich ausgelöst wird (Kartenmodell, Preis größer 0, Zahlungen nicht pausiert); sonst der schlichte Text ohne Formel. Die Bedingung kommt aus EINER Quelle (die Abbuchungsrechnung, `payments.chargeCents`), nie aus einer zweiten Inline-Rechnung. (b) Tests übergeben die Werte, die die Seite wirklich liefert (nicht `0`, wo die Seite `null` liefert), und decken die Zustände Gratis (Preis 0), Preis unbekannt, Zahlungen AUS, Pause, Altmodell und „Dritter“ (Nicht-Teilnehmer sieht keinen Betrag) ab; eine Mutation (Bedingung entfernt) muss rot werden. (c) Reviewer-Checkliste (AGENTS-SETUP 2.3 und Reviewer-Prompt): „Zustand-Matrix bei Texten mit Rechtsfolge: Gratis, AUS, Pause, Altmodell, Preis 0, Dritter.“
+
+Wer ändert: `AGENTS-SETUP.md` (Abschnitt 2.3, Reviewer-Prompt; Rolle Writer: Test-Hinweis); Regel-PR (Nutzer mergt). Sammelkandidat, nächster Regel-PR.
+
+**Status:** offen (Sammelkandidat, noch kein Regel-PR; Entscheid t2q: Kandidat 31).
 
 ## Nicht Teil dieser Datei
 

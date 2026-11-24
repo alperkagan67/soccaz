@@ -4,6 +4,7 @@ import { FieldError, SubmitButton } from "@/components/FormBits";
 import { useFormAction } from "@/components/useFormAction";
 import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 export function TournamentForm({ min, defaultCity, standardHourly, commission, partnerVenues }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number; partnerVenues: { id: string; label: string }[] | null }) {
   const { state, pending, onSubmit, formAction } = useFormAction(createTournamentAction);
@@ -85,6 +86,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
         </span>
       </label>
       <SubmitButton pending={pending}>Turnier anlegen</SubmitButton>
+      <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>
       {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

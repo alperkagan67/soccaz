@@ -3,6 +3,7 @@
 import { FieldError, SubmitButton } from "@/components/FormBits";
 import { useFormAction } from "@/components/useFormAction";
 import { registerTeamAction } from "@/server/tournament-actions";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 export function RegisterForm({ tournamentId, teams }: { tournamentId: string; teams: { id: string; name: string }[] }) {
   const { state, pending, onSubmit, formAction } = useFormAction(registerTeamAction.bind(null, tournamentId));
@@ -26,6 +27,7 @@ export function RegisterForm({ tournamentId, teams }: { tournamentId: string; te
       )}
       <p className="text-xs text-muted" data-testid="paymode-info">Du wirst Captain dieses Teams im Turnier. Danach laden die Spieler sich über die Teamfunktion ein. Bezahlen kann jeder Spieler für sich, oder du als Captain für das ganze Team oder für einzelne Spieler.</p>
       <SubmitButton pending={pending}>Team anmelden</SubmitButton>
+      <p className="text-xs text-muted" data-testid="register-hint">{ZP.hintLater}</p>
       {state?.error && <FieldError message={state.error} />}
     </form>
   );

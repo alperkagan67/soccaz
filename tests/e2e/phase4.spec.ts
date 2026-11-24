@@ -253,7 +253,7 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
     await c.page.reload();
     await c.page.waitForLoadState("networkidle");
     await expect(c.page.getByTestId("bracket-hidden")).toBeVisible();
-    await c.page.getByTestId("paid-ready-box").getByRole("button", { name: "Bereit", exact: true }).click();
+    await c.page.getByTestId("paid-ready-box").getByRole("button", { name: /^Bereit( – zahlungspflichtig zusagen)?$/ }).click();
     await expect(c.page.getByTestId("tournament-team").filter({ hasText: c.team })).toHaveAttribute("data-paid-ready", "true", { timeout: 20_000 });
     if (i < 3) expect((await query("select 1 from tournament_matches where tournament_id = $1", [tid])).length).toBe(0);
   }
