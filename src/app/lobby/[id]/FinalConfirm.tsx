@@ -6,7 +6,7 @@ import { ZP, finalConfirmHinweis } from "@/lib/zahlungspflicht-texte";
 
 export type FinalTeam = { id: string; name: string; confirmed: boolean; ready: number; paid: number; total: number; complete: boolean };
 /** Zum Schluss bestätigt jeder Captain, dass sein Team komplett bereit und bezahlt ist; bestätigen beide, öffnet sich die Spielübersicht. Die Hauptaktion steht oben, Team-Zeilen und Erklärung darunter (Impeccable Lauf 2, P1-2). */
-export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers, payable, amountText, primary = false }: { primary?: boolean; matchId: string; teams: FinalTeam[]; myTeamId: string | null; paymentsOn: boolean; minPlayers: number; payable: boolean; amountText: string | null }) {
+export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers, payable, amountText, primary = false, priceOpen = false }: { primary?: boolean; priceOpen?: boolean; matchId: string; teams: FinalTeam[]; myTeamId: string | null; paymentsOn: boolean; minPlayers: number; payable: boolean; amountText: string | null }) {
   const mine = teams.find((t) => t.id === myTeamId);
   return (
     <section className="card space-y-3 border-accent/60" aria-label={payable ? ZP.finalHeading : ZP.finalHeadingFree} data-testid="final-confirm">
@@ -14,7 +14,12 @@ export function FinalConfirm({ matchId, teams, myTeamId, paymentsOn, minPlayers,
         <h2 className="font-semibold">{payable ? ZP.finalHeading : ZP.finalHeadingFree}</h2>
       </div>
       {/* ENTWURF, Rechtsprüfung (Rechtsliste, Button-Lösung § 312j BGB): Formel und Hinweiszeile NUR bei einer Zahlungspflicht (Kartenmodell, Preis > 0); sonst der bisherige Text ohne Zusage. Texte: src/lib/zahlungspflicht-texte.ts */}
-      {mine && !mine.confirmed && (
+      {mine && !mine.confirmed && priceOpen && (
+        <p className="text-sm text-muted" data-testid="final-confirm-price-open">
+          {ZP.finalPriceOpen}
+        </p>
+      )}
+      {mine && !mine.confirmed && !priceOpen && (
         <div className="space-y-1">
           <ActionButton action={finalConfirmAction.bind(null, matchId)} label={payable ? ZP.finalConfirm : ZP.finalConfirmFree} className={`btn ${primary ? "btn-primary" : "btn-ghost"} w-full disabled:opacity-60`} />
           {payable && <p className="text-sm text-muted" data-testid="final-confirm-pay-note">{finalConfirmHinweis(amountText)}</p>}

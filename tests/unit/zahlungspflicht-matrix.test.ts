@@ -195,3 +195,63 @@ describe("Matrix: mittelbare Knoepfe zeigen eine neutrale Hinweiszeile statt Kno
     expect(acc).toContain(">Spiel annehmen<");
   }, 60_000);
 });
+
+// ----------------------------------------------------------------------------------------------------------------------------------
+// Backlog 233 (R-T365d), Entscheid t2q: EINE Quelle fuer "ist die letzte Bestaetigung eine Zahlungszusage?" (src/lib/zahlungspflicht.ts); Preis unbekannt = keine Zusage, Hinweis statt Knopf, der Server weist ebenfalls ab.
+// ----------------------------------------------------------------------------------------------------------------------------------
+import fs from "node:fs";
+import path from "node:path";
+import { istZahlungspflichtig, preisZustand } from "@/lib/zahlungspflicht";
+
+describe("Matrix: Preiszustand {Preis null, 0, > 0} x {Karte AN, Karte AUS / Pause, Gratis, Altspiel}", () => {
+  const preise: [string, number | null][] = [["null", null], ["0", 0], ["> 0", 6000]];
+  const faelle: [string, boolean][] = [["Karte AN", true], ["Karte AUS (Pause)", false], ["Gratis (Zahlungen AUS)", false], ["Altspiel (kein Kartenmodell)", false]];
+  for (const [fall, cardOn] of faelle) {
+    for (const [pname, price] of preise) {
+      const erwartet = !cardOn ? "kostenlos" : price === null ? "offen" : price > 0 ? "zusage" : "kostenlos";
+      it(`${fall}, Preis ${pname}: ${erwartet}`, () => {
+        expect(preisZustand(cardOn, price)).toBe(erwartet);
+        expect(istZahlungspflichtig(cardOn, price)).toBe(erwartet === "zusage");
+      });
+    }
+  }
+});
+
+describe("FinalConfirm bei offenem Preis: Hinweis statt Knopf; Seite und Server nutzen dieselbe Quelle", () => {
+  const read = (rel: string) => fs.readFileSync(path.resolve(import.meta.dirname, "../..", rel), "utf8");
+  async function render(payable: boolean, priceOpen: boolean) {
+    const { FinalConfirm } = await import("../../src/app/lobby/[id]/FinalConfirm");
+    const team = (id: string) => ({ id, name: `Team ${id}`, confirmed: false, ready: 5, paid: 5, total: 5, complete: true });
+    return renderToStaticMarkup(createElement(FinalConfirm, { matchId: "m", teams: [team("a"), team("b")], myTeamId: "a", paymentsOn: false, minPlayers: 4, payable, amountText: null, priceOpen }));
+  }
+
+  it("Preis offen: der Bestaetigungsknopf fehlt, der Hinweis steht da, keine Zahlungsformel", async () => {
+    const html = await render(false, true);
+    expect(html).toContain(ZP.finalPriceOpen);
+    expect(html).toContain("final-confirm-price-open");
+    expect(html).not.toContain(ZP.finalConfirm);
+    expect(html).not.toContain(ZP.finalConfirmFree);
+    expect(html).not.toMatch(FORMEL);
+  }, 60_000);
+
+  it("Preis bekannt: der Knopf steht da (zahlungspflichtig mit Formel, kostenlos ohne), kein Hinweis", async () => {
+    const paid = await render(true, false);
+    expect(paid).toContain(ZP.finalConfirm);
+    expect(paid).not.toContain("final-confirm-price-open");
+    const free = await render(false, false);
+    expect(free).toContain(ZP.finalConfirmFree);
+    expect(free).not.toMatch(FORMEL);
+  }, 60_000);
+
+  it("Quelltext: die Seite leitet payable UND priceOpen beide Male aus den Funktionen der EINEN Quelle ab (kein roher Ausdruck mehr); der Server prueft vor der Teampruefung", () => {
+    const page = read("src/app/lobby/[id]/page.tsx");
+    expect(page.match(/payable=\{istZahlungspflichtig\(cardOn, payments\.priceCents\)\}/g)).toHaveLength(2);
+    expect(page.match(/priceOpen=\{preisZustand\(cardOn, payments\.priceCents\) === "offen"\}/g)).toHaveLength(2);
+    expect(page).not.toMatch(/payable=\{cardOn && /);
+    const server = read("src/server/lobby.ts");
+    const check = server.indexOf('preisZustand(card, await displayPriceCents(tx, match)) === "offen") throw new DomainError(ZP.finalPriceOpen)');
+    expect(check).toBeGreaterThan(0);
+    expect(check).toBeLessThan(server.indexOf("teamComplete(tx, matchId, admin.teamId)", check));
+    expect(server).toContain("const priceCents = await displayPriceCents(db, match);"); // dieselbe Preisquelle wie die Seite
+  });
+});

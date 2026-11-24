@@ -154,6 +154,11 @@ export async function leaveClosed(tx: Pick<Tx, "select">, match: DeadlineFields,
   return privateListLocked(match);
 }
 
+/** Preis, den die Lobby-Seite zeigt UND den die letzte Bestaetigung prueft (Backlog 233): der am Spiel gespeicherte, sonst der Standardpreis der Preisregeln, sonst null (unbekannt). */
+export async function displayPriceCents(exec: Parameters<typeof priceFor>[0], match: Pick<MatchRow, "priceCents" | "durationMin">): Promise<number | null> {
+  return match.priceCents ?? (await priceFor(exec, null, match.durationMin))?.priceCents ?? null;
+}
+
 /** Preis des Spiels, falls noch nicht festgelegt aus den Preisregeln (Halle oder Standard) ermitteln und am Spiel speichern. */
 export async function ensurePrice(tx: Tx, match: MatchRow): Promise<{ priceCents: number; costCents: number; match: MatchRow }> {
   if (match.priceCents !== null && match.costCents !== null) return { priceCents: match.priceCents, costCents: match.costCents, match };
