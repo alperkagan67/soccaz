@@ -51,3 +51,8 @@ export function vornameInitial(name: string): string {
   if (parts.length === 1) return parts[0];
   return `${parts[0]} ${initialsOf(parts[parts.length - 1])}.`;
 }
+
+/** Veranstalter überall (Entscheid t2q 2026-11-24): Angemeldete sehen den vollen Namen, Gäste und reine Hallenbetreiber "Vorname + Initial" ("Alper K."), nie den Nachnamen. Eine Regel für Turnier und Privatspiel-Einladung. */
+export function veranstalterLabel(name: string, sicht: LobbySicht): string {
+  return sicht === "member" ? name : vornameInitial(name);
+}
