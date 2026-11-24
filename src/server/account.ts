@@ -105,7 +105,7 @@ export async function exportCardData(userId: string) {
 
 export async function exportMyData(userId: string) {
   const [user] = await db
-    .select({ id: users.id, email: users.email, name: users.name, bio: users.bio, city: users.city, position: users.position, profilePublic: users.profilePublic, locale: users.locale, createdAt: users.createdAt, onboardedAt: users.onboardedAt, termsAcceptedAt: users.termsAcceptedAt })
+    .select({ id: users.id, email: users.email, name: users.name, bio: users.bio, city: users.city, position: users.position, profilePublic: users.profilePublic, locale: users.locale, createdAt: users.createdAt, onboardedAt: users.onboardedAt, termsAcceptedAt: users.termsAcceptedAt, appleId: users.appleId })
     .from(users)
     .where(eq(users.id, userId));
   const [memberships, participations, myComments, stats, badges, reliability, ledger, myPayments, myReceipts, myNotifications, votes, myReviews] = await Promise.all([
@@ -129,7 +129,9 @@ export async function exportMyData(userId: string) {
       .where(eq(venueReviews.userId, userId)),
   ]);
   const card = await exportCardData(userId);
-  return { exportedAt: new Date().toISOString(), card, user, memberships, participations, comments: myComments, stats: stats[0] ?? null, badges, reliability: reliability[0] ?? null, ledger, payments: myPayments, receipts: myReceipts, notifications: myNotifications, mvpVotes: votes, venueReviews: myReviews };
+  // Anmeldeweg: nur ob Apple verknüpft ist, nie die Kennung selbst (sie ist ein technischer Schlüssel bei Apple)
+  const { appleId, ...userOhneKennung } = user;
+  return { exportedAt: new Date().toISOString(), card, user: { ...userOhneKennung, mitAppleAngemeldet: appleId !== null }, memberships, participations, comments: myComments, stats: stats[0] ?? null, badges, reliability: reliability[0] ?? null, ledger, payments: myPayments, receipts: myReceipts, notifications: myNotifications, mvpVotes: votes, venueReviews: myReviews };
 }
 
 /**
@@ -272,6 +274,7 @@ export async function deleteAccount(userId: string) {
         name: "Gelöschter Nutzer",
         email: `geloescht-${userId}@geloescht.invalid`,
         googleId: null,
+        appleId: null, // Anmeldeverknüpfung lösen (die Kennung belebt das gelöschte Konto nie wieder)
         avatarUrl: null,
         city: null,
         bio: null,

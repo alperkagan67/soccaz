@@ -117,7 +117,7 @@ describe("Baustein und Seite", () => {
   it("Quelltext: page.tsx reicht die Server-Aktion als Prop, das alte einseitige Formular ist weg", () => {
     const root = path.resolve(import.meta.dirname, "../..");
     const page = readFileSync(path.join(root, "src/app/willkommen/page.tsx"), "utf8");
-    expect(page).toContain("<PlayerOnboarding defaultName={user.name} next={next} userId={user.id} abschlussAction={completeOnboardingAction} />");
+    expect(page).toContain("<PlayerOnboarding defaultName={user.name === APPLE_NAME_PLATZHALTER ? \"\" : user.name} next={next} userId={user.id} abschlussAction={completeOnboardingAction} />");
     expect(page).not.toContain("OnboardingForm");
     expect(() => readFileSync(path.join(root, "src/app/willkommen/OnboardingForm.tsx"), "utf8")).toThrow();
   });
