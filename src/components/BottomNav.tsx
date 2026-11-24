@@ -3,9 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-export type NavLabels = { teamGame: string; privateGame: string; tournaments: string; profile: string; findGame: string; main: string };
+export type NavLabels = { teamGame: string; privateGame: string; tournaments: string; profile: string; findGame: string; main: string; teams: string; help: string };
 
 type Item = { href: string; label: Exclude<keyof NavLabels, "main">; match: (p: string) => boolean; icon: string };
+
+// TURNIER_ONLY: nur Turniere, Teams, Profil, Hilfe (vier Einträge, kein Mittelknopf "Spiel suchen")
+const TURNIER_NAV: Item[] = [
+  { href: "/turniere", label: "tournaments", match: (p) => p.startsWith("/turniere") || p.startsWith("/app/turniere") || p.startsWith("/spiele"), icon: "M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z" },
+  { href: "/teams", label: "teams", match: (p) => p.startsWith("/teams") || p.startsWith("/app/teams"), icon: "M16 11a4 4 0 1 0-8 0 4 4 0 0 0 8 0zM4 21a8 8 0 0 1 16 0" },
+  { href: "/app", label: "profile", match: (p) => p === "/app" || p.startsWith("/app/einstellungen") || p.startsWith("/app/benachrichtigungen") || p.startsWith("/spieler"), icon: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" },
+  { href: "/hilfe", label: "help", match: (p) => p.startsWith("/hilfe"), icon: "M12 17h.01M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" },
+];
 
 // Richtung E: vier Bereiche und "Spiel suchen" als Mittelknopf (Vertrag 007, AC-1).
 const LEFT: Item[] = [
@@ -18,7 +26,7 @@ const RIGHT: Item[] = [
 ];
 
 /** Untere Navigationsleiste für das Handy (ab sm ausgeblendet, dort gibt es die Kopfleiste). */
-export function BottomNav({ signedIn, labels }: { signedIn: boolean; labels: NavLabels }) {
+export function BottomNav({ signedIn, labels, nurTurnier = false }: { signedIn: boolean; labels: NavLabels; nurTurnier?: boolean }) {
   const pathname = usePathname();
   const entry = (item: Item) => {
     const active = item.match(pathname);
@@ -40,6 +48,13 @@ export function BottomNav({ signedIn, labels }: { signedIn: boolean; labels: Nav
       </li>
     );
   };
+  if (nurTurnier) {
+    return (
+      <nav aria-label={labels.main} className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-bg/95 backdrop-blur sm:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }} data-testid="bottom-nav-turnier">
+        <ul className="mx-auto grid max-w-3xl grid-cols-4">{TURNIER_NAV.map(entry)}</ul>
+      </nav>
+    );
+  }
   const searchActive = pathname.startsWith("/suche") || pathname.startsWith("/app/suche");
   return (
     <nav

@@ -23,6 +23,7 @@ import { isVenueManager } from "@/server/venue-access-rules";
 import { InviteBox } from "./InviteBox";
 import { LeaveTeam, MemberControls, TeamSettings } from "./TeamManage";
 import { TopScorers } from "./TopScorers";
+import { gesperrtFuerNutzer } from "@/lib/turnier-only";
 
 export async function generateMetadata({ params }: PageProps<"/teams/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -56,6 +57,7 @@ function MatchRow({ m, teamId, homeId }: { m: Row; teamId: string; homeId: strin
 export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
   const { slug } = await params;
   const user = await getCurrentUser();
+  const nurTurnier = gesperrtFuerNutzer(user); // TURNIER_ONLY: keine Links und Aktionen in gesperrte Bereiche (Herausfordern, Lobby, Spiele, Ligen)
   const myTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
   const profile = await getTeamProfile(slug, myTeams.find((t) => t.slug !== slug)?.id ?? null, user?.id ?? null);
   if (!profile) notFound();
@@ -89,18 +91,18 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         {team.bio && <p className="whitespace-pre-line pt-1 text-sm" data-testid="bio">{team.bio}</p>}
         <FormChips form={profile.form} />
         <TeamCard data={teamCard} className="mt-3" />
-        {!admin && !canChallenge && user === null && (
+        {!nurTurnier && !admin && !canChallenge && user === null && (
           <Link href={`/anmelden?next=${encodeURIComponent(`/app/suche/neu?gegner=${team.slug}`)}`} className="text-sm text-accent-fg underline">
             Anmelden, um dieses Team herauszufordern
           </Link>
         )}
-        {isMyTeam && (
+        {!nurTurnier && isMyTeam && (
           <div className="pt-2" data-testid="team-open-lobby">
             <Link href="/matchmaking" className="btn btn-primary">Lobby aufmachen</Link>
             <p className="mt-1 text-sm text-muted">Tag und Zeitfenster festlegen, dann sehen alle Teams eure offene Lobby und können antreten.</p>
           </div>
         )}
-        {canChallenge && (
+        {!nurTurnier && canChallenge && (
           <div className="pt-2" data-testid="team-challenge">
             <ChallengeNow target={{ id: team.id, name: team.name }} teams={myTeams.filter((x) => x.id !== team.id).map((x) => ({ id: x.id, name: x.name }))} />
           </div>
@@ -126,7 +128,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         <StatTile label="Elo" value={profile.hasStats ? stats.elo : "–"} hint={profile.cityRank ? `Platz ${profile.cityRank} in ${team.city}` : "Rang ab 5 Spielen"} />
       </section>
 
-      {leagues.length > 0 && (
+      {leagues.length > 0 && !nurTurnier && (
         <section className="space-y-2">
           <h2 className="text-lg font-semibold">Ligen</h2>
           <ul className="flex flex-wrap gap-2">
@@ -159,7 +161,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
       {admin && <InviteBox teamId={team.id} teamName={team.name} />}
       {admin && <ImageUpload kind="team_logo" refId={team.id} label={team.logoUrl ? "Logo ändern" : "Logo hochladen"} />}
 
-      {profile.upcoming.length > 0 && (
+      {profile.upcoming.length > 0 && !nurTurnier && (
         <section className="space-y-2">
           <h2 className="text-lg font-semibold">Nächste Spiele</h2>
           <ul className="space-y-2">
@@ -170,6 +172,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         </section>
       )}
 
+      {!nurTurnier && (
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Letzte Ergebnisse</h2>
         {profile.recent.length === 0 ? (
@@ -182,6 +185,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
           </ul>
         )}
       </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Kader ({roster.count})</h2>

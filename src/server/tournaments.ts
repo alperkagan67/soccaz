@@ -1143,3 +1143,17 @@ export async function notifyFrozenTournaments(now: Date = new Date(), opts: { ca
   }
   return sent;
 }
+
+/** "Meine Turniere" (TURNIER_ONLY-Dashboard): Turniere, in denen die Person im Kader steht oder die sie veranstaltet; nur Name, Stand, Datum (keine Personendaten Dritter). */
+export async function myTournamentsAsPlayerOrOrganizer(userId: string) {
+  const asPlayer = await db
+    .select({ id: tournaments.id, name: tournaments.name, status: tournaments.status, startsOn: tournaments.startsOn })
+    .from(tournamentPlayers)
+    .innerJoin(tournaments, eq(tournaments.id, tournamentPlayers.tournamentId))
+    .where(eq(tournamentPlayers.userId, userId));
+  const asOrganizer = await myTournaments(userId);
+  const byId = new Map<string, { id: string; name: string; status: (typeof tournaments.$inferSelect)["status"]; startsOn: string; organizer: boolean }>();
+  for (const t of asPlayer) byId.set(t.id, { ...t, organizer: false });
+  for (const t of asOrganizer) byId.set(t.id, { ...t, organizer: true });
+  return [...byId.values()].sort((a, b) => b.startsOn.localeCompare(a.startsOn));
+}

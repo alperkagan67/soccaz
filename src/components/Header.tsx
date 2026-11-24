@@ -6,11 +6,13 @@ import { UserMenu } from "./UserMenu";
 import { unreadCount } from "@/server/notifications";
 import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
+import { gesperrtFuerNutzer } from "@/lib/turnier-only";
 import { isVenueManager as checkVenueManager } from "@/server/venues";
 
 export async function Header() {
   const { t } = await getT();
   const user = await getCurrentUser();
+  const nurTurnier = gesperrtFuerNutzer(user); // TURNIER_ONLY: nur Turniere, Teams, Profil, Hilfe
   const unread = user ? await unreadCount(user.id) : 0;
   const isVenueManager = user ? await checkVenueManager(user.id) : false;
 
@@ -22,15 +24,31 @@ export async function Header() {
           <span className="font-heading text-lg font-bold tracking-tight">SOCAZ</span>
         </Link>
         <nav className="flex items-center gap-2 text-sm">
-          <Link href="/suche" className="hidden px-2 text-muted hover:text-ink sm:inline">
-            {t("nav.requests")}
-          </Link>
-          <Link href="/spiele" className="hidden px-2 text-muted hover:text-ink sm:inline">
-            {t("nav.live")}
-          </Link>
-          <Link href="/rangliste" className="hidden px-2 text-muted hover:text-ink sm:inline">
-            {t("nav.ranking")}
-          </Link>
+          {nurTurnier ? (
+            <>
+              <Link href="/turniere" className="hidden px-2 text-muted hover:text-ink sm:inline">
+                {t("nav.tournaments")}
+              </Link>
+              <Link href="/teams" className="hidden px-2 text-muted hover:text-ink sm:inline">
+                {t("footer.teams")}
+              </Link>
+              <Link href="/hilfe" className="hidden px-2 text-muted hover:text-ink sm:inline">
+                {t("footer.help")}
+              </Link>
+            </>
+          ) : (
+            <>
+            <Link href="/suche" className="hidden px-2 text-muted hover:text-ink sm:inline">
+              {t("nav.requests")}
+            </Link>
+            <Link href="/spiele" className="hidden px-2 text-muted hover:text-ink sm:inline">
+              {t("nav.live")}
+            </Link>
+            <Link href="/rangliste" className="hidden px-2 text-muted hover:text-ink sm:inline">
+              {t("nav.ranking")}
+            </Link>
+            </>
+          )}
           {user ? (
             <>
               <Link
@@ -54,7 +72,7 @@ export async function Header() {
                 avatarUrl={user.avatarUrl ?? null}
                 unread={unread}
                 showAdmin={canUser(user, "dashboard")}
-                showVenue={isVenueManager}
+                showVenue={isVenueManager && !nurTurnier}
                 labels={{ games: t("menu.games"), profile: t("menu.profile"), venue: t("menu.venue"), settings: t("menu.settings"), notifications: t("nav.notifications"), admin: t("nav.admin"), signOut: t("nav.signOut"), help: t("footer.help"), account: t("menu.account"), unread: t("menu.unread") }}
                 signOutAction={async () => {
                   "use server";

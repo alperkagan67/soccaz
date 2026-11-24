@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { Outfit, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { BottomNav } from "@/components/BottomNav";
+import { gesperrtFuerNutzer } from "@/lib/turnier-only";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { InstallHint } from "@/components/InstallHint";
@@ -44,7 +45,7 @@ async function MobileNav() {
   return (
     <>
       <HtmlLang locale={locale} />
-      <BottomNav signedIn={Boolean(user)} labels={{ teamGame: t("nav.teamGame"), privateGame: t("nav.privateGame"), tournaments: t("nav.tournaments"), profile: t("nav.profile"), findGame: t("nav.findGame"), main: t("nav.main") }} />
+      <BottomNav signedIn={Boolean(user)} nurTurnier={gesperrtFuerNutzer(user)} labels={{ teams: t("footer.teams"), help: t("footer.help"),  teamGame: t("nav.teamGame"), privateGame: t("nav.privateGame"), tournaments: t("nav.tournaments"), profile: t("nav.profile"), findGame: t("nav.findGame"), main: t("nav.main") }} />
     </>
   );
 }

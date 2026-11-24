@@ -2,6 +2,11 @@
 // Eine Quelle für "welche Pfade sind gesperrt": Navigation, Seitensperre (layout), Live-Kanäle, sitemap und Prüfskripte lesen diese Liste. Offen bleiben Turniere, Teams, Profil, Anmeldung, Hilfe, Rechtliches, Einladungen zu Team/Turnier und die Admin-Bereiche (Plattform-Admin darf alles).
 // Server-Aktionen der gesperrten Module prüfen unabhängig davon (src/server/turnier-only.ts): die Oberfläche allein ist kein Schutz.
 
+/** Sync-Variante für Stellen, die den Nutzer schon haben (Navigation, Fußzeile): Betriebsart an und kein Plattform-Admin. */
+import { isPlatformAdmin, type Role } from "./roles";
+
+export const gesperrtFuerNutzer = (user: { role?: string | null } | null | undefined, env: Record<string, string | undefined> = process.env): boolean => turnierOnlyOn(env) && !isPlatformAdmin(user as { role?: Role | null } | null | undefined);
+
 export const turnierOnlyOn = (env: Record<string, string | undefined> = process.env): boolean => env.TURNIER_ONLY === "1";
 
 /** Neutraler Text der Ruheseite (Entwurf, kein Termin, kein Versprechen). */
