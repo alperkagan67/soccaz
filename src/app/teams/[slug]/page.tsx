@@ -194,8 +194,8 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
         {members.length > 0 && (
           // EIN Rahmen um die Liste, die Zeilen haben keinen eigenen (AC-30 c: keine Karte in der Karte)
           <ul className="card divide-y divide-line" data-testid="roster">
-            {members.map((m) => (
-              <li key={m.userId} className="space-y-2 py-3 first:pt-0 last:pb-0" data-testid="member">
+            {members.map((m, mi) => (
+              <li key={viewer.kind === "member" ? m.userId : `m${mi}`} className="space-y-2 py-3 first:pt-0 last:pb-0" data-testid="member">
                 <PlayerRow
                   data={playerCardFor(viewer, { name: m.name, elo: m.elo, position: m.position, teamColor: team.color ?? null, teamSlug: team.slug }, RATING)}
                   href={`/spieler/${m.userId}`}
