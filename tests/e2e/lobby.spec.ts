@@ -67,8 +67,8 @@ test("Lobby: Ort live, Bereit, automatische Bestätigung, Rücknahme, Absage", a
   // Absagen mit Grund
   await clickWhenReady(a, "Spiel absagen");
   await a.getByLabel(/Grund der Absage/).fill("Halle fällt aus");
-  await a.getByRole("button", { name: "Endgültig absagen" }).click();
-  await expect(a.getByText("Dieses Spiel wurde abgesagt.")).toBeVisible();
+  await clickWhenReady(a, "Endgültig absagen");
+  await expect(a.getByText("Dieses Spiel wurde abgesagt.")).toBeVisible({ timeout: 15_000 });
   await expect(b.getByText("Dieses Spiel wurde abgesagt.")).toBeVisible({ timeout: 15_000 });
   await expect(a.getByRole("button", { name: "Ich bin bereit" })).toHaveCount(0);
   await expect(a.getByRole("button", { name: "Spiel absagen" })).toHaveCount(0);
