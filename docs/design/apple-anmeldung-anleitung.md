@@ -78,6 +78,8 @@ In der Datei `.env` auf dem **jeweiligen** Server (Produktion bzw. Staging; `doc
 2. `https://<Staging-Adresse>/anmelden` öffnen: **Erwartet:** zwei Knöpfe („Mit Google anmelden“, „Mit Apple anmelden“); **kein** Dev-Login.
 3. „Mit Apple anmelden“ → Apple-Anmeldung → Rückkehr zu Soccaz, angemeldet. **Beim ersten Mal** fragt Apple, ob die E-Mail geteilt oder versteckt wird (**Private Relay**: Soccaz bekommt dann eine Weiterleitungsadresse `…@privaterelay.appleid.com`; das ist erlaubt und muss funktionieren).
 4. **Erwartet:** in Soccaz ein **eigenes Konto** (Name nur beim allerersten Login von Apple geliefert: fehlt er, fragt Soccaz im Onboarding danach).
+   **Zusatzprüfung (Rückkehrziel):** Das Auth.js-Cookie `callbackUrl` bleibt `SameSite=Lax` und kommt beim Cross-Site-POST von Apple nicht mit: das gewünschte Ziel nach der Anmeldung kann verloren gehen, der Spieler landet dann auf `/` statt auf der Seite, von der er kam. Beim Staging-Test **ausdrücklich prüfen** (z. B. Anmeldung aus einer Turnierseite heraus) und das Ergebnis melden; kein Fehler der Anmeldung selbst.
+   **Abweisungen:** Ist die E-Mail schon einem Konto zugeordnet, erscheint auf `/anmelden` ein neutraler Hinweis ("mit der Anmeldeart anmelden, mit der du es angelegt hast"). Liefert Apple keine **bestätigte** E-Mail, entsteht kein Konto (Hinweis, es mit Google zu versuchen).
 5. Smoke: `node scripts/smoke.mjs https://<Staging-Adresse> --apple` (mit `SMOKE_BASIC_AUTH` aus der Umgebung): alle Zeilen `OK`. Danach **Produktion** mit eigener Return-URL und dem Produktionswert wiederholen.
 
 ## 9. Wenn es nicht klappt
