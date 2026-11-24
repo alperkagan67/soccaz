@@ -22,6 +22,31 @@ const srcFiles = walk(join(root, "src"), /\.(tsx?|css)$/);
 const e2eFiles = walk(join(root, "tests", "e2e"), /\.ts$/);
 const srcText = srcFiles.map((f) => readFileSync(f, "utf8")).join("\n");
 
+/**
+ * Test-IDs, die src WIRKLICH als data-testid setzt (AC-5, Härtung Backlog 229 (1), R-T364). Nur diese Formen zählen, nicht jede Zeichenkette im Quelltext (ein aria-label oder eine Konstante mit demselben Text ist kein Beleg):
+ *  - data-testid="id", data-testid='id', data-testid={"id"}, data-testid={`id`}
+ *  - data-testid={bedingung ? "a" : "b"} (beide Werte)
+ *  - testId="id" oder testId: "id" (Eigenschaft eines Bausteins, der sie als data-testid setzt, z. B. ShareLink)
+ *  - dynamisch: data-testid={`vorn-${x}hinten`} gilt als Muster (jeder Platzhalter = beliebiger Text); data-testid={testId} ohne festen Teil gilt nicht.
+ * Eine Auswahl per Selektor ([data-testid="id"] im Code) setzt nichts und zählt nicht.
+ */
+export function definedTestIds(text: string): { ids: Set<string>; patterns: RegExp[] } {
+  const ids = new Set<string>();
+  const patterns: RegExp[] = [];
+  for (const m of text.matchAll(/(?<!\[)data-testid=(?:"([^"]+)"|'([^']+)'|\{\s*"([^"]+)"\s*\}|\{\s*'([^']+)'\s*\})/g)) ids.add((m[1] ?? m[2] ?? m[3] ?? m[4]) as string);
+  for (const m of text.matchAll(/(?<!\[)data-testid=\{\s*`([^`]*)`\s*\}/g)) {
+    if (!m[1].includes("${")) ids.add(m[1]);
+    else patterns.push(new RegExp("^" + m[1].split(/\$\{[^}]*\}/).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".+") + "$"));
+  }
+  for (const m of text.matchAll(/(?<!\[)data-testid=\{[^{}`"']*\?\s*"([^"]+)"\s*:\s*"([^"]+)"\s*\}/g)) {
+    ids.add(m[1]);
+    ids.add(m[2]);
+  }
+  for (const m of text.matchAll(/\btestId\s*[=:]\s*(?:"([^"]+)"|'([^']+)')/g)) ids.add((m[1] ?? m[2]) as string);
+  return { ids, patterns };
+}
+export const testIdDefined = (id: string, d: ReturnType<typeof definedTestIds>) => d.ids.has(id) || d.patterns.some((re) => re.test(id));
+
 /** Routen aus dem App-Verzeichnis als Muster: [id] = ein Segment, [...x] = beliebig viele, (gruppe) zählt nicht, @slot und _privat entfallen. */
 export function routePatterns(): { path: string; re: RegExp }[] {
   const appDir = join(root, "src", "app");
@@ -46,17 +71,15 @@ export function normalizeTarget(raw: string): string | null {
 
 describe("AC-5: Bindungen der E2E-Tests an Test-IDs und Adressen", () => {
   it("jede per getByTestId(\"...\") benutzte Test-ID steht noch in src", () => {
+    const defined = definedTestIds(srcText);
     const missing = new Set<string>();
     for (const f of e2eFiles) {
       const text = readFileSync(f, "utf8");
       for (const m of text.matchAll(/getByTestId\(\s*"([^"$]+)"\s*\)(\)\.toHaveCount\(0\)|\)\.not\.|\.not\.)?/g)) {
         const id = m[1];
         if (m[2]) continue; // Verneinung: die Test-ID darf fehlen (zum Beispiel entferntes Guthaben)
-        // dynamische Test-IDs (data-testid={`error-${name}`}): das feste Stück vor dem Platzhalter genügt
-        // oder mit dynamischem Anfang (data-testid={`${testId}-whatsapp`}): das feste Ende nach dem Platzhalter
-        if (id.split("-").some((_, i, parts) => i > 0 && (srcText.includes("`" + parts.slice(0, i).join("-") + "-${") || srcText.includes("}-" + parts.slice(i).join("-") + "`")))) continue;
-        // data-testid="id", testid="id" oder als Zeichenkette in einer Konstante/Eigenschaft
-        if (!srcText.includes(`"${id}"`) && !srcText.includes(`'${id}'`) && !srcText.includes(`\`${id}\``) && !new RegExp(`data-testid=\\{\`${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(srcText)) missing.add(`${id} (${relative(root, f).split("\\").join("/")})`);
+        // nur echte data-testid-Definitionen zählen (feste, bedingte, Eigenschaft testId, dynamische Muster), siehe definedTestIds
+        if (!testIdDefined(id, defined)) missing.add(`${id} (${relative(root, f).split("\\").join("/")})`);
       }
     }
     expect([...missing].sort()).toEqual([]);
@@ -74,6 +97,27 @@ describe("AC-5: Bindungen der E2E-Tests an Test-IDs und Adressen", () => {
       }
     }
     expect([...unknown].sort()).toEqual([]);
+  });
+
+  it("Gegenprobe Test-IDs: nur echte data-testid-Definitionen zählen (aria-label, Konstante, Selektor und leerer Platzhalter nicht)", () => {
+    const d = definedTestIds(
+      [
+        '<p data-testid="fest-a">x</p>',
+        "<p data-testid='fest-b'>x</p>",
+        '<p data-testid={"fest-c"}>x</p>',
+        "<p data-testid={`fest-d`}>x</p>",
+        '<p data-testid={ok ? "bed-ja" : "bed-nein"}>x</p>',
+        '<Baustein testId="eigenschaft-e" />',
+        "<p data-testid={`zeile-${id}`}>x</p>",
+        "<p data-testid={`${prefix}-ende`}>x</p>",
+        "<p data-testid={testId}>x</p>",
+        '<p aria-label="nur-label">x</p>',
+        'const KONSTANTE = "nur-konstante";',
+        'document.querySelector(\'[data-testid="nur-selektor"]\');',
+      ].join("\n"),
+    );
+    for (const id of ["fest-a", "fest-b", "fest-c", "fest-d", "bed-ja", "bed-nein", "eigenschaft-e", "zeile-42", "etwas-ende"]) expect(testIdDefined(id, d), id).toBe(true);
+    for (const id of ["nur-label", "nur-konstante", "nur-selektor", "zeile", "zeile-", "unbekannt"]) expect(testIdDefined(id, d), id).toBe(false);
   });
 
   it("Gegenprobe: der Routen-Leser erkennt Muster und ein erfundener Pfad fällt durch", () => {
