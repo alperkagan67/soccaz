@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches, paymentCharges, paymentDisputes, paymentProfiles, paymentRefunds } from "@/db/schema";
-import { getRefundAlerts, manualRefund, matchMoneyOf } from "@/server/finance";
+import { cardAlertsFrom, getRefundAlerts, manualRefund, matchMoneyOf } from "@/server/finance";
 import { FakeProvider } from "@/server/payments/fake";
 import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { adminCancelMatch, listFailedRefundsOfMatch, nextRetryKey, retryFailedRefund, writeOffFailedRefund } from "@/server/payments/refund";
@@ -296,5 +296,170 @@ describe("Absage haengt an der fehlgeschlagenen Erstattung (finalizeCancel)", ()
     provider.setRefundOutcome(u.id, "succeeded");
     await retryFailedRefund(owner.id, row.id);
     expect((await db.select().from(matches).where(eq(matches.id, m.match.id)))[0].status).toBe("cancelled");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Zustandsautomat (w1-Fund zu #341, t2q): ALTER Versuch A (pending/failed/succeeded) x NEUER Versuch B (direktes Ergebnis pending/failed/succeeded) x Zeitpunkt des A-Ereignisses
+// (W = im Sendefenster, die Zeile ist pending mit refund_id NULL; L = nach dem Ergebnis von B) x anschliessend das Webhook-Ereignis succeeded von B. Erwartung als eigene kleine Spezifikation:
+// A pending/failed aendern nie Status oder refund_id; ein ERSTER Erfolg gewinnt und wird genau einmal gebucht; jeder spaetere Erfolg mit ANDERER Stripe-id ist nur ein Hinweis (kein zweites Mal buchen);
+// succeeded(A) nach dem Neuversuch wird gebucht (Geld ist raus) und mit einem Hinweis protokolliert; succeeded verlaesst nie den Zustand.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+type St = "pending" | "failed" | "succeeded";
+type Model = { status: St; refundId: "A" | "B" | null; late: number; dup: number; bookings: number };
+function modelRun(order: "W" | "L", aStatus: St, bOut: St): Model {
+  const mdl: Model = { status: "pending", refundId: null, late: 0, dup: 0, bookings: 0 };
+  const dupIds = new Set<string>(); // der Hinweis wird je zweiter Stripe-id nur EINMAL geschrieben (Wiederholungen erhoehen die Zahl nicht)
+  const success = (who: "A" | "B", isStale: boolean) => {
+    if (mdl.status === "succeeded") {
+      if (mdl.refundId !== who) dupIds.add(who);
+      return;
+    }
+    mdl.status = "succeeded";
+    mdl.refundId = who;
+    mdl.bookings++;
+    if (isStale) mdl.late++;
+  };
+  const bDirect = () => {
+    if (bOut === "pending") {
+      if (mdl.status !== "succeeded" && mdl.refundId === null) mdl.refundId = "B";
+    } else if (bOut === "failed") {
+      if (mdl.status !== "succeeded") {
+        mdl.status = "failed";
+        mdl.refundId = mdl.refundId ?? "B";
+      }
+    } else success("B", false);
+  };
+  const aEvent = () => {
+    if (aStatus === "succeeded") success("A", true);
+    // pending und failed der alten Erstattung: ignoriert
+  };
+  if (order === "W") {
+    aEvent();
+    bDirect();
+  } else {
+    bDirect();
+    aEvent();
+  }
+  success("B", false); // Webhook-Ereignis succeeded von B
+  mdl.dup = dupIds.size;
+  return mdl;
+}
+
+describe("Zustandsautomat: alter Versuch A x neuer Versuch B (jede Reihenfolge, genau eine Buchung, Monotonie)", () => {
+  const STATES: St[] = ["pending", "failed", "succeeded"];
+  for (const order of ["W", "L"] as const) {
+    for (const aStatus of STATES) {
+      for (const bOut of STATES) {
+        it(`A ${aStatus} (${order === "W" ? "im Sendefenster" : "nach dem Ergebnis von B"}) x B direkt ${bOut}, dann B-Ereignis succeeded`, async () => {
+          const { m, u, charge, row } = await failedSetup(`z${order}${aStatus[0]}${bOut[0]}`);
+          const A = row.refundId as string;
+          const B = retryRefundId(row);
+          provider.setRefundOutcome(u.id, bOut);
+          const deliver = async (refundId: string, status: St) => {
+            const ev = refundEvent(m, u, charge, refundId, status);
+            expect((await handleStripeWebhook(ev.rawBody, ev.signature)).status).toBe(200);
+          };
+          const seen: string[] = [];
+          const watch = async () => seen.push((await refundRow(charge.id)).status);
+          if (order === "W") {
+            provider.beforeRefundResult = async () => {
+              await deliver(A, aStatus);
+              await watch();
+            };
+          }
+          await retryFailedRefund(owner.id, row.id).catch(() => undefined); // B direkt failed meldet "wieder abgelehnt"
+          provider.beforeRefundResult = null;
+          if (order === "L") {
+            await deliver(A, aStatus);
+            await watch();
+          }
+          await deliver(B, "succeeded");
+          await watch();
+          const want = modelRun(order, aStatus, bOut);
+          const end = await refundRow(charge.id);
+          expect(end.status, "Endzustand").toBe(want.status);
+          expect(end.refundId, "refund_id").toBe(want.refundId === "A" ? A : B);
+          // Monotonie: einmal succeeded, nie wieder etwas anderes
+          const firstOk = seen.indexOf("succeeded");
+          if (firstOk >= 0) expect(seen.slice(firstOk).every((x) => x === "succeeded"), `Verlauf ${seen.join(",")}`).toBe(true);
+          // genau eine Buchung: Einnahmen zurueck auf 0, ein Audit refund.succeeded, nie doppelt
+          expect(await revenue(m)).toBe(want.status === "succeeded" ? 0 : 800);
+          expect((await auditOf(m.match.id, "refund.succeeded")).length).toBe(want.bookings);
+          expect((await auditOf(m.match.id, "refund.late_success_old_attempt")).length, "Hinweis: A nachtraeglich erfolgreich").toBe(want.late);
+          expect((await auditOf(m.match.id, "refund.duplicate_success")).length, "Hinweis: zweiter Erfolg").toBe(want.dup);
+          expect(await db.select().from(paymentRefunds).where(eq(paymentRefunds.chargeId, charge.id))).toHaveLength(1);
+        });
+      }
+    }
+  }
+
+  it("Wiederholte Zustellung (neue Ereignis-ids) von pending(A) nach dem Neuversuch aendert nichts; B danach succeeded", async () => {
+    const { m, u, charge, row } = await failedSetup("zred");
+    const A = row.refundId as string;
+    provider.setRefundOutcome(u.id, "pending");
+    await retryFailedRefund(owner.id, row.id);
+    const B = retryRefundId(row);
+    for (let i = 0; i < 3; i++) {
+      const ev = refundEvent(m, u, charge, A, "pending");
+      expect((await handleStripeWebhook(ev.rawBody, ev.signature)).status).toBe(200);
+      expect(await refundRow(charge.id)).toMatchObject({ status: "pending", refundId: B });
+    }
+    const ok = refundEvent(m, u, charge, B, "succeeded");
+    expect((await handleStripeWebhook(ok.rawBody, ok.signature)).status).toBe(200);
+    expect(await refundRow(charge.id)).toMatchObject({ status: "succeeded", refundId: B });
+    expect(await revenue(m)).toBe(0);
+  });
+});
+
+describe("Alarme der Erstattung (Backlog 192, w1-Fund)", () => {
+  const inHours = (h: number) => new Date(Date.now() + h * 3_600_000);
+
+  it("pending ohne Ergebnis: nach 23 h kein Alarm, nach 25 h Alarm card:refund-stuck (ohne Personendaten), ein Eintrag je Zustand (entprellt), nach Erfolg weg", async () => {
+    const { m, u, charge, row } = await failedSetup("al1");
+    provider.setRefundOutcome(u.id, "pending");
+    await retryFailedRefund(owner.id, row.id); // pending mit refund_id B, Versuch gerade gestartet
+    const stuck = async (h: number) => (await getRefundAlerts(inHours(h))).refundsStuck.some((x) => x.id === row.id);
+    expect(await stuck(23)).toBe(false);
+    expect(await stuck(25)).toBe(true);
+    const ra = await getRefundAlerts(inHours(25));
+    const alerts = cardAlertsFrom(ra).filter((a) => a.code === "card:refund-stuck");
+    expect(alerts).toHaveLength(1); // ein Eintrag mit Anzahl, kein Eintrag je Aufruf
+    expect(JSON.stringify(alerts)).not.toContain(u.id);
+    expect(JSON.stringify(alerts)).not.toContain("@");
+    expect(cardAlertsFrom(await getRefundAlerts(inHours(25))).filter((a) => a.code === "card:refund-stuck")).toHaveLength(1); // zweiter Aufruf: unveraendert
+    const ok = refundEvent(m, u, charge, retryRefundId(row), "succeeded");
+    expect((await handleStripeWebhook(ok.rawBody, ok.signature)).status).toBe(200);
+    expect(await stuck(25)).toBe(false);
+  });
+
+  it("kein Alarm bei failed (hat den Alarm failed-refunds), bei abgeschrieben und bei Erfolg", async () => {
+    const { row } = await failedSetup("al2");
+    expect((await getRefundAlerts(inHours(25))).refundsStuck.some((x) => x.id === row.id)).toBe(false); // failed
+    await writeOffFailedRefund(owner.id, row.id, "Test abgeschrieben");
+    expect((await getRefundAlerts(inHours(25))).refundsStuck.some((x) => x.id === row.id)).toBe(false); // abgeschrieben (failed)
+  });
+
+  it("nach einem Neuversuch zaehlt die Frist ab dem Neuversuch, nicht ab der alten Erstattung", async () => {
+    const { u, charge, row } = await failedSetup("al3");
+    await db.update(paymentRefunds).set({ createdAt: new Date(Date.now() - 72 * 3_600_000), attemptStartedAt: new Date(Date.now() - 70 * 3_600_000) }).where(eq(paymentRefunds.id, row.id)); // alter Versuch vor 70 h
+    provider.setRefundOutcome(u.id, "pending");
+    await retryFailedRefund(owner.id, row.id);
+    expect((await getRefundAlerts(inHours(1))).refundsStuck.some((x) => x.id === row.id)).toBe(false); // sofort nach dem Neuversuch kein Alarm
+    expect((await getRefundAlerts(inHours(25))).refundsStuck.some((x) => x.id === row.id)).toBe(true);
+    void charge;
+  });
+
+  it("alter Versuch nachtraeglich erfolgreich: Alarm card:refund-late-success (nur Spiel-ID), eine Buchung", async () => {
+    const { m, u, charge, row } = await failedSetup("al4");
+    const A = row.refundId as string;
+    provider.setRefundOutcome(u.id, "pending");
+    await retryFailedRefund(owner.id, row.id);
+    const late = refundEvent(m, u, charge, A, "succeeded");
+    expect((await handleStripeWebhook(late.rawBody, late.signature)).status).toBe(200);
+    const alerts = cardAlertsFrom(await getRefundAlerts()).filter((a) => a.code === "card:refund-late-success");
+    expect(alerts).toHaveLength(1);
+    expect(JSON.stringify(alerts)).not.toContain(u.id);
+    expect(await revenue(m)).toBe(0);
   });
 });
