@@ -126,16 +126,16 @@ test("Turnier (öffentlich): Veranstalter, Captain und Spieler je Rolle; Captain
   const url = `/turniere/${t.id}`;
   const NAMEN = [NAME, NAME_CAP, NAME_MATE, `Vollname${run}`];
 
-  // Gast: nur Initialen (Veranstalter ZV, Captain KV, Spieler KV und MV), weder HTML noch RSC enthalten Name oder Kennung
+  // Gast: Veranstalter "Zorro V." (Vorname + Initial, t2q), Captain KV, Spieler KV und MV als Initialen, weder HTML noch RSC enthalten Name oder Kennung
   const gast = await (await browser.newContext()).newPage();
   await gast.goto(url);
   await expect(gast.getByTestId("team-captain")).toContainText("Captain: KV"); // die Zeile "–" (Zuschauer) darf es nicht sein: Initialen sind belegt
   await expect(gast.getByTestId("tournament-player").getByTestId("person-name")).toHaveText(["KV", "MV"]);
-  await expect(gast.getByText(/Veranstalter: ZV/)).toBeVisible();
+  await expect(gast.getByText("Veranstalter: Zorro V. ·", { exact: false })).toBeVisible(); // exakt Vorname + Initial, nie der Nachname (die NAMEN-Prüfung unten schließt "Zorro Vollname" aus)
   const g = await rohdaten(gast, url);
   expect(g.html).toContain(">KV<");
   for (const text of [g.html, g.rsc]) {
-    for (const n of NAMEN) expect(text, `Turnier Gast: ${n}`).not.toContain(n);
+    for (const n of NAMEN) expect(text.split("Zorro V.").join(""), `Turnier Gast: ${n}`).not.toContain(n);
     for (const id of [org, cap, mate]) expect(text, "Turnier Gast: Kennung").not.toContain(id);
   }
 

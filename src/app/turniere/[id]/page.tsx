@@ -26,7 +26,7 @@ import { getTournament } from "@/server/tournaments";
 import { BoardInfo } from "./BoardInfo";
 import { BracketView } from "./BracketView";
 import { PersonName } from "@/components/PersonName";
-import { autorLabel, personRef } from "@/lib/lobby-namen";
+import { autorLabel, personRef, veranstalterLabel } from "@/lib/lobby-namen";
 import { getViewerSicht } from "@/server/viewer-sicht";
 import { CopyLink } from "./CopyLink";
 import { RegisterForm } from "./RegisterForm";
@@ -83,7 +83,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
           {t.startsAt ? ` · ${formatDateTime(t.startsAt)} Uhr` : ` · ${t.startsOn}`} · K.-o.-System
         </p>
         <p className="text-sm text-muted" data-testid="tournament-meta">
-          Veranstalter: {autorLabel(data.organizerName, sicht)} · {STATUS[t.status]} · {teams.length}/{t.maxTeams} Teams · {free ? "kostenlos" : `Hallenkosten ${formatEuro(pricing.totalCents ?? 0)}, geteilt durch alle Spieler`}
+          Veranstalter: {veranstalterLabel(data.organizerName, sicht)} · {STATUS[t.status]} · {teams.length}/{t.maxTeams} Teams · {free ? "kostenlos" : `Hallenkosten ${formatEuro(pricing.totalCents ?? 0)}, geteilt durch alle Spieler`}
           {t.registrationDeadline ? ` · Anmeldeschluss ${formatDateTime(t.registrationDeadline)} Uhr` : ""}
           {t.isPrivate ? " · privat" : ""}
         </p>

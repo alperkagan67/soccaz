@@ -35,7 +35,7 @@ export const ROUTEN: Record<string, Eintrag> = {
   "/teams/[slug]": g("html+rsc", "Kommentare", "Team: Kommentare (Initialen), Torjäger namenfrei, Karten neutral (PR A, cardViewerFor)", true),
   "/teams/[slug]/opengraph-image": g("bild", "image/png", "og:image des Teams: nur Teamname und Stadt"),
   "/turniere": g("html", "Turniere", "Turnierliste: Turnier- und Teamnamen, kein Veranstalter-Klarname"),
-  "/turniere/[id]": g("html+rsc", "Captain:", "Turnier: Veranstalter, Captain und Spieler als Initialen (PR B)", true),
+  "/turniere/[id]": g("html+rsc", "Captain:", "Turnier: Veranstalter als Vorname + Initial (t2q), Captain und Spieler als Initialen (PR B)"),
   "/lobby/[id]": g("html+rsc", "game-number", "Lobby: Teilnehmer und Rest-Kader als Initialen (5a, #302)", true),
   "/lobby/offen/[entryId]": g("html+rsc", "open-lobby-team", "Offene Lobby: Namen nur für Teammitglieder, Gäste nur Anzahl (PR B)"),
   "/einladung/[token]": g("html", "Du wurdest eingeladen", "Team-Einladung: Teamname, Stadt, Spielerzahl, keine Namen"),

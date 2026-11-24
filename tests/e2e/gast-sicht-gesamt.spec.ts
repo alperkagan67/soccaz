@@ -118,6 +118,7 @@ const verboten = (s: Seed) => [NAME, NAME_Y, NAME_M, NACHNAME, "Zorro", ...s.sec
 const AUSNAHME: Record<string, { ohneKennung?: boolean; erlaubt?: string[] }> = {
   "/spieler/[id]": { ohneKennung: true },
   "/spiel/[token]": { erlaubt: ["Zorro V."] },
+  "/turniere/[id]": { erlaubt: ["Zorro V."] }, // Veranstalter überall "Vorname + Initial" (t2q)
 };
 
 function pruefeText(text: string, kontext: string, s: Seed, route = "") {
@@ -202,7 +203,9 @@ test("Gast-Sicht: jede Route der Registry als Gast ohne Klarnamen, Kennungen und
   }
   expect(fehler, `Gast-Sicht verletzt:\n${fehler.join("\n")}`).toEqual([]);
 
-  // Zusatzwerte: Veranstalter der Privatspiel-Einladung ist "Vorname + Initial" (t2q), die Sitemap nennt keine Profile
+  // Zusatzwerte: Veranstalter (Turnier UND Privatspiel-Einladung) ist exakt "Vorname + Initial" (t2q), die Sitemap nennt keine Profile
+  const turnier = await (await gast.get(`/turniere/${s.ids.tournament}`)).text();
+  expect(turnier.replace(/<!--.*?-->/g, "")).toContain("Veranstalter: Zorro V. ");
   const einladung = await (await gast.get(`/spiel/${s.ids.spielToken}`)).text();
   expect(einladung).toContain("Zorro V.");
   const sitemap = await (await gast.get("/sitemap.xml")).text();
