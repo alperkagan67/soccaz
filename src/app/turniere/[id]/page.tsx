@@ -39,6 +39,7 @@ import { istGratis } from "@/lib/gratis";
 import { TournamentCard } from "./TournamentCard";
 import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 import { zahlungenAus } from "@/server/zahlungen-aus";
+import { KontoHinweis, kontoSatz } from "@/components/KontoHinweis";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
 
@@ -49,6 +50,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const sp = await searchParams;
   const token = typeof sp.t === "string" ? sp.t : null;
   const user = await getCurrentUser();
+  const kontoSatzText = await kontoSatz(); // Satz fuer den Einladungstext (WhatsApp), am Schalter der Apple-Anmeldung
   const aus = await zahlungenAus(); // Modus Zahlungen AUS (Go-live): keine Zahlungstexte, nur Anzeige
   const data = await getTournament(id, user ? { id: user.id, role: user.role } : null, token);
   // Unbekannt, keine UUID, privat ohne gültigen Token: IMMER dieselbe neutrale Seite (kein Existenz-Orakel, kein Turnierinhalt, der Token wird nirgends weitergereicht)
@@ -105,10 +107,14 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         )}
       </header>
 
-      {!user && (
+      {t.status === "cancelled" && (
+        <p className="card text-sm" data-testid="cancelled-note">Dieses Turnier wurde abgesagt.</p>
+      )}
+      {!user && (inRegistration || inPayment) && (
         <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${tokenQuery}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
-      {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} />}
+      {!user && <KontoHinweis />}
+      {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} kontoSatz={kontoSatzText} />}
       {declined && inPayment && manage && (
         <section className="card space-y-3" data-testid="venue-declined">
           <h2 className="font-semibold">Die Halle kann das Turnier nicht ausrichten</h2>
@@ -226,7 +232,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                     <ul className="text-xs text-muted">
                       {b.games.map((g) => (
                         <li key={g.court}>
-                          Platz {g.court}: {g.fun ? "Just for fun, " : ""}
+                          Platz {g.court}: {g.fun ? "Spaßspiel, " : ""}
                           {g.nameA && g.nameB ? `${g.nameA} – ${g.nameB}` : g.fun ? "Verlierer der Halbfinals" : "noch offen"}
                         </li>
                       ))}
@@ -297,7 +303,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                   {inRegistration && !noMoney && v?.joinableTeamIds.includes(team.teamId) && (
                     <p className="text-xs text-muted" data-testid="kader-hint">{ZP.hintLater}</p>
                   )}
-                  {mine && inRegistration && data.registrationOpen && <InviteBox teamId={team.teamId} teamName={team.name} />}
+                  {mine && inRegistration && data.registrationOpen && <InviteBox teamId={team.teamId} teamName={team.name} kontoSatz={kontoSatzText} />}
                   {mine && inRegistration && (
                     <div className="space-y-1">
                       {team.ready ? (
@@ -338,7 +344,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       </section>
 
       {!data.bracketVisible && (inRegistration || inPayment) && (
-        <p className="card text-sm text-muted" data-testid="bracket-hidden">{noMoney ? "Das Bracket erscheint, sobald alle Teams vollzählig sind und jeder Captain „Bereit“ gedrückt hat." : data.cardMode ? "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler eine Karte hinterlegt haben, jeder Captain „Bereit“ gedrückt hat und der Anteil zur Frist abgebucht ist." : "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat."}</p>
+        <p className="card text-sm text-muted" data-testid="bracket-hidden">{noMoney ? "Der Spielplan erscheint, sobald alle Plätze belegt und alle Teams vollzählig sind. Sonst schließt der Veranstalter die Anmeldung und startet mit den bereiten Teams." : data.cardMode ? "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler eine Karte hinterlegt haben, jeder Captain „Bereit“ gedrückt hat und der Anteil zur Frist abgebucht ist." : "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat."}</p>
       )}
     </div>
   );

@@ -24,6 +24,7 @@ import { InviteBox } from "./InviteBox";
 import { LeaveTeam, MemberControls, TeamSettings } from "./TeamManage";
 import { TopScorers } from "./TopScorers";
 import { gesperrtFuerNutzer } from "@/lib/turnier-only";
+import { kontoSatz } from "@/components/KontoHinweis";
 
 export async function generateMetadata({ params }: PageProps<"/teams/[slug]">): Promise<Metadata> {
   const { slug } = await params;
@@ -158,7 +159,7 @@ export default async function TeamPage({ params }: PageProps<"/teams/[slug]">) {
 
       <TopScorers scorers={profile.topScorers} viewer={viewer} />
 
-      {admin && <InviteBox teamId={team.id} teamName={team.name} />}
+      {admin && <InviteBox teamId={team.id} teamName={team.name} kontoSatz={await kontoSatz()} />}
       {admin && <ImageUpload kind="team_logo" refId={team.id} label={team.logoUrl ? "Logo ändern" : "Logo hochladen"} />}
 
       {profile.upcoming.length > 0 && !nurTurnier && (
