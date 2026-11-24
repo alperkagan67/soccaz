@@ -73,3 +73,25 @@ describe("Zusatz security-Review (#397)", () => {
     expect(src("src/components/EinladungUngueltig.tsx")).toContain('<meta name="robots" content="noindex, nofollow" />');
   });
 });
+
+describe("Spielseiten nicht öffentlicher Spiele und Hilfe (t2q Option A)", () => {
+  it("/spiele/[id]: noindex, solange das Spiel nicht öffentlich ist (Turnierspiele sind alle privat); Link bleibt teilbar", () => {
+    const p = src("src/app/spiele/[id]/page.tsx");
+    expect(p).toContain("export async function generateMetadata(");
+    expect(p).toContain('m && m.visibility !== "public" ? { title: "Spiel", robots: { index: false, follow: false } }');
+    expect(p).not.toContain('export const metadata');
+  });
+  it("Spiele stehen in keiner Sitemap", () => {
+    expect(src("src/app/sitemap.ts")).not.toMatch(/from\(matches\)|spiele\/\$\{/);
+  });
+  it("Hilfe: Satz zu privaten Turnieren und teilbaren Spiel-Links, ohne Zahlungswort", async () => {
+    const h = src("src/app/hilfe/page.tsx");
+    const satz = "Ein privates Turnier erreichst du nur über den Einladungslink des Veranstalters; ohne gültigen Link siehst du nichts davon. Die Links zu einzelnen Spielen kannst du weitergeben.";
+    expect(h).toContain(satz);
+    const { zahlungsWorte } = await import("@/lib/zahlungen-aus");
+    expect(zahlungsWorte(satz)).toEqual([]);
+  });
+  it("Backlog 263 hält die spätere Beschränkung von canViewMatch fest", () => {
+    expect(src("docs/loop/BACKLOG.md")).toMatch(/\| 263 \| \*\*`canViewMatch` für Spiele privater Turniere/);
+  });
+});
