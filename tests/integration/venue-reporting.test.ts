@@ -118,6 +118,12 @@ describe("Betreiber-Ansichten Buchungen und Durchlaufgeld (AC-5)", () => {
     expect(json).not.toContain(org.email);
     expect(json).not.toContain(org.id);
     expect(json).not.toContain(org.name);
+    // Turniergelder tragen tournament_id statt match_id: eigene Zeile, Summe enthält sie
+    await post(db, { debit: { account: "bank" }, credit: { account: "venue_payable" }, amountCents: 5000, kind: "match_share", tournamentId: t.id, idempotencyKey: `rep:t:${t.id}` });
+    await post(db, { debit: { account: "venue_payable" }, credit: { account: "commission" }, amountCents: 500, kind: "commission", tournamentId: t.id, idempotencyKey: `rep:tc:${t.id}` });
+    const tp = await listVenuePayouts(op.id, { now: NOW });
+    expect(tp.rows.find((x) => x.tournamentId === t.id)).toMatchObject({ kind: "turnier", creditedCents: 5000, deductedCents: 500, netCents: 4500, title: "E2E Rep Turnier" });
+    expect(tp.totalNetCents).toBe(4500);
     // Entzug wirkt sofort (ohne neue Anmeldung)
     await db.update(venueAccess).set({ status: "revoked" }).where(eq(venueAccess.venueId, v.id));
     expect((await listVenueBookings(op.id, { now: NOW })).rows).toEqual([]);

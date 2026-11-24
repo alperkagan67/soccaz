@@ -29,7 +29,9 @@ export type VenueBooking = {
   rentCents: number | null; // Hallenmiete laut Regel bzw. Hallenkosten des Turniers
 };
 export type VenuePayout = {
-  matchId: string;
+  kind: "spiel" | "turnier";
+  matchId: string | null;
+  tournamentId: string | null;
   venueId: string;
   venueName: string;
   startsAt: Date;
@@ -169,8 +171,26 @@ export async function listVenuePayouts(userId: string | null, opts: { venueId?: 
   for (const r of res.rows as Record<string, unknown>[]) {
     const credited = Number(r.credited);
     const deducted = Number(r.deducted);
-    view.rows.push({ matchId: String(r.matchId), venueId: String(r.venueId), venueName: String(r.venueName), startsAt: new Date(r.startsAt as string), title: `${r.home} gegen ${r.away}`, creditedCents: credited, deductedCents: deducted, netCents: credited - deducted, status: "vorgemerkt" });
+    view.rows.push({ kind: "spiel", matchId: String(r.matchId), tournamentId: null, venueId: String(r.venueId), venueName: String(r.venueName), startsAt: new Date(r.startsAt as string), title: `${r.home} gegen ${r.away}`, creditedCents: credited, deductedCents: deducted, netCents: credited - deducted, status: "vorgemerkt" });
   }
+  // Turniere: Buchungen tragen tournament_id statt match_id (Abbuchung, Provision, Erstattung)
+  const tres = await db.execute(sql`
+    select t.id as "tournamentId", v.id as "venueId", v.name as "venueName", coalesce(t.starts_at, t.starts_on::timestamp at time zone 'Europe/Berlin') as "startsAt", t.name,
+      coalesce(sum(case when l.credit_account = 'venue_payable' then l.amount_cents else 0 end), 0)::int as credited,
+      coalesce(sum(case when l.debit_account = 'venue_payable' then l.amount_cents else 0 end), 0)::int as deducted
+    from tournaments t
+    join venues v on v.id = t.venue_id
+    join ledger_entries l on l.tournament_id = t.id and (l.credit_account = 'venue_payable' or l.debit_account = 'venue_payable')
+    where t.venue_id in (${venueList(vs)})
+      and to_char(coalesce(t.starts_at, t.starts_on::timestamp at time zone 'Europe/Berlin') at time zone 'Europe/Berlin', 'YYYY-MM') in (${inList(months)})
+    group by t.id, v.id, v.name, t.starts_at, t.starts_on, t.name
+    order by 4`);
+  for (const r of tres.rows as Record<string, unknown>[]) {
+    const credited = Number(r.credited);
+    const deducted = Number(r.deducted);
+    view.rows.push({ kind: "turnier", matchId: null, tournamentId: String(r.tournamentId), venueId: String(r.venueId), venueName: String(r.venueName), startsAt: new Date(r.startsAt as string), title: String(r.name), creditedCents: credited, deductedCents: deducted, netCents: credited - deducted, status: "vorgemerkt" });
+  }
+  view.rows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
   view.totalNetCents = view.rows.reduce((s, r) => s + r.netCents, 0);
   return view;
 }
