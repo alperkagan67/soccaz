@@ -5,7 +5,7 @@ import { paymentCharges, teamMembers, users } from "@/db/schema";
 import { tournamentPlayers, tournaments } from "@/db/schema-league";
 import { deleteAccount, exportCardData } from "@/server/account";
 import { createTournament, joinAsPlayer, registerTeam, setOrganizer } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // 012 M5-5 (DSGVO): Loeschsperre bei offenem Turnier, Aufraeumen der Uebernahme-Einwilligung, Export nennt die Turnierzeilen.
 
@@ -21,7 +21,7 @@ async function squadWithMember() {
   const t = await createTournament(o.id, base);
   const captain = await makeUser("cap");
   const team = await makeTeam(captain.id, "Turnier");
-  await registerTeam(captain.id, t.id, team.id);
+  await registerTeam(captain.id, t.id, team.id, await tokenOf(t.id));
   const member = await makeUser("mem");
   await db.insert(teamMembers).values({ teamId: team.id, userId: member.id, role: "player" });
   await joinAsPlayer(member.id, t.id, team.id);

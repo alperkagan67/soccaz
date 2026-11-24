@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/server/session";
+import { zahlungenAus } from "@/server/zahlungen-aus";
 import { earliestStartInput, myAdminTeams } from "@/server/requests";
 import { RequestForm } from "./RequestForm";
 
@@ -25,7 +26,7 @@ export default async function NewRequestPage({ searchParams }: PageProps<"/app/s
           <Link href="/app/teams/neu" className="btn btn-primary w-full">Team gründen</Link>
         </div>
       ) : (
-        <RequestForm teams={teams} min={min} />
+        <RequestForm teams={teams} min={min} aus={await zahlungenAus()} />
       )}
     </section>
   );

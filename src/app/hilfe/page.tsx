@@ -117,6 +117,9 @@ export default async function HelpPage() {
         <Q q="Was sind Ligen, Turniere und der Profi-Tag?">
           <p><strong>Ligen:</strong> Alle Spiele zwischen den Teams einer Liga zählen automatisch für die Tabelle. <strong>Turniere:</strong> von Veranstaltern, mit Startgeld, im Liga-, K.-o.- oder Gruppenmodus. <strong>Profi-Tag:</strong> Ein Profi-Team spielt gegen ausgeloste Amateur-Teams. <strong>Stadt-Challenge:</strong> Welche Stadt gewinnt im Monat mehr Spiele gegen andere Städte?</p>
         </Q>
+        <Q q="Wie komme ich in ein privates Turnier?">
+          <p>Ein privates Turnier erreichst du nur über den Einladungslink des Veranstalters; ohne gültigen Link siehst du nichts davon. Die Links zu einzelnen Spielen kannst du weitergeben.</p>
+        </Q>
       </section>
 
       <section className="space-y-2">

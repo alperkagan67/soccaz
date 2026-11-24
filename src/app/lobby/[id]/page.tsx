@@ -13,6 +13,7 @@ import { headers } from "next/headers";
 import { db } from "@/db";
 import { getCurrentUser } from "@/server/session";
 import { CardLight, CardLightLegend, lightFor, LightLegend, PlayerLight } from "@/components/PlayerLight";
+import { zahlungenAus } from "@/server/zahlungen-aus";
 import { fakeCardAllowed } from "@/server/payments/mode";
 import { getCoverView } from "@/server/payments/cover-view";
 import { MIN_CHARGE_CENTS } from "@/server/payments/charge-run";
@@ -70,6 +71,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
   if (match.kind === "tournament") redirect(`/spiele/${match.id}`); // Turnierspiele haben keine eigene Lobby: Ergebnis auf der Spielseite, Überblick im Turnier
   const confirmed = match.status === "confirmed";
   // Kartenmodell (Vertrag 012): Schalter card_payments_enabled, Standard AUS = Spiele ohne Kartenpflicht
+  const zahlungenAusSeite = await zahlungenAus(); // Zahlungen AUS: kein Bezahl-Text auf der Seite
   const cardOn = await cardModeActive(db, match); // pro Spiel: Schalter EIN, Frist-Regel-Spiel und keine bezahlten Plätze aus dem Altmodell
   // Sichtbarkeit je Betrachter wird HIER auf dem Server entschieden (Vertrag 012, AC-12/AC-20): Gäste sehen keinen Status je Person, Mitspieler nur die neutrale
   // rote Ampel ohne Grund, nur der Betroffene und der Captain/Veranstalter den echten Status. Der Rohstatus erreicht die Seite nie.
@@ -135,7 +137,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
           : step === 3 || step === 4
             ? [{ id: match.homeId, name: match.homeName, ready: counts.readyHome }, { id: match.awayId, name: match.awayName, ready: counts.readyAway }].map((t) => ({ teamId: t.id, teamName: t.name, done: t.ready >= MIN_READY_PER_TEAM, text: `${t.ready} von ${MIN_READY_PER_TEAM} Spielern bereit` }))
             : [];
-  const decisionTitle = step === 1 ? "Die Captains stimmen ab. Hier siehst du live, wer schon gewählt hat." : step === 2 ? "Die Captains bannen abwechselnd Hallen." : (cardOn ? "Jedes Team macht seine Spieler bereit (Karte hinterlegt)." : "Jedes Team macht seine Spieler bereit und bezahlt.");
+  const decisionTitle = step === 1 ? "Die Captains stimmen ab. Hier siehst du live, wer schon gewählt hat." : step === 2 ? "Die Captains bannen abwechselnd Hallen." : (cardOn ? "Jedes Team macht seine Spieler bereit (Karte hinterlegt)." : zahlungenAusSeite ? "Jedes Team macht seine Spieler bereit." : "Jedes Team macht seine Spieler bereit und bezahlt.");
   const slots = scheduling ? windowSlots(scheduling.windows, match.durationMin, new Date()).map((d) => ({ value: toBerlinInputValue(d), label: `${formatTime(d)} Uhr` })) : [];
   const dayText = scheduling && scheduling.windows.length ? scheduling.windows.map((w) => new Date(w.from).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin", weekday: "long", day: "2-digit", month: "2-digit" })).filter((d, i, a) => a.indexOf(d) === i).join(" oder ") : null;
   const myAdminTeam = [match.homeId, match.awayId].find((id) => v.adminOf.includes(id)) ?? null;
@@ -335,7 +337,7 @@ export default async function LobbyPage({ params }: PageProps<"/lobby/[id]">) {
 
       {isPrivate && v.canManage && active && <PrivateTools matchId={match.id} waiting={pendingStrangers.length} assigned={participants.filter((p) => p.teamId).length} />}
 
-      {step && <Steps current={step} decisions={decisions} title={decisionTitle} />}
+      {step && <Steps current={step} decisions={decisions} title={decisionTitle} aus={zahlungenAusSeite} />}
 
       {hallCheck && (
         <section className="card space-y-2" aria-label="Hallen-Anfrage" data-testid="hall-check">

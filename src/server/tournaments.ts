@@ -8,6 +8,7 @@ import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLe
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
 import { NEUNMETER_MAX_TREFFER, TIEBREAK_TITEL, tiebreakText } from "@/lib/turnier-grenzen";
 import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, scheduleFromRows, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
+import { TOKEN_UNGUELTIG_TEXT, tokenGueltig } from "@/lib/turnier-token";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
@@ -163,9 +164,15 @@ function requireOpen(t: T) {
 }
 
 /** Der Captain meldet sein Team an: mit einem bestehenden Team (dort ist er Team-Admin). Es gibt genau einen Captain pro Team. */
-export async function registerTeam(userId: string, tournamentId: string, teamId: string) {
+export async function registerTeam(userId: string, tournamentId: string, teamId: string, token?: string | null) {
+  // Kein Existenz-Orakel: ein unbekanntes Turnier (auch eine Zeichenfolge, die keine UUID ist) gibt dieselbe neutrale Meldung wie privat + falscher Token
+  if (!/^[0-9a-f-]{36}$/i.test(tournamentId)) throw new DomainError(TOKEN_UNGUELTIG_TEXT);
   await db.transaction(async (tx) => {
+    const [vorhanden] = await tx.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, tournamentId));
+    if (!vorhanden) throw new DomainError(TOKEN_UNGUELTIG_TEXT);
     const t = await lockTournament(tx, tournamentId);
+    // Privates Turnier: nur mit dem richtigen Einladungstoken (oder als Veranstalter/Plattform-Admin). Dieselbe neutrale Meldung für fehlenden und falschen Token, VOR allen anderen Prüfungen (kein Orakel über Teams/Plätze).
+    if (t.isPrivate && !tokenGueltig(t.inviteToken, token) && !(await canManage(tx, userId, t))) throw new DomainError(TOKEN_UNGUELTIG_TEXT);
     requireOpen(t);
     if (!(await isTeamAdmin(tx, userId, teamId))) throw new DomainError("Nur Team-Admins können ihr Team anmelden.");
     const [team] = await tx.select({ archivedAt: teams.archivedAt }).from(teams).where(eq(teams.id, teamId));
@@ -765,7 +772,9 @@ async function cancelTournamentTx(tx: Tx, t: T, actorId: string | null, cause?: 
     }
   }
   const reason = cause ? cause(card) : null;
-  const body = card
+  const body = istGratis(t) // Gratis-Turnier: kein Zahlungswort (Gesamt-Wortscan Zahlungen AUS)
+    ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."}`
+    : card
     ? `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${refundedCards > 0 ? "Bereits abgebuchte Anteile werden auf die Karte erstattet." : "Es wurde nichts von deiner Karte abgebucht."}`
     : `${t.name} findet nicht statt${reason ? `: ${reason}` : "."} ${players.some((p) => p.paidCents > 0) ? "Für bereits bezahlte Eintritte aus der früheren Guthaben-Zeit meldet sich die Plattform bei dir." : "Es wurde nichts bezahlt."}`;
   await notifyUsers([...new Set([...players.map((p) => p.userId), ...players.flatMap((p) => (p.paidBy ? [p.paidBy] : [])), ...payerIds, t.organizerId])], { type: "system", title: "Turnier abgesagt", body, url: `/turniere/${tournamentId}` }, tx);
@@ -1005,6 +1014,13 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
   if (!t) return null;
+  // Zugang zu einem privaten Turnier ZUERST und billig prüfen (Veranstalter/Admin, gültiger Token, sonst Mitglied eines angemeldeten Teams nur für Eingeloggte): so kostet "privat ohne Zugang" nicht mehr Abfragen als "unbekannt"
+  if (t.isPrivate && !(viewer && (viewer.id === t.organizerId || isPlatformAdmin({ role: viewer.role as Role }))) && !tokenGueltig(t.inviteToken, token)) {
+    const mitglied = viewer
+      ? (await db.select({ one: sql<number>`1` }).from(teamMembers).innerJoin(tournamentTeams, eq(tournamentTeams.teamId, teamMembers.teamId)).where(and(eq(teamMembers.userId, viewer.id), eq(tournamentTeams.tournamentId, id))).limit(1)).length > 0
+      : false;
+    if (!mitglied) return null;
+  }
 
   const entries = await db
     .select({ teamId: teams.id, name: teams.name, slug: teams.slug, captainId: tournamentTeams.captainId, readyAt: tournamentTeams.readyAt, paidReadyAt: tournamentTeams.paidReadyAt })
@@ -1023,10 +1039,10 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const myPlayer = viewer ? players.find((p) => p.userId === viewer.id) : undefined;
   const memberTeams = viewer ? (await db.select({ teamId: teamMembers.teamId, role: teamMembers.role }).from(teamMembers).where(eq(teamMembers.userId, viewer.id))) : [];
   const inTournament = memberTeams.some((m) => entries.some((e) => e.teamId === m.teamId));
-  const tokenOk = Boolean(token && t.inviteToken && token === t.inviteToken);
-  // Das Bracket ist für alle sichtbar (auch ohne Konto): Wer ein privates Turnier nicht kennt, sieht nur die Spielübersicht,
-  // aber weder Einladungslink noch Kader noch Zahlungsstand. Mitmachen geht nur über den Einladungslink.
-  const spectator = t.isPrivate && !isOrganizer && !inTournament && !tokenOk;
+  const tokenOk = tokenGueltig(t.inviteToken, token);
+  // Öffentliche Turniere sieht jeder (auch ohne Konto); private nur Veranstalter/Admin, Mitglieder angemeldeter Teams und wer den Einladungslink hat. Mitmachen geht nur über den Einladungslink.
+  // Privates Turnier ohne Zugang (kein Veranstalter/Admin, kein Mitglied eines angemeldeten Teams, kein gültiger Token): NICHTS (gleiche Antwort wie "gibt es nicht"), kein Zuschauer-Modus mehr.
+  if (t.isPrivate && !isOrganizer && !inTournament && !tokenOk) return null;
 
   const organizer = (await db.select({ name: users.name }).from(users).where(eq(users.id, t.organizerId)))[0];
   const nameOf = new Map(entries.map((e) => [e.teamId, e.name]));
@@ -1066,18 +1082,18 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
       const { paidReadyAt, ...rest } = e;
       return {
         ...rest,
-        captainName: spectator ? "–" : (list.find((p) => p.userId === e.captainId)?.name ?? "–"),
+        captainName: list.find((p) => p.userId === e.captainId)?.name ?? "–",
         ready: Boolean(e.readyAt), // Team vollzählig gemeldet
-        paidReady: !spectator && Boolean(paidReadyAt), // Captain hat nach voller Zahlung "Bereit" gedrückt
-        dueCents: !cardMode && priceFixed && !spectator ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
-        cardMissing: cardMode && !spectator && list.some((p) => cards?.[p.userId] !== undefined) ? list.filter((p) => !cardOk(p.userId)).length : 0, // nur im eigenen Team bekannt (sonst 0)
+        paidReady: Boolean(paidReadyAt), // Captain hat nach voller Zahlung "Bereit" gedrückt
+        dueCents: !cardMode && priceFixed ? list.reduce((sum, p) => sum + Math.max(share - p.paidCents, 0), 0) : 0,
+        cardMissing: cardMode && list.some((p) => cards?.[p.userId] !== undefined) ? list.filter((p) => !cardOk(p.userId)).length : 0, // nur im eigenen Team bekannt (sonst 0)
         // Kartenmodell: Spieler-Ampeln nur, wo der Server sie dem Betrachter zeigt (eigenes Team, Plattform-Admin); sonst nur "Karten komplett/unvollstaendig" je Team
         showLights: !cardMode || list.some((p) => cards?.[p.userId] !== undefined),
         // Aggregat "Karten komplett" nur fuer Mitglieder des Teams (sehen ohnehin die Ampeln), den Veranstalter und Plattform-Admins; Gaeste und fremde Spieler sehen es nie (Entscheid t9)
         cardsComplete: cardMode && isOrganizer && !list.some((p) => cards?.[p.userId] !== undefined) ? await tournamentTeamCardsReady(db, t.id, e.teamId) : null,
-        anyPaid: !spectator && list.some((p) => p.paidCents > 0),
+        anyPaid: list.some((p) => p.paidCents > 0),
         complete: await rosterReady(db, t.id, e.teamId),
-        players: spectator ? [] : list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: cardMode ? cardOk(p.userId) : priceFixed && (share === 0 || p.paidCents >= share), covered: cards?.[p.userId]?.covered === true, isCaptain: p.userId === e.captainId })),
+        players: list.map((p) => ({ userId: p.userId, name: p.name, paidByOther: p.paidBy !== null && p.paidBy !== p.userId, paid: cardMode ? cardOk(p.userId) : priceFixed && (share === 0 || p.paidCents >= share), covered: cards?.[p.userId]?.covered === true, isCaptain: p.userId === e.captainId })),
       };
     }),
   );
@@ -1087,9 +1103,10 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const adminTeamRows = adminTeams.length ? await db.select({ id: teams.id, name: teams.name }).from(teams).where(and(inArray(teams.id, adminTeams), isNull(teams.archivedAt))) : [];
   const captainOf = viewer ? entries.find((e) => e.captainId === viewer.id) : undefined;
   const showToken = isOrganizer || inTournament;
-  const canJoin = open && !spectator;
+  const canJoin = open;
 
   return {
+    tokenOk, // der gelieferte Token ist gültig (Veranstalter/Admin/Mitglieder brauchen keinen): die Seite reicht ihn NUR dann in Links und Formulare weiter
     tournament: { ...t, inviteToken: showToken ? t.inviteToken : null },
     organizerName: organizer?.name ?? "–",
     teams: teamViews,

@@ -5,7 +5,7 @@ import { notifications, teamMembers } from "@/db/schema";
 import { tournaments } from "@/db/schema-league";
 import { createTournament, joinAsPlayer, registerTeam, setOrganizer, setRosterComplete } from "@/server/tournaments";
 import { setSetting } from "@/server/settings";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // Zahlungen AUS: die Meldung "alle Teams vollzählig" richtet sich nach dem Preis (R-T422): Turnier OHNE Preis bekommt die Meldung ohne Zahlungstexte,
 // ein Turnier MIT Preis (Altbestand) behält "Der Preis steht fest" (Typ payment), weil seine Seite im Kartenfluss bleibt.
@@ -32,7 +32,7 @@ async function volleRunde(totalCents: number) {
     const captain = await makeUser("cap");
     firstCaptain ||= captain.id;
     const team = await makeTeam(captain.id, "Turnier");
-    await registerTeam(captain.id, t.id, team.id);
+    await registerTeam(captain.id, t.id, team.id, await tokenOf(t.id));
     for (let i = 1; i < 5; i++) {
       const p = await makeUser("pl");
       await db.insert(teamMembers).values({ teamId: team.id, userId: p.id, role: "player" });

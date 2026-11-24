@@ -49,9 +49,13 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, K
   expect(link).toContain(`/turniere/${tid}?t=`);
   const tournamentPath = `/turniere/${tid}?t=${token}`;
 
-  // --- Regression: ein Fremder ohne Konto sieht weder Kader noch Zahlungsstand noch Einladungslink
+  // --- Regression (PR 3): ein Fremder ohne Konto und ohne Token sieht NICHTS vom privaten Turnier (neutrale Seite); mit dem Einladungslink die Seite, aber weder Kader noch Zahlungsstand noch Einladungslink
   const anon = await ctxPage(browser);
   await anon.goto(`/turniere/${tid}`);
+  await anon.waitForLoadState("networkidle");
+  await expect(anon.getByTestId("einladung-ungueltig")).toBeVisible();
+  await expect(anon.getByTestId("tournament-name")).toHaveCount(0);
+  await anon.goto(tournamentPath);
   await anon.waitForLoadState("networkidle");
   await expect(anon.getByTestId("tournament-name")).toHaveCount(1);
   await expect(anon.getByText("Einladungslink")).toHaveCount(0);

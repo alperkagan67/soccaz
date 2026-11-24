@@ -7,7 +7,7 @@ import { CITIES } from "@/lib/validation";
 import { createPrivateGameAction } from "@/server/privategame-actions";
 import { ZP } from "@/lib/zahlungspflicht-texte";
 
-export function PrivateGameForm({ min, defaultCity }: { min: string; defaultCity: string | null }) {
+export function PrivateGameForm({ min, defaultCity, aus = false }: { min: string; defaultCity: string | null; aus?: boolean }) {
   const { state, pending, onSubmit, formAction } = useFormAction(createPrivateGameAction);
   const [rentMode, setRentMode] = useState<"" | "amount" | "free">(""); // bewusst keine Vorauswahl: Miete oder "kostenlos" muss gewählt werden
   const fe = state?.fieldErrors ?? {};
@@ -64,7 +64,7 @@ export function PrivateGameForm({ min, defaultCity }: { min: string; defaultCity
         <FieldError message={fe.rent} />
       </fieldset>
       <SubmitButton pending={pending}>Privatspiel anlegen</SubmitButton>
-      <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>
+      {!aus && <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>}
       {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

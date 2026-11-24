@@ -9,7 +9,7 @@ import { setPaymentProviderForTests } from "@/server/payments/provider";
 import { runTournamentCharges } from "@/server/payments/tournament-charge";
 import { setSetting } from "@/server/settings";
 import { createTournament, joinAsPlayer, registerTeam, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // Kartenmodell UND Zahlungen EIN (Produktivzustand); "Zahlungen AUS" = Gratis ist in payments-off-free.test.ts abgedeckt.
 beforeAll(() => setSetting(null, "payments_enabled", true));
@@ -51,7 +51,7 @@ describe("M5-5: 3-D-Secure fuer Turnierzeilen", () => {
     for (let i = 0; i < t.maxTeams; i++) {
       const captain = await makeUser("cap");
       const team = await makeTeam(captain.id, "Turnier");
-      await registerTeam(captain.id, t.id, team.id);
+      await registerTeam(captain.id, t.id, team.id, await tokenOf(t.id));
       const ps = [captain];
       for (let k = 1; k < 4; k++) {
         const p = await makeUser("pl");
