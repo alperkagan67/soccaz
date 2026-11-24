@@ -16,7 +16,10 @@ export function SchedulingPanel({
   minStart,
   slots,
   dayText,
+  main = false,
 }: {
+  /** Hauptaktion der Ansicht (lobbyStand): nur dann ist "Vorschlag machen" orange. */
+  main?: boolean;
   matchId: string;
   options: OptionView[];
   teams: { id: string; name: string }[];
@@ -39,9 +42,9 @@ export function SchedulingPanel({
       {options.length === 0 ? (
         <p className="text-sm text-muted">Noch keine Vorschläge. Mach den ersten.</p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-line">
           {options.map((o) => (
-            <li key={o.id} className={`rounded-lg border p-3 text-sm ${myVote === o.id ? "border-accent" : "border-line"}`} data-testid="option">
+            <li key={o.id} className={`py-3 text-sm ${myVote === o.id ? "border-l-4 border-accent pl-3" : ""}`} data-testid="option">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span>
                   <span className="font-semibold">{o.label}</span>
@@ -70,7 +73,7 @@ export function SchedulingPanel({
         </ul>
       )}
       {myTeamId && (
-        <ActionForm action={proposeOptionAction.bind(null, matchId)} submit="Vorschlag machen" className="space-y-2 border-t border-line pt-3" successText="Vorschlag gemacht.">
+        <ActionForm action={proposeOptionAction.bind(null, matchId)} quiet={!main} submit="Vorschlag machen" className="space-y-2 border-t border-line pt-3" successText="Vorschlag gemacht.">
           <h3 className="text-sm font-semibold">Eigener Vorschlag</h3>
           <div>
             {slots.length > 0 ? (

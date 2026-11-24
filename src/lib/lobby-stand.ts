@@ -3,13 +3,17 @@
 // Keine Zahlungs-Rechtsfolge in der Zeile: Preis- und Zusagetexte stehen NUR in zahlungspflicht-texte.ts.
 import type { LobbyFehlerFall } from "./lobby-fehler";
 
-export type LobbyAktion = "anmelden" | "annehmen" | "beitreten" | "ersatz" | "karte" | "freigeben" | "bereit" | "final" | "spielseite" | null;
+export type LobbyAktion = "anmelden" | "annehmen" | "beitreten" | "ersatz" | "karte" | "freigeben" | "vorschlagen" | "bereit" | "final" | "spielseite" | null;
 
 export type LobbyStandInput = {
   signedIn: boolean;
   status: string; // lobby | confirmed | cancelled | played | disputed
   active: boolean; // Spiel läuft noch (Lobby/bestätigt, nicht vorbei)
   planning: boolean; // Termin- oder Hallenwahl läuft: nur Captains handeln
+  /** Phase der Planung: termin = Uhrzeit wird gewählt, hallen = Hallen werden angefragt, veto = Captains bannen. */
+  planningPhase?: "termin" | "hallen" | "veto" | null;
+  isCaptain?: boolean; // Team-Admin eines der beiden Teams (darf in der Planung handeln)
+  myTurn?: boolean; // im Veto: das eigene Team ist am Zug
   challengePending: boolean;
   challengeRole: "target" | "challenger" | "viewer";
   participant: boolean;
@@ -38,6 +42,10 @@ export function lobbyStand(s: LobbyStandInput): LobbyStand {
       : { zeile: "Die Herausforderung wartet auf die Annahme durch das andere Team.", aktion: null };
   }
   if (s.planning) {
+    // Impeccable Lauf 2, P1-4: der Captain sieht den Schritt, nicht nur "wartet". Termin: Vorschlag machen ist die Hauptaktion (Zustimmen bleibt ruhig). Veto: Bannen ist je Halle ein ruhiger Knopf, keine orange Hauptaktion.
+    if (s.isCaptain && s.planningPhase === "termin") return { zeile: "Nächster Schritt: die Uhrzeit wählen. Mach einen Vorschlag oder stimme einem Vorschlag zu.", aktion: "vorschlagen" };
+    if (s.isCaptain && s.planningPhase === "veto") return { zeile: s.myTurn ? "Nächster Schritt: eine Halle bannen." : "Das andere Team ist beim Bannen dran.", aktion: null };
+    if (s.isCaptain && s.planningPhase === "hallen") return { zeile: "Die Hallen werden angefragt. Danach bannt ihr abwechselnd Hallen.", aktion: null };
     return { zeile: s.participant ? "Die Captains wählen Uhrzeit und Halle. Bereit machen kannst du danach." : "Die Captains wählen Uhrzeit und Halle.", aktion: null };
   }
   // Captain mit komplett bereitem Team bestätigt, auch ohne selbst in der Lobby zu stehen (complete verlangt, dass alle Eingeteilten bereit sind)

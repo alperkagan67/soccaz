@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { setupLobby } from "./flows";
-import { closeContexts, closeTestDb, newUser, run } from "./helpers";
+import { addParticipant, addTeamMember, closeContexts, closeTestDb, newUser, run, seedUser, teamIdByName } from "./helpers";
 import { query, userIdByEmail } from "./helpers-db";
 
 // 013 M3 PR 5a: Lobby "Dein Stand" mit EINER Hauptaktion je Rolle (AC-30) und Hallenbetreiber namenfrei (AC-17, Backlog 216).
@@ -53,4 +53,41 @@ test("Hallenbetreiber sieht die Teilnehmer namenfrei, Mitspieler sehen Namen", a
   await expect(namen.first()).toHaveText(/^Spieler \d$/);
   await expect(boss.locator("main")).not.toContainText("Spieler lsa");
   await expect(boss.locator("main")).not.toContainText("Spieler lsb");
+});
+
+// Impeccable Lauf 2 (P1-1, P1-2): Hauptaktion in der ersten Ansicht auf 390 px (im Fluss), keine Karte in der Karte, kein Überlauf, an LANGEN Namen gemessen (Seed-Namen, nicht nur Zahlen).
+async function ersteAnsicht(page: import("@playwright/test").Page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const primary = page.locator("main .btn-primary").first();
+  await expect(primary).toBeVisible({ timeout: 60_000 });
+  const box = await primary.boundingBox();
+  expect(box, "Hauptknopf hat eine Position").not.toBeNull();
+  expect(box!.y + box!.height, "Hauptknopf liegt in der ersten Ansicht (390x844)").toBeLessThanOrEqual(844);
+  expect(await page.locator("main .card .card").count(), "keine Karte in der Karte").toBe(0);
+  expect(await page.locator("main .card div.rounded-lg.border").count(), "kein Rahmen um Zeilen in der Karte").toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "kein seitliches Scrollen").toBe(true);
+}
+
+test("Handy 390 mit langen Namen: Bereit machen und Letzte Bestätigung stehen in der ersten Ansicht", async ({ browser }) => {
+  const { a, matchId, nameA, nameB } = await setupLobby(browser, "lfx");
+  const [teamA, teamB] = [await teamIdByName(nameA), await teamIdByName(nameB)];
+  // lange Teamnamen wie in den Seed-Daten des Impeccable-Laufs (Kontrast Heim ... mit Laufnummer)
+  await query("update teams set name = name || ' Sehr Langer Vereinsname Fuer Den Handytest' where id = any($1)", [[teamA, teamB]]);
+  await a.goto(`/lobby/${matchId}`);
+  await expect(a.getByTestId("lobby-stand")).toHaveAttribute("data-aktion", "bereit", { timeout: 60_000 });
+  await ersteAnsicht(a);
+
+  // beide Teams komplett bereit (je 4): der Captain bestätigt, die Hauptaktion ist die Letzte Bestätigung und steht ebenfalls oben
+  for (const [team, tag] of [[teamA, "fa"], [teamB, "fb"]] as const) {
+    for (let i = 1; i <= 3; i++) {
+      const id = await seedUser(`lfix${tag}${i}`);
+      await addTeamMember(team, id);
+      await addParticipant(matchId, id, team, true);
+    }
+  }
+  await query("update match_participants set ready_at = now() where match_id = $1 and ready_at is null", [matchId]);
+  await a.reload();
+  await expect(a.getByTestId("lobby-stand")).toHaveAttribute("data-aktion", "final", { timeout: 60_000 });
+  await ersteAnsicht(a);
+  await expect(a.locator("main .btn-primary").first()).toContainText(/bestätigen|zusagen|Bestätigung/i);
 });

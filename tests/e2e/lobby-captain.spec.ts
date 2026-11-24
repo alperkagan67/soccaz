@@ -38,6 +38,17 @@ async function failCharge(matchId: string, emailPrefix: string, code: string, st
   return u.id;
 }
 
+// Impeccable Lauf 2 (P1-1, P1-2): im Fehlerzustand steht die eine Hauptaktion in der ersten Ansicht (390x844, im Fluss), keine Karte in der Karte
+async function ersteAnsichtFehler(page: import("@playwright/test").Page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const box = await page.locator("main .btn-primary").first().boundingBox();
+  expect(box, "Hauptknopf hat eine Position").not.toBeNull();
+  expect(box!.y + box!.height, "Hauptknopf liegt in der ersten Ansicht").toBeLessThanOrEqual(844);
+  expect(await page.locator("main .card .card").count()).toBe(0);
+  expect(await page.locator("main .card div.rounded-lg.border").count()).toBe(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+}
+
 test("Fehlerzustand Freigabe: genau ein Primary (Zahlung freigeben), andere Karte nur eingeklappt, Dein Stand nennt den Schritt", async ({ browser }) => {
   const { a, matchId } = await setupLobby(browser, "lc1");
   await failCharge(matchId, "lc1a", "authentication_required", "requires_action", 90);
@@ -49,6 +60,7 @@ test("Fehlerzustand Freigabe: genau ein Primary (Zahlung freigeben), andere Kart
   await expect(a.getByTestId("charge-failed-other-card")).toBeVisible();
   await expect(a.getByTestId("charge-failed-other-card")).not.toHaveAttribute("open", "");
   await expect(a.getByRole("button", { name: /bereit/i })).toHaveCount(0); // im Fehlerzustand konkurriert kein Bereit-Knopf
+  await ersteAnsichtFehler(a);
 });
 
 test("Fehlerzustand Karte: genau ein Primary (Karte ändern); abgelaufenes Fenster: kein Schritt, kein Primary", async ({ browser }) => {
@@ -58,6 +70,7 @@ test("Fehlerzustand Karte: genau ein Primary (Karte ändern); abgelaufenes Fenst
   await expect(a.getByTestId("lobby-stand")).toHaveAttribute("data-aktion", "karte", { timeout: 60_000 });
   await expect(a.locator("main .btn-primary")).toHaveCount(1);
   await expect(a.getByTestId("authorize-section")).toHaveCount(0);
+  await ersteAnsichtFehler(a);
   // Fenster vorbei
   await query("update payment_charges set grace_until = now() - interval '5 minutes' where match_id = $1", [matchId]);
   await a.reload();
