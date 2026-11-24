@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Comments } from "@/components/Comments";
 import { getPublicVenue } from "@/server/venues";
+import { turnierOnlyOn } from "@/lib/turnier-only";
 
 export async function generateMetadata({ params }: PageProps<"/hallen/[id]">): Promise<Metadata> {
+  if (turnierOnlyOn()) return { title: "Kommt bald", robots: { index: false, follow: false } }; // TURNIER_ONLY: keine Daten des gesperrten Bereichs im Titel, keine Abfrage
   const { id } = await params;
   const data = await getPublicVenue(id);
   return { title: data ? data.venue.name : "Halle nicht gefunden" };

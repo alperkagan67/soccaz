@@ -1,14 +1,16 @@
 import Link from "next/link";
 
 /** Die drei Spielarten, klar getrennt: Teamspiel, Privatspiel, Turnier. */
-export function GameModes({ signedIn, quiet = false }: { signedIn: boolean; quiet?: boolean }) {
+export function GameModes({ signedIn, quiet = false, nurTurnier = false }: { signedIn: boolean; quiet?: boolean; nurTurnier?: boolean }) {
   const card = "card flex flex-col gap-2";
   // !py-2: .btn hat keinen senkrechten Innenabstand; bricht ein Label in der schmalen Spalte (z. B. „Offene Lobbys ansehen“ bei 1280 px) in zwei Zeilen, saß der Text sonst bei 3,5 px am Rand (Impeccable-Lauf M3, cramped-padding)
   const main = quiet ? "btn btn-ghost !py-2" : "btn btn-primary !py-2"; // quiet: auf Seiten mit eigener Hauptaktion (/app) kein weiterer oranger Knopf
   return (
     <section className="space-y-3" aria-label="Spielarten" data-testid="game-modes">
       <h2 className="text-lg font-semibold">Was möchtest du spielen?</h2>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={nurTurnier ? "grid gap-3" : "grid gap-3 sm:grid-cols-3"}>
+        {!nurTurnier && (
+          <>
         <div className={card} data-testid="mode-team">
           <h3 className="font-bold">Teamspiel</h3>
           <p className="flex-1 text-sm text-muted">Dein Team gegen ein anderes Team. Der Captain öffnet eine Lobby, die für alle sichtbar ist, ein anderes Team tritt an.</p>
@@ -20,6 +22,8 @@ export function GameModes({ signedIn, quiet = false }: { signedIn: boolean; quie
           <p className="flex-1 text-sm text-muted">Für deine Freundesgruppe: nicht öffentlich, nur per Einladungslink, ohne Rangliste. Du teilst die Spieler in zwei Teams ein.</p>
           <Link href={signedIn ? "/app/privatspiel/neu" : "/anmelden?next=/app/privatspiel/neu"} className={main}>Privatspiel anlegen</Link>
         </div>
+          </>
+        )}
         <div className={card} data-testid="mode-tournament">
           <h3 className="font-bold">Turnier</h3>
           <p className="flex-1 text-sm text-muted">Mehrere Teams, K.-o.-System, Eintritt pro Spieler. Turniere sind privat und laufen über einen Einladungslink des Veranstalters.</p>

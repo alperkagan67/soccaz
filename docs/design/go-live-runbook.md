@@ -86,9 +86,11 @@ Erwartet: **keine Zeilen** (Standard AUS) oder beide mit `false`. Steht dort `tr
 
 ## 5. Smoke-Test (Gesundheit und Hauptseiten)
 ```
-node scripts/smoke.mjs https://socaz.de --turnier-only
+node scripts/smoke.mjs https://socaz.de --turnier-only --zahlungen-aus
 ```
 Erwartet: jede Zeile `OK`, am Ende `Alle Prüfungen bestanden`, Ende-Code 0.
+
+**`--zahlungen-aus`** (Produktion, beide Zahlungsschalter AUS, Schritt 4a): prüft zusätzlich die öffentlich sichtbare Folge: Turnierliste, Hilfe und die erste Turnierseite enthalten **kein Zahlungswort** (Wortliste wie `src/lib/zahlungen-aus.ts`), Liste und Hilfe nennen den Hinweissatz „Die Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.“. Ein Turnier **mit** Preis (Altbestand) zeigt Zahlungswörter und löst hier einen Befund aus: prüfen, nicht ignorieren. Die Schalter selbst sind nicht öffentlich prüfbar (nur Schritt 4a). Gilt ab dem Merge der Seitenänderung „Zahlungen AUS“ (PR A); davor schlägt die Prüfung der Hilfe fehl.
 
 **Zweiter Aufruf (Sperrpfade der Betriebsart, nur Produktion mit `TURNIER_ONLY=1`):**
 ```
@@ -101,10 +103,12 @@ Erwartet: jede Zeile `PASS`, am Ende `ERGEBNIS: BESTANDEN`, Ende-Code 0. Er prü
 2. Konto zum Admin machen (Adresse nur als Wert am Server eintragen):
 ```
 docker compose exec db psql -U socaz -c "update users set role='admin' where email='<ihre-google-adresse>'"
-docker compose run --rm -e OWNER_EMAIL=<ihre-google-adresse> migrate node scripts/set-owner.mjs
-docker compose run --rm -e OWNER_EMAIL=<ihre-google-adresse> migrate node scripts/set-owner.mjs --yes
+read -r -s OWNER_EMAIL; export OWNER_EMAIL     # Adresse verdeckt eingeben, Eingabe mit Enter beenden
+docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs
+docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs --yes
+unset OWNER_EMAIL; history -c
 ```
-Erwartet: der Trockenlauf nennt nur Host und Datenbankname, `--yes` meldet Erfolg. (Der Aufruf über den `migrate`-Dienst ist eine **Annahme**: bei der Generalprobe belegen; sonst `BETRIEB.md`, „Admin 1 festlegen“.)
+Erwartet: der Trockenlauf nennt nur Host und Datenbankname, `--yes` meldet Erfolg. (Der Aufruf über den `migrate`-Dienst ist eine **Annahme**: bei der Generalprobe belegen; sonst `BETRIEB.md`, „Admin 1 festlegen“. Die Adresse steht dank verdeckter Eingabe nur einmal im SQL-Befehl; deshalb danach `history -c`.)
 
 ## 6a. Apple-Anmeldung (nur falls eingeschaltet: `APPLE_LOGIN_ENABLED=1`)
 Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate). **Erneuerung spätestens alle 5 Monate.** Tragen Sie das **Ablaufdatum** in der Betriebsdoku ein (`docs/BETRIEB.md`, Abschnitt „Apple-Anmeldung“, Zeile „Client-Secret gültig bis: <Datum>“) und legen Sie sich **zwei Kalendereinträge** an: 4 Wochen vor Ablauf und am Tag vor Ablauf. Läuft das Secret ab, schlägt die Apple-Anmeldung still fehl (Google bleibt unberührt). Prüfung nach der Erneuerung: Smoke-Test mit `--apple` und eine echte Anmeldung.

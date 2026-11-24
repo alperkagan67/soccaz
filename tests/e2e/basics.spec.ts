@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, newUser, run } from "./helpers";
-import { query } from "./helpers-db";
+import { query, setPlatformSetting } from "./helpers-db";
+import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 import { clickWhenReady } from "./flows";
 
 test.describe.configure({ mode: "serial" });
@@ -11,6 +12,7 @@ test.afterEach(async ({ browser }) => {
 });
 
 test("Startseite erklärt die Plattform in vier Schritten mit Preis und Zahlen", async ({ page }) => {
+  await setPlatformSetting("payments_enabled", true); // die Hilfe zeigt "Geld und Zahlung" nur bei Zahlungen AN (bei AUS: Hinweissatz, siehe nächster Test und zahlungen-aus-matrix)
   await page.goto("/");
   const how = page.getByTestId("how-it-works");
   await expect(how.getByRole("heading", { name: "So funktioniert Socaz" })).toBeVisible();
@@ -20,10 +22,22 @@ test("Startseite erklärt die Plattform in vier Schritten mit Preis und Zahlen",
   await how.getByRole("link", { name: /Hilfe und Fragen/ }).click();
   await expect(page).toHaveURL(/\/hilfe$/);
   await expect(page.getByRole("heading", { name: "Hilfe und Fragen" })).toBeVisible();
-  await page.getByText("Wie viel zahle ich genau?").click();
-  await expect(page.getByText(/Je mehr mitspielen/)).toBeVisible();
+  try {
+    await page.getByText("Wie viel zahle ich genau?").click();
+    await expect(page.getByText(/Je mehr mitspielen/)).toBeVisible();
+  } finally {
+    await setPlatformSetting("payments_enabled", false); // Standard der Umgebung wiederherstellen
+  }
   await page.goto("/kontakt");
   await expect(page.getByRole("heading", { name: "Kontakt" })).toBeVisible();
+});
+
+test("Hilfe bei Zahlungen AUS: kein Abschnitt zu Preis und Zahlung, stattdessen der Hinweissatz", async ({ page }) => {
+  await setPlatformSetting("payments_enabled", false);
+  await page.goto("/hilfe");
+  await expect(page.getByRole("heading", { name: "Hilfe und Fragen" })).toBeVisible();
+  await expect(page.getByText("Wie viel zahle ich genau?")).toHaveCount(0);
+  await expect(page.getByText(ZAHLUNGEN_AUS_HINWEIS).first()).toBeAttached();
 });
 
 test("Kein Guthaben: weder Karte, noch Betrag in der Kopfleiste; /app/guthaben leitet auf Mein Bereich (012 M6a)", async ({ browser }) => {

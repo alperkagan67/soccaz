@@ -7,6 +7,7 @@ import { safeInternalPath } from "@/lib/safe-path";
 import { deleteComment, moderateComment, postComment, reportComment, type ModerationDecision } from "./content";
 import { requirePermission, requireUser } from "./session";
 import { DomainError } from "./teams";
+import { assertBereichOffen } from "./turnier-only";
 
 const postSchema = z.object({
   targetType: z.enum(["team", "player", "venue"]),
@@ -23,6 +24,7 @@ function safePath(path: string): string {
 export async function postCommentAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = postSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: "Bitte prüfe deine Eingabe." };
+  if (parsed.data.targetType === "venue") await assertBereichOffen(); // TURNIER_ONLY: Hallenbewertungen gesperrt (Kommentare an Profil und Team bleiben offen)
   const user = await requireUser(safePath(parsed.data.path));
   try {
     await postComment(user.id, { targetType: parsed.data.targetType, targetId: parsed.data.targetId, body: parsed.data.body, rating: parsed.data.rating ?? null });

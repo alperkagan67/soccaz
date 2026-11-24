@@ -26,6 +26,7 @@ import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "./settings";
 import { zahlungenAus } from "./zahlungen-aus";
+import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
 export const MIN_TOURNAMENT_TEAMS = 4;
@@ -319,7 +320,9 @@ async function maybeFixPrice(tx: Tx, t: T) {
   await audit(null, "tournament.price", "tournament", t.id, { after: { share, players: everyone.length } }, tx);
   await notifyUsers(
     [...new Set(everyone.map((p) => p.userId))],
-    { type: "payment", title: "Der Preis steht fest", body: share > 0 ? `${fresh.name}: Dein Anteil beträgt ${(share / 100).toFixed(2).replace(".", ",")} €. Bezahle jetzt in der Turnier-Lobby.` : `${fresh.name}: Das Turnier ist kostenlos.`, url: `/turniere/${t.id}` },
+    (await zahlungenAus(tx)) && !cardMode && share === 0 // nur ohne Preis: ein Turnier MIT Preis (Altbestand) behaelt die Preis-Meldung
+      ? { type: "system", title: "Alle Teams sind vollzählig", body: `${fresh.name}: Alle Teams sind vollzählig. Die Captains drücken jetzt „Bereit“. ${ZAHLUNGEN_AUS_HINWEIS}`, url: `/turniere/${t.id}` }
+      : { type: "payment", title: "Der Preis steht fest", body: share > 0 ? `${fresh.name}: Dein Anteil beträgt ${(share / 100).toFixed(2).replace(".", ",")} €. Bezahle jetzt in der Turnier-Lobby.` : `${fresh.name}: Das Turnier ist kostenlos.`, url: `/turniere/${t.id}` },
     tx,
   );
   await maybeGenerateBracket(tx, { ...fresh, status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 });
@@ -1144,4 +1147,18 @@ export async function notifyFrozenTournaments(now: Date = new Date(), opts: { ca
     }
   }
   return sent;
+}
+
+/** "Meine Turniere" (TURNIER_ONLY-Dashboard): Turniere, in denen die Person im Kader steht oder die sie veranstaltet; nur Name, Stand, Datum (keine Personendaten Dritter). */
+export async function myTournamentsAsPlayerOrOrganizer(userId: string) {
+  const asPlayer = await db
+    .select({ id: tournaments.id, name: tournaments.name, status: tournaments.status, startsOn: tournaments.startsOn })
+    .from(tournamentPlayers)
+    .innerJoin(tournaments, eq(tournaments.id, tournamentPlayers.tournamentId))
+    .where(eq(tournamentPlayers.userId, userId));
+  const asOrganizer = await myTournaments(userId);
+  const byId = new Map<string, { id: string; name: string; status: (typeof tournaments.$inferSelect)["status"]; startsOn: string; organizer: boolean }>();
+  for (const t of asPlayer) byId.set(t.id, { ...t, organizer: false });
+  for (const t of asOrganizer) byId.set(t.id, { ...t, organizer: true });
+  return [...byId.values()].sort((a, b) => b.startsOn.localeCompare(a.startsOn));
 }

@@ -24,6 +24,11 @@ describe("zahlungsWorte: verbotene Wörter im Modus Zahlungen AUS", () => {
     "Ja, mein Team ist komplett: zahlungspflichtig zusagen",
     "Das Geld liegt auf dem Treuhandkonto",
     "Anteil übernehmen",
+    "Der Preis steht fest",
+    "Zahlung läuft",
+    "Zahlungen sind gerade pausiert",
+    "Dein Anteil beträgt 12,50 €",
+    "Eintritt 8 EUR",
   ];
   const ERLAUBT = [
     "Alle Teams füllen ihren Kader. Der Captain meldet: „Team ist vollzählig“.",
@@ -33,6 +38,8 @@ describe("zahlungsWorte: verbotene Wörter im Modus Zahlungen AUS", () => {
     `Hier steht der Hinweis: ${ZAHLUNGEN_AUS_HINWEIS}`,
     "Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.",
     "Das Spiel endete 3:1, Platz 2 für uns",
+    "Ein Team-Admin erfasst Tore und Karten direkt am Spielfeldrand", // Fußball-Karten
+    "Gelbe Karte für Spieler 7, Rote Karte für Spieler 3",
   ];
   for (const text of VERBOTEN) it(`trifft: ${text}`, () => expect(zahlungsWorte(text).length).toBeGreaterThan(0));
   for (const text of ERLAUBT) it(`trifft NICHT: ${text}`, () => expect(zahlungsWorte(text)).toEqual([]));

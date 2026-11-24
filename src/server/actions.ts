@@ -23,6 +23,8 @@ import { acceptRequest, cancelRequest, createRequest } from "./requests";
 import { castMvpVote, markNoShow } from "./stats";
 import { createInvite, createTeam, DomainError, joinWithInvite } from "./teams";
 import { safeInternalPath } from "@/lib/safe-path";
+import { assertBereichOffen, assertSpielOffen, bereichGesperrt } from "./turnier-only";
+import { KOMMT_BALD_TEXT } from "@/lib/turnier-only";
 
 export async function completeOnboardingAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const user = await requireLoggedIn();
@@ -110,6 +112,7 @@ export async function joinTeamAction(token: string, _prev?: ActionState, _formDa
 }
 
 export async function createRequestAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/app/suche/neu");
   const parsed = requestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return zodToState(parsed.error);
@@ -134,6 +137,7 @@ export async function createRequestAction(_prev: ActionState, formData: FormData
 }
 
 export async function acceptRequestAction(requestId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/suche/${requestId}`);
   const teamId = String(formData.get("teamId") ?? "");
   if (!teamId) return { error: "Bitte wähle dein Team." };
@@ -148,6 +152,7 @@ export async function acceptRequestAction(requestId: string, _prev: ActionState,
 }
 
 export async function cancelRequestAction(requestId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/suche/${requestId}`);
   try {
     await cancelRequest(user.id, requestId);
@@ -163,6 +168,7 @@ export async function cancelRequestAction(requestId: string): Promise<ActionStat
 // ---------------------------------------------------------------------------------------------
 
 async function lobbyAction(matchId: string, fn: (userId: string) => Promise<void>): Promise<ActionState> {
+  if (await bereichGesperrt()) return { error: KOMMT_BALD_TEXT }; // TURNIER_ONLY: alle Lobby-Aktionen gesperrt (Turnier-Spiele haben keine Lobby)
   const user = await requireUser(`/lobby/${matchId}`);
   try {
     await fn(user.id);
@@ -205,10 +211,12 @@ export async function removeParticipantAction(matchId: string, targetUserId: str
   return lobbyAction(matchId, (id) => lobby.removeParticipant(id, matchId, targetUserId));
 }
 export async function cancelMatchAction(matchId: string, reason: string) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return lobbyAction(matchId, (id) => lobby.cancelMatch(id, matchId, reason));
 }
 /** Absage eines Spiels mit laufender oder erfolgter Kartenabbuchung (012 M3a): nur Admin 1; erstattet zuerst auf die Karten, sagt dann ab. */
 export async function adminCancelMatchAction(matchId: string, reason: string) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return lobbyAction(matchId, async (id) => {
     await adminCancelMatch(id, matchId, reason);
   });
@@ -231,28 +239,35 @@ async function matchAction(matchId: string, fn: (userId: string) => Promise<void
 }
 
 export async function recordEventAction(matchId: string, input: results.EventInput) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return matchAction(matchId, (id) => results.recordEvent(id, matchId, input));
 }
 export async function undoLastEventAction(matchId: string) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return matchAction(matchId, (id) => results.undoLastEvent(id, matchId));
 }
 export async function submitResultAction(matchId: string, home: number, away: number) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return matchAction(matchId, (id) => results.submitResult(id, matchId, home, away));
 }
 export async function submitScoreAction(matchId: string, goals: results.GoalInput[]) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   const state = await matchAction(matchId, (id) => results.submitScore(id, matchId, goals));
   revalidatePath(`/lobby/${matchId}/uebersicht`);
   return state;
 }
 export async function confirmResultAction(matchId: string) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   const state = await matchAction(matchId, (id) => results.confirmResult(id, matchId));
   revalidatePath(`/lobby/${matchId}/uebersicht`);
   return state;
 }
 export async function disputeResultAction(matchId: string, reason: string) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return matchAction(matchId, (id) => results.disputeResult(id, matchId, reason));
 }
 export async function decideResultAction(matchId: string, home: number, away: number, reason: string) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return matchAction(matchId, (id) => results.decideResult(id, matchId, home, away, reason));
 }
 
@@ -294,6 +309,7 @@ export async function removePushSubscriptionAction(endpoint: string) {
 // ---------------------------------------------------------------------------------------------
 
 export async function castMvpVoteAction(matchId: string, candidateId: string): Promise<ActionState> {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/spiele/${matchId}`);
   try {
     await castMvpVote(user.id, matchId, candidateId);
@@ -305,6 +321,7 @@ export async function castMvpVoteAction(matchId: string, candidateId: string): P
 }
 
 export async function markNoShowAction(matchId: string, userId: string, value: boolean): Promise<ActionState> {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser(`/spiele/${matchId}`);
   try {
     await markNoShow(user.id, matchId, userId, value);
@@ -321,6 +338,7 @@ export async function markNoShowAction(matchId: string, userId: string, value: b
 // ---------------------------------------------------------------------------------------------
 
 export async function takeOverShareAction(matchId: string, targetUserId: string, consent: boolean) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return lobbyAction(matchId, async (id) => {
     await takeOverAndNotify(id, matchId, targetUserId, consent === true);
   });
@@ -328,6 +346,7 @@ export async function takeOverShareAction(matchId: string, targetUserId: string,
 
 /** Zurücknehmen: nur die EIGENE Übernahme der Sitzung; es gibt kein Ziel-Argument vom Client (der Platz kommt aus der Datenbank). */
 export async function releaseCoverAction(matchId: string) {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich
   return lobbyAction(matchId, async (id) => {
     await releaseOwnCover(id, matchId);
   });
