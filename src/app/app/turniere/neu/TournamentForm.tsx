@@ -6,7 +6,7 @@ import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
 import { ZP } from "@/lib/zahlungspflicht-texte";
 
-export function TournamentForm({ min, defaultCity, standardHourly, commission, partnerVenues }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number; partnerVenues: { id: string; label: string }[] | null }) {
+export function TournamentForm({ min, defaultCity, standardHourly, commission, partnerVenues, free = false }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number; partnerVenues: { id: string; label: string }[] | null; free?: boolean }) {
   const { state, pending, onSubmit, formAction } = useFormAction(createTournamentAction);
   const fe = state?.fieldErrors ?? {};
   return (
@@ -25,8 +25,9 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
           </select>
         </div>
         <div>
-          <label className="label" htmlFor="maxTeams">Anzahl Teams (4 bis 32)</label>
-          <input id="maxTeams" name="maxTeams" type="number" min={4} max={32} defaultValue={8} className="field" required />
+          <label className="label" htmlFor="maxTeams">Anzahl Teams (4 bis 16)</label>
+          <input id="maxTeams" name="maxTeams" type="number" min={4} max={16} defaultValue={8} className="field" required />
+          <p className="text-xs text-muted">Für dieses Turnier bis 16 Teams.</p>
         </div>
       </div>
       {partnerVenues && (
@@ -68,16 +69,25 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
           <input id="matchMinutes" name="matchMinutes" type="number" min={5} max={90} defaultValue={15} className="field" />
         </div>
       </div>
-      <div>
-        <label className="label" htmlFor="hourlyRent">Hallenpreis pro Stunde (Euro, optional)</label>
-        <input id="hourlyRent" name="hourlyRent" inputMode="decimal" className="field" placeholder={standardHourly ? `leer = Standardpreis ${standardHourly}` : "z. B. 80"} required={!standardHourly} />
-        <FieldError message={fe.hourlyRent} />
-      </div>
-      <div className="space-y-1 rounded-lg border border-line p-3 text-xs text-muted" data-testid="fee-explainer">
-        <p><strong className="text-ink">Der Eintritt wird automatisch berechnet.</strong> Hallenkosten = Stundenpreis mal Hallenzeit. Sie werden durch <em>alle Spieler</em> des Turniers geteilt.</p>
-        <p>Jeder Spieler zahlt beim Beitritt vorab den höchsten möglichen Anteil. Sobald alle Teams da, bezahlt und bereit sind, steht die Spielerzahl fest: Dann wird genau abgerechnet und zu viel Gezahltes sofort erstattet. Bei Absage bekommt jeder alles zurück.</p>
-        <p>Die Gelder liegen bis zum Turnierende auf einem Treuhandkonto. Wie die Auszahlung an dich läuft, klären wir vor dem Turnier mit dir (Provision {commission} %).</p>
-      </div>
+      {free ? (
+        <>
+          <input type="hidden" name="hourlyRent" value="0" />
+          <p className="rounded-lg border border-line p-3 text-sm" data-testid="free-explainer">{ZP.tournamentFreeNote}</p>
+        </>
+      ) : (
+        <>
+        <div>
+          <label className="label" htmlFor="hourlyRent">Hallenpreis pro Stunde (Euro, optional)</label>
+          <input id="hourlyRent" name="hourlyRent" inputMode="decimal" className="field" placeholder={standardHourly ? `leer = Standardpreis ${standardHourly}` : "z. B. 80"} required={!standardHourly} />
+          <FieldError message={fe.hourlyRent} />
+        </div>
+        <div className="space-y-1 rounded-lg border border-line p-3 text-xs text-muted" data-testid="fee-explainer">
+          <p><strong className="text-ink">Der Eintritt wird automatisch berechnet.</strong> Hallenkosten = Stundenpreis mal Hallenzeit. Sie werden durch <em>alle Spieler</em> des Turniers geteilt.</p>
+          <p>Jeder Spieler zahlt beim Beitritt vorab den höchsten möglichen Anteil. Sobald alle Teams da, bezahlt und bereit sind, steht die Spielerzahl fest: Dann wird genau abgerechnet und zu viel Gezahltes sofort erstattet. Bei Absage bekommt jeder alles zurück.</p>
+          <p>Die Gelder liegen bis zum Turnierende auf einem Treuhandkonto. Wie die Auszahlung an dich läuft, klären wir vor dem Turnier mit dir (Provision {commission} %).</p>
+        </div>
+        </>
+      )}
       <label className="flex items-start gap-3 text-sm">
         <input type="checkbox" name="public" className="mt-1 size-5 accent-accent" />
         <span>
@@ -86,7 +96,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
         </span>
       </label>
       <SubmitButton pending={pending}>Turnier anlegen</SubmitButton>
-      <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>
+      {!free && <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>}
       {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

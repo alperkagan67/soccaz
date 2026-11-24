@@ -30,10 +30,11 @@ test("Turnier-Ablauf: Einladungslink, neuer Nutzer, Team gründen und zurück, K
   const orgId = (await query<{ id: string }>("select id from users where email = $1", [`taorg-${run}@test.local`]))[0].id;
   await query("update users set is_organizer = true where id = $1", [orgId]);
 
+  await setPlatformSetting("payments_enabled", true); // Zahlungen AUS = kostenloses Turnier ohne Preisfeld (Gratis-Turnier PR A): dieser Test legt ein Turnier mit Hallenpreis an
   await org.goto("/app/turniere/neu");
   await org.waitForLoadState("networkidle");
   await org.getByLabel("Name des Turniers").fill(`Ablauf Cup ${run}`);
-  await org.getByLabel("Anzahl Teams (4 bis 32)").fill("4");
+  await org.getByLabel("Anzahl Teams (4 bis 16)").fill("4");
   await org.getByLabel("Spielort").fill("Soccerhalle Test");
   await org.getByLabel("Termin (Beginn)").fill(futureLocal(6, "12:00"));
   await org.getByLabel("Anmeldeschluss").fill(futureLocal(4, "12:00"));
