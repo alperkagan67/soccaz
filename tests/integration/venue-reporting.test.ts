@@ -3,7 +3,7 @@ import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "@/db";
-import { matches, matchParticipants, users } from "@/db/schema";
+import { matches, users } from "@/db/schema";
 import { tournaments, tournamentTeams } from "@/db/schema-league";
 import { venueAccess, venues } from "@/db/schema-finance";
 import { post } from "@/server/ledger";
