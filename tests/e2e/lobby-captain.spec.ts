@@ -41,7 +41,10 @@ async function failCharge(matchId: string, emailPrefix: string, code: string, st
 // Impeccable Lauf 2 (P1-1, P1-2): im Fehlerzustand steht die eine Hauptaktion in der ersten Ansicht (390x844, im Fluss), keine Karte in der Karte
 async function ersteAnsichtFehler(page: import("@playwright/test").Page) {
   await page.setViewportSize({ width: 390, height: 844 });
-  const box = await page.locator("main .btn-primary").first().boundingBox();
+  // erst warten, bis der Knopf sichtbar ist: der Fehlerblock wird bei der Hydration neu aufgebaut, boundingBox() wartet nicht (CI Teil 1/5, #317)
+  const primary = page.locator("main .btn-primary:visible").first();
+  await expect(primary).toBeVisible({ timeout: 30_000 });
+  const box = await primary.boundingBox();
   expect(box, "Hauptknopf hat eine Position").not.toBeNull();
   expect(box!.y + box!.height, "Hauptknopf liegt in der ersten Ansicht").toBeLessThanOrEqual(844);
   expect(await page.locator("main .card .card").count()).toBe(0);
