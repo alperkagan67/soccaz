@@ -5,7 +5,8 @@
 //   docker compose -f docker-compose.yml -f docker-compose.staging.yml run --rm -e APP_URL=https://<staging-adresse> -e STAGING_SEED_CONFIRM=ja-staging-seed migrate node scripts/staging-seed.mjs [--turnier <id>] [--clean]
 //   --turnier <id>  meldet die vier Teams zusätzlich in diesem GRATIS-Turnier (Status Anmeldung, Preis 0) an und setzt "vollzählig" und "Bereit" für sie (die Captains sind erfundene Konten ohne Anmeldung)
 //   --clean         entfernt alle Konten @staging.invalid und die Teams staging-probe-* (gleiche Sperre)
-// Ausgabe: nur Anzahlen und Teamnamen, nie Adressen, Schlüssel oder die Datenbank-Adresse. Ende-Code 0 = fertig, 1 = verweigert oder Fehler.
+// Ausgabe: nur Anzahlen und Teamnamen; Fehlertexte der Datenbank-Bibliothek können bei Verbindungsfehlern Host und Port zeigen (nie das Passwort).
+//   --clean scheitert (fail safe, nichts geht verloren), sobald mit den Probe-Teams Turnierspiele gespielt wurden: dann die Staging-Datenbank zurücksetzen. Ende-Code 0 = fertig, 1 = verweigert oder Fehler.
 
 import pg from "pg";
 import { pathToFileURL } from "node:url";
