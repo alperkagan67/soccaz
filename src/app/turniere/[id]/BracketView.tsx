@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { roundTitle } from "@/lib/tournament";
 import { LiveBadge } from "./LiveBadge";
-import { decideShootoutAction } from "@/server/tournament-actions";
+import { decideShootoutAction, forfeitMatchAction } from "@/server/tournament-actions";
 
 type Match = {
   id: string;
@@ -91,6 +91,23 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
                         <ActionButton action={decideShootoutAction.bind(null, tournamentId, m.id, m.teamB)} label={m.nameB ?? ""} className="btn btn-primary !min-h-8 !px-2 text-xs" />
                       </div>
                     </div>
+                  )}
+                  {manage && !done && m.matchId && m.teamA && m.teamB && (
+                    <details className="border-t border-line px-3 py-1 text-xs" data-testid="forfeit">
+                      <summary className="flex min-h-11 cursor-pointer items-center text-muted underline">Kampflos werten</summary>
+                      <div className="flex flex-col gap-1 pb-2">
+                        <p className="text-muted">Das andere Team tritt nicht an: Das Spiel wird mit 3:0 für das gewählte Team gewertet und endet sofort.</p>
+                        {[{ id: m.teamA, name: m.nameA }, { id: m.teamB, name: m.nameB }].map((x) => (
+                          <ActionButton
+                            key={x.id}
+                            action={forfeitMatchAction.bind(null, tournamentId, m.id, x.id)}
+                            label={`${x.name ?? "Team"} gewinnt kampflos (3:0)`}
+                            confirm={`${x.name ?? "Team"} kampflos mit 3:0 werten? Das Spiel ist damit endgültig entschieden.`}
+                            className="btn btn-ghost !min-h-11 !px-3 text-xs"
+                          />
+                        ))}
+                      </div>
+                    </details>
                   )}
                   {m.pendingShootout && !manage && <p className="border-t border-line px-3 py-1 text-center text-xs text-muted">Unentschieden: Der Veranstalter trägt das Siebenmeterschießen ein.</p>}
                 </div>

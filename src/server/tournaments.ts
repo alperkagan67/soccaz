@@ -323,8 +323,8 @@ async function maybeFixPrice(tx: Tx, t: T) {
   await audit(null, "tournament.price", "tournament", t.id, { after: { share, players: everyone.length } }, tx);
   await notifyUsers(
     [...new Set(everyone.map((p) => p.userId))],
-    (await zahlungenAus(tx)) && !cardMode && share === 0 // nur ohne Preis: ein Turnier MIT Preis (Altbestand) behaelt die Preis-Meldung
-      ? { type: "system", title: "Alle Teams sind vollzählig", body: `${fresh.name}: Alle Teams sind vollzählig. Die Captains drücken jetzt „Bereit“. ${ZAHLUNGEN_AUS_HINWEIS}`, url: `/turniere/${t.id}` }
+    istGratis({ totalCents: fresh.totalCents, finalShareCents: share }) // nur ohne Preis: ein Turnier MIT Preis (Altbestand) behaelt die Preis-Meldung; Gratis: "Bereit" entfaellt, der Spielplan steht sofort (maybeGenerateBracket gleich unten)
+      ? { type: "system", title: "Euer Spielplan steht", body: `${fresh.name}: Alle Teams sind vollzählig, der Spielplan steht. ${ZAHLUNGEN_AUS_HINWEIS}`, url: `/turniere/${t.id}` }
       : { type: "payment", title: "Der Preis steht fest", body: share > 0 ? `${fresh.name}: Dein Anteil beträgt ${(share / 100).toFixed(2).replace(".", ",")} €. Bezahle jetzt in der Turnier-Lobby.` : `${fresh.name}: Das Turnier ist kostenlos.`, url: `/turniere/${t.id}` },
     tx,
   );
@@ -365,7 +365,7 @@ export async function withdrawTeam(userId: string, tournamentId: string, teamId:
     if (!entry) throw new DomainError("Das Team ist nicht angemeldet.");
     const manager = await canManage(tx, userId, t);
     if (entry.captainId !== userId && !manager) throw new DomainError("Nur der Captain oder der Veranstalter kann das Team abmelden.");
-    if (manager && entry.captainId !== userId && deadlinePassed(t)) throw new DomainError("Nach dem Anmeldeschluss kann der Veranstalter keine Teams mehr ersetzen. Er kann das Turnier absagen.");
+    if (manager && entry.captainId !== userId && deadlinePassed(t) && !istGratis(t)) throw new DomainError("Nach dem Anmeldeschluss kann der Veranstalter keine Teams mehr ersetzen. Er kann das Turnier absagen."); // Gratis-Turnier: der Veranstalter darf bis zum Bracket Teams entfernen (Entscheid t2q 2026-11-26)
     const players = await tx.select().from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
     for (const p of players) await refundPlayer(tx, t, p, "Rückerstattung Eintritt");
     await tx.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
@@ -788,6 +788,7 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
       await db.transaction(async (tx) => {
         const t = await lockTournament(tx, c.id);
         if ((t.status !== "registration" && t.status !== "payment") || t.bracketGeneratedAt || !t.startsAt || t.startsAt.getTime() <= now.getTime()) return;
+        if (istGratis(t)) return; // Gratis-Turniere sagt dieser Job NIE ab: unter der Sperre erneut (Preis/Anteil koennen sich zwischen Auswahl und Sperre geaendert haben)
         const locked = await dueOf(tx, t);
         if (!locked) return;
         const floored = resumeFloor(locked.due, t.startsAt, await resumeUntil(tx)); // Karenz nach der Pause: frühestens Wiedereinschalten + 2 Stunden, nie über den Start hinaus
@@ -1215,4 +1216,24 @@ export async function myTournamentsAsPlayerOrOrganizer(userId: string) {
   for (const t of asPlayer) byId.set(t.id, { ...t, organizer: false });
   for (const t of asOrganizer) byId.set(t.id, { ...t, organizer: true });
   return [...byId.values()].sort((a, b) => b.startsOn.localeCompare(a.startsOn));
+}
+
+/**
+ * Kampflos werten (Gratis-Turnier PR C, Entscheid t2q 2026-11-26): der Veranstalter (oder Plattform-Admin) wertet ein Turnierspiel mit zwei feststehenden Teams fuer EIN Team (3:0, "kampflos"), z. B. wenn das andere
+ * Team nicht erscheint oder zurueckzieht. Es ist der NORMALE Finalisierungsweg (decideResult: Spiel played, Statistik, Bracket rueckt weiter bis zum Turnierende), mit Audit "result.decide" (Vorher/Nachher) und
+ * zusaetzlich "tournament.forfeit". Jederzeit moeglich (Planzeit nur Richtwert), nur solange das Spiel noch kein Ergebnis hat. Ein Siegtor-Ergebnis steht nie in Mitteilungen mit Namen Dritter.
+ */
+export async function forfeitTournamentMatch(userId: string, tournamentId: string, tournamentMatchId: string, winnerTeamId: string): Promise<void> {
+  const { decideResult } = await import("./results");
+  const [tm] = await db.select().from(tournamentMatches).where(and(eq(tournamentMatches.id, tournamentMatchId), eq(tournamentMatches.tournamentId, tournamentId)));
+  if (!tm || !tm.matchId || !tm.teamA || !tm.teamB) throw new DomainError("Dieses Spiel steht noch nicht fest.");
+  if (tm.scoreA !== null) throw new DomainError("Dieses Spiel ist schon entschieden.");
+  if (winnerTeamId !== tm.teamA && winnerTeamId !== tm.teamB) throw new DomainError("Das Team spielt in diesem Spiel nicht.");
+  const [t] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId));
+  if (!t || t.status !== "running") throw new DomainError("Das Turnier läuft nicht.");
+  const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+  if (t.organizerId !== userId && !isPlatformAdmin(user)) throw new DomainError("Nur der Veranstalter kann ein Spiel kampflos werten.");
+  const homeWins = winnerTeamId === tm.teamA; // Heimteam des Spiels = teamA (createGames)
+  await decideResult(userId, tm.matchId, homeWins ? 3 : 0, homeWins ? 0 : 3, "Kampflos gewertet (3:0): das andere Team tritt nicht an.");
+  await audit(userId, "tournament.forfeit", "tournament", tournamentId, { after: { tournamentMatchId, matchId: tm.matchId, winnerTeamId } });
 }
