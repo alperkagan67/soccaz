@@ -65,6 +65,9 @@ describe("Caddyfile.staging und Compose-Override (Zugangsschutz, fail closed)", 
       expect(prod, h).toContain(h);
     }
   });
+  it("Hilfsskript startet Compose immer mit dem Staging-Override", () => {
+    expect(src("scripts/staging-compose.sh")).toContain('exec docker compose -f docker-compose.yml -f docker-compose.staging.yml "$@"');
+  });
   it("Produktion unverändert: kein Zugangsschutz, kein noindex im Caddyfile", () => {
     const prod = src("Caddyfile");
     expect(prod).not.toContain("basic_auth");

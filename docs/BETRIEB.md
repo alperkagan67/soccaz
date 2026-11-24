@@ -104,6 +104,8 @@ curl -X POST -H "x-job-secret: $JOB_SECRET" https://deine-domain/api/jobs/send-r
 
 Staging läuft mit der Ergänzung `docker-compose.staging.yml` und `Caddyfile.staging` (Produktion nutzt weiter `docker-compose.yml` und `Caddyfile`):
 
+**Achtung: Staging NUR mit dem Staging-Override starten.** Ein einfaches `docker compose up` startet ohne Zugangsschutz, ohne Banner und ohne noindex. Am sichersten: `sh scripts/staging-compose.sh <Befehl>` (setzt den Override immer), z. B. `sh scripts/staging-compose.sh up -d --build`.
+
 ```
 docker compose -f docker-compose.yml -f docker-compose.staging.yml config    # prüft ohne Start; bricht ohne die zwei Zugangs-Variablen ab
 docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
