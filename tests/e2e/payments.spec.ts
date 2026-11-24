@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { setupLobby } from "./flows";
+import { setupLobby, clickWhenReady, clickReady } from "./flows";
 import { closeContexts, closeTestDb, devLogin, newUser, run } from "./helpers";
 import {
   seedOwner,
@@ -79,11 +79,11 @@ test("Einstellungen: Zahlungen aus macht Spiele kostenlos", async ({ browser }) 
   await idle(adm);
   await expect(adm.getByText(/Test-Anbieter/)).toBeVisible();
   await adm.getByLabel("Zahlungen einschalten").uncheck();
-  await adm.getByRole("button", { name: "Speichern" }).click();
+  await clickReady(adm.getByRole("button", { name: "Speichern" }));
   await expect(adm.getByText("Gespeichert.")).toBeVisible();
 
   await a.reload();
-  await a.getByRole("button", { name: "Ich bin bereit" }).click(); // ohne Zahlung
+  await clickWhenReady(a, "Ich bin bereit"); // ohne Zahlung
   await expect(a.getByRole("button", { name: "Nicht mehr bereit" })).toBeVisible();
   expect(await walletBalanceOf(await userIdByEmail(`p7a-${run}@test.local`))).toBe(0);
 
@@ -96,10 +96,10 @@ test("Einstellungen: Zahlungen aus macht Spiele kostenlos", async ({ browser }) 
     el.removeAttribute("min");
     el.removeAttribute("max");
   });
-  await adm.getByRole("button", { name: "Speichern" }).click(); // Formularschutz umgangen: auch der Server lehnt ab
+  await clickReady(adm.getByRole("button", { name: "Speichern" })); // Formularschutz umgangen: auch der Server lehnt ab
   await expect(adm.getByText(/zwischen 2 und 12/).first()).toBeVisible();
   await adm.getByLabel("Mindestzahl zahlender Spieler").fill("8");
   await adm.getByLabel("Zahlungen einschalten").check();
-  await adm.getByRole("button", { name: "Speichern" }).click();
+  await clickReady(adm.getByRole("button", { name: "Speichern" }));
   await expect(adm.getByText("Gespeichert.")).toBeVisible();
 });

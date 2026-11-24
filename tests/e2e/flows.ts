@@ -72,3 +72,12 @@ export async function clickWhenReady(page: Page, name: string | RegExp) {
   await waitHydrated(button);
   await button.click();
 }
+
+/**
+ * Klick auf einen schon gebauten Locator (Knopf in einer Karte, einem Dialog oder einer Liste), nachdem React ihn übernommen hat: wie clickWhenReady, aber für eingegrenzte Locatoren (Flake-Familie 223, Backlog 249:
+ * Klick vor der Hydration geht verloren, die folgende 5-s-Erwartung scheitert unter Last). Ein Klick, keine Wiederholung.
+ */
+export async function clickReady(target: Locator) {
+  await waitHydrated(target);
+  await target.click();
+}

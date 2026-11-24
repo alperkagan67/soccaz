@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { closeContexts, closeTestDb, devLogin, run } from "./helpers";
 import { seedAdmin, seedOwner } from "./helpers-db";
+import { clickReady } from "./flows";
 
 // Vertrag 009 M3c, Admin-Seite Beweisprotokoll: Zugriff nur Admin 1, a11y (axe) in hellem und dunklem Modus; Admin 2 wird weitergeleitet, die Routen antworten 404.
 // ENTWURF, NICHT GELAUFEN (ohne Datenbank/Browser geschrieben). Die Seite ist degradiert gebaut (Admin wird in 013 M7 neu gebaut, Impeccable AC-15 offen, Backlog 125).
@@ -87,10 +88,10 @@ test("Beweispflicht einschalten: Schritt 1 Uhrenquelle, Schritt 2 Pflicht, Grund
     await box.getByRole("button", { name: "Uhrenquelle auf Datenbank stellen" }).click();
     expect(await box.getByLabel(/Grund/).evaluate((el) => (el as HTMLTextAreaElement).validity.valueMissing)).toBe(true);
     await box.getByLabel(/Grund/).fill("App nutzt Datenbankzeit");
-    await box.getByRole("button", { name: "Uhrenquelle auf Datenbank stellen" }).click();
+    await clickReady(box.getByRole("button", { name: "Uhrenquelle auf Datenbank stellen" }));
     await expect(box.getByRole("button", { name: "Beweispflicht einschalten" })).toBeVisible();
     await box.getByLabel(/Grund/).fill("Go-live");
-    await box.getByRole("button", { name: "Beweispflicht einschalten" }).click();
+    await clickReady(box.getByRole("button", { name: "Beweispflicht einschalten" }));
     await expect(page.getByTestId("switch-done")).toBeVisible();
     await expect(page.getByTestId("evidence-switch-state")).toContainText("eingeschaltet");
     await expect(box.getByRole("button")).toHaveCount(0); // kein Ausschalten über die Oberfläche

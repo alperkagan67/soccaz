@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, devLogin, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
 import { query, seedAdmin } from "./helpers-db";
+import { clickWhenReady, clickReady } from "./flows";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -44,7 +45,7 @@ test("Kommentare: schreiben, melden, automatisch ausblenden, Moderation stellt w
 
   await author.goto(teamUrl);
   await author.getByLabel("Dein Kommentar").fill(`Tolles Team ${run}`);
-  await author.getByRole("button", { name: "Senden" }).click();
+  await clickWhenReady(author, "Senden");
   await expect(author.getByText(`Tolles Team ${run}`)).toBeVisible();
   await expect(author.getByRole("button", { name: "Löschen" })).toBeVisible(); // eigener Kommentar
 
@@ -57,7 +58,7 @@ test("Kommentare: schreiben, melden, automatisch ausblenden, Moderation stellt w
   await reporter.goto(teamUrl);
   await reporter.getByRole("button", { name: "Melden", exact: true }).click();
   await reporter.getByLabel("Grund der Meldung").fill("beleidigend");
-  await reporter.getByRole("listitem").filter({ hasText: `Tolles Team ${run}` }).getByRole("button", { name: "Senden" }).click();
+  await clickReady(reporter.getByRole("listitem").filter({ hasText: `Tolles Team ${run}` }).getByRole("button", { name: "Senden" }));
   // die dritte Meldung blendet den Kommentar sofort aus
   await expect(reporter.getByText(`Tolles Team ${run}`)).toHaveCount(0);
 
@@ -70,7 +71,7 @@ test("Kommentare: schreiben, melden, automatisch ausblenden, Moderation stellt w
   const item = mod.getByTestId("moderation-item").filter({ hasText: `Tolles Team ${run}` });
   await expect(item).toBeVisible();
   await expect(item).toContainText("3 Meldungen");
-  await item.getByRole("button", { name: "Wieder anzeigen" }).click();
+  await clickReady(item.getByRole("button", { name: "Wieder anzeigen" }));
   await expect(item).toHaveCount(0);
   await reporter.reload();
   await expect(reporter.getByText(`Tolles Team ${run}`)).toBeVisible();
@@ -90,7 +91,7 @@ test("Einstellungen: Profil, privates Profil, Profilbild, Datenexport, Konto lö
   await page.getByLabel("Name", { exact: true }).fill(`Neuer Name ${run}`);
   await page.getByLabel("Position").selectOption("Torwart");
   await page.getByLabel("Öffentliches Profil").uncheck();
-  await page.getByRole("button", { name: "Profil speichern" }).click();
+  await clickWhenReady(page, "Profil speichern");
   await expect(page.getByText("Gespeichert.")).toBeVisible();
 
   // privat: Fremde sehen nichts, man selbst schon
@@ -128,10 +129,10 @@ test("Einstellungen: Profil, privates Profil, Profilbild, Datenexport, Konto lö
 
   // Löschen: Bestätigung nötig
   await page.getByText("Konto löschen").click();
-  await page.getByRole("button", { name: "Konto endgültig löschen" }).click();
+  await clickWhenReady(page, "Konto endgültig löschen");
   await expect(page.getByText("Bitte tippe LÖSCHEN zur Bestätigung.")).toBeVisible();
   await page.getByLabel(/Tippe LÖSCHEN/).fill("LÖSCHEN");
-  await page.getByRole("button", { name: "Konto endgültig löschen" }).click();
+  await clickWhenReady(page, "Konto endgültig löschen");
   await expect(page).toHaveURL(/\/\?konto=geloescht|\/$/);
   const [row] = await query<{ name: string; email: string }>("select name, email from users where id = $1", [id]);
   expect(row.name).toBe("Gelöschter Nutzer");
@@ -169,16 +170,16 @@ test("Mitspieler gesucht und Spielserie", async ({ browser }) => {
   await poster.goto("/mitspieler");
   await poster.getByLabel("Tag").fill(futureLocal(5).slice(0, 10));
   await poster.getByLabel("Hinweis (optional)").fill(`spiele im Tor ${run}`);
-  await poster.getByRole("button", { name: "Eintragen" }).click();
+  await clickWhenReady(poster, "Eintragen");
   await expect(poster.getByText(`spiele im Tor ${run}`)).toBeVisible();
   // am selben Tag nur einmal
   await poster.getByLabel("Tag").fill(futureLocal(5).slice(0, 10));
-  await poster.getByRole("button", { name: "Eintragen" }).click();
+  await clickWhenReady(poster, "Eintragen");
   await expect(poster.getByText(/schon eingetragen/)).toBeVisible();
 
   await captain.goto("/mitspieler");
   const entry = captain.getByRole("listitem").filter({ hasText: `spiele im Tor ${run}` });
-  await entry.getByRole("button", { name: "Anfragen" }).click();
+  await clickReady(entry.getByRole("button", { name: "Anfragen" }));
   await expect(entry.getByText("Anfrage gesendet.")).toBeVisible();
   await poster.goto("/app/benachrichtigungen");
   await expect(poster.getByText("Ein Team sucht dich")).toBeVisible();
@@ -187,7 +188,7 @@ test("Mitspieler gesucht und Spielserie", async ({ browser }) => {
   await captain.goto("/app/suche/neu");
   await captain.getByLabel(/Anstoß/).fill(futureLocal(12));
   await captain.getByLabel("Wiederholen").selectOption("3");
-  await captain.getByRole("button", { name: "Spielsuche erstellen" }).click();
+  await clickWhenReady(captain, "Spielsuche erstellen");
   await expect(captain).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
   const rows = await query<{ starts_at: Date }>(
     "select r.starts_at from match_requests r join teams t on t.id = r.team_id where t.name = $1 order by r.starts_at",
@@ -199,7 +200,7 @@ test("Mitspieler gesucht und Spielserie", async ({ browser }) => {
   await captain.goto("/app/suche/neu");
   await captain.getByLabel(/Anstoß/).fill(futureLocal(40));
   await captain.getByLabel("Wiederholen").selectOption("4");
-  await captain.getByRole("button", { name: "Spielsuche erstellen" }).click();
+  await clickWhenReady(captain, "Spielsuche erstellen");
   await expect(captain.getByText(/mehr als 5 offene Spielsuchen/).first()).toBeVisible();
 });
 
@@ -217,13 +218,13 @@ test("Hallen: Liste, Seite und Bewertung durch erfahrene Spieler", async ({ brow
   await rookie.goto(`/hallen/${venueId}`);
   await expect(rookie.getByRole("heading", { name: `E2E Halle ${run}` })).toBeVisible();
   await rookie.getByLabel("Deine Bewertung").fill("Noch kein Spiel");
-  await rookie.getByRole("button", { name: "Senden" }).click();
+  await clickWhenReady(rookie, "Senden");
   await expect(rookie.getByText(/schon ein Spiel/)).toBeVisible();
 
   await veteran.goto(`/hallen/${venueId}`);
   await veteran.getByLabel("Sterne").selectOption("4");
   await veteran.getByLabel("Deine Bewertung").fill("Guter Boden, faire Preise");
-  await veteran.getByRole("button", { name: "Senden" }).click();
+  await clickWhenReady(veteran, "Senden");
   await expect(veteran.getByText("Guter Boden, faire Preise")).toBeVisible();
   await veteran.goto("/hallen");
   await expect(veteran.getByRole("link", { name: new RegExp(`E2E Halle ${run}`) })).toContainText("4.0");

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createTeam, futureLocal, newUser, run, closeContexts, testDb } from "./helpers";
-import { acceptChallenge, waitHydrated } from "./flows";
+import { acceptChallenge, waitHydrated, clickWhenReady, clickReady } from "./flows";
 
 async function createRequest(page: Page, team: string, startsAt: string, opts: { visibility?: string; duration?: string } = {}) {
   await page.goto("/app/suche/neu");
@@ -47,7 +47,7 @@ test("Spielsuche erstellen, in der Liste finden, annehmen, Lobby", async ({ brow
     el.removeAttribute("min");
     el.removeAttribute("step");
   });
-  await a.getByRole("button", { name: "Spielsuche erstellen" }).click();
+  await clickReady(a.getByRole("button", { name: "Spielsuche erstellen" }));
   await expect(a.getByText(/mindestens 24 Stunden/).first()).toBeVisible();
 
   // Gültige Suche
@@ -84,7 +84,7 @@ test("Spielsuche erstellen, in der Liste finden, annehmen, Lobby", async ({ brow
   // C war zu langsam
   // keine Lobby-Erwartung (die Annahme scheitert): erst nach der Hydration klicken, kein Wiederholen
   await waitHydrated(c.getByRole("button", { name: "Spiel annehmen" }));
-  await c.getByRole("button", { name: "Spiel annehmen" }).click();
+  await clickWhenReady(c, "Spiel annehmen");
   await expect(c.getByText(/nicht mehr offen/)).toBeVisible();
 
   // Liste zeigt die Suche nicht mehr

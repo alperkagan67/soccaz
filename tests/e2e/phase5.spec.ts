@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, newUser, run, seedUser, testDb } from "./helpers";
 import { query } from "./helpers-db";
+import { clickWhenReady } from "./flows";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -27,10 +28,10 @@ test("Stream: Link eintragen, Player erst nach Klick, Overlay und JSON für OBS"
   await expect(a.getByRole("region", { name: "Live-Stream" })).toHaveCount(0);
   await a.getByText("Live-Stream eintragen").click();
   await a.getByLabel("Link zu Twitch, YouTube oder Kick").fill("https://evil.example/live");
-  await a.getByRole("button", { name: "Speichern" }).click();
+  await clickWhenReady(a, "Speichern");
   await expect(a.getByText(/nicht unterstützt/)).toBeVisible();
   await a.getByLabel("Link zu Twitch, YouTube oder Kick").fill("https://www.twitch.tv/socaz_live");
-  await a.getByRole("button", { name: "Speichern" }).click();
+  await clickWhenReady(a, "Speichern");
   await expect(a.getByText("Gespeichert.", { exact: false }).first()).toBeVisible();
 
   // Fremde sehen den Platzhalter; der iframe kommt erst nach dem Klick
@@ -69,7 +70,7 @@ test("Sprache: Englisch wählen, bleibt erhalten, Deutsch bleibt Standard", asyn
   await expect(page.locator("html")).toHaveAttribute("lang", "de");
 
   await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: "English" }).click();
+  await clickWhenReady(page, "English");
   await expect(page.getByRole("heading", { name: /Indoor football/ })).toBeVisible();
   await expect(page.getByRole("navigation").getByRole("link", { name: "Open lobbies" }).first()).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
@@ -80,6 +81,6 @@ test("Sprache: Englisch wählen, bleibt erhalten, Deutsch bleibt Standard", asyn
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible(); // bleibt erhalten
 
   await page.waitForLoadState("networkidle");
-  await page.getByRole("button", { name: "Deutsch" }).click();
+  await clickWhenReady(page, "Deutsch");
   await expect(page.getByRole("heading", { name: "Anmelden" })).toBeVisible();
 });
