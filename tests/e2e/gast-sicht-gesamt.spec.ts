@@ -1,14 +1,17 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { expect, test, type APIRequestContext, type BrowserContext } from "@playwright/test";
 import { closeContexts, closeTestDb, run, seedUser } from "./helpers";
 import { query } from "./helpers-db";
 import { ROUTEN, type Eintrag } from "./gast-sicht-routen";
 
 // AC-17 Gast-Sicht-Gesamtprüfung (Dauertest, Entscheid t2q 2026-11-24): ALLE Routen aus src/app (Registry tests/e2e/gast-sicht-routen.ts, abgeleitet und gepinnt durch tests/unit/gast-sicht-routen.test.ts)
 // werden als Gast abgerufen. Ein Seed mit erkennbaren Namen ("Zorro Vollname", "Kapitan Vollname") steht in allen Rollen (Kommentar-Autor, Torschütze, Spieler des Spiels, Rangliste, Mitspieler, Turnier, Lobby, Einladung, ...).
-// Je Probe: Vakuum-Schutz (die Seite antwortet und trägt ihren Marker; bei Initialen steht ">ZV<" drin), kein Klarname, kein Nachname, keine Kennung in HTML, RSC-Nutzlast, JSON, SSE und Bild-Antworten.
+// Je Probe: Vakuum-Schutz (die Seite antwortet und trägt ihren Marker; bei Initialen steht ">ZV<" drin), kein Klarname, kein Nachname, keine Kennung, kein Profilbild-Pfad in HTML, RSC-Nutzlast, JSON, SSE und Bild-Antworten.
+// "angemeldet": der Gast bekommt Status 401/403/404/405 oder landet im Browser exakt auf /anmelden (nie ein Textvergleich); Belege, Rechnungen und das Beweisprotokoll werden mit ECHTEN Kennungen abgerufen.
+// Es wird kein HTML per Regex bereinigt: Namen und Initialen werden im Roh-HTML gesucht, Ziele und Texte über Browser und Statuscodes geprüft.
 // Doku: docs/design/gast-sicht-gesamtpruefung.md. Neue Route ohne Eintrag: rot im Unit-Test.
 test.describe.configure({ mode: "serial" });
-test.setTimeout(420_000);
+test.setTimeout(480_000);
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
 });
@@ -23,13 +26,16 @@ const NAME_M = `Mitspieler Vollname${run}`;
 const NACHNAME = `Vollname${run}`;
 const NULL_ID = "00000000-0000-4000-8000-000000000000";
 
-type Seed = { ids: Record<string, string>; secrets: string[] };
+type Seed = { ids: Record<string, string>; secrets: string[]; avatare: string[] };
 
 async function seed(): Promise<Seed> {
   const z = await seedUser("gsz", NAME);
   const y = await seedUser("gsy", NAME_Y);
   const m = await seedUser("gsm", NAME_M);
   const rival = await seedUser("gsr", "Gegner Beispiel");
+  // Profilbilder: ihre Pfade dürfen in keiner Gast-Seite stehen (Backlog 243: /api/media ist öffentlich, die Verweise darauf sind es nicht)
+  const avatare = [z, y, m].map(() => `/api/media/${randomUUID()}`);
+  for (const [i, u] of [z, y, m].entries()) await query("update users set avatar_url = $1 where id = $2", [avatare[i], u]);
   const mk = async (name: string, slug: string, admin: string) => {
     const [t] = await query<{ id: string }>("insert into teams (name, slug, city, created_by) values ($1, $2, 'Essen', $3) returning id", [name, slug, admin]);
     await query("insert into team_members (team_id, user_id, role) values ($1, $2, 'admin')", [t.id, admin]);
@@ -75,9 +81,13 @@ async function seed(): Promise<Seed> {
   const teamToken = `gs-team-${run}`;
   await query("insert into game_invites (token, match_id, created_by, expires_at) values ($1, $2, $3, now() + interval '7 days')", [spielToken, priv.id, z]);
   await query("insert into invites (token, team_id, created_by, expires_at) values ($1, $2, $3, now() + interval '7 days')", [teamToken, home, z]);
+  // echte Kennungen für die geschützten Datei-Routen (ohne Zugangsschutz gäbe es hier ein PDF, nicht nur ein 404)
+  const [receipt] = await query<{ id: string }>("insert into receipts (number, user_id, kind, amount_cents) values ($1, $2, 'topup', 500) returning id", [`GS-B-${run}`, z]);
+  const [invoice] = await query<{ id: string }>("insert into invoices (number, venue_id, period, vat_mode, vat_percent, net_cents, vat_cents, gross_cents) values ($1, $2, '2026-11', 'kleinunternehmer', 0, 1000, 0, 1000) returning id", [`GS-R-${run}`, venue.id]);
   return {
-    ids: { played: played.id, lobby: lobby.id, queue: queue.id, request: request.id, venue: venue.id, tournament: t.id, z, spielToken, teamToken, homeSlug: `e2e-gs-heim-${run}` },
+    ids: { played: played.id, lobby: lobby.id, queue: queue.id, request: request.id, venue: venue.id, tournament: t.id, z, spielToken, teamToken, homeSlug: `e2e-gs-heim-${run}`, receipt: receipt.id, invoice: invoice.id },
     secrets: [z, y, m],
+    avatare,
   };
 }
 
@@ -102,6 +112,11 @@ function urlFor(route: string, s: Seed): string {
     "/api/spiele/[id]/events": `/api/spiele/${i.played}/events`,
     "/api/lobby/[id]/events": `/api/lobby/${i.lobby}/events`,
     "/api/karte/[id]": `/api/karte/${i.played}`,
+    "/api/belege/[id]": `/api/belege/${i.receipt}`,
+    "/api/rechnungen/[id]": `/api/rechnungen/${i.invoice}`,
+    "/api/beweis/[matchId]": `/api/beweis/${i.played}`,
+    "/admin/finanzen/spiel/[id]": `/admin/finanzen/spiel/${i.played}`,
+    "/lobby/[id]/uebersicht": `/lobby/${i.lobby}/uebersicht`,
     "/robots": "/robots.txt",
     "/sitemap": "/sitemap.xml",
     "/manifest": "/manifest.webmanifest",
@@ -112,19 +127,30 @@ function urlFor(route: string, s: Seed): string {
   return route;
 }
 
-const verboten = (s: Seed) => [NAME, NAME_Y, NAME_M, NACHNAME, "Zorro", ...s.secrets];
+/** Erwartete Gast-Antwort der geschützten Datei-Routen mit echter Kennung: Belege und Rechnungen prüfen die Anmeldung zuerst (401), das Beweisprotokoll antwortet absichtlich wie bei einer unbekannten Kennung (404). */
+const ERWARTET_API: Record<string, number> = { "/api/belege/[id]": 401, "/api/rechnungen/[id]": 401, "/api/beweis/[matchId]": 404 };
 
-/** Bewusste, benannte Ausnahmen je Route: der eigene Pfad enthält die Kennung (Weiterleitung "next=/spieler/<id>"), der Veranstalter der Einladung heißt "Vorname + Initial" (t2q). */
+const verboten = (s: Seed) => [NAME, NAME_Y, NAME_M, NACHNAME, "Zorro", ...s.secrets, ...s.avatare];
+
+/** Bewusste, benannte Ausnahmen je Route: die eigene Kennung im Weiterleitungsziel ("next=/spieler/<id>"), der Veranstalter heißt "Vorname + Initial" (t2q). */
 const AUSNAHME: Record<string, { ohneKennung?: boolean; erlaubt?: string[] }> = {
   "/spieler/[id]": { ohneKennung: true },
   "/spiel/[token]": { erlaubt: ["Zorro V."] },
   "/turniere/[id]": { erlaubt: ["Zorro V."] }, // Veranstalter überall "Vorname + Initial" (t2q)
 };
 
+const maskiere = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Entfernt eine erlaubte Zeichenfolge nur als eigenes Wort (Wortgrenze), nie als Teilstring eines längeren Namens. */
+function ohneErlaubtes(text: string, erlaubt: string[]): string {
+  let t = text;
+  for (const ok of erlaubt) t = t.replace(new RegExp(`(?<![\\p{L}\\p{N}])${maskiere(ok)}(?![\\p{L}\\p{N}])`, "gu"), "");
+  return t;
+}
+
 function pruefeText(text: string, kontext: string, s: Seed, route = "") {
   const a = AUSNAHME[route];
-  let t = text;
-  for (const ok of a?.erlaubt ?? []) t = t.split(ok).join("");
+  const t = ohneErlaubtes(text, a?.erlaubt ?? []);
   for (const n of verboten(s)) {
     if (a?.ohneKennung && s.secrets.includes(n)) continue;
     const pos = t.indexOf(n);
@@ -132,24 +158,49 @@ function pruefeText(text: string, kontext: string, s: Seed, route = "") {
   }
 }
 
-async function sseAnfang(url: string): Promise<{ status: number; text: string }> {
+async function sseAnfang(route: string, url: string): Promise<{ status: number; text: string }> {
   const ctrl = new AbortController();
-  const res = await fetch(`${BASE}${url}`, { signal: ctrl.signal });
-  if (!res.body) return { status: res.status, text: "" };
-  const text = res.status === 200 ? new TextDecoder().decode((await res.body.getReader().read()).value) : await res.text();
-  ctrl.abort();
-  return { status: res.status, text };
+  const zeit = setTimeout(() => ctrl.abort(new Error(`${route}: SSE antwortet nicht innerhalb von 20 Sekunden`)), 20_000);
+  try {
+    const res = await fetch(`${BASE}${url}`, { signal: ctrl.signal });
+    if (!res.body) return { status: res.status, text: "" };
+    const text = res.status === 200 ? new TextDecoder().decode((await res.body.getReader().read()).value) : await res.text();
+    return { status: res.status, text };
+  } finally {
+    clearTimeout(zeit);
+    ctrl.abort();
+  }
 }
 
-async function probe(request: APIRequestContext, route: string, e: Eintrag, s: Seed) {
+/** Seite im Browser öffnen und das Ziel nach allen Weiterleitungen (auch dem Weiterleiten im Browser) lesen. */
+async function browserZiel(ctx: BrowserContext, url: string, ziel: (u: URL) => boolean): Promise<{ status: number; url: URL }> {
+  const page = await ctx.newPage();
+  try {
+    const res = await page.goto(url, { waitUntil: "load", timeout: 60_000 });
+    await page.waitForURL((u) => ziel(u), { timeout: 15_000 }).catch(() => undefined);
+    return { status: res?.status() ?? 0, url: new URL(page.url()) };
+  } finally {
+    await page.close();
+  }
+}
+
+async function probe(ctx: BrowserContext, request: APIRequestContext, route: string, e: Eintrag, s: Seed) {
   const url = urlFor(route, s);
   if (e.art === "intern" || e.art === "ausnahme") return; // keine Gast-Probe vorgesehen (Begründung in der Registry)
   if (e.art === "geprueft") {
     if (e.probe === "sse") {
-      const { status, text } = await sseAnfang(url);
+      const { status, text } = await sseAnfang(route, url);
       expect(status, `${route}: SSE antwortet`).toBe(200);
       expect(text, `${route}: Marker`).toContain(e.marker);
       pruefeText(text, route, s, route);
+      return;
+    }
+    if (e.probe === "anmeldung") {
+      const { url: ziel } = await browserZiel(ctx, url, (u) => u.pathname === "/anmelden");
+      expect(ziel.pathname, `${route}: der Gast landet exakt auf /anmelden (nicht nur ein Text mit "Anmelden")`).toBe("/anmelden");
+      expect(ziel.searchParams.get("next"), `${route}: Rücksprung auf die angefragte Seite`).toBe(url);
+      const res = await request.get(url, { maxRedirects: 0 });
+      pruefeText(await res.text(), `${route} (Antworttext)`, s, route);
       return;
     }
     const res = await request.get(url, { maxRedirects: 0 });
@@ -177,26 +228,39 @@ async function probe(request: APIRequestContext, route: string, e: Eintrag, s: S
     }
     return;
   }
+  if (e.art === "angemeldet") {
+    if (route.startsWith("/api/")) {
+      const res = await request.get(url, { maxRedirects: 0 });
+      const text = await res.text();
+      pruefeText(text, `${route} (angemeldet)`, s, route);
+      expect([401, 403, 404, 405], `${route}: der Gast bekommt 401/403/404/405 (Status ${res.status()})`).toContain(res.status());
+      expect(text.startsWith("%PDF"), `${route}: kein PDF für Gäste`).toBe(false);
+      if (ERWARTET_API[route]) expect(res.status(), `${route}: mit echter Kennung genau ${ERWARTET_API[route]}`).toBe(ERWARTET_API[route]);
+      return;
+    }
+    // Seiten und Routen unter /admin und /app: der Gast landet im Browser exakt auf /anmelden oder bekommt 401/403/404/405; nie ein Textvergleich
+    const { status, url: ziel } = await browserZiel(ctx, url, (u) => u.pathname === "/anmelden");
+    expect([401, 403, 404, 405].includes(status) || ziel.pathname === "/anmelden", `${route}: der Gast landet auf /anmelden oder bekommt 401/403/404/405 (Status ${status}, Ziel ${ziel.pathname})`).toBe(true);
+    const res = await request.get(url, { maxRedirects: 0 });
+    pruefeText(await res.text(), `${route} (angemeldet)`, s, route);
+    return;
+  }
   const res = await request.get(url, { maxRedirects: 0 });
   const text = await res.text();
   pruefeText(text, `${route} (${e.art})`, s, route);
-  if (e.art === "angemeldet") {
-    const geleitet = [301, 302, 307, 308, 401, 403, 404, 405].includes(res.status()) || /anmelden/i.test(`${res.headers()["location"] ?? ""} ${text}`);
-    expect(geleitet, `${route}: der Gast bekommt Weiterleitung, 401/403/404/405 oder die Anmeldung (Status ${res.status()})`).toBe(true);
-  } else {
-    expect([200, 301, 302, 307, 308, 404], `${route}: Status ${res.status()}`).toContain(res.status());
-  }
+  expect([200, 301, 302, 307, 308, 404], `${route}: Status ${res.status()}`).toContain(res.status());
 }
 
-test("Gast-Sicht: jede Route der Registry als Gast ohne Klarnamen, Kennungen und Nachnamen (Seiten, RSC, JSON, SSE, Bilder, robots, Sitemap)", async ({ browser }) => {
+test("Gast-Sicht: jede Route der Registry als Gast ohne Klarnamen, Kennungen, Nachnamen und Profilbild-Pfade (Seiten, RSC, JSON, SSE, Bilder, robots, Sitemap)", async ({ browser }) => {
   const s = await seed();
-  const gast = await (await browser.newContext()).request;
+  const ctx = await browser.newContext();
+  const gast = ctx.request;
   const fehler: string[] = [];
   const routen = Object.entries(ROUTEN);
   expect(routen.length, "die Registry ist nicht leer").toBeGreaterThan(80);
   for (const [route, e] of routen) {
     try {
-      await probe(gast, route, e, s);
+      await probe(ctx, gast, route, e, s);
     } catch (err) {
       fehler.push(`${route}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`);
     }
@@ -204,10 +268,11 @@ test("Gast-Sicht: jede Route der Registry als Gast ohne Klarnamen, Kennungen und
   expect(fehler, `Gast-Sicht verletzt:\n${fehler.join("\n")}`).toEqual([]);
 
   // Zusatzwerte: Veranstalter (Turnier UND Privatspiel-Einladung) ist exakt "Vorname + Initial" (t2q), die Sitemap nennt keine Profile
-  const turnier = await (await gast.get(`/turniere/${s.ids.tournament}`)).text();
-  expect(turnier.replace(/<!--.*?-->/g, "")).toContain("Veranstalter: Zorro V. ");
-  const einladung = await (await gast.get(`/spiel/${s.ids.spielToken}`)).text();
-  expect(einladung).toContain("Zorro V.");
+  const seite = await ctx.newPage();
+  await seite.goto(`/turniere/${s.ids.tournament}`);
+  await expect(seite.getByText("Veranstalter: Zorro V. ·", { exact: false })).toBeVisible();
+  await seite.goto(`/spiel/${s.ids.spielToken}`);
+  await expect(seite.getByTestId("game-organizer")).toHaveText("Zorro V. lädt dich ein zu einem Privatspiel");
   const sitemap = await (await gast.get("/sitemap.xml")).text();
   expect(sitemap).not.toContain("/spieler/");
   expect(sitemap).not.toContain(s.ids.z);

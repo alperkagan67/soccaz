@@ -77,19 +77,67 @@ describe("Einträge sind vollständig", () => {
       if (route.startsWith("/admin") || route.startsWith("/app")) expect(e.art, route).toBe("angemeldet");
     }
   });
-  it("jede Route mit Personenbezug in der Quelle (Name/Nutzer) ist nicht still als statisch geführt: statische Seiten importieren keine Personen-Server-Module", () => {
-    const PERSONEN = /@\/server\/(profiles|roster|results|lobby|content|freeplayers|tournaments|matchmaking|board)\b/;
+  it("statisch geführte Seiten haben keinen Personenbezug in der Quelle: kein Personen-Servermodul, kein users-Import, keine Personen-Felder; Ausnahmen je Route mit Begründung", () => {
+    // Module, die Personen liefern (Namen, Spieler, Kommentare, Turnier-Teilnehmer, Lobbys ...)
+    const PERSONEN = /@\/server\/(profiles|roster|results|lobby|content|freeplayers|tournaments|matchmaking|board|account|clips|teams|admin|notifications)\b/;
+    const USERS_IMPORT = /import\s*\{[^}]*\busers\b[^}]*\}\s*from\s*"@\/db\/schema/;
+    const PERSONEN_FELDER = /\.(userName|authorName|organizerName|captainName|scorer|nickname)\b/;
+    // Daten-Module, die ausschließlich Team-, Liga-, Hallen- oder Termin-Namen liefern (geprüft: sie importieren users nicht): je Route benannt statt pauschal erlaubt
+    const ERLAUBT: Record<string, string[]> = {
+      "/anmelden": ["locale", "session"],
+      "/hilfe": ["pricing"],
+      "/ligen": ["leagues"],
+      "/ligen/[id]": ["leagues", "league-actions", "requests", "session"], // Tabelle mit Teamnamen; session/requests nur für die Beitrittsschaltfläche der Team-Admins
+      "/profitag": ["pro-events"],
+      "/profitag/[id]": ["pro-events", "league-actions", "requests", "session"], // bewerbende Teams; session/requests nur für die Bewerbung der Team-Admins
+      "/hallen": ["venues"],
+    };
+    let gelesen = 0;
     for (const [route, e] of Object.entries(ROUTEN)) {
       if (e.art !== "statisch") continue;
-      const datei = route === "/" ? "page.tsx" : DATEIEN["page.tsx"] && `${route}/page.tsx`;
-      let src = "";
+      const datei = route === "/" ? "page.tsx" : `${route.slice(1)}/page.tsx`;
+      const pfad = path.join(appDir, datei);
+      let src: string;
       try {
-        src = readFileSync(path.join(appDir, datei), "utf8");
+        src = readFileSync(pfad, "utf8");
       } catch {
-        continue; // keine Seite (Route oder Metadatei): nur die Begründung zählt
+        continue; // Route ohne Seitendatei (Metadatei, Route): nur die Begründung zählt; gezählt wird unten
       }
-      expect(PERSONEN.test(src), `${route} ist als statisch geführt, importiert aber ein Personen-Modul: Eintrag prüfen`).toBe(false);
+      gelesen++;
+      const importe = [...src.matchAll(/from\s+"@\/server\/([a-z-]+)"/g)].map((m) => m[1]);
+      for (const modul of importe) {
+        if (ERLAUBT[route]?.includes(modul)) continue;
+        expect(PERSONEN.test(`@/server/${modul}`), `${route} ist als statisch geführt, importiert aber das Personen-Modul ${modul}: Eintrag prüfen`).toBe(false);
+        expect(false, `${route}: Server-Modul ${modul} ist nicht als Daten-Modul der statischen Seite benannt (ERLAUBT in diesem Test)`).toBe(true);
+      }
+      expect(USERS_IMPORT.test(src), `${route} importiert users aus dem Schema`).toBe(false);
+      expect(PERSONEN_FELDER.test(src), `${route} nutzt ein Personen-Feld`).toBe(false);
     }
+    expect(gelesen, "genug statische Seiten wurden wirklich gelesen (Vakuum-Schutz: ein Pfadfehler ließe sonst alle durch)").toBeGreaterThanOrEqual(12);
+  });
+  it("angemeldet geführte Seiten und Routen haben einen Zugangsschutz in Datei oder Layout (requireUser, requireAdmin, requirePermission, requireLoggedIn oder getCurrentUser mit Antwort 401)", () => {
+    const SCHUTZ = /(requireUser|requireAdmin|requirePermission|requireLoggedIn|requireVenueManager|getCurrentUser)/;
+    let geprueft = 0;
+    for (const [route, e] of Object.entries(ROUTEN)) {
+      if (e.art !== "angemeldet") continue;
+      const teile = route.split("/").filter(Boolean);
+      const dateien: string[] = [];
+      for (const name of ["page.tsx", "route.ts"]) dateien.push(path.join(appDir, ...teile, name));
+      for (let n = teile.length; n >= 1; n--) dateien.push(path.join(appDir, ...teile.slice(0, n), "layout.tsx"));
+      const quellen = dateien.flatMap((d) => {
+        try {
+          return [readFileSync(d, "utf8")];
+        } catch {
+          return [];
+        }
+      });
+      expect(quellen.length, `${route}: Datei nicht gefunden`).toBeGreaterThan(0);
+      // Entfernte Seite (AC-14, /app/guthaben): leitet alle ohne jede Datenabfrage um (kein Servermodul), braucht keinen Zugangsschutz
+      const nurUmleitung = quellen.length === 1 && /redirect\("\/app"\)/.test(quellen[0]) && !/@\/server\//.test(quellen[0]);
+      expect(nurUmleitung || quellen.some((q) => SCHUTZ.test(q)), `${route}: weder Seite noch Layout prüfen die Anmeldung`).toBe(true);
+      geprueft++;
+    }
+    expect(geprueft).toBeGreaterThanOrEqual(30);
   });
 });
 

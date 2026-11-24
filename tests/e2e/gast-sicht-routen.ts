@@ -6,7 +6,8 @@
 //   angemeldet  nur für Angemeldete/Admins: der Gast bekommt Weiterleitung, 401, 403 oder 404 und nie Daten.
 //   intern      kein Gast-Zugriff vorgesehen (Webhook, Job, Entwicklerseite): Begründung.
 //   ausnahme    zeigt bewusst Klarnamen oder Daten (Entscheid, Verweis): nie stillschweigend.
-export type Probe = "html" | "html+rsc" | "json" | "sse" | "bild" | "text";
+// "anmeldung": der Gast landet im Browser exakt auf /anmelden (Weiterleitung, kein Textvergleich).
+export type Probe = "html" | "html+rsc" | "json" | "sse" | "bild" | "text" | "anmeldung";
 export type Eintrag =
   | { art: "geprueft"; probe: Probe; marker: string; initialen?: boolean; beleg: string }
   | { art: "statisch"; grund: string }
@@ -30,7 +31,7 @@ export const ROUTEN: Record<string, Eintrag> = {
   "/spiele/[id]/opengraph-image": g("bild", "image/png", "og:image des Spiels = matchCard: Torschützen nur Initialen (R-T382)"),
   "/rangliste": g("html+rsc", "Torjäger", "Torjäger und Beste Spieler: Initialen ohne Link (PR B)", true),
   "/spieler": g("html+rsc", "Spieler", "Spielerliste: Initialen ohne Link, keine Namenssuche (PR B)", true),
-  "/spieler/[id]": g("html", "anmelden", "Profil: Gast wird zur Anmeldung geleitet, kein Name im Text (PR D)"),
+  "/spieler/[id]": g("anmeldung", "/anmelden", "Profil: Gast wird zur Anmeldung geleitet (Browser-Ziel exakt /anmelden), kein Name im Text (PR D)"),
   "/teams": s("Teamliste: nur Teamname, Stadt und Spielerzahl (Teamnamen sind keine Personennamen)"),
   "/teams/[slug]": g("html+rsc", "Kommentare", "Team: Kommentare (Initialen), Torjäger namenfrei, Karten neutral (PR A, cardViewerFor)", true),
   "/teams/[slug]/opengraph-image": g("bild", "image/png", "og:image des Teams: nur Teamname und Stadt"),
@@ -62,7 +63,7 @@ export const ROUTEN: Record<string, Eintrag> = {
   "/hausordnung": s("Rechtstext"),
   "/hilfe": s("Hilfetext"),
   "/impressum": s("Rechtstext (Betreiberangaben stehen im Impressum bewusst)"),
-  "/kontakt": s("Kontaktseite"),
+  "/kontakt": s("Betreiberangaben (Kontaktadresse), bewusst wie das Impressum"),
   "/offline": s("PWA-Offline-Seite"),
   "/unter-16": s("Endseite nach Konto-Löschung, keine Daten"),
   "/ligen": s("zurückgestellt und ausgeblendet (Vertrag 013): Liganamen und Teams"),

@@ -9,6 +9,8 @@ Zweck: Als **Gast** (nicht angemeldet) steht in keiner öffentlichen Seite und i
 - **Routenliste aus dem Verzeichnis:** `tests/unit/gast-sicht-routen.test.ts` leitet alle Routen aus `src/app` ab (`page.tsx`, `route.ts`, `opengraph-image`, `sitemap`, `robots`, `manifest`, `not-found`). Eine **neue Route ohne Eintrag** in `tests/e2e/gast-sicht-routen.ts` (und in dieser Datei) macht den Test rot; ein Eintrag ohne Route auch. Admin- und Konto-Routen müssen als „angemeldet“ geführt sein, als „statisch“ geführte Seiten dürfen kein Personen-Servermodul importieren.
 - **Gast-Probe mit Seed:** `tests/e2e/gast-sicht-gesamt.spec.ts` (eine bestehende E2E-Instanz, kein eigener Server, ein Test) legt Personen mit erkennbaren Namen an („Zorro Vollname…“, „Kapitan Vollname…“, „Mitspieler Vollname…“) in allen Rollen (Kommentar-Autor, Torschütze, Spieler des Spiels, Rangliste, Mitspieler, Turnier-Veranstalter, Captain und Spieler, Lobby, offene Lobby, Privatspiel-Veranstalter) und ruft **jede** Route der Registry als Gast ab: HTML, RSC-Nutzlast (Header `RSC: 1`), JSON, SSE (erste Nachricht), Bild-Antworten (Typ), `robots.txt`, `sitemap.xml`.
 - **Vakuum-Schutz:** Jede Probe belegt, dass die Seite antwortet (Status) und ihren Marker trägt; bei Seiten mit Personen müssen die Initialen („>ZV<“) im Gast-HTML **vorkommen**, die RSC-Nutzlast ist nicht leer. Erst danach gelten die Negativprüfungen (kein Name, kein Nachname, keine Kennung; der Fehlertext nennt den Treffer samt Umgebung).
+- **Angemeldet-Routen:** der Gast bekommt Status 401, 403, 404 oder 405 oder landet im Browser **exakt** auf `/anmelden` (nie ein Textvergleich mit „Anmelden“); Belege, Rechnungen und das Beweisprotokoll werden mit **echten Kennungen** abgerufen (erwartet 401, 401, 404), damit ein fehlender Zugangsschutz ein PDF liefern würde statt eines unterscheidbaren 404. Zusätzlich prüft der Unit-Test, dass jede angemeldet geführte Route in Datei oder Layout einen Zugangsschutz hat.
+- **Profilbilder:** die Seed-Personen haben ein Profilbild (`/api/media/<UUID>`); dieser Pfad darf in keiner Gast-Seite stehen (Spielfotos sind bewusst öffentlich, Backlog 243).
 - **Benannte Ausnahmen** (nie stillschweigend): die eigene Kennung im Weiterleitungsziel `/anmelden?next=/spieler/<id>` und „Zorro V.“ als Veranstalter der Einladung (`AUSNAHME` in der Spec); `/api/media/<id>` (Backlog 243).
 - **Mutationen** (rot, danach grün): Kommentar-Autor mit Namen, Live-JSON mit Namen, React-Schlüssel mit Nutzerkennung in der Lobby, neue Route ohne Eintrag.
 
@@ -26,7 +28,7 @@ Die Lobby und die Teamseite gaben für Gäste die **Nutzerkennung als React-Schl
 | `/spiele/[id]/opengraph-image` | og:image des Spiels = matchCard: Torschützen nur Initialen (R-T382) (Kanal: bild, Marker `image/png`) | gast-sicht-gesamt.spec.ts; match-card-namen.test.ts |
 | `/rangliste` | Torjäger und Beste Spieler: Initialen ohne Link (PR B) (Kanal: html+rsc, Initialen belegt, Marker `Torjäger`) | gast-sicht-gesamt.spec.ts; namen-listen.spec.ts |
 | `/spieler` | Spielerliste: Initialen ohne Link, keine Namenssuche (PR B) (Kanal: html+rsc, Initialen belegt, Marker `Spieler`) | gast-sicht-gesamt.spec.ts; namen-listen.spec.ts |
-| `/spieler/[id]` | Profil: Gast wird zur Anmeldung geleitet, kein Name im Text (PR D) (Kanal: html, Marker `anmelden`) | gast-sicht-gesamt.spec.ts; spieler-profil-gast.spec.ts, spieler-profil-gast.test.ts |
+| `/spieler/[id]` | Profil: Gast wird zur Anmeldung geleitet (Browser-Ziel exakt /anmelden), kein Name im Text (PR D) (Kanal: anmeldung, Marker `/anmelden`) | gast-sicht-gesamt.spec.ts; spieler-profil-gast.spec.ts, spieler-profil-gast.test.ts |
 | `/teams/[slug]` | Team: Kommentare (Initialen), Torjäger namenfrei, Karten neutral (PR A, cardViewerFor) (Kanal: html+rsc, Initialen belegt, Marker `Kommentare`) | gast-sicht-gesamt.spec.ts; kommentar-namen.spec.ts |
 | `/teams/[slug]/opengraph-image` | og:image des Teams: nur Teamname und Stadt (Kanal: bild, Marker `image/png`) | gast-sicht-gesamt.spec.ts |
 | `/turniere` | Turnierliste: Turnier- und Teamnamen, kein Veranstalter-Klarname (Kanal: html, Marker `Turniere`) | gast-sicht-gesamt.spec.ts |
@@ -61,7 +63,7 @@ Die Lobby und die Teamseite gaben für Gäste die **Nutzerkennung als React-Schl
 | `/hausordnung` | Rechtstext | gast-sicht-gesamt.spec.ts (antwortet, kein Seed-Name), gast-sicht-routen.test.ts (kein Personen-Modul) |
 | `/hilfe` | Hilfetext | gast-sicht-gesamt.spec.ts (antwortet, kein Seed-Name), gast-sicht-routen.test.ts (kein Personen-Modul) |
 | `/impressum` | Rechtstext (Betreiberangaben stehen im Impressum bewusst) | gast-sicht-gesamt.spec.ts (antwortet, kein Seed-Name), gast-sicht-routen.test.ts (kein Personen-Modul) |
-| `/kontakt` | Kontaktseite | gast-sicht-gesamt.spec.ts (antwortet, kein Seed-Name), gast-sicht-routen.test.ts (kein Personen-Modul) |
+| `/kontakt` | Betreiberangaben (Kontaktadresse), bewusst wie das Impressum | gast-sicht-gesamt.spec.ts (antwortet, kein Seed-Name), gast-sicht-routen.test.ts (kein Personen-Modul) |
 | `/offline` | PWA-Offline-Seite | gast-sicht-gesamt.spec.ts (antwortet, kein Seed-Name), gast-sicht-routen.test.ts (kein Personen-Modul) |
 | `/unter-16` | Endseite nach Konto-Löschung, keine Daten | gast-sicht-gesamt.spec.ts (antwortet, kein Seed-Name), gast-sicht-routen.test.ts (kein Personen-Modul) |
 | `/ligen` | zurückgestellt und ausgeblendet (Vertrag 013): Liganamen und Teams | gast-sicht-gesamt.spec.ts (antwortet, kein Seed-Name), gast-sicht-routen.test.ts (kein Personen-Modul) |
@@ -136,6 +138,7 @@ Die Lobby und die Teamseite gaben für Gäste die **Nutzerkennung als React-Schl
 ## Grenzen
 
 - Geprüft wird der **Gast** (nicht angemeldet). Die Sicht des reinen Hallenbetreibers und der Rollen Spieler, Captain und Plattform-Admin je Seite belegen die Rollentests der PRs A bis D (`kommentar-namen`, `namen-listen`, `spielbericht-namen`, `spieler-profil-gast`).
+- **Bilder:** die Probe prüft nur den Typ (`image/png`) der Antwort; der Inhalt (Torschützen als Initialen) ist per Quelltext-Pin und Funktionstest gesichert (`match-card-namen.test.ts`).
 - Die Probe nutzt Teamnamen ohne Personennamen; ein Team, das seinen Namen nach einer Person nennt, wird nicht erkannt (Teamnamen sind keine Personennamen, Entscheid t2q).
 - `/api/media/<id>` liefert Bilder öffentlich per UUID (Gesichter ohne Namen): Backlog 243.
 - Bereits ausgelieferte Altbestände (Caches, Suchmaschinen): Go-Live-Audit G31-013 und Rechtsliste („Sichtbarkeit von Spielernamen“).
