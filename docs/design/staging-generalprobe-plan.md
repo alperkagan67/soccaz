@@ -11,7 +11,7 @@ Stand: 2026-11-24 · Verfasser: worker-2 · Status: **Entwurf**, Auftrag t2q/t2s
 |---|---|---|
 | Nutzer [N] | Betreiber | Server, Domain, Google/Apple-Konsole, Admin 1, Entscheid Go/No-Go; spielt Captain Team 1 |
 | Partner [P] | eine zweite Person | spielt Captain Team 2 und prüft auf einem **anderen Handy** (iPhone oder Android, Gegenstück zum Nutzer) |
-| Testkonten [N/P] | Google-Konten (Pflicht) und, falls Apple läuft, 2 Apple-Konten | siehe Frage Q1 (wie viele Spieler) |
+| Testkonten [N/P] | **Teams 1 und 2: ECHTE Konten** (Google und Apple: der eigentliche Test); **Teams 3 bis 6: erfundene Konten** per `scripts/staging-seed.mjs` (Entscheid t2q Q1) | Seed siehe Abschnitt 3, Runbook 3a/10a |
 | Agenten [A] | Task Manager und Worker | Smoke, Lasttest-Light, Backup/Restore-Probe, Protokoll, Fehler beheben (nur Fehlerbehebungen) |
 
 ## 2. Zeitplan
@@ -30,8 +30,9 @@ Stand: 2026-11-24 · Verfasser: worker-2 · Status: **Entwurf**, Auftrag t2q/t2s
 
 ## 3. Ablauf Gratis-Turnier (Di 1.12.) – auf dem Handy
 Voraussetzung: **Zahlungen AUS**, das Turnier hat Preis 0, `TURNIER_ONLY=1`. Auf keiner Seite darf ein Zahlungswort stehen.
+0. [N] **Einmalig beim Staging-Aufbau: Umgebungsmarke setzen** (Runbook 3a, `settings.environment = "staging"`), sonst verweigert der Seed. [A] prüft: Abfrage zeigt genau eine Zeile.
 1. [N] Veranstalter anlegen (Admin: „Als Turnier-Veranstalter freischalten“), Turnier **ohne Preis** anlegen, Teamlimit 16, **6 Teams**, Termin, Name.
-2. [N] [P] Captain-Konten legen **Teams** an, Mitglieder treten per Einladungslink bei (je Team 4 bis 6 Spieler), jedes Team meldet sich zum Turnier an.
+2. [N] [P] **Teams 1 und 2** (echte Konten, je 4 bis 6 Spieler) legen Teams an, Mitglieder treten per Einladungslink bei, beide Teams melden sich zum Turnier an. [N] **Teams 3 bis 6:** `staging-seed.mjs --turnier <id>` (Runbook 10a): erfundene Konten `@staging.invalid`, nie zustellbar, vier Teams angemeldet, „vollzählig“ und „Bereit“ gesetzt (**Reihenfolge: erst seeden, danach melden die echten Teams 1 und 2 „vollzählig“**; das letzte „vollzählig“ löst das Bracket aus, Runbook 10a) (Annahme: Ablauf danach bis zum Bracket bei der Probe belegen).
 3. Kader füllen, „vollzählig“ melden, „Bereit“ melden; Bracket erscheint (Sichtprüfung: nirgends Preis, Karte, Bezahlen).
 4. [N] [P] Ergebnisse melden (Captains), Bracket schreitet fort, Finale, Abschluss, Turnierseite für **Gast** (ohne Anmeldung) prüfen.
 5. Zusätzlich auf dem Handy: Anmelden (Google), Abmelden, Hilfe, Impressum/Datenschutz, **gesperrte Bereiche** (`/spiele`, `/suche`, `/hallen` …): „Kommt bald“; Installation als Startbildschirm-App (falls vorgesehen).
@@ -69,7 +70,7 @@ Voraussetzung: Apple Developer Program aktiv, Services ID, Schlüssel, Client Se
 Eine Datei (nicht im Repository, keine Personendaten, keine Schlüssel): je Zeile Datum/Uhrzeit, Gerät + Browser, Schritt (Nummer aus diesem Plan), Ergebnis, Fehlertext/Screenshot. [A] führt sie, [N] und [P] melden per Chat nur Schritt und Ergebnis.
 
 ## 9. Offene Fragen an den Nutzer/t2q
-1. **Q1 Spieler:** 6 Teams mit je mindestens 4 Spielern brauchen 24 Konten. Echte Konten für Teams 1 und 2 (Nutzer, Partner und ihre Testkonten) und für Teams 3 bis 6 **Demo-Konten per Seed-Skript nur auf Staging** (widerspricht dem Grundsatz „keine SQL-Schreibzugriffe“ des Pilot-Daten-Plans, daher Ausnahme nötig), oder alle echt (viel Aufwand)?
+1. **Q1 ENTSCHIEDEN (t2q):** Teams 1 und 2 echte Konten (Google und Apple), Teams 3 bis 6 per Staging-Seed mit eigener harter Sperre (Umgebungsmarke, nicht Produktion, ausdrückliche Bestätigung); `seed-guard`/`db-guard` bleiben unberührt. Die Ausnahme vom Grundsatz „keine SQL-Schreibzugriffe“ gilt nur für dieses Skript auf Staging.
 2. **Q2 Partner:** Wer ist die zweite Person, die Handy und Captain-Rolle übernimmt (Zeit Mo bis Mi)?
 3. **Q3 Server:** Zwei Server (Produktion und Staging) oder Staging nach der Probe wieder löschen (Anbieter-Vorlage)?
 4. **Q4 Lasttest-Skript:** `scripts/last-light.mjs` darf ein Agent bauen (kleiner Doku-/Skript-PR im Freeze, nur Test)?
