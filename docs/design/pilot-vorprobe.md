@@ -65,7 +65,7 @@ Fünf Konten: Gast (kein Konto, zweites Gerät), Spieler, Captain, Betreiber (Zu
 | E6 | Captain-Leiste | „Anteil übernehmen“ bei einem Spieler ohne Karte | Anteil wandert, Dritte sehen neutral „Gedeckt“ ohne Namen | Name oder Grund bei Dritten |
 | E7 | Stripe-Dashboard (Testmodus) | Zahlungen der Zeilen E2 bis E5 ansehen | je Versuch ein Eintrag, Status passt zur Lobby | Abweichung zwischen Lobby und Stripe |
 | E8 | Absage nach der ersten Abbuchung (Admin 1) | Absage mit Erstattung | Erstattung auf die Karte im Dashboard sichtbar; Captain kann nach der ersten Abbuchung **nicht** selbst absagen | Captain kann absagen |
-| E9 | Texte prüfen (Lobby, Mails) | nirgends „Guthaben“, „Aufladung“, „Code“; Wörter „Preis steht fest“, „Karte ändern“, „Zahlung freigeben“; Zahlungsknöpfe tragen die zentralen Texte (ENTWURF-Hinweis) | verbotener Begriff | 
+| E9 | Texte prüfen (Lobby, Mails) | nirgends „Guthaben“, „Aufladung“, „Code“; Wörter „Preis steht fest“, „Karte ändern“, „Zahlung freigeben“; Zahlungsknöpfe tragen die zentralen Texte (ENTWURF-Hinweis) | verbotener Begriff |
 
 ## F. Handy 390 px und Messpunkte (Plan 6a, einmal vorab; Zahlen in die Vorprobe-Notiz)
 | # | Messpunkt | Handlung | Erwartet | Rot, wenn |
