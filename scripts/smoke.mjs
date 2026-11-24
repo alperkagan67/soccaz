@@ -16,13 +16,17 @@ export const ZAHLUNGEN_AUS_HINWEIS = "Die Teilnahmegebühr regelt der Veranstalt
 export const ZAHLUNGSWORTE = [/\bampel\b/i, /\bso läuft es ab\b/i, /preis pro spieler/i, /hallenkosten/i, /\bkarten?\b/i, /abbuchung|abgebucht|abbuch/i, /bezahl/i, /zahlungspflicht/i, /treuhand/i, /\banteil übernehmen\b/i];
 const FUSSBALL_KARTEN = /\b(?:gelbe[nr]?|rote[nr]?)\s+karten?\b|\btore und karten\b/gi; // keine Zahlungskarten
 
+// Entitäten in EINEM Durchgang auflösen (nie hintereinander: "&amp;quot;" bleibt "&quot;", wird nicht zu einem Anführungszeichen; CodeQL js/double-escaping). Unbekannte Entitäten werden zu einem Leerzeichen.
+const ENTITAET_ZEICHEN = { amp: "&", auml: "ä", ouml: "ö", uuml: "ü", Auml: "Ä", Ouml: "Ö", Uuml: "Ü", szlig: "ß", quot: "\"", "#x27": "'", "#39": "'", nbsp: " ", lt: "<", gt: ">" };
+const ENTITAETEN = /&(amp|auml|ouml|uuml|Auml|Ouml|Uuml|szlig|quot|#x27|#39|nbsp|lt|gt);/g;
+
 /** Sichtbarer Text einer HTML-Seite (Hauptbereich, ohne Skripte, Stile, Tags). */
 export function sichtText(html) {
   const main = /<main[\s>][\s\S]*?<\/main>/i.exec(html);
   return (main ? main[0] : html)
     .replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, " ")
     .replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&").replace(/&auml;/g, "ä").replace(/&ouml;/g, "ö").replace(/&uuml;/g, "ü").replace(/&szlig;/g, "ß").replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&nbsp;/g, " ")
+    .replace(ENTITAETEN, (_m, name) => ENTITAET_ZEICHEN[name] ?? " ")
     .replace(/\s+/g, " ");
 }
 

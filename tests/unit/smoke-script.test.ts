@@ -93,6 +93,10 @@ describe("scripts/smoke.mjs --zahlungen-aus (beide Zahlungsschalter AUS)", () =>
     expect(SMOKE_WORTE.map((re: RegExp) => re.source + re.flags)).toEqual(ZAHLUNGSWORTE.map((re) => re.source + re.flags));
     for (const text of ["Die Ampel wird grün", "Preis pro Spieler 10", "Jeder hinterlegt eine Karte", "Anteil übernehmen", "Alles gut, Bracket erscheint", ZAHLUNGEN_AUS_HINWEIS + " ok"]) expect(smokeWorte(text)).toEqual(zahlungsWorte(text));
   });
+  it("sichtText löst Entitäten nur EINMAL auf (kein doppeltes Entschlüsseln: &amp;quot; bleibt &quot;, &amp;lt;b&amp;gt; bleibt Text)", () => {
+    expect(sichtText(html("&amp;quot; &amp;amp; &amp;lt;b&amp;gt;")).trim()).toBe("&quot; &amp; &lt;b&gt;");
+    expect(sichtText(html("Gr&uuml;&szlig;e &quot;x&quot; a&nbsp;b")).trim()).toBe("Grüße \"x\" a b");
+  });
   it("sichtText: nur Hauptbereich, keine Skripte und Tags", () => {
     expect(sichtText(html("A &amp; B <b>fett</b>")).trim()).toBe("A & B fett");
   });
