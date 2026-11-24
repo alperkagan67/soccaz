@@ -65,6 +65,6 @@ describe("Rechtsseiten: keine erfundenen Rechtsangaben im Quelltext", () => {
     const ds = readFileSync("src/app/datenschutz/page.tsx", "utf8");
     expect(ds).toContain("PLATZHALTER.aufsicht");
     expect(ds).toContain("zahlungenAus");
-    expect(ds).toMatch(/aus \? .*Teilnahmegebühr/s);
+    expect(ds).toMatch(/aus \? [\s\S]*Teilnahmegebühr/);
   });
 });
