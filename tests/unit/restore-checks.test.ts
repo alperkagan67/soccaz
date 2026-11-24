@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { GROW_ONLY_TABLES, MANIFEST_SQL, chainResult, compareManifest, compareMigrations, connEnv, detectFormat, exitCode, formatReport, scratchNameOk, triggerResult, withDatabase } from "../../scripts/lib/restore-checks.mjs";
+import { GROW_ONLY_TABLES, MANIFEST_SQL, chainResult, compareManifest, compareMigrations, connEnv, detectFormat, exitCode, formatReport, manifestIncomplete, restoreHint, scratchNameOk, triggerResult, withDatabase } from "../../scripts/lib/restore-checks.mjs";
 import { parseArgs } from "../../scripts/restore-test.mjs";
 
 // Restore-Probe (E8): reine Funktionen, Schutzregeln und Benutzerfehler OHNE Datenbank. Der Rundlauf mit echter Sicherung steht in tests/integration/restore-test.test.ts.
@@ -163,5 +163,29 @@ describe("restore-test.mjs: Schutz und Benutzerfehler ohne Datenbank", () => {
     expect(src).not.toMatch(/PGPASSWORD/); // nur über connEnv (Umgebungsvariable des Kindprozesses)
     for (const l of src.split("\n").filter((x) => /console\.(log|error)/.test(x) && /adminUrl|scratchUrl/.test(x))) expect(l, l).toMatch(/new URL\((adminUrl|scratchUrl)\)\.host/); // in Ausgaben nur der Host, nie die URL mit Passwort
     expect(src).toContain("shell: false");
+  });
+});
+
+describe("Hinweis bei fehlender Rolle und unvollständigem Manifest (Review R-T372)", () => {
+  it("restoreHint nennt nur Rollennamen, nie Zeileninhalt; ohne Rollenfehler kein Hinweis", () => {
+    const h = restoreHint(["psql: ERROR:  role \"soccaz_ops\" does not exist", "DETAIL: Geheim Max Mustermann", "ERROR: role \"soccaz_app\" does not exist"].join(" | "));
+    expect(h).toContain("soccaz_ops, soccaz_app");
+    expect(h).toContain("db-roles.mjs");
+    expect(h).not.toContain("Mustermann");
+    expect(restoreHint("syntax error")).toBeNull();
+    expect(restoreHint('role "a;b" does not exist')).toBeNull();
+  });
+  it("Manifest Format 1 mit fehlenden Feldern ist FAIL mit klarem Text, kein NaN-Vergleich", () => {
+    const actual = { tables: { ledger_entries: 1 }, ledgerSum: 5, evidenceCount: 1, evidenceHeadAtManifest: "h" };
+    for (const missing of ["evidenceCount", "ledgerSum", "migrations", "evidenceHead", "tables"]) {
+      const m = { format: 1, tables: { ledger_entries: 1 }, migrations: 3, ledgerSum: 5, evidenceCount: 1, evidenceHead: "h" } as Record<string, unknown>;
+      delete m[missing];
+      const r = compareManifest(m, actual);
+      expect(r).toHaveLength(1);
+      expect(r[0].status).toBe("FAIL");
+      expect(r[0].text).toContain("unvollständig");
+      expect(r[0].text).toContain(missing);
+    }
+    expect(manifestIncomplete({ format: 1, tables: { a: "x" }, migrations: 1, ledgerSum: 0, evidenceCount: 0, evidenceHead: "" })).toEqual(["tables (Zahlen)"]);
   });
 });

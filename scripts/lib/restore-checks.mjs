@@ -48,11 +48,30 @@ export function detectFormat(head) {
 
 const R = (id, status, text) => ({ id, status, text });
 
+/** Hinweis aus dem Fehlertext von psql/pg_restore: fehlt eine Rolle (GRANT/OWNER aus einer Sicherung mit Datenbankrollen), steht nur der Rollenname im Hinweis, nie Zeileninhalt. */
+export function restoreHint(err) {
+  const roles = [...new Set([...String(err ?? "").matchAll(/role "([A-Za-z0-9_]{1,63})" does not exist/g)].map((m) => m[1]))];
+  return roles.length ? `Rolle(n) fehlen auf dem Prüfserver: ${roles.join(", ")}. Rollen vorher anlegen (scripts/db-roles.mjs) und neu prüfen.` : null;
+}
+
+const MANIFEST_NUMBERS = ["migrations", "ledgerSum", "evidenceCount"];
+/** Ein Manifest im Format 1 muss alle Felder tragen; sonst FAIL mit klarem Text statt eines NaN-Vergleichs. */
+export function manifestIncomplete(m) {
+  const bad = [];
+  if (!m || typeof m.tables !== "object" || m.tables === null || Array.isArray(m.tables)) bad.push("tables");
+  else if (Object.values(m.tables).some((v) => !Number.isFinite(Number(v)))) bad.push("tables (Zahlen)");
+  for (const k of MANIFEST_NUMBERS) if (m?.[k] === undefined || m[k] === null || !Number.isFinite(Number(m[k]))) bad.push(k);
+  if (typeof m?.evidenceHead !== "string") bad.push("evidenceHead");
+  return bad;
+}
+
 /** Zeilenzahlen, Summen und Kopf-Hash der Beweiskette gegen das Manifest der Sicherung. `actual` = Ergebnis von MANIFEST_SQL auf der wiederhergestellten Datenbank plus evidenceHeadAtManifest. */
 export function compareManifest(manifest, actual) {
   if (!manifest) return [R("manifest", "WARN", "Kein Manifest: Zeilenzahlen, Summen und Kopf-Hash sind NICHT gegen die Quelle geprüft (nur Teilbeweis).")];
   const out = [];
   if (manifest.format !== 1) return [R("manifest", "FAIL", `Manifest-Format ${String(manifest.format)} unbekannt.`)];
+  const bad = manifestIncomplete(manifest);
+  if (bad.length) return [R("manifest", "FAIL", `Manifest unvollständig oder fehlerhaft (Felder: ${bad.join(", ")}); Vergleich nicht möglich.`)];
   const mt = manifest.tables ?? {};
   const at = actual.tables ?? {};
   const missing = Object.keys(mt).filter((t) => !(t in at));

@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import pg from "pg";
 import { dbUrlAllowed } from "./db-roles.mjs";
 import { verifyNdjson } from "./lib/evidence-chain.mjs";
-import { MANIFEST_SQL, SCRATCH_PREFIX, scratchNameOk, connEnv, withDatabase, detectFormat, compareManifest, compareMigrations, chainResult, triggerResult, formatReport, exitCode } from "./lib/restore-checks.mjs";
+import { MANIFEST_SQL, SCRATCH_PREFIX, scratchNameOk, connEnv, withDatabase, detectFormat, compareManifest, compareMigrations, restoreHint, chainResult, triggerResult, formatReport, exitCode } from "./lib/restore-checks.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const die = (msg, code = 2) => {
@@ -142,7 +142,7 @@ async function main() {
       r = await run(psql.path, ["-X", "-q", "-v", "ON_ERROR_STOP=1"], env, format === "gzip-sql" ? src.pipe(createGunzip()) : src);
     }
     if (r.code !== 0) {
-      results.push({ id: "restore", status: "FAIL", text: `${format === "custom" ? "pg_restore" : "psql"} endete mit Code ${r.code}${args.showErrors ? `:\n${r.err.slice(0, 2000)}` : " (Fehlertext mit --show-errors)"}` });
+      results.push({ id: "restore", status: "FAIL", text: `${format === "custom" ? "pg_restore" : "psql"} endete mit Code ${r.code}${args.showErrors ? `:\n${r.err.slice(0, 2000)}` : " (Fehlertext mit --show-errors)"}${restoreHint(r.err) ? ` ${restoreHint(r.err)}` : ""}` });
     } else {
       results.push({ id: "restore", status: "PASS", text: "Sicherung eingespielt." });
       pool = new pg.Pool({ connectionString: scratchUrl, max: 2 });
