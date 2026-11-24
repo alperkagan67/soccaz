@@ -3,6 +3,8 @@ Stand: 2026-11-24 · Code-Stand `origin/main` 4d2218a (013 M3 PR 1 bis 5b gemerg
 
 Zweck: Ein Abend mit Freunden in einer Halle, mit Stripe-TESTkarten, nie live. Der Nutzer sieht die neue Oberfläche und den Kartenablauf in der Praxis und entscheidet danach (Gate G), ob M4 bis M7 starten. Der Plan beantwortet keine Rechts- oder Steuerfragen; solche Punkte stehen nur als Frage (Abschnitt 11) und im NEEDS-USER-Paket (Abschnitt 15).
 
+Prüfstand zu Abschnitt 1: `docs/design/m3-abschluss-pilot-check.md` (2026-11-24).
+
 Quellen: Vertrag 012 (`docs/contracts/012-zahlung-karte-lobby.md`, AC-1 bis AC-21), Vertrag 013 v3 (`docs/contracts/013-frontend-ueberarbeitung.md`: AC-8 Pilot, AC-14 kein Guthaben, AC-17 Sichtbarkeit je Rolle, AC-27 Kontrast, AC-30 Stilregeln), `docs/loop/GO-LIVE-AUDIT.md` (G1-012 bis G30-013, E-Punkte), `docs/loop/FEHLT-NOCH.md`, `docs/BETRIEB.md` (Umgebungen, Zahlungen einschalten, Kartenzahlung, Restore-Probe), `docs/design/impeccable-lauf-m3.md` (Lauf 1), `docs/design/begriffe.md`.
 
 ## 1. Voraussetzungen (Gate vor dem Pilot)
@@ -14,8 +16,8 @@ Bindende Reihenfolge (Nutzerbedingung 2, Backlog 63): M2 → M2b → 012 M3b bis
 | Zahlungstexte nach § 312j BGB (zentral, nur bei echter Abbuchung) | gemergt (#286), **ENTWURF, Rechtsprüfung offen**; im Pilot sichtbar, Teilnehmende wissen: Test |
 | AC-27 Kontrastmessung verbindlich (Handy 390 und Desktop 1280, hell/dunkel) | gemergt (#271), main-Lauf ohne Verstoß |
 | Restore-Probe (E8 Werkzeug) | gemergt (#301); Probelauf mit echter Hoster-Sicherung steht aus (Nutzer, Abschnitt 15) |
-| **Namen-PRs (Sichtbarkeit, Entscheid t2q 2026-11-24):** PR A Kommentare (Gäste und reine Betreiber: Initialen, kein Link) | PR A gemergt (#306); **PR B bis D** (übrige Flächen, Abschnitt 10) **offen**: das Gäste-Szenario (Block 1b) startet erst nach ihnen |
-| Impeccable-Engine-Lauf 2 (Lobby-Zustände Fehlerzustand und Captain-Leiste, hell, `/willkommen`, Einladung) | **offen**, vor dem Pilot (Lauf 1 ist #297; die „Degradiert“-Vermerke der M3-PRs gelten bis dahin) |
+| **Namen-PRs (Sichtbarkeit, Entscheid t2q 2026-11-24):** PR A Kommentare (Gäste und reine Betreiber: Initialen, kein Link) | **gemergt:** PR A #306 (Kommentare), PR B #315 (Listen), PR C #318 (Spielbericht, Live-Schnittstelle), PR D #320 (Spielerprofil für Gäste nicht öffentlich); das Gäste-Szenario (Block 1b) ist freigegeben (Stand und Beleg: `m3-abschluss-pilot-check.md`) |
+| Impeccable-Engine-Lauf 2 (Lobby-Zustände Fehlerzustand und Captain-Leiste, hell, `/willkommen`, Einladung) | **erledigt** (#314: keine P0, vier P1, zwölf P2); P1 1, 2, 4 behoben mit dem Lobby-Fix #317, **P1-3 (Knopf-Innenabstand im Baustein `btn`, w4) offen**; danach ein kleiner Lauf 3 (Hell, Lücken aus Lauf 2); Einzelheiten und offene P2 in `m3-abschluss-pilot-check.md` |
 | E2E im Stripe-Testmodus grün (012 AC-17), Browser-Tests unter 10 Minuten je Teil (013 AC-11) | in der CI; Shards liegen knapp um 10 Minuten (Notiz in `tests/e2e-shards.json`), der Task Manager prüft vor dem Termin |
 | `main` grün (CI), Staging aus `main` gebaut | Technik, T-7 |
 
@@ -79,7 +81,7 @@ Der Weg je Spiel: Start/„Spiel suchen“ → Lobby („Dein Stand“) → Kart
 |---|---|---|
 | 0:00 | Begrüßung, Regeln, Abbruchkriterien vorlesen, Protokollperson bestimmt | – |
 | 0:15 | **Block 1 Einstieg ohne Erklärung** | Spieler melden sich an (Einladung/Onboarding), finden „Spiel suchen“ (drei Wege: Teamspiel, Privatspiel, Turnier), `/app` „Meine Spiele“ und „Dein Stand“, öffnen die Lobby; Messung: findet jeder die eine Hauptaktion ohne Hilfe? (013 AC-7) |
-| 0:30 | **Block 1b Gast** (erst nach den Namen-PRs B bis D, sonst nur der heute namenfreie Teil: Lobby und Kommentare) | Gast öffnet Start, offene Lobby, Spiel: nur Zahlen und Initialen, kein Zahlstatus, „Anmelden“ als Hauptaktion (AC-12/AC-20 für Dritte neutral) |
+| 0:30 | **Block 1b Gast** (Namen-PRs A bis D gemergt; vor dem Abend HTML-Stichprobe je Fläche als Gast und als Betreiber in der Vorprobe) | Gast öffnet Start, offene Lobby, Spiel: nur Zahlen und Initialen, kein Zahlstatus, „Anmelden“ als Hauptaktion (AC-12/AC-20 für Dritte neutral) |
 | 0:45 | **Block 2 Karte und Bereit** | Karte hinterlegen mit Mandat sichtbar vor dem Klick (AC-1); „Bereit“ ohne Karte nicht möglich, mit Karte möglich (AC-2); Anteil ändert sich bei Beitritt oder Verlassen ohne Geldbewegung (AC-3); **Karte ändern** |
 | 1:15 | **Block 3 Preis steht fest und Abbuchung** | Beide Captains „Preis bestätigen und zahlungspflichtig zusagen“ (ENTWURF, nur bei echter Abbuchung), Zustand „Preis steht fest“; Sofortbuchung bei Anlage unter 48 h (AC-5); Spiel A (T-3) zeigt das Ergebnis der Frist-Abbuchung (AC-4); Beleg und Mindestbetrag 0,50 EUR (AC-19) |
 | 1:45 | Pause | – |
@@ -131,8 +133,8 @@ Schwere: **S1** Geld/Daten falsch oder Datenleck (Abbruch), **S2** Ablauf blocki
 
 ## 10. Datenschutz, Sichtbarkeit und Aufräumen
 - **Sichtbarkeit je Rolle (Entscheid t2q 2026-11-24, FEHLT-NOCH: Sichtbarkeit von Spielernamen):** Gäste und reine Hallenbetreiber sehen Autor- und Spielernamen nicht im Klartext und ohne Link auf `/spieler`. Je Fläche gilt: **Lobby** (#302): Gast Initialen, Betreiber „Spieler N“ (kein Name, keine Initialen); **Kommentare** (PR A, #306): Gast und Betreiber beide Initialen ohne Link; angemeldete Nutzer sehen Klarnamen. Das Spielerprofil `/spieler/[id]` ist für Gäste nicht öffentlich, die Namenssuche gilt nur angemeldet.
-- **Stand der Umsetzung:** Lobby und Teamkarten für den Betreiber namenfrei (#302), Torjäger-Block nur für angemeldete Mitglieder (#302), Kommentare (**PR A**, #306: Gäste und reine Betreiber Initialen ohne Link, Hinweistext beim Schreiben). **PR B bis D** (Ranglisten, Spielerliste, Teamseite, Spielbericht, „Mitspieler gesucht“, Turnier, offene Lobby, `/api/spiele/[id]/live`, Privatspiel-Einladung „Vorname + Initial“, Profil nur angemeldet) sind zum Stand dieses Plans **nicht gemergt**; der Task Manager trägt den Stand vor dem Termin nach.
-- **Folge für den Abend:** Das **Gäste-Szenario** (Block 1b, vollständig) und die Betreiber-Prüfung über alle Flächen laufen erst nach PR B bis D. Bis dahin ist der Gast-Block auf Lobby, Kommentare und Start beschränkt, und die Teilnehmenden werden vorab informiert, dass andere Flächen heute Namen zeigen können (bekannte Lücke, kein Abbruchgrund, solange die Teilnehmenden Freunde sind und es wissen).
+- **Stand der Umsetzung (2026-11-24):** Lobby und Teamkarten für den Betreiber namenfrei und Torjäger-Block nur für angemeldete Mitglieder (#302), Kommentare (**PR A**, #306: Gäste und reine Betreiber Initialen ohne Link, Hinweistext beim Schreiben), Listen (**PR B**, #315: Rangliste, Spielerliste, Mitspieler, Turnier, offene Lobby, Einladung), Spielbericht und `/api/spiele/[id]/live` (**PR C**, #318), Spielerprofil nur für Angemeldete (**PR D**, #320, noindex). Offen und bewusst akzeptiert: Nachläufer Backlog 242 (Sortierung nach Namen, Betreiber zugleich Team-Admin, „ß“) und 243 (Bildcache, `/api/media` öffentlich per UUID, Produktfrage).
+- **Folge für den Abend:** Das **Gäste-Szenario** (Block 1b) und die Betreiber-Prüfung über alle Flächen sind freigegeben. In der Vorprobe (T-1) je Fläche eine HTML-Stichprobe als Gast und als Betreiber (keine Namen, keine Links auf `/spieler`); gefundene Lücken sind S1 und werden vor dem Abend behoben.
 - Nur Testkarten, keine echten Zahlungsdaten; es gibt keine Kartennummern im System (nur Stripe-Zahlungsmittel-ID und letzte vier Ziffern der Testkarte).
 - Die Teilnehmenden werden vorab informiert, was protokolliert wird (Uhrzeit, Seite, Rolle, Gerät) und dass Klarnamen für angemeldete Teilnehmende sichtbar sind; ob und wie eine formale Einwilligung nötig ist, ist eine Rechtsfrage (Frage 4), die dieser Plan nicht beantwortet.
 - Nach dem Abend (T+1):
@@ -153,7 +155,7 @@ Schwere: **S1** Geld/Daten falsch oder Datenleck (Abbruch), **S2** Ablauf blocki
 ## 12. Zeitplan (Vorschlag, T = Pilotabend)
 | Zeitpunkt | Schritt | Verantwortlich |
 |---|---|---|
-| T-14 | Abhängigkeiten aus Abschnitt 1 erfüllt (inkl. Namen-PR B bis D, Impeccable Lauf 2), Termin/Halle fixiert, Fragen 1 bis 3 beantwortet, NEEDS-USER-Paket (Abschnitt 15) abgehakt | Orchestrator, Nutzer |
+| T-14 | Abhängigkeiten aus Abschnitt 1 erfüllt (Namen-PRs sind gemergt; offen: P1-3 `btn` und Impeccable Lauf 3, siehe `m3-abschluss-pilot-check.md`), Termin/Halle fixiert, Fragen 1 bis 3 beantwortet, NEEDS-USER-Paket (Abschnitt 15) abgehakt | Orchestrator, Nutzer |
 | T-7 | Staging aufgesetzt, Testmodus, Schalter, Backup-Test, Konten/Teams angelegt, Betreiber-Zugang vergeben | Technik, Admin 1 |
 | T-3 | Spiel A (Frist-Abbuchung) und Spiel B (abgelehnte Karte, Warteliste) angelegt | Technik, 2 bis 3 Spieler |
 | T-2 | Frist-Abbuchung Spiel A prüfen (Dashboard, Hauptbuch); Spiel B: Fehler, Fenster, Nachrücker/Absage beobachten | Technik |
@@ -163,7 +165,7 @@ Schwere: **S1** Geld/Daten falsch oder Datenleck (Abbruch), **S2** Ablauf blocki
 | T+3 | Gate G (Abschnitt 14) | Nutzer |
 
 ## 13. Checkliste
-**Vorher:** Abhängigkeiten gemergt (Abschnitt 1, Namen-PR B bis D, Impeccable Lauf 2) · Staging mit Testschlüsseln, Webhook-Test grün · `payments_enabled` und `card_payments_enabled` AN, `PAYMENTS_FAKE` nicht gesetzt (Prüfung) · Sicherung unmittelbar vorher und Restore-Probe · Spiel A und Spiel B (T-3) angelegt · Vorprobe fertig (alle Rollen, 390 px) · Rollen verteilt (inkl. Betreiber, Gast) · Feedback-Liste bereit · Testkarten aus Abschnitt 5 aktuell · Abbruchkriterien ausgedruckt/geteilt · Teilnehmende informiert.
+**Vorher:** Abhängigkeiten gemergt (Abschnitt 1, P1-3 `btn`, Impeccable Lauf 3) · Staging mit Testschlüsseln, Webhook-Test grün · `payments_enabled` und `card_payments_enabled` AN, `PAYMENTS_FAKE` nicht gesetzt (Prüfung) · Sicherung unmittelbar vorher und Restore-Probe · Spiel A und Spiel B (T-3) angelegt · Vorprobe fertig (alle Rollen, 390 px) · Rollen verteilt (inkl. Betreiber, Gast) · Feedback-Liste bereit · Testkarten aus Abschnitt 5 aktuell · Abbruchkriterien ausgedruckt/geteilt · Teilnehmende informiert.
 **Während:** Protokoll läuft · Stripe-Dashboard (Testmodus) offen · Uhrzeit je Eintrag · Messpunkte (Abschnitt 6a) notiert · bei S1 sofort Abbruch (Abschnitt 8) · keine Live-Schlüssel sichtbar.
 **Nachher:** Feedback-Liste gesichert (ohne Personenbezug) · Spiele beendet/abgesagt, Erstattungen im Testmodus geprüft · Staging aus der Sicherung vor dem Pilot zurückgesetzt oder gelöscht · Schlüssel rotiert, falls nötig · Bericht an den Nutzer.
 
