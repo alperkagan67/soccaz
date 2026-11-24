@@ -3,12 +3,12 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, notifications, paymentCharges } from "@/db/schema";
 import { bookingEvidence, bookingEvidenceReasonText, evidenceActor, venueAccess, venues } from "@/db/schema-finance";
-import { tournaments } from "@/db/schema-league";
+import { tournamentTeams, tournaments } from "@/db/schema-league";
 import { verifyEvidenceChain } from "@/server/evidence";
 import { setSetting } from "@/server/settings";
 import { confirmTournamentVenue, declineTournamentVenue, HALL_DECLINE_FINAL, hallDeclinedReminderText, listTournamentConfirmations, notifyHallConfirmReminders } from "@/server/tournament-confirm";
 import { resetVenueConfirmationIfTermsChanged } from "@/server/tournament-venue";
-import { cleanup, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser } from "./helpers";
 
 // Backlog 161 (Plan docs/design/plan-turnier-ablehnen.md, PR 1): die Halle lehnt ein Turnier mit Grund-Kategorie ab. Der Beweiseintrag kind = 'declined' entsteht durch den DEFERRABLE-Trigger
 // (Migration 0059); die Runde zaehlt die bisherigen 'declined' des Turniers (jede neue Ablehnung = neue Runde); ab der ersten Abbuchungszeile ist Ablehnen gesperrt.
@@ -224,6 +224,32 @@ describe("Turnier-Ablehnen: Runden, Ruecksetzen, Zusage danach, Liste, Erinnerun
     expect(hallDeclinedReminderText("X", 6, false)).not.toContain("Wähle");
     expect(reminder).not.toContain("geheim-4711");
     expect(reminder).not.toMatch(/Erstattung|abgebucht|Zahlung/);
+  });
+});
+
+describe("Turnier-Ablehnen: Mitteilungen (AC-17)", () => {
+  it("Veranstalter bekommt Halle und Kategorie, Captains NUR den neutralen Satz (weder Halle noch Kategorie noch Freitext)", async () => {
+    const { org, boss, v, t } = await fixture();
+    const capA = await makeUser("capa");
+    const capB = await makeUser("capb");
+    for (const c of [capA, capB]) {
+      const team = await makeTeam(c.id, "Abl");
+      await db.insert(tournamentTeams).values({ tournamentId: t.id, teamId: team.id, captainId: c.id });
+    }
+    await declineTournamentVenue(boss.id, t.id, { code: "wartung", text: FREITEXT });
+    const bodyOf = async (userId: string) => (await db.select().from(notifications).where(and(eq(notifications.userId, userId), eq(notifications.title, "Die Halle kann nicht ausrichten")))).map((n) => n.body);
+    const orgBodies = await bodyOf(org.id);
+    expect(orgBodies).toHaveLength(1);
+    expect(orgBodies[0]).toContain(v.name);
+    expect(orgBodies[0]).toContain("Grund: Geschlossen oder Wartung");
+    for (const c of [capA, capB]) {
+      const bodies = await bodyOf(c.id);
+      expect(bodies).toHaveLength(1);
+      expect(bodies[0]).toContain("kann");
+      expect(bodies[0]).toContain("nicht ausrichten");
+      expect(bodies[0]).toContain("Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.");
+      for (const verboten of [v.name, "Grund", "Geschlossen", "Wartung", "geheim-4711"]) expect(bodies[0], verboten).not.toContain(verboten);
+    }
   });
 });
 
