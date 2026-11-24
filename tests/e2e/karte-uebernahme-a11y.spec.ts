@@ -55,7 +55,7 @@ const dialogOf = (page: Page, name: string) => page.getByRole("dialog", { name: 
 const activeInfo = (page: Page) =>
   page.evaluate(() => {
     const e = document.activeElement as HTMLElement | null;
-    return { tag: e?.tagName ?? "", type: e?.getAttribute("type") ?? "", text: (e?.textContent ?? "").trim().slice(0, 40), inDialog: !!e?.closest("dialog[open]") };
+    return { tag: e?.tagName ?? "", type: e?.getAttribute("type") ?? "", text: (e?.textContent ?? "").trim(), inDialog: !!e?.closest("dialog[open]") };
   });
 const height = async (l: Locator) => (await l.boundingBox())!.height;
 
