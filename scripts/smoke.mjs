@@ -24,7 +24,7 @@ const ENTITAETEN = /&(amp|auml|ouml|uuml|Auml|Ouml|Uuml|szlig|quot|#x27|#39|nbsp
 export function sichtText(html) {
   const main = /<main[\s>][\s\S]*?<\/main>/i.exec(html);
   return (main ? main[0] : html)
-    .replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<(script|style|noscript)[\s\S]*?<\/\1\s*>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(ENTITAETEN, (_m, name) => ENTITAET_ZEICHEN[name] ?? " ")
     .replace(/\s+/g, " ");
