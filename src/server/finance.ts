@@ -38,7 +38,7 @@ export async function getRefundAlerts(now: Date = new Date()) {
     await db.execute(sql`
       select r.id as id, r.match_id as "matchId" from payment_refunds r
       where r.status = 'pending' and r.failure_code is distinct from ${UNKNOWN_OUTCOME}
-        and coalesce(r.attempt_started_at, (select max(a.at) from audit_log a where a.action = 'refund.retry' and a.after ->> 'refundRowId' = r.id::text), r.created_at) < ${new Date(now.getTime() - 24 * 3_600_000)}`)
+        and coalesce(r.attempt_started_at, (select max(a.at) from audit_log a where a.entity = 'match' and a.entity_id = r.match_id::text and a.action = 'refund.retry' and a.after ->> 'refundRowId' = r.id::text), r.created_at) < ${new Date(now.getTime() - 24 * 3_600_000)}`)
   ).rows as { id: string; matchId: string | null }[];
   // alter Versuch A nachtraeglich erfolgreich bzw. zweiter Erfolg (A und B): Stripe auf Doppelerstattung pruefen (letzte 30 Tage, nur Spiel-IDs)
   const refundLateSuccess = (

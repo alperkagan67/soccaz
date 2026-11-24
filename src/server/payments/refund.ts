@@ -57,8 +57,9 @@ export type ApplyRefundResult = { status: "applied" | "already" | "ignored"; rea
  * succeeded gewinnt und wird nie überschrieben (auch nicht von einem verspäteten failed); ein failed kann später noch succeeded werden.
  */
 /** true, wenn refundId die Stripe-Erstattung eines FRUEHEREN Versuchs dieser Zeile ist (Audit refund.retry mit previousRefundId, vor einem Neuversuch durch Admin 1). */
-async function isPreviousAttempt(tx: Tx, rowId: string, refundId: string): Promise<boolean> {
-  const [hit] = (await tx.execute(sql`select 1 from audit_log where action = 'refund.retry' and after ->> 'refundRowId' = ${rowId} and after ->> 'previousRefundId' = ${refundId} limit 1`)).rows;
+async function isPreviousAttempt(tx: Tx, matchId: string, rowId: string, refundId: string): Promise<boolean> {
+  // entity/entity_id nutzen den vorhandenen Index von audit_log (der Retry-Audit steht mit entity 'match' und der Spiel-id)
+  const [hit] = (await tx.execute(sql`select 1 from audit_log where entity = 'match' and entity_id = ${matchId} and action = 'refund.retry' and after ->> 'refundRowId' = ${rowId} and after ->> 'previousRefundId' = ${refundId} limit 1`)).rows;
   return Boolean(hit);
 }
 
@@ -93,13 +94,9 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   if (!row) return ignore("unknown_refund");
   // Neuversuch (Backlog 192, w1-Fund zu #341): Stripe garantiert keine Reihenfolge. Ereignisse der ALTEN Erstattung A (refund_id vor dem Neuversuch) werden in ALLEN Zweigen gleich behandelt, nicht nur bei failed:
   // pending(A) und failed(A) aendern nie Status oder refund_id der Zeile (sonst bliebe die Zeile mit refund_id = A haengen und jedes Ergebnis des neuen Versuchs B waere "other_refund"); succeeded(A) wird GEBUCHT (das Geld ist raus).
-  const stale = Boolean(r.refundId) && !r.direct && r.refundId !== row.refundId && (await isPreviousAttempt(tx, row.id, r.refundId as string));
-  if (r.refundId && row.refundId !== null && row.refundId !== r.refundId && !stale) {
-    // Die Zeile ist schon succeeded und ein Erfolg mit ANDERER Stripe-id trifft ein (z. B. Neuversuch B nach A): nie ein zweites Mal buchen, aber Hinweis an Admin 1 (moegliche Doppelerstattung bei Stripe)
-    if (row.status === "succeeded" && r.outcome === "succeeded") {
-      await audit(null, "refund.duplicate_success", "match", matchIdOf(row), { after: { refundRowId: row.id, firstRefundId: row.refundId, secondRefundId: r.refundId } }, tx);
-      return { status: "already", matchId: matchIdOf(row) };
-    }
+  const stale = Boolean(r.refundId) && !r.direct && r.refundId !== row.refundId && (await isPreviousAttempt(tx, matchIdOf(row), row.id, r.refundId as string));
+  // Ist die Zeile schon succeeded und trifft ein Erfolg mit ANDERER Stripe-id ein (z. B. Neuversuch B nach A), geht es WEITER bis zum succeeded-Zweig (Metadaten, Betrag und PaymentIntent werden zuerst geprueft): dort nur ein Hinweis, nie eine zweite Buchung. Sonst ist die id fremd.
+  if (r.refundId && row.refundId !== null && row.refundId !== r.refundId && !stale && !(row.status === "succeeded" && r.outcome === "succeeded")) {
     return ignore("other_refund");
   }
   if (r.metadata.matchId !== null && r.metadata.matchId !== row.matchId) return ignore("metadata_mismatch");
@@ -113,7 +110,8 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   if (row.status === "succeeded") {
     // zweiter Erfolg mit ANDERER Stripe-id (alter Versuch A UND Neuversuch B): nie ein zweites Mal buchen; Hinweis an Admin 1, in Stripe auf eine moegliche Doppelerstattung zu pruefen (Stripe begrenzt die Summe der Erstattungen auf den Zahlungsbetrag)
     if (r.outcome === "succeeded" && r.refundId && row.refundId !== null && row.refundId !== r.refundId) {
-      await audit(null, "refund.duplicate_success", "match", matchIdOf(row), { after: { refundRowId: row.id, firstRefundId: row.refundId, secondRefundId: r.refundId } }, tx);
+      const [seen] = (await tx.execute(sql`select 1 from audit_log where entity = 'match' and entity_id = ${matchIdOf(row)} and action = 'refund.duplicate_success' and after ->> 'refundRowId' = ${row.id} and after ->> 'secondRefundId' = ${r.refundId} limit 1`)).rows;
+      if (!seen) await audit(null, "refund.duplicate_success", "match", matchIdOf(row), { after: { refundRowId: row.id, firstRefundId: row.refundId, secondRefundId: r.refundId } }, tx); // je zweiter id einmal (Stripe-Wiederholungen erhoehen die Zahl nicht)
     }
     return { status: "already", matchId: matchIdOf(row) };
   }

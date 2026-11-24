@@ -309,9 +309,10 @@ type St = "pending" | "failed" | "succeeded";
 type Model = { status: St; refundId: "A" | "B" | null; late: number; dup: number; bookings: number };
 function modelRun(order: "W" | "L", aStatus: St, bOut: St): Model {
   const mdl: Model = { status: "pending", refundId: null, late: 0, dup: 0, bookings: 0 };
+  const dupIds = new Set<string>(); // der Hinweis wird je zweiter Stripe-id nur EINMAL geschrieben (Wiederholungen erhoehen die Zahl nicht)
   const success = (who: "A" | "B", isStale: boolean) => {
     if (mdl.status === "succeeded") {
-      if (mdl.refundId !== who) mdl.dup++;
+      if (mdl.refundId !== who) dupIds.add(who);
       return;
     }
     mdl.status = "succeeded";
@@ -341,6 +342,7 @@ function modelRun(order: "W" | "L", aStatus: St, bOut: St): Model {
     aEvent();
   }
   success("B", false); // Webhook-Ereignis succeeded von B
+  mdl.dup = dupIds.size;
   return mdl;
 }
 
