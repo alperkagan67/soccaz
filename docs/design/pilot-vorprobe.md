@@ -3,6 +3,8 @@ Stand: 2026-11-24 · Code-Stand `origin/main` 78170a4 · Verfasser: worker-4 · 
 
 Zweck: Die Vorprobe am Tag vor dem Pilot (`pilot-plan.md` 4.4, ca. 30 Minuten, zwei Personen) als **Liste mit einer Prüfung je Zeile: Befehl oder Handlung und erwartetes Ergebnis**. Abweichung = Zeile rot, Eintrag in die Vorprobe-Notiz, vor dem Abend klären. Alle Werte (Schlüssel, Domain) stehen nur in der Umgebung, hier nur Platzhalter in `<…>`; **nie** Schlüssel in die Notiz oder den Chat. Die Daten auf Staging entstehen **ohne Seed** (der Seed-Guard verweigert Staging, `pilot-technik.md` 4); die Anlage von Hand beschreibt der Pilot-Daten-Plan von w1 (noch nicht auf `main`; Zeilen D1 bis D8 sind dann an ihn anzupassen).
 
+**Zeitrahmen:** rund 30 Minuten für zwei Personen. Die Teile **A, B und G** sind reine Technik und laufen **vorab oder parallel** zu C bis F (Technik am Server, Spielleitung mit der zweiten Person am Handy); die Liste ist länger als 30 Minuten, weil Teil C bis F in Gruppen aufgeteilt werden.
+
 Kürzel: **T** = Technik, **S** = Spielleitung, **A** = Admin 1. Spalte „Rot, wenn“ nennt das Abbruchsignal; rote Zeilen in Teil A und B stoppen die Vorprobe.
 
 ## A. Staging-Gesundheit (T, am Server)
@@ -16,7 +18,7 @@ Kürzel: **T** = Technik, **S** = Spielleitung, **A** = Admin 1. Spalte „Rot, 
 | A6 | Stripe-Schlüssel nur als Präfix prüfen: `docker compose exec app sh -c 'printenv STRIPE_SECRET_KEY \| cut -c1-8'` | `sk_test_` | `sk_live_` (Abbruch) oder leer |
 | A7 | `docker compose exec app sh -c 'printenv STRIPE_CARD_WEBHOOK_SECRET \| cut -c1-6'` | `whsec_` | leer |
 | A8 | Einstellungen `payments_enabled` und `card_payments_enabled` im Admin (`/admin/einstellungen`) ansehen | beide **AN** | eine AUS (dann Spiele gratis, Kartenablauf ungeprüft) |
-| A9 | `docker compose logs app --since 10m` | keine `ERROR`-Zeilen; Zeitplaner meldet Läufe von `card-charges` und `card-refunds` | Fehler, keine Läufe seit 10 Minuten |
+| A9 | `docker compose exec db psql -U socaz -c "select name, state, completedon from pgboss.job where name in ('card-charges','card-refunds') order by completedon desc limit 4"` (der Zeitplaner schreibt nur bei einem Ergebnis ins Protokoll, Stille ist kein Fehler); zusätzlich `docker compose logs app \| grep "[scheduler] gestartet"` | Zeilen mit `state` = `completed`, `completedon` jünger als 10 Minuten (Takt alle 5 Minuten); Start-Meldung vorhanden | `failed`, `completedon` älter als 10 Minuten, keine Start-Meldung |
 | A10 | Zugangsschutz: Staging-Adresse in einem privaten Fenster ohne Zugangsdaten öffnen | Schutzabfrage bzw. Einladung nötig, kein offener Zugang | Seite offen für Fremde |
 
 ## B. Stripe-Webhook (T, Testmodus)
@@ -37,7 +39,7 @@ Fünf Konten: Gast (kein Konto, zweites Gerät), Spieler, Captain, Betreiber (Zu
 | C1 | `/anmelden` öffnen | nur Google-Anmeldung; **kein Dev-Login** | Dev-Login sichtbar |
 | C2 | Gast: `/` und `/suche` | Seiten laden ohne Anmeldung, Hauptaktion „Anmelden“ bzw. „Spiel suchen“, **eine** orange Hauptaktion | Fehler, mehrere Hauptaktionen |
 | C3 | Gast: offene Lobby und Spiel (`/lobby/offen/<id>`, `/spiel/<token>`) | nur Zahlen und **Initialen**, kein Zahlstatus, „Anmelden“ als Hauptaktion | ein Klarname, Nachname, Zahlstatus |
-| C4 | Gast: HTML-Stichprobe: `curl -s https://<Domain>/lobby/<id> \| grep -c "<Nachname eines Testkontos>"` (je Fläche: Lobby, Team, Rangliste, Spielbericht, Turnier) | **0** | > 0 |
+| C4 | Gast: HTML-Stichprobe: `curl -s https://<Domain>/lobby/<id> \| grep -c "<Nachname eines Testkontos>"` (je Fläche: Lobby, Team, Rangliste, Spielbericht, Turnier) **und** derselbe Aufruf mit `-H "RSC: 1"` (Daten, die die Seite im Hintergrund lädt; dort dürfen auch keine Nutzerkennungen stehen, Gesamtprüfung #323) | **0** in beiden Fällen | > 0 |
 | C5 | Gast: `https://<Domain>/spieler/<id>` | Weiterleitung auf `/anmelden?next=…` | Profil mit Name sichtbar |
 | C6 | Spieler anmelden (eigenes Google-Konto bzw. Testkonto), Onboarding durchlaufen | `/willkommen` → `/app` „Meine Spiele“; „Dein Stand“ nennt den nächsten Schritt | Schleife, Fehlerseite |
 | C7 | Captain: eigenes Team, `/app` | eine Hauptaktion; bei eingehender Herausforderung „Herausforderung ansehen“ | mehrere orange Knöpfe |
@@ -52,7 +54,7 @@ Fünf Konten: Gast (kein Konto, zweites Gerät), Spieler, Captain, Betreiber (Zu
 | D2 | Zwei Teams mit je 4 Mitgliedern einrichten (echte Einladungslinks, keine Skripte) | Teams in `/teams`, Captain je Team | Einladung scheitert |
 | D3 | Captain 1 fordert Team 2 heraus (oder Lobby aufmachen, offen); Captain 2 nimmt an | Lobby zeigt „Dein Stand“; Termin steht nach gleicher Wahl beider Teams („dieselbe Uhrzeit“) | Termin bleibt offen |
 | D4 | Spiel mit Anstoß in **unter 48 Stunden** anlegen (Sofortbuchung, AC-5) | Karte nötig, Preis wird beim Bereit/Bestätigen fest | Spiel lässt sich ohne Karte bereitmachen |
-| D5 | In `docker compose exec db psql -U socaz -c "select count(*) from matches"` zählen, nichts vom Seed (`seed-venue-%`-Hallen fehlen) | nur von Hand angelegte Zeilen | Seed-Daten auf Staging |
+| D5 | `docker compose exec db psql -U socaz -c "select count(*) from venues where osm_id like 'seed-venue-%'"` | **0** (keine Seed-Hallen) | größer als 0: Seed-Daten auf Staging |
 
 ## E. Testkarten (Spieler, Handy 390 px) — Karten nur im Testmodus, Ablaufdatum Zukunft, beliebige Prüfziffer
 | # | Karte | Handlung | Erwartet | Rot, wenn |
@@ -81,7 +83,7 @@ Fünf Konten: Gast (kein Konto, zweites Gerät), Spieler, Captain, Betreiber (Zu
 | # | Befehl | Erwartet | Rot, wenn |
 |---|---|---|---|
 | G1 | `docker compose exec backup sh /backup-loop.sh once` | Datei `socaz-<zeit>.sql.gz` und `socaz-<zeit>.manifest.json` im Sicherungsordner | Fehler, keine Manifest-Datei |
-| G2 | `RESTORE_ADMIN_URL=postgres://<konto>@127.0.0.1:5432/postgres node scripts/restore-test.mjs backups/socaz-<zeit>.sql.gz` | Prüfungen PASS (Tabellen, Zeilenzahlen gegen das Manifest, Beweiskette nicht kleiner); Wegwerf-Datenbank wird entfernt | FAIL |
+| G2 | `RESTORE_ADMIN_URL=postgres://<konto>@127.0.0.1:5432/postgres node scripts/restore-test.mjs backups/socaz-<zeit>.sql.gz --head-hash <hash> --count <n>` (Hash und Anzahl der Beweiskette aus der **externen** Kopie, der Benachrichtigung an Admin 1). Die Probe braucht `psql` und einen **lokalen** Postgres (127.0.0.1) auf dem ausführenden Rechner, nicht im Staging-Container | kein FAIL, Beweiskette PASS, Wegwerf-Datenbank entfernt (ohne Anker nur WARN; mit `--strict` Exit-Code 1) | FAIL oder Beweiskette nicht PASS |
 | G3 | Sicherungs-Zeitpunkt in die Vorprobe-Notiz | Zeit unmittelbar vor dem Pilot | fehlt |
 
 ## H. Abschluss
