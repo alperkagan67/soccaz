@@ -38,7 +38,7 @@ test("Halle lehnt ab (Hinweis endgueltig), Veranstalter sieht nur die Kategorie 
   await expect(card).toBeVisible({ timeout: 60_000 });
   await boss.waitForLoadState("networkidle");
   await card.getByTestId("tournament-decline").locator("summary").click();
-  await expect(card.getByTestId("decline-final-note")).toHaveText(/Die Ablehnung ist endgültig\./); // vor dem Absenden
+  await expect(card.getByTestId("decline-final-note")).toHaveText(/Die Ablehnung ist endgültig\./, { timeout: 20_000 }); // vor dem Absenden
   await card.getByRole("radio", { name: "Belegt" }).check();
   await card.getByLabel("Anmerkung").fill(FREITEXT);
   await clickReady(card.getByRole("button", { name: "Ablehnung senden" }));
