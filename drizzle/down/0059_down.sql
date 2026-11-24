@@ -73,6 +73,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
+CREATE OR REPLACE FUNCTION forbid_delete_with_evidence() RETURNS trigger AS $$
+BEGIN
+  IF public.socaz_maintenance_allowed() THEN
+    RETURN OLD;
+  END IF;
+  IF TG_TABLE_NAME = 'matches' AND EXISTS (SELECT 1 FROM booking_evidence WHERE subject = 'match' AND match_id = OLD.id) THEN
+    RAISE EXCEPTION 'Spiel % hat Beweisprotokoll-Eintraege und kann nicht geloescht werden.', OLD.id;
+  END IF;
+  IF TG_TABLE_NAME = 'tournaments' AND EXISTS (SELECT 1 FROM booking_evidence WHERE subject = 'tournament' AND tournament_id = OLD.id AND kind = 'accepted') THEN
+    RAISE EXCEPTION 'Turnier % hat Beweisprotokoll-Eintraege (Zusage der Halle) und kann nicht geloescht werden.', OLD.id;
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
 ALTER TABLE "tournaments" DROP CONSTRAINT IF EXISTS "tournaments_decline_by_needs_declined";
 --> statement-breakpoint
 ALTER TABLE "tournaments" DROP CONSTRAINT IF EXISTS "tournaments_decline_needs_code";

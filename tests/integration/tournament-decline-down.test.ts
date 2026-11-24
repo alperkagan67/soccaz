@@ -34,6 +34,7 @@ const state = async (c: pg.Client) =>
       (select count(*)::int from pg_proc where proname = 'evidence_tournament_decline_event') as fn,
       (select prosrc like '%declined_count%' from pg_proc where proname = 'evidence_emit') as emit_new,
       (select prosrc like '%venue_declined_at%' from pg_proc where proname = 'tournaments_reset_confirmation') as reset_new,
+      (select prosrc like '%''declined''%' from pg_proc where proname = 'forbid_delete_with_evidence') as delete_guard_new,
       (select pg_get_constraintdef(oid) from pg_constraint where conname = 'booking_evidence_tournament_kind_check') as kind_check`)
   ).rows[0];
 
@@ -58,14 +59,14 @@ afterAll(async () => {
 
 describe("Rueckfall 0059", () => {
   it("Vorzustand: Spalten, Trigger, neue Funktionsfassungen und der erweiterte CHECK sind da", async () => {
-    expect(await state(scratch)).toMatchObject({ cols: 3, triggers: 2, fn: 1, emit_new: true, reset_new: true });
+    expect(await state(scratch)).toMatchObject({ cols: 3, triggers: 2, fn: 1, emit_new: true, reset_new: true, delete_guard_new: true });
     expect((await state(scratch)).kind_check).toMatch(/'declined'/);
   });
 
   it("ohne declined-Zeile: alles zurueckgebaut (Spalten, Trigger, Funktion, alte Fassungen, CHECK nur accepted), ZWEIMAL hintereinander ausfuehrbar", async () => {
     await runDown(scratch);
     const first = await state(scratch);
-    expect(first).toMatchObject({ cols: 0, triggers: 0, fn: 0, emit_new: false, reset_new: false });
+    expect(first).toMatchObject({ cols: 0, triggers: 0, fn: 0, emit_new: false, reset_new: false, delete_guard_new: false });
     expect(first.kind_check).not.toMatch(/declined/);
     expect(first.kind_check).toMatch(/'accepted'/);
     await runDown(scratch);

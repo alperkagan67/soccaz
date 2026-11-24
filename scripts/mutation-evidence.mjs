@@ -39,7 +39,7 @@ const MUTATIONS = [
   { name: "Turnier-Zusage uebernimmt Actor ungeprueft", fn: "evidence_tournament_event", from: "IF NEW.venue_confirmed_by IS NOT NULL AND evidence_has_venue_access(NEW.venue_id, NEW.venue_confirmed_by) THEN", to: "IF NEW.venue_confirmed_by IS NOT NULL THEN", tests: [NL] },
   { name: "Turnier-Ablehnung uebernimmt Actor ungeprueft", fn: "evidence_tournament_decline_event", from: "IF NEW.venue_declined_by IS NOT NULL AND evidence_has_venue_access(NEW.venue_id, NEW.venue_declined_by) THEN", to: "IF NEW.venue_declined_by IS NOT NULL THEN", tests: [DECL] },
   { name: "Turnier-Ablehnung ohne Kategoriepruefung (Pflichtcode)", fn: "evidence_tournament_decline_event", from: "PERFORM evidence_check_reason(NEW.venue_decline_code, v_text, true);", to: "PERFORM evidence_check_reason(NEW.venue_decline_code, v_text, false);", tests: [DECL] },
-  { name: "Zusage setzt die Ablehnung nicht zurueck (nie beides)", fn: "tournaments_reset_confirmation", from: "NEW.venue_declined_at := NULL; -- eine Zusage gilt: keine Ablehnung daneben", to: "NULL;", tests: [DECL] },
+  { name: "Zusage nach Ablehnung nicht gesperrt (Server)", file: "src/server/tournament-confirm.ts", transform: (s) => s.replace("if (t.venueDeclinedAt) throw new DomainError(HALL_DECLINE_FINAL);", ""), tests: [DECL] },
   {
     name: "Turnier-Ablehnungs-Trigger ohne WHEN (feuert bei jedem UPDATE)",
     apply: ["DROP TRIGGER IF EXISTS tournaments_evidence_decline_upd ON tournaments", "CREATE CONSTRAINT TRIGGER tournaments_evidence_decline_upd AFTER UPDATE ON tournaments DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION evidence_tournament_decline_event()"],
@@ -47,6 +47,7 @@ const MUTATIONS = [
     tests: [DECL],
   },
   { name: "Hallenwechsel setzt die Zusage nicht zurueck", fn: "tournaments_reset_confirmation", from: "IF TG_OP = 'UPDATE' AND OLD.venue_id IS DISTINCT FROM NEW.venue_id THEN", to: "IF false THEN", tests: [NL] },
+  { name: "Loeschschutz gilt nicht fuer Turniere mit nur einer Ablehnung", fn: "forbid_delete_with_evidence", from: "AND kind IN ('accepted', 'declined')) THEN", to: "AND kind = 'accepted') THEN", tests: [DECL] },
   { name: "Loeschschutz fuer Turniere fehlt", fn: "forbid_delete_with_evidence", from: "IF TG_TABLE_NAME = 'tournaments' AND EXISTS", to: "IF false AND EXISTS", tests: [NL] },
   { name: "Version 1 ohne Wartungsausnahme erlaubt", fn: "booking_evidence_before_insert", from: `IF NEW.hash_version = 1 AND NOT public.socaz_maintenance_allowed() THEN`, to: "IF false THEN", tests: [NL] },
   { name: "evidence_hash2 ohne enforced im Hash", fn: "evidence_hash2", from: "    CASE WHEN p_enforced IS NULL THEN '' WHEN p_enforced THEN '1' ELSE '0' END\n", to: "    ''\n", tests: [NL] },

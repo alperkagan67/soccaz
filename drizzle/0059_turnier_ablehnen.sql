@@ -94,7 +94,8 @@ CREATE CONSTRAINT TRIGGER tournaments_evidence_decline_upd
   AFTER UPDATE ON tournaments
   DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (OLD.venue_declined_at IS NULL AND NEW.venue_declined_at IS NOT NULL) EXECUTE FUNCTION evidence_tournament_decline_event();
 --> statement-breakpoint
--- Zusage und Ablehnung schliessen sich aus: ein Hallenwechsel und eine (neue) Zusage setzen die Ablehnung zurueck; Akteur und Code folgen dem Zeitstempel (wie venue_confirmed_by).
+-- Zusage und Ablehnung schliessen sich aus: nur ein Hallenwechsel (neue Hallenwahl des Veranstalters = neue Anfrage) setzt die Ablehnung zurueck; eine Zusage NACH einer Ablehnung ist endgueltig gesperrt
+-- (Entscheid t2q 2026-11-24): der CHECK tournaments_decline_xor_confirm weist sie ab. Akteur und Code folgen dem Zeitstempel (wie venue_confirmed_by).
 CREATE OR REPLACE FUNCTION tournaments_reset_confirmation() RETURNS trigger AS $$
 BEGIN
   IF TG_OP = 'UPDATE' AND OLD.venue_id IS DISTINCT FROM NEW.venue_id THEN
@@ -104,13 +105,27 @@ BEGIN
   END IF;
   IF NEW.venue_confirmed_at IS NULL THEN
     NEW.venue_confirmed_by := NULL;
-  ELSE
-    NEW.venue_declined_at := NULL; -- eine Zusage gilt: keine Ablehnung daneben
   END IF;
   IF NEW.venue_declined_at IS NULL THEN
     NEW.venue_declined_by := NULL;
     NEW.venue_decline_code := NULL;
   END IF;
   RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+--> statement-breakpoint
+-- Loeschschutz: auch ein Turnier mit NUR einer Ablehnung im Beweisprotokoll ist nicht loeschbar (sonst verwaist die Beweiszeile)
+CREATE OR REPLACE FUNCTION forbid_delete_with_evidence() RETURNS trigger AS $$
+BEGIN
+  IF public.socaz_maintenance_allowed() THEN
+    RETURN OLD;
+  END IF;
+  IF TG_TABLE_NAME = 'matches' AND EXISTS (SELECT 1 FROM booking_evidence WHERE subject = 'match' AND match_id = OLD.id) THEN
+    RAISE EXCEPTION 'Spiel % hat Beweisprotokoll-Eintraege und kann nicht geloescht werden.', OLD.id;
+  END IF;
+  IF TG_TABLE_NAME = 'tournaments' AND EXISTS (SELECT 1 FROM booking_evidence WHERE subject = 'tournament' AND tournament_id = OLD.id AND kind IN ('accepted', 'declined')) THEN
+    RAISE EXCEPTION 'Turnier % hat Beweisprotokoll-Eintraege (Zusage oder Ablehnung der Halle) und kann nicht geloescht werden.', OLD.id;
+  END IF;
+  RETURN OLD;
 END;
 $$ LANGUAGE plpgsql;

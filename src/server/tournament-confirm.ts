@@ -40,17 +40,24 @@ export function hallReminderText(tournamentName: string, hours: number): string 
   return `${tournamentName}: Die Halle hat noch nicht zugesagt. Ohne Zusage fällt das Turnier aus. Die Frist ist in etwa ${hours} Stunden.`;
 }
 
-/** Erinnerung nach einer Ablehnung der Halle (Plan 4): nennt keine Rechtsfolge, keine Namen Dritter, nie den Freitext. */
-export function hallDeclinedReminderText(tournamentName: string, hours: number): string {
-  return `${tournamentName}: Die Halle hat abgesagt. Wähle eine andere Halle oder sage das Turnier ab. Die Frist ist in etwa ${hours} Stunden.`;
+/**
+ * Erinnerung nach einer Ablehnung der Halle (Plan 4): nennt keine Rechtsfolge, keine Namen Dritter, nie den Freitext. "kann nicht ausrichten" statt "abgesagt": das Turnier selbst ist NICHT abgesagt.
+ * Zwei Fassungen: nur der Veranstalter kann eine andere Halle waehlen oder das Turnier absagen, die Captains erfahren nur, dass er entscheidet.
+ */
+export function hallDeclinedReminderText(tournamentName: string, hours: number, forOrganizer = true): string {
+  return forOrganizer
+    ? `${tournamentName}: Die Halle kann das Turnier nicht ausrichten. Wähle eine andere Halle oder sage das Turnier ab. Die Frist ist in etwa ${hours} Stunden.`
+    : `${tournamentName}: Die Halle kann das Turnier nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab. Die Frist ist in etwa ${hours} Stunden.`;
 }
 
 /** Mitteilung an Veranstalter und Captains bei einer Ablehnung: Turnier, Halle und die Kategorie in Worten; nie der Freitext, nie der Betreiber. */
 export function hallDeclinedText(tournamentName: string, venueName: string, code: keyof typeof DECLINE_LABELS): string {
-  return `${venueName} hat für ${tournamentName} abgesagt (Grund: ${DECLINE_LABELS[code]}). Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.`;
+  return `${venueName} kann ${tournamentName} nicht ausrichten (Grund: ${DECLINE_LABELS[code]}). Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.`;
 }
 
 const NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht zusagen.";
+/** Meldung an die Halle: die Ablehnung ist endgueltig (Entscheid t2q); Wortlaut auch fuer Hinweis und Rueckmeldung der Oberflaeche (PR 2). Entwurf, keine Rechtsaussage. */
+export const HALL_DECLINE_FINAL = "Die Ablehnung ist endgültig. Bitte den Veranstalter, die Halle erneut zu wählen.";
 const DECLINE_NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht ablehnen.";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -78,6 +85,9 @@ export async function confirmTournamentVenue(userId: string, tournamentId: strin
     if (!t.venueId || !(await hasVenueAccess(t.venueId, userId, tx))) throw new DomainError(NOT_POSSIBLE);
     if (t.status !== "payment" || t.bracketGeneratedAt || t.settledAt) throw new DomainError(NOT_POSSIBLE);
     if (t.venueConfirmedAt) return { confirmed: false }; // schon zugesagt: nichts aendern, kein Fehler
+    // Entscheid t2q (2026-11-24): die Entscheidung der Halle je Anfrage ist ENDGUELTIG (append-only, Veranstalter und Teams sind evtl. schon informiert). Will die Halle doch, waehlt der Veranstalter sie erneut
+    // (neue Anfrage, neuer Beweiseintrag; der Hallenwechsel setzt die Ablehnung zurueck). Die Meldung geht nur an einen Berechtigten (Zugang zur Halle ist oben geprueft).
+    if (t.venueDeclinedAt) throw new DomainError(HALL_DECLINE_FINAL);
     const now = opts.now ?? (await dbNow(tx));
     const due = await chargeDueAt(tx, t);
     // dieselbe Regel wie die Abbuchungspruefung (zusageRequired): verlangt sie eine Zusage, nimmt diese Aktion sie an (Snapshot true ODER Live-Pflicht vor der Frist)
@@ -150,7 +160,7 @@ export async function declineTournamentVenue(userId: string, tournamentId: strin
         const [v] = await sp.select({ name: venues.name }).from(venues).where(eq(venues.id, t.venueId!));
         const captains = await sp.select({ captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
         const recipients = [...new Set([t.organizerId, ...captains.map((c) => c.captainId)])].filter((x): x is string => Boolean(x));
-        await notifyUsers(recipients, { type: "system", title: "Die Halle hat abgesagt", body: hallDeclinedText(t.name, v?.name ?? "Die Halle", check.code), url: `/turniere/${t.id}` }, sp);
+        await notifyUsers(recipients, { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedText(t.name, v?.name ?? "Die Halle", check.code), url: `/turniere/${t.id}` }, sp);
       });
     } catch {
       /* die Ablehnung gilt; die Mitteilung ist Zugabe */
@@ -234,7 +244,13 @@ export async function notifyHallConfirmReminders(nowOverride?: Date): Promise<nu
         if (done) return;
         const captains = await tx.select({ captainId: tournamentTeams.captainId }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, t.id));
         const recipients = [...new Set([t.organizerId, ...captains.map((x) => x.captainId)])].filter((x): x is string => Boolean(x));
-        await notifyUsers(recipients, t.venueDeclinedAt ? { type: "system", title: "Die Halle hat abgesagt", body: hallDeclinedReminderText(t.name, stage), url: `/turniere/${t.id}` } : { type: "system", title: "Halle hat noch nicht zugesagt", body: hallReminderText(t.name, stage), url: `/turniere/${t.id}` }, tx);
+        if (t.venueDeclinedAt) {
+          const others = recipients.filter((x) => x !== t.organizerId);
+          await notifyUsers([t.organizerId], { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedReminderText(t.name, stage, true), url: `/turniere/${t.id}` }, tx);
+          if (others.length > 0) await notifyUsers(others, { type: "system", title: "Die Halle kann nicht ausrichten", body: hallDeclinedReminderText(t.name, stage, false), url: `/turniere/${t.id}` }, tx);
+        } else {
+          await notifyUsers(recipients, { type: "system", title: "Halle hat noch nicht zugesagt", body: hallReminderText(t.name, stage), url: `/turniere/${t.id}` }, tx);
+        }
         if (NOTIFY_ACCESS_HOLDERS && t.venueId) {
           // Savepoint (R-T247 c): ein Fehler bei den Zugangsinhabern darf weder die Erinnerung an den Veranstalter noch den Marker kippen
           try {

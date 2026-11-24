@@ -6,7 +6,7 @@ import { bookingEvidence, bookingEvidenceReasonText, evidenceActor, venueAccess,
 import { tournaments } from "@/db/schema-league";
 import { verifyEvidenceChain } from "@/server/evidence";
 import { setSetting } from "@/server/settings";
-import { confirmTournamentVenue, declineTournamentVenue, listTournamentConfirmations, notifyHallConfirmReminders } from "@/server/tournament-confirm";
+import { confirmTournamentVenue, declineTournamentVenue, HALL_DECLINE_FINAL, hallDeclinedReminderText, listTournamentConfirmations, notifyHallConfirmReminders } from "@/server/tournament-confirm";
 import { resetVenueConfirmationIfTermsChanged } from "@/server/tournament-venue";
 import { cleanup, makeUser } from "./helpers";
 
@@ -88,7 +88,10 @@ describe("Turnier-Ablehnen: Ablehnung der Halle", () => {
     const audits = await db.select().from(auditLog).where(and(eq(auditLog.action, "tournament.venue_decline"), eq(auditLog.entityId, t.id)));
     expect(audits).toHaveLength(1);
     expect(JSON.stringify(audits[0])).not.toContain("geheim-4711");
-    const note = (await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Die Halle hat abgesagt"))))[0];
+    const note = (await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Die Halle kann nicht ausrichten"))))[0];
+    expect(note.body).toContain("kann");
+    expect(note.body).toContain("nicht ausrichten");
+    expect(note.body).not.toMatch(/abgesagt/); // das Turnier selbst ist nicht abgesagt
     expect(note.body).toContain("Grund: Geschlossen oder Wartung");
     expect(note.body).toContain("wählt eine andere Halle oder sagt das Turnier ab");
     expect(note.body).not.toContain("geheim-4711");
@@ -175,13 +178,23 @@ describe("Turnier-Ablehnen: Runden, Ruecksetzen, Zusage danach, Liste, Erinnerun
     expect((await verifyEvidenceChain()).ok).toBe(true);
   });
 
-  it("Zusage nach Ablehnung: die Ablehnung entfaellt (nie beides), ein accepted-Eintrag; das Turnier ist wieder zusagbar", async () => {
-    const { boss, t } = await fixture();
+  it("Zusage NACH Ablehnung ist gesperrt (endgueltig, Entscheid t2q): Meldung an die Halle, nichts geaendert; erst nach erneuter Hallenwahl (neue Anfrage) ist die Zusage moeglich", async () => {
+    const { boss, v, t } = await fixture();
+    const [other] = await db.insert(venues).values({ name: `E2E Halle ABL3 ${nid("v")}`, city: "Essen", isPartner: true, active: true }).returning();
     await declineTournamentVenue(boss.id, t.id, { code: "belegt" });
-    expect(await confirmTournamentVenue(boss.id, t.id)).toEqual({ confirmed: true });
+    await expect(confirmTournamentVenue(boss.id, t.id)).rejects.toThrow(/Die Ablehnung ist endgültig/);
+    expect(HALL_DECLINE_FINAL).toMatch(/erneut zu wählen/);
     const row = await rowOf(t.id);
-    expect(row.venueConfirmedAt).not.toBeNull();
-    expect(row).toMatchObject({ venueDeclinedAt: null, venueDeclinedBy: null, venueDeclineCode: null });
+    expect(row.venueConfirmedAt).toBeNull();
+    expect(row.venueDeclinedAt).not.toBeNull();
+    expect(await evidenceOf(t.id, "accepted")).toHaveLength(0);
+    // Unberechtigte bekommen weiter nur die neutrale Meldung (kein Hinweis auf die Ablehnung)
+    const stranger = await makeUser("str2");
+    await expect(confirmTournamentVenue(stranger.id, t.id)).rejects.toThrow(/lässt sich gerade nicht zusagen/);
+    // der Veranstalter waehlt die Halle ERNEUT (Hallenwechsel hin und zurueck): Ablehnung zurueckgesetzt, Zusage moeglich, neue Anfrage = accepted-Eintrag
+    await db.update(tournaments).set({ venueId: other.id }).where(eq(tournaments.id, t.id));
+    await db.update(tournaments).set({ venueId: v.id }).where(eq(tournaments.id, t.id));
+    expect(await confirmTournamentVenue(boss.id, t.id)).toEqual({ confirmed: true });
     expect((await evidenceOf(t.id)).map((e) => e.kind).sort()).toEqual(["accepted", "declined"]);
   });
 
@@ -203,10 +216,12 @@ describe("Turnier-Ablehnen: Runden, Ruecksetzen, Zusage danach, Liste, Erinnerun
     expect(item).toMatchObject({ declined: true, chargesStarted: false });
     const due = new Date(Date.now() + 4 * DAY);
     expect(await notifyHallConfirmReminders(new Date(due.getTime() - 23 * 3_600_000))).toBeGreaterThanOrEqual(1);
-    const reminder = (await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Die Halle hat abgesagt"))))
+    const reminder = (await db.select().from(notifications).where(and(eq(notifications.userId, org.id), eq(notifications.title, "Die Halle kann nicht ausrichten"))))
       .map((x) => x.body)
       .find((b) => b.includes("Die Frist ist in etwa"));
     expect(reminder).toContain("Wähle eine andere Halle oder sage das Turnier ab.");
+    expect(hallDeclinedReminderText("X", 6, false)).toContain("Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.");
+    expect(hallDeclinedReminderText("X", 6, false)).not.toContain("Wähle");
     expect(reminder).not.toContain("geheim-4711");
     expect(reminder).not.toMatch(/Erstattung|abgebucht|Zahlung/);
   });
@@ -222,8 +237,10 @@ describe("Turnier-Ablehnen: Gleichzeitigkeit und Akteur", () => {
       expect((row.venueConfirmedAt !== null) !== (row.venueDeclinedAt !== null), "genau eines von beiden").toBe(true);
       const accepted = await evidenceOf(t.id, "accepted");
       const declined = await evidenceOf(t.id, "declined");
-      if (row.venueConfirmedAt) expect(accepted).toHaveLength(1);
-      else {
+      if (row.venueConfirmedAt) {
+        expect(accepted).toHaveLength(1);
+        expect(declined).toHaveLength(0); // die Ablehnung ist endgueltig: nach einer Ablehnung gibt es keine Zusage mehr
+      } else {
         expect(accepted).toHaveLength(0);
         expect(declined).toHaveLength(1);
       }
@@ -250,10 +267,16 @@ describe("Turnier-Ablehnen: Datenbankebene (Migration 0059)", () => {
   it("CHECKs: Zusage und Ablehnung nie gemeinsam, Ablehnung braucht Kategorie und Halle, Kategorie nur aus der Liste", async () => {
     const { boss, t } = await fixture();
     await confirmTournamentVenue(boss.id, t.id);
-    // Zusage steht: ein roher UPDATE mit Ablehnung bleibt ohne Wirkung (der BEFORE-Trigger loescht die Ablehnung neben einer Zusage), kein Beweiseintrag declined
-    await db.execute(sql`update tournaments set venue_declined_at = now(), venue_declined_by = ${boss.id}, venue_decline_code = 'belegt' where id = ${t.id}`);
+    // Zusage steht: ein roher UPDATE mit Ablehnung scheitert am CHECK (nie beides), kein Beweiseintrag declined
+    const both = await pgError(db.execute(sql`update tournaments set venue_declined_at = now(), venue_declined_by = ${boss.id}, venue_decline_code = 'belegt' where id = ${t.id}`));
+    expect(both.code).toBe("23514");
     expect(await rowOf(t.id)).toMatchObject({ venueDeclinedAt: null, venueDeclineCode: null });
     expect(await evidenceOf(t.id, "declined")).toHaveLength(0);
+    // und umgekehrt: eine Zusage nach einer Ablehnung (roher UPDATE, am Server vorbei) scheitert ebenfalls
+    const c = await fixture();
+    await declineTournamentVenue(c.boss.id, c.t.id, { code: "belegt" });
+    const rev = await pgError(db.execute(sql`update tournaments set venue_confirmed_at = now(), venue_confirmed_by = ${c.boss.id} where id = ${c.t.id}`));
+    expect(rev.code).toBe("23514");
     const b = await fixture();
     await expect(db.execute(sql`update tournaments set venue_declined_at = now() where id = ${b.t.id}`)).rejects.toThrow(); // ohne Kategorie
     await expect(db.execute(sql`update tournaments set venue_declined_at = now(), venue_decline_code = 'erfunden' where id = ${b.t.id}`)).rejects.toThrow();
@@ -273,6 +296,15 @@ describe("Turnier-Ablehnen: Datenbankebene (Migration 0059)", () => {
       await tx.execute(sql`update tournaments set venue_declined_at = now(), venue_declined_by = ${boss.id}, venue_decline_code = 'sonstiges' where id = ${t.id}`);
     });
     expect(await evidenceOf(t.id, "declined")).toHaveLength(1);
+  });
+
+  it("Loeschschutz: ein Turnier mit NUR einer Ablehnung im Beweisprotokoll ist nicht loeschbar (Beweiszeile verwaist sonst)", async () => {
+    const { boss, t } = await fixture();
+    await declineTournamentVenue(boss.id, t.id, { code: "belegt" });
+    expect(await evidenceOf(t.id, "accepted")).toHaveLength(0);
+    const err = await pgError(db.execute(sql`delete from tournaments where id = ${t.id}`));
+    expect(err.message).toMatch(/Beweisprotokoll-Eintraege/);
+    expect((await rowOf(t.id))?.id).toBe(t.id);
   });
 
   it("Beweisprotokoll: Turnier-Eintraege kennen nur accepted und declined (CHECK), andere Arten scheitern", async () => {
