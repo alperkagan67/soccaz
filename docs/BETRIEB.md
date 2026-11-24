@@ -47,6 +47,14 @@ Am 1. jedes Monats schreibt `close-city-challenge` den Vormonat der Stadt-Challe
 Google Cloud Console, Projekt anlegen, APIs und Dienste, Anmeldedaten, OAuth-Client-ID (Webanwendung).
 Autorisierte Weiterleitungs-URI: `https://deine-domain/api/auth/callback/google`. Client-ID und Geheimnis in `.env`.
 
+## Apple-Anmeldung (nur falls `APPLE_LOGIN_ENABLED=1`)
+
+Die Apple-Anmeldung ist noch nicht im Code; dieser Abschnitt hält den Betrieb fest, sobald sie eingeschaltet wird. Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate Gültigkeit): **Erneuerung spätestens alle 5 Monate**, Erinnerung im Kalender 4 Wochen und 1 Tag vor Ablauf.
+
+- **Client-Secret gültig bis: <Datum eintragen, sobald erzeugt>**
+- Erneuerung: neues Secret erzeugen, nur in der Server-`.env` eintragen, neu starten, Smoke-Test mit `--apple`, echte Anmeldung prüfen, hier das neue Datum eintragen.
+- Läuft es ab, schlägt nur die Apple-Anmeldung fehl; Google bleibt unberührt.
+
 ## Update
 
 ```
