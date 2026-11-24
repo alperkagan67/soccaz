@@ -37,7 +37,7 @@ Unit (Zeitraum-Matrix, DATEV-Zeile, Escape/Injektion, Zuordnung fehlt = Fehler s
 ## 7. Entscheide t2q (2026-11-24, Plan-OK)
 1. **EXTF 700 reicht** als DATEV-Export. Berater- und Mandantennummer liefert der Steuerberater (Nutzerliste Nr. 4). **Der DATEV-Importtest vor dem Go-live ist ein PFLICHTPUNKT** (aufgenommen in `docs/design/go-live-nutzerliste.md` Nr. 4 und `docs/loop/GO-LIVE-AUDIT.md`, G33-009).
 2. **Rechnung für freie Zeiträume: NEIN.** Nur die **Auswertung** (PDF, ohne Rechnungsnummer); die Rechnung bleibt die lückenlos nummerierte Monatsrechnung.
-3. **Export: das GANZE Hauptbuch**, die Hallenmiete auf ein **Durchlaufkonto**; die Kontenzuordnung (SKR03) ist durch Admin 1 konfigurierbar (Migration, PR 2); die Standardzuordnung ist ein **PLATZHALTER bis zur Antwort des Steuerberaters** (kein Steuerrat, im Export und PDF als Entwurf gekennzeichnet).
+3. **Export: das GANZE Hauptbuch**, die Hallenmiete auf ein **Durchlaufkonto**; die Kontenzuordnung (SKR03) ist durch Admin 1 konfigurierbar (Migration, PR 2); die Standardzuordnung ist ein **PLATZHALTER bis zur Antwort des Steuerberaters** (keine Steuerzusage, im Export und PDF als Entwurf gekennzeichnet).
 4. **Kalender-Oberfläche:** PR 1 bis 4 jetzt, **PR 5 mit 013 M7**.
 5. **Berliner Monatsgrenze: JA für Finanzen und Export; für die Rechnungen nur nach Freigabe des Steuerberaters** (bis dahin UTC wie heute).
 **Migration und Reihenfolge:** Nummer **0061** (nach 010 M1 PR 1 = 0060). **NIE parallel**, eine Schema-Aufgabe zur Zeit. Bau-Reihenfolge bei knapper CI: 010 M1 PR 1 zuerst; 009 M4 PR 1 (ohne Schema) darf früher; 009 M4 PR 2 (Migration) erst nach 0060.
