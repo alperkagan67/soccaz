@@ -10,6 +10,7 @@ import { euroForCsv, toCsv } from "@/lib/csv";
 import { formatEuro } from "@/lib/money";
 import { audit } from "./audit";
 import { ensureRefundRow } from "./payments/charge";
+import { UNKNOWN_OUTCOME } from "./payments/charge-run";
 import { REFUND_WRITTEN_OFF, sendPendingRefunds } from "./payments/refund";
 import { creditWallet, totalWalletLiability, trialBalance } from "./ledger";
 import { notifyUsers } from "./notifications";
@@ -32,6 +33,17 @@ export const CANCEL_ALARM_MS = 60 * 60_000;
 export async function getRefundAlerts(now: Date = new Date()) {
   const failedRefunds = await db.select({ id: paymentRefunds.id, matchId: paymentRefunds.matchId, code: paymentRefunds.failureCode, amountCents: paymentRefunds.amountCents }).from(paymentRefunds).where(and(eq(paymentRefunds.status, "failed"), sql`${paymentRefunds.failureCode} is distinct from ${REFUND_WRITTEN_OFF}`)); // abgeschrieben (Backlog 192) = aufgelöst, kein Alarm mehr
   const unknownRefunds = await db.select({ id: paymentRefunds.id, matchId: paymentRefunds.matchId }).from(paymentRefunds).where(and(eq(paymentRefunds.status, "pending"), eq(paymentRefunds.failureCode, "unknown_outcome")));
+  // Erstattung seit mehr als 24 Stunden ohne Ergebnis (pending): Beginn = Start des aktuellen Versuchs (attempt_started_at, nach einem Neuversuch zuerst der Zeitpunkt des Neuversuchs). Unbekannter Ausgang hat seinen eigenen Alarm.
+  const refundsStuck = (
+    await db.execute(sql`
+      select r.id as id, r.match_id as "matchId" from payment_refunds r
+      where r.status = 'pending' and r.failure_code is distinct from ${UNKNOWN_OUTCOME}
+        and coalesce(r.attempt_started_at, (select max(a.at) from audit_log a where a.entity = 'match' and a.entity_id = r.match_id::text and a.action = 'refund.retry' and a.after ->> 'refundRowId' = r.id::text), r.created_at) < ${new Date(now.getTime() - 24 * 3_600_000)}`)
+  ).rows as { id: string; matchId: string | null }[];
+  // alter Versuch A nachtraeglich erfolgreich bzw. zweiter Erfolg (A und B): Stripe auf Doppelerstattung pruefen (letzte 30 Tage, nur Spiel-IDs)
+  const refundLateSuccess = (
+    await db.execute(sql`select a.entity_id as "matchId", a.at as at from audit_log a where a.action in ('refund.late_success_old_attempt', 'refund.duplicate_success') and a.at >= ${new Date(now.getTime() - 30 * 86_400_000)} order by a.at desc`)
+  ).rows as { matchId: string; at: Date }[];
   const stuckCancels = await db
     .select({ matchId: matches.id, since: matches.cancelRequestedAt })
     .from(matches)
@@ -95,7 +107,7 @@ export async function getRefundAlerts(now: Date = new Date()) {
             and (select max(x.paid_ready_at) from tournament_teams x where x.tournament_id = t.id) <= ${new Date(now.getTime() - 10 * 60_000)}`)
       ).rows
     : [];
-  return { failedRefunds, unknownRefunds, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards, tournamentLatePayments, tournamentOpenIntents, unmatched, tournamentFrozen };
+  return { failedRefunds, unknownRefunds, refundsStuck, refundLateSuccess, stuckCancels, unclearedCharges, idempotencyMismatches, legacyFailed, duplicateSuccesses, tournamentRefundsOpen, tournamentChargeStuck, tournamentWaitsForCards, tournamentLatePayments, tournamentOpenIntents, unmatched, tournamentFrozen };
 }
 
 export type Period = { from: Date; to: Date };
@@ -439,7 +451,7 @@ export type Alert = { code: string; severity: "high" | "medium"; title: string; 
  * keine Personendaten). Alles, was ein Automat NICHT loest und Geld oder einen haengenden Ablauf betrifft: Doppelabbuchung, fehlgeschlagene/ungeklaerte Erstattung, haengende Absage,
  * ungeklaerte Abbuchung, Schluesselkonflikt, Altzeile ohne Fenster.
  */
-export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched" | "tournamentFrozen"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched" | "tournamentFrozen">>): Alert[] {
+export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched" | "tournamentFrozen" | "refundsStuck" | "refundLateSuccess"> & Partial<Pick<Awaited<ReturnType<typeof getRefundAlerts>>, "tournamentRefundsOpen" | "tournamentChargeStuck" | "tournamentWaitsForCards" | "tournamentLatePayments" | "tournamentOpenIntents" | "unmatched" | "tournamentFrozen" | "refundsStuck" | "refundLateSuccess">>): Alert[] {
   const out: Alert[] = [];
   const add = (code: string, n: number, title: string, detail: string) => {
     if (n > 0) out.push({ code, severity: "high", title: `${title} (${n})`, detail });
@@ -447,6 +459,8 @@ export function cardAlertsFrom(ra: Omit<Awaited<ReturnType<typeof getRefundAlert
   add("card:duplicate-success", ra.duplicateSuccesses.length, "Doppelte Abbuchung", "Zu einer Zahlung ging ein zweiter erfolgreicher PaymentIntent ein (letzte 30 Tage). Bitte pruefen, ob die Erstattung durch ist (Stripe-Dashboard).");
   add("card:failed-refunds", ra.failedRefunds.length, "Erstattung fehlgeschlagen", "Eine Erstattung auf die Karte ist gescheitert und muss manuell geklaert werden.");
   add("card:unknown-refunds", ra.unknownRefunds.length, "Erstattung mit unbekanntem Ausgang", "Der Ausgang einer Erstattung ist bei Stripe unklar.");
+  add("card:refund-stuck", ra.refundsStuck?.length ?? 0, "Erstattung ohne Ergebnis", "Eine Erstattung ist seit ueber 24 Stunden bei Stripe oder bei uns offen (pending ohne Ergebnis). Bitte im Stripe-Dashboard pruefen und ggf. neu versuchen oder abschreiben.");
+  add("card:refund-late-success", ra.refundLateSuccess?.length ?? 0, "Erstattung nachtraeglich oder doppelt erfolgreich", "Ein frueherer Erstattungsversuch ist nachtraeglich erfolgreich gewesen, oder ein Neuversuch ebenfalls (letzte 30 Tage). Es wurde nur einmal gebucht; bitte im Stripe-Dashboard pruefen, ob doppelt erstattet wurde (Stripe begrenzt die Summe auf den Zahlungsbetrag). Der Alarm bleibt 30 Tage sichtbar und kann noch nicht quittiert werden (je Erstattung und zweiter Stripe-id nur ein Eintrag).");
   add("card:stuck-cancels", ra.stuckCancels.length, "Absage haengt", "Eine angeforderte Absage ist seit Stunden nicht abgeschlossen.");
   add("card:uncleared-charges", ra.unclearedCharges.length, "Abbuchung ungeklaert", "Eine Abbuchung hat keinen bekannten Ausgang (unknown_outcome, nach dem Anstoss, Stripe-Suche ohne Treffer).");
   add("card:idempotency-mismatch", ra.idempotencyMismatches.length, "Abbuchung mit Schluesselkonflikt", "Ein Versuch ist am Idempotenzschluessel gescheitert und wird von keinem Automaten angefasst.");

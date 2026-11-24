@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { clickWhenReady, setupLobby } from "./flows";
+import { clickWhenReady, setupLobby, clickReady } from "./flows";
 import { addParticipant, addTeamMember, closeContexts, closeTestDb, run, seedUser, teamIdByName } from "./helpers";
 import { query, setPlatformSetting } from "./helpers-db";
 
@@ -38,7 +38,7 @@ test("Letzte Bestätigung beider Captains öffnet die Spielübersicht mit Ort, N
 
   // getrennt sichtbar: erst A, dann B
   await a.reload();
-  await a.getByRole("button", { name: /(Preis|Spiel) bestätigen/ }).click();
+  await clickWhenReady(a, /(Preis|Spiel) bestätigen/);
   await expect(a.getByTestId("final-team").filter({ hasText: nameA })).toHaveAttribute("data-confirmed", "true");
   await expect(a.getByTestId("final-team").filter({ hasText: nameB })).toHaveAttribute("data-confirmed", "false");
   await b.reload();
@@ -66,7 +66,7 @@ test("Letzte Bestätigung beider Captains öffnet die Spielübersicht mit Ort, N
   await a.reload();
   await a.getByLabel("Titel").fill(`Tor des Spiels ${run}`);
   await a.getByLabel(/Link \(YouTube/).fill("https://youtu.be/abc123");
-  await a.getByRole("button", { name: "Clip veröffentlichen" }).click();
+  await clickWhenReady(a, "Clip veröffentlichen");
   await expect(a.getByTestId("clip").filter({ hasText: `Tor des Spiels ${run}` })).toBeVisible();
   await expect(a.getByTestId("clip").first().getByRole("link")).toHaveAttribute("href", "https://youtu.be/abc123");
   await b.reload();
@@ -80,7 +80,7 @@ test("Letzte Bestätigung beider Captains öffnet die Spielübersicht mit Ort, N
   await a.getByTestId("open-score").click();
   const dialog = a.getByTestId("score-dialog");
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: `+ Tor ${nameA}` }).click();
+  await clickReady(dialog.getByRole("button", { name: `+ Tor ${nameA}` }));
   await expect(dialog.getByTestId("score-preview")).toContainText("1 : 0");
   await dialog.getByLabel("Torschütze").selectOption({ label: "Spieler ueha1" });
   await dialog.getByLabel("Spielminute").fill("17");

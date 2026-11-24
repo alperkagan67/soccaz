@@ -121,8 +121,12 @@ export class FakeProvider implements PaymentProvider {
     if (cached) return cached; // Wiederholung mit gleichem Schluessel: Stripe liefert 24 h lang die ALTE Antwort ohne neue Erstattung
     const result = await this.createRefundFresh(input);
     if (this.replayRefunds) this.refundReplay.set(input.idempotencyKey, result);
+    if (this.beforeRefundResult) await this.beforeRefundResult(input); // Test-Haken: hier laeuft das Sendefenster (Stripe hat angenommen, unser Ergebnis ist noch nicht verbucht)
     return result;
   }
+
+  /** Test-Hilfe: wird in createRefund nach der Antwort und VOR der Rueckgabe ausgefuehrt (Sendefenster, z. B. ein Webhook mitten im Versand). */
+  beforeRefundResult: ((input: { paymentIntentId: string; idempotencyKey: string }) => Promise<void>) | null = null;
 
   /** Test-Hilfe: Wiederhol-Modus wie Stripe (gleicher Schluessel = gleiche alte Antwort). */
   private replayRefunds = false;

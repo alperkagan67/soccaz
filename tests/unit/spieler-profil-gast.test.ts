@@ -76,8 +76,8 @@ describe("Seite: Gäste werden zur Anmeldung geleitet", () => {
 
 describe("Suchmaschinen", () => {
   it("robots.txt sperrt /spieler/ (die Liste /spieler bleibt erlaubt)", async () => {
-    const { default: robots } = await import("@/app/robots");
-    const rules = (robots().rules as { disallow: string[] }[])[0];
+    const { robotsRules } = await import("@/lib/staging"); // robots.ts liest APP_ENV zur Anfragezeit; die Regeln der Produktion kommen aus robotsRules(false)
+    const rules = robotsRules(false)[0] as { disallow: string[] };
     expect(rules.disallow).toContain("/spieler/");
     expect(rules.disallow).not.toContain("/spieler");
   });

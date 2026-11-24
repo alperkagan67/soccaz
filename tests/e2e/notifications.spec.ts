@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { setupLobby } from "./flows";
+import { setupLobby, clickWhenReady, clickReady } from "./flows";
 import { closeContexts, closeTestDb, createTeam, newUser, run } from "./helpers";
 import { callJob, query, setMatchTimes, setSubmittedAgo, startMatchNow } from "./helpers-db";
 
@@ -66,7 +66,7 @@ test("Benachrichtigungen: abgeschaltete Art kommt nicht an", async ({ browser })
   await admin.goto("/app/einstellungen");
   await expect(admin.getByLabel("Neues Mitglied in deinem Team")).toBeChecked();
   await admin.getByLabel("Neues Mitglied in deinem Team").uncheck();
-  await admin.getByRole("button", { name: "Speichern", exact: true }).click();
+  await clickReady(admin.getByRole("button", { name: "Speichern", exact: true }));
   await expect(admin.getByText("Gespeichert.")).toBeVisible();
 
   // neues Mitglied tritt per Einladung bei
@@ -77,7 +77,7 @@ test("Benachrichtigungen: abgeschaltete Art kommt nicht an", async ({ browser })
   const joiner = await (await browser.newContext()).newPage();
   await newUser(joiner, "n2b");
   await joiner.goto(link);
-  await joiner.getByRole("button", { name: "Team beitreten" }).click();
+  await clickWhenReady(joiner, "Team beitreten");
   await expect(joiner).toHaveURL(/\/teams\//);
   expect(await titlesFor(`n2a-${run}@test.local`)).not.toContain("Neues Teammitglied");
 });
@@ -129,7 +129,7 @@ test("Zeitplan: Erinnerung genau einmal, automatische Absage, Ergebnis-Erinnerun
   await f.a.goto("/app/suche/neu");
   await f.a.getByLabel("Team", { exact: true }).selectOption({ label: f.nameA });
   await f.a.getByLabel(/Anstoß/).fill(new Date(Date.now() + 15 * 86_400_000).toISOString().slice(0, 10) + "T19:00");
-  await f.a.getByRole("button", { name: "Spielsuche erstellen" }).click();
+  await clickReady(f.a.getByRole("button", { name: "Spielsuche erstellen" }));
   await expect(f.a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
   const reqId = f.a.url().split("/").pop()!;
   await query("update match_requests set starts_at = now() - interval '1 hour' where id = $1", [reqId]);

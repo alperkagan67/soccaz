@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { addParticipant, addTeamMember, closeContexts, createTeam, newUser, run, seedUser, testDb } from "./helpers";
 import { query, userIdByEmail } from "./helpers-db";
+import { clickWhenReady, clickReady } from "./flows";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -157,12 +158,12 @@ test("Spielerprofil, Teamseite, Rangliste und Spieler des Spiels", async ({ brow
   await p.goto(`/anmelden?next=${encodeURIComponent(`/spiele/${matchId}`)}`);
   await p.getByLabel("E-Mail").fill(mateEmail);
   await p.getByLabel("Name").fill(`Mitspieler ${run}`);
-  await p.getByRole("button", { name: "Als Dev-Nutzer anmelden" }).click();
+  await clickWhenReady(p, "Als Dev-Nutzer anmelden");
   await expect(p).toHaveURL(new RegExp(`/spiele/${matchId}`));
   const panel = p.getByRole("region", { name: "Spieler des Spiels" });
   await expect(panel).toBeVisible();
   await expect(panel.getByRole("button", { name: new RegExp(`Mitspieler ${run}`) })).toHaveCount(0); // nicht für sich selbst
-  await panel.getByRole("button", { name: new RegExp(`Torjaeger ${run}`) }).click();
+  await clickReady(panel.getByRole("button", { name: new RegExp(`Torjaeger ${run}`) }));
   await expect(panel.getByRole("button", { name: new RegExp(`Torjaeger ${run}`) })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(async () => (await query("select 1 from mvp_votes where match_id = $1", [matchId])).length).toBe(1);
   expect(await userIdByEmail(mateEmail)).toBe(mate);

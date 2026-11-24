@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, newUser, run } from "./helpers";
 import { query, userIdByEmail } from "./helpers-db";
+import { clickReady } from "./flows";
 
 test.setTimeout(120_000);
 
@@ -59,7 +60,7 @@ test("Hallenbetreiber: Anfrage sehen, Halle als frei bestätigen, danach läuft 
     expect(body).not.toContain(`/lobby/${m.id}`);
   }
   await boss.waitForLoadState("networkidle");
-  await inquiry.getByRole("button", { name: "Halle ist frei" }).click();
+  await clickReady(inquiry.getByRole("button", { name: "Halle ist frei" }));
   await expect(boss.getByTestId("inquiry")).toHaveCount(0);
 
   // jetzt läuft das Veto mit beiden Hallen

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { shareCents } from "../../src/lib/money";
-import { setupLobby } from "./flows";
+import { setupLobby, clickWhenReady, clickReady } from "./flows";
 import { closeContexts, closeTestDb, devLogin, run, teamIdByName } from "./helpers";
 import { query, seedCardPlayer, seedCardReady, seedCharged, seedOwner, setLedgerModelLegacy, setMatchTimes, setPlatformSetting, userIdByEmail } from "./helpers-db";
 
@@ -73,8 +73,8 @@ async function scenario(browser: import("@playwright/test").Browser, model: Mode
   await seedCardReady(matchId, adminB);
   await a.goto(`/lobby/${matchId}`);
   await b.goto(`/lobby/${matchId}`);
-  await a.getByRole("button", { name: "Ich bin bereit" }).click();
-  await b.getByRole("button", { name: "Ich bin bereit" }).click();
+  await clickReady(a.getByRole("button", { name: "Ich bin bereit" }));
+  await clickWhenReady(b, "Ich bin bereit");
   await expect(b.getByTestId("match-status").filter({ hasText: "Bestätigt" })).toBeVisible();
 
   // Der Buchungsauftrag ist entstanden und die Admins wurden informiert
@@ -115,15 +115,15 @@ async function scenario(browser: import("@playwright/test").Browser, model: Mode
   const job = adm.getByTestId(`job-${matchId}`);
   await expect(job.getByTestId("job-status")).toHaveText("Offen");
   await job.getByLabel("Status").selectOption("in_progress");
-  await job.getByRole("button", { name: "Speichern" }).click();
+  await clickReady(job.getByRole("button", { name: "Speichern" }));
   await expect(job.getByTestId("job-status")).toHaveText("In Arbeit");
   // ohne Halle kann nicht gebucht werden
   await job.getByLabel("Status").selectOption("booked");
-  await job.getByRole("button", { name: "Speichern" }).click();
+  await clickReady(job.getByRole("button", { name: "Speichern" }));
   await expect(job.getByText(/zuerst eine Halle/)).toBeVisible();
   await job.getByLabel("Halle").selectOption({ label: `${venueName} (Gelsenkirchen)` });
   await job.getByLabel("Nachweis (Link zur Bestätigung)").fill("https://example.test/bestaetigung");
-  await job.getByRole("button", { name: "Speichern" }).click();
+  await clickReady(job.getByRole("button", { name: "Speichern" }));
   await expect(job.getByTestId("job-status")).toHaveText("Gebucht");
   // unerlaubter Sprung wird verweigert (Gebucht -> Offen gibt es nicht)
   const venueText = await query<{ venue_text: string }>("select venue_text from matches where id = $1", [matchId]);

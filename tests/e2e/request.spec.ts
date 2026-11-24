@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createTeam, futureLocal, newUser, run, closeContexts, testDb } from "./helpers";
-import { acceptChallenge, waitHydrated } from "./flows";
+import { acceptChallenge, waitHydrated, clickWhenReady, clickReady } from "./flows";
 
 async function createRequest(page: Page, team: string, startsAt: string, opts: { visibility?: string; duration?: string } = {}) {
   await page.goto("/app/suche/neu");
@@ -47,7 +47,7 @@ test("Spielsuche erstellen, in der Liste finden, annehmen, Lobby", async ({ brow
     el.removeAttribute("min");
     el.removeAttribute("step");
   });
-  await a.getByRole("button", { name: "Spielsuche erstellen" }).click();
+  await clickReady(a.getByRole("button", { name: "Spielsuche erstellen" }));
   await expect(a.getByText(/mindestens 24 Stunden/).first()).toBeVisible();
 
   // Gültige Suche
@@ -84,7 +84,7 @@ test("Spielsuche erstellen, in der Liste finden, annehmen, Lobby", async ({ brow
   // C war zu langsam
   // keine Lobby-Erwartung (die Annahme scheitert): erst nach der Hydration klicken, kein Wiederholen
   await waitHydrated(c.getByRole("button", { name: "Spiel annehmen" }));
-  await c.getByRole("button", { name: "Spiel annehmen" }).click();
+  await clickWhenReady(c, "Spiel annehmen");
   await expect(c.getByText(/nicht mehr offen/)).toBeVisible();
 
   // Liste zeigt die Suche nicht mehr
@@ -122,6 +122,7 @@ test("zwei Teams nehmen gleichzeitig an: genau eines gewinnt", async ({ browser 
 // Formulare vor der Hydration (Backlog 223/224): Ein Klick auf "Spiel annehmen", bevor die Seite hydriert ist, darf weder verloren gehen noch das Formular als GET mit Query senden. Das Formular hat dafür `action`
 // (Server-Aktion, Progressive Enhancement). Geprüft wird, was der Browser VOR der Hydration tut: er sendet die Felder des vom Server gelieferten Formulars nativ als POST (ohne JavaScript, ohne Hydration). Die Seite
 // selbst erscheint ohne JavaScript nur als "Lädt…" (Suspense), deshalb wird das Server-HTML per Anfrage gelesen und das Absenden nachgestellt.
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Spiel annehmen vor der Hydration: das Formular sendet nativ POST an die Server-Aktion, genau eine Annahme", async ({ browser }) => {
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
@@ -154,6 +155,7 @@ test("Spiel annehmen vor der Hydration: das Formular sendet nativ POST an die Se
 });
 
 // Nach der Hydration bleibt es beim bisherigen Weg (onSubmit, kein zweiter Aufruf durch das neue action-Attribut): genau EINE Annahme je Suche.
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Spiel annehmen nach der Hydration: genau eine Annahme (ein Spiel zur Suche)", async ({ browser }) => {
   const a = await (await browser.newContext()).newPage();
   const b = await (await browser.newContext()).newPage();
@@ -200,6 +202,7 @@ test("Spiel annehmen mit Teamwahl: nach einem Fehler bleibt die gewählte Mannsc
 });
 
 // Welle 3 (Formulare vor der Hydration, Backlog 224): die Inhaltsformulare (Beitrag, Team gründen, Spielsuche, Privatspiel) senden vor der Hydration nativ POST an die Server-Aktion, nie GET mit den Feldern in der Adresse.
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Inhaltsformulare vor der Hydration: Server-HTML mit method=POST und Server-Aktions-Feldern", async ({ browser }) => {
   const page = await (await browser.newContext()).newPage();
   await newUser(page, "fw3");

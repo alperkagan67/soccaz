@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, closeTestDb, newUser, run } from "./helpers";
 import { callJob, query } from "./helpers-db";
+import { clickWhenReady } from "./flows";
 
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
@@ -109,7 +110,7 @@ test.describe("Handy", () => {
     const page = await context.newPage();
     await page.goto("/");
     await expect(page.getByText("Zum Home-Bildschirm")).toBeVisible();
-    await page.getByRole("button", { name: "Hinweis schließen" }).click();
+    await clickWhenReady(page, "Hinweis schließen");
     await expect(page.getByText("Zum Home-Bildschirm")).toHaveCount(0);
     await page.reload();
     await expect(page.getByText("Zum Home-Bildschirm")).toHaveCount(0);

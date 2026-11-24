@@ -56,6 +56,13 @@ export type ApplyRefundResult = { status: "applied" | "already" | "ignored"; rea
  * Gebucht wird nur für eigene Erstattungszeilen und nur bei passendem Betrag, EUR, PaymentIntent und Metadaten; sonst NICHTS (ignoriert + Audit).
  * succeeded gewinnt und wird nie überschrieben (auch nicht von einem verspäteten failed); ein failed kann später noch succeeded werden.
  */
+/** true, wenn refundId die Stripe-Erstattung eines FRUEHEREN Versuchs dieser Zeile ist (Audit refund.retry mit previousRefundId, vor einem Neuversuch durch Admin 1). */
+async function isPreviousAttempt(tx: Tx, matchId: string, rowId: string, refundId: string): Promise<boolean> {
+  // entity/entity_id nutzen den vorhandenen Index von audit_log (der Retry-Audit steht mit entity 'match' und der Spiel-id)
+  const [hit] = (await tx.execute(sql`select 1 from audit_log where entity = 'match' and entity_id = ${matchId} and action = 'refund.retry' and after ->> 'refundRowId' = ${rowId} and after ->> 'previousRefundId' = ${refundId} limit 1`)).rows;
+  return Boolean(hit);
+}
+
 export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRefundResult> {
   const ignore = async (reason: string): Promise<ApplyRefundResult> => {
     await audit(null, "refund.ignored", "refund", r.refundId ?? "none", { after: { reason } }, tx);
@@ -85,7 +92,13 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   await tx.select({ id: matches.id }).from(matches).where(eq(matches.id, matchIdOf(probe))).for("update"); // Spiel zuerst
   const row = await find(true);
   if (!row) return ignore("unknown_refund");
-  if (r.refundId && row.refundId !== null && row.refundId !== r.refundId) return ignore("other_refund");
+  // Neuversuch (Backlog 192, w1-Fund zu #341): Stripe garantiert keine Reihenfolge. Ereignisse der ALTEN Erstattung A (refund_id vor dem Neuversuch) werden in ALLEN Zweigen gleich behandelt, nicht nur bei failed:
+  // pending(A) und failed(A) aendern nie Status oder refund_id der Zeile (sonst bliebe die Zeile mit refund_id = A haengen und jedes Ergebnis des neuen Versuchs B waere "other_refund"); succeeded(A) wird GEBUCHT (das Geld ist raus).
+  const stale = Boolean(r.refundId) && !r.direct && r.refundId !== row.refundId && (await isPreviousAttempt(tx, matchIdOf(row), row.id, r.refundId as string));
+  // Ist die Zeile schon succeeded und trifft ein Erfolg mit ANDERER Stripe-id ein (z. B. Neuversuch B nach A), geht es WEITER bis zum succeeded-Zweig (Metadaten, Betrag und PaymentIntent werden zuerst geprueft): dort nur ein Hinweis, nie eine zweite Buchung. Sonst ist die id fremd.
+  if (r.refundId && row.refundId !== null && row.refundId !== r.refundId && !stale && !(row.status === "succeeded" && r.outcome === "succeeded")) {
+    return ignore("other_refund");
+  }
   if (r.metadata.matchId !== null && r.metadata.matchId !== row.matchId) return ignore("metadata_mismatch");
   if (r.metadata.userId !== null && r.metadata.userId !== row.userId) return ignore("metadata_mismatch");
   if (r.metadata.chargeId !== null && r.metadata.chargeId !== row.chargeId) return ignore("metadata_mismatch");
@@ -94,7 +107,15 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
   if (!charge || charge.status !== "succeeded") return ignore("charge_not_succeeded");
   if (r.paymentIntentId !== null && r.paymentIntentId !== (row.paymentIntentId ?? charge.paymentIntentId)) return ignore("payment_intent_mismatch");
 
-  if (row.status === "succeeded") return { status: "already", matchId: matchIdOf(row) };
+  if (row.status === "succeeded") {
+    // zweiter Erfolg mit ANDERER Stripe-id (alter Versuch A UND Neuversuch B): nie ein zweites Mal buchen; Hinweis an Admin 1, in Stripe auf eine moegliche Doppelerstattung zu pruefen (Stripe begrenzt die Summe der Erstattungen auf den Zahlungsbetrag)
+    if (r.outcome === "succeeded" && r.refundId && row.refundId !== null && row.refundId !== r.refundId) {
+      const [seen] = (await tx.execute(sql`select 1 from audit_log where entity = 'match' and entity_id = ${matchIdOf(row)} and action = 'refund.duplicate_success' and after ->> 'refundRowId' = ${row.id} and after ->> 'secondRefundId' = ${r.refundId} limit 1`)).rows;
+      if (!seen) await audit(null, "refund.duplicate_success", "match", matchIdOf(row), { after: { refundRowId: row.id, firstRefundId: row.refundId, secondRefundId: r.refundId } }, tx); // je zweiter id einmal (Stripe-Wiederholungen erhoehen die Zahl nicht)
+    }
+    return { status: "already", matchId: matchIdOf(row) };
+  }
+  if (stale && r.outcome !== "succeeded") return { status: "already", matchId: matchIdOf(row) }; // pending/failed der alten Erstattung: ignoriert
   if (r.outcome === "succeeded") {
     if (!r.refundId) return ignore("missing_refund_id");
     await post(tx, {
@@ -108,6 +129,7 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
     });
     await tx.update(paymentRefunds).set({ status: "succeeded", refundId: r.refundId, failureCode: null, updatedAt: new Date() }).where(eq(paymentRefunds.id, row.id));
     await audit(null, "refund.succeeded", "match", matchIdOf(row), { after: { userId: row.userId, amountCents: row.amountCents } }, tx);
+    if (stale) await audit(null, "refund.late_success_old_attempt", "match", matchIdOf(row), { after: { refundRowId: row.id, oldRefundId: r.refundId, newRefundId: row.refundId } }, tx); // A nachtraeglich erfolgreich, Neuversuch B lief: B darf nicht zusaetzlich erstatten
     return { status: "applied", matchId: matchIdOf(row) };
   }
   if (r.outcome === "pending") {
@@ -115,11 +137,7 @@ export async function applyRefundInTx(tx: Tx, r: RefundReport): Promise<ApplyRef
     return { status: "applied", matchId: matchIdOf(row) };
   }
   // failed: manuell zu klären (Admin-Alarm). Die Zeile wird nie automatisch erneut gesendet (Neuversuch oder Abschreiben nur durch Admin 1: retryFailedRefund / writeOffFailedRefund).
-  // Review R-T376 (Hinweis 1): ein spaetes oder doppelt zugestelltes failed der ALTEN Erstattung (vor einem Neuversuch) darf die neu angeforderte Zeile nicht wieder auf failed setzen
-  if (row.status === "pending" && r.refundId && !r.direct) {
-    const [old] = (await tx.execute(sql`select 1 from audit_log where action = 'refund.retry' and after ->> 'refundRowId' = ${row.id} and after ->> 'previousRefundId' = ${r.refundId} limit 1`)).rows;
-    if (old) return { status: "already", matchId: matchIdOf(row) };
-  }
+  // (der Filter fuer verspaetete Ereignisse der alten Erstattung steht jetzt VOR allen Zweigen, siehe stale)
   if (row.status === "failed" && (row.failureCode === cleanCode(r.failureCode) || row.failureCode === REFUND_WRITTEN_OFF)) return { status: "already", matchId: matchIdOf(row) }; // ein verspätetes failed hebt ein bewusstes Abschreiben nicht auf
   await tx
     .update(paymentRefunds)

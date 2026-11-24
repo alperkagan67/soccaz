@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
-import { acceptChallenge, clickLinkUntilUrl } from "./flows";
+import { acceptChallenge, clickLinkUntilUrl, clickWhenReady } from "./flows";
 import { query } from "./helpers-db";
 
 test.describe.configure({ mode: "serial" });
@@ -102,7 +102,7 @@ test("Spielsuche mit festem Termin steht mit Nummer, Kader und Herausfordern öf
   await createTeam(a, teamA);
   await a.goto("/app/suche/neu");
   await a.getByLabel(/Anstoß/).fill(futureLocal(8));
-  await a.getByRole("button", { name: "Spielsuche erstellen" }).click();
+  await clickWhenReady(a, "Spielsuche erstellen");
   await expect(a).toHaveURL(/\/suche\/[0-9a-f-]{36}$/);
   const requestId = a.url().split("/").pop()!;
   const number = (await query<{ number: number }>("select number from match_requests where id = $1", [requestId]))[0].number;

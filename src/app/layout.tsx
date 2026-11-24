@@ -6,6 +6,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { InstallHint } from "@/components/InstallHint";
+import { StagingBanner } from "@/components/StagingBanner";
 import { PwaRegister } from "@/components/PwaRegister";
 import { HtmlLang } from "@/components/HtmlLang";
 import { getT } from "@/server/locale";
@@ -52,6 +53,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="de" className={`${outfit.variable} ${jakarta.variable}`}>
       <body className="min-h-dvh">
+        <Suspense fallback={null}>
+          <StagingBanner />
+        </Suspense>
         <Suspense fallback={<div className="h-14" />}>
           <Header />
         </Suspense>
