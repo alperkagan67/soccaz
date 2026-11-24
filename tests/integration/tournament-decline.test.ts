@@ -212,6 +212,40 @@ describe("Turnier-Ablehnen: Runden, Ruecksetzen, Zusage danach, Liste, Erinnerun
   });
 });
 
+describe("Turnier-Ablehnen: Gleichzeitigkeit und Akteur", () => {
+  it("Zusage und Ablehnung gleichzeitig: am Ende genau EIN Zustand (nie beides), Beweiseintraege passend dazu", async () => {
+    for (let i = 0; i < 6; i++) {
+      const { boss, t } = await fixture();
+      const [c, d] = await Promise.allSettled([confirmTournamentVenue(boss.id, t.id), declineTournamentVenue(boss.id, t.id, { code: "belegt" })]);
+      expect(c.status === "fulfilled" || d.status === "fulfilled").toBe(true);
+      const row = await rowOf(t.id);
+      expect((row.venueConfirmedAt !== null) !== (row.venueDeclinedAt !== null), "genau eines von beiden").toBe(true);
+      const accepted = await evidenceOf(t.id, "accepted");
+      const declined = await evidenceOf(t.id, "declined");
+      if (row.venueConfirmedAt) expect(accepted).toHaveLength(1);
+      else {
+        expect(accepted).toHaveLength(0);
+        expect(declined).toHaveLength(1);
+      }
+      expect(declined.length).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("Akteur ohne aktiven Hallenzugang wird verworfen (Beweiseintrag ohne Akteur); mit Zugang bleibt er", async () => {
+    const stranger = await makeUser("fremd");
+    const { boss, t } = await fixture();
+    await db.execute(sql`update tournaments set venue_declined_at = now(), venue_declined_by = ${stranger.id}, venue_decline_code = 'belegt' where id = ${t.id}`);
+    const ev = await evidenceOf(t.id, "declined");
+    expect(ev).toHaveLength(1);
+    expect(await db.select().from(evidenceActor).where(eq(evidenceActor.evidenceId, ev[0].id))).toHaveLength(0);
+    const ok = await fixture();
+    await declineTournamentVenue(ok.boss.id, ok.t.id, { code: "belegt" });
+    const ev2 = await evidenceOf(ok.t.id, "declined");
+    expect((await db.select().from(evidenceActor).where(eq(evidenceActor.evidenceId, ev2[0].id)))[0]?.userId).toBe(ok.boss.id);
+    expect(boss.id).toBeTruthy();
+  });
+});
+
 describe("Turnier-Ablehnen: Datenbankebene (Migration 0059)", () => {
   it("CHECKs: Zusage und Ablehnung nie gemeinsam, Ablehnung braucht Kategorie und Halle, Kategorie nur aus der Liste", async () => {
     const { boss, t } = await fixture();
