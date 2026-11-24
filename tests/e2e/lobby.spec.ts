@@ -106,7 +106,7 @@ test("Lobby: Teammitglied tritt bei, Team voll, Ersatzspieler von außen wird zu
   await newUser(s, "l2s");
   await s.goto(`/lobby/${matchId}`);
   await clickWhenReady(s, "Als Ersatzspieler anbieten");
-  await expect(s.getByText("Ersatzspieler warten auf Zuweisung")).toBeVisible();
+  await expect(s.getByText("Ersatzspieler warten auf Zuweisung")).toBeVisible({ timeout: 20_000 }); // Server-Aktion plus Aktualisierung der Seite, im Dev-Server mit Kaltstart über 5 s
 
   // Team-A-Admin sieht ihn live; Team A ist voll, also gibt es für A keinen Zuweisen-Knopf
   await expect(a.getByText("Ersatzspieler warten auf Zuweisung")).toBeVisible({ timeout: 15_000 });
