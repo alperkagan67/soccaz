@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { deleteCommentAction, postCommentAction, reportCommentAction } from "@/server/content-actions";
+import { NAME_HINWEIS } from "@/lib/sichtbarkeit-texte";
 import { FieldError, SubmitButton } from "./FormBits";
 import { useFormAction } from "./useFormAction";
 
@@ -29,6 +30,7 @@ export function CommentForm({ targetType, targetId, path, withRating, label }: {
       <div>
         <label className="label" htmlFor="comment-body">{label}</label>
         <textarea id="comment-body" name="body" rows={3} maxLength={500} required className="field" />
+        <p className="mt-1 text-sm text-muted" data-testid="comment-name-hinweis">{NAME_HINWEIS}</p>
       </div>
       <SubmitButton pending={pending}>Senden</SubmitButton>
       {state?.error && <FieldError message={state.error} />}
