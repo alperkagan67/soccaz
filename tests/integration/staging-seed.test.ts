@@ -69,23 +69,29 @@ describe("staging-seed: erlaubter Lauf", () => {
     const org = await makeUser("seedorg");
     const mk = async (extra: Partial<typeof tournaments.$inferInsert>) =>
       (await db.insert(tournaments).values({ organizerId: org.id, name: "E2E Seedprobe " + Math.random().toString(36).slice(2, 6), city: "Essen", startsOn: "2027-02-01", format: "knockout", maxTeams: 16, ...extra }).returning())[0];
-    const gratis = await mk({});
+    const gratis = await mk({ totalCents: 0 });
     await lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", gratis.id] });
     const tt = await db.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, gratis.id));
     expect(tt).toHaveLength(4);
     expect(tt.every((x) => x.readyAt !== null && x.paidReadyAt !== null && x.captainId !== null)).toBe(true);
     expect((await db.select().from(tournamentPlayers).where(eq(tournamentPlayers.tournamentId, gratis.id))).length).toBe(20);
     await lauf({ pool, env: { ...OK_ENV }, args: ["--clean"] });
+    const ohnePreis = await mk({});
+    await expect(lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", ohnePreis.id] })).rejects.toThrow(/kein Gratis-Turnier/); // null = Altturnier, nicht gratis
     const preis = await mk({ totalCents: 1000 });
-    await expect(lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", preis.id] })).rejects.toThrow(/Preis/);
-    const klein = await mk({ maxTeams: 4 });
+    await expect(lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", preis.id] })).rejects.toThrow(/kein Gratis-Turnier/);
+    const klein = await mk({ maxTeams: 4, totalCents: 0 });
     await expect(lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", klein.id] })).resolves.toBeDefined(); // genau 4 Plätze: passt
     await lauf({ pool, env: { ...OK_ENV }, args: ["--clean"] });
-    const voll = await mk({ maxTeams: 4 });
+    const voll = await mk({ maxTeams: 4, totalCents: 0 });
     const fremd = await makeTeam(org.id, "SeedFremd");
     await db.insert(tournamentTeams).values({ tournamentId: voll.id, teamId: fremd.id, captainId: org.id });
     await expect(lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", voll.id] })).rejects.toThrow(/Platz/);
-    const laeuft = await mk({ status: "running" });
+    const vorher2 = await mk({ totalCents: 0 });
+    const echt = await makeTeam(org.id, "SeedEcht");
+    await db.insert(tournamentTeams).values({ tournamentId: vorher2.id, teamId: echt.id, captainId: org.id, readyAt: new Date() });
+    await expect(lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", vorher2.id] })).rejects.toThrow(/erst den Seed laufen lassen/); // Reihenfolge-Falle
+    const laeuft = await mk({ status: "running", totalCents: 0 });
     await expect(lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", laeuft.id] })).rejects.toThrow(/Anmeldung/);
     await expect(lauf({ pool, env: { ...OK_ENV }, args: ["--turnier", "keine-uuid"] })).rejects.toThrow(/UUID/);
     expect(await konten()).toBe(0);

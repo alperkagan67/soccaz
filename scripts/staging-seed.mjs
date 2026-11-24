@@ -41,7 +41,11 @@ export async function lauf({ pool, env = process.env, args = [] }) {
       const [t] = (await client.query("select status, total_cents, max_teams from tournaments where id = $1 for update", [turnierId])).rows;
       if (!t) throw new Error("Turnier nicht gefunden.");
       if (t.status !== "registration") throw new Error("Das Turnier steht nicht in der Anmeldung.");
-      if (t.total_cents !== null && Number(t.total_cents) !== 0) throw new Error("Das Turnier hat einen Preis: der Seed legt nur Gratis-Turniere an (keine Zahlungsdaten).");
+      // Gratis heisst: Hallenkosten GENAU 0. Ein Turnier ohne Preisangabe (null, Altturnier) gilt nicht als gratis (gleiche Regel wie src/lib/gratis.ts).
+      if (t.total_cents === null || Number(t.total_cents) !== 0) throw new Error("Das Turnier ist kein Gratis-Turnier (Hallenkosten nicht genau 0): der Seed legt nur Gratis-Turniere an (keine Zahlungsdaten).");
+      // Reihenfolge-Falle: der Seed setzt ready_at direkt und ruft die Turnierlogik NICHT auf. Sind echte Teams schon vollzählig, startete das Bracket nie von selbst: erst seeden, DANACH die echten Teams vollzählig melden.
+      const bereit = Number((await client.query("select count(*)::int as n from tournament_teams where tournament_id = $1 and ready_at is not null", [turnierId])).rows[0].n);
+      if (bereit > 0) throw new Error("Im Turnier haben schon Teams „vollzählig“ gemeldet: erst den Seed laufen lassen, danach die echten Teams vollzählig melden (das letzte „vollzählig“ löst das Bracket aus), oder die echten Teams nehmen „vollzählig“ zurück.");
       const n = Number((await client.query("select count(*)::int as n from tournament_teams where tournament_id = $1", [turnierId])).rows[0].n);
       if (n + 4 > Number(t.max_teams)) throw new Error("Im Turnier ist nicht genug Platz für vier weitere Teams.");
     }
