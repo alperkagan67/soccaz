@@ -123,10 +123,13 @@ test("Spielerprofil, Teamseite, Rangliste und Spieler des Spiels", async ({ brow
   // privates Profil: Name, sonst nichts
   await anon.goto(`/spieler/${hidden}`);
   await expect(anon.getByText("Dieses Profil ist nicht öffentlich.")).toBeVisible();
-  await anon.goto(`/spieler?q=${encodeURIComponent(`Privat ${run}`)}`);
-  await expect(anon.getByText("Keine Spieler gefunden.")).toBeVisible();
-  await anon.goto(`/spieler?q=${encodeURIComponent(`Torjaeger ${run}`)}`);
-  await expect(anon.getByRole("link", { name: new RegExp(`Torjaeger ${run}`) })).toBeVisible();
+  // Spielerliste: die Namenssuche gilt nur angemeldet (AC-17, Entscheid t2q 2026-11-24); Gäste sehen Initialen ohne Link (Details: namen-listen.spec.ts)
+  const viewer = await (await browser.newContext()).newPage();
+  await newUser(viewer, "cview");
+  await viewer.goto(`/spieler?q=${encodeURIComponent(`Privat ${run}`)}`);
+  await expect(viewer.getByText("Keine Spieler gefunden.")).toBeVisible();
+  await viewer.goto(`/spieler?q=${encodeURIComponent(`Torjaeger ${run}`)}`);
+  await expect(viewer.getByRole("link", { name: new RegExp(`Torjaeger ${run}`) })).toBeVisible();
 
   // Teamseite
   await anon.goto(`/teams/e2e-${homeName.replace(/\W+/g, "-").toLowerCase()}`);
@@ -135,7 +138,9 @@ test("Spielerprofil, Teamseite, Rangliste und Spieler des Spiels", async ({ brow
   // Rangliste: Monatswertung und Torjäger
   await anon.goto("/rangliste");
   await expect(anon.getByRole("link", { name: homeName })).toBeVisible();
-  await expect(anon.getByRole("link", { name: `Torjaeger ${run}` })).toBeVisible();
+  await expect(anon.getByRole("link", { name: `Torjaeger ${run}` })).toHaveCount(0); // Gäste: nur Initialen, kein Link auf den Spieler
+  await viewer.goto("/rangliste");
+  await expect(viewer.getByRole("link", { name: `Torjaeger ${run}` })).toBeVisible(); // Angemeldete: Name mit Link
 
   // Spieler des Spiels: Mitspieler stimmt ab, Gegner nicht auf der Liste der eigenen Wahl
   const mateEmail = `cmate-${run}@test.local`;

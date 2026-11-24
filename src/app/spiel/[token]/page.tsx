@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { vornameInitial } from "@/lib/lobby-namen";
 import { formatDateTime } from "@/lib/time";
 import { getGameInvitePreview, joinPrivateGame } from "@/server/privategame";
 import { getCurrentUser } from "@/server/session";
@@ -8,7 +9,7 @@ import { DomainError } from "@/server/teams";
 
 export const metadata: Metadata = { title: "Einladung zum Spiel", robots: { index: false } };
 
-/** Einladungslink zu einem Privatspiel: Angemeldete landen direkt im Spiel, Gäste melden sich an oder registrieren sich und kommen danach hierher zurück. */
+/** Einladungslink zu einem Privatspiel (AC-17, Entscheid t2q 2026-11-24: Gäste sehen den Veranstalter nur als "Vorname + Initial", nie Nachname, Link oder Foto; Angemeldete werden direkt ins Spiel geleitet und sehen diese Seite nicht): Angemeldete landen direkt im Spiel, Gäste melden sich an oder registrieren sich und kommen danach hierher zurück. */
 export default async function GameInvitePage({ params }: PageProps<"/spiel/[token]">) {
   const { token } = await params;
   const [preview, user] = await Promise.all([getGameInvitePreview(token), getCurrentUser()]);
@@ -32,7 +33,7 @@ export default async function GameInvitePage({ params }: PageProps<"/spiel/[toke
 
   return (
     <section className="mx-auto mt-8 max-w-sm space-y-4 text-center" data-testid="game-invite-page">
-      <p className="text-sm text-muted">{game.organizer} lädt dich ein zu einem Privatspiel</p>
+      <p className="text-sm text-muted" data-testid="game-organizer">{vornameInitial(game.organizer)} lädt dich ein zu einem Privatspiel</p>
       <h1 className="text-3xl font-bold">Spiel #{game.number}</h1>
       <p className="text-muted">
         {formatDateTime(game.startsAt)} Uhr · {game.durationMin} Minuten{game.venueText ? ` · ${game.venueText}` : ""}

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PersonName } from "@/components/PersonName";
+import { personRef } from "@/lib/lobby-namen";
 import { formatDate, toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
 import { listPosts } from "@/server/freeplayers";
 import { myAdminTeams } from "@/server/requests";
-import { getCurrentUser } from "@/server/session";
+import { getViewerSicht } from "@/server/viewer-sicht";
 import { ClosePostButton, PostForm, RequestPlayerButton } from "./PostForm";
 
 export const metadata: Metadata = { title: "Mitspieler gesucht" };
@@ -12,7 +14,7 @@ export const metadata: Metadata = { title: "Mitspieler gesucht" };
 export default async function FreePlayersPage({ searchParams }: PageProps<"/mitspieler">) {
   const sp = await searchParams;
   const city = typeof sp.city === "string" && (CITIES as readonly string[]).includes(sp.city) ? sp.city : undefined;
-  const [user, posts] = await Promise.all([getCurrentUser(), listPosts({ city })]);
+  const [{ user, sicht }, posts] = await Promise.all([getViewerSicht(), listPosts({ city })]); // AC-17: Name und Link nur für Angemeldete, Position nur für Angemeldete
   const adminTeams = user?.onboardedAt ? await myAdminTeams(user.id) : [];
   const min = toBerlinInputValue(new Date()).slice(0, 10);
 
@@ -45,12 +47,12 @@ export default async function FreePlayersPage({ searchParams }: PageProps<"/mits
         <p className="text-muted">Gerade hat sich niemand eingetragen.</p>
       ) : (
         <ul className="space-y-2">
-          {posts.map((p) => (
+          {posts.map((p, i) => (
             <li key={p.id} className="card space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <span>
-                  <Link href={`/spieler/${p.userId}`} className="font-semibold hover:text-accent-fg">{p.name}</Link>
-                  <span className="block text-sm text-muted">{[p.position, p.city].filter(Boolean).join(" · ")}</span>
+                  <PersonName person={personRef(sicht, p.userId, p.name, i)} className="font-semibold" />
+                  <span className="block text-sm text-muted">{[sicht === "member" ? p.position : null, p.city].filter(Boolean).join(" · ")}</span>
                 </span>
                 <span className="text-right text-sm">{formatDate(new Date(`${p.day}T12:00:00Z`))}</span>
               </div>
