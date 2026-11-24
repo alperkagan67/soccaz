@@ -201,11 +201,11 @@ export async function cleanup(now: Date = new Date()): Promise<{ invites: number
   const oldNotes = await db.delete(notifications).where(and(isNotNull(notifications.readAt), lt(notifications.createdAt, noteCutoff))).returning({ id: notifications.id });
   const oldGameMarkers = await db
     .delete(remindersSent)
-    .where(sql`(case when ${remindersSent.kind} ~ '^pause-resume:[0-9]{1,15}$' then substring(${remindersSent.kind} from 14)::bigint end) < ${markerCutoffMs}`)
+    .where(sql`${remindersSent.kind} like 'pause-resume:%' and (case when ${remindersSent.kind} ~ '^pause-resume:[0-9]{1,15}$' then substring(${remindersSent.kind} from 14)::bigint end) < ${markerCutoffMs}`)
     .returning({ k: remindersSent.kind });
   const oldTournamentMarkers = await db
     .delete(settings)
-    .where(sql`(case when ${settings.key} ~ '^pause_notified:[0-9a-f-]{36}:[0-9]{1,15}$' then split_part(${settings.key}, ':', 3)::bigint end) < ${markerCutoffMs}`)
+    .where(sql`${settings.key} like 'pause_notified:%' and (case when ${settings.key} ~ '^pause_notified:[0-9a-f-]{36}:[0-9]{1,15}$' then split_part(${settings.key}, ':', 3)::bigint end) < ${markerCutoffMs}`)
     .returning({ k: settings.key });
   return { invites: oldInvites.length, notifications: oldNotes.length, pauseMarkers: oldGameMarkers.length + oldTournamentMarkers.length };
 }
