@@ -1,5 +1,5 @@
 # Plan: Turnier-Ablehnen mit Begründung (Backlog 161, Vertrag 011 AC-3)
-Stand: 2026-11-24 · Code-Stand `origin/main` 78170a4 · Verfasser: worker-4 · Status: **Plan, kein Bau** (Bau erst nach OK des Task Managers und nach den Pilot-Prioritäten) · Entscheid t2q: Grund-Kategorie plus drei Wege, keine automatische Absage
+Stand: 2026-11-24 · Code-Stand `origin/main` 78170a4 · Verfasser: worker-4 · Status: **Plan, kein Bau** (Bau erst nach OK des Task Managers und nach den Pilot-Prioritäten) · Entscheid t2q: Grund-Kategorie plus Wege, keine automatische Absage; **Entscheide (a) bis (c) vom 2026-11-24 eingearbeitet**: erster Schnitt = zwei Wege (andere Halle, absagen), Termin ändern später
 
 ## 1. Ausgangslage (aus dem Code)
 - Die Halle **mit Zugang** sagt ein fixiertes Turnier zu (`confirmTournamentVenue`, `src/server/tournament-confirm.ts`); ohne Zusage ist es nie abbuchbar (`hallZusageOk`) und wird zur Frist abgesagt, Erinnerung 24 h und 6 h vorher. Ein „Ablehnen“ gibt es bewusst nicht (Entscheid 7b, Backlog 161).
@@ -15,17 +15,17 @@ Stand: 2026-11-24 · Code-Stand `origin/main` 78170a4 · Verfasser: worker-4 · 
 | Turnier-Stand | Halle ohne Zugang | Halle mit Zugang, keine Zusage | Zusage erteilt | Abgelehnt (neu) |
 |---|---|---|---|---|
 | `registration` | nichts | nichts (Preis steht nicht fest) | – | – |
-| `payment`, vor Frist, **keine Abbuchungszeile** | nichts | Betreiber: **Zusagen** oder **Ablehnen mit Grund** | Betreiber kann nicht mehr ablehnen (Zusage gilt) | Veranstalter sieht Grund und die drei Wege; Frist läuft; Abbuchung gesperrt (`hallZusageOk` bleibt false) |
+| `payment`, vor Frist, **keine Abbuchungszeile** | nichts | Betreiber: **Zusagen** oder **Ablehnen mit Grund** | Betreiber kann nicht mehr ablehnen (Zusage gilt) | Veranstalter sieht die Grund-Kategorie und die zwei Wege; Frist läuft; Abbuchung gesperrt (`hallZusageOk` bleibt false) |
 | `payment`, nach Frist ohne Zusage | – | wie heute: Absage zur Frist (Job) | – | **bleibt**: keine eigene Absage durch die Ablehnung; die Frist-Absage greift wie heute |
 | ab der ersten Abbuchung | – | Zusage nötig (Snapshot), Ablehnen **nicht mehr möglich** (neutrale Meldung wie `NOT_POSSIBLE`) | – | – |
 | Bracket steht, abgesagt, beendet | nichts | nichts | – | – |
 Gleiche Berechtigung wie die Zusage: aktiver Zugang zur Halle **des** Turniers, jeder Mangel gibt dieselbe neutrale Antwort, Turniersperre erst nach der Berechtigung (Muster R-T244, N1).
 
-## 4. Die drei Wege des Veranstalters (alle nur ohne Abbuchungszeile)
+## 4. Die zwei Wege des Veranstalters im ersten Schnitt (nur ohne Abbuchungszeile)
 - **Andere Halle wählen:** Liste = alle **freien** Partnerhallen (`listPartnerVenueOptions`) außer der ablehnenden (die Ablehnung gilt je Halle und Turnier). Technik: der Pfad `reopenRosters` (Kader öffnen, erstattet bereits gezahlte Anteile, Preis wird neu gerechnet) und danach `setTournamentVenue`. Die Ablehnung wird dabei zurückgesetzt, die neue Halle braucht ihre eigene Zusage. Die **Abbuchungsfrist bleibt** (sie hängt am Anstoß, nicht an der Halle).
-- **Termin ändern:** neuer Pfad (gibt es heute nicht): nur Veranstalter, nur Status `registration`/vor Abbuchung, ruft `resetVenueConfirmationIfTermsChanged`; danach Preis und Frist aus dem neuen Anstoß. **Offene Frage 1** (Entscheid t2q „Frist läuft weiter“ gilt für die Halle; ein neuer Termin verschiebt die Frist zwangsläufig).
+- **Termin ändern: nicht im ersten Schnitt** (Entscheid t2q (a): berührt Frist, Hallenbuchung und Zustimmung der Teams). Die Ablehn-Meldung nennt nur die zwei Wege. Eigener späterer Task mit Produktentscheid, als Backlog-Zeile einzutragen (mit dem Bau-PR).
 - **Turnier absagen:** `cancelTournament` mit Hinweis „volle Erstattung, keine Abbuchung“; vor der ersten Abbuchung sagt der Veranstalter selbst ab (AC-21), Erstattung bereits gezahlter Anteile wie heute. Keine automatische Absage durch die Ablehnung.
-Erinnerungen (24 h, 6 h) laufen weiter, der Text ändert sich bei Ablehnung auf „Die Halle hat abgesagt. Wähle eine andere Halle, einen anderen Termin oder sage das Turnier ab.“ (kein Satz mit Rechtsfolge).
+Erinnerungen (24 h, 6 h) laufen weiter, der Text ändert sich bei Ablehnung auf „Die Halle hat abgesagt. Wähle eine andere Halle oder sage das Turnier ab.“ (kein Satz mit Rechtsfolge).
 
 ## 5. Texte und Rechtsfolge
 - Grund-Kategorie in Klartext: „Halle belegt“, „Wartung“, „Veranstaltung“, „Sonstiges“ (entspricht den Codes); die Wörter stehen in `src/lib/begriffe` bzw. einer neuen Konstante, nicht im Komponenten-Text.
@@ -34,17 +34,15 @@ Erinnerungen (24 h, 6 h) laufen weiter, der Text ändert sich bei Ablehnung auf 
 
 ## 6. Tests (je mit Gegenprobe)
 - Unit: Zustandsmatrix je Zeile (Ablehnen erlaubt/verweigert), Rücksetzung bei Halle/Termin/Zusage, Textwahl, Streutext-Sperre.
-- Integration (lokale DB): Ablehnen setzt Spalten und schreibt **einen** Beweiseintrag `declined` (Hash-Kette bleibt gültig, `verifyEvidenceChain`), zweimal ablehnen = einmal; Berechtigung (fremder Betreiber, Gast, Veranstalter: neutrale Meldung); nach erster Abbuchungszeile nicht möglich; Abbuchungsjob bucht ein abgelehntes Turnier nicht; Weg „andere Halle“ erstattet und fixiert neu; Weg „absagen“ erstattet; Frist-Job sagt weiter zur Frist ab (keine eigene Absage); Nebenläufigkeit (zwei Ablehnungen, Ablehnung gegen Zusage: genau eine gewinnt).
-- E2E: Betreiber lehnt ab, Veranstalter sieht Grund und drei Wege (je **eine** Hauptaktion), Teams ohne Namen Dritter; Gast-Sicht-Registry ergänzt (`gast-sicht-routen.ts`).
+- Integration (lokale DB): Ablehnen setzt Spalten und schreibt **einen** Beweiseintrag `declined` (Hash-Kette bleibt gültig, `verifyEvidenceChain`), zweimal ablehnen = einmal; Berechtigung (fremder Betreiber, Gast, Veranstalter: neutrale Meldung); nach erster Abbuchungszeile nicht möglich; Abbuchungsjob bucht ein abgelehntes Turnier nicht; Weg „andere Halle“ erstattet und fixiert neu; Weg „absagen“ erstattet; Frist-Job sagt weiter zur Frist ab (keine eigene Absage); Nebenläufigkeit (zwei Ablehnungen, Ablehnung gegen Zusage: genau eine gewinnt); **Randfall Ablehnen nach der ersten Abbuchungszeile** (gesperrt, Entscheid (b); die Abbuchung entsteht bei Snapshot true ohnehin erst nach der Zusage): neutrale Meldung, danach nur Admin-1-Absage mit Erstattung.
+- E2E: Betreiber lehnt ab, Veranstalter sieht die Kategorie (nie den Freitext) und zwei Wege (je **eine** Hauptaktion), Teams ohne Namen Dritter; Gast-Sicht-Registry ergänzt (`gast-sicht-routen.ts`).
 - Migration: Trigger-Test (Kategorie, Hash), Rollback getestet.
 
 ## 7. Dateien (voraussichtlich)
 `src/db/schema-league.ts`, neue Migration (`drizzle/00xx_turnier_ablehnen.sql` + Trigger), `src/server/tournament-confirm.ts` (+ `declineTournamentVenue`, Reset-Helfer), `tournament-confirm-actions.ts`, `tournament-venue.ts`, `tournaments.ts` (Reset bei Halle/Termin, Wege), `src/lib/zahlungspflicht-texte.ts`, `src/app/halle/page.tsx` und `src/app/turniere/[id]/page.tsx` (+ `TournamentVenuePick.tsx`), Mitteilungstext, Doku (BETRIEB, Backlog 161 abhaken, Go-live-Audit-Zeile), Tests wie oben.
 
 ## 8. Aufwand und Reihenfolge
-Zwei PRs: **(1)** Migration, Server-Logik, Beweiseintrag, Tests (Geldnähe: security-reviewer Pflicht, Zwei-Läufe-Regel, Eintrag in `GO-LIVE-AUDIT.md`), ca. 1,5 bis 2 Arbeitstage; **(2)** Oberfläche (Betreiber-Ablehnen, drei Wege, Texte) und E2E, ca. 1 bis 1,5 Tage; Termin-Ändern als **dritter, optionaler PR**, falls Frage 1 „ja“ lautet (ca. 1 Tag). Start frühestens nach der Pilot-Vorbereitung; Migration nicht parallel zu Schema-nahen Tasks.
+Zwei PRs: **(1)** Migration, Server-Logik, Beweiseintrag, Tests (Geldnähe: security-reviewer Pflicht, Zwei-Läufe-Regel, Eintrag in `GO-LIVE-AUDIT.md`), ca. 1,5 bis 2 Arbeitstage; **(2)** Oberfläche (Betreiber-Ablehnen, zwei Wege, Texte) und E2E, ca. 1 bis 1,5 Tage. Der frühere dritte PR (Termin ändern) **entfällt**. Start frühestens nach der Pilot-Vorbereitung; Migration nicht parallel zu Schema-nahen Tasks.
 
-## 9. Offene Fragen an t2q
-1. **Termin ändern:** verschiebt die Frist (Anstoß ändert sich). Ist das gewollt, oder darf nur die Halle wechseln und der Termin bleibt (dann entfällt der dritte PR und der Weg „Termin ändern“ heißt „neuen Termin mit neuem Turnier“)?
-2. **Ablehnen nach Teil-Zusagen:** nach der ersten Abbuchungszeile ist Ablehnen gesperrt (Geldschutz). Reicht das, oder soll die Halle dann nur „absagen lassen“ (Admin 1) dürfen?
-3. **Freitext** für den Veranstalter sichtbar (Hallenbetreiber sieht „Halle belegt“, Veranstalter liest den Text) oder nur die Kategorie? Vorschlag: nur Kategorie, Freitext nur im Beweisprotokoll.
+## 9. Entscheide t2q (2026-11-24, vorher offene Fragen)
+(a) **Termin ändern** nicht im ersten Schnitt; später als eigener Task mit Produktentscheid (Backlog-Zeile). (b) **Ablehnen nach der ersten Abbuchungszeile gesperrt**, danach nur Admin-1-Absage mit Erstattung; im Test abgedeckt. (c) Der Veranstalter sieht **nur die Kategorie**; der Freitext der Halle steht nur im Beweisprotokoll.
