@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
+import { EinladungUngueltig } from "@/components/EinladungUngueltig";
 import { ActionButton } from "@/components/ActionButton";
 import { PlayerLight, type Light } from "@/components/PlayerLight";
 import { formatEuro } from "@/lib/money";
@@ -49,15 +50,14 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const token = typeof sp.t === "string" ? sp.t : null;
   const user = await getCurrentUser();
   const aus = await zahlungenAus(); // Modus Zahlungen AUS (Go-live): keine Zahlungstexte, nur Anzeige
-  // Neuer Nutzer über den Einladungslink: erst das Onboarding, danach zurück ins Turnier (der Token bleibt erhalten)
-  if (user && !user.onboardedAt && token) redirect(`/willkommen?next=${encodeURIComponent(`/turniere/${id}?t=${token}`)}`);
   const data = await getTournament(id, user ? { id: user.id, role: user.role } : null, token);
-  if (!data) {
-    // Gäste mit Einladungslink können sich anmelden; Fremde ohne Link sehen nichts
-    if (!user && token) return <Guest id={id} token={token} />;
-    notFound();
-  }
+  // Unbekannt, keine UUID, privat ohne gültigen Token: IMMER dieselbe neutrale Seite (kein Existenz-Orakel, kein Turnierinhalt, der Token wird nirgends weitergereicht)
+  if (!data) return <EinladungUngueltig />;
   const { tournament: t, teams, viewer: v, pricing } = data;
+  // Token nur weiterreichen, wenn das Turnier privat ist (dann ist er hier gültig geprüft); bei öffentlichen Turnieren nie
+  const tokenQuery = t.isPrivate && token ? `?t=${token}` : "";
+  // Neuer Nutzer über den Einladungslink: erst das Onboarding, danach zurück ins Turnier (der Token bleibt erhalten)
+  if (user && !user.onboardedAt && tokenQuery) redirect(`/willkommen?next=${encodeURIComponent(`/turniere/${id}${tokenQuery}`)}`);
   // AC-17 (Entscheid t2q 2026-11-24): Personennamen (Veranstalter, Captain, Spieler) nur für Angemeldete, sonst Initialen ohne Link; Teilnehmer und Veranstalter sehen Namen wie immer
   const { sicht } = await getViewerSicht({ participant: Boolean(v?.myTeamId), teamAdmin: Boolean(v?.captainTeamId || v?.isOrganizer) });
   const manage = Boolean(v?.isOrganizer);
@@ -106,7 +106,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       </header>
 
       {!user && (
-        <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
+        <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${tokenQuery}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
       {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} />}
       {declined && inPayment && manage && (
@@ -126,11 +126,11 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <p className="card text-sm" data-testid="venue-declined-team">Die Halle kann das Turnier nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.</p>
       )}
       {venueOptions && <TournamentVenuePick tournamentId={t.id} options={venueOptions} declinedCode={declined && declinedCode ? DECLINE_LABELS[declinedCode] : null} />}
-      {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} aus={aus && noMoney} noMoney={noMoney} />}
+      {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} aus={aus && noMoney} noMoney={noMoney} token={t.isPrivate ? token : null} />}
       {v && data.registrationOpen && !v.isOrganizer && !v.captainTeamId && !v.myTeamId && v.registerableTeams.length === 0 && v.joinableTeamIds.length === 0 && (
         <section className="card space-y-2" data-testid="no-team-hint">
           <p className="text-sm">Du hast kein Team, das sich anmelden kann. Gründe ein Team, danach kommst du direkt hierher zurück und meldest es an.</p>
-          <Link href={`/app/teams/neu?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Team gründen</Link>
+          <Link href={`/app/teams/neu?next=${encodeURIComponent(`/turniere/${t.id}${tokenQuery}`)}`} className="btn btn-primary w-full">Team gründen</Link>
         </section>
       )}
 
@@ -341,15 +341,5 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <p className="card text-sm text-muted" data-testid="bracket-hidden">{noMoney ? "Das Bracket erscheint, sobald alle Teams vollzählig sind und jeder Captain „Bereit“ gedrückt hat." : data.cardMode ? "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler eine Karte hinterlegt haben, jeder Captain „Bereit“ gedrückt hat und der Anteil zur Frist abgebucht ist." : "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat."}</p>
       )}
     </div>
-  );
-}
-
-function Guest({ id, token }: { id: string; token: string }) {
-  return (
-    <section className="mx-auto mt-8 max-w-sm space-y-4 text-center">
-      <p className="text-sm text-muted">Du wurdest zu einem Turnier eingeladen</p>
-      <h1 className="text-2xl font-bold">Turnier auf Socaz</h1>
-      <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${id}?t=${token}`)}`} className="btn btn-primary w-full">Anmelden und Turnier ansehen</Link>
-    </section>
   );
 }

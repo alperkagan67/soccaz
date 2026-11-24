@@ -10,7 +10,7 @@ import { runTournamentCharges } from "@/server/payments/tournament-charge";
 import { sendPendingTournamentRefunds } from "@/server/payments/tournament-refund";
 import { setSetting } from "@/server/settings";
 import { cancelTournament, createTournament, joinAsPlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // 012 M6b (Befund aus b2-i Teil 2): Kader öffnen ist ab der ersten Abbuchungszeile des Turniers nicht mehr möglich. Vorher lief reopenRosters nach einer TEILWEISEN Abbuchung
 // (15 erfolgreich, 1 gescheitert, Turnier noch in "payment") ohne Fehler: Status zurück auf Anmeldung, die erfolgreichen Abbuchungen blieben ohne Erstattung bestehen und
@@ -51,7 +51,7 @@ async function readyTournament() {
   for (let i = 0; i < 4; i++) {
     const c = await makeUser("cap");
     const team = await makeTeam(c.id, "Turnier");
-    await registerTeam(c.id, t.id, team.id);
+    await registerTeam(c.id, t.id, team.id, await tokenOf(t.id));
     caps.push(c);
     all.push(c);
     for (let j = 1; j < 4; j++) {

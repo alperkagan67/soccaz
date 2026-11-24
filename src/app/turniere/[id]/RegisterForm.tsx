@@ -7,11 +7,12 @@ import { ZP } from "@/lib/zahlungspflicht-texte";
 import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 
 /** aus = Zahlungen AUS und Turnier ohne Kartenfluss (zeigt den Hinweissatz); noMoney = keine Zahlungstexte (auch bei einem kostenlosen Turnier mit eingeschalteten Zahlungen). */
-export function RegisterForm({ tournamentId, teams, aus = false, noMoney = aus }: { tournamentId: string; teams: { id: string; name: string }[]; aus?: boolean; noMoney?: boolean }) {
+export function RegisterForm({ tournamentId, teams, aus = false, noMoney = aus, token = null }: { tournamentId: string; teams: { id: string; name: string }[]; aus?: boolean; noMoney?: boolean; token?: string | null }) {
   const { state, pending, onSubmit, formAction } = useFormAction(registerTeamAction.bind(null, tournamentId));
   return (
     <form action={formAction} onSubmit={onSubmit} className="card space-y-3" data-testid="register-team">
       <h2 className="font-semibold">Als Captain mit deinem Team beitreten</h2>
+      {token && <input type="hidden" name="token" value={token} />}
       {teams.length > 1 ? (
         <div>
           <label className="label" htmlFor="teamId">Team</label>

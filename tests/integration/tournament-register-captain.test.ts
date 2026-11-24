@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { teamMembers, teams } from "@/db/schema";
 import { tournaments } from "@/db/schema-league";
 import { createTournament, isCaptainOfAnyTeam, registerTeam, setOrganizer } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // 013 M3 PR 2: "Team anmelden" in der Turnierliste ist nur für Captains sichtbar; der SERVER entscheidet (registerTeam), nicht die Oberfläche.
 
@@ -27,8 +27,8 @@ describe("Turnier-Anmeldung nur durch Captains (Server)", () => {
     const team = await makeTeam(captain.id, "Captains");
     const member = await makeUser("mem");
     await db.insert(teamMembers).values({ teamId: team.id, userId: member.id, role: "player" });
-    await expect(registerTeam(member.id, t.id, team.id)).rejects.toThrow(/Team-Admin/);
-    await registerTeam(captain.id, t.id, team.id);
+    await expect(registerTeam(member.id, t.id, team.id, await tokenOf(t.id))).rejects.toThrow(/Team-Admin/);
+    await registerTeam(captain.id, t.id, team.id, await tokenOf(t.id));
   });
 
   it("ein Fremder (kein Mitglied) kann kein fremdes Team anmelden", async () => {
@@ -36,7 +36,7 @@ describe("Turnier-Anmeldung nur durch Captains (Server)", () => {
     const captain = await makeUser("cap");
     const team = await makeTeam(captain.id, "Fremd");
     const stranger = await makeUser("str");
-    await expect(registerTeam(stranger.id, t.id, team.id)).rejects.toThrow(/Team-Admin/);
+    await expect(registerTeam(stranger.id, t.id, team.id, await tokenOf(t.id))).rejects.toThrow(/Team-Admin/);
   });
 
   it("bei geschlossener Anmeldung lehnt der Server auch den Captain ab", async () => {
@@ -44,7 +44,7 @@ describe("Turnier-Anmeldung nur durch Captains (Server)", () => {
     await db.update(tournaments).set({ status: "payment" }).where(eq(tournaments.id, t.id));
     const captain = await makeUser("cap");
     const team = await makeTeam(captain.id, "Spaet");
-    await expect(registerTeam(captain.id, t.id, team.id)).rejects.toThrow(/geschlossen/);
+    await expect(registerTeam(captain.id, t.id, team.id, await tokenOf(t.id))).rejects.toThrow(/geschlossen/);
   });
 
   it("isCaptainOfAnyTeam (nur Anzeige): Admin eines aktiven Teams ja; Mitglied, Fremder und Admin eines archivierten Teams nein", async () => {
