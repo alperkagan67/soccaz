@@ -38,7 +38,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const { match, events, live, result, phase, participants } = page;
   const v = page.viewer;
   // AC-17 (Entscheid t2q 2026-11-24): Spieler des Spiels und Torschützen im Spielverlauf nur für Angemeldete mit Name und Link, sonst Initialen ohne Link; Beteiligte (Teilnehmer, Team-Admin, Veranstalter, Plattform-Admin) sehen Namen wie immer
-  const { sicht } = await getViewerSicht({ participant: participants.some((p) => p.userId === user?.id), teamAdmin: Boolean(v?.canRecord || v?.canSubmit || v?.canConfirm || page.noShowAdminTeams.length > 0) });
+  const { sicht } = await getViewerSicht({ participant: participants.some((p) => p.userId === user?.id) || Boolean(v?.mySide), teamAdmin: Boolean(v?.canManage) });
   const home = { id: match.homeId, name: match.homeName };
   const away = { id: match.awayId, name: match.awayName };
   const shown = result && (match.status === "played" || result.confirmedHome || result.confirmedAway) ? { home: result.homeScore, away: result.awayScore } : live;

@@ -45,13 +45,14 @@ test("Spielbericht je Rolle: Torschütze und Spieler des Spiels als Initialen f�
   const away = await mk(`Bericht Gast ${run}`, rival);
   const { rows } = await testDb().query(
     `insert into matches (home_team_id, away_team_id, starts_at, duration_min, status, finalized_at, mvp_user_id)
-     values ($1, $2, now() - interval '3 hours', 60, 'played', now() - interval '1 hour', $3) returning id`,
+     values ($1, $2, now() - interval '11 days', 60, 'played', now() - interval '10 days', $3) returning id`,
     [home, away, star],
   );
   const matchId = rows[0].id as string;
   await testDb().query("insert into match_participants (match_id, user_id, team_id) values ($1, $2, $3), ($1, $4, $5)", [matchId, star, home, rival, away]);
   await testDb().query("insert into match_results (match_id, home_score, away_score, confirmed_home, confirmed_away) values ($1, 2, 0, true, true)", [matchId]);
   for (const m of [5, 9]) await testDb().query("insert into match_events (match_id, type, user_id, team_id, minute) values ($1, 'goal', $2, $3, $4)", [matchId, star, home, m]);
+  await testDb().query("insert into match_events (match_id, type, user_id, team_id, minute) values ($1, 'goal', null, $2, 11)", [matchId, home]); // Tor ohne Spieler: erscheint als \"Unbekannt\"
   const url = `/spiele/${matchId}`;
 
   // Gast: Initialen im Spielverlauf und bei "Spieler des Spiels", weder Name noch Kennung in HTML und RSC
@@ -59,6 +60,9 @@ test("Spielbericht je Rolle: Torschütze und Spieler des Spiels als Initialen f�
   await gast.goto(url);
   await expect(gast.getByTestId("mvp-winner")).toContainText("ZV");
   await expect(gast.getByTestId("mvp-winner").getByRole("link")).toHaveCount(0);
+  await expect(gast.locator("ol").getByTestId("person-name")).toHaveText(["ZV", "ZV"]); // Spielverlauf: je Torschütze Initialen, ohne Link
+  await expect(gast.locator("ol").getByRole("link")).toHaveCount(0);
+  await expect(gast.locator("ol")).toContainText("Unbekannt");
   const g = await rohdaten(gast, url);
   expect(g.html, "die Initialen stehen im Gast-HTML (sonst ist die Prüfung leer)").toContain(">ZV<");
   expect(g.rsc, "die RSC-Nutzlast enthält die Seite").toContain("Spielverlauf");
@@ -74,6 +78,7 @@ test("Spielbericht je Rolle: Torschütze und Spieler des Spiels als Initialen f�
   expect(JSON.parse(live).goals).toEqual([
     { minute: 5, team: "home", player: "ZV" },
     { minute: 9, team: "home", player: "ZV" },
+    { minute: 11, team: "home", player: null },
   ]);
   for (const kanal of [`/api/spiele/${matchId}/events`, "/api/spiele/stream"]) {
     const anfang = await sseAnfang(kanal);
@@ -86,13 +91,18 @@ test("Spielbericht je Rolle: Torschütze und Spieler des Spiels als Initialen f�
   expect(overlay).not.toContain("Zorro");
   expect(overlay).not.toContain(star);
   expect(live).not.toContain(NAME);
+  const karte = await gast.request.get(`/api/karte/${matchId}`);
+  expect(karte.status()).toBe(200); // Spielbericht-Karte (Bild, öffentlich): die Torschützen darauf sind Initialen, belegt im Unit-Test match-card-namen
+  expect(karte.headers()["content-type"]).toContain("image/png");
 
   // Spieler (angemeldet, nicht beteiligt): Name mit Link
   const spieler = await (await browser.newContext()).newPage();
   await newUser(spieler, "kbsp");
   await spieler.goto(url);
   await expect(spieler.getByTestId("mvp-winner").getByRole("link", { name: NAME })).toHaveAttribute("href", `/spieler/${star}`);
-  await expect(spieler.getByText(NAME).first()).toBeVisible();
+  const verlauf = spieler.locator("ol").getByTestId("person-name");
+  await expect(verlauf).toHaveText([NAME, NAME]); // Spielverlauf: Name mit Link auf das Profil je Torschütze
+  await expect(verlauf.first()).toHaveAttribute("href", `/spieler/${star}`);
 
   // reiner Hallenbetreiber: wie Gast
   const boss = await (await browser.newContext()).newPage();
@@ -129,6 +139,17 @@ test("Spielbericht je Rolle: Torschütze und Spieler des Spiels als Initialen f�
   await expect(matePage).toHaveURL(/\/app/);
   await matePage.goto(url);
   await expect(matePage.getByTestId("mvp-winner").getByRole("link", { name: NAME })).toBeVisible();
+
+  // Team-Admin OHNE Teilnahme, der zugleich Hallenbetreiber ist, auf einem GESPIELTEN Spiel: Team-Admin gewinnt (R-T382: canRecord/canSubmit sind nach Spielende leer)
+  const tadm = await seedUser("kbtadm");
+  await query("insert into team_members (team_id, user_id, role) values ($1, $2, 'admin')", [home, tadm]);
+  const [h4] = await query<{ id: string }>("insert into venues (name, city, manager_user_id) values ($1, 'Essen', $2) returning id", [`Bericht-Halle tadm ${run}`, tadm]);
+  await query("insert into venue_access (venue_id, user_id, status, assigned_at) values ($1, $2, 'active', now())", [h4.id, tadm]);
+  const tadmPage = await (await browser.newContext()).newPage();
+  await devLogin(tadmPage, `kbtadm-${run}@test.local`, "Admin kbtadm");
+  await expect(tadmPage).toHaveURL(/\/app/);
+  await tadmPage.goto(url);
+  await expect(tadmPage.getByTestId("mvp-winner").getByRole("link", { name: NAME })).toBeVisible();
 
   // Plattform-Admin: Name mit Link
   await seedAdmin("kbad");
