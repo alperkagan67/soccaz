@@ -32,7 +32,7 @@ describe("AC-30 b: eine Hauptaktion je Ansicht", () => {
     expect(src("src/app/page.tsx")).toMatch(/btn btn-primary" data-testid="home-main-action"/);
     expect(count(["src/components/HowItWorks.tsx"], /\bbtn-primary\b/g)).toBe(0);
     // GameModes hat btn-primary nur im Nicht-quiet-Zweig (PR 4); die Startseite setzt quiet
-    expect(src("src/app/page.tsx")).toMatch(/<GameModes signedIn=\{Boolean\(user\)\} quiet \/>/);
+    expect(src("src/app/page.tsx")).toMatch(/<GameModes signedIn=\{Boolean\(user\)\} quiet nurTurnier=\{nurTurnier\} \/>/);
   });
   it("Turnierliste: keine Hauptaktion in den Zeilen (Team anmelden ist ruhig)", () => {
     expect(count(TURNIERE, /\bbtn-primary\b/g)).toBe(0);

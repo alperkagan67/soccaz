@@ -1,4 +1,5 @@
 import type { Instrumentation } from "next";
+import { turnierOnlyWarnung } from "@/lib/turnier-only";
 import { STARTSPERRE_MELDUNG, startVerboten } from "./lib/startsperre";
 
 /** Wird beim Start des Servers einmal ausgeführt: Fehlerüberwachung und Zeitplaner. */
@@ -24,6 +25,11 @@ export async function register() {
       await Sentry.flush(2000);
     }
     throw new Error(STARTSPERRE_MELDUNG);
+  }
+
+  // Turnier 12.12.: In Produktion MUSS die Betriebsart ausdrücklich gesetzt sein (TURNIER_ONLY=1 oder =0); ohne die Variable bleibt der Betrieb offen und das steht hier im Protokoll (ohne Wert, ohne Geheimnis).
+  if (turnierOnlyWarnung(process.env)) {
+    console.warn("[start] WARNUNG: TURNIER_ONLY ist in Produktion nicht gesetzt oder ungültig (nur 1 schaltet ein; 1 = nur Turniere, 0 = bewusst alles offen). Pflichtvariable im Betriebsablauf.");
   }
 
   const enabled = process.env.ENABLE_SCHEDULER ?? (process.env.NODE_ENV === "production" ? "1" : "0");

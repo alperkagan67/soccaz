@@ -1,5 +1,5 @@
 # Socaz: App, Datenbank, Reverse Proxy mit automatischem HTTPS und tägliche Sicherung.
-# Start:   cp .env.production.example .env   (Werte eintragen)   dann   docker compose up -d --build
+# Start:   cp .env.example .env   (ALLE Werte durch Produktionswerte ersetzen: die Vorlage enthält Entwicklungswerte; Namen und Pflichtwerte: docs/design/go-live-runbook.md Schritt 3)   dann   docker compose up -d --build
 # Update:  git pull && docker compose up -d --build
 name: socaz
 

@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { turnierOnlyOn } from "@/lib/turnier-only";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -18,10 +19,16 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
-    shortcuts: [
-      { name: "Lobby aufmachen", url: "/matchmaking" },
-      { name: "Livescore", url: "/spiele" },
-      { name: "Meine Spiele", url: "/app" },
-    ],
+    // TURNIER_ONLY: keine Startmenü-Einträge, die auf "Kommt bald" führen
+    shortcuts: turnierOnlyOn()
+      ? [
+          { name: "Turniere", url: "/turniere" },
+          { name: "Mein Bereich", url: "/app" },
+        ]
+      : [
+          { name: "Lobby aufmachen", url: "/matchmaking" },
+          { name: "Livescore", url: "/spiele" },
+          { name: "Meine Spiele", url: "/app" },
+        ],
   };
 }

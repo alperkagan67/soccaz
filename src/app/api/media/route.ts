@@ -3,6 +3,7 @@ import { z } from "zod";
 import { MAX_UPLOAD_BYTES, storeImage } from "@/server/media";
 import { getCurrentUser } from "@/server/session";
 import { DomainError } from "@/server/teams";
+import { gesperrteAntwort, spielGesperrt } from "@/server/turnier-only";
 
 const fields = z.object({ kind: z.enum(["avatar", "team_logo", "match_photo"]), refId: z.string().uuid() });
 
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
   if (!parsed.success || !(file instanceof File)) return NextResponse.json({ error: "Unvollständige Anfrage." }, { status: 400 });
 
   try {
+    if (parsed.data.kind === "match_photo" && (await spielGesperrt(parsed.data.refId))) return gesperrteAntwort(); // TURNIER_ONLY: Spielfotos nur zu Turnier-Spielen
     const url = await storeImage({ id: user.id, role: user.role }, parsed.data.kind, parsed.data.refId, Buffer.from(await file.arrayBuffer()));
     return NextResponse.json({ url });
   } catch (error) {
