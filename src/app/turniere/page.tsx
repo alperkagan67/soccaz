@@ -3,12 +3,14 @@ import Link from "next/link";
 import { formatEuro } from "@/lib/money";
 import { CITIES } from "@/lib/validation";
 import { getCurrentUser } from "@/server/session";
+import { zahlungenAus } from "@/server/zahlungen-aus";
+import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 import { isCaptainOfAnyTeam, listTournaments } from "@/server/tournaments";
 
 export const metadata: Metadata = { title: "Turniere" };
 
 const FORMAT = { round_robin: "Jeder gegen jeden", knockout: "K.-o.-System", groups_ko: "Gruppen und K.-o.-Runde" } as const;
-const STATUS = { registration: "Anmeldung offen", payment: "Zahlung läuft", running: "Läuft", finished: "Beendet", cancelled: "Abgesagt" } as const;
+const STATUS_BASIS = { registration: "Anmeldung offen", payment: "Zahlung läuft", running: "Läuft", finished: "Beendet", cancelled: "Abgesagt" } as const;
 
 // 013 M3 PR 2: Turnierliste als einfache Zeilen in EINER Karte (AC-30 c), keine Hauptaktion in den Zeilen (AC-30 b), Größen 3xl, base, sm (AC-30 e).
 // "Team anmelden" zeigt nur, wer Captain ist und wo die Anmeldung offen und nicht voll ist; angemeldet wird auf der Turnierseite, und `registerTeam` prüft Team-Admin und offene Anmeldung am SERVER (nicht diese Seite).
@@ -16,12 +18,14 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
   const sp = await searchParams;
   const city = typeof sp.city === "string" && (CITIES as readonly string[]).includes(sp.city) ? sp.city : undefined;
   const user = await getCurrentUser();
+  const aus = await zahlungenAus(); // Modus Zahlungen AUS (Go-live): keine Preis- und Zahlungstexte
+  const STATUS = aus ? { ...STATUS_BASIS, payment: "Bereit melden" } : STATUS_BASIS;
   const [list, captain] = await Promise.all([listTournaments({ city, viewerId: user?.id ?? null }), user ? isCaptainOfAnyTeam(user.id) : Promise.resolve(false)]);
   return (
     <div className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-3xl font-bold">Turniere</h1>
-        <p className="text-muted">Öffentliche Turniere und deine eigenen. Private Turniere erreichst du nur über den Einladungslink des Veranstalters. Jeder Spieler zahlt seinen Eintritt selbst.</p>
+        <p className="text-muted">Öffentliche Turniere und deine eigenen. Private Turniere erreichst du nur über den Einladungslink des Veranstalters. {aus ? ZAHLUNGEN_AUS_HINWEIS : "Jeder Spieler zahlt seinen Eintritt selbst."}</p>
       </header>
       <form className="flex gap-2">
         <select name="city" defaultValue={city ?? ""} aria-label="Stadt" className="field !w-auto flex-1">
@@ -57,7 +61,7 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
                 </Link>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm text-muted">
-                    <span className="font-semibold text-ink">{STATUS[t.status]}</span> · {t.teams}/{t.maxTeams} Teams · {t.entryFeeCents > 0 ? `${formatEuro(t.entryFeeCents)} pro Spieler` : "kostenlos"}
+                    <span className="font-semibold text-ink">{aus && t.entryFeeCents === 0 ? STATUS[t.status] : STATUS_BASIS[t.status]}</span> · {t.teams}/{t.maxTeams} Teams{aus && t.entryFeeCents === 0 ? "" : ` · ${t.entryFeeCents > 0 ? `${formatEuro(t.entryFeeCents)} pro Spieler` : "kostenlos"}`}
                   </p>
                   {open &&
                     (captain ? (

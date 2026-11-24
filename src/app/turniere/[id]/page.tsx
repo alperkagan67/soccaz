@@ -36,16 +36,18 @@ import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { DECLINE_LABELS, isDeclineCode } from "@/lib/hall-decline";
 import { TournamentCard } from "./TournamentCard";
 import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
+import { zahlungenAus } from "@/server/zahlungen-aus";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
 
-const STATUS = { registration: "Kader füllen", payment: "Zahlung läuft", running: "Läuft", finished: "Beendet", cancelled: "Abgesagt" } as const;
+const STATUS_BASIS = { registration: "Kader füllen", payment: "Zahlung läuft", running: "Läuft", finished: "Beendet", cancelled: "Abgesagt" } as const;
 
 export default async function TournamentPage({ params, searchParams }: PageProps<"/turniere/[id]">) {
   const { id } = await params;
   const sp = await searchParams;
   const token = typeof sp.t === "string" ? sp.t : null;
   const user = await getCurrentUser();
+  const aus = await zahlungenAus(); // Modus Zahlungen AUS (Go-live): keine Zahlungstexte, nur Anzeige
   // Neuer Nutzer über den Einladungslink: erst das Onboarding, danach zurück ins Turnier (der Token bleibt erhalten)
   if (user && !user.onboardedAt && token) redirect(`/willkommen?next=${encodeURIComponent(`/turniere/${id}?t=${token}`)}`);
   const data = await getTournament(id, user ? { id: user.id, role: user.role } : null, token);
@@ -62,6 +64,9 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const free = pricing.totalCents === 0 || (priceFixed && pricing.shareCents === 0);
   const inRegistration = t.status === "registration";
   const inPayment = t.status === "payment";
+  // Keine Zahlungstexte bei einem Turnier OHNE Preis (Go-live: bei Zahlungen AUS wird jedes neue Turnier mit Preis 0 angelegt). Ein Turnier MIT Preis (Altbestand) bleibt bei Zahlungen AUS im bisherigen Fluss (pausierter Kartenfluss, nie still gratis) und behält seine Hinweise.
+  const noMoney = free;
+  const STATUS = noMoney ? { ...STATUS_BASIS, payment: "Bereit melden" } : STATUS_BASIS;
   const allLocked = teams.length === t.maxTeams && teams.every((x) => x.ready);
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost";
@@ -120,7 +125,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <p className="card text-sm" data-testid="venue-declined-team">Die Halle kann das Turnier nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.</p>
       )}
       {venueOptions && <TournamentVenuePick tournamentId={t.id} options={venueOptions} declinedCode={declined && declinedCode ? DECLINE_LABELS[declinedCode] : null} />}
-      {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} />}
+      {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} aus={aus && noMoney} noMoney={noMoney} />}
       {v && data.registrationOpen && !v.isOrganizer && !v.captainTeamId && !v.myTeamId && v.registerableTeams.length === 0 && v.joinableTeamIds.length === 0 && (
         <section className="card space-y-2" data-testid="no-team-hint">
           <p className="text-sm">Du hast kein Team, das sich anmelden kann. Gründe ein Team, danach kommst du direkt hierher zurück und meldest es an.</p>
@@ -233,13 +238,13 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       <section className="space-y-3" data-testid="tournament-lobby">
         <h2 className="text-lg font-semibold">Turnier-Lobby ({teams.length} von {t.maxTeams} Teams)</h2>
         {/* Kartenmodell: Gaeste und Spieler ohne Bezug zum Turnier sehen nur die Anzahl und den Status (Entscheid t9) */}
-        {data.paymentsPaused && <p className="text-sm text-muted" data-testid="payments-paused">Zahlungen sind gerade pausiert. Abgebucht wird erst, wenn sie wieder eingeschaltet sind.</p>}
+        {data.paymentsPaused && !noMoney && <p className="text-sm text-muted" data-testid="payments-paused">Zahlungen sind gerade pausiert. Abgebucht wird erst, wenn sie wieder eingeschaltet sind.</p>}
         {data.cardMode && !(v?.isOrganizer || v?.myTeamId) && <p className="text-sm text-muted" data-testid="teams-count">Teams angemeldet: {teams.length} · {STATUS[t.status]}</p>}
         {(inRegistration || inPayment) && !(data.cardMode && !(v?.isOrganizer || v?.myTeamId)) && (
           <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted" data-testid="tournament-legend">
-            <span className="flex items-center gap-1.5"><PlayerLight light="red" /> im Kader</span>
-            <span className="flex items-center gap-1.5"><PlayerLight light="orange" /> Team vollzählig{free ? "" : data.cardMode ? ", noch keine Karte" : ", noch nicht bezahlt"}</span>
-            <span className="flex items-center gap-1.5"><PlayerLight light="green" /> {data.cardMode ? "Karte hinterlegt" : "bezahlt"}</span>
+            <span className="flex items-center gap-1.5"><PlayerLight light="red" paymentsOn={!noMoney} /> im Kader</span>
+            <span className="flex items-center gap-1.5"><PlayerLight light="orange" paymentsOn={!noMoney} /> Team vollzählig{noMoney ? "" : data.cardMode ? ", noch keine Karte" : ", noch nicht bezahlt"}</span>
+            <span className="flex items-center gap-1.5"><PlayerLight light="green" paymentsOn={!noMoney} /> {noMoney ? "bereit" : data.cardMode ? "Karte hinterlegt" : "bezahlt"}</span>
           </p>
         )}
         {teams.length === 0 ? (
@@ -255,25 +260,25 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                     <h3 className="font-semibold"><Link href={`/teams/${team.slug}`} className="inline-flex min-h-11 items-center hover:text-accent-fg">{team.name}</Link></h3>
                     <span className={`text-xs font-semibold ${team.ready ? "text-accent-fg" : "text-muted"}`}>{inPayment && team.paidReady ? "✓ Bereit" : team.ready ? "✓ Vollzählig" : "Kader offen"}</span>
                   </div>
-                  <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName === "–" ? "–" : autorLabel(team.captainName, sicht)} · {team.players.length} Spieler{priceFixed && !free && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>
+                  <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName === "–" ? "–" : autorLabel(team.captainName, sicht)} · {team.players.length} Spieler{priceFixed && !noMoney && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>
                   {mine && inPayment && team.dueCents === 0 && team.cardMissing === 0 && team.players.length > 0 && !team.paidReady && (
                     <div className="space-y-1" data-testid="paid-ready-box">
-                      <ActionButton action={setPaidReadyAction.bind(null, t.id)} label={tournamentReadyLabel({ cardMode: data.cardMode, free, paused: Boolean(data.paymentsPaused) })} className="btn btn-primary w-full" />
-                      <p className="text-xs text-muted">{data.cardMode ? (data.paymentsPaused ? ZP.tournamentReadyPause : "Alle in eurem Team haben eine Karte hinterlegt. Drücke Bereit; abgebucht wird erst zur Frist.") : "Euer Team hat komplett bezahlt. Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind."}</p>
+                      <ActionButton action={setPaidReadyAction.bind(null, t.id)} label={tournamentReadyLabel({ cardMode: data.cardMode, free: noMoney, paused: Boolean(data.paymentsPaused) })} className="btn btn-primary w-full" />
+                      <p className="text-xs text-muted">{noMoney ? "Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind." : data.cardMode ? (data.paymentsPaused ? ZP.tournamentReadyPause : "Alle in eurem Team haben eine Karte hinterlegt. Drücke Bereit; abgebucht wird erst zur Frist.") : "Euer Team hat komplett bezahlt. Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind."}</p>
                     </div>
                   )}
-                  {data.cardMode && team.cardsComplete !== null && <p className="text-xs text-muted" data-testid="team-cards-state">{team.cardsComplete ? "Karten komplett" : "Karten unvollständig"}</p>}
+                  {data.cardMode && !noMoney && team.cardsComplete !== null && <p className="text-xs text-muted" data-testid="team-cards-state">{team.cardsComplete ? "Karten komplett" : "Karten unvollständig"}</p>}
                   <ul className="space-y-1.5 text-sm">
                     {team.players.map((p, pi) => (
                       <li key={personRef(sicht, p.userId, p.name, pi).key} className="flex items-center justify-between gap-2" data-testid="tournament-player" data-paid={p.paid}>
                         <span>
                           <PersonName person={personRef(sicht, p.userId, p.name, pi)} />
                           {p.isCaptain && <span className="ml-2 text-xs text-muted">Captain</span>}
-                          {p.paidByOther && <span className="ml-2 text-xs text-muted">vom Captain bezahlt</span>}
+                          {p.paidByOther && !noMoney && <span className="ml-2 text-xs text-muted">vom Captain bezahlt</span>}
                           {p.userId === user?.id && <span className="ml-2 text-xs text-muted">(du)</span>}
                         </span>
                         <span className="flex items-center gap-2">
-                          {team.showLights && <PlayerLight light={lightOf(team.ready, p.paid || (free && inPayment))} />}
+                          {team.showLights && <PlayerLight light={lightOf(team.ready, p.paid || (free && inPayment))} paymentsOn={!noMoney} />}
                           {inRegistration && !p.isCaptain && (mine || manage) && <ActionButton action={leavePlayerAction.bind(null, t.id, p.userId)} label="Entfernen" confirm="Spieler aus dem Kader nehmen?" />}
                         </span>
                       </li>
@@ -285,7 +290,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                   {inRegistration && v?.joinableTeamIds.includes(team.teamId) && (
                     <ActionButton action={joinAsPlayerAction.bind(null, t.id, team.teamId)} label="Dem Turnier-Kader beitreten" className="btn btn-primary w-full" />
                   )}
-                  {inRegistration && v?.joinableTeamIds.includes(team.teamId) && (
+                  {inRegistration && !noMoney && v?.joinableTeamIds.includes(team.teamId) && (
                     <p className="text-xs text-muted" data-testid="kader-hint">{ZP.hintLater}</p>
                   )}
                   {mine && inRegistration && data.registrationOpen && <InviteBox teamId={team.teamId} teamName={team.name} />}
@@ -296,7 +301,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                       ) : (
                         <ActionButton action={setRosterCompleteAction.bind(null, t.id, true)} label="Team ist vollzählig" className="btn btn-primary w-full" />
                       )}
-                      {!team.ready && <p className="text-xs text-muted">Drücke das erst, wenn alle Spieler in eurem Kader sind (4 bis 6). Danach wartet ihr auf die anderen Teams, dann wird der Preis berechnet.</p>}
+                      {!team.ready && <p className="text-xs text-muted">Drücke das erst, wenn alle Spieler in eurem Kader sind (4 bis 6). Danach wartet ihr auf die anderen Teams{noMoney ? "." : ", dann wird der Preis berechnet."}</p>}
                     </div>
                   )}
                   {inRegistration && (mine || manage) && (
@@ -309,10 +314,10 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         )}
         {inRegistration && teams.length > 0 && (
           <p className="text-sm text-muted" data-testid="roster-progress">
-            {teams.filter((x) => x.ready).length} von {t.maxTeams} Teams haben „vollzählig“ gemeldet.{allLocked ? "" : " Sobald alle Plätze belegt und alle Teams vollzählig sind, steht der Preis fest."}
+            {teams.filter((x) => x.ready).length} von {t.maxTeams} Teams haben „vollzählig“ gemeldet.{allLocked ? "" : noMoney ? " Sobald alle Plätze belegt und alle Teams vollzählig sind, geht es los." : " Sobald alle Plätze belegt und alle Teams vollzählig sind, steht der Preis fest."}
           </p>
         )}
-        {data.cardMode && v && v.myTeamId && (inRegistration || inPayment) && (
+        {data.cardMode && !noMoney && v && v.myTeamId && (inRegistration || inPayment) && (
           <TournamentCard
             tournamentId={t.id}
             hasOwnCard={v.hasOwnCard}
@@ -329,7 +334,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       </section>
 
       {!data.bracketVisible && (inRegistration || inPayment) && (
-        <p className="card text-sm text-muted" data-testid="bracket-hidden">{data.cardMode ? "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler eine Karte hinterlegt haben, jeder Captain „Bereit“ gedrückt hat und der Anteil zur Frist abgebucht ist." : "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat."}</p>
+        <p className="card text-sm text-muted" data-testid="bracket-hidden">{noMoney ? "Das Bracket erscheint, sobald alle Teams vollzählig sind und jeder Captain „Bereit“ gedrückt hat." : data.cardMode ? "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler eine Karte hinterlegt haben, jeder Captain „Bereit“ gedrückt hat und der Anteil zur Frist abgebucht ist." : "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat."}</p>
       )}
     </div>
   );

@@ -18,12 +18,18 @@ export const ZAHLUNGSWORTE: readonly RegExp[] = [
   /abbuchung|abgebucht|abbuch/i,
   /bezahl/i,
   /zahlungspflicht/i,
+  /\bpreis\b/i,
+  /zahlung(?!en aus)/i,
+  /\d\s*(€|eur)/i,
   /treuhand/i,
   /\banteil übernehmen\b/i,
 ];
 
-/** Welche verbotenen Zahlungswörter stehen im Text? (Leere Liste = sauber; der Hinweissatz selbst zählt nicht.) */
+// Fußball-Karten sind keine Zahlungskarten (Hilfe: "Tore und Karten erfassen", Spielbericht: "Gelbe Karte"): vor dem Scan herausgenommen
+const FUSSBALL_KARTEN = /\b(?:gelbe[nr]?|rote[nr]?)\s+karten?\b|\btore und karten\b/gi;
+
+/** Welche verbotenen Zahlungswörter stehen im Text? (Leere Liste = sauber; der Hinweissatz und Fußball-Karten zählen nicht.) */
 export function zahlungsWorte(text: string): string[] {
-  const ohneHinweis = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ");
+  const ohneHinweis = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ").replace(FUSSBALL_KARTEN, " ");
   return ZAHLUNGSWORTE.filter((re) => re.test(ohneHinweis)).map((re) => re.source);
 }

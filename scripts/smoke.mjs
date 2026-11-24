@@ -13,7 +13,7 @@ const TIMEOUT_MS = 15_000;
 
 // Kopie der Wortliste aus src/lib/zahlungen-aus.ts (dieses Skript läuft ohne Build, reines Node); tests/unit/smoke-script.test.ts hält beide Listen gleich.
 export const ZAHLUNGEN_AUS_HINWEIS = "Die Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.";
-export const ZAHLUNGSWORTE = [/\bampel\b/i, /\bso läuft es ab\b/i, /preis pro spieler/i, /hallenkosten/i, /\bkarten?\b/i, /abbuchung|abgebucht|abbuch/i, /bezahl/i, /zahlungspflicht/i, /treuhand/i, /\banteil übernehmen\b/i];
+export const ZAHLUNGSWORTE = [/\bampel\b/i, /\bso läuft es ab\b/i, /preis pro spieler/i, /hallenkosten/i, /\bkarten?\b/i, /abbuchung|abgebucht|abbuch/i, /bezahl/i, /zahlungspflicht/i, /\bpreis\b/i, /zahlung(?!en aus)/i, /\d\s*(€|eur)/i, /treuhand/i, /\banteil übernehmen\b/i]; // gleich der Quelle src/lib/zahlungen-aus.ts (Test smoke-script.test.ts)
 const FUSSBALL_KARTEN = /\b(?:gelbe[nr]?|rote[nr]?)\s+karten?\b|\btore und karten\b/gi; // keine Zahlungskarten
 
 // Entitäten in EINEM Durchgang auflösen (nie hintereinander: "&amp;quot;" bleibt "&quot;", wird nicht zu einem Anführungszeichen; CodeQL js/double-escaping). Unbekannte Entitäten werden zu einem Leerzeichen.
