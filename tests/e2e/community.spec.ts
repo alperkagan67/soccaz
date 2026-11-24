@@ -64,8 +64,10 @@ test("Herausforderung mit einem Klick: sofort die Lobby, für alle sichtbar, nur
   await expect(b.getByTestId("challenge-incoming")).toContainText(teamA);
   // Lauf 3: "Ansehen und annehmen" in der Liste ist ruhig, Dein Stand nennt die Herausforderung und trägt die eine Hauptaktion
   await expect(b.getByRole("link", { name: "Herausforderung ansehen" })).toBeVisible();
-  await expect(b.getByRole("link", { name: "Herausforderung ansehen" })).toHaveClass(/bg-accent/); // LinkButton primary (die eine Hauptaktion der Seite)
-  await expect(b.getByTestId("challenge-incoming").getByRole("link", { name: "Ansehen und annehmen" })).toHaveClass(/btn-ghost/);
+  // die eine Hauptaktion steht im Seitenkopf (page-action), die Liste darunter trägt keine zweite; nicht an Klassen gekoppelt
+  await expect(b.getByTestId("page-action")).toContainText("Herausforderung ansehen");
+  await expect(b.getByTestId("page-action").getByRole("link", { name: "Herausforderung ansehen" })).toBeVisible();
+  await expect(b.getByTestId("challenge-incoming").getByTestId("page-action")).toHaveCount(0);
   await a.goto("/app");
   await expect(a.getByTestId("challenge-outgoing")).toContainText(teamB);
   await c.goto("/app");
