@@ -28,7 +28,7 @@ Erwartet: letzte Zeile ist der abgestimmte Stand von `main` (Nummer vom Task Man
 cp .env.production.example .env
 nano .env
 ```
-Eintragen: `POSTGRES_PASSWORD`, `APP_URL` (`https://<staging-adresse>`), `SITE_ADDRESS` (nur die Adresse, ohne `https://`), `AUTH_SECRET` (zufällig, z. B. `openssl rand -base64 32`), `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `JOB_SECRET` (zufällig), `STRIPE_SECRET_KEY` (`sk_test_`), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_test_`), `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` (Pflicht für Impressum, sonst Hinweis auf der Seite). **Nicht** eintragen: `PAYMENTS_FAKE`, `SOCAZ_REQUIRE_A2` (vor A2), `DATABASE_URL_OPS` (vor A2), `MATCH_PHOTOS_ENABLED` (Standard aus), keinen Live-Schlüssel (`sk_live_`).
+Eintragen: `POSTGRES_PASSWORD`, `APP_URL` (`https://<staging-adresse>`), `SITE_ADDRESS` (nur die Adresse, ohne `https://`), `AUTH_SECRET` (zufällig, z. B. `openssl rand -base64 32`), `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `JOB_SECRET` (zufällig), `STRIPE_SECRET_KEY` (`sk_test_`), `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` (`pk_test_`), `OPERATOR_NAME`, `OPERATOR_ADDRESS`, `OPERATOR_EMAIL` (Pflicht für Impressum, sonst Hinweis auf der Seite), dazu für den Zugangsschutz `STAGING_BASIC_AUTH_USER` und `STAGING_BASIC_AUTH_HASH` (bcrypt-Hash, **in einfachen Anführungszeichen**; Erzeugung: `docker run --rm -it caddy:2-alpine caddy hash-password`, das Passwort wird verdeckt abgefragt und landet nicht im Verlauf). **Optional/aus:** `OPERATOR_TAX_ID`, `RESEND_API_KEY`, `EMAIL_FROM` (der Mail-Dienst steht noch in `FEHLT-NOCH.md`). **Nicht** eintragen: `PAYMENTS_FAKE`, `STRIPE_WEBHOOK_SECRET` (alter Pfad, entfällt), `SOCAZ_REQUIRE_A2` (vor A2), `DATABASE_URL_OPS` (vor A2), `MATCH_PHOTOS_ENABLED` (Standard aus), keinen Live-Schlüssel (`sk_live_`).
 Erwartet: Datei gespeichert, `chmod 600 .env` gesetzt.
 
 **S3 Schlüssel prüfen, ohne sie zu zeigen** (Vorprobe A4, A6)
@@ -40,10 +40,12 @@ Erwartet: erste Ausgabe `0`; zweite `STRIPE_SECRET_KEY=sk_test_` (nur das Präfi
 
 **S4 Bauen und starten** (der öffentliche Stripe-Schlüssel wird dabei fest eingebaut: nach jeder Änderung neu bauen)
 ```
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.staging.yml config > /dev/null
+docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
 docker compose ps
 ```
-Erwartet: `db`, `app`, `caddy`, `backup` laufen; `migrate` ist beendet mit `Exited (0)`.
+(Der erste Befehl prüft ohne Start: fehlt der Zugangsschutz in der `.env`, bricht er mit „… fehlt“ ab. Ab hier jeden `docker compose`-Befehl auf Staging mit `-f docker-compose.yml -f docker-compose.staging.yml` geben, oder einmal `export COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml` setzen.)
+Erwartet: `config` ohne Fehler; `db`, `app`, `caddy`, `backup` laufen; `migrate` ist beendet mit `Exited (0)`.
 
 **S5 Datenbank-Änderungen geprüft** (Vorprobe A3)
 ```
@@ -57,24 +59,32 @@ curl -s https://<staging-adresse>/api/health
 ```
 Erwartet: `{"status":"ok"}` und kein Zertifikatsfehler (Caddy holt das Schloss selbst; Ports 80 und 443 müssen offen sein, Adresse muss auf den Server zeigen).
 
-**S7 Zugangsschutz**: **LÜCKE, siehe unten (Lücke 1).** Bis zur Entscheidung nur den Link an die Pilotgruppe geben.
+**S7 Zugangsschutz prüfen und erster Login** (Vorprobe A10; Basic-Auth im Caddy, siehe `BETRIEB.md`, Staging)
 ```
-curl -s -o /dev/null -w "%{http_code}" https://<staging-adresse>/robots.txt
+curl -s -o /dev/null -w "%{http_code}
+" https://<staging-adresse>/
+curl -s -o /dev/null -w "%{http_code}
+" -u <Benutzer> https://<staging-adresse>/
+curl -s -o /dev/null -w "%{http_code}
+" -X POST https://<staging-adresse>/api/stripe/webhook
+curl -s https://<staging-adresse>/robots.txt -u <Benutzer>
 ```
-Erwartet (nach Lückenschluss): Suchmaschinen ausgeschlossen (`Disallow: /`) und Seite hinter Passwort.
+Erwartet: erster Befehl **401** (ohne Zugang gesperrt); zweiter **200** (`curl` fragt das Passwort ab, es steht nicht im Verlauf); dritter **400** (Webhook ist ohne Zugang erreichbar und wird erst von der Signaturprüfung abgewiesen, **nicht** 401); vierter zeigt `Disallow: /`.
+**Erster Staging-Login (belegt eine ANNAHME):** im Browser die Adresse öffnen, Benutzer und Passwort eingeben, dann „Mit Google anmelden“. Erwartet: Google fragt nach dem Konto und die Rückleitung landet **angemeldet** auf der Seite, ohne zweite Passwortabfrage und ohne 401. Misslingt es (401 bei der Rückleitung), **stoppen und melden**: dann braucht `/api/auth/*` eine Ausnahme im `Caddyfile.staging`.
 
 **S8 Erstes Admin-Konto** (Vorprobe C9/C10; einmalige, benannte Ausnahme laut `BETRIEB.md`)
 1. Admin 1 öffnet `https://<staging-adresse>/anmelden` und meldet sich einmal an.
 2. Dann auf dem Server:
 ```
 docker compose exec db psql -U socaz -c "update users set role='admin' where email='<Admin-1-Adresse>'"
-docker compose run --rm -e OWNER_EMAIL=<Admin-1-Adresse> migrate node scripts/set-owner.mjs
-docker compose run --rm -e OWNER_EMAIL=<Admin-1-Adresse> migrate node scripts/set-owner.mjs --yes
+read -r -s OWNER_EMAIL; export OWNER_EMAIL
+docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs
+docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs --yes
 ```
-Erwartet: erster Aufruf zeigt nur Host und Datenbankname (Trockenlauf), zweiter meldet Erfolg; `/admin` ist für Admin 1 erreichbar, für andere Konten nicht. (`set-owner` läuft im Hilfsdienst `migrate`, dort steht die Datenbank-Adresse schon; der Wert wird nie ausgegeben. `BETRIEB.md` beschreibt nur den Aufruf ohne Compose, siehe Lücke 11.)
+(Die Adresse wird verdeckt eingegeben und exportiert, damit sie nicht in der Befehlszeile und im Verlauf steht; im SQL-Befehl darüber steht sie einmal, danach den Verlauf löschen: `history -c`.) Erwartet: erster Aufruf zeigt nur Host und Datenbankname (Trockenlauf), zweiter meldet Erfolg; `/admin` ist für Admin 1 erreichbar, für andere Konten nicht. (`set-owner` läuft im Hilfsdienst `migrate`, dort steht die Datenbank-Adresse schon; der Wert wird nie ausgegeben. `BETRIEB.md` beschreibt nur den Aufruf ohne Compose, siehe Lücke 11.)
 
 **S9 Stripe-Webhook einrichten** (Vorprobe B1)
-Stripe-Dashboard, **Testmodus**, Entwickler, Webhooks, „Endpunkt hinzufügen“: Adresse `https://<staging-adresse>/api/stripe/webhook`; Ereignisse: `setup_intent.succeeded`, `setup_intent.setup_failed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.requires_action`, `charge.updated` sowie `charge.dispute.created`, `.updated`, `.funds_withdrawn`, `.funds_reinstated`, `.closed`. Das angezeigte Signaturgeheimnis (`whsec_…`) kommt als `STRIPE_CARD_WEBHOOK_SECRET` in die `.env`, dann:
+Stripe-Dashboard, **Testmodus**, Entwickler, Webhooks, „Endpunkt hinzufügen“: Adresse `https://<staging-adresse>/api/stripe/webhook`; Ereignisse: `setup_intent.succeeded`, `setup_intent.setup_failed`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `payment_intent.requires_action`, `charge.updated` sowie für Erstattungen `refund.created`, `refund.updated`, `refund.failed`, `charge.refund.updated`, `charge.refunded` (ohne sie bleiben asynchrone Erstattungen auf „angefordert“ stehen: Absage nach Abbuchung, Spiel B, Nachrücker-Absage) und für Zahlungsstreit `charge.dispute.created`, `.updated`, `.funds_withdrawn`, `.funds_reinstated`, `.closed`. Das angezeigte Signaturgeheimnis (`whsec_…`) kommt als `STRIPE_CARD_WEBHOOK_SECRET` in die `.env`, dann:
 ```
 docker compose up -d --build app
 ```
@@ -102,7 +112,7 @@ Danach: Zeitplaner prüfen (Vorprobe A9), Daten anlegen nach `pilot-daten-plan.m
 ## Lücken: was in `BETRIEB.md` und Compose für Staging fehlt
 | # | Lücke | Wirkung | Vorschlag (Besitzer) |
 |---|---|---|---|
-| 1 | **Kein Zugangsschutz im `Caddyfile`** (kein Passwort, kein `X-Robots-Tag`), und `robots.txt` erlaubt `/` | Staging ist für Fremde und Suchmaschinen offen (Plan Frage 7) | Staging-Caddyfile oder Zuschalter `basic_auth` + `X-Robots-Tag: noindex`; Entscheid Nutzer, Bau Technik (kleiner PR; `Caddyfile` ändern ist kein Regelpfad) |
+| 1 | **Kein Zugangsschutz im `Caddyfile`** (kein Passwort, kein `X-Robots-Tag`), und `robots.txt` erlaubt `/` | Staging ist für Fremde und Suchmaschinen offen (Plan Frage 7) | **Behoben im Staging-Schutz-PR** (`Caddyfile.staging`, `docker-compose.staging.yml`, Banner, `robots`); Schutz am Hoster oder DNS bleibt zusätzlich ein Nutzerpunkt |
 | 2 | **`BETRIEB.md` nennt keine Staging-Werteliste**: welche Namen in die `.env` gehören und welche **nicht** (`PAYMENTS_FAKE`, `SOCAZ_REQUIRE_A2`, `DATABASE_URL_OPS`, Live-Schlüssel); die Beispieldatei ist für Produktion geschrieben | Fehlkonfiguration (Fake-Zahlung, Live-Schlüssel) | Abschnitt „Staging“ in `BETRIEB.md` mit dieser Liste (Doku-PR) |
 | 3 | **Erster Admin per SQL** (`update users set role='admin'`) steht in `BETRIEB.md`, widerspricht dem Grundsatz „keine SQL-Schreibzugriffe“ des Pilot-Daten-Plans | unklare Regel | als **einzige benannte Ausnahme** in `pilot-daten-plan.md` Abschnitt 2 (R-T400 Punkt 1, Schritt 0) |
 | 4 | **Webhook-Ereignisse** sind über `BETRIEB.md` verstreut (Karte, Zahlung, Streit) | Ereignis fehlt → Karte „hängt“ | diese Liste (S9) in `BETRIEB.md` zusammenführen |
