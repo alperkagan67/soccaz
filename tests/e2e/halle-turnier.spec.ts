@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, newUser, run } from "./helpers";
 import { query, userIdByEmail } from "./helpers-db";
+import { clickReady } from "./flows";
 
 // 012 M5-7b (Entscheid t2q F1, F3, F12): Zusage der Halle fuer ein Turnier in /halle. Namenfrei (HTML und RSC-Payload), Karte unterhalb der Spielanfragen, "Zusagen" im Namen der Halle.
 // STAND: GESCHRIEBEN, NICHT GELAUFEN. Setzt eine Datenbank nach Nachlieferung 0054 voraus (der Beweis-Trigger auf tournaments laeuft beim COMMIT der Zusage mit).
@@ -58,7 +59,7 @@ test("Hallenbetreiber sieht das Turnier ohne Namen, sagt im Namen der Halle zu, 
   await expect(other.getByTestId("tournament-confirmation")).toHaveCount(0);
 
   await boss.waitForLoadState("networkidle");
-  await card.getByRole("button", { name: "Zusagen" }).click();
+  await clickReady(card.getByRole("button", { name: "Zusagen" }));
   await expect(boss.getByRole("dialog")).toContainText(/verbindlich/); // Bestaetigungsschritt: die Zusage ist nicht rueckgaengig zu machen
   await boss.getByRole("dialog").getByRole("button", { name: "Zusagen" }).click();
   await expect(boss.getByTestId("tournament-confirmation").filter({ hasText: tournamentName })).toHaveCount(0, { timeout: 20_000 });

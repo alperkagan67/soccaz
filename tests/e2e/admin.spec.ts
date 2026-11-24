@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { setupLobby } from "./flows";
+import { setupLobby, clickWhenReady, clickReady } from "./flows";
 import { closeContexts, closeTestDb, createTeam, devLogin, newUser, run } from "./helpers";
 import { query, seedAdmin, seedOwner, startMatchNow } from "./helpers-db";
 
@@ -59,7 +59,7 @@ test("Admin: Streitfall erscheint als Aufgabe, Spiele-Liste", async ({ browser }
   await b.goto(`/spiele/${matchId}`);
   await b.getByRole("button", { name: "Widersprechen" }).click();
   await b.getByLabel(/Warum stimmt das Ergebnis nicht/).fill("Falsches Ergebnis");
-  await b.getByRole("button", { name: "Widerspruch senden" }).click();
+  await clickWhenReady(b, "Widerspruch senden");
   await expect(b.getByText("Das Ergebnis ist strittig").first()).toBeVisible();
 
   const admin = await adminPage(browser, "ad2adm");
@@ -88,12 +88,12 @@ test("Admin: Nutzer sperren, Rolle ändern, Profi-Badge, Protokoll", async ({ br
   await expect(card).toBeVisible();
 
   // Profi-Badge
-  await card.getByRole("button", { name: "Profi-Badge geben" }).click();
+  await clickReady(card.getByRole("button", { name: "Profi-Badge geben" }));
   await expect(card.getByText("Profi", { exact: true })).toBeVisible();
 
   // Sperren mit Grund
   admin.once("dialog", (d) => d.accept("Beleidigung im Chat"));
-  await card.getByRole("button", { name: "Sperren" }).click();
+  await clickReady(card.getByRole("button", { name: "Sperren" }));
   await expect(card.getByText("Gesperrt")).toBeVisible();
 
   // Das gesperrte Konto kommt nicht mehr in geschützte Bereiche und sieht einen Hinweis
@@ -102,7 +102,7 @@ test("Admin: Nutzer sperren, Rolle ändern, Profi-Badge, Protokoll", async ({ br
   await expect(victim.getByText(/Dein Konto ist gesperrt/)).toBeVisible();
 
   // Entsperren
-  await card.getByRole("button", { name: "Entsperren" }).click();
+  await clickReady(card.getByRole("button", { name: "Entsperren" }));
   await expect(card.getByText("Gesperrt")).toHaveCount(0);
   await victim.goto("/app");
   await expect(victim).toHaveURL(/\/app$/);
@@ -121,7 +121,7 @@ test("Admin: Nutzer sperren, Rolle ändern, Profi-Badge, Protokoll", async ({ br
   await admin.getByRole("button", { name: "Filtern" }).click();
   const adminCard = admin.getByTestId(`user-ad3x-${run}@test.local`);
   admin.once("dialog", (d) => d.accept("Test"));
-  await adminCard.getByRole("button", { name: "Sperren" }).click();
+  await clickReady(adminCard.getByRole("button", { name: "Sperren" }));
   await expect(adminCard.getByText(/Plattform-Admins können nicht gesperrt werden/)).toBeVisible();
 
   // Protokoll enthält Sperre mit Grund
@@ -150,12 +150,12 @@ test("Admin: Team verifizieren und zusammenführen", async ({ browser }) => {
   const cardA = admin.getByTestId(`team-${slugA}`);
   await expect(cardA).toBeVisible();
 
-  await cardA.getByRole("button", { name: "Verifizieren" }).click();
+  await clickReady(cardA.getByRole("button", { name: "Verifizieren" }));
   await expect(cardA.getByText("Verifiziert")).toBeVisible();
 
   admin.once("dialog", (d) => d.accept());
   await cardA.getByLabel("Zusammenführen mit").selectOption({ label: nameB });
-  await cardA.getByRole("button", { name: "Zusammenführen" }).click();
+  await clickReady(cardA.getByRole("button", { name: "Zusammenführen" }));
   await expect(admin.getByTestId(`team-${slugA}`)).toHaveCount(0);
 
   // Mitglied von A ist jetzt im Team B, Team A existiert nicht mehr
@@ -173,6 +173,6 @@ test("Admin: Team verifizieren und zusammenführen", async ({ browser }) => {
   const card = admin.getByTestId(`team-${slugHome}`);
   admin.once("dialog", (d) => d.accept());
   await card.getByLabel("Zusammenführen mit").selectOption({ label: m.nameB });
-  await card.getByRole("button", { name: "Zusammenführen" }).click();
+  await clickReady(card.getByRole("button", { name: "Zusammenführen" }));
   await expect(card.getByText(/gegeneinander gespielt/)).toBeVisible();
 });

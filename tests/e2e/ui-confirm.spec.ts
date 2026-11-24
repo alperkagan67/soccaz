@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { clickReady } from "./flows";
 
 // M2-3b: ConfirmDialog auf der Showcase /dev/komponenten (keine Datenbank, kein Login): Tastatur, Fokus, Fehler im Dialog, Handy-Breite.
 
@@ -69,8 +70,8 @@ test.describe("ConfirmDialog: Tastatur und Fokus", () => {
 
   test("Abbrechen per Klick schließt ebenfalls und gibt den Fokus zurück", async ({ page }) => {
     await open(page);
-    await trigger(page, "Spieler entfernen").click();
-    await dialogOf(page, "Spieler entfernen?").getByRole("button", { name: "Abbrechen" }).click();
+    await clickReady(trigger(page, "Spieler entfernen"));
+    await clickReady(dialogOf(page, "Spieler entfernen?").getByRole("button", { name: "Abbrechen" }));
     await expect(dialogOf(page, "Spieler entfernen?")).toBeHidden();
     await expect(trigger(page, "Spieler entfernen")).toBeFocused();
   });

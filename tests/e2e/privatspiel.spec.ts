@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, devLogin, futureLocal, newUser, onboard, run } from "./helpers";
 import { callJob, query, seedCardReady, setMatchTimes, setPlatformSetting, userIdByEmail } from "./helpers-db";
+import { clickWhenReady } from "./flows";
 
 test.setTimeout(180_000);
 
@@ -25,7 +26,7 @@ test("Privatspiel: anlegen, per Link beitreten (auch neu registriert), nicht öf
   await org.getByLabel("Halle und Adresse").fill(`E2E Kickhalle ${run}, Hauptstr. 1`);
   await expect(org.getByLabel("Spieler insgesamt")).toHaveValue("10"); // Standard sind 10 Spieler
   // Miete ist Pflicht: ohne ausdrückliche Wahl (Betrag oder kostenlos) wird nichts angelegt
-  await org.getByRole("button", { name: "Privatspiel anlegen" }).click();
+  await clickWhenReady(org, "Privatspiel anlegen");
   await expect(org).toHaveURL(/\/app\/privatspiel\/neu/);
   await expect(org.getByLabel("Miete als Betrag")).not.toBeChecked();
   await expect(org.getByLabel("Kostenlos (0 €)")).not.toBeChecked();
@@ -216,7 +217,7 @@ test("Privatspiel: Einladungslink zurückziehen und neu erzeugen (AC-10)", async
 
   // der Veranstalter zieht den Link zurück: kein Link mehr sichtbar, der alte ist ungültig
   org.on("dialog", (d) => void d.accept());
-  await org.getByRole("button", { name: "Link zurückziehen" }).click();
+  await clickWhenReady(org, "Link zurückziehen");
   await expect(org.getByTestId("game-invite")).toHaveCount(0);
   await expect(org.getByText("Es gibt gerade keinen gültigen Einladungslink.")).toBeVisible();
   const late = await (await browser.newContext()).newPage();
@@ -226,7 +227,7 @@ test("Privatspiel: Einladungslink zurückziehen und neu erzeugen (AC-10)", async
   await expect(late.getByText(/ungültig oder wurde zurückgezogen/)).toBeVisible();
 
   // neuen Link erzeugen: er funktioniert, der alte bleibt ungültig, Beigetretene bleiben
-  await org.getByRole("button", { name: "Einladungslink erzeugen" }).click();
+  await clickWhenReady(org, "Einladungslink erzeugen");
   await expect(org.getByTestId("game-invite")).toBeVisible();
   const newLink = await org.getByTestId("game-invite").getByRole("textbox").inputValue();
   expect(newLink).not.toBe(oldLink);

@@ -185,6 +185,7 @@ test("Gast: /willkommen leitet zur Anmeldung weiter", async ({ browser }) => {
   await expect(page).toHaveURL(/\/anmelden/);
 });
 
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Backlog 224: vor der Hydration ist der Ablauf gesperrt, ein Klick oder Enter schickt nie ein GET mit Eingaben (Skripte blockiert)", async ({ browser }) => {
   const { page } = await freshUser(browser, "wk6");
   await expect(weiter(page)).toBeEnabled({ timeout: 60_000 });

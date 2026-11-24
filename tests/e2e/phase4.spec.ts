@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { closeContexts, createTeam, devLogin, futureLocal, newUser, run, seedUser, testDb } from "./helpers";
 import { callJob, diagnoseTournamentCharges, query, seedAdmin, seedCardProfile, seedPartnerVenue, setPlatformSetting } from "./helpers-db";
+import { clickWhenReady, clickReady } from "./flows";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(180_000);
@@ -51,7 +52,7 @@ test("Liga: anlegen, Teams treten bei, Tabelle, Meister", async ({ browser }) =>
   await admin.getByLabel("Name", { exact: true }).fill(`E2E Saison ${run}`);
   await admin.getByLabel("Start", { exact: true }).fill(futureLocal(-5).slice(0, 10));
   await admin.getByLabel("Ende").fill(futureLocal(30).slice(0, 10));
-  await admin.getByRole("button", { name: "Liga anlegen" }).click();
+  await clickWhenReady(admin, "Liga anlegen");
   await expect(admin.getByText("Gespeichert.")).toBeVisible();
   await admin.reload();
   const card = admin.getByTestId("admin-league").filter({ hasText: `E2E Saison ${run}` });
@@ -60,10 +61,10 @@ test("Liga: anlegen, Teams treten bei, Tabelle, Meister", async ({ browser }) =>
 
   // Team A tritt selbst bei, Team B wird vom Admin hinzugefügt
   await a.goto(`/ligen/${leagueId}`);
-  await a.getByRole("button", { name: "Anmelden" }).click();
+  await clickWhenReady(a, "Anmelden");
   await expect(a.getByRole("main").getByRole("button", { name: "Abmelden" })).toBeVisible();
   await card.getByLabel(/Team \(Name aus der Adresse/).fill(await slugOf(nameB));
-  await card.getByRole("button", { name: "Team hinzufügen" }).click();
+  await clickReady(card.getByRole("button", { name: "Team hinzufügen" }));
   await expect(card.getByText("Gespeichert.")).toBeVisible();
 
   const idA = (await query<{ id: string }>("select id from teams where name = $1", [nameA]))[0].id;
@@ -102,12 +103,12 @@ test("Profi-Tag: bewerben, auslosen, Spiel entsteht", async ({ browser }) => {
   await admin.getByLabel("Plätze").fill("1");
   await admin.getByLabel(/Beginn/).fill(futureLocal(20, "18:00"));
   await admin.getByLabel("Bewerbung bis").fill(futureLocal(10, "18:00"));
-  await admin.getByRole("button", { name: "Profi-Tag anlegen" }).click();
+  await clickWhenReady(admin, "Profi-Tag anlegen");
   await expect(admin.getByText("Gespeichert.")).toBeVisible();
   const eventId = (await query<{ id: string }>("select id from pro_events where title = $1", [`E2E Profi-Tag ${run}`]))[0].id;
 
   await applicant.goto(`/profitag/${eventId}`);
-  await applicant.getByRole("button", { name: "Mit diesem Team bewerben" }).click();
+  await clickWhenReady(applicant, "Mit diesem Team bewerben");
   await expect(applicant.getByRole("heading", { name: "Bewerbungen (1)" })).toBeVisible();
 
   admin.once("dialog", (d) => void d.accept());
@@ -322,13 +323,13 @@ test("Sponsoren: anlegen, auf der Startseite, Klick zählt und leitet weiter", a
   await admin.getByLabel("Name", { exact: true }).fill(`E2E Partner ${run}`);
   await admin.getByLabel("Adresse (https)").fill("https://example.com/angebot");
   await admin.getByLabel("Kurztext (optional)").fill("Sport und Mehr");
-  await admin.getByRole("button", { name: "Anlegen" }).click();
+  await clickWhenReady(admin, "Anlegen");
   await expect(admin.getByText("Gespeichert.")).toBeVisible();
 
   // unsichere Adresse wird abgelehnt
   await admin.getByLabel("Name", { exact: true }).fill(`E2E Böse ${run}`);
   await admin.getByLabel("Adresse (https)").fill("javascript:alert(1)");
-  await admin.getByRole("button", { name: "Anlegen" }).click();
+  await clickWhenReady(admin, "Anlegen");
   await expect(admin.getByText(/https|ungültig/).first()).toBeVisible();
 
   const anon = await (await browser.newContext()).newPage();
