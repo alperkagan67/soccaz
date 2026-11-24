@@ -5,6 +5,7 @@ import { TOKEN_UNGUELTIG_HINWEIS, TOKEN_UNGUELTIG_TEXT } from "@/lib/turnier-tok
 export function EinladungUngueltig() {
   return (
     <section className="mx-auto mt-8 max-w-sm space-y-3 text-center" data-testid="einladung-ungueltig">
+      <meta name="robots" content="noindex, nofollow" />
       <h1 className="text-2xl font-bold">Link ungültig</h1>
       <p className="text-muted">{TOKEN_UNGUELTIG_TEXT}</p>
       <p className="text-sm text-muted">{TOKEN_UNGUELTIG_HINWEIS}</p>

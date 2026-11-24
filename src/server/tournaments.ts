@@ -164,7 +164,11 @@ function requireOpen(t: T) {
 
 /** Der Captain meldet sein Team an: mit einem bestehenden Team (dort ist er Team-Admin). Es gibt genau einen Captain pro Team. */
 export async function registerTeam(userId: string, tournamentId: string, teamId: string, token?: string | null) {
+  // Kein Existenz-Orakel: ein unbekanntes Turnier (auch eine Zeichenfolge, die keine UUID ist) gibt dieselbe neutrale Meldung wie privat + falscher Token
+  if (!/^[0-9a-f-]{36}$/i.test(tournamentId)) throw new DomainError(TOKEN_UNGUELTIG_TEXT);
   await db.transaction(async (tx) => {
+    const [vorhanden] = await tx.select({ id: tournaments.id }).from(tournaments).where(eq(tournaments.id, tournamentId));
+    if (!vorhanden) throw new DomainError(TOKEN_UNGUELTIG_TEXT);
     const t = await lockTournament(tx, tournamentId);
     // Privates Turnier: nur mit dem richtigen Einladungstoken (oder als Veranstalter/Plattform-Admin). Dieselbe neutrale Meldung für fehlenden und falschen Token, VOR allen anderen Prüfungen (kein Orakel über Teams/Plätze).
     if (t.isPrivate && !tokenGueltig(t.inviteToken, token) && !(await canManage(tx, userId, t))) throw new DomainError(TOKEN_UNGUELTIG_TEXT);
@@ -986,6 +990,13 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const [t] = await db.select().from(tournaments).where(eq(tournaments.id, id));
   if (!t) return null;
+  // Zugang zu einem privaten Turnier ZUERST und billig prüfen (Veranstalter/Admin, gültiger Token, sonst Mitglied eines angemeldeten Teams nur für Eingeloggte): so kostet "privat ohne Zugang" nicht mehr Abfragen als "unbekannt"
+  if (t.isPrivate && !(viewer && (viewer.id === t.organizerId || viewer.role === "admin")) && !tokenGueltig(t.inviteToken, token)) {
+    const mitglied = viewer
+      ? (await db.select({ one: sql<number>`1` }).from(teamMembers).innerJoin(tournamentTeams, eq(tournamentTeams.teamId, teamMembers.teamId)).where(and(eq(teamMembers.userId, viewer.id), eq(tournamentTeams.tournamentId, id))).limit(1)).length > 0
+      : false;
+    if (!mitglied) return null;
+  }
 
   const entries = await db
     .select({ teamId: teams.id, name: teams.name, slug: teams.slug, captainId: tournamentTeams.captainId, readyAt: tournamentTeams.readyAt, paidReadyAt: tournamentTeams.paidReadyAt })
@@ -1071,6 +1082,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
   const canJoin = open;
 
   return {
+    tokenOk, // der gelieferte Token ist gültig (Veranstalter/Admin/Mitglieder brauchen keinen): die Seite reicht ihn NUR dann in Links und Formulare weiter
     tournament: { ...t, inviteToken: showToken ? t.inviteToken : null },
     organizerName: organizer?.name ?? "–",
     teams: teamViews,

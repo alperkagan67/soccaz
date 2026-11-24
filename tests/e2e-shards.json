@@ -31,7 +31,6 @@
       "lobby.spec.ts",
       "pwa.spec.ts",
       "ui-buttons.spec.ts",
-      "turnier-token.spec.ts",
       "konto-hinweis.spec.ts",
       "turnier-tag.spec.ts"
     ],
@@ -82,7 +81,8 @@
       "ui-form.spec.ts",
       "ui-seiten.spec.ts",
       "wertung-bewegung.spec.ts",
-      "hydration-vorher.spec.ts"
+      "hydration-vorher.spec.ts",
+      "turnier-token.spec.ts"
     ]
   }
 }

@@ -56,8 +56,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   // Unbekannt, keine UUID, privat ohne gültigen Token: IMMER dieselbe neutrale Seite (kein Existenz-Orakel, kein Turnierinhalt, der Token wird nirgends weitergereicht)
   if (!data) return <EinladungUngueltig />;
   const { tournament: t, teams, viewer: v, pricing } = data;
-  // Token nur weiterreichen, wenn das Turnier privat ist (dann ist er hier gültig geprüft); bei öffentlichen Turnieren nie
-  const tokenQuery = t.isPrivate && token ? `?t=${token}` : "";
+  // Token NUR weiterreichen, wenn er serverseitig als gültig bestätigt ist (data.tokenOk) und das Turnier privat ist; Veranstalter, Admin und Mitglieder kommen ohne gültigen Token hierher und reichen nichts weiter
+  const tokenQuery = t.isPrivate && data.tokenOk && token ? `?t=${token}` : "";
   // Neuer Nutzer über den Einladungslink: erst das Onboarding, danach zurück ins Turnier (der Token bleibt erhalten)
   if (user && !user.onboardedAt && tokenQuery) redirect(`/willkommen?next=${encodeURIComponent(`/turniere/${id}${tokenQuery}`)}`);
   // AC-17 (Entscheid t2q 2026-11-24): Personennamen (Veranstalter, Captain, Spieler) nur für Angemeldete, sonst Initialen ohne Link; Teilnehmer und Veranstalter sehen Namen wie immer
@@ -132,7 +132,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <p className="card text-sm" data-testid="venue-declined-team">Die Halle kann das Turnier nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.</p>
       )}
       {venueOptions && <TournamentVenuePick tournamentId={t.id} options={venueOptions} declinedCode={declined && declinedCode ? DECLINE_LABELS[declinedCode] : null} />}
-      {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} aus={aus && noMoney} noMoney={noMoney} token={t.isPrivate ? token : null} />}
+      {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} aus={aus && noMoney} noMoney={noMoney} token={t.isPrivate && data.tokenOk ? token : null} />}
       {v && data.registrationOpen && !v.isOrganizer && !v.captainTeamId && !v.myTeamId && v.registerableTeams.length === 0 && v.joinableTeamIds.length === 0 && (
         <section className="card space-y-2" data-testid="no-team-hint">
           <p className="text-sm">Du hast kein Team, das sich anmelden kann. Gründe ein Team, danach kommst du direkt hierher zurück und meldest es an.</p>

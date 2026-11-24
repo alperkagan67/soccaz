@@ -93,6 +93,22 @@ describe("Server: registerTeam braucht bei privaten Turnieren den Token", () => 
     await expect(registerTeam(cap.id, t.id, team.id, t.inviteToken)).rejects.toThrow(/schon angemeldet/);
   });
 
+  it("kein Existenz-Orakel: unbekannte UUID und Nicht-UUID geben dieselbe Meldung wie privat + falscher Token", async () => {
+    const { o } = await organizer();
+    const t = await createTournament(o.id, { ...base, isPrivate: true });
+    const cap = await makeUser("tkcap6");
+    const team = await makeTeam(cap.id, "TokenE");
+    const meldungen = new Set<string>();
+    for (const tid of [t.id, "00000000-0000-4000-8000-0000000000bb", "keine-uuid", ""]) {
+      try {
+        await registerTeam(cap.id, tid, team.id, "falsch");
+      } catch (e) {
+        meldungen.add((e as Error).message);
+      }
+    }
+    expect([...meldungen]).toEqual([TOKEN_UNGUELTIG_TEXT]);
+  });
+
   it("Veranstalter und Plattform-Admin brauchen keinen Token; öffentliche Turniere keinen", async () => {
     const { o, admin } = await organizer();
     const priv = await createTournament(o.id, { ...base, isPrivate: true });
