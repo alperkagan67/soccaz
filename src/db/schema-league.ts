@@ -91,6 +91,10 @@ export const tournaments = pgTable(
     venueConfirmedAt: timestamp("venue_confirmed_at", { withTimezone: true }), // Zusage der Halle (011): gesetzt durch die Zusage
     // 009 M3 Nachlieferung (Plan 16d.7): Betreiber, der die Zusage gegeben hat (uuid ohne Fremdschluessel wie evidence_actor.user_id; bei Kontoloeschung NULL)
     venueConfirmedBy: uuid("venue_confirmed_by"),
+    // Backlog 161 (Plan plan-turnier-ablehnen.md): Ablehnung der Halle mit Grund-Kategorie; schliesst die Zusage aus; Hallenwechsel und neue Zusage setzen sie zurueck (Trigger)
+    venueDeclinedAt: timestamp("venue_declined_at", { withTimezone: true }),
+    venueDeclinedBy: uuid("venue_declined_by"),
+    venueDeclineCode: text("venue_decline_code"),
     // beim Fixieren des Preises eingefroren (spaetere Aenderungen wirken nicht auf ein laufendes Turnier): braucht die Halle einen Zugang (Zusage Pflicht), und der Provisionssatz in Prozent
     venueAccessRequiredSnapshot: boolean("venue_access_required_snapshot"),
     commissionPercentSnapshot: numeric("commission_percent_snapshot", { precision: 5, scale: 2 }),
@@ -120,6 +124,11 @@ export const tournaments = pgTable(
     check("tournaments_teams_range", sql`${t.maxTeams} between 2 and 32`),
     check("tournaments_confirmed_needs_venue", sql`${t.venueConfirmedAt} is null or ${t.venueId} is not null`), // Migration: NOT VALID, bereinigt, dann VALIDATE (Plan 16f.2)
     check("tournaments_confirmed_by_needs_confirmed", sql`${t.venueConfirmedBy} is null or ${t.venueConfirmedAt} is not null`),
+    check("tournaments_decline_xor_confirm", sql`${t.venueDeclinedAt} is null or ${t.venueConfirmedAt} is null`),
+    check("tournaments_decline_needs_venue", sql`${t.venueDeclinedAt} is null or ${t.venueId} is not null`),
+    check("tournaments_decline_code_check", sql`${t.venueDeclineCode} is null or (${t.venueDeclinedAt} is not null and ${t.venueDeclineCode} in ('belegt', 'wartung', 'veranstaltung', 'sonstiges'))`),
+    check("tournaments_decline_needs_code", sql`${t.venueDeclinedAt} is null or ${t.venueDeclineCode} is not null`),
+    check("tournaments_decline_by_needs_declined", sql`${t.venueDeclinedBy} is null or ${t.venueDeclinedAt} is not null`),
     index("tournaments_status_idx").on(t.status, t.startsOn),
   ],
 );
