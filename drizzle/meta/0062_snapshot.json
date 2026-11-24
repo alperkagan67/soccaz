@@ -1,5 +1,5 @@
 {
-  "id": "7acf1752-888f-4307-bfdd-e81b0885406c",
+  "id": "f4d74648-14fc-434b-af40-23bdb12b785f",
   "prevId": "8644a6e0-3a6c-4584-ba83-efca95dcdb7d",
   "version": "7",
   "dialect": "postgresql",
@@ -8201,7 +8201,7 @@
         },
         "tournament_matches_shootout_count": {
           "name": "tournament_matches_shootout_count",
-          "value": "(\"tournament_matches\".\"shootout_a\" is null and \"tournament_matches\".\"shootout_b\" is null) or (\"tournament_matches\".\"decided_by\" = '9m' and \"tournament_matches\".\"shootout_a\" is not null and \"tournament_matches\".\"shootout_b\" is not null and \"tournament_matches\".\"shootout_a\" between 0 and 50 and \"tournament_matches\".\"shootout_b\" between 0 and 50)"
+          "value": "(\"tournament_matches\".\"shootout_a\" is null and \"tournament_matches\".\"shootout_b\" is null) or (\"tournament_matches\".\"decided_by\" is not distinct from '9m' and \"tournament_matches\".\"shootout_a\" is not null and \"tournament_matches\".\"shootout_b\" is not null and \"tournament_matches\".\"shootout_a\" between 0 and 50 and \"tournament_matches\".\"shootout_b\" between 0 and 50)"
         }
       },
       "isRLSEnabled": false

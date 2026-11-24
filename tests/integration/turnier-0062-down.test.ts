@@ -74,8 +74,11 @@ describe("Migration 0062: Spalten und Prüfungen", () => {
     await expect(scratch.query("update tournament_matches set shootout_winner = $2 where id = $1", [zeile, teamA])).rejects.toThrow(/decided_by_shape/);
     await expect(scratch.query("update tournament_matches set shootout_a = 3, shootout_b = 2 where id = $1", [zeile])).rejects.toThrow(/shootout_count/);
     await scratch.query("update tournament_matches set decided_by = null where id = $1", [zeile]);
+    await expect(scratch.query("update tournament_matches set shootout_a = 3, shootout_b = 2 where id = $1", [zeile])).rejects.toThrow(/shootout_count/); // ohne Entscheidungsart keine Zähler (NULL-Lücke, R-T449)
     await expect(scratch.query("update tournament_matches set decided_by = '9m' where id = $1", [zeile])).rejects.toThrow(/decided_by_shape/); // 9m braucht einen Sieger
     await scratch.query("update tournament_matches set decided_by = '9m', shootout_winner = $2, shootout_a = 4, shootout_b = 3 where id = $1", [zeile, teamA]);
+    await scratch.query("update tournament_matches set shootout_a = null, shootout_b = null where id = $1", [zeile]); // 9m ohne Zähler ist erlaubt
+    await scratch.query("update tournament_matches set shootout_a = 4, shootout_b = 3 where id = $1", [zeile]);
     await expect(scratch.query("update tournament_matches set shootout_a = 51 where id = $1", [zeile])).rejects.toThrow(/shootout_count/);
     await expect(scratch.query("update tournament_matches set shootout_b = null where id = $1", [zeile])).rejects.toThrow(/shootout_count/); // beide oder keiner
   });
