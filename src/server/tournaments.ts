@@ -188,7 +188,7 @@ export async function joinAsPlayer(userId: string, tournamentId: string, teamId:
     const [member] = await tx.select({ userId: teamMembers.userId }).from(teamMembers).where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
     if (!member) throw new DomainError("Nur Mitglieder des Teams können dem Turnier beitreten. Tritt zuerst über den Einladungslink des Teams bei.");
     const [existing] = await tx.select({ teamId: tournamentPlayers.teamId }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.userId, userId)));
-    if (existing) throw new DomainError("Du bist schon im Turnier-Kader.");
+    if (existing) throw new DomainError(existing.teamId === teamId ? "Du bist schon im Turnier-Kader." : "Du bist schon in einem anderen Team dieses Turniers. Ein Konto spielt je Turnier nur in einem Team.");
     const [{ n }] = await tx.select({ n: count() }).from(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, teamId)));
     if (n >= MAX_PER_TEAM) throw new DomainError("Der Kader ist voll.");
     await tx.insert(tournamentPlayers).values({ tournamentId, teamId, userId });
