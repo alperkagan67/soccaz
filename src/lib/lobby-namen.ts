@@ -16,3 +16,11 @@ export function personLabel(name: string, sicht: LobbySicht, index: number): str
   if (sicht === "guest") return initialsOf(name);
   return `Spieler ${index + 1}`;
 }
+
+/**
+ * Autorname in öffentlichen Inhalten (Kommentare, Bewertungen; Entscheid t2q 2026-11-24, AC-17): Angemeldete sehen den Namen, Gäste UND reine Hallenbetreiber nur die Initialen (ohne Link auf /spieler).
+ * Dieselbe Sicht (LobbySicht) wie die Lobby; die Lobby nennt den Betreiber "Spieler N", weil dort Plätze gezählt werden, ein Kommentar hat keinen Platz.
+ */
+export function autorLabel(name: string, sicht: LobbySicht): string {
+  return sicht === "member" ? name : initialsOf(name);
+}
