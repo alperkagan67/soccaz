@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { createInviteAction } from "@/server/actions";
 
 /** quiet: in der Lobby (eigene Hauptaktion, AC-30) kein oranger Knopf und keine Karte in der Karte. */
-export function InviteBox({ teamId, teamName, quiet = false }: { teamId: string; teamName: string; quiet?: boolean }) {
+export function InviteBox({ teamId, teamName, quiet = false, kontoSatz }: { teamId: string; teamName: string; quiet?: boolean; kontoSatz?: string }) {
   const main = quiet ? "btn btn-ghost" : "btn btn-primary";
   const [url, setUrl] = useState<string>();
   const [error, setError] = useState<string>();
@@ -32,7 +32,7 @@ export function InviteBox({ teamId, teamName, quiet = false }: { teamId: string;
   }
 
   const whatsapp = url
-    ? `https://wa.me/?text=${encodeURIComponent(`Komm in mein Team ${teamName} auf Socaz: ${url}`)}`
+    ? `https://wa.me/?text=${encodeURIComponent(`${kontoSatz ? `${kontoSatz} ` : ""}Komm in mein Team ${teamName} auf Socaz: ${url}`)}`
     : "#";
 
   return (

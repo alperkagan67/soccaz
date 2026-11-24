@@ -105,7 +105,7 @@ Erwartet: jede Zeile `PASS`, am Ende `ERGEBNIS: BESTANDEN`, Ende-Code 0. Er prü
 ```
 node scripts/smoke.mjs https://<Staging-Adresse> --go-live
 ```
-Erwartet: die Zeilen `Go-live: …` für `/impressum` und `/datenschutz` sind `OK`, **kein** `FEHLER` (kein `[PLATZHALTER: Name|Anschrift|E-Mail …]`, kein `[ENTWURF …]`-Satz), Ende-Code 0. Grün ist **Voraussetzung für den A-Eintrag** (Schritt 2).
+Erwartet: die Zeilen `Go-live: …` für `/impressum`, `/datenschutz` und `/agb` sind `OK`, **kein** `FEHLER` (kein `[PLATZHALTER: Name|Anschrift|E-Mail …]`, kein `[ENTWURF …]`-Satz), Ende-Code 0. Grün ist **Voraussetzung für den A-Eintrag** (Schritt 2).
 
 2. **Produktion, NACH dem A-Eintrag und VOR der Bekanntgabe der Adresse** (Einladungen, Link an Teilnehmer, Social Media; die DNS-Einträge stehen dann schon, das https-Zertifikat holt Caddy erst **nach dem A-Eintrag**, aber niemand kennt die Adresse):
 ```

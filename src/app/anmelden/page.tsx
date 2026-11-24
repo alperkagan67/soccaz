@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
+import { KontoHinweis } from "@/components/KontoHinweis";
 import { appleLoginEnabled } from "@/lib/apple-login";
 import { safeInternalPath } from "@/lib/safe-path";
 import { getT } from "@/server/locale";
@@ -67,6 +68,8 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
           <button className="btn btn-ghost w-full">{t("signin.apple")}</button>
         </form>
       )}
+
+      <KontoHinweis />
 
       {isDev && (
         <form
