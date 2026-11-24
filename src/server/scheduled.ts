@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { invites, matchParticipants, matchRequests, matchResults, matches, notifications, remindersSent } from "@/db/schema";
 import { abortDeadline, dueReminders, dueWithGrace, fixDeadline, hasLongLead, lobbyDeadline, REMINDER_TEXT } from "@/lib/deadlines";
 import { users } from "@/db/schema";
-import { payments } from "@/db/schema-finance";
+import { payments, settings } from "@/db/schema-finance";
 import { getAlerts } from "./finance";
 import { cancelMatchTx } from "./lobby";
 import { cardModeActive, hasChargeRows, hasPaidSeat, isChargeBound, isDeadlineModel, leadStart, payAndReadyPossible, settleMatch } from "./wallet";
@@ -188,13 +188,26 @@ export async function sendResultReminders(now: Date = new Date()): Promise<numbe
   return sent;
 }
 
-/** Räumt Altlasten auf: lange abgelaufene Einladungen und alte, gelesene Benachrichtigungen. */
-export async function cleanup(now: Date = new Date()): Promise<{ invites: number; notifications: number }> {
+/**
+ * Räumt Altlasten auf: lange abgelaufene Einladungen, alte gelesene Benachrichtigungen und die Marker der Pause-Mitteilung (Backlog 217):
+ * `reminders_sent` "pause-resume:<ms>" und `settings` "pause_notified:<Turnier>:<ms>". <ms> ist die neue Frist; der Marker wird nur gebraucht, solange sie in der Zukunft liegt (notifyResumedGames/notifyResumedTournaments),
+ * gelöscht wird also ab 90 Tagen danach. Nur Schlüssel in genau dieser Form (Muster mit Zahl am Ende, vor dem Vergleich per CASE geprüft): nichts anderes in diesen Tabellen wird berührt.
+ */
+export async function cleanup(now: Date = new Date()): Promise<{ invites: number; notifications: number; pauseMarkers: number }> {
   const inviteCutoff = new Date(now.getTime() - 30 * 24 * 3_600_000);
   const noteCutoff = new Date(now.getTime() - 90 * 24 * 3_600_000);
+  const markerCutoffMs = now.getTime() - 90 * 24 * 3_600_000;
   const oldInvites = await db.delete(invites).where(lt(invites.expiresAt, inviteCutoff)).returning({ t: invites.token });
   const oldNotes = await db.delete(notifications).where(and(isNotNull(notifications.readAt), lt(notifications.createdAt, noteCutoff))).returning({ id: notifications.id });
-  return { invites: oldInvites.length, notifications: oldNotes.length };
+  const oldGameMarkers = await db
+    .delete(remindersSent)
+    .where(sql`(case when ${remindersSent.kind} ~ '^pause-resume:[0-9]{1,15}$' then substring(${remindersSent.kind} from 14)::bigint end) < ${markerCutoffMs}`)
+    .returning({ k: remindersSent.kind });
+  const oldTournamentMarkers = await db
+    .delete(settings)
+    .where(sql`(case when ${settings.key} ~ '^pause_notified:[0-9a-f-]{36}:[0-9]{1,15}$' then split_part(${settings.key}, ':', 3)::bigint end) < ${markerCutoffMs}`)
+    .returning({ k: settings.key });
+  return { invites: oldInvites.length, notifications: oldNotes.length, pauseMarkers: oldGameMarkers.length + oldTournamentMarkers.length };
 }
 
 /** Rechnet bestätigte Spiele ab, sobald ihre Lobby-Frist erreicht ist: Hallenpreis geteilt durch die zahlenden Spieler. */
