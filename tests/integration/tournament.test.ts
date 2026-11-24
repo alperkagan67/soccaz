@@ -15,7 +15,6 @@ import {
   notifyRegistrationDeadlines,
   registerTeam,
   setOrganizer,
-  setPaidReady,
   setRosterComplete,
   withdrawTeam,
 } from "@/server/tournaments";
@@ -231,11 +230,10 @@ describe("Bracket: verborgen, bis alle bezahlt haben, dann genau einmal", () => 
     const t = await newTournament(o, { hourlyCents: 0 });
     const squads: Squad[] = [];
     for (let i = 0; i < 4; i++) squads.push(await squad(t.id, 4, true));
-    expect(await statusOf(t.id)).toMatchObject({ status: "payment", finalShareCents: 0 });
-    expect(await bracketRows(t.id)).toHaveLength(0);
-    for (const s of squads) await setPaidReady(s.captain.id, t.id);
+    // Gratis-Turnier (Gratis PR B, Entscheid t2q 2026-11-24): "Bereit" entfaellt, das Bracket steht sofort mit dem letzten "vollzaehlig" (alle Plaetze belegt, alle Teams vollzaehlig)
     expect(await statusOf(t.id)).toMatchObject({ status: "running", finalShareCents: 0 });
     expect(await bracketRows(t.id)).toHaveLength(3);
+    expect(squads).toHaveLength(4);
   });
 
 });

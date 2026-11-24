@@ -25,7 +25,9 @@ test("Veranstalter legt ein kostenloses Turnier an: Gratis-Hinweis statt Preisfe
   const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
   await org.getByLabel("Name des Turniers").fill(`Gratis-Cup ${run}`);
   await org.getByLabel(/Termin \(Beginn\)/).fill(`${day(12)}T10:00`);
-  await org.getByLabel("Anmeldeschluss").fill(`${day(8)}T10:00`);
+  // Anmeldeschluss: Vorschlag 4 Tage vor Beginn (Gratis PR B), das Feld wird nicht von Hand gefuellt
+  await expect(org.getByLabel("Anmeldeschluss")).toHaveValue(`${day(8)}T10:00`);
+  await expect(org.getByTestId("deadline-hint")).toContainText("4 Tage vor Beginn");
   await org.waitForLoadState("networkidle");
   await org.getByRole("button", { name: "Turnier anlegen" }).click();
   await expect(org).toHaveURL(/\/turniere\/[0-9a-f-]{36}/, { timeout: 60_000 });

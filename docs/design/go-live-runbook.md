@@ -53,6 +53,14 @@ docker compose exec -T app sh -c 'test -z "$PAYMENTS_FAKE" && echo OK || echo ST
 ```
 Erwartet: `OK`. `STOPP` = Variable aus `.env` und aus Compose-Dateien entfernen, neu starten, erneut prüfen. Die Anwendung selbst **startet in Produktion nicht**, wenn `PAYMENTS_FAKE=1` gesetzt ist (Startsperre; Meldung im Log `PAYMENTS_FAKE=1 ist in Produktion verboten`). Das gilt auch für Staging.
 
+## 3a. Umgebungsmarke (NUR Staging, einmalig)
+Nur auf dem **Staging**-Server, nach dem ersten Start (Schritt 4), **einmal** (der Staging-Seed in Schritt 10 läuft ohne diese Marke nie):
+```
+sh scripts/staging-compose.sh exec -T db psql -U socaz -d socaz -c "insert into settings (key, value) values ('environment', '\"staging\"'::jsonb) on conflict (key) do update set value = excluded.value"
+sh scripts/staging-compose.sh exec -T db psql -U socaz -d socaz -c "select key, value from settings where key = 'environment'"
+```
+Erwartet: `INSERT 0 1`, dann eine Zeile `environment | "staging"`. **Auf Produktion wird diese Marke nie gesetzt**; dort muss die zweite Abfrage **0 Zeilen** liefern (Prüfpunkt im Go-live).
+
 ## 4. Starten und Migration
 ```
 docker compose up -d --build        # Staging: sh scripts/staging-compose.sh up -d --build
@@ -95,10 +103,12 @@ Erwartet: jede Zeile `PASS`, am Ende `ERGEBNIS: BESTANDEN`, Ende-Code 0. Er prü
 2. Konto zum Admin machen (Adresse nur als Wert am Server eintragen):
 ```
 docker compose exec db psql -U socaz -c "update users set role='admin' where email='<ihre-google-adresse>'"
-docker compose run --rm -e OWNER_EMAIL=<ihre-google-adresse> migrate node scripts/set-owner.mjs
-docker compose run --rm -e OWNER_EMAIL=<ihre-google-adresse> migrate node scripts/set-owner.mjs --yes
+read -r -s OWNER_EMAIL; export OWNER_EMAIL     # Adresse verdeckt eingeben, Eingabe mit Enter beenden
+docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs
+docker compose run --rm -e OWNER_EMAIL migrate node scripts/set-owner.mjs --yes
+unset OWNER_EMAIL; history -c
 ```
-Erwartet: der Trockenlauf nennt nur Host und Datenbankname, `--yes` meldet Erfolg. (Der Aufruf über den `migrate`-Dienst ist eine **Annahme**: bei der Generalprobe belegen; sonst `BETRIEB.md`, „Admin 1 festlegen“.)
+Erwartet: der Trockenlauf nennt nur Host und Datenbankname, `--yes` meldet Erfolg. (Der Aufruf über den `migrate`-Dienst ist eine **Annahme**: bei der Generalprobe belegen; sonst `BETRIEB.md`, „Admin 1 festlegen“. Die Adresse steht dank verdeckter Eingabe nur einmal im SQL-Befehl; deshalb danach `history -c`.)
 
 ## 6a. Apple-Anmeldung (nur falls eingeschaltet: `APPLE_LOGIN_ENABLED=1`)
 Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate). **Erneuerung spätestens alle 5 Monate.** Tragen Sie das **Ablaufdatum** in der Betriebsdoku ein (`docs/BETRIEB.md`, Abschnitt „Apple-Anmeldung“, Zeile „Client-Secret gültig bis: <Datum>“) und legen Sie sich **zwei Kalendereinträge** an: 4 Wochen vor Ablauf und am Tag vor Ablauf. Läuft das Secret ab, schlägt die Apple-Anmeldung still fehl (Google bleibt unberührt). Prüfung nach der Erneuerung: Smoke-Test mit `--apple` und eine echte Anmeldung.
@@ -118,5 +128,30 @@ Erwartet: Smoke-Test (Schritt 5) wieder grün. **Datenbankänderungen gehen nur 
 ## 9. Update im Betrieb
 `git pull && docker compose up -d --build`, danach Smoke-Test. Nach Code-Freeze nur Fehlerbehebungen, jede mit Sicherung davor.
 
+## 10a. Staging-Seed für die Generalprobe (Teams 3 bis 6, nur Staging)
+Für das Gratis-Turnier mit 6 Teams sind Teams 1 und 2 **echte** Konten; Teams 3 bis 6 legt `scripts/staging-seed.mjs` mit **erfundenen** Konten an (`probe-t3-s1@staging.invalid` …, Namen „Probe Konto T3-1“, Teams „Probe-Team 3“ bis „Probe-Team 6“; `.invalid` ist nie zustellbar, es wird nie Post verschickt). Das Skript hat eine **eigene Sperre** und verweigert ohne Umgebungsmarke (Schritt 3a), bei `APP_URL` = `socaz.de` oder `www.socaz.de` und ohne ausdrückliche Bestätigung. Ein Staging unter einer Unteradresse (z. B. `staging.socaz.de`) ist erlaubt.
+```
+sh scripts/staging-compose.sh run --rm -e APP_URL=https://<staging-adresse> -e STAGING_SEED_CONFIRM=ja-staging-seed migrate node scripts/staging-seed.mjs --turnier <turnier-id>
+```
+Erwartet: je Team eine Zeile „… 5 Konten, im Turnier angemeldet und bereit“ und am Ende „Fertig: 20 erfundene Konten (@staging.invalid, nie zustellbar), 4 Teams.“. Ohne `--turnier` entstehen nur Konten und Teams. `--turnier` verlangt ein **Gratis-Turnier** (Hallenkosten **genau 0**; ein Altturnier ohne Preisangabe zählt nicht) in der Anmeldung mit mindestens vier freien Plätzen. **REIHENFOLGE (wichtig):** erst die Teams anmelden lassen, **dann seeden, DANACH** melden die echten Teams 1 und 2 „vollzählig“: das **letzte** „vollzählig“ löst den Preisschritt und damit das Bracket aus. Der Seed setzt „vollzählig“ direkt in der Datenbank und ruft die Turnierlogik nicht auf; sind echte Teams schon vollzählig, **verweigert** das Skript (Meldung „erst den Seed laufen lassen“): ein echter Captain nimmt „vollzählig“ zurück (aus und wieder an), dann seeden. Sonst startet das Bracket nie von selbst und „Anmeldung schließen“ meldet, dass alle Plätze belegt sind. Die vier Teams stehen dann auf „vollzählig“ und „Bereit“ (**Annahme**, bei der Generalprobe belegen: der Ablauf der echten Captains danach bis zum Bracket). Aufräumen nach der Probe: dasselbe mit `--clean` statt `--turnier`; **sobald mit den Probe-Teams Turnierspiele gespielt wurden, scheitert `--clean`** (Datenbank-Verweise, nichts geht verloren): dann die gesamte Staging-Datenbank zurücksetzen oder den Server nach der Generalprobe löschen. Eine Staging-Sicherung darf **nie** in Produktion eingespielt werden (sie enthält die Marke). **Mail:** Die erfundenen Konten (`@staging.invalid`) bekommen In-App-Benachrichtigungen; auf **Staging darf kein Mailanbieter konfiguriert sein** (keine Zugangsdaten eines Mailanbieters in die Staging-`.env`), sonst gäbe es Fehlzustellungen und eine schlechtere Reputation des Absenders. Gibt es später einen Mailversand (Backlog 211), muss er auf Staging aus sein oder `.invalid`-Adressen verwerfen, ohne zu senden. Verweigert das Skript („Staging-Seed verweigert: …“), **nichts umgehen**: Marke, Adresse oder Bestätigung prüfen und melden.
+
 ## 10. Staging ist anders
 Staging nur mit `sh scripts/staging-compose.sh …` starten (Zugangsschutz, Banner, noindex); nur Stripe-Testschlüssel; nie auf dem Produktionsserver. Vollständiger Ablauf: `pilot-staging-checkliste.md`.
+
+## 11. Am Turniertag: falsches Ergebnis, Kampflos, Rückzug (Entscheidungsbaum)
+**Grundregel:** **Kein Agent ändert Produktionsdaten** (kein SQL, kein Skript, kein „kurz geradeziehen“). Korrekturen macht der **Veranstalter in der Oberfläche** oder der **Nutzer als Admin 1**; jeder Eingriff steht im Protokoll (Audit). Im Zweifel: **nichts anfassen**, Stand notieren, melden.
+
+### 11.1 Ergebnis falsch eingetragen
+| Lage | Wer | Vorgehen | Erwartet |
+|---|---|---|---|
+| **(1) Das Ergebnis ist noch nicht endgültig** (ein Captain hat gemeldet, das andere Team hat noch nicht bestätigt, oder es gibt einen Widerspruch; das Spiel steht nicht auf „beendet“) | **Veranstalter** (oder Admin 1) | Spielseite des Spiels öffnen (aus dem Bracket), Kasten **„Plattform-Entscheidung“**: richtigen Spielstand eintragen, **Begründung** (mindestens 3 Zeichen), **Entscheiden** | Das Spiel zeigt den Endstand, der Sieger rückt im Bracket weiter; im Audit steht „result.decide“ mit altem und neuem Stand. Geht nur, wenn das Spiel schon begonnen hat |
+| **(2) Das Ergebnis ist schon endgültig** (bestätigt, entschieden oder nach 48 Stunden automatisch bestätigt) **und das Folgespiel ist noch nicht gespielt** | **Nutzer als Admin 1** entscheidet das Vorgehen | **Nicht selbst herumklicken.** Die Oberfläche hat dafür **keinen** Korrekturweg. Stand notieren (Spiel, falscher und richtiger Stand, Uhrzeit), melden; Admin 1 entscheidet mit dem Task Manager, ob das Folgespiel mit dem notierten richtigen Stand gespielt wird (Anzeige weicht dann ab) oder wartet. **Kein Agent ändert Daten.** | Entscheidung mit Datum im Testprotokoll/Turnierprotokoll |
+| **(3) Notfall: die Spielstand-Anzeige stimmt nicht, das Turnier läuft weiter** | **Veranstalter** | Den **richtigen** Stand **extern notieren** (Zettel, Foto der Tafel) und das Turnier **auf Basis des notierten Stands** weiterführen. **Korrektur nach dem Turnier.** | Notizliste vollständig; nach dem Turnier meldet der Veranstalter sie dem Task Manager |
+**Echte Korrektur** eines endgültigen Ergebnisses (mit Rückrechnung von Elo, Statistik, Abzeichen und Folgespiel) gibt es **erst nach dem 12.12.** (Backlog); bis dahin gilt (2) und (3).
+
+### 11.2 Kampflos werten (Gegner ist nicht erschienen)
+**Veranstalter-Knopf „Kampflos werten“** am Spiel: der Gegner rückt weiter, Ergebnis **3:0**, im Audit vermerkt. **Stand: dieser Knopf ist noch nicht auf `main`**; er gilt ab dem Merge des zugehörigen PR (Task Manager nennt ihn). **Bis dahin:** 11.1 (1) mit dem Ergebnis 3:0 und der Begründung „kampflos“. Vor der Entscheidung kurz abwarten (vereinbarte Wartezeit) und beide Captains fragen.
+
+### 11.3 Team zieht zurück
+- **Vor dem Start des Brackets** (Gratis-Turnier): das Team wird **entfernt** (Captain: „Team abmelden“ in der Turnierseite, oder der **Veranstalter** nimmt es heraus; nach dem **Anmeldeschluss** kann der Veranstalter keine Teams mehr ersetzen, dann **„Anmeldung schließen“**, damit mit den angemeldeten Teams, mindestens 4, gespielt wird). Erwartet: das Team steht nicht mehr in der Liste, die übrigen Teams sehen es; im Audit „tournament.withdraw“.
+- **Nach dem Start des Brackets** gibt es **keine Abmeldung mehr** („Nach dem Start ist keine Abmeldung mehr möglich“). Zieht ein Team dann zurück: für **kommende** Spiele **Kampflos werten** (11.2); bereits gespielte Spiele bleiben stehen.

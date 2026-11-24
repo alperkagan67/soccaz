@@ -1,6 +1,8 @@
 "use client";
 
+import { useRef } from "react";
 import { FieldError, SubmitButton } from "@/components/FormBits";
+import { anmeldeschlussVorschlag } from "@/lib/anmeldeschluss";
 import { useFormAction } from "@/components/useFormAction";
 import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
@@ -9,6 +11,7 @@ import { ZP } from "@/lib/zahlungspflicht-texte";
 export function TournamentForm({ min, defaultCity, standardHourly, commission, partnerVenues, free = false }: { min: string; defaultCity: string | null; standardHourly: string | null; commission: number; partnerVenues: { id: string; label: string }[] | null; free?: boolean }) {
   const { state, pending, onSubmit, formAction } = useFormAction(createTournamentAction);
   const fe = state?.fieldErrors ?? {};
+  const deadlineRef = useRef<HTMLInputElement>(null);
   return (
     <form action={formAction} onSubmit={onSubmit} className="card space-y-4">
       <div>
@@ -51,11 +54,26 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="label" htmlFor="startsAt">Termin (Beginn)</label>
-          <input id="startsAt" name="startsAt" type="datetime-local" min={min} step={900} className="field" required />
+          <input
+            id="startsAt"
+            name="startsAt"
+            type="datetime-local"
+            min={min}
+            step={900}
+            className="field"
+            required
+            onChange={(e) => {
+              // Gratis-Turnier: Anmeldeschluss vorschlagen (4 Tage vorher), nur solange das Feld leer ist
+              if (!free || !deadlineRef.current || deadlineRef.current.value) return;
+              const v = anmeldeschlussVorschlag(e.target.value, min);
+              if (v) deadlineRef.current.value = v;
+            }}
+          />
         </div>
         <div>
           <label className="label" htmlFor="registrationDeadline">Anmeldeschluss</label>
-          <input id="registrationDeadline" name="registrationDeadline" type="datetime-local" min={min} step={900} className="field" required />
+          <input id="registrationDeadline" name="registrationDeadline" type="datetime-local" min={min} step={900} className="field" required ref={deadlineRef} />
+          {free && <p className="text-xs text-muted" data-testid="deadline-hint">Vorschlag: 4 Tage vor Beginn. Mit dem Anmeldeschluss schließt die Anmeldung; danach startest du mit den bereiten Teams oder sagst ab.</p>}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">

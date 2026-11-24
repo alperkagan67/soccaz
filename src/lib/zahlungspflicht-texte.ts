@@ -22,8 +22,8 @@ export const ZP = {
   tournamentFreeSteps: [
     "Teams melden sich über den Einladungslink an: Der Captain wählt sein Team.",
     "Die Spieler treten ihrem Team bei. Hat das Team genug Spieler, meldet der Captain: „Team ist vollzählig“.",
-    "Sind alle Plätze belegt und alle Teams vollzählig, bestätigt jeder Captain einmal mit „Bereit“.",
-    "Danach erscheint der Spielplan. Die Ergebnisse trägt der Veranstalter ein (oder ein Captain meldet, der Gegner bestätigt).",
+    "Sind alle Plätze belegt und alle Teams vollzählig, erscheint der Spielplan sofort. Sonst schließt der Veranstalter die Anmeldung und startet mit den bereiten Teams.",
+    "Die Ergebnisse trägt der Veranstalter ein (oder ein Captain meldet, der Gegner bestätigt).",
   ],
   /** Turnier, Halle hat abgelehnt (Backlog 161, ENTWURF): die zwei Wege des Veranstalters. Rechtsfolge (Erstattung, keine Abbuchung) nur hier. */
   hallDeclinedReopenConfirm: "Die Kader werden wieder geöffnet. Bereits bezahlte Anteile werden erstattet, der Preis wird später neu berechnet. Danach wählst du die Halle.",
