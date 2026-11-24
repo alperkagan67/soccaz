@@ -52,6 +52,17 @@ export async function waitHydrated(target: Locator) {
     .toBe(true);
 }
 
+/**
+ * Klick auf einen Link bis zur Zieladresse, mit Wiederholung (Flake-Familie 223, Backlog 238): Ein einzelner Klick mit 5 s Wartegrenze scheitert, wenn der Dev-Server die Zielseite kalt baut oder der Klick in die Hydration fällt.
+ * Ein erneuter Klick auf einen Link ist harmlos (keine Server-Aktion); geklickt wird nur, solange die Zieladresse noch nicht erreicht ist.
+ */
+export async function clickLinkUntilUrl(page: Page, link: Locator, url: RegExp) {
+  await expect(async () => {
+    if (!url.test(page.url())) await link.click({ timeout: 3_000 });
+    await expect(page).toHaveURL(url, { timeout: 4_000 });
+  }).toPass({ timeout: 25_000 });
+}
+
 export async function clickWhenReady(page: Page, name: string | RegExp) {
   const button = page.getByRole("button", { name });
   await expect(button).toBeVisible();
