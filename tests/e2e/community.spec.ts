@@ -114,18 +114,21 @@ test("Spielerprofil, Teamseite, Rangliste und Spieler des Spiels", async ({ brow
   await db.query("insert into user_badges (user_id, code, match_id) values ($1, 'hattrick', $2)", [star, matchId]);
 
   const anon = await (await browser.newContext()).newPage();
+  // Spielerprofil: für Gäste nicht öffentlich (AC-17, Entscheid t2q 2026-11-24: Anmeldung mit Rücksprung); Angemeldete sehen es
   await anon.goto(`/spieler/${star}`);
-  await expect(anon.getByRole("heading", { name: new RegExp(`Torjaeger ${run}`) })).toBeVisible();
-  await expect(anon.getByText("Hattrick")).toBeVisible();
-  await expect(anon.getByText(`${homeName} 3:1 ${awayName}`)).toBeVisible();
-  await expect(anon.getByTestId("reliability")).toHaveCount(0); // privat
-
-  // privates Profil: Name, sonst nichts
-  await anon.goto(`/spieler/${hidden}`);
-  await expect(anon.getByText("Dieses Profil ist nicht öffentlich.")).toBeVisible();
-  // Spielerliste: die Namenssuche gilt nur angemeldet (AC-17, Entscheid t2q 2026-11-24); Gäste sehen Initialen ohne Link (Details: namen-listen.spec.ts)
+  await expect(anon).toHaveURL(new RegExp("/anmelden"));
   const viewer = await (await browser.newContext()).newPage();
   await newUser(viewer, "cview");
+  await viewer.goto(`/spieler/${star}`);
+  await expect(viewer.getByRole("heading", { name: new RegExp(`Torjaeger ${run}`) })).toBeVisible();
+  await expect(viewer.getByText("Hattrick")).toBeVisible();
+  await expect(viewer.getByText(`${homeName} 3:1 ${awayName}`)).toBeVisible();
+  await expect(viewer.getByTestId("reliability")).toHaveCount(0); // privat
+
+  // privates Profil: Name, sonst nichts
+  await viewer.goto(`/spieler/${hidden}`);
+  await expect(viewer.getByText("Dieses Profil ist nicht öffentlich.")).toBeVisible();
+  // Spielerliste: die Namenssuche gilt nur angemeldet (AC-17, Entscheid t2q 2026-11-24); Gäste sehen Initialen ohne Link (Details: namen-listen.spec.ts)
   await viewer.goto(`/spieler?q=${encodeURIComponent(`Privat ${run}`)}`);
   await expect(viewer.getByText("Keine Spieler gefunden.")).toBeVisible();
   await viewer.goto(`/spieler?q=${encodeURIComponent(`Torjaeger ${run}`)}`);
