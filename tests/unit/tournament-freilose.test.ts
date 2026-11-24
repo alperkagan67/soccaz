@@ -107,9 +107,13 @@ describe("Freilose: Plan und Spielzeilen passen zusammen (2 bis 32 Teams)", () =
     expect(scheduleFromRows([{ stage: "group:A", slot: 0 }], START, 120)).toBeNull();
   });
 
-  it("Zeiten: weniger echte Spiele ergeben längere Slots als im Rohplan mit Phantom-Spielen (slotMinutes aus den echten Blöcken)", () => {
+  it("Zeiten (6 Teams): Blockzahl und Slotlänge kommen aus den echten Spielen, nicht aus dem vollen Bracket mit Phantom-Spielen", () => {
     const mapped = scheduleFromRows(knockout(ids(6)), START, 120)!;
-    expect(mapped.slotMinutes).toBeGreaterThanOrEqual(5);
-    expect(mapped.blocks.length).toBeGreaterThanOrEqual(3);
+    expect(mapped.blocks).toHaveLength(3); // ko:8 (2 Spiele), ko:4 (2 Spiele), Finale: je ein Block
+    expect(mapped.slotMinutes).toBe(36); // floor((120 - 2*5) / 3)
+    // Rohplan des vollen 8er-Brackets (4 + 2 + 1 Spiele, mit Phantom-Spielen der Freilose): vier Blöcke, kürzere Slots
+    const phantom = planSchedule([{ stage: "ko:8", games: 4 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 120);
+    expect(phantom.blocks).toHaveLength(4);
+    expect(phantom.slotMinutes).toBeLessThan(mapped.slotMinutes);
   });
 });
