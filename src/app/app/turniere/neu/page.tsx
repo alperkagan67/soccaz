@@ -5,7 +5,7 @@ import { formatEuro } from "@/lib/money";
 import { db } from "@/db";
 import { priceFor } from "@/server/pricing";
 import { commissionPercent } from "@/server/tournaments";
-import { getSetting } from "@/server/settings";
+import { cardPaymentsEnabled, getSetting, paymentsEnabled } from "@/server/settings";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { requireUser } from "@/server/session";
 import { TournamentForm } from "./TournamentForm";
@@ -21,11 +21,12 @@ export default async function NewTournamentPage() {
   const commission = await commissionPercent();
   // Kartenmodell (012 M5-1): Partnerhalle waehlen. Bei ausgeschaltetem Schalter bleibt das Formular unveraendert.
   const partnerVenues = await listPartnerVenueOptions();
+  const free = !(await paymentsEnabled()) && !(await cardPaymentsEnabled()); // Zahlungen AUS (Produktion, Entscheid t2q): kostenloses Turnier ohne Preisangabe
   return (
     <section className="mx-auto mt-4 max-w-md space-y-4">
       <h1 className="text-2xl font-bold">Turnier anlegen</h1>
       {allowed ? (
-        <TournamentForm min={min} defaultCity={user.city} standardHourly={standard ? formatEuro(standard.priceCents) : null} commission={commission} partnerVenues={partnerVenues} />
+        <TournamentForm min={min} defaultCity={user.city} standardHourly={standard ? formatEuro(standard.priceCents) : null} commission={commission} partnerVenues={partnerVenues} free={free} />
       ) : (
         <div className="card space-y-2" data-testid="organizer-info">
           <p>Turniere dürfen nur freigeschaltete Veranstalter anlegen.</p>
