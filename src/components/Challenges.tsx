@@ -6,7 +6,7 @@ import type { ChallengeRow } from "@/server/requests";
 export function Challenges({ incoming, outgoing }: { incoming: ChallengeRow[]; outgoing: ChallengeRow[] }) {
   if (incoming.length === 0 && outgoing.length === 0) return null;
   return (
-    <section className="space-y-3" aria-label="Herausforderungen" data-testid="challenges">
+    <section id="herausforderungen" className="space-y-3" aria-label="Herausforderungen" data-testid="challenges">
       {incoming.length > 0 && (
         <div className="space-y-2">
           <h2 className="text-lg font-semibold text-accent-fg">Herausforderungen an euch ({incoming.length})</h2>
