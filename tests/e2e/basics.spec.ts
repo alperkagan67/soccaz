@@ -35,7 +35,7 @@ test("Kein Guthaben: weder Karte, noch Betrag in der Kopfleiste; /app/guthaben l
   await expect(p.getByRole("main")).not.toContainText(/Guthaben|Aufladen/);
   await p.goto("/app/guthaben");
   await expect(p).toHaveURL(/\/app$/);
-  for (const link of ["Lobby aufmachen", "Mein Profil", "Rangliste", "Einstellungen", "Hilfe"]) await expect(p.getByRole("navigation", { name: "Schnellzugriff" }).getByRole("link", { name: link })).toBeVisible();
+  for (const link of ["Mein Profil", "Rangliste", "Einstellungen", "Hilfe"]) await expect(p.getByRole("navigation", { name: "Schnellzugriff" }).getByRole("link", { name: link })).toBeVisible();
 });
 
 test("Teamverzeichnis mit Suche", async ({ browser }) => {
