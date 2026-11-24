@@ -5,6 +5,7 @@ import { CITIES } from "@/lib/validation";
 import { STRENGTH_LABELS } from "@/lib/labels";
 import { FieldError, SubmitButton } from "@/components/FormBits";
 import { useFormAction } from "@/components/useFormAction";
+import { ZP } from "@/lib/zahlungspflicht-texte";
 
 type TeamOption = { id: string; name: string; city: string; strength: number };
 
@@ -93,6 +94,7 @@ export function RequestForm({ teams, min, target }: { teams: TeamOption[]; min: 
       </div>
 
       <SubmitButton pending={pending}>{target ? "Herausfordern" : "Spielsuche erstellen"}</SubmitButton>
+      <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>
       {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
     </form>
   );

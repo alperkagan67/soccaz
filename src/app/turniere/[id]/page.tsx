@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { ActionButton } from "@/components/ActionButton";
 import { PlayerLight, type Light } from "@/components/PlayerLight";
 import { formatEuro } from "@/lib/money";
+import { chargeAmount } from "@/server/payments/charge-run";
 import { formatDateTime } from "@/lib/time";
 import { InviteBox } from "@/app/teams/[slug]/InviteBox";
 import {
@@ -30,6 +31,7 @@ import { hasOpenTournamentAuthorization } from "@/server/payments/authorize";
 import { TournamentVenuePick } from "./TournamentVenuePick";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { TournamentCard } from "./TournamentCard";
+import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
 
@@ -218,8 +220,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                   <p className="text-xs text-muted" data-testid="team-captain">Captain: {team.captainName} · {team.players.length} Spieler{priceFixed && !free && (!data.cardMode || team.showLights) ? ` · ${paid} ${data.cardMode ? "gedeckt" : "bezahlt"}` : ""}</p>
                   {mine && inPayment && team.dueCents === 0 && team.cardMissing === 0 && team.players.length > 0 && !team.paidReady && (
                     <div className="space-y-1" data-testid="paid-ready-box">
-                      <ActionButton action={setPaidReadyAction.bind(null, t.id)} label="Bereit" className="btn btn-primary w-full" />
-                      <p className="text-xs text-muted">{data.cardMode ? "Alle in eurem Team haben eine Karte hinterlegt. Drücke Bereit; abgebucht wird erst zur Frist." : "Euer Team hat komplett bezahlt. Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind."}</p>
+                      <ActionButton action={setPaidReadyAction.bind(null, t.id)} label={tournamentReadyLabel({ cardMode: data.cardMode, free, paused: Boolean(data.paymentsPaused) })} className="btn btn-primary w-full" />
+                      <p className="text-xs text-muted">{data.cardMode ? (data.paymentsPaused ? ZP.tournamentReadyPause : "Alle in eurem Team haben eine Karte hinterlegt. Drücke Bereit; abgebucht wird erst zur Frist.") : "Euer Team hat komplett bezahlt. Drücke Bereit; das Bracket entsteht, sobald alle Teams bereit sind."}</p>
                     </div>
                   )}
                   {data.cardMode && team.cardsComplete !== null && <p className="text-xs text-muted" data-testid="team-cards-state">{team.cardsComplete ? "Karten komplett" : "Karten unvollständig"}</p>}
@@ -244,6 +246,9 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                   </ul>
                   {inRegistration && v?.joinableTeamIds.includes(team.teamId) && (
                     <ActionButton action={joinAsPlayerAction.bind(null, t.id, team.teamId)} label="Dem Turnier-Kader beitreten" className="btn btn-primary w-full" />
+                  )}
+                  {inRegistration && v?.joinableTeamIds.includes(team.teamId) && (
+                    <p className="text-xs text-muted" data-testid="kader-hint">{ZP.hintLater}</p>
                   )}
                   {mine && inRegistration && data.registrationOpen && <InviteBox teamId={team.teamId} teamName={team.name} />}
                   {mine && inRegistration && (
@@ -279,6 +284,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             teammates={(teams.find((x) => x.teamId === v.myTeamId)?.players ?? []).filter((p) => p.userId !== user?.id).map((p) => ({ userId: p.userId, name: p.name, hasCard: p.paid && !p.covered, covered: p.covered }))}
             coveringName={v.coveringUserId ? (teams.find((x) => x.teamId === v.myTeamId)?.players.find((p) => p.userId === v.coveringUserId)?.name ?? null) : null}
             canCover={v.hasOwnCard}
+            coverAmounts={priceFixed && !free ? ((a) => (a !== null ? { own: formatEuro(a), target: formatEuro(a), total: formatEuro(a * 2), estimated: false } : null))(chargeAmount(pricing.totalCents ?? null, pricing.shareCents)) : null}
             needsAuthorization={Boolean(user) && inPayment && (await hasOpenTournamentAuthorization(user!.id, t.id))}
           />
         )}
