@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // TURNIER_ONLY: Wächter über die Server-Aktionen der gesperrten Module. Jede exportierte async-Funktion dieser Dateien beginnt mit der Sperre (erste Anweisung), damit eine neue Aktion
@@ -73,11 +73,71 @@ describe("Live-Kanäle und Sitemap", () => {
       expect(src(`src/app/${d}/layout.tsx`), d).toContain("<BereichGate>{children}</BereichGate>");
     }
     expect(src("src/app/spiele/page.tsx")).toMatch(/if \(await bereichGesperrt\(\)\) return <KommtBald \/>;/);
-    expect(src("src/app/spiele/[id]/page.tsx")).toMatch(/page\.match\.kind !== "tournament" && \(await bereichGesperrt\(\)\)/);
+    expect(src("src/app/spiele/[id]/page.tsx")).toContain("if (await spielGesperrt(id)) return <KommtBald />;");
   });
   it("Sitemap lässt gesperrte Seiten bei TURNIER_ONLY weg", () => {
     const s = src("src/app/sitemap.ts");
     expect(s).toContain("pfadGesperrt(p)");
     expect(s).toMatch(/const venueRows = nurTurnier \? \[\]/);
+  });
+});
+
+// Sicherheitsreview 0c2269a (Punkt 5): ALLE "use server"-Dateien aufzählen. Eine neue Aktionsdatei (oder eine Datei, die ihre Klassifizierung verliert) lässt den Test rot werden, statt unbemerkt ungeschützt zu bleiben.
+import { readdirSync, statSync } from "node:fs";
+function useServerDateien(dir = join(root, "src"), out: string[] = []): string[] {
+  for (const n of readdirSync(dir)) {
+    const p = join(dir, n);
+    if (statSync(p).isDirectory()) useServerDateien(p, out);
+    else if (/\.(ts|tsx)$/.test(n) && /^\s*["']use server["']/.test(readFileSync(p, "utf8").slice(0, 40))) out.push(p.slice(root.length + 1).split(sep).join("/"));
+  }
+  return out;
+}
+
+const GESPERRT_KOMPLETT = new Set(KOMPLETT.map((m) => `src/server/${m}.ts`));
+const JE_SPIEL = new Set(["src/server/clips-actions.ts", "src/server/stream-actions.ts"]);
+const GEMISCHT: Record<string, string> = {
+  "src/server/actions.ts": "Spiel-Aktionen gesperrt (oben geprüft), Onboarding/Team/Einladung/Benachrichtigungen offen",
+  "src/server/content-actions.ts": "Hallenbewertung (targetType venue) gesperrt, Kommentare an Profil und Team offen",
+  "src/server/payments/card-actions.ts": "Lobby-Varianten je Spiel gesperrt; Karte im Konto (ohne Spiel) offen, bei Zahlungen AUS weist der Dienst ab (zahlungen-aus-abweisung.test.ts)",
+  "src/server/payments/authorize-actions.ts": "Lobby-Freigabe je Spiel gesperrt; Turnier-Freigabe offen, bei Zahlungen AUS weist der Dienst ab",
+  "src/server/payments/fake-card-actions.ts": "Lobby-Varianten je Spiel gesperrt; Turnier-Varianten offen; in Produktion ohnehin verboten (assertNoFakeInProduction)",
+};
+const OFFEN: Record<string, string> = {
+  "src/server/account-actions.ts": "Konto: Export, Löschen, Einstellungen",
+  "src/server/admin-actions.ts": "Admin-Bereich: Berechtigung im Dienst (requirePermission), Plattform-Admin ohnehin ausgenommen",
+  "src/server/admin-finance-actions.ts": "Admin-Bereich (Finanzen)",
+  "src/server/evidence-admin-actions.ts": "Admin 1 (Beweisprotokoll-Schalter)",
+  "src/server/locale-actions.ts": "Sprachumschalter",
+  "src/server/team-admin-actions.ts": "Teams (bleiben offen: Turnier-Anmeldung braucht sie)",
+  "src/server/tournament-actions.ts": "Turniere (das Angebot der Betriebsart)",
+  "src/server/tournament-confirm-actions.ts": "Turnier-Zusage der Halle (Turnier-Weg), Berechtigung im Dienst",
+};
+
+describe("alle 'use server'-Dateien sind klassifiziert (neue Datei = rot)", () => {
+  const gefunden = useServerDateien().sort();
+  it("jede Datei steht in genau einer Liste (gesperrt, je Spiel, gemischt, offen mit Grund)", () => {
+    const bekannt = new Set([...GESPERRT_KOMPLETT, ...JE_SPIEL, ...Object.keys(GEMISCHT), ...Object.keys(OFFEN)]);
+    expect(gefunden.filter((f) => !bekannt.has(f)), "neue 'use server'-Datei: sperren oder mit Grund in OFFEN eintragen").toEqual([]);
+    expect([...bekannt].filter((f) => !gefunden.includes(f)), "Eintrag ohne Datei").toEqual([]);
+  });
+  it("gemischte und offene Einträge haben einen Grund", () => {
+    for (const [f, g] of [...Object.entries(GEMISCHT), ...Object.entries(OFFEN)]) expect(g.length, f).toBeGreaterThanOrEqual(7);
+  });
+  it("je-Spiel-Dateien beginnen jede Aktion mit assertSpielOffen(matchId)", () => {
+    for (const f of JE_SPIEL) for (const e of exporte(src(f))) expect(e.erste, `${f}.${e.name}`).toMatch(/^await assertSpielOffen\(matchId\);/);
+  });
+  it("Zahlungsaktionen mit Spiel: assertSpielOffen als erste Anweisung der Lobby-Varianten", () => {
+    const auth = exporte(src("src/server/payments/authorize-actions.ts"));
+    expect(auth.find((e) => e.name === "createAuthorizationAction")?.erste).toMatch(/^await assertSpielOffen\(matchId\);/);
+    const card = exporte(src("src/server/payments/card-actions.ts"));
+    expect(card.find((e) => e.name === "createCardSetupAction")?.erste).toMatch(/assertSpielOffen\(input\.matchId\)/);
+    expect(card.find((e) => e.name === "applyStoredCardForLobby")?.erste).toMatch(/^await assertSpielOffen\(/);
+    const fake = exporte(src("src/server/payments/fake-card-actions.ts"));
+    for (const n of ["fakeCardReadyAction", "fakeAuthorizeAction"]) expect(fake.find((e) => e.name === n)?.erste, n).toMatch(/^await assertSpielOffen\(matchId\);/);
+  });
+  it("Detailseiten gesperrter Bereiche liefern bei TURNIER_ONLY einen neutralen Titel ohne Datenabfrage", () => {
+    for (const f of ["src/app/hallen/[id]/page.tsx", "src/app/ligen/[id]/page.tsx", "src/app/profitag/[id]/page.tsx"]) {
+      expect(src(f), f).toMatch(/generateMetadata\([^)]*\)[^{]*\{\n\s*if \(turnierOnlyOn\(\)\) return \{ title: "Kommt bald"/);
+    }
   });
 });

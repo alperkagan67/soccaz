@@ -10,6 +10,7 @@ import { assertNoFakeInProduction, getPaymentProvider } from "./provider";
 import { cardModeActive } from "../wallet";
 import { fakeCardAllowed } from "./mode";
 import { fakeAuthorizeCore, fakeAuthorizeTournamentCore } from "./fake-authorize";
+import { assertSpielOffen } from "../turnier-only";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -18,6 +19,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * nicht Produktion und der aktive Anbieter muss der FakeProvider sein (ist ein Stripe-Schlüssel gesetzt, ist er Stripe und dieser Pfad ist gesperrt).
  */
 export async function fakeCardReadyAction(matchId: string): Promise<{ error?: string }> {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich (Lobby-Spiel)
   assertNoFakeInProduction();
   if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
   const provider = await getPaymentProvider();
@@ -48,6 +50,7 @@ export async function fakeCardReadyAction(matchId: string): Promise<{ error?: st
  * (payment_intent.succeeded bzw. payment_failed) erzeugt und durch handleStripeWebhook geschickt, also derselbe Weg wie in Produktion. Gleiche Sperren wie fakeCardReadyAction.
  */
 export async function fakeAuthorizeAction(matchId: string, outcome: "ok" | "fail"): Promise<{ error?: string }> {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich (Lobby-Spiel)
   assertNoFakeInProduction();
   if (!fakeCardAllowed()) return { error: "Nicht verfügbar." };
   const provider = await getPaymentProvider();

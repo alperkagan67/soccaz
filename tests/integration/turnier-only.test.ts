@@ -2,6 +2,8 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches } from "@/db/schema";
+import { tournamentMatches } from "@/db/schema-league";
+import { createTournament, setOrganizer } from "@/server/tournaments";
 import { KOMMT_BALD_TEXT } from "@/lib/turnier-only";
 import { cleanup, makeMatch, makeUser } from "./helpers";
 
@@ -57,21 +59,40 @@ describe("TURNIER_ONLY=1: Gast und Spieler gesperrt, Plattform-Admin darf alles"
     await expect(assertBereichOffen()).resolves.toBeUndefined();
   });
 
-  it("Spiel-Aktionen: Team-Spiel gesperrt, Turnier-Spiel offen, Admin überall, unbekanntes Spiel gesperrt", async () => {
-    const team = await makeMatch({ hoursAhead: 72, priceCents: 0, costCents: 0 });
+  it("Spiel-Aktionen: freies Spiel gesperrt, Turnier-Spiel (Spielart UND Zuordnung) offen, nur Spielart ohne Zuordnung gesperrt, Admin überall, unbekanntes Spiel gesperrt", async () => {
+    const frei = await makeMatch({ hoursAhead: 72, priceCents: 0, costCents: 0 });
     const turnier = await makeMatch({ hoursAhead: 72, priceCents: 0, costCents: 0 });
-    await db.update(matches).set({ kind: "tournament" }).where(eq(matches.id, turnier.match.id));
+    const nurArt = await makeMatch({ hoursAhead: 72, priceCents: 0, costCents: 0 });
+    const nurLink = await makeMatch({ hoursAhead: 72, priceCents: 0, costCents: 0 });
+    for (const m of [turnier, nurArt]) await db.update(matches).set({ kind: "tournament" }).where(eq(matches.id, m.match.id));
+    const org = await makeUser("torg");
+    const admin = await makeUser("tadm2", "admin");
+    await setOrganizer(admin.id, org.id, true);
+    const t = await createTournament(org.id, { name: "Gate-Cup", city: "Essen", startsAt: new Date(Date.now() + 5 * 86_400_000), registrationDeadline: new Date(Date.now() + 3 * 86_400_000), maxTeams: 4, durationMin: 120, hourlyCents: 8000 } as Parameters<typeof createTournament>[1]);
+    await db.insert(tournamentMatches).values([
+      { tournamentId: t.id, stage: "ko:2", round: 1, slot: 0, matchId: turnier.match.id },
+      { tournamentId: t.id, stage: "ko:2", round: 2, slot: 0, matchId: nurLink.match.id },
+    ]);
     await als("spieler");
-    expect(await spielGesperrt(team.match.id)).toBe(true);
-    await expect(assertSpielOffen(team.match.id)).rejects.toThrow(KOMMT_BALD_TEXT);
-    expect(await spielGesperrt(turnier.match.id)).toBe(false);
+    expect(await spielGesperrt(frei.match.id)).toBe(true);
+    await expect(assertSpielOffen(frei.match.id)).rejects.toThrow(KOMMT_BALD_TEXT);
+    expect(await spielGesperrt(turnier.match.id)).toBe(false); // Turnier-Spiel: Captain meldet und bestätigt
     await expect(assertSpielOffen(turnier.match.id)).resolves.toBeUndefined();
+    expect(await spielGesperrt(nurArt.match.id)).toBe(true); // Spielart tournament, aber keine Zuordnung
+    expect(await spielGesperrt(nurLink.match.id)).toBe(true); // Zuordnung, aber freie Spielart
     expect(await spielGesperrt("00000000-0000-0000-0000-000000000000")).toBe(true);
+    expect(await spielGesperrt("kein-uuid")).toBe(true); // keine Spiel-id: gesperrt ohne Datenbankabfrage (kein 500)
+    // Live-Kanal: Turnier-Spiel wird NICHT abgewiesen, freies Spiel und Zuordnung ohne Spielart schon
+    const live = (id: string) => spielLive.GET(new Request("http://x/"), { params: Promise.resolve({ id }) } as never);
+    expect((await live(turnier.match.id)).status).not.toBe(403);
+    expect((await live(frei.match.id)).status).toBe(403);
+    expect((await live(nurLink.match.id)).status).toBe(403);
     await als("gast");
-    expect(await spielGesperrt(team.match.id)).toBe(true);
+    expect(await spielGesperrt(frei.match.id)).toBe(true);
     expect(await spielGesperrt(turnier.match.id)).toBe(false);
     await als("admin");
-    expect(await spielGesperrt(team.match.id)).toBe(false);
+    expect(await spielGesperrt(frei.match.id)).toBe(false);
+    expect(await spielGesperrt(nurArt.match.id)).toBe(false);
   });
 
   it("Lobby-Aktion (joinLobbyAction) liefert die Ruhe-Meldung statt etwas zu ändern", async () => {

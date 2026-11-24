@@ -3,6 +3,7 @@
 import { requireUser } from "../session";
 import { DomainError } from "../teams";
 import { getAuthorizationSecret, getTournamentAuthorizationSecret } from "./authorize";
+import { assertSpielOffen } from "../turnier-only";
 
 export type AuthorizationState = { ok: true; clientSecret: string } | { ok: false; error: string };
 
@@ -12,6 +13,7 @@ export type AuthorizationState = { ok: true; clientSecret: string } | { ok: fals
  * die Zahlung kommt allein ueber den Webhook.
  */
 export async function createAuthorizationAction(matchId: string): Promise<AuthorizationState> {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich (Lobby-Spiel)
   const user = await requireUser("/app");
   try {
     const r = await getAuthorizationSecret(user.id, typeof matchId === "string" ? matchId : "");
