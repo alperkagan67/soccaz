@@ -24,3 +24,18 @@ export function personLabel(name: string, sicht: LobbySicht, index: number): str
 export function autorLabel(name: string, sicht: LobbySicht): string {
   return sicht === "member" ? name : initialsOf(name);
 }
+
+/** Eine Person in einer öffentlichen Liste (AC-17): Name und Link nur für Angemeldete; sonst Initialen, kein Link und ein Listenschlüssel ohne Kennung (React-Schlüssel stehen in der RSC-Nutzlast). */
+export type PersonRef = { key: string; label: string; href: string | null };
+
+export function personRef(sicht: LobbySicht, id: string, name: string, index: number): PersonRef {
+  return sicht === "member" ? { key: id, label: name, href: `/spieler/${id}` } : { key: `p${index}`, label: initialsOf(name), href: null };
+}
+
+/** Veranstalter in der Einladung für Gäste (Entscheid t2q 2026-11-24): Vorname und Initiale des Nachnamens ("Alper K."), nie der Nachname. Ein einteiliger Name bleibt, wie er ist. */
+export function vornameInitial(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${initialsOf(parts[parts.length - 1])}.`;
+}
