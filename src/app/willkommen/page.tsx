@@ -18,7 +18,7 @@ export default async function WelcomePage({ searchParams }: PageProps<"/willkomm
     <section className="mx-auto mt-6 max-w-md space-y-4">
       <h1 className="text-2xl font-bold">Willkommen bei Socaz</h1>
       <p className="text-muted">Noch ein paar Angaben, dann kannst du loslegen.</p>
-      <PlayerOnboarding defaultName={user.name === APPLE_NAME_PLATZHALTER ? "" : user.name} next={next} userId={user.id} abschlussAction={completeOnboardingAction} />
+      <PlayerOnboarding defaultName={user.appleId !== null && user.name === APPLE_NAME_PLATZHALTER ? "" : user.name} next={next} userId={user.id} abschlussAction={completeOnboardingAction} />
     </section>
   );
 }

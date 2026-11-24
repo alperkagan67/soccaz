@@ -43,6 +43,12 @@ describe("appleNameAusProfil", () => {
   });
 });
 
+describe("Platzhalter-Name", () => {
+  it("ist kein Name, den ein Spieler (oder ein E2E-Test) plausibel hat: sonst bliebe das Namensfeld im Onboarding leer (Regression privatspiel.spec: Dev-Nutzer \"Neuer Spieler\")", () => {
+    for (const name of ["Neuer Spieler", "Spieler", "Dev User", "Gelöschter Nutzer"]) expect(APPLE_NAME_PLATZHALTER).not.toBe(name);
+  });
+});
+
 describe("Abweisungstext", () => {
   it("neutral: kein Anbieter, keine E-Mail-Adresse, keine Kontodaten", () => {
     expect(APPLE_ABWEISUNG).not.toMatch(/Google|Apple/i); // neutral: die Kollision kann ein Google-, Apple- oder Entwicklungs-Konto sein

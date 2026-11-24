@@ -12,7 +12,7 @@ export function appleLoginEnabled(env: Env): boolean {
 export const APPLE_ABWEISUNG = "Zu dieser E-Mail-Adresse gibt es schon ein Konto. Bitte melde dich mit der Anmeldeart an, mit der du es angelegt hast.";
 export const APPLE_KEINE_EMAIL = "Apple hat keine bestätigte E-Mail-Adresse geliefert. Bitte melde dich mit Google an oder erlaube Soccaz die E-Mail in den Apple-Einstellungen.";
 /** users.name ist Pflicht; Apple liefert den Namen nur beim ALLERERSTEN Login. Fehlt er, steht dieser Platzhalter, bis das Onboarding (Schritt "spieler") den Namen erfragt. */
-export const APPLE_NAME_PLATZHALTER = "Neuer Spieler";
+export const APPLE_NAME_PLATZHALTER = "Name fehlt (Apple)";
 
 type CookieSpec = { name: string; options: { httpOnly: true; sameSite: "none"; path: "/"; secure: true } };
 export type AppleCookies = { state: CookieSpec; pkceCodeVerifier: CookieSpec; nonce: CookieSpec };

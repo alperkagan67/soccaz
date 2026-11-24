@@ -50,6 +50,6 @@ describe("Anmeldeseite und Texte", () => {
 
 describe("Willkommen: Platzhalter-Name wird nicht vorbelegt", () => {
   it("defaultName leer, wenn der Name der Platzhalter ist", () => {
-    expect(src("src/app/willkommen/page.tsx")).toContain('defaultName={user.name === APPLE_NAME_PLATZHALTER ? "" : user.name}');
+    expect(src("src/app/willkommen/page.tsx")).toContain('defaultName={user.appleId !== null && user.name === APPLE_NAME_PLATZHALTER ? "" : user.name}');
   });
 });
