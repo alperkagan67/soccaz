@@ -20,6 +20,7 @@ beforeEach(async () => {
   owner = await makeUser("rr_owner", "owner");
 });
 afterEach(async () => {
+  provider.beforeRefundResult = null; // der Haken darf bei einem Testfehler nicht gesetzt bleiben
   setPaymentProviderForTests(null);
   await cleanup();
 });
