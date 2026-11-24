@@ -102,6 +102,7 @@ test("Beweispflicht einschalten: Schritt 1 Uhrenquelle, Schritt 2 Pflicht, Grund
 
 // Welle 4 (Formulare vor der Hydration, Backlog 224): die Admin-Formulare der Bausteine ActionForm (Einstellungen, Notabschaltung Kartenzahlung) und ui/Form (Beweis-Schalter) senden vor der Hydration nativ POST an die
 // Server-Aktion, nie GET mit den Feldern (Grund, Einstellungen) in der Adresse. Geprüft wird das vom Server gelieferte HTML (nur Lesen, es wird nichts geschaltet).
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Admin-Formulare vor der Hydration: ActionForm und ui/Form senden nativ POST", async ({ browser }) => {
   const page = await login(browser, "fw4", true, "/admin/einstellungen");
   // Je Seite Gruppen von Knopftexten: von jeder Gruppe muss mindestens ein Formular vorhanden sein (die Notabschaltung zeigt je nach Schalterstand "ausschalten" ODER "wieder einschalten")

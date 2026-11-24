@@ -156,6 +156,7 @@ test("Job-Schnittstelle ist geschützt", async ({ baseURL }) => {
 // Welle 5 (Formulare vor der Hydration, Backlog 224): Formulare mit eigenem Client-Handler (kein action) sperren ihren Absende-Knopf bis zur Hydration und haben method="post": ein Klick davor sendet nie ein GET mit den
 // Feldern (Hallenfeld, Torstände). Geprüft: das Server-HTML hat den Knopf gesperrt und das Formular mit method="POST"; im Browser WIRD der Knopf nach der Hydration bedienbar (kein dauerhaft gesperrter Zustand).
 // Grenze: ohne JavaScript bleibt der Knopf gesperrt (kein Datenleck, aber auch keine Aktion).
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Hallenfeld und Ergebnis melden: Knopf bis zur Hydration gesperrt, method=post, danach bedienbar", async ({ browser }) => {
   const { a, matchId } = await setupLobby(browser, "fw5");
   const sperre = async (pfad: string, testid: string) => {

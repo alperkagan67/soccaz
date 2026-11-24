@@ -144,6 +144,7 @@ test("Einstellungen: Profil, privates Profil, Profilbild, Datenexport, Konto lö
 
 // Welle 2 (Formulare vor der Hydration, Backlog 224): Profil-, Konto-löschen- und Einstellungsformular enthalten personenbezogene Felder (Name, Geburtsdatum, Spitzname ...). Ein Klick vor der Hydration darf sie nie
 // als GET in Adresse, Server-Log und Referrer legen: das vom Server gelieferte Formular muss `method="POST"` und die Kennung der Server-Aktion tragen (der Browser sendet es dann nativ als POST).
+// @pre-hydration: der Klick VOR der Hydration ist der Test (Wächter tests/unit/e2e-click-guard.test.ts zählt diese Marker)
 test("Einstellungen vor der Hydration: Profil, Konto löschen und Einstellungen senden nativ POST, nie GET mit Feldern", async ({ browser }) => {
   const page = await (await browser.newContext()).newPage();
   await newUser(page, "fw2");

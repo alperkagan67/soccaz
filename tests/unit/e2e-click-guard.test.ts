@@ -13,7 +13,13 @@ const specs = readdirSync(dir).filter((f) => f.endsWith(".spec.ts"));
 
 type Site = { file: string; line: number; button: boolean; text: string };
 
-/** Zeilen mit einem rohen .click() am Zeilenende (Kette aufeinanderfolgender Klickzeilen), danach direkt eine Erwartung ohne timeout. */
+const PRE_HYDRATION_MARKER = "// @pre-hydration";
+
+/**
+ * Zeilen mit einem rohen .click() am Zeilenende (Kette aufeinanderfolgender Klickzeilen), danach direkt eine Erwartung ohne timeout.
+ * GRENZE (bekannt): erfasst wird nur die nächste nicht-leere, nicht-Kommentar-Zeile nach dem Klick (bzw. nach der Klickkette). Steht dazwischen eine andere Anweisung (z. B. page.waitForURL ohne Timeout, ein Zwischenschritt),
+ * wird die Stelle NICHT gefunden. Das ist eine Heuristik gegen die häufigste Form (Klick, dann sofort expect), kein Beweis, dass kein roher Klick mehr vor einer 5-s-Erwartung steht.
+ */
 export function riskyClicks(file: string, source: string): Site[] {
   const lines = source.split("\n");
   const blank = (s: string) => /^\s*(\/\/.*)?$/.test(s);
@@ -23,7 +29,7 @@ export function riskyClicks(file: string, source: string): Site[] {
     while (j < lines.length && blank(lines[j])) j++;
     return j;
   };
-  // Tests, die bewusst VOR der Hydration klicken (Titel oder Kommentar nennt "Hydration"), sind ausgenommen: dort ist der frühe Klick der Test.
+  // Tests, die bewusst VOR der Hydration klicken, tragen den Marker "// @pre-hydration" in den vier Zeilen vor test(...) und sind ausgenommen (dort ist der frühe Klick der Test); die Marker werden je Datei gezählt (PRE_HYDRATION).
   const preHydration = new Set<number>();
   let start = -1;
   let skip = false;
@@ -31,7 +37,7 @@ export function riskyClicks(file: string, source: string): Site[] {
     if (k === lines.length || lines[k].startsWith("test(")) {
       if (skip) for (let q = start; q < k; q++) preHydration.add(q);
       if (k === lines.length) break;
-      skip = /Hydration/.test(lines.slice(Math.max(0, k - 4), k + 1).join(" "));
+      skip = lines.slice(Math.max(0, k - 4), k).some((l) => l.trim().startsWith(PRE_HYDRATION_MARKER)); // ausdrücklicher Marker direkt vor dem Test, nicht das Wort im Titel
       start = k;
     }
   }
@@ -48,6 +54,15 @@ export function riskyClicks(file: string, source: string): Site[] {
 
 // Ausnahmeliste: rohe Klicks auf Nicht-Knöpfe nach Rolle (Link, Test-ID, nativer Popover/details, Helfer-Locator) mit Erwartung ohne Timeout. Die Wartezeit deckt dort die globale Erwartungsgrenze (15 s).
 // "Kandidat für clickReady" = Client-Knopf, der besser über clickReady ginge (dann Zahl senken). Neue Stellen gehören NICHT hierher, sondern auf clickReady.
+// Tests mit Marker "// @pre-hydration" je Datei (absichtlich vor der Hydration klickend): neue Marker nur mit Begründung im Test, Zahl hier nachziehen.
+const PRE_HYDRATION: Record<string, number> = {
+  "admin-beweis.spec.ts": 1,
+  "community2.spec.ts": 1,
+  "request.spec.ts": 3,
+  "results.spec.ts": 1,
+  "willkommen-onboarding.spec.ts": 1,
+};
+
 const AUSNAHMEN: Record<string, { n: number; grund: string }> = {
   "admin-zahlungsstreit.spec.ts": { n: 3, grund: "Filter-Link, Test-ID einer Listenzeile, Test-ID-Knopf dispute-mark-open (Client-Knopf: Kandidat für clickReady)" },
   "admin.spec.ts": { n: 1, grund: "Link" },
@@ -86,6 +101,15 @@ describe("E2E-Klickwächter (Backlog 249)", () => {
     expect(ist).toEqual(Object.fromEntries(Object.entries(AUSNAHMEN).map(([f, v]) => [f, v.n])));
   });
 
+  it("Marker // @pre-hydration: je Datei genau die Zahl der Liste (keine stille Befreiung ganzer Tests)", () => {
+    const ist: Record<string, number> = {};
+    for (const f of specs) {
+      const n = readFileSync(join(dir, f), "utf8").split(String.fromCharCode(10)).filter((l) => l.trim().startsWith(PRE_HYDRATION_MARKER)).length;
+      if (n > 0) ist[f] = n;
+    }
+    expect(ist).toEqual(PRE_HYDRATION);
+  });
+
   it("jede Ausnahme hat einen Grund und gehört zu einer vorhandenen Datei", () => {
     for (const [f, v] of Object.entries(AUSNAHMEN)) {
       expect(specs, f).toContain(f);
@@ -103,7 +127,7 @@ describe("E2E-Klickwächter (Backlog 249)", () => {
     expect(riskyClicks("x.spec.ts", mitTimeout)).toHaveLength(0);
     const bereit = ['await clickWhenReady(a, "A");', 'await expect(a.getByTestId("x")).toBeVisible();'].join("\n");
     expect(riskyClicks("x.spec.ts", bereit)).toHaveLength(0);
-    const vorHydration = ['test("Formular vor der Hydration", async () => {', 'await a.getByRole("button", { name: "A" }).click();', 'await expect(a.getByTestId("x")).toBeVisible();', "});"].join("\n");
+    const vorHydration = ['// @pre-hydration: Begründung', 'test("Formular", async () => {', 'await a.getByRole("button", { name: "A" }).click();', 'await expect(a.getByTestId("x")).toBeVisible();', "});"].join("\n");
     expect(riskyClicks("x.spec.ts", vorHydration)).toHaveLength(0);
   });
 

@@ -41,14 +41,14 @@ export async function acceptChallenge(page: Page) {
  * Wartet, bis React das Element übernommen hat (Hydration). Vor der Hydration löst ein Klick auf einen Absenden-Knopf das native Absenden aus (GET, Seite lädt neu) und die Server-Aktion läuft nie.
  * Keine Wiederholung des Klicks: für Stellen, an denen ein zweiter Klick das Ergebnis verfälschen würde (gleichzeitiger Doppelklick, Erwartung "nicht mehr offen").
  */
-export async function waitHydrated(target: Locator) {
+export async function waitHydrated(target: Locator, timeout = 20_000) {
   // 20 s: Kaltstart des Dev-Servers; geprüft wird der Knopf UND sein Formular (bei zeitgeteilter Hydration kann der Knopf vor dem Formular übernommen sein)
-  await expect(target).toBeVisible({ timeout: 20_000 });
+  await expect(target).toBeVisible({ timeout });
   await expect
     .poll(() => target.evaluate((el) => {
       const hydrated = (x: Element | null) => x === null || Object.keys(x).some((k) => k.startsWith("__reactProps"));
       return hydrated(el) && hydrated(el.closest("form"));
-    }), { timeout: 20_000 })
+    }), { timeout })
     .toBe(true);
 }
 
@@ -67,17 +67,17 @@ export async function clickLinkUntilUrl(page: Page, link: Locator, url: RegExp) 
  * Klick auf einen Knopf, nachdem React ihn übernommen hat (Flake-Familie 223, Backlog 241). Knöpfe mit onClick (Lobby: beitreten, Ersatzspieler, bereit; Ergebnis: Tor) tun vor der Hydration NICHTS: der Klick geht verloren, ein Warten auf die Folge (5 s) scheitert.
  * waitHydrated prüft Sichtbarkeit (20 s, Kaltstart) und Hydration des Knopfs und seines Formulars; geklickt wird einmal (kein zweiter Klick auf Knöpfe, die etwas auslösen).
  */
-export async function clickWhenReady(page: Page, name: string | RegExp) {
+export async function clickWhenReady(page: Page, name: string | RegExp, timeout = 20_000) {
   const button = page.getByRole("button", { name });
-  await waitHydrated(button);
+  await waitHydrated(button, timeout);
   await button.click();
 }
 
 /**
  * Klick auf einen schon gebauten Locator (Knopf in einer Karte, einem Dialog oder einer Liste), nachdem React ihn übernommen hat: wie clickWhenReady, aber für eingegrenzte Locatoren (Flake-Familie 223, Backlog 249:
- * Klick vor der Hydration geht verloren, die folgende 5-s-Erwartung scheitert unter Last). Ein Klick, keine Wiederholung.
+ * Klick vor der Hydration geht verloren, die folgende 5-s-Erwartung scheitert unter Last). Ein Klick, keine Wiederholung. Der Parameter timeout (Standard 20 s) gilt für Sichtbarkeit UND Hydration: ein roher .click() wartete bis zum Test-Timeout (60 s); für Knöpfe, die erst nach einem langsamen Job oder Redirect erscheinen, 60_000 übergeben (gilt gleich für clickWhenReady und waitHydrated).
  */
-export async function clickReady(target: Locator) {
-  await waitHydrated(target);
+export async function clickReady(target: Locator, timeout = 20_000) {
+  await waitHydrated(target, timeout);
   await target.click();
 }
