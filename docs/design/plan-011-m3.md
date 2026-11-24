@@ -63,4 +63,28 @@ Folge: **M4 ist nach M3 nur noch AC-11 (Mail) und AC-12 (Kalender)**; beides bra
 
 ## 8. Aufwand
 
-PR 1 etwa 1 Tag, PR 2 etwa 0,5 Tag (+ zwei Läufe), PR 3 etwa 1 Tag (+ Impeccable), PR 4 etwa 0,5 Tag: **3 bis 4 Tage**, ohne Migration. Kein Bau vor Plan-OK; 013-Seiten M4 bis M7 bleiben bis zum Pilot-Feedback gesperrt (AC-8).
+PR 1 etwa 1 Tag, PR 2 etwa 0,5 Tag (+ zwei Läufe), PR 3 etwa 1 Tag (+ Impeccable), PR 4 etwa 0,5 Tag: **3 bis 4 Tage**, ohne Migration. Kein Bau vor Plan-OK; 013-Seiten M4 bis M7 bleiben bis zum Pilot-Feedback gesperrt (AC-8). **Plan-OK erteilt, Entscheide t2q siehe Abschnitt 9.**
+
+## 9. Entscheide t2q (2026-11-24, Plan-OK) und was sie ändern
+
+1. **Reihenfolge:** PR 1 (Server, Rechte, Buchungen und Durchlaufgeld) und PR 2 (Rechnungen) zuerst, die **Oberfläche (PR 3) mit 013 M6 nach dem Pilot**. Bis dahin gibt es keinen Betreiber-Bildschirm; PR 1 ist die getestete Datenschicht.
+2. **Begriff:** bis Stripe Connect heißt die Ansicht **„Durchlaufgeld (vorgemerkt)“**, nicht „Auszahlungen“. Wortlaut ist **ENTWURF**, die Anwalt-Freigabe steht in der Nutzerliste (Nr. 2).
+3. **Turniere in der Buchungsliste:** nur **Turniername, Teamzahl, Termin**, **kein Veranstaltername** (Betreiber namenfrei, Backlog 216, AC-17). Heißt für PR 1: die Abfrage wählt weder `tournaments.organizer_id` noch einen Namen des Veranstalters; Pin im Quelltext-Test.
+4. **Rechnungsabruf durch den Betreiber erst nach der Steuerberater-Freigabe der Vorlage, nicht im Pilot.** Das trifft **PR 2** (Liste und PDF der eigenen Rechnungen) und, weil auch die Liste Beträge und Nummern zeigt, **`listVenueInvoices` aus PR 1** (Vorschlag unten).
+5. **Standardansicht:** aktueller Monat und Vormonat, **Archiv per Monatsauswahl** (Parameter `monat=JJJJ-MM`, serverseitig auf gültige Monate begrenzt); die **Aufbewahrungsdauer** legt der Steuerberater fest (Nutzerliste Nr. 4), bis dahin wird nichts gelöscht.
+6. **Migration:** keine geplant. Falls doch nötig, **nach 0060 (010 M1) und 0061 (009 M4)**, also frühestens 0062, und **nie parallel zu einer anderen Schema-Aufgabe** (eine Schema-Aufgabe zur Zeit; auch nicht parallel zu A2).
+
+### Vorschlag zu (4): wie PR 2 hinter die Freigabe kommt
+
+| Weg | Was | Für | Gegen |
+|---|---|---|---|
+| **A (Empfehlung): zurückstellen** | PR 2 und `listVenueInvoices` werden **nicht gebaut**, bis der Steuerberater die Vorlage freigegeben hat (Backlog-Zeile mit Auslöser „Nutzerliste Nr. 4 erledigt“). PR 1 enthält Buchungen und Durchlaufgeld, **keine** Rechnungen. | kein Code im Auth-Pfad, der im Pilot nicht benutzt wird; keine Angriffsfläche und kein toter Zweig; kleiner PR 1 | der Bau (etwa 1,5 Tage) kommt nach der Freigabe |
+| B: Feature-Schalter, fail-closed | Einstellung `venue_invoices_enabled` (Standard **aus**), gelesen von Liste **und** Route; aus = Betreiber bekommen **dieselbe 404-Antwort wie bei einer unbekannten Rechnung** (kein Orakel); nur Admin 1 schaltet (Einstellungsseite, Protokoll); Admin-1-Abruf unverändert. | Code ist fertig und getestet, Freigabe = ein Schalter | Auth-naher Code geht ohne Nutzung in Produktion; Schalter-Fehlkonfiguration; zwei grüne Läufe und security schon jetzt; Test muss beide Zustände und die Mutation „Schalter ignoriert“ abdecken |
+
+**Empfehlung A.** Begründung: Nach t2q (4) ist die Freigabe eine Voraussetzung, nicht ein Zeitpunkt, und der Pilot nutzt den Abruf nicht; der Schalter würde nur Auth-nahen Code ohne Nutzen früher ausliefern. Wählt t2q B, gilt: Standard aus, fail-closed (fehlende oder unlesbare Einstellung = aus), identische 404 in allen Aus-Zuständen, Test je Zustand und Mutation, Eintrag in der Nutzerliste „Schalter erst nach Freigabe einschalten“.
+
+### Folgen für den Schnitt
+
+- **PR 1 (jetzt, kein Schema):** `src/server/venue-reporting.ts` mit `listVenueBookings` und `listVenuePayouts` („Durchlaufgeld, vorgemerkt“), Zugriff nur über `venue-access-rules.ts`, Standardmonate und Monatsauswahl, Integrationstest AC-5 (Mandantentrennung, keine Namen, kein Veranstalter, Summen gegen das Hauptbuch), Mutationen, security-reviewer.
+- **PR 2:** zurückgestellt (Weg A) oder hinter dem Schalter (Weg B), nach Entscheid t2q.
+- **PR 3 (Oberfläche):** nach dem Pilot mit 013 M6. **PR 4:** Dokumentation und E2E, soweit es keine Oberfläche braucht; die AC-5-Zelle des E2E folgt mit PR 3.
