@@ -90,7 +90,7 @@ export function MyActions({ matchId, mode, ready, hasTeam, main = null, card }: 
                       <p className="text-sm">Deine Bank braucht eine Freigabe der Zahlung. Gib sie hier frei{card.failure.until ? ` (${card.failure.until})` : ""}.</p>
                       <AuthorizeButton matchId={matchId} fake={card.fake} quiet={main !== "freigeben"} />
                       <details className="group" data-testid="charge-failed-other-card">
-                        <summary className="btn btn-ghost w-full cursor-pointer justify-between">
+                        <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-2 text-sm font-semibold underline">
                           <span>Stattdessen eine andere Karte hinterlegen</span>
                           <span aria-hidden="true" className="group-open:hidden">+</span>
                           <span aria-hidden="true" className="hidden group-open:inline">−</span>

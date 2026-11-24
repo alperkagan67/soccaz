@@ -46,11 +46,11 @@ export function VetoPanel({
           </p>
         )}
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2">
+      <ul className="grid gap-x-4 divide-y divide-line sm:grid-cols-2 sm:divide-y-0">
         {halls.map((h) => {
           const banned = Boolean(h.bannedByTeam);
           return (
-            <li key={h.venueId} className={`rounded-lg border p-3 text-sm ${h.picked ? "border-accent bg-accent-soft" : banned ? "border-line opacity-60" : "border-line"}`} data-testid="hall" data-state={h.picked ? "picked" : banned ? "banned" : "open"}>
+            <li key={h.venueId} className={`py-3 text-sm ${h.picked ? "border-l-4 border-accent bg-accent-soft pl-3" : banned ? "opacity-60" : ""}`} data-testid="hall" data-state={h.picked ? "picked" : banned ? "banned" : "open"}>
               <div className="flex items-start justify-between gap-2">
                 <span>
                   <span className={`block font-semibold ${banned ? "line-through" : ""}`}>{h.name}</span>

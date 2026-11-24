@@ -89,6 +89,12 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   await expect(b.getByTestId("steps")).toHaveAttribute("data-step", "1");
   await expect(b.getByTestId("ready-later")).toContainText("Bereit machen"); // der Knopf ist da, aber erst nach Uhrzeit und Halle aktiv
   await expect(b.getByTestId("team-decision")).toHaveCount(2); // beide Captains getrennt sichtbar
+  // Lobby-Fix (Impeccable Lauf 2): Dein Stand nennt dem Captain den Schritt, Vorschlag machen ist die einzige Hauptaktion, keine Karte in der Karte
+  await expect(b.getByTestId("lobby-stand")).toHaveAttribute("data-aktion", "vorschlagen");
+  await expect(b.getByTestId("lobby-stand-text")).toContainText("die Uhrzeit wählen");
+  await expect(b.locator("main .btn-primary:visible")).toHaveCount(1);
+  await expect(b.locator("main .card .card:visible")).toHaveCount(0);
+  await expect(b.locator("main .card div.rounded-lg.border:visible")).toHaveCount(0);
 
   // A stimmt für die erste Option
   await a.goto(lobbyUrl);
@@ -118,6 +124,10 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   await expect(b.getByTestId("veto")).toBeVisible();
   await expect(b.getByTestId("steps")).toHaveAttribute("data-step", "2");
   expect(await b.getByTestId("hall").count()).toBeGreaterThanOrEqual(2);
+  await expect(b.getByTestId("lobby-stand-text")).toContainText(/Halle bannen|beim Bannen dran|Hallen werden angefragt/); // Veto-Phase: Schritt in Dein Stand
+  await expect(b.locator("main .btn-primary:visible")).toHaveCount(0); // Bannen ist je Halle ruhig
+  await expect(b.locator("main .card .card:visible")).toHaveCount(0);
+  await expect(b.locator("main .card div.rounded-lg.border:visible")).toHaveCount(0);
   await expect(b.getByRole("button", { name: "Bereit machen" })).toBeDisabled(); // noch nicht aktiv
   for (let i = 0; i < 12; i++) {
     const done = (await query<{ veto_status: string }>("select veto_status from matches where id = $1", [matchId]))[0].veto_status === "done";
