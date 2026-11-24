@@ -11,6 +11,8 @@ Quellen (Apple, gelesen am 2026-11-24; Apple nennt auf diesen Seiten kein eigene
 - Services ID anlegen: https://developer.apple.com/help/account/identifiers/register-a-services-id
 - Client Secret (JWT): https://developer.apple.com/documentation/accountorganizationaldatasharing/creating-a-client-secret (diese Seite war beim Lesen nicht abrufbar: die Angaben in Schritt 7 **vor dem Einsatz im Browser gegenlesen**)
 
+**RÜCKFALLREGEL (Go/No-Go, Frist Mittwoch 2.12.2026):** Ist die Apple-Anmeldung bis **Mi 2.12.** nicht auf **Staging** erfolgreich getestet (Schritt 8 komplett grün), gilt für den 12.12.: **nur Google**, `APPLE_LOGIN_ENABLED` bleibt aus, und die Hinweistexte nennen nur das Google-Konto (der Text hängt am selben Schalter, kein Eingriff in den Code nötig). Apple wird dann nach dem 12.12. nachgeholt. Die Entscheidung trifft der Task Manager am 2.12. abends nach der Generalprobe.
+
 **Grundregel für alles Folgende:** Schlüsseldatei (`.p8`), Secrets und Passwörter **nie** in den Chat, in Mails, ins Repository oder in Screenshots. Hier stehen nur **Namen** von Werten.
 
 ## 1. Apple Developer Program (Vorlauf, früh beginnen)
@@ -35,7 +37,7 @@ Apple verlangt für „Sign in with Apple“ im Web eine **Mitgliedschaft im App
    - Produktion: `https://socaz.de/api/auth/callback/apple`
    - Staging: `https://<Staging-Adresse>/api/auth/callback/apple`
    (Quelle: die Anmeldung läuft über Auth.js; der Pfad ist `/api/auth/callback/<anbieter>` wie bei Google. Schreibweise genau übernehmen: `https`, kein Schrägstrich am Ende.)
-6. **Wichtig, Besonderheit von Apple:** Apple liefert das Ergebnis **nicht** als Link zurück, sondern per **POST** („form_post“) an die Return URL. Das übernimmt Auth.js; es braucht auf dem Server nichts Zusätzliches, **aber** der Zugangsschutz der Testumgebung (Basic-Auth) darf den **POST an `/api/auth/callback/apple`** nicht abfangen (sonst bricht die Anmeldung bei Apple-Rückkehr mit 401 ab; gleiche Falle wie bei Google, siehe `pilot-staging-checkliste.md`).
+6. **Wichtig, Besonderheit von Apple (erster Verdacht bei Fehlern):** Apple liefert das Ergebnis per **cross-site POST**. Damit der Rückkehr-POST ankommt, müssen die Auth.js-Zustands-Cookies (`state`, `pkce`, `nonce`) mit **`SameSite=None; Secure`** gesetzt sein; sonst bricht die Rückkehr mit „InvalidCheck“ oder fehlendem State ab, **unabhängig vom Zugangsschutz**. Die Cookie-Optionen baut w1 (Namen abstimmen); beim Staging-Test (Schritt 8) ist das der **erste Verdacht**. Weitere Besonderheit: Apple liefert das Ergebnis **nicht** als Link zurück, sondern per **POST** („form_post“) an die Return URL. Das übernimmt Auth.js; es braucht auf dem Server nichts Zusätzliches, **aber** der Zugangsschutz der Testumgebung (Basic-Auth) darf den **POST an `/api/auth/callback/apple`** nicht abfangen (sonst bricht die Anmeldung bei Apple-Rückkehr mit 401 ab; gleiche Falle wie bei Google, siehe `pilot-staging-checkliste.md`).
 7. **Done → Continue → Save.** Apple erlaubt je Services ID höchstens 10 URLs (Einzelperson).
 8. **Domain-Bestätigung:** Laut Apple-Seite ist **keine Datei** auf den Server zu legen. Zeigt die Konsole trotzdem „Verify“, Hinweis befolgen und melden (Annahme, bei der Generalprobe belegen).
 
@@ -54,6 +56,9 @@ Apple verlangt für „Sign in with Apple“ im Web eine **Mitgliedschaft im App
 | `AUTH_APPLE_SECRET` | das **Client Secret** (ein aus dem Schlüssel erzeugtes JWT, **läuft ab**) | Schritt 6 |
 | `APPLE_LOGIN_ENABLED` | `1` = „Mit Apple anmelden“ ist sichtbar; ohne = nur Google | Schritt 7 |
 Die Namen müssen mit der Auth-Konfiguration übereinstimmen, die der Entwickler (w1) baut; **bei Abweichung gilt die Konfiguration im Repo** und diese Tabelle wird angepasst.
+
+## 5a. Private Relay und E-Mails (Einschränkung)
+Versteckt ein Spieler seine Adresse, bekommt Soccaz eine Adresse `…@privaterelay.appleid.com`. **Mails an diese Adresse kommen nur an, wenn die Absender-Domain bei Apple registriert ist:** Developer-Konto → Sign in with Apple → **Configure for Email Communication**, dort die Absender-Domain (und ggf. Adresse) eintragen. Ohne diesen Schritt (oder solange Mailversand nicht eingerichtet ist, Backlog 211) erreichen Mails diese Spieler **nicht**: die Anmeldung selbst funktioniert trotzdem. Für den 12.12. gilt das als bekannte Einschränkung; Benachrichtigungen laufen in der App.
 
 ## 6. Client Secret erzeugen (läuft ab: Erneuerung alle 5 Monate)
 Apple verlangt als „Passwort“ kein festes Geheimnis, sondern ein **selbst erzeugtes, signiertes JWT** (Algorithmus ES256, Aussteller = Team-ID, Subject = Services ID, Zielgruppe `https://appleid.apple.com`). **Gültigkeit höchstens 6 Monate**; Soccaz plant **Erneuerung spätestens alle 5 Monate** (Pufferwert aus dem Auftrag; Apple-Seite im Browser gegenlesen, siehe Quellen).
@@ -80,9 +85,14 @@ In der Datei `.env` auf dem **jeweiligen** Server (Produktion bzw. Staging; `doc
 |---|---|---|
 | `invalid_client` | Services ID, Team-ID, Key-ID oder Secret falsch bzw. **Secret abgelaufen** | Werte aus Schritt 5 prüfen, Secret neu erzeugen (Schritt 6) |
 | `invalid_request` / „Invalid redirect_uri“ | Return URL oder Domain in Schritt 3 stimmt nicht **exakt** | Schreibweise, `https`, kein Schrägstrich, Domain ohne `https://` |
+| „InvalidCheck“ / State fehlt bei der Rückkehr | Zustands-Cookies nicht `SameSite=None; Secure` (cross-site POST) | **erster Verdacht**: Cookie-Optionen der Auth-Konfiguration prüfen (w1) |
 | Rückkehr zeigt 401 oder leere Seite (nur Staging) | Zugangsschutz fängt den POST von Apple ab | `pilot-staging-checkliste.md`, Abschnitt Zugangsschutz; Callback-Pfad ausnehmen (Annahme, bei der Generalprobe belegen) |
 | Anmeldung läuft, aber kein Name | Apple liefert den Namen nur beim ersten Mal | Konto in der Apple-ID-Verwaltung („Apps, die Sign in with Apple nutzen“) entfernen, erneut anmelden, oder Namen im Onboarding eintragen |
 | Knopf fehlt | `APPLE_LOGIN_ENABLED` nicht gesetzt oder App nicht neu gestartet | Schritt 7 |
+
+## 9a. Hinweise
+- **Betreiber-Einladungen** (Hallen, Vertrag 011) lassen sich nur mit einer **bestätigten Google-Adresse** einlösen: ein Apple-Konto kann **keine Halle einlösen**. Betreiber melden sich deshalb mit Google an.
+- Jeder Spieler braucht ein **eigenes** Konto; ein Captain meldet nicht für mehrere Spieler an.
 
 ## 10. Kurz-Checkliste
 - [ ] Apple-Konto mit Zwei-Faktor und Rechtsname; Developer Program beantragt (99 USD/Jahr, Dauer ein bis zwei Tage)
@@ -91,4 +101,5 @@ In der Datei `.env` auf dem **jeweiligen** Server (Produktion bzw. Staging; `doc
 - [ ] Key erzeugt, `.p8` sicher abgelegt (zweifach), Team-ID und Key-ID notiert
 - [ ] Client Secret erzeugt, Ablaufdatum in `BETRIEB.md` und im Kalender (nach 5 Monaten)
 - [ ] Staging: beide Knöpfe, Apple-Anmeldung, Private Relay, Smoke `--apple` grün
+- [ ] **Go/No-Go Mi 2.12.:** Staging-Test (Schritt 8) grün? Ja = Apple an. Nein = nur Google, Flag aus, Hinweistexte Google
 - [ ] Erst dann Produktion: `.env` ergänzen, `APPLE_LOGIN_ENABLED=1`, Smoke, Probe-Anmeldung
