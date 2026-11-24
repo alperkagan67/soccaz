@@ -73,6 +73,15 @@ test("Fehlerzustand Karte: genau ein Primary (Karte ändern); abgelaufenes Fenst
   await expect(a.getByTestId("lobby-stand")).toHaveAttribute("data-aktion", "karte", { timeout: 60_000 });
   await expect(a.locator("main .btn-primary")).toHaveCount(1);
   await expect(a.getByTestId("authorize-section")).toHaveCount(0);
+  // Pilot-P2 (PR C): Mandats-Kästchen mit Touch-Ziel (Kästchen 24 px, ganze Zeile als Label mindestens 44 px, Klick auf den Text schaltet es)
+  const kasten = a.locator("#card-mandate");
+  await expect(kasten).toBeVisible();
+  expect((await kasten.boundingBox())!.width).toBeGreaterThanOrEqual(24);
+  expect((await a.locator("label[for=card-mandate]").boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await a.getByTestId("card-mandate").click();
+  await expect(kasten).toBeChecked();
+  await a.getByTestId("card-mandate").click();
+  await expect(kasten).not.toBeChecked();
   await ersteAnsichtFehler(a);
   // Fenster vorbei
   await query("update payment_charges set grace_until = now() - interval '5 minutes' where match_id = $1", [matchId]);
