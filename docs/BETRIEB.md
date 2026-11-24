@@ -49,7 +49,7 @@ Autorisierte Weiterleitungs-URI: `https://deine-domain/api/auth/callback/google`
 
 ## Apple-Anmeldung (nur falls `APPLE_LOGIN_ENABLED=1`)
 
-Die Apple-Anmeldung ist noch nicht im Code; dieser Abschnitt hält den Betrieb fest, sobald sie eingeschaltet wird. Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate Gültigkeit): **Erneuerung spätestens alle 5 Monate**, Erinnerung im Kalender 4 Wochen und 1 Tag vor Ablauf.
+Die Apple-Anmeldung ist im Code (Schalter `APPLE_LOGIN_ENABLED=1` plus `AUTH_APPLE_ID` und `AUTH_APPLE_SECRET`; ohne alle drei gibt es weder Knopf noch Anbieter). Das Secret erzeugt `node scripts/apple-client-secret.mjs <.p8>` lokal (Umgebung `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `AUTH_APPLE_ID`). Konten werden nur über die Apple-Kennung zugeordnet; eine E-Mail, die schon zu einem Google-Konto gehört, wird mit Hinweis abgewiesen (keine automatische Zusammenführung). Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate Gültigkeit): **Erneuerung spätestens alle 5 Monate**, Erinnerung im Kalender 4 Wochen und 1 Tag vor Ablauf.
 
 - **Client-Secret gültig bis: <Datum eintragen, sobald erzeugt>**
 - Erneuerung: neues Secret erzeugen, nur in der Server-`.env` eintragen, neu starten, Smoke-Test mit `--apple`, echte Anmeldung prüfen, hier das neue Datum eintragen.

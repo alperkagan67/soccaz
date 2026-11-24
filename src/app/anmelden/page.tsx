@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { signIn } from "@/auth";
+import { appleLoginEnabled } from "@/lib/apple-login";
 import { safeInternalPath } from "@/lib/safe-path";
 import { getT } from "@/server/locale";
 import { getCurrentUser, isCurrentSessionBanned } from "@/server/session";
@@ -15,6 +16,8 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
   const { t } = await getT();
 
   const hasGoogle = Boolean(process.env.AUTH_GOOGLE_ID);
+  const hasApple = appleLoginEnabled(process.env);
+  const fehler = typeof params.fehler === "string" ? params.fehler : "";
   const isDev = process.env.NODE_ENV !== "production";
 
   return (
@@ -25,7 +28,17 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
           {t("signin.banned")}
         </p>
       )}
-      <p className="text-muted">{t("signin.lead")}</p>
+      {fehler === "apple_email" && (
+        <p className="card border-ink text-sm text-ink" role="alert">
+          {t("signin.appleEmail")}
+        </p>
+      )}
+      {fehler === "apple_keine_email" && (
+        <p className="card border-ink text-sm text-ink" role="alert">
+          {t("signin.appleKeineEmail")}
+        </p>
+      )}
+      <p className="text-muted">{t(hasApple ? "signin.leadApple" : "signin.lead")}</p>
 
       {hasGoogle ? (
         <form
@@ -42,6 +55,17 @@ export default async function SignInPage({ searchParams }: PageProps<"/anmelden"
             ? "Google-Login ist noch nicht eingerichtet (AUTH_GOOGLE_ID fehlt). Lokal kannst du den Dev-Login nutzen."
             : t("signin.unavailable")}
         </p>
+      )}
+
+      {hasApple && (
+        <form
+          action={async () => {
+            "use server";
+            await signIn("apple", { redirectTo: next });
+          }}
+        >
+          <button className="btn btn-ghost w-full">{t("signin.apple")}</button>
+        </form>
       )}
 
       {isDev && (
