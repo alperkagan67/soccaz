@@ -53,6 +53,14 @@ docker compose exec -T app sh -c 'test -z "$PAYMENTS_FAKE" && echo OK || echo ST
 ```
 Erwartet: `OK`. `STOPP` = Variable aus `.env` und aus Compose-Dateien entfernen, neu starten, erneut prüfen. Die Anwendung selbst **startet in Produktion nicht**, wenn `PAYMENTS_FAKE=1` gesetzt ist (Startsperre; Meldung im Log `PAYMENTS_FAKE=1 ist in Produktion verboten`). Das gilt auch für Staging.
 
+## 3a. Umgebungsmarke (NUR Staging, einmalig)
+Nur auf dem **Staging**-Server, nach dem ersten Start (Schritt 4), **einmal** (der Staging-Seed in Schritt 10 läuft ohne diese Marke nie):
+```
+sh scripts/staging-compose.sh exec -T db psql -U socaz -d socaz -c "insert into settings (key, value) values ('environment', '\"staging\"'::jsonb) on conflict (key) do update set value = excluded.value"
+sh scripts/staging-compose.sh exec -T db psql -U socaz -d socaz -c "select key, value from settings where key = 'environment'"
+```
+Erwartet: `INSERT 0 1`, dann eine Zeile `environment | "staging"`. **Auf Produktion wird diese Marke nie gesetzt**; dort muss die zweite Abfrage **0 Zeilen** liefern (Prüfpunkt im Go-live).
+
 ## 4. Starten und Migration
 ```
 docker compose up -d --build        # Staging: sh scripts/staging-compose.sh up -d --build
@@ -126,6 +134,13 @@ Eine Ergebnis-Korrektur NACH der Finalisierung gibt es bis nach dem 12.12. nicht
 2. **Ergebnis schon endgültig, das Folgespiel ist noch nicht gespielt:** NICHT selbst eingreifen; Admin 1 (der Nutzer) entscheidet das Vorgehen. Kein Agent ändert Produktionsdaten.
 3. **Notfall am Turniertag:** der Veranstalter notiert den richtigen Spielstand außerhalb von Soccaz (Zettel oder Nachricht) und spielt weiter; die Korrektur folgt nach dem Turnier.
 Vorbeugung: der Veranstalter trägt Endergebnisse nur über den Dialog „Endergebnis eintragen“ ein (große Anzeige „A 3 : 2 B“, „endgültig“) oder über „Abpfiff“; ein Team, das nicht antritt, wird mit „Kampflos werten“ (3:0) gewertet.
+
+## 10a. Staging-Seed für die Generalprobe (Teams 3 bis 6, nur Staging)
+Für das Gratis-Turnier mit 6 Teams sind Teams 1 und 2 **echte** Konten; Teams 3 bis 6 legt `scripts/staging-seed.mjs` mit **erfundenen** Konten an (`probe-t3-s1@staging.invalid` …, Namen „Probe Konto T3-1“, Teams „Probe-Team 3“ bis „Probe-Team 6“; `.invalid` ist nie zustellbar, es wird nie Post verschickt). Das Skript hat eine **eigene Sperre** und verweigert ohne Umgebungsmarke (Schritt 3a), bei `APP_URL` = `socaz.de` oder `www.socaz.de` und ohne ausdrückliche Bestätigung. Ein Staging unter einer Unteradresse (z. B. `staging.socaz.de`) ist erlaubt.
+```
+sh scripts/staging-compose.sh run --rm -e APP_URL=https://<staging-adresse> -e STAGING_SEED_CONFIRM=ja-staging-seed migrate node scripts/staging-seed.mjs --turnier <turnier-id>
+```
+Erwartet: je Team eine Zeile „… 5 Konten, im Turnier angemeldet und bereit“ und am Ende „Fertig: 20 erfundene Konten (@staging.invalid, nie zustellbar), 4 Teams.“. Ohne `--turnier` entstehen nur Konten und Teams. `--turnier` verlangt ein **Gratis-Turnier** (Hallenkosten **genau 0**; ein Altturnier ohne Preisangabe zählt nicht) in der Anmeldung mit mindestens vier freien Plätzen. **REIHENFOLGE (wichtig):** erst die Teams anmelden lassen, **dann seeden, DANACH** melden die echten Teams 1 und 2 „vollzählig“: das **letzte** „vollzählig“ löst den Preisschritt und damit das Bracket aus. Der Seed setzt „vollzählig“ direkt in der Datenbank und ruft die Turnierlogik nicht auf; sind echte Teams schon vollzählig, **verweigert** das Skript (Meldung „erst den Seed laufen lassen“): ein echter Captain nimmt „vollzählig“ zurück (aus und wieder an), dann seeden. Sonst startet das Bracket nie von selbst und „Anmeldung schließen“ meldet, dass alle Plätze belegt sind. Die vier Teams stehen dann auf „vollzählig“ und „Bereit“ (**Annahme**, bei der Generalprobe belegen: der Ablauf der echten Captains danach bis zum Bracket). Aufräumen nach der Probe: dasselbe mit `--clean` statt `--turnier`; **sobald mit den Probe-Teams Turnierspiele gespielt wurden, scheitert `--clean`** (Datenbank-Verweise, nichts geht verloren): dann die gesamte Staging-Datenbank zurücksetzen oder den Server nach der Generalprobe löschen. Eine Staging-Sicherung darf **nie** in Produktion eingespielt werden (sie enthält die Marke). **Mail:** Die erfundenen Konten (`@staging.invalid`) bekommen In-App-Benachrichtigungen; auf **Staging darf kein Mailanbieter konfiguriert sein** (keine Zugangsdaten eines Mailanbieters in die Staging-`.env`), sonst gäbe es Fehlzustellungen und eine schlechtere Reputation des Absenders. Gibt es später einen Mailversand (Backlog 211), muss er auf Staging aus sein oder `.invalid`-Adressen verwerfen, ohne zu senden. Verweigert das Skript („Staging-Seed verweigert: …“), **nichts umgehen**: Marke, Adresse oder Bestätigung prüfen und melden.
 
 ## 10. Staging ist anders
 Staging nur mit `sh scripts/staging-compose.sh …` starten (Zugangsschutz, Banner, noindex); nur Stripe-Testschlüssel; nie auf dem Produktionsserver. Vollständiger Ablauf: `pilot-staging-checkliste.md`.
