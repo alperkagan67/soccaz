@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { setupLobby } from "./flows";
+import { clickReady, setupLobby } from "./flows";
 import { addParticipant, addTeamMember, closeContexts, closeTestDb, seedUser, teamIdByName } from "./helpers";
 import { query, setPlatformSetting } from "./helpers-db";
 
@@ -78,9 +78,9 @@ test("Fehlerzustand Karte: genau ein Primary (Karte ändern); abgelaufenes Fenst
   await expect(kasten).toBeVisible();
   expect((await kasten.boundingBox())!.width).toBeGreaterThanOrEqual(24);
   expect((await a.locator("label[for=card-mandate]").boundingBox())!.height).toBeGreaterThanOrEqual(44);
-  await a.getByTestId("card-mandate").click();
+  await clickReady(a.getByTestId("card-mandate"));
   await expect(kasten).toBeChecked();
-  await a.getByTestId("card-mandate").click();
+  await clickReady(a.getByTestId("card-mandate"));
   await expect(kasten).not.toBeChecked();
   await ersteAnsichtFehler(a);
   // Fenster vorbei
