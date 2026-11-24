@@ -193,7 +193,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
           <ol className="space-y-2 text-sm">
             {events.map((e, i) => (
               <li key={e.id} className="flex items-center gap-2">
-                <span className="w-9 text-right tabular-nums text-muted">{e.minute}&apos;</span>
+                <span className="w-9 text-right tabular-nums text-muted">{e.minute !== null && e.minute !== undefined ? `${e.minute}'` : ""}</span>
                 <span className={`size-2.5 rounded-full ${EVENT_TONE[e.type]}`} aria-hidden />
                 <span>
                   <strong>{EVENT_LABEL[e.type]}</strong> {e.userId && e.scorer ? <PersonName person={personRef(sicht, e.userId, e.scorer, i)} /> : (e.scorer ? autorLabel(e.scorer, sicht) : "Unbekannt")} <span className="text-muted">({teamName(e.teamId)})</span>

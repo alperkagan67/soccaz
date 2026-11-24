@@ -105,7 +105,10 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         )}
       </header>
 
-      {!user && (
+      {t.status === "cancelled" && (
+        <p className="card text-sm" data-testid="cancelled-note">Dieses Turnier wurde abgesagt.</p>
+      )}
+      {!user && (inRegistration || inPayment) && (
         <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
       {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} />}
@@ -226,7 +229,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                     <ul className="text-xs text-muted">
                       {b.games.map((g) => (
                         <li key={g.court}>
-                          Platz {g.court}: {g.fun ? "Just for fun, " : ""}
+                          Platz {g.court}: {g.fun ? "Spaßspiel, " : ""}
                           {g.nameA && g.nameB ? `${g.nameA} – ${g.nameB}` : g.fun ? "Verlierer der Halbfinals" : "noch offen"}
                         </li>
                       ))}
@@ -338,7 +341,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       </section>
 
       {!data.bracketVisible && (inRegistration || inPayment) && (
-        <p className="card text-sm text-muted" data-testid="bracket-hidden">{noMoney ? "Das Bracket erscheint, sobald alle Teams vollzählig sind und jeder Captain „Bereit“ gedrückt hat." : data.cardMode ? "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler eine Karte hinterlegt haben, jeder Captain „Bereit“ gedrückt hat und der Anteil zur Frist abgebucht ist." : "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat."}</p>
+        <p className="card text-sm text-muted" data-testid="bracket-hidden">{noMoney ? "Der Spielplan erscheint, sobald alle Plätze belegt und alle Teams vollzählig sind. Sonst schließt der Veranstalter die Anmeldung und startet mit den bereiten Teams." : data.cardMode ? "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler eine Karte hinterlegt haben, jeder Captain „Bereit“ gedrückt hat und der Anteil zur Frist abgebucht ist." : "Das Bracket erscheint, sobald alle Teams vollzählig sind, alle Spieler bezahlt haben und jeder Captain „Bereit“ gedrückt hat."}</p>
       )}
     </div>
   );
