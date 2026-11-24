@@ -38,6 +38,7 @@ import { istGratis } from "@/lib/gratis";
 import { TournamentCard } from "./TournamentCard";
 import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 import { zahlungenAus } from "@/server/zahlungen-aus";
+import { KontoHinweis, kontoSatz } from "@/components/KontoHinweis";
 
 export const metadata: Metadata = { title: "Turnier", robots: { index: false } };
 
@@ -48,6 +49,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const sp = await searchParams;
   const token = typeof sp.t === "string" ? sp.t : null;
   const user = await getCurrentUser();
+  const kontoSatzText = await kontoSatz(); // Satz fuer den Einladungstext (WhatsApp), am Schalter der Apple-Anmeldung
   const aus = await zahlungenAus(); // Modus Zahlungen AUS (Go-live): keine Zahlungstexte, nur Anzeige
   // Neuer Nutzer über den Einladungslink: erst das Onboarding, danach zurück ins Turnier (der Token bleibt erhalten)
   if (user && !user.onboardedAt && token) redirect(`/willkommen?next=${encodeURIComponent(`/turniere/${id}?t=${token}`)}`);
@@ -108,7 +110,8 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       {!user && (
         <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${token ? `?t=${token}` : ""}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
-      {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} />}
+      {!user && <KontoHinweis />}
+      {linkUrl && (inRegistration || inPayment) && <CopyLink url={linkUrl} title={t.name} kontoSatz={kontoSatzText} />}
       {declined && inPayment && manage && (
         <section className="card space-y-3" data-testid="venue-declined">
           <h2 className="font-semibold">Die Halle kann das Turnier nicht ausrichten</h2>
@@ -297,7 +300,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
                   {inRegistration && !noMoney && v?.joinableTeamIds.includes(team.teamId) && (
                     <p className="text-xs text-muted" data-testid="kader-hint">{ZP.hintLater}</p>
                   )}
-                  {mine && inRegistration && data.registrationOpen && <InviteBox teamId={team.teamId} teamName={team.name} />}
+                  {mine && inRegistration && data.registrationOpen && <InviteBox teamId={team.teamId} teamName={team.name} kontoSatz={kontoSatzText} />}
                   {mine && inRegistration && (
                     <div className="space-y-1">
                       {team.ready ? (
@@ -350,6 +353,7 @@ function Guest({ id, token }: { id: string; token: string }) {
       <p className="text-sm text-muted">Du wurdest zu einem Turnier eingeladen</p>
       <h1 className="text-2xl font-bold">Turnier auf Socaz</h1>
       <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${id}?t=${token}`)}`} className="btn btn-primary w-full">Anmelden und Turnier ansehen</Link>
+      <KontoHinweis />
     </section>
   );
 }
