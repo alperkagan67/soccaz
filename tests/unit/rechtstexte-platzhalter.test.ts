@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { appleLoginAktiv, operatorFelder, PLATZHALTER } from "@/lib/legal";
 
 // Rechtstexte (Go-live): fehlende Betreiberangaben erscheinen als klar markierte Platzhalter, nie als erfundener Wert; vorhandene Angaben aus der Umgebung ersetzen sie.
-const KEYS = ["OPERATOR_NAME", "OPERATOR_ADDRESS", "OPERATOR_EMAIL", "APPLE_LOGIN_ENABLED"] as const;
+const KEYS = ["OPERATOR_NAME", "OPERATOR_ADDRESS", "OPERATOR_EMAIL", "APPLE_LOGIN_ENABLED", "AUTH_APPLE_ID", "AUTH_APPLE_SECRET"] as const;
 const alt = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
 afterEach(() => {
   for (const k of KEYS) {
@@ -43,10 +43,14 @@ describe("operatorFelder", () => {
 });
 
 describe("appleLoginAktiv", () => {
-  it("nur bei APPLE_LOGIN_ENABLED=1", () => {
-    delete process.env.APPLE_LOGIN_ENABLED;
+  it("nur bei Flag 1 UND Services ID UND Secret (gleiche Quelle wie /anmelden): Flag 1 allein nennt Apple nicht", () => {
+    for (const k of KEYS) delete process.env[k];
     expect(appleLoginAktiv()).toBe(false);
     process.env.APPLE_LOGIN_ENABLED = "1";
+    expect(appleLoginAktiv()).toBe(false); // Flag ohne ID/Secret => kein Apple im Text
+    process.env.AUTH_APPLE_ID = "de.example.test";
+    expect(appleLoginAktiv()).toBe(false);
+    process.env.AUTH_APPLE_SECRET = "geheim-test";
     expect(appleLoginAktiv()).toBe(true);
     process.env.APPLE_LOGIN_ENABLED = "true";
     expect(appleLoginAktiv()).toBe(false);

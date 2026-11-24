@@ -101,3 +101,28 @@ describe("scripts/smoke.mjs --zahlungen-aus (beide Zahlungsschalter AUS)", () =>
     expect(sichtText(html("A &amp; B <b>fett</b>")).trim()).toBe("A & B fett");
   });
 });
+
+describe("scripts/smoke.mjs --go-live (Rechtstexte)", () => {
+  const seite = (body: string) => ({ status: 200, body: `<main>${body}</main>` });
+  const goLive = (impressum: string, datenschutz: string) => runSmoke({ base: "https://x.de", goLive: true, fetchImpl: fake({ "/impressum": seite(impressum), "/datenschutz": seite(datenschutz) }) });
+  it("Platzhalter für Name, Anschrift oder E-Mail = FEHLER (Betreiberangaben fehlen)", async () => {
+    for (const platzhalter of ["[PLATZHALTER: Name oder Firma des Betreibers]", "[PLATZHALTER: Anschrift des Betreibers (Straße, Postleitzahl, Ort)]", "[PLATZHALTER: E-Mail-Adresse des Betreibers]"]) {
+      const r = await goLive(`Impressum ${platzhalter}`, "Datenschutz ok");
+      expect(r.ok, platzhalter).toBe(false);
+      expect(r.results.some((x: { path: string; ok: boolean }) => x.path === "/impressum" && !x.ok)).toBe(true);
+    }
+    expect((await goLive("ok", "Verantwortlicher [PLATZHALTER: Name oder Firma des Betreibers]")).ok).toBe(false);
+  });
+  it("nur weitere Platzhalter (Steuer-ID, Streitbeilegung, Aufsicht) = bestanden mit HINWEIS", async () => {
+    const r = await goLive("Muster GmbH [PLATZHALTER: Umsatzsteuer-Identifikationsnummer, falls vorhanden]", "Aufsicht [PLATZHALTER: zuständige Datenschutzaufsichtsbehörde]");
+    expect(r.ok).toBe(true);
+    expect(r.results.filter((x: { what: string }) => x.what.includes("HINWEIS")).length).toBe(2);
+  });
+  it("alles eingetragen: bestanden ohne Hinweis; ohne --go-live keine Prüfung", async () => {
+    const r = await goLive("Muster GmbH, Musterstr. 1", "Verantwortlich: Muster GmbH");
+    expect(r.ok).toBe(true);
+    expect(r.results.some((x: { what: string }) => x.what.includes("HINWEIS"))).toBe(false);
+    const ohne = await runSmoke({ base: "https://x.de", fetchImpl: fake({ "/impressum": seite("[PLATZHALTER: Name oder Firma des Betreibers]") }) });
+    expect(ohne.results.some((x: { what: string }) => x.what.startsWith("Go-live"))).toBe(false);
+  });
+});

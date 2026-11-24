@@ -1,3 +1,5 @@
+import { appleLoginEnabled } from "@/lib/apple-login";
+
 /** Angaben zum Betreiber kommen aus der Umgebung, damit nichts Erfundenes im Code steht. */
 export function operator() {
   const name = process.env.OPERATOR_NAME?.trim();
@@ -30,7 +32,7 @@ export function operatorFelder() {
   };
 }
 
-/** "Mit Apple anmelden" ist eingeschaltet (Schalter APPLE_LOGIN_ENABLED=1; Name mit der Auth-Konfiguration abgleichen). Nur für Texte, nicht für die Anmeldung selbst. */
+/** "Mit Apple anmelden" ist eingeschaltet: EINE Quelle wie /anmelden und die Auth-Konfiguration (Flag UND Services ID UND Secret; sonst gibt es keinen Apple-Knopf und der Text nennt Apple nicht). */
 export function appleLoginAktiv(): boolean {
-  return process.env.APPLE_LOGIN_ENABLED === "1";
+  return appleLoginEnabled(process.env);
 }
