@@ -28,6 +28,10 @@ async function pruefeSeite(page: Page, label: string) {
     return out;
   });
   expect(tiny, `${label}: keine Schrift unter 12 px`).toEqual([]);
+  // Lauf 3 (P2-2), AC-30 b und AC-3: höchstens EINE Hauptaktion je Seite, jeder Knopf mindestens 44 px hoch
+  expect(await page.locator("main .btn-primary:visible").count(), `${label}: höchstens eine Hauptaktion`).toBeLessThanOrEqual(1);
+  const kleine = await page.locator("main .btn:visible").evaluateAll((els) => els.map((e) => ({ text: (e as HTMLElement).innerText.trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44));
+  expect(kleine, `${label}: Knöpfe mindestens 44 px hoch`).toEqual([]);
 }
 
 for (const view of VIEWS) {

@@ -90,9 +90,14 @@ test("Matchmaking: Warteschlange, Gegner mit Kader sehen, erst Termin gemeinsam 
   await expect(b.getByTestId("ready-later")).toContainText("Bereit machen"); // der Knopf ist da, aber erst nach Uhrzeit und Halle aktiv
   await expect(b.getByTestId("team-decision")).toHaveCount(2); // beide Captains getrennt sichtbar
   // Lobby-Fix (Impeccable Lauf 2): Dein Stand nennt dem Captain den Schritt, Vorschlag machen ist die einzige Hauptaktion, keine Karte in der Karte
-  await expect(b.getByTestId("lobby-stand")).toHaveAttribute("data-aktion", "vorschlagen");
-  await expect(b.getByTestId("lobby-stand-text")).toContainText("die Uhrzeit wählen");
+  await expect(b.getByTestId("lobby-stand")).toHaveAttribute("data-aktion", "abstimmen"); // Lauf 3 P2-1: Zustimmen zum Vorschlag ist die Hauptaktion, Vorschlag machen bleibt als ruhige zweite Aktion
+  await expect(b.getByTestId("lobby-stand-text")).toContainText("zustimmen");
   await expect(b.locator("main .btn-primary:visible")).toHaveCount(1);
+  await expect(b.locator("main .btn-primary:visible")).toHaveText("Dafür stimmen");
+  await expect(b.getByRole("button", { name: "Vorschlag machen" })).not.toHaveClass(/btn-primary/);
+  await b.setViewportSize({ width: 390, height: 844 });
+  const hauptKnopf = await b.locator("main .btn-primary:visible").boundingBox();
+  expect(hauptKnopf!.y + hauptKnopf!.height, "Dafür stimmen liegt in der ersten Ansicht (390x844)").toBeLessThanOrEqual(844);
   await expect(b.locator("main .card .card:visible")).toHaveCount(0);
   await expect(b.locator("main .card div.rounded-lg.border:visible")).toHaveCount(0);
 
@@ -260,6 +265,10 @@ test("Offene Suchen: alle Details sehen und eine Suche direkt annehmen", async (
   await expect(card).toBeVisible();
   await expect(card).toContainText("Elo 1000");
   await expect(card).toContainText("Stufe 2 bis 4");
+  // Lauf 3 (P2-2): Zeilenaktionen im Board sind ruhig und 44 px hoch, die Seite hat genau eine Hauptaktion (Lobby aufmachen)
+  await expect(b.locator("main .btn-primary:visible")).toHaveCount(1);
+  const klein = await card.locator(".btn:visible").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)).filter((h) => h < 44));
+  expect(klein, "Knöpfe in der Board-Zeile mindestens 44 px").toEqual([]);
   await expect(card).toContainText("60 Min");
   await expect(card).toContainText("im Kader");
   await expect(card).toContainText(`Mixed-Team, locker ${run}`);

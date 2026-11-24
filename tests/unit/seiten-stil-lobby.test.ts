@@ -57,7 +57,8 @@ describe("AC-30 b: eine Hauptaktion je Zustand", () => {
     expect(s).toContain('main={stand.aktion === "annehmen"}');
   });
   it("PrivateTools, SchedulingPanel, VenueBox, Einladungslink und der gesperrte Bereit-Knopf sind ruhig (ghost)", () => {
-    for (const f of ["PrivateTools", "SchedulingPanel", "VenueBox"]) expect(src(`${dir}/${f}.tsx`), f).not.toContain("btn-primary");
+    for (const f of ["PrivateTools", "VenueBox"]) expect(src(`${dir}/${f}.tsx`), f).not.toContain("btn-primary");
+    expect(src(`${dir}/SchedulingPanel.tsx`).match(/btn-primary/g)).toHaveLength(1); // nur die Hauptoption, per mainOptionId (Lauf 3, P2-1)
     expect(src(`${dir}/page.tsx`)).toContain('testId="game-invite" quiet');
     expect(src(`${dir}/page.tsx`)).toContain("<InviteBox key={t.id} teamId={t.id} teamName={t.name} quiet />"); // Team einladen: kein orange Knopf, keine Karte in der Karte
     expect(src(`${dir}/page.tsx`)).toContain('btn btn-ghost w-full" disabled>Bereit machen');

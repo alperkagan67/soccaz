@@ -6,7 +6,7 @@ import { acceptSearchAction } from "@/server/matchmaking-actions";
 type Team = { id: string; name: string; elo: number; strength: number };
 
 /** Eine offene Suche mit dem eigenen Team annehmen. Zeigt vorher den Elo-Unterschied und ob die Spielstärke passt. */
-export function AcceptSearch({ entryId, teams, opponent, label }: { entryId: string; teams: Team[]; opponent: { name: string; elo: number; wantMin: number | null; wantMax: number | null }; label?: string }) {
+export function AcceptSearch({ entryId, teams, opponent, label, quiet = false }: { entryId: string; teams: Team[]; opponent: { name: string; elo: number; wantMin: number | null; wantMax: number | null }; label?: string; /** quiet: in Listenzeilen (AC-30: genau eine Hauptaktion je Seite) */ quiet?: boolean }) {
   const [teamId, setTeamId] = useState(teams[0].id);
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
@@ -30,7 +30,7 @@ export function AcceptSearch({ entryId, teams, opponent, label }: { entryId: str
           </div>
         )}
         <button
-          className="btn btn-primary disabled:opacity-60"
+          className={`btn ${quiet ? "btn-ghost" : "btn-primary"} disabled:opacity-60`}
           disabled={pending || !fits}
           onClick={() => {
             if (!window.confirm(`Gegen ${opponent.name} antreten? Ihr legt euch auf die Zeitfenster dieser Suche fest. Danach folgt das Hallen-Veto.`)) return;

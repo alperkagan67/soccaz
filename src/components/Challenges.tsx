@@ -20,7 +20,7 @@ export function Challenges({ incoming, outgoing }: { incoming: ChallengeRow[]; o
                   </span>
                   {c.note && <span className="block text-xs text-muted">{c.note}</span>}
                 </span>
-                <Link href={c.href ?? `/suche/${c.id}`} className="btn btn-primary !min-h-9 !px-3 text-sm">Ansehen und annehmen</Link>
+                <Link href={c.href ?? `/suche/${c.id}`} className="btn btn-ghost text-sm">Ansehen und annehmen</Link>
               </li>
             ))}
           </ul>
@@ -38,7 +38,7 @@ export function Challenges({ incoming, outgoing }: { incoming: ChallengeRow[]; o
                     {c.href ? `Antwort bis ${formatDateTime(c.startsAt)} Uhr` : `${formatDateTime(c.startsAt)} Uhr · ${c.durationMin} Min`} · wartet auf Antwort
                   </span>
                 </span>
-                <Link href={c.href ?? `/suche/${c.id}`} className="btn btn-ghost !min-h-9 !px-3 text-sm">Öffnen</Link>
+                <Link href={c.href ?? `/suche/${c.id}`} className="btn btn-ghost text-sm">Öffnen</Link>
               </li>
             ))}
           </ul>
