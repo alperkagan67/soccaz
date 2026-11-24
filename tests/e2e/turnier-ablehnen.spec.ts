@@ -112,6 +112,13 @@ test("Halle lehnt ab (Hinweis endgueltig), Veranstalter sieht nur die Kategorie 
   const pick = org.getByTestId("venue-pick");
   await expect(pick).toBeVisible({ timeout: 60_000 });
   await expect(pick.getByTestId("venue-pick-declined")).toContainText("Belegt");
+  await expect(pick.getByTestId("venue-pick-declined")).toContainText("dieselbe Halle neu anfragen"); // Pilot-P2 D: kein Widerspruch zu 'endgültig'
+  // Pilot-P2 D: Neuwahl-Zustand: Knöpfe im Veranstalter-Kasten und der Teamlink der Kaderliste mindestens 44 px
+  const kleine = await org.getByTestId("organizer-box").locator("button:visible").evaluateAll((els) => els.map((e) => ({ text: (e as HTMLElement).innerText.trim().slice(0, 30), h: Math.round(e.getBoundingClientRect().height) })).filter((x) => x.h < 44));
+  expect(kleine, "Knöpfe im Veranstalter-Kasten mindestens 44 px").toEqual([]);
+  expect(await org.getByTestId("organizer-box").getByRole("button", { name: "Turnier absagen" }).count()).toBe(1);
+  const teamLink = org.getByTestId("tournament-team").locator("h3 a").first();
+  expect((await teamLink.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await expect(pick.locator("option", { hasText: `${venueName}, Essen (hat abgelehnt)` })).toHaveCount(1);
   await org.waitForLoadState("networkidle");
   await pick.locator("select").selectOption(halle.id);
@@ -121,4 +128,27 @@ test("Halle lehnt ab (Hinweis endgueltig), Veranstalter sieht nur die Kategorie 
   expect(after).toMatchObject({ venue_declined_at: null, venue_decline_code: null, status: "registration", venue_id: halle.id });
   // der Beweiseintrag bleibt (append-only)
   expect((await query<{ n: string }>("select count(*)::text as n from booking_evidence where tournament_id = $1 and kind = 'declined'", [t.id]))[0].n).toBe("1");
+});
+
+test("Abbuchung begonnen: Ablehnen gesperrt (Hinweis statt Formular), Zusagen bleibt", async ({ browser }) => {
+  const boss = await (await browser.newContext()).newPage();
+  await newUser(boss, "abg");
+  const bossId = await userIdByEmail(`abg-${run}@test.local`);
+  const orgId = bossId; // der Veranstalter ist hier unerheblich; die Charge-Zeile gehoert einem Mitglied
+  const name = `Gesperrt-Cup ${run}`;
+  const [halle] = await query<{ id: string }>("insert into venues (name, city, is_partner, active) values ($1, 'Essen', true, true) returning id", [`E2E Gesperrthalle ${run}`]);
+  await query("insert into venue_access (venue_id, user_id, status, assigned_at) values ($1, $2, 'active', now())", [halle.id, bossId]);
+  const [t] = await query<{ id: string }>(
+    `insert into tournaments (organizer_id, name, city, starts_on, format, max_teams, total_cents, hourly_cents, duration_min, status, registration_deadline, starts_at, is_private, venue_id, venue_access_required_snapshot, commission_percent_snapshot, final_share_cents)
+     values ($1, $2, 'Essen', (now() + interval '6 days')::date, 'knockout', 4, 16000, 8000, 120, 'payment', now() + interval '4 days', now() + interval '6 days', false, $3, true, 10.00, 1000) returning id`,
+    [orgId, name, halle.id],
+  );
+  await query("insert into payment_charges (tournament_id, user_id, amount_cents, status, payment_intent_id, idempotency_key) values ($1, $2, 1000, 'succeeded', $3, $4)", [t.id, orgId, `pi_gesperrt_${run}`, `gesperrt:${t.id}`]);
+  await boss.goto("/halle");
+  const card = boss.getByTestId("tournament-confirmation").filter({ hasText: name });
+  await expect(card).toBeVisible({ timeout: 60_000 });
+  await expect(card.getByTestId("tournament-decline-locked")).toContainText("Ablehnen ist nicht mehr möglich");
+  await expect(card.getByTestId("tournament-decline")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Zusagen" })).toBeVisible();
+  await query("delete from notifications where body like $1", [`%${name}%`]);
 });

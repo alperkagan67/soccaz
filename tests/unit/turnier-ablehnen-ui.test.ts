@@ -82,3 +82,27 @@ describe("Veranstalter: zwei Wege, nur die Kategorie", () => {
     expect(team).not.toContain("declinedCode");
   });
 });
+
+describe("Pilot-P2 D (Impeccable-Lauf Turnier-Ablehnen)", () => {
+  const page = src("src/app/turniere/[id]/page.tsx");
+  const organizerBox = page.slice(page.indexOf('data-testid="organizer-box"'), page.indexOf("Bis zum Anmeldeschluss kannst du"));
+  it("(1) Knöpfe im Veranstalter-Kasten sind 44 px hoch (kein !min-h-9)", () => {
+    expect(organizerBox).toContain("Turnier absagen");
+    expect(organizerBox).not.toContain("!min-h-9");
+    expect((organizerBox.match(/!min-h-11/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+  it("(4) Teamlink in der Kaderliste mindestens 44 px (min-h-11)", () => {
+    expect(page).toMatch(/<Link href=\{`\/teams\/\$\{team\.slug\}`\} className="inline-flex min-h-11 items-center hover:text-accent-fg">/);
+  });
+  it("(2) Wortlaut widerspruchsfrei: die Entscheidung zu DIESER Anfrage ist endgültig, dieselbe Halle kann NEU angefragt werden", () => {
+    const pick = src("src/app/turniere/[id]/TournamentVenuePick.tsx");
+    for (const text of [page, pick]) {
+      expect(text).not.toContain("oder dieselbe erneut");
+      expect(text).not.toContain("Die Entscheidung der Halle ist endgültig.");
+    }
+    expect(page).toContain("Die Halle hat diese Anfrage abgelehnt; das bleibt so.");
+    expect(page).toContain("frage dieselbe Halle neu an");
+    expect(pick).toContain("Die Halle hat diese Anfrage abgelehnt");
+    expect(pick).toContain("dieselbe Halle neu anfragen");
+  });
+});
