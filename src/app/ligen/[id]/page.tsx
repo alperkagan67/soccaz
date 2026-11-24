@@ -6,8 +6,10 @@ import { joinLeagueAction, leaveLeagueAction } from "@/server/league-actions";
 import { getLeague } from "@/server/leagues";
 import { myAdminTeams } from "@/server/requests";
 import { getCurrentUser } from "@/server/session";
+import { turnierOnlyOn } from "@/lib/turnier-only";
 
 export async function generateMetadata({ params }: PageProps<"/ligen/[id]">): Promise<Metadata> {
+  if (turnierOnlyOn()) return { title: "Kommt bald", robots: { index: false, follow: false } }; // TURNIER_ONLY: keine Daten des gesperrten Bereichs im Titel, keine Abfrage
   const { id } = await params;
   const data = await getLeague(id);
   return { title: data ? data.league.name : "Liga nicht gefunden" };

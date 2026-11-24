@@ -7,6 +7,7 @@ import { HowItWorks } from "@/components/HowItWorks";
 import { getT } from "@/server/locale";
 import { getCurrentUser } from "@/server/session";
 import { activeSponsors } from "@/server/sponsors";
+import { gesperrtFuerNutzer } from "@/lib/turnier-only";
 
 function OpenRequests() {
   return <BoardSection limit={6} />;
@@ -34,10 +35,11 @@ async function Sponsors() {
 
 export default async function Home() {
   const [user, { t }] = await Promise.all([getCurrentUser(), getT()]);
+  const nurTurnier = gesperrtFuerNutzer(user); // TURNIER_ONLY: Hauptaktion Turniere, keine Spiel-Bereiche
 
   return (
     <div className="space-y-8">
-      {user?.onboardedAt && <MyGames userId={user.id} />}
+      {user?.onboardedAt && !nurTurnier && <MyGames userId={user.id} />}
 
       <section className="relative isolate flex min-h-[30rem] flex-col justify-end overflow-hidden rounded-2xl border border-line sm:min-h-[26rem]">
         {/* Standbild statt Video bis zur Lizenzklärung (Entscheid Nutzer, 013 M2c). Die Datei /videos/socca-reel-main.mp4 bleibt in public/, wird aber nicht mehr eingebunden. Die Höhe der Fläche ist fest (min-h am section): kein Layoutsprung. */}
@@ -51,23 +53,25 @@ export default async function Home() {
           <p className="max-w-md text-muted">{t("home.lead")}</p>
           {/* Eine Hauptaktion (AC-30 b): Angemeldete gehen weiter zu Meine Spiele, Gäste starten. Alles andere ist ruhig (ghost); "Lobby aufmachen" steht in der Karte Teamspiel. */}
           <div className="flex flex-wrap gap-2">
-            <Link href={user ? "/app" : "/anmelden"} className="btn btn-primary" data-testid="home-main-action">
-              {user ? t("home.continue") : t("home.start")}
+            <Link href={nurTurnier ? "/turniere" : user ? "/app" : "/anmelden"} className="btn btn-primary" data-testid="home-main-action">
+              {nurTurnier ? t("home.toTournaments") : user ? t("home.continue") : t("home.start")}
             </Link>
             {user && <Link href="/app/teams/neu" className="btn btn-ghost">{t("home.createTeam")}</Link>}
-            <Link href="/suche" className="btn btn-ghost">{t("home.viewRequests")}</Link>
+            {!nurTurnier && <Link href="/suche" className="btn btn-ghost">{t("home.viewRequests")}</Link>}
           </div>
         </div>
       </section>
 
-      <GameModes signedIn={Boolean(user)} quiet />
+      <GameModes signedIn={Boolean(user)} quiet nurTurnier={nurTurnier} />
 
       <HowItWorks />
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">{t("home.openRequests")}</h2>
-        <OpenRequests />
-      </section>
+      {!nurTurnier && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold">{t("home.openRequests")}</h2>
+          <OpenRequests />
+        </section>
+      )}
       <Sponsors />
     </div>
   );

@@ -3,6 +3,7 @@
 import { requireUser } from "../session";
 import { DomainError } from "../teams";
 import { getAuthorizationSecret, getTournamentAuthorizationSecret } from "./authorize";
+import { assertBereichOffen, assertSpielOffen } from "../turnier-only";
 
 export type AuthorizationState = { ok: true; clientSecret: string } | { ok: false; error: string };
 
@@ -12,6 +13,7 @@ export type AuthorizationState = { ok: true; clientSecret: string } | { ok: fals
  * die Zahlung kommt allein ueber den Webhook.
  */
 export async function createAuthorizationAction(matchId: string): Promise<AuthorizationState> {
+  await assertSpielOffen(matchId); // TURNIER_ONLY: gesperrter Bereich (Lobby-Spiel)
   const user = await requireUser("/app");
   try {
     const r = await getAuthorizationSecret(user.id, typeof matchId === "string" ? matchId : "");
@@ -24,6 +26,7 @@ export async function createAuthorizationAction(matchId: string): Promise<Author
 
 /** Wie createAuthorizationAction, fuer eine Turnier-Zeile (M5-5): nur der Nutzer selbst, Secret nur in dieser Antwort, neutrale Fehler. */
 export async function createTournamentAuthorizationAction(tournamentId: string): Promise<AuthorizationState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich (im Turnierbetrieb gibt es keine Zahlung)
   const user = await requireUser("/app");
   try {
     const r = await getTournamentAuthorizationSecret(user.id, typeof tournamentId === "string" ? tournamentId : "");

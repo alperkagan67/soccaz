@@ -5,8 +5,10 @@ import type { ActionState } from "@/lib/validation";
 import { closePost, createPost, requestPlayer } from "./freeplayers";
 import { requireUser } from "./session";
 import { DomainError } from "./teams";
+import { assertBereichOffen } from "./turnier-only";
 
 export async function createPostAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/mitspieler");
   try {
     await createPost(user.id, { city: String(formData.get("city") ?? ""), day: String(formData.get("day") ?? ""), note: String(formData.get("note") ?? "") });
@@ -19,6 +21,7 @@ export async function createPostAction(_prev: ActionState, formData: FormData): 
 }
 
 export async function closePostAction(id: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/mitspieler");
   try {
     await closePost(user.id, id);
@@ -30,6 +33,7 @@ export async function closePostAction(id: string): Promise<ActionState> {
 }
 
 export async function requestPlayerAction(postId: string, teamId: string): Promise<ActionState> {
+  await assertBereichOffen(); // TURNIER_ONLY: gesperrter Bereich
   const user = await requireUser("/mitspieler");
   try {
     await requestPlayer(user.id, postId, teamId);
