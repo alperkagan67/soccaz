@@ -1,6 +1,6 @@
 // Turnier und Halle (Vertrag 012, M5-1): Partnerhalle (Pflicht im Kartenmodell), Zusage der Halle (Schnittstelle mit Attrappe) und der Provisions-Snapshot.
 // M5-7a/b: Zugang und Provisionssatz kommen aus den echten Quellen (011 M1: venue-access-rules.ts, 009 M2: venues.commission_percent); die Zusage der Halle fuer Turniere steht in tournament-confirm.ts.
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, or } from "drizzle-orm";
 import { db } from "@/db";
 import { venues } from "@/db/schema-finance";
 import { paymentCharges } from "@/db/schema";
@@ -104,7 +104,8 @@ export function venueTermsChanged(a: VenueTerms, b: VenueTerms): boolean {
  */
 export async function resetVenueConfirmationIfTermsChanged(tx: Tx, tournamentId: string, before: VenueTerms, after: VenueTerms): Promise<boolean> {
   if (!venueTermsChanged(before, after)) return false;
-  const reset = await tx.update(tournaments).set({ venueConfirmedAt: null, venueConfirmedBy: null }).where(and(eq(tournaments.id, tournamentId), isNotNull(tournaments.venueConfirmedAt))).returning({ id: tournaments.id });
+  // Zusage UND Ablehnung der Halle gelten nur fuer die alten Bedingungen (Backlog 161); die Trigger-Spalten _by/_code folgen dem Zeitstempel
+  const reset = await tx.update(tournaments).set({ venueConfirmedAt: null, venueConfirmedBy: null, venueDeclinedAt: null }).where(and(eq(tournaments.id, tournamentId), or(isNotNull(tournaments.venueConfirmedAt), isNotNull(tournaments.venueDeclinedAt)))).returning({ id: tournaments.id });
   return reset.length > 0;
 }
 
@@ -116,7 +117,7 @@ export async function setTournamentVenue(userId: string, isPlatformAdmin: boolea
     if (t.organizerId !== userId && !isPlatformAdmin) throw new DomainError("Nur der Veranstalter kann die Halle wählen.");
     if (t.status !== "registration" || t.bracketGeneratedAt) throw new DomainError("Die Halle lässt sich nur wählen, solange der Kader offen ist.");
     if (!(await isPartnerVenue(tx, venueId))) throw new DomainError("Bitte wähle eine Partnerhalle.");
-    await tx.update(tournaments).set({ venueId, venueConfirmedAt: null, venueConfirmedBy: null }).where(eq(tournaments.id, tournamentId)); // eine neue Halle braucht eine neue Zusage
+    await tx.update(tournaments).set({ venueId, venueConfirmedAt: null, venueConfirmedBy: null, venueDeclinedAt: null }).where(eq(tournaments.id, tournamentId)); // eine neue Halle braucht eine neue Zusage; eine Ablehnung (auch derselben Halle) ist erledigt
     await audit(userId, "tournament.venue", "tournament", tournamentId, { before: { venueId: t.venueId }, after: { venueId } }, tx);
   });
 }

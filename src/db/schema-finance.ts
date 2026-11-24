@@ -382,7 +382,7 @@ export const bookingEvidence = pgTable(
       "booking_evidence_kind_check",
       sql`${t.kind} in ('request_sent', 'unmanaged', 'accepted', 'declined', 'expired', 'late_attempt', 'job_open', 'job_booked', 'job_confirmed', 'job_unavailable', 'job_withdrawn', 'job_done')`,
     ),
-    check("booking_evidence_tournament_kind_check", sql`${t.subject} = 'match' or ${t.kind} = 'accepted'`), // spaeter per DROP/ADD erweiterbar (16d.8)
+    check("booking_evidence_tournament_kind_check", sql`${t.subject} = 'match' or ${t.kind} in ('accepted', 'declined')`), // erweitert um declined (Backlog 161, Migration 0059)
     check("booking_evidence_reason_len", sql`${t.reason} is null or char_length(${t.reason}) <= 300`),
     check("booking_evidence_subject_xor", sql`(${t.subject} = 'match' and ${t.matchId} is not null and ${t.tournamentId} is null) or (${t.subject} = 'tournament' and ${t.tournamentId} is not null and ${t.matchId} is null)`),
     check("booking_evidence_hash_version_check", sql`${t.hashVersion} in (1, 2)`),
