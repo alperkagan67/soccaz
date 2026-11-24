@@ -25,6 +25,8 @@ import { venueAccessHolderIds } from "./venue-access-rules";
 import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament-venue";
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "./settings";
+import { zahlungenAus } from "./zahlungen-aus";
+import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
 export const MIN_TOURNAMENT_TEAMS = 4;
@@ -317,7 +319,9 @@ async function maybeFixPrice(tx: Tx, t: T) {
   await audit(null, "tournament.price", "tournament", t.id, { after: { share, players: everyone.length } }, tx);
   await notifyUsers(
     [...new Set(everyone.map((p) => p.userId))],
-    { type: "payment", title: "Der Preis steht fest", body: share > 0 ? `${fresh.name}: Dein Anteil beträgt ${(share / 100).toFixed(2).replace(".", ",")} €. Bezahle jetzt in der Turnier-Lobby.` : `${fresh.name}: Das Turnier ist kostenlos.`, url: `/turniere/${t.id}` },
+    (await zahlungenAus(tx)) && !cardMode
+      ? { type: "system", title: "Alle Teams sind vollzählig", body: `${fresh.name}: Alle Teams sind vollzählig. Die Captains drücken jetzt „Bereit“. ${ZAHLUNGEN_AUS_HINWEIS}`, url: `/turniere/${t.id}` }
+      : { type: "payment", title: "Der Preis steht fest", body: share > 0 ? `${fresh.name}: Dein Anteil beträgt ${(share / 100).toFixed(2).replace(".", ",")} €. Bezahle jetzt in der Turnier-Lobby.` : `${fresh.name}: Das Turnier ist kostenlos.`, url: `/turniere/${t.id}` },
     tx,
   );
   await maybeGenerateBracket(tx, { ...fresh, status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 });

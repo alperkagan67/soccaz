@@ -4,6 +4,8 @@ import { connection } from "next/server";
 import { db } from "@/db";
 import { formatEuro, shareFor } from "@/lib/money";
 import { priceFor } from "@/server/pricing";
+import { zahlungenAus } from "@/server/zahlungen-aus";
+import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 
 export const metadata: Metadata = { title: "Hilfe und Fragen" };
 
@@ -18,6 +20,7 @@ function Q({ q, children }: { q: string; children: React.ReactNode }) {
 
 export default async function HelpPage() {
   await connection();
+  const aus = await zahlungenAus(); // Modus Zahlungen AUS (Go-live): kein Abschnitt zu Preis und Zahlung, nur der Hinweissatz
   const [p60, p90] = await Promise.all([priceFor(db, null, 60), priceFor(db, null, 90)]);
   const e = (c: number | undefined) => (c === undefined ? "–" : formatEuro(c));
 
@@ -71,25 +74,34 @@ export default async function HelpPage() {
         </Q>
       </section>
 
-      <section className="space-y-2" id="geld">
-        <h2 className="text-lg font-semibold">Geld und Zahlung</h2>
-        <Q q="Was kostet das?">
-          <p>Die Anmeldung und alle Funktionen sind kostenlos. Bezahlt wird nur die Halle: <strong>{e(p60?.priceCents)}</strong> für 60 Minuten, <strong>{e(p90?.priceCents)}</strong> für 90 Minuten. Der Preis wird durch alle zahlenden Spieler geteilt.</p>
-        </Q>
-        <Q q="Wie viel zahle ich genau?">
-          <p>Dein Anteil ist der Hallenpreis geteilt durch die Zahl der zahlenden Spieler. Du machst dich bereit; abgerechnet wird erst zur Frist. Je mehr mitspielen, desto weniger zahlt jeder. Bei 12 Spielern sind es {p60 ? e(shareFor(p60.priceCents, 12)) : "–"}.</p>
-        </Q>
-        <Q q="Wie bezahle ich?">
-          <p>Dein Anteil wird zur Frist abgerechnet, vorher wird nichts berechnet. Wie du bezahlst, siehst du in der Lobby. Einen Beleg als PDF bekommst du automatisch.</p>
-        </Q>
-        <Q q="Wann bekomme ich mein Geld zurück?">
-          <ul className="list-disc space-y-1 pl-5">
-            <li>Bis 24 Stunden vor Anstoß abmelden: Es wird nichts berechnet.</li>
-            <li>Später abmelden: Du bekommst es zurück, sobald ein Ersatzspieler deinen Platz bezahlt hat.</li>
-            <li>Spiel abgesagt oder zu wenige Spieler: Ein bereits gezahlter Betrag wird erstattet, auf dem Zahlungsweg, den du genutzt hast.</li>
-          </ul>
-        </Q>
-      </section>
+      {aus ? (
+        <section className="space-y-2" id="geld">
+          <h2 className="text-lg font-semibold">Teilnahme und Gebühr</h2>
+          <Q q="Was kostet die Teilnahme?">
+            <p>Die Anmeldung und alle Funktionen von Soccaz sind kostenlos. {ZAHLUNGEN_AUS_HINWEIS}</p>
+          </Q>
+        </section>
+      ) : (
+        <section className="space-y-2" id="geld">
+          <h2 className="text-lg font-semibold">Geld und Zahlung</h2>
+          <Q q="Was kostet das?">
+            <p>Die Anmeldung und alle Funktionen sind kostenlos. Bezahlt wird nur die Halle: <strong>{e(p60?.priceCents)}</strong> für 60 Minuten, <strong>{e(p90?.priceCents)}</strong> für 90 Minuten. Der Preis wird durch alle zahlenden Spieler geteilt.</p>
+          </Q>
+          <Q q="Wie viel zahle ich genau?">
+            <p>Dein Anteil ist der Hallenpreis geteilt durch die Zahl der zahlenden Spieler. Du machst dich bereit; abgerechnet wird erst zur Frist. Je mehr mitspielen, desto weniger zahlt jeder. Bei 12 Spielern sind es {p60 ? e(shareFor(p60.priceCents, 12)) : "–"}.</p>
+          </Q>
+          <Q q="Wie bezahle ich?">
+            <p>Dein Anteil wird zur Frist abgerechnet, vorher wird nichts berechnet. Wie du bezahlst, siehst du in der Lobby. Einen Beleg als PDF bekommst du automatisch.</p>
+          </Q>
+          <Q q="Wann bekomme ich mein Geld zurück?">
+            <ul className="list-disc space-y-1 pl-5">
+              <li>Bis 24 Stunden vor Anstoß abmelden: Es wird nichts berechnet.</li>
+              <li>Später abmelden: Du bekommst es zurück, sobald ein Ersatzspieler deinen Platz bezahlt hat.</li>
+              <li>Spiel abgesagt oder zu wenige Spieler: Ein bereits gezahlter Betrag wird erstattet, auf dem Zahlungsweg, den du genutzt hast.</li>
+            </ul>
+          </Q>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-lg font-semibold">Spielstärke und Ranglisten</h2>
