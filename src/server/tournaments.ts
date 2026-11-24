@@ -6,7 +6,7 @@ import { auditLog, matchParticipants, matchResults, matches, notifications, paym
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { abortDeadline, dueWithGrace, fixDeadline, FIX_DEADLINE_HOURS, hasLongLead } from "@/lib/deadlines";
 import { MAX_PER_TEAM, MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
-import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, planSchedule, scheduleFromRows, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
+import { GAP_MIN, secureRandom, shuffle, finalSharePerPlayer, scheduleFromRows, koWinner, knockout, shareRange, standings, drawGroups, groupName, tournamentTotalCents, type Fixture, type Played } from "@/lib/tournament";
 import { priceFor } from "./pricing";
 import { toBerlinInputValue } from "@/lib/time";
 import { CITIES } from "@/lib/validation";
