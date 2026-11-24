@@ -26,6 +26,7 @@ import { freezeVenueTerms, hallZusageOkLive, isPartnerVenue } from "./tournament
 import { venues } from "@/db/schema-finance";
 import { cardPaymentsEnabled, tournamentPaymentsActive } from "./settings";
 import { zahlungenAus } from "./zahlungen-aus";
+import { GRATIS_SQL, istGratis } from "@/lib/gratis";
 import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
 
 export const MAX_ENTRY_FEE_CENTS = 50_000;
@@ -310,6 +311,8 @@ async function maybeFixPrice(tx: Tx, t: T) {
   const cardMode = (await tournamentCardMode(tx, t.id)) || (await tournamentCardFlowPaused(tx, t.id)); // Zahlungen AUS: Turnier mit Preis bleibt im Kartenfluss, eingefroren (nie still gratis)
   if (cardMode && !fresh.venueId) throw new DomainError("Für dieses Turnier ist noch keine Partnerhalle gewählt. Der Veranstalter muss zuerst eine Halle wählen.");
   await tx.update(tournaments).set({ status: "payment", finalShareCents: share, priceRound: fresh.priceRound + 1 }).where(eq(tournaments.id, t.id));
+  // Gratis-Turnier (Preis 0, Entscheid t2q 2026-11-24): der zweite Klick "Bereit" entfaellt, nach "vollzaehlig" gilt jedes Team als bereit; das Bracket entsteht gleich unten (alle Plaetze belegt = Anmeldung geschlossen, alle Teams vollzaehlig)
+  if (istGratis({ totalCents: fresh.totalCents, finalShareCents: share })) await tx.update(tournamentTeams).set({ paidReadyAt: new Date() }).where(eq(tournamentTeams.tournamentId, t.id));
   if (cardMode && fresh.venueId) {
     const frozen = await freezeVenueTerms(tx, t.id, fresh.venueId); // Zugang und Provisionssatz einfrieren (spaetere Aenderungen wirken nicht)
     // Entscheid t2q A: Zugangsinhaber der Halle erfahren beim Fixieren, dass eine Zusage gefragt ist (entprellt, im Savepoint; dynamischer Import gegen den Importkreis)
@@ -383,15 +386,62 @@ export async function closeWithJoinedTeams(userId: string, tournamentId: string)
     const t = await lockTournament(tx, tournamentId);
     if (!(await canManage(tx, userId, t))) throw new DomainError("Nur der Veranstalter kann das.");
     if (!registrationOpen(t)) throw new DomainError("Das Turnier läuft schon oder ist beendet.");
-    if (!deadlinePassed(t)) throw new DomainError("Das geht erst nach dem Anmeldeschluss.");
-    const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, tournamentId));
-    if (n < MIN_TOURNAMENT_TEAMS) throw new DomainError(`Mit weniger als ${MIN_TOURNAMENT_TEAMS} Teams findet das Turnier nicht statt. Du kannst es absagen.`);
-    if (n === t.maxTeams) throw new DomainError("Es sind schon alle Plätze belegt.");
+    const free = istGratis(t); // Gratis: Anmeldung jederzeit schliessen und mit den BEREITEN (vollzaehligen) Teams starten; bezahlte Turniere: erst nach dem Anmeldeschluss, mit allen angemeldeten Teams
+    if (!free && !deadlinePassed(t)) throw new DomainError("Das geht erst nach dem Anmeldeschluss.");
+    const entries = await tx.select().from(tournamentTeams).where(eq(tournamentTeams.tournamentId, tournamentId));
+    const notReady = free ? entries.filter((e) => !e.readyAt) : [];
+    const n = entries.length - notReady.length;
+    if (n < MIN_TOURNAMENT_TEAMS) throw new DomainError(`Mit weniger als ${MIN_TOURNAMENT_TEAMS} ${free ? "bereiten " : ""}Teams findet das Turnier nicht statt. Du kannst es absagen.`);
+    if (n === t.maxTeams && notReady.length === 0) throw new DomainError("Es sind schon alle Plätze belegt.");
+    for (const e of notReady) {
+      // Team mit unvollzaehligem Kader: nicht dabei (ohne Namen Dritter in der Mitteilung)
+      await tx.delete(tournamentPlayers).where(and(eq(tournamentPlayers.tournamentId, tournamentId), eq(tournamentPlayers.teamId, e.teamId)));
+      await tx.delete(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, tournamentId), eq(tournamentTeams.teamId, e.teamId)));
+      await notifyUsers(await teamAdminIds(tx, e.teamId), { type: "system", title: "Euer Team ist nicht dabei", body: `${t.name}: Euer Team ist nicht dabei, weil der Kader beim Schließen der Anmeldung nicht vollzählig war.`, url: `/turniere/${tournamentId}` }, tx);
+      await audit(userId, "tournament.drop_unready", "tournament", tournamentId, { after: { teamId: e.teamId } }, tx);
+    }
     await tx.update(tournaments).set({ maxTeams: n }).where(eq(tournaments.id, tournamentId));
     await audit(userId, "tournament.shrink", "tournament", tournamentId, { before: { maxTeams: t.maxTeams }, after: { maxTeams: n } }, tx);
     // Sind jetzt alle vorhandenen Teams vollzählig, steht der Preis fest
     await maybeFixPrice(tx, { ...t, maxTeams: n });
   });
+}
+
+/** Meldung an den Veranstalter eines Gratis-Turniers (ohne Namen Dritter): Zahlen und die zwei Wege. */
+export function freeStatusText(name: string, angemeldet: number, bereit: number, kopf: string): string {
+  return bereit >= MIN_TOURNAMENT_TEAMS
+    ? `${name}: ${kopf} ${angemeldet} Teams angemeldet, ${bereit} bereit. Du kannst mit den bereiten Teams starten oder das Turnier absagen.`
+    : `${name}: ${kopf} ${angemeldet} Teams angemeldet, ${bereit} bereit. Ab ${MIN_TOURNAMENT_TEAMS} bereiten Teams kannst du starten, sonst kannst du das Turnier absagen.`;
+}
+
+/**
+ * Gratis-Turniere (Preis 0, Entscheid t2q 2026-11-24): 24 Stunden vor dem Start erinnert dieser Job den Veranstalter, solange noch kein Bracket steht (X Teams angemeldet, Y bereit: mit den bereiten Teams
+ * starten oder absagen; ohne Namen Dritter). Je Turnier einmal (Audit-Marker unter der Turniersperre), idempotent; keine automatische Absage. Gibt die Zahl der Meldungen zurueck.
+ */
+export async function notifyFreeTournamentReminders(now: Date = new Date()): Promise<number> {
+  const horizon = new Date(now.getTime() + 24 * 3_600_000);
+  const candidates = await db
+    .select({ id: tournaments.id })
+    .from(tournaments)
+    .where(and(eq(tournaments.status, "registration"), isNull(tournaments.bracketGeneratedAt), sql.raw(GRATIS_SQL), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`, sql`${tournaments.startsAt} <= ${horizon}`));
+  let sent = 0;
+  for (const { id } of candidates) {
+    try {
+      sent += await db.transaction(async (tx) => {
+        const t = await lockTournament(tx, id);
+        if (!registrationOpen(t) || !istGratis(t) || !t.startsAt || t.startsAt.getTime() <= now.getTime() || t.startsAt.getTime() > horizon.getTime()) return 0;
+        const [done] = await tx.select({ id: auditLog.id }).from(auditLog).where(and(eq(auditLog.action, "tournament.free_reminder.24h"), eq(auditLog.entityId, id))).limit(1);
+        if (done) return 0;
+        const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, id));
+        const [{ r }] = await tx.select({ r: count() }).from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, id), isNotNull(tournamentTeams.readyAt)));
+        await audit(null, "tournament.free_reminder.24h", "tournament", id, { after: { teams: n, ready: r } }, tx);
+        return notifyUsers([t.organizerId], { type: "system", title: "Das Turnier beginnt bald", body: freeStatusText(t.name, n, r, "In etwa 24 Stunden geht es los."), url: `/turniere/${id}` }, tx);
+      });
+    } catch (error) {
+      console.error("notifyFreeTournamentReminders: Fehler bei Turnier", id, error instanceof Error ? error.name : "Fehler");
+    }
+  }
+  return sent;
 }
 
 /**
@@ -414,12 +464,16 @@ export async function notifyRegistrationDeadlines(now: Date = new Date()): Promi
         const t = await lockTournament(tx, id);
         if (!registrationOpen(t) || !t.registrationDeadline || t.registrationDeadline.getTime() > now.getTime()) return 0;
         const [{ n }] = await tx.select({ n: count() }).from(tournamentTeams).where(eq(tournamentTeams.tournamentId, id));
-        if (n >= t.maxTeams) return 0;
+        const free = istGratis(t);
+        if (n >= t.maxTeams && !free) return 0; // Gratis: auch bei vollem Turnier melden, solange nicht alle Teams vollzaehlig sind
         const url = `/turniere/${id}`;
         const title = "Anmeldeschluss erreicht";
         const [already] = await tx.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.userId, t.organizerId), eq(notifications.type, "system"), eq(notifications.url, url), eq(notifications.title, title))).limit(1);
         if (already) return 0;
-        const body = n >= MIN_TOURNAMENT_TEAMS
+        const [{ r }] = await tx.select({ r: count() }).from(tournamentTeams).where(and(eq(tournamentTeams.tournamentId, id), isNotNull(tournamentTeams.readyAt)));
+        const body = free
+          ? freeStatusText(t.name, n, r, "Die Anmeldung ist geschlossen.")
+          : n >= MIN_TOURNAMENT_TEAMS
           ? `${t.name}: ${n} von ${t.maxTeams} Teams sind angemeldet. Du kannst mit diesen Teams weitermachen oder das Turnier absagen.`
           : `${t.name}: Nur ${n} von ${t.maxTeams} Teams sind angemeldet. Mit weniger als ${MIN_TOURNAMENT_TEAMS} Teams findet das Turnier nicht statt, du kannst es absagen.`;
         return notifyUsers([t.organizerId], { type: "system", title, body, url }, tx);
@@ -722,7 +776,7 @@ export async function closeTournamentsAtDeadline(now: Date = new Date()): Promis
   const candidates = await db
     .select()
     .from(tournaments)
-    .where(and(inArray(tournaments.status, ["registration", "payment"]), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`));
+    .where(and(inArray(tournaments.status, ["registration", "payment"]), isNull(tournaments.bracketGeneratedAt), isNotNull(tournaments.startsAt), sql`${tournaments.startsAt} > ${now}`, sql`not ${sql.raw(GRATIS_SQL)}`)); // Gratis-Turniere (Preis 0) werden NIE automatisch abgesagt (Entscheid t2q 2026-11-24): der Veranstalter entscheidet, Erinnerungen siehe notifyFreeTournamentReminders
   let cancelled = 0;
   const preResume = await resumeUntil(); // nur für die Kandidatenauswahl: die Entscheidung liest unter der Turniersperre frisch
   for (const c of candidates) {

@@ -34,6 +34,7 @@ import { hasOpenTournamentAuthorization } from "@/server/payments/authorize";
 import { TournamentVenuePick } from "./TournamentVenuePick";
 import { listPartnerVenueOptions } from "@/server/tournament-venue";
 import { DECLINE_LABELS, isDeclineCode } from "@/lib/hall-decline";
+import { istGratis } from "@/lib/gratis";
 import { TournamentCard } from "./TournamentCard";
 import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 import { zahlungenAus } from "@/server/zahlungen-aus";
@@ -61,7 +62,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
   const { sicht } = await getViewerSicht({ participant: Boolean(v?.myTeamId), teamAdmin: Boolean(v?.captainTeamId || v?.isOrganizer) });
   const manage = Boolean(v?.isOrganizer);
   const priceFixed = pricing.shareCents !== null;
-  const free = pricing.totalCents === 0 || (priceFixed && pricing.shareCents === 0);
+  const free = istGratis({ totalCents: pricing.totalCents, finalShareCents: pricing.shareCents }); // EINE Regel mit dem Server (src/lib/gratis.ts)
   const inRegistration = t.status === "registration";
   const inPayment = t.status === "payment";
   // Keine Zahlungstexte bei einem Turnier OHNE Preis (Go-live: bei Zahlungen AUS wird jedes neue Turnier mit Preis 0 angelegt). Ein Turnier MIT Preis (Altbestand) bleibt bei Zahlungen AUS im bisherigen Fluss (pausierter Kartenfluss, nie still gratis) und behält seine Hinweise.
@@ -172,7 +173,10 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <section className="card space-y-2" data-testid="organizer-box">
           <h2 className="font-semibold">Veranstalter</h2>
           <div className="flex flex-wrap gap-2">
-            {inRegistration && data.deadlinePassed && teams.length < t.maxTeams && teams.length >= 4 && (
+            {inRegistration && free && teams.filter((x) => x.ready).length >= 4 && (teams.length < t.maxTeams || teams.some((x) => !x.ready)) && (
+              <ActionButton action={closeWithJoinedAction.bind(null, t.id)} label={`Anmeldung schließen und mit den ${teams.filter((x) => x.ready).length} bereiten Teams starten`} confirm="Die Anmeldung wird geschlossen. Teams, deren Kader nicht vollzählig ist, sind nicht dabei. Danach erscheint der Spielplan." className="btn btn-primary !min-h-11 !px-4 text-sm" />
+            )}
+            {inRegistration && !free && data.deadlinePassed && teams.length < t.maxTeams && teams.length >= 4 && (
               <ActionButton action={closeWithJoinedAction.bind(null, t.id)} label={`Mit den ${teams.length} angemeldeten Teams starten`} confirm="Die Teamzahl wird auf die angemeldeten Teams gesenkt. Danach wird der Preis berechnet, sobald alle Teams vollzählig sind." className="btn btn-primary !min-h-11 !px-4 text-sm" />
             )}
             {inPayment && !declined && (

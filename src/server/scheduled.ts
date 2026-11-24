@@ -12,7 +12,7 @@ import { PAUSE_CANCEL_REASON, resumeFloor, resumeUntil } from "./pause-resume";
 import { cardPaymentsEnabled, paymentsEnabled } from "./settings";
 import { teamName } from "./names";
 import { cancelUncoveredPrivateGames } from "./privategame";
-import { closeTournamentsAtDeadline, notifyRegistrationDeadlines } from "./tournaments";
+import { closeTournamentsAtDeadline, notifyFreeTournamentReminders, notifyRegistrationDeadlines } from "./tournaments";
 import { matchParticipantIds, notifyUsers, teamAdminIds } from "./notifications";
 
 /** Erinnert Teilnehmer 24 Stunden, 2 Stunden und 30 Minuten vor dem Anstoß. Pro Spiel und Art genau einmal. */
@@ -75,6 +75,7 @@ export async function cancelUnderfilledLobbies(now: Date = new Date()): Promise<
   // Turniere: 48-h-Frist bzw. 1-h-Abbruch (Absage und Erstattung), am Anmeldeschluss bekommt der Veranstalter einmalig eine Meldung (selber 5-Minuten-Takt)
   cancelled += await closeTournamentsAtDeadline(now);
   await notifyRegistrationDeadlines(now);
+  await notifyFreeTournamentReminders(now); // Gratis-Turniere: Erinnerung 24 h vor dem Start (keine automatische Absage)
   return cancelled;
 }
 

@@ -225,15 +225,14 @@ describe("M5-3: Kartenmodell im Turnier", () => {
     expect(other.coversGiven).toEqual([]);
   });
 
-  it("kostenloses Turnier (Hallenkosten 0), Schalter EIN: kein Kartenmodell, Bereit ohne Karte, das Bracket entsteht", async () => {
+  it("kostenloses Turnier (Hallenkosten 0), Schalter EIN: kein Kartenmodell, kein Bereit noetig, das Bracket entsteht", async () => {
     const o = await organizer();
     const t = await createTournament(o.id, { ...base, hourlyCents: 0 });
     const squads = [];
     for (let i = 0; i < t.maxTeams; i++) squads.push(await squad(t.id, 4, true));
-    expect((await stateOf(t.id)).status).toBe("payment");
     expect((await stateOf(t.id)).finalShareCents).toBe(0);
     expect(await tournamentCardMode(db, t.id)).toBe(false);
-    for (const s of squads) await setPaidReady(s.captain.id, t.id);
+    expect(squads.length).toBe(t.maxTeams); // Gratis PR B: "Bereit" entfaellt, das Bracket entsteht mit dem letzten "vollzaehlig"
     const st = await stateOf(t.id);
     expect(st.status).toBe("running");
     expect(st.bracketGeneratedAt).not.toBeNull();
