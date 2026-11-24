@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { formatDateTime } from "@/lib/time";
+import { LinkButton } from "@/components/ui/LinkButton";
 import { myCurrent } from "@/server/mygame";
 import { colorByKey } from "@/lib/team-color";
 
@@ -10,8 +10,8 @@ function Mark({ k }: { k: string | null }) {
 }
 
 /** Ganz oben und auffällig: das eigene aktuelle Spiel und die eigenen offenen Lobbys, getrennt von der Liste aller offenen Lobbys. */
-export async function MyGames({ userId }: { userId: string }) {
-  const { games, open } = await myCurrent(userId);
+export async function MyGames({ userId, data }: { userId: string; data?: Awaited<ReturnType<typeof myCurrent>> }) {
+  const { games, open } = data ?? (await myCurrent(userId)); // /app lädt die Daten selbst (auch für „Dein Stand“) und reicht sie weiter
   if (games.length === 0 && open.length === 0) return null;
   return (
     <section className="space-y-3 rounded-2xl border-2 border-accent bg-accent-soft p-4" aria-label="Mein aktuelles Spiel" data-testid="my-games">
@@ -25,7 +25,7 @@ export async function MyGames({ userId }: { userId: string }) {
               <span className="block text-sm text-muted">{g.timeOpen ? "Uhrzeit noch offen" : `${formatDateTime(g.startsAt)} Uhr`}</span>
               <span className="block text-sm font-semibold text-ink">{g.phase}</span>
             </span>
-            <Link href={`/lobby/${g.id}`} className="btn btn-primary !min-h-9 !px-4 text-sm">Zur Lobby</Link>
+            <LinkButton href={`/lobby/${g.id}`} size="sm">Zur Lobby</LinkButton>
           </li>
         ))}
         {open.map((o) => (
@@ -38,7 +38,7 @@ export async function MyGames({ userId }: { userId: string }) {
               </span>
               <span className="block text-sm font-semibold text-ink">Eure Lobby ist offen und wartet auf einen Gegner</span>
             </span>
-            <Link href={`/lobby/offen/${o.id}`} className="btn btn-primary !min-h-9 !px-4 text-sm">Zur Lobby</Link>
+            <LinkButton href={`/lobby/offen/${o.id}`} size="sm">Zur Lobby</LinkButton>
           </li>
         ))}
       </ul>
