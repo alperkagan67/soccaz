@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { auditLog, matchParticipants, matches } from "@/db/schema";
 import { finalConfirm, setReady } from "@/server/lobby";
+import { priceFor } from "@/server/pricing";
 import { setSetting } from "@/server/settings";
 import { addPlayer, cleanup, makeMatch } from "./helpers";
 
@@ -10,6 +11,7 @@ import { addPlayer, cleanup, makeMatch } from "./helpers";
 // Preis 0 (kostenlos) und Preis > 0 gehen wie bisher; ausserhalb des Kartenmodells (Gratis, Pause) entscheidet der Preis nicht ueber diesen Knopf.
 beforeAll(async () => {
   await setSetting(null, "payments_enabled", true);
+  expect(await priceFor(db, null, 37), "Voraussetzung der Tests: fuer 37 Minuten gibt es keine Preisregel").toBeNull(); // sonst waeren die Faelle mit unbekanntem Preis still falsch
 });
 beforeEach(async () => {
   await setSetting(null, "card_payments_enabled", true);
