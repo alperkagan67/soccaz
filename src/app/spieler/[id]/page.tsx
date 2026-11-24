@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Comments } from "@/components/Comments";
 import { FormChips, Sparkline } from "@/components/Sparkline";
 import { OutcomeChip, StatTile } from "@/components/Stats";
@@ -11,10 +11,14 @@ import { formatDate, formatDateTime } from "@/lib/time";
 import { getPlayerProfile, playerSchedule, type ScheduleRow } from "@/server/profiles";
 import { getCurrentUser } from "@/server/session";
 
+// AC-17 (Entscheid t2q 2026-11-24): Das Profil ist für Gäste nicht öffentlich (Weiterleitung zur Anmeldung) und nie indexierbar; der Name steht nur im Titel, wenn der Betrachter angemeldet ist (nie im Head für Gäste oder Suchmaschinen).
 export async function generateMetadata({ params }: PageProps<"/spieler/[id]">): Promise<Metadata> {
   const { id } = await params;
-  const p = await getPlayerProfile(id, null);
-  return { title: p && !p.hidden ? p.user.name : "Spielerprofil" };
+  const viewer = await getCurrentUser();
+  const robots = { index: false, follow: false };
+  if (!viewer) return { title: "Spielerprofil", robots };
+  const p = await getPlayerProfile(id, { id: viewer.id, role: viewer.role });
+  return { title: p && !p.hidden ? p.user.name : "Spielerprofil", robots };
 }
 
 function Chip({ children }: { children: React.ReactNode }) {
@@ -69,7 +73,8 @@ export default async function PlayerPage({ params, searchParams }: PageProps<"/s
   const sp = await searchParams;
   const page = Math.max(1, Number(typeof sp.seite === "string" ? sp.seite : 1) || 1);
   const viewer = await getCurrentUser();
-  const p = await getPlayerProfile(id, viewer ? { id: viewer.id, role: viewer.role } : null);
+  if (!viewer) redirect(`/anmelden?next=${encodeURIComponent(`/spieler/${id}`)}`); // Gäste: Anmeldung mit Rücksprung, kein Name im ausgelieferten HTML
+  const p = await getPlayerProfile(id, { id: viewer.id, role: viewer.role });
   if (!p) notFound();
   if (p.hidden) {
     return (
