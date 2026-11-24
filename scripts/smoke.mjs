@@ -103,7 +103,7 @@ export async function runSmoke({ base, turnierOnly = false, apple = false, zahlu
   }
   if (goLive) {
     // Rechtstexte vor dem Go-live: Betreiberangaben müssen eingetragen sein (OPERATOR_*); die übrigen Platzhalter sind ein Hinweis bis zur Rechtsprüfung (kein Fehler)
-    for (const pfad of ["/impressum", "/datenschutz"]) {
+    for (const pfad of ["/impressum", "/datenschutz", "/agb"]) {
       try {
         const res = await fetchImpl(root + pfad, { headers, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS) });
         const text = sichtText(await res.text());

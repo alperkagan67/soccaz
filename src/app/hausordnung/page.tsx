@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { LegalPage } from "@/components/LegalPage";
+import { zahlungenAus } from "@/server/zahlungen-aus";
 
 export const metadata: Metadata = { title: "Hausordnung" };
 
-export default function HausordnungPage() {
+export default async function HausordnungPage() {
+  await connection();
+  const aus = await zahlungenAus(); // Zahlungen AUS: keine Aussage zu offenen Zahlungen
   return (
     <LegalPage title="Hausordnung">
       <section className="space-y-1">
@@ -20,7 +24,7 @@ export default function HausordnungPage() {
       </section>
       <section className="space-y-1">
         <h2>Folgen</h2>
-        <p>Verwarnung, Entfernen von Inhalten, zeitweise oder dauerhafte Sperre. Bei einer Sperre werden offene Zahlungen und Reservierungen ordnungsgemäß abgewickelt.</p>
+        <p>Verwarnung, Entfernen von Inhalten, zeitweise oder dauerhafte Sperre. Bei einer Sperre werden offene {aus ? "" : "Zahlungen und "}Reservierungen ordnungsgemäß abgewickelt.</p>
       </section>
     </LegalPage>
   );
