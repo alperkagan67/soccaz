@@ -112,6 +112,7 @@ export const tournaments = pgTable(
     registrationDeadline: timestamp("registration_deadline", { withTimezone: true }),
     startsAt: timestamp("starts_at", { withTimezone: true }),
     matchMinutes: integer("match_minutes").notNull().default(15),
+    gapMinutes: integer("gap_minutes").notNull().default(5), // Puffer zwischen zwei Spielen in Minuten (0062); im Puffer läuft bei Gleichstand im K.-o. das Golden Goal, danach Neunmeter
     bracketGeneratedAt: timestamp("bracket_generated_at", { withTimezone: true }), // Bracket gibt es erst, wenn alle Teams da und alle Captains bereit sind
 
     status: text("status").$type<TournamentStatus>().notNull().default("registration"),
@@ -129,6 +130,7 @@ export const tournaments = pgTable(
     check("tournaments_decline_code_check", sql`${t.venueDeclineCode} is null or (${t.venueDeclinedAt} is not null and ${t.venueDeclineCode} in ('belegt', 'wartung', 'veranstaltung', 'sonstiges'))`),
     check("tournaments_decline_needs_code", sql`${t.venueDeclinedAt} is null or ${t.venueDeclineCode} is not null`),
     check("tournaments_decline_by_needs_declined", sql`${t.venueDeclinedBy} is null or ${t.venueDeclinedAt} is not null`),
+    check("tournaments_gap_range", sql`${t.gapMinutes} between 0 and 30`),
     index("tournaments_status_idx").on(t.status, t.startsOn),
   ],
 );
@@ -187,12 +189,20 @@ export const tournamentMatches = pgTable(
     scoreA: integer("score_a"),
     scoreB: integer("score_b"),
     shootoutWinner: uuid("shootout_winner").references(() => teams.id),
+    // 0062: wie ein K.-o.-Gleichstand entschieden wurde: 'gg' = Golden Goal (das Tor steckt schon in score_a/score_b, kein shootout_winner), '9m' = Neunmeter (shootout_winner gesetzt, optional Zähler). NULL = regulär oder Altzeile.
+    decidedBy: text("decided_by").$type<"gg" | "9m">(),
+    shootoutA: integer("shootout_a"), // nur Anzeige (kein Schusslog): Neunmeter-Treffer von Team A
+    shootoutB: integer("shootout_b"),
     feedsMatchId: uuid("feeds_match_id"),
     feedsSide: text("feeds_side").$type<"a" | "b">(),
     playedAt: timestamp("played_at", { withTimezone: true }),
     matchId: uuid("match_id").references(() => matches.id, { onDelete: "set null" }), // das echte Spiel mit Captain-Meldung und Bestätigung
   },
-  (t) => [uniqueIndex("tournament_matches_slot").on(t.tournamentId, t.stage, t.round, t.slot), index("tournament_matches_tournament_idx").on(t.tournamentId)],
+  (t) => [
+    check("tournament_matches_decided_by_check", sql`${t.decidedBy} is null or ${t.decidedBy} in ('gg', '9m')`),
+    check("tournament_matches_decided_by_shape", sql`${t.decidedBy} is null or (${t.decidedBy} = 'gg' and ${t.shootoutWinner} is null) or (${t.decidedBy} = '9m' and ${t.shootoutWinner} is not null)`),
+    check("tournament_matches_shootout_count", sql`(${t.shootoutA} is null and ${t.shootoutB} is null) or (${t.decidedBy} = '9m' and ${t.shootoutA} is not null and ${t.shootoutB} is not null and ${t.shootoutA} between 0 and 50 and ${t.shootoutB} between 0 and 50)`),
+    uniqueIndex("tournament_matches_slot").on(t.tournamentId, t.stage, t.round, t.slot), index("tournament_matches_tournament_idx").on(t.tournamentId)],
 );
 
 export type SponsorKind = "sponsor" | "jersey";

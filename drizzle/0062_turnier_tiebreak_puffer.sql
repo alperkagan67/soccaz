@@ -1,0 +1,10 @@
+-- Turnier-Demo-Funde (Auftrag t2q 2026-11-27): K.-o.-Gleichstand per Golden Goal (decided_by gg) oder Neunmeter (9m, optionaler Zaehler nur fuer die Anzeige) und Puffer zwischen den Spielen (gap_minutes, Standard 5). Rein additiv: nullable Spalten und ein Standardwert, keine Backfill-Zeilen, keine Wirkung auf bestehende Turniere (Puffer 5 = bisherige Konstante GAP_MIN).
+-- Rueckfall: drizzle/down/0062_down.sql (bricht ab, sobald ein Spiel mit decided_by oder ein Turnier mit anderem Puffer existiert).
+ALTER TABLE "tournament_matches" ADD COLUMN "decided_by" text;--> statement-breakpoint
+ALTER TABLE "tournament_matches" ADD COLUMN "shootout_a" integer;--> statement-breakpoint
+ALTER TABLE "tournament_matches" ADD COLUMN "shootout_b" integer;--> statement-breakpoint
+ALTER TABLE "tournaments" ADD COLUMN "gap_minutes" integer DEFAULT 5 NOT NULL;--> statement-breakpoint
+ALTER TABLE "tournament_matches" ADD CONSTRAINT "tournament_matches_decided_by_check" CHECK ("tournament_matches"."decided_by" is null or "tournament_matches"."decided_by" in ('gg', '9m'));--> statement-breakpoint
+ALTER TABLE "tournament_matches" ADD CONSTRAINT "tournament_matches_decided_by_shape" CHECK ("tournament_matches"."decided_by" is null or ("tournament_matches"."decided_by" = 'gg' and "tournament_matches"."shootout_winner" is null) or ("tournament_matches"."decided_by" = '9m' and "tournament_matches"."shootout_winner" is not null));--> statement-breakpoint
+ALTER TABLE "tournament_matches" ADD CONSTRAINT "tournament_matches_shootout_count" CHECK (("tournament_matches"."shootout_a" is null and "tournament_matches"."shootout_b" is null) or ("tournament_matches"."decided_by" = '9m' and "tournament_matches"."shootout_a" is not null and "tournament_matches"."shootout_b" is not null and "tournament_matches"."shootout_a" between 0 and 50 and "tournament_matches"."shootout_b" between 0 and 50));--> statement-breakpoint
+ALTER TABLE "tournaments" ADD CONSTRAINT "tournaments_gap_range" CHECK ("tournaments"."gap_minutes" between 0 and 30);
