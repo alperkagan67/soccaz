@@ -67,8 +67,8 @@ export async function venueCommissionPercent(venueId: string, exec: Pick<Tx, "se
  * Auswahlliste fuer die Partnerhalle: nur bei eingeschaltetem Kartenmodell (null = Schalter AUS, das Formular bleibt unveraendert), sonst alle aktiven Partnerhallen. Seit M5-7b auch Hallen MIT
  * Betreiber-Zugang (die Zusage der Halle gibt es jetzt; die 7a-Sperre ist aufgehoben). Die Eintraege sind genau die, die isPartnerVenue annimmt (Test).
  */
-export async function listPartnerVenueOptions(): Promise<{ id: string; label: string }[] | null> {
-  if (!(await cardPaymentsEnabled())) return null;
+export async function listPartnerVenueOptions(opts: { force?: boolean } = {}): Promise<{ id: string; label: string }[] | null> {
+  if (!opts.force && !(await cardPaymentsEnabled())) return null; // force: nach einer Ablehnung der Halle (die es nur im Kartenfluss gibt) bleibt die Hallenwahl auch bei Notschalter moeglich
   const rows = await db.select({ id: venues.id, name: venues.name, city: venues.city }).from(venues).where(and(eq(venues.active, true), eq(venues.approvalStatus, "approved"), eq(venues.isPartner, true))).orderBy(venues.city, venues.name);
   return rows.map((v) => ({ id: v.id, label: [v.name, v.city].join(", ") }));
 }

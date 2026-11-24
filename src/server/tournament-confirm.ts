@@ -10,7 +10,7 @@ import { db } from "@/db";
 import { auditLog, paymentCharges } from "@/db/schema";
 import { venues } from "@/db/schema-finance";
 import { tournamentTeams, tournaments } from "@/db/schema-league";
-import { DECLINE_LABELS, validateDecline } from "@/lib/hall-decline";
+import { DECLINE_LABELS, HALL_DECLINE_FINAL, validateDecline } from "@/lib/hall-decline";
 import { formatEuro } from "@/lib/money";
 import { formatDateTime } from "@/lib/time";
 import { audit } from "./audit";
@@ -57,7 +57,7 @@ export function hallDeclinedText(tournamentName: string, venueName: string, code
 
 const NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht zusagen.";
 /** Meldung an die Halle: die Ablehnung ist endgueltig (Entscheid t2q); Wortlaut auch fuer Hinweis und Rueckmeldung der Oberflaeche (PR 2). Entwurf, keine Rechtsaussage. */
-export const HALL_DECLINE_FINAL = "Die Ablehnung ist endgültig. Bitte den Veranstalter, die Halle erneut zu wählen.";
+export { HALL_DECLINE_FINAL }; // Wortlaut in src/lib/hall-decline.ts (auch die Oberflaeche nutzt ihn)
 const DECLINE_NOT_POSSIBLE = "Dieses Turnier lässt sich gerade nicht ablehnen.";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
