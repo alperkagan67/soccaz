@@ -30,7 +30,8 @@ export default async function DatenschutzPage() {
       </section>
       <section className="space-y-1">
         <h2>Was öffentlich sichtbar ist</h2>
-        <p>Dein Profil (Name, Stadt, Position, Statistik, Abzeichen, Teams, Ergebnisse) ist standardmäßig öffentlich. Du kannst es in den Einstellungen auf privat stellen. Deine Zuverlässigkeit sehen nur du, deine Team-Admins und die Plattform. Dein Geburtsdatum und deine E-Mail-Adresse sind nie öffentlich. Die Teamwertung auf der Teamseite ist ein auf ganze Zahlen gerundeter Durchschnitt der Wertungen der Mitglieder und erscheint erst ab vier Mitgliedern; Einzelwertungen sehen nur angemeldete Nutzer. Bilder (Profilbild, Teamlogo) sind nur für angemeldete Nutzer abrufbar. (Entwurf, nicht rechtlich geprüft.)</p>
+        <p>Dein Profil (Name, Stadt, Position, Statistik, Abzeichen, Teams, Ergebnisse) ist standardmäßig öffentlich. Du kannst es in den Einstellungen auf privat stellen. Deine Zuverlässigkeit sehen nur du, deine Team-Admins und die Plattform. Dein Geburtsdatum und deine E-Mail-Adresse sind nie öffentlich.</p>
+        <p>Entwurf (nur dieser Absatz, noch nicht rechtlich geprüft): Die Teamwertung auf der Teamseite ist ein auf ganze Zahlen gerundeter Durchschnitt der Wertungen der Mitglieder und erscheint erst ab vier Mitgliedern; Einzelwertungen sehen nur angemeldete Nutzer. Bilder (Profilbild, Teamlogo) sind nur für angemeldete Nutzer abrufbar.</p>
       </section>
       <section className="space-y-1">
         <h2>Empfänger</h2>

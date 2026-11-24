@@ -216,7 +216,7 @@ export async function listPlayers(filter: { q?: string; city?: string; page?: nu
 /**
  * Elo-Werte der Mitglieder OHNE Namen und Kennungen, nur für die Teamwertung (Durchschnitt, erst ab vier Mitgliedern, siehe teamCardFor). Der Aufrufer reduziert sie auf EINE Zahl;
  * die Werte selbst gehen nie in die Seite. Unabhängig vom Betrachter, weil die Teamwertung (wie die Team-Elo) öffentlich ist.
- * Bekannte Grenze: wer ein Team der Größe drei beobachtet, kann aus Beitritt und Austritt die Wertung der Wechselnden grob zurückrechnen (Teamwertung ist dann die Summe).
+ * Bekannte Grenze (G30-013): ab vier Mitgliedern gezeigt, auf ganze Zahlen gerundet; wer die Wertungen der anderen kennt und ein Team beim Beitritt oder Austritt beobachtet, kann die Wertung der Wechselnden grundsätzlich weiter grob zurückrechnen. Die Schwelle senkt das Risiko, beseitigt es nicht.
  */
 export async function getTeamMemberElos(teamId: string): Promise<number[]> {
   const rows = await db

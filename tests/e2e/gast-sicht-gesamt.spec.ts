@@ -34,8 +34,14 @@ async function seed(): Promise<Seed> {
   const m = await seedUser("gsm", NAME_M);
   const rival = await seedUser("gsr", "Gegner Beispiel");
   // Profilbilder: ihre Pfade dürfen in keiner Gast-Seite stehen (Backlog 243: /api/media liefert nur noch Angemeldeten Bilder, Gäste bekommen auch keine Verweise)
-  const avatare = [z, y, m].map(() => `/api/media/${randomUUID()}`);
-  for (const [i, u] of [z, y, m].entries()) await query("update users set avatar_url = $1 where id = $2", [avatare[i], u]);
+  // ECHTE media-Zeilen (Vakuum-Schutz R-T399): mit zufälligen UUIDs ohne Zeile wäre jede Route 404 und ein Rückbau auf öffentlich bliebe grün
+  const WEBP = "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==";
+  const avatare: string[] = [];
+  for (const u of [z, y, m]) {
+    const [row] = await query<{ id: string }>("insert into media (owner_id, kind, ref_id, mime, data) values ($1, 'avatar', $1, 'image/webp', decode($2, 'base64')) returning id", [u, WEBP]);
+    avatare.push(`/api/media/${row.id}`);
+    await query("update users set avatar_url = $1 where id = $2", [avatare[avatare.length - 1], u]);
+  }
   const mk = async (name: string, slug: string, admin: string) => {
     const [t] = await query<{ id: string }>("insert into teams (name, slug, city, created_by) values ($1, $2, 'Essen', $3) returning id", [name, slug, admin]);
     await query("insert into team_members (team_id, user_id, role) values ($1, $2, 'admin')", [t.id, admin]);

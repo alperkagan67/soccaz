@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Backlog 243 (Entscheid t2q 2026-11-24): Bilder (/api/media/<id>) nur für Angemeldete, ohne Anmeldung 404 wie ein unbekanntes Bild; Antwort nur privat zwischenspeicherbar;
 // Teamlogo für Gäste weggelassen; Spielfotos aus bis zum Social-Media-Teil.
 const session = vi.hoisted(() => ({ user: null as { id: string; role: string } | null }));
-const store = vi.hoisted(() => ({ rows: new Map<string, { data: Buffer; mime: string; status: string }>() }));
+const store = vi.hoisted(() => ({ rows: new Map<string, { data: Buffer; mime: string; status: string }>(), calls: 0 }));
 vi.mock("@/server/session", () => ({ getCurrentUser: async () => session.user }));
-vi.mock("@/server/media", () => ({ getMedia: async (id: string) => store.rows.get(id) ?? null, removeMedia: async () => undefined }));
+vi.mock("@/server/media", () => ({ getMedia: async (id: string) => { store.calls += 1; return store.rows.get(id) ?? null; }, removeMedia: async () => undefined }));
 
 const root = join(__dirname, "..", "..");
 const src = (f: string) => readFileSync(join(root, f), "utf8");
@@ -21,6 +21,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   session.user = null;
+  store.calls = 0;
   store.rows.clear();
 });
 
@@ -32,6 +33,7 @@ describe("GET /api/media/[id]", () => {
     expect(await r.text()).toBe(await unbekannt.text());
     expect(r.headers.get("Cache-Control")).toBe("no-store");
     expect(r.headers.get("Content-Type")).not.toBe("image/webp");
+    expect(store.calls, "Anmeldung vor Datenbank: für Gäste wird nie nach dem Bild gefragt").toBe(0);
   });
   it("Angemeldet: 200 mit dem Bild, aber nur privat zwischenspeicherbar (nie public), Vary Cookie", async () => {
     session.user = { id: "u1", role: "player" };
