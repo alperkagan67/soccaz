@@ -60,32 +60,53 @@ export function matchHref(row: { id: string; status: MatchStatus; startsAt: Date
 
 export type StandGame = { id: string; number: number; home: string; away: string; startsAt: Date; timeOpen: boolean; phase: string };
 export type StandOpen = { id: string; number: number; team: string };
-export type StandChallenge = { id: string; fromTeam: string; toTeam: string; startsAt: Date; href?: string };
-export type Stand = { line: string; detail?: string; action: { label: string; href: string } };
+/** deadline: Ablauffrist der Herausforderung (Antwort bis); leer = ohne Frist (zählt nicht für die Dringlichkeit). */
+export type StandChallenge = { id: string; fromTeam: string; toTeam: string; startsAt: Date; href?: string; deadline?: Date | null };
+export type StandAction = { label: string; href: string };
+/** Die zweite Zeile: der Eintrag, der nicht die Hauptaktion ist, bleibt sichtbar (nie verdeckt), mit ruhigem Knopf. */
+export type Stand = { line: string; detail?: string; action: StandAction; second?: { line: string; action: StandAction } };
+
+const DAY_MS = 24 * 3_600_000;
+export const CHALLENGES_ANCHOR = "/app#herausforderungen";
+
+function challengeEntry(incoming: readonly StandChallenge[], formatDate: (d: Date) => string): { line: string; detail: string; action: StandAction } {
+  const sorted = [...incoming].sort((x, y) => (x.deadline?.getTime() ?? Infinity) - (y.deadline?.getTime() ?? Infinity)); // früheste Frist zuerst
+  const c = sorted[0];
+  const n = sorted.length;
+  return {
+    line: `Dein Team ist herausgefordert: ${c.fromTeam} gegen ${c.toTeam}`,
+    detail: n > 1 ? `${n} Herausforderungen warten auf eure Antwort.` : c.href ? `Antwort bis ${formatDate(c.startsAt)} Uhr` : `${formatDate(c.startsAt)} Uhr`,
+    action: n > 1 ? { label: `Herausforderungen ansehen (${n})`, href: CHALLENGES_ANCHOR } : { label: "Herausforderung ansehen", href: c.href ?? `/suche/${c.id}` },
+  };
+}
 
 /**
  * „Dein Stand“ und die EINE Hauptaktion von `/app` (Umbauplan: Wo bin ich, was ist mein Stand, was ist der eine nächste Schritt).
- * Reihenfolge: eingehende Herausforderung, nächstes Spiel, eigene offene Lobby, sonst ohne Team „Team gründen“, sonst „Spiel suchen“. Nie ein Guthaben, nie der Zahlstatus eines anderen.
+ * Priorität nach DRINGLICHKEIT (Entscheid t2q 2026-11-24): Hauptaktion ist der Eintrag mit dem früheren Stichtag (Anstoß des nächsten eigenen Spiels gegen die Ablauffrist der eingehenden Herausforderung).
+ * Gleichstand, Spiel innerhalb von 24 Stunden, Spiel ohne bekannte Uhrzeit-Konkurrenz oder Herausforderung ohne Frist: das SPIEL gewinnt ("Zur Lobby"); eine Spiel-Uhrzeit, die noch offen ist, hat keinen Stichtag.
+ * Der andere Eintrag bleibt als zweite Zeile mit ruhigem Knopf sichtbar. Mehrere Herausforderungen: Plural mit Zahl. Dann: eigene offene Lobby, sonst ohne Team „Team gründen“, sonst „Spiel suchen“. Nie ein Guthaben, nie der Zahlstatus eines anderen.
  */
-export function dashboardStand(input: { games: readonly StandGame[]; open: readonly StandOpen[]; teamCount: number; incoming?: readonly StandChallenge[] }, formatDate: (d: Date) => string): Stand {
-  // Eine eingehende Herausforderung wartet auf Antwort und ist die eine Hauptaktion (Lauf 3: in der Liste darunter ist "Ansehen und annehmen" ruhig)
-  const c = input.incoming?.[0];
-  if (c) {
-    const n = input.incoming!.length;
-    return {
-      line: `Dein Team ist herausgefordert: ${c.fromTeam} gegen ${c.toTeam}`,
-      detail: n > 1 ? `${n} Herausforderungen warten auf eure Antwort.` : c.href ? `Antwort bis ${formatDate(c.startsAt)} Uhr` : `${formatDate(c.startsAt)} Uhr`,
-      action: { label: "Herausforderung ansehen", href: c.href ?? `/suche/${c.id}` },
-    };
+export function dashboardStand(input: { games: readonly StandGame[]; open: readonly StandOpen[]; teamCount: number; incoming?: readonly StandChallenge[]; now?: Date }, formatDate: (d: Date) => string): Stand {
+  // Die Lobby, in der die Herausforderung selbst wartet (href), ist kein eigenes Spiel: sie steht nicht zusätzlich als "Nächstes Spiel" da
+  const next = input.games.find((g) => !input.incoming?.some((c) => c.href === `/lobby/${g.id}`));
+  const ch = input.incoming && input.incoming.length > 0 ? challengeEntry(input.incoming, formatDate) : null;
+  const gameEntry = next
+    ? {
+        line: `Nächstes Spiel: #${next.number} ${next.home} gegen ${next.away}`,
+        detail: `${next.timeOpen ? "Uhrzeit noch offen" : `${formatDate(next.startsAt)} Uhr`} · ${next.phase}`,
+        action: { label: "Zur Lobby", href: `/lobby/${next.id}` },
+      }
+    : null;
+  if (ch && gameEntry && next) {
+    const now = (input.now ?? new Date()).getTime();
+    const gameAt = next.timeOpen ? null : next.startsAt.getTime();
+    const deadline = Math.min(...input.incoming!.map((c) => c.deadline?.getTime() ?? Infinity));
+    const gameFirst = gameAt === null ? !Number.isFinite(deadline) : gameAt - now <= DAY_MS || !Number.isFinite(deadline) || gameAt <= deadline;
+    if (gameFirst) return { ...gameEntry, second: { line: ch.line, action: ch.action } };
+    return { ...ch, second: { line: gameEntry.line, action: gameEntry.action } };
   }
-  const next = input.games[0];
-  if (next) {
-    return {
-      line: `Nächstes Spiel: #${next.number} ${next.home} gegen ${next.away}`,
-      detail: `${next.timeOpen ? "Uhrzeit noch offen" : `${formatDate(next.startsAt)} Uhr`} · ${next.phase}`,
-      action: { label: "Zur Lobby", href: `/lobby/${next.id}` },
-    };
-  }
+  if (ch) return ch;
+  if (gameEntry) return gameEntry;
   const open = input.open[0];
   if (open) {
     return { line: `Eure Lobby #${open.number} (${open.team}) ist offen`, detail: "Sie wartet auf einen Gegner.", action: { label: "Zur Lobby", href: `/lobby/offen/${open.id}` } };

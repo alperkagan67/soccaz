@@ -25,7 +25,7 @@ export default async function DashboardPage() {
   const user = await requireUser("/app");
   const [myTeams, games, challenges, current, failures] = await Promise.all([listMyTeams(user.id), myMatches(user.id), myChallenges(user.id), myCurrent(user.id), myChargeFailures(user.id)]);
   const now = new Date();
-  const stand = dashboardStand({ games: current.games, open: current.open, teamCount: myTeams.length, incoming: challenges.incoming }, formatDateTime);
+  const stand = dashboardStand({ games: current.games, open: current.open, teamCount: myTeams.length, incoming: challenges.incoming.map((c) => ({ id: c.id, fromTeam: c.fromTeam, toTeam: c.toTeam, startsAt: c.startsAt, href: c.href, deadline: c.href ? c.startsAt : null })), now }, formatDateTime);
   const groups = groupByKind(games, now);
   const firstName = user.name.split(" ")[0];
 
@@ -38,6 +38,12 @@ export default async function DashboardPage() {
           <>
             <p className="font-semibold">{stand.line}</p>
             {stand.detail && <p className="text-muted">{stand.detail}</p>}
+            {stand.second && (
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2" data-testid="stand-second">
+                <p className="text-muted">Außerdem: {stand.second.line}</p>
+                <LinkButton href={stand.second.action.href} size="sm">{stand.second.action.label}</LinkButton>
+              </div>
+            )}
           </>
         }
         action={stand.action}
