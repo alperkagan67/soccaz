@@ -24,6 +24,11 @@ describe("zahlungsWorte: verbotene Wörter im Modus Zahlungen AUS", () => {
     "Ja, mein Team ist komplett: zahlungspflichtig zusagen",
     "Das Geld liegt auf dem Treuhandkonto",
     "Anteil übernehmen",
+    "Der Preis steht fest",
+    "Zahlung läuft",
+    "Zahlungen sind gerade pausiert",
+    "Dein Anteil beträgt 12,50 €",
+    "Eintritt 8 EUR",
   ];
   const ERLAUBT = [
     "Alle Teams füllen ihren Kader. Der Captain meldet: „Team ist vollzählig“.",

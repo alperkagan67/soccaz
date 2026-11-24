@@ -31,7 +31,12 @@ async function seedTournament(key: string, hourlyCents: number) {
   return { id: t.id, org, cap, capEmail: `${key}c-${run}@test.local`, orgEmail: `${key}o-${run}@test.local` };
 }
 
-const main = async (page: import("@playwright/test").Page) => (await page.locator("main").innerText()).replace(/\s+/g, " ");
+// Text der Seite PLUS Attribute (title, aria-label, alt): auch dort darf kein Zahlungswort stehen (z. B. PlayerLight title)
+const main = async (page: import("@playwright/test").Page) => {
+  const text = (await page.locator("main").textContent()) ?? ""; // textContent: auch zugeklappte <details> (Hilfe) zählen
+  const attrs = await page.locator("main").evaluate((el) => [...el.querySelectorAll("[title],[aria-label],[alt]")].map((e) => [e.getAttribute("title"), e.getAttribute("aria-label"), e.getAttribute("alt")].filter(Boolean).join(" ")).join(" "));
+  return `${text} ${attrs}`.replace(/\s+/g, " ");
+};
 
 async function seiten(browser: Browser, t: Awaited<ReturnType<typeof seedTournament>>) {
   const gast = await (await browser.newContext()).newPage();
@@ -94,6 +99,8 @@ for (const preis of [0, 8000]) {
     expect(s.hilfe).toContain("Geld und Zahlung");
     expect(s.hilfe).not.toContain(ZAHLUNGEN_AUS_HINWEIS);
     expect(s.liste).not.toContain(ZAHLUNGEN_AUS_HINWEIS);
+    // Preis 0 bei AN: Teamlobby ohne Zahlungswörter (Turnier ohne Preis zeigt nie Zahlungstexte)
+    if (preis === 0) expect(zahlungsWorte(s.lobbyCaptain), "Teamlobby AN, Preis 0").toEqual([]);
     if (preis > 0) {
       expect(s.turnierGast).toContain("So läuft es ab");
       expect(s.lobbyCaptain.length).toBeGreaterThan(0);

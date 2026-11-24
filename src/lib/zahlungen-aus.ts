@@ -18,6 +18,9 @@ export const ZAHLUNGSWORTE: readonly RegExp[] = [
   /abbuchung|abgebucht|abbuch/i,
   /bezahl/i,
   /zahlungspflicht/i,
+  /\bpreis\b/i,
+  /zahlung(?!en aus)/i,
+  /\d\s*(€|eur)/i,
   /treuhand/i,
   /\banteil übernehmen\b/i,
 ];

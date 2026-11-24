@@ -61,7 +61,7 @@ export default async function TournamentsPage({ searchParams }: PageProps<"/turn
                 </Link>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-sm text-muted">
-                    <span className="font-semibold text-ink">{STATUS[t.status]}</span> · {t.teams}/{t.maxTeams} Teams{aus ? "" : ` · ${t.entryFeeCents > 0 ? `${formatEuro(t.entryFeeCents)} pro Spieler` : "kostenlos"}`}
+                    <span className="font-semibold text-ink">{aus && t.entryFeeCents === 0 ? STATUS[t.status] : STATUS_BASIS[t.status]}</span> · {t.teams}/{t.maxTeams} Teams{aus && t.entryFeeCents === 0 ? "" : ` · ${t.entryFeeCents > 0 ? `${formatEuro(t.entryFeeCents)} pro Spieler` : "kostenlos"}`}
                   </p>
                   {open &&
                     (captain ? (

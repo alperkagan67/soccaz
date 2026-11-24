@@ -64,7 +64,7 @@ export default async function HelpPage() {
           <p className="text-xs">Die Hallenliste stammt zunächst aus OpenStreetMap und ist nicht geprüft: Ob eine Halle frei und buchbar ist und was sie kostet, bestätigt die Buchung. Fehlt eine Halle, schreib uns über die Kontaktseite.</p>
         </Q>
         <Q q="Was ist die Lobby?">
-          <p>Die Seite zu eurem Spiel. Dort trägt sich jeder Spieler ein und klickt „Bereit“. Fünf Spieler pro Team plus ein Ersatz. Sind in beiden Teams genug Spieler bereit, ist das Spiel angesetzt und die Halle wird gebucht. Der Preis steht fest, sobald beide Captains bestätigt haben. Klappt das nicht, sagen wir es rechtzeitig vor dem Anstoß automatisch ab und es wird nichts berechnet.</p>
+          <p>Die Seite zu eurem Spiel. Dort trägt sich jeder Spieler ein und klickt „Bereit“. Fünf Spieler pro Team plus ein Ersatz. Sind in beiden Teams genug Spieler bereit, ist das Spiel angesetzt und die Halle wird gebucht. {aus ? "Klappt das nicht, sagen wir es rechtzeitig vor dem Anstoß automatisch ab." : "Der Preis steht fest, sobald beide Captains bestätigt haben. Klappt das nicht, sagen wir es rechtzeitig vor dem Anstoß automatisch ab und es wird nichts berechnet."}</p>
         </Q>
         <Q q="Was ist, wenn bei uns jemand fehlt?">
           <p>Ist die Lobby öffentlich, können sich fremde Spieler als Ersatz eintragen. Ein Team-Admin weist sie dem Team zu. Auf der Seite „Mitspieler gesucht“ tragen sich Spieler für einen Tag ein, die Lust auf ein Spiel haben.</p>
@@ -125,7 +125,7 @@ export default async function HelpPage() {
           <p>Standardmäßig ist es öffentlich (Name, Stadt, Position, Statistik, Teams). In den Einstellungen kannst du es auf privat stellen. Dein Geburtsdatum und deine E-Mail sieht niemand.</p>
         </Q>
         <Q q="Wie lösche ich mein Konto?">
-          <p>In den Einstellungen unter „Deine Daten“. Vorher darf keine Zahlung offen sein und ein Restbetrag muss über den Support geklärt sein, du darfst in keinem kommenden Spiel stehen und kein Team allein verwalten. Dort kannst du auch alle deine Daten herunterladen.</p>
+          <p>In den Einstellungen unter „Deine Daten“. {aus ? "Du darfst dafür in keinem kommenden Spiel stehen und kein Team allein verwalten." : "Vorher darf keine Zahlung offen sein und ein Restbetrag muss über den Support geklärt sein, du darfst in keinem kommenden Spiel stehen und kein Team allein verwalten."} Dort kannst du auch alle deine Daten herunterladen.</p>
         </Q>
         <Q q="Es funktioniert etwas nicht. Wen frage ich?">
           <p>Schreib uns über die <Link href="/kontakt" className="text-accent-fg underline">Kontaktseite</Link>.</p>
