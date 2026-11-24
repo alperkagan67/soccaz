@@ -20,7 +20,7 @@ Bei Ihrem Domain-Anbieter einen **A-Eintrag** `socaz.de` (und `www`, falls gewü
 nslookup socaz.de
 ```
 Erwartet: die Server-IP. (Warten Sie bei Abweichung, DNS braucht Minuten bis Stunden; zu früh starten erzeugt nur Zertifikatsfehler, kein Schaden.)
-**Rechtstexte-Prüfung: Schritt 5 (`smoke --go-live`) VOR der Bekanntgabe der Adresse**, nicht vor dem DNS-Eintrag.
+**Reihenfolge Rechtstexte (Pflicht): den A-Eintrag erst setzen, wenn (1) die `OPERATOR_*`-Werte in der Server-Umgebung stehen (`.env`, Schritt 3: dafür Schritt 3 vorab auf dem Server erledigen) und (2) die Staging-Probe mit denselben `OPERATOR_*`-Werten grün ist (Schritt 5, Prüfpunkt 1).** So ist die Seite nie mit Platzhalter-Impressum unter der echten Adresse erreichbar. Nach dem A-Eintrag folgt Prüfpunkt 2 (Schritt 5) **vor** der Bekanntgabe der Adresse.
 
 ## 3. Code holen und Einstellungen anlegen
 ```
@@ -99,7 +99,21 @@ node scripts/smoke-turnier-only.mjs https://socaz.de
 ```
 Erwartet: jede Zeile `PASS`, am Ende `ERGEBNIS: BESTANDEN`, Ende-Code 0. Er prüft ohne Anmeldung: die gesperrten Seiten (`/spiele`, `/matchmaking`, `/suche`, `/hallen`, `/rangliste`, `/mitspieler`, `/ligen`) antworten 200 mit „Kommt bald“ und `noindex` (kein 404), der Live-Kanal `/api/spiele/stream` antwortet 403, `/turniere`, `/hilfe`, `/impressum`, `/teams` bleiben offen. **Nicht für Staging mit Zugangsschutz:** dieses Skript kennt kein Passwort (alle Zeilen `FAIL`, Status 401); dort nur `smoke.mjs` mit `SMOKE_BASIC_AUTH` und die Sperrpfade einmal von Hand im Browser öffnen. **Gilt ab dem Merge von `feat/turnier-only`:** `TURNIER_ONLY` und die „kommt bald“-Seite unter `/spiele` gibt es erst danach; **bis dahin den Smoke-Test ohne `--turnier-only` aufrufen** und die Variable in der `.env` noch nicht verlangen. (Prüft `/api/health`, Anmeldeseite, `/turniere`, `/impressum`, `/robots.txt` und mit `--turnier-only` die „kommt bald“-Seite unter `/spiele`.) Zusätzlich prüft es, dass `/anmelden` **keinen Dev-Login** zeigt (in Produktion und Staging darf es ihn nie geben). Ist die Apple-Anmeldung eingeschaltet (`APPLE_LOGIN_ENABLED=1`), rufen Sie mit `--apple` auf: dann **muss** der Apple-Knopf da sein, sonst darf er **nicht** da sein. Das Skript braucht nur Node 22 (`node -v`); es nutzt keine Schlüssel.
 
-**PFLICHT, BEVOR die Adresse bekanntgegeben wird (Einladungen, Link an Teilnehmer, Social Media): Rechtstexte prüfen.** `node scripts/smoke.mjs https://socaz.de --go-live` muss **ohne FEHLER** enden: Impressum und Datenschutz enthalten **keinen** `[PLATZHALTER: Name|Anschrift|E-Mail …]` und keinen `[ENTWURF …]`-Satz mehr. Die DNS-Einträge stehen dann schon (Schritt 2, Zertifikat und https gibt es erst danach), aber **niemand kennt die Adresse**. **Vorher** dieselbe Prüfung auf **Staging** mit denselben `OPERATOR_*`-Werten (mit `SMOKE_BASIC_AUTH`). Bei FEHLER: Adresse **nicht** bekanntgeben. Die übrigen Platzhalter (Steuer-ID, Streitbeilegung, Aufsichtsbehörde) erscheinen als HINWEIS bis zur Rechtsprüfung. Die Rechtsaussagen bestätigt der Nutzer, kein Agent.
+**Rechtstexte-Prüfung (PFLICHT, zwei Prüfpunkte, jeder mit Befehl und Erwartet):**
+
+1. **Staging-Probe, VOR dem A-Eintrag** (mit denselben `OPERATOR_*`-Werten wie später in Produktion; Zugangsschutz über `SMOKE_BASIC_AUTH`):
+```
+node scripts/smoke.mjs https://<Staging-Adresse> --go-live
+```
+Erwartet: die Zeilen `Go-live: …` für `/impressum` und `/datenschutz` sind `OK`, **kein** `FEHLER` (kein `[PLATZHALTER: Name|Anschrift|E-Mail …]`, kein `[ENTWURF …]`-Satz), Ende-Code 0. Grün ist **Voraussetzung für den A-Eintrag** (Schritt 2).
+
+2. **Produktion, NACH dem A-Eintrag und VOR der Bekanntgabe der Adresse** (Einladungen, Link an Teilnehmer, Social Media; die DNS-Einträge stehen dann schon, Zertifikat und https gibt es erst danach, aber niemand kennt die Adresse):
+```
+node scripts/smoke.mjs https://socaz.de --go-live
+```
+Erwartet: wie oben, Ende-Code 0. Bei `FEHLER`: Adresse **nicht** bekanntgeben, `OPERATOR_*` bzw. Bestätigung nachholen, neu starten, erneut prüfen.
+
+Die übrigen Platzhalter (Steuer-ID, Streitbeilegung, Aufsichtsbehörde) erscheinen als `HINWEIS` bis zur Rechtsprüfung. Die Rechtsaussagen bestätigt der Nutzer, kein Agent.
 
 ## 5a. Turnierablauf prüfen (Handarbeit im Browser; schreibend nur auf Staging)
 Das Smoke-Skript prüft nur, was ein Gast **lesend** sieht. Die Turnierwege unten brauchen eine Anmeldung und schreiben Daten: **auf Staging** (Generalprobe) durchspielen, in **Produktion nur ansehen, nie auslösen**. Deshalb gibt es dafür **keine** Smoke-Punkte (ein Skript würde in Produktion Turniere anlegen oder schließen).
