@@ -67,8 +67,11 @@ export function playerCardFor(viewer: CardViewer, person: CardPerson, rating: Ra
   return { kind: "full", initials: initialsOf(person.name), name: person.name, rating: r, tier, position: person.position, colorKey };
 }
 
-/** Ab so vielen Mitgliedern gibt es eine Teamwertung; darunter wäre sie die (fast) ablesbare Einzelwertung (1 Mitglied: genau diese, 2: Mittelwert zweier Personen). */
-export const TEAM_RATING_MIN_MEMBERS = 3;
+/**
+ * Ab so vielen Mitgliedern gibt es eine Teamwertung (Entscheid t2q 2026-11-24, G30-013); darunter wäre sie die (fast) ablesbare Einzelwertung (1 Mitglied: genau diese, 2 und 3: der Mittelwert lässt bei bekannten Werten
+ * der anderen die Wertung des letzten Mitglieds zurückrechnen). Die Zahl ist auf ganze Zahlen gerundet (halbe nach oben).
+ */
+export const TEAM_RATING_MIN_MEMBERS = 4;
 
 export type TeamCardData = { name: string; initials: string; colorKey: string; hex: string; textColor: string; teamRating: number | null; members: number };
 

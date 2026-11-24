@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams, users } from "@/db/schema";
 import { media, type MediaKind } from "@/db/schema-content";
 import { audit } from "./audit";
+import { matchPhotosEnabled } from "@/lib/media-flags";
 import { DomainError } from "./teams";
 
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -48,6 +49,7 @@ async function canUpload(actor: { id: string; role: string }, kind: MediaKind, r
 
 export async function storeImage(actor: { id: string; role: string }, kind: MediaKind, refId: string, file: Buffer): Promise<string> {
   if (!/^[0-9a-f-]{36}$/i.test(refId)) throw new DomainError("Ungültiges Ziel.");
+  if (kind === "match_photo" && !matchPhotosEnabled()) throw new DomainError("Spielfotos sind noch nicht verfügbar."); // bis zum Social-Media-Teil aus
   if (!(await canUpload(actor, kind, refId))) throw new DomainError("Dafür fehlt dir die Berechtigung.");
   const data = await processImage(file, kind);
 
@@ -73,6 +75,7 @@ export async function getMedia(id: string) {
 }
 
 export async function listMatchPhotos(matchId: string) {
+  if (!matchPhotosEnabled()) return [];
   return db.select({ id: media.id, ownerId: media.ownerId }).from(media).where(and(eq(media.kind, "match_photo"), eq(media.refId, matchId), eq(media.status, "visible"))).orderBy(desc(media.createdAt));
 }
 

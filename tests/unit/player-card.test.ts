@@ -99,11 +99,11 @@ describe("initialsOf", () => {
 });
 
 describe("teamCardFor (AC-19)", () => {
-  const team = { name: "Die Wilden Kerle", slug: "die-wilden-kerle", color: "yellow", memberElos: [1000, 1500, 2000] };
+  const team = { name: "Die Wilden Kerle", slug: "die-wilden-kerle", color: "yellow", memberElos: [1000, 1500, 2000, 1500] };
 
   it("Teamwertung = Durchschnitt der Mitglieder-Wertungen (nur eine Zahl), keine Einzelwertungen im Objekt", () => {
     const d = teamCardFor(team, rating);
-    expect(d).toMatchObject({ name: "Die Wilden Kerle", initials: "DK", colorKey: "yellow", teamRating: 50, members: 3 }); // (25 + 50 + 75) / 3
+    expect(d).toMatchObject({ name: "Die Wilden Kerle", initials: "DK", colorKey: "yellow", teamRating: 50, members: 4 }); // (25 + 50 + 75 + 50) / 4
     expect(Object.keys(d).sort()).toEqual(["colorKey", "hex", "initials", "members", "name", "teamRating", "textColor"]);
     expect(JSON.stringify(d)).not.toContain("memberElos");
     expect(JSON.stringify(d)).not.toContain("1500");
@@ -114,10 +114,23 @@ describe("teamCardFor (AC-19)", () => {
   });
 
   it("kleine Teams verraten keine Einzelwertung: unter dem Mindestmaß an Mitgliedern keine Teamwertung (1 Mitglied wäre genau seine Wertung), ab dem Mindestmaß eine", () => {
-    expect(TEAM_RATING_MIN_MEMBERS).toBe(3);
+    expect(TEAM_RATING_MIN_MEMBERS).toBe(4); // Entscheid t2q 2026-11-24 (G30-013): bei 3 Mitgliedern ließe sich die dritte Wertung zurückrechnen
     expect(teamCardFor({ ...team, memberElos: [1800] }, rating).teamRating).toBeNull();
     expect(teamCardFor({ ...team, memberElos: [1800, 1000] }, rating).teamRating).toBeNull();
-    expect(teamCardFor({ ...team, memberElos: [1800, 1000, 1400] }, rating).teamRating).not.toBeNull();
+    expect(teamCardFor({ ...team, memberElos: [1800, 1000, 1400] }, rating).teamRating).toBeNull();
+    expect(teamCardFor({ ...team, memberElos: [1800, 1000, 1400, 1000] }, rating).teamRating).not.toBeNull();
+  });
+
+  it("Matrix Mitglieder: 0 bis 3 keine Zahl, 4 und 5 eine ganze Zahl; Rundung halbe nach oben, sonst zur nächsten ganzen Zahl", () => {
+    const elo = (r: number) => 500 + 20 * r; // Wertung r (Attrappe: round((elo - 500) / 20))
+    for (const n of [0, 1, 2, 3]) expect(teamCardFor({ ...team, memberElos: Array.from({ length: n }, () => elo(60)) }, rating).teamRating, `${n} Mitglieder`).toBeNull();
+    for (const n of [4, 5]) expect(teamCardFor({ ...team, memberElos: Array.from({ length: n }, () => elo(60)) }, rating).teamRating, `${n} Mitglieder`).toBe(60);
+    const t = (ratings: number[]) => teamCardFor({ ...team, memberElos: ratings.map(elo) }, rating).teamRating;
+    expect(t([50, 51, 50, 51])).toBe(51); // 50,5 -> 51
+    expect(t([50, 50, 50, 51])).toBe(50); // 50,25 -> 50
+    expect(t([50, 51, 51, 51])).toBe(51); // 50,75 -> 51
+    expect(t([60, 61, 62, 63, 64])).toBe(62); // 5 Mitglieder, ganzzahlig
+    for (const r of [t([50, 51, 50, 51]), t([60, 61, 62, 63, 64]), t([10, 99, 33, 47])]) expect(Number.isInteger(r)).toBe(true);
   });
 
   it("ungültige Teamfarbe stürzt nicht ab: es gilt die Standardfarbe", () => {
