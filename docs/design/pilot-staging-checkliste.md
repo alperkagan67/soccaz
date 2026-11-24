@@ -10,6 +10,7 @@ Stand: 2026-11-24 · Code-Stand `origin/main` 18d082e · Verfasser: worker-4 · 
 - [ ] Ein kleiner Server (Ubuntu 24.04, Docker und Docker Compose installiert), **nur für Staging**. Ein zweiter Mieter auf dem Produktionsserver ist nicht vorgesehen; läuft Staging doch auf demselben Rechner, braucht es einen anderen Projektnamen (`docker compose -p …`) und andere Ports (siehe Lücke 7).
 - [ ] Eine eigene Adresse (z. B. `staging.<deine-domain>`), per A-Eintrag auf die Server-Nummer gelegt.
 - [ ] Stripe-Konto im **Testmodus**: Schlüssel `sk_test_…` und `pk_test_…` (Stripe-Dashboard, Entwickler, API-Schlüssel).
+- [ ] Anmeldung: **Google und Apple** (Nutzerentscheid; Apple hinter `APPLE_LOGIN_ENABLED=1`, ohne den Schalter nur Google). Apple-Zugangsdaten nur, wenn Apple auf Staging getestet werden soll.
 - [ ] Google-Anmeldedaten (OAuth-Client) mit der Weiterleitungs-Adresse `https://<staging-adresse>/api/auth/callback/google` **oder** die Entscheidung für Testkonten (`pilot-plan.md` Frage 2).
 - [ ] Wer **Admin 1** ist (eine Google-E-Mail-Adresse).
 
