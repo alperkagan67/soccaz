@@ -50,10 +50,10 @@ describe("Meldung bei vollzähligen Teams im Modus Zahlungen AUS", () => {
     expect(rows.map((r) => [r.type, r.title])).toContainEqual(["payment", "Der Preis steht fest"]);
   });
 
-  it("Turnier OHNE Preis: 'Alle Teams sind vollzählig' (system), kein Preis-Text", async () => {
+  it("Turnier OHNE Preis: 'Euer Spielplan steht' (system, Gratis PR C), kein Preis-Text", async () => {
     const { tid, captain } = await volleRunde(0);
     const rows = await db.select().from(notifications).where(and(eq(notifications.userId, captain), eq(notifications.url, `/turniere/${tid}`)));
-    expect(rows.map((r) => [r.type, r.title])).toContainEqual(["system", "Alle Teams sind vollzählig"]);
+    expect(rows.map((r) => [r.type, r.title])).toContainEqual(["system", "Euer Spielplan steht"]); // Gratis: 'Bereit' entfaellt, der Spielplan steht sofort (statt 'Alle Teams sind vollzaehlig')
     expect(rows.some((r) => r.title === "Der Preis steht fest")).toBe(false);
   });
 });

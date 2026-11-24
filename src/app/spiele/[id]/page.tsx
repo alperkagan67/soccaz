@@ -55,7 +55,9 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const reveal = user ? await getRatingReveal(match.id, user.id) : null; // nur die eigene Wertungsänderung, nur nach einem bestätigten Ergebnis (AC-20, AC-17)
   const photos = (await listMatchPhotos(match.id)).map((p) => ({ id: p.id, mine: p.ownerId === user?.id }));
 
-  const abpfiff = Boolean(v?.canRecord) && match.kind === "tournament"; // Abpfiff im Turnierspiel: Veranstalter/Admin (final) oder Team-Admin ab Planbeginn (meldet)
+  // Abpfiff im Turnierspiel NUR fuer Veranstalter/Admin (Schiedsrichter, Endergebnis sofort endgueltig). Captains behalten ihr Formular (Felder sichtbar, Ergebnis melden, der Gegner bestaetigt): sonst lagen ihre Felder
+  // eingeklappt und die E2E-Strecken der Captains fanden sie nicht (CI #387). So bleibt es bei einer Hauptaktion je Rolle.
+  const abpfiff = Boolean(v?.canRecord) && match.kind === "tournament" && !v?.mySide && Boolean(v?.canManage);
   return (
     <div className="space-y-4">
       <header className="space-y-2">
@@ -111,7 +113,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
 
       {v?.canRecord && <Recorder matchId={match.id} home={home} away={away} players={participants} hasEvents={events.length > 0} />}
 
-      {/* Abpfiff im Turnierspiel: Veranstalter/Admin (final) oder Team-Admin ab Planbeginn (meldet) */}
+      {/* Abpfiff im Turnierspiel: Veranstalter/Admin */}
       {abpfiff && v && <EndMatchPanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={goalsFromEvents.home} awayScore={goalsFromEvents.away} final={!v.mySide && v.canManage} />}
 
       {/* AC-30: eine Hauptaktion je Ansicht. Im Turnierspiel mit Abpfiff ist "Abpfiff" die Hauptaktion; die Eingabe von Hand liegt ruhig und eingeklappt darunter */}

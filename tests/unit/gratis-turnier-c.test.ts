@@ -33,6 +33,8 @@ describe("AC-30: im Turnierspiel mit Abpfiff genau EINE Hauptaktion", () => {
     expect(p).toContain('data-testid="manual-result"');
     expect(p).toContain("Ergebnis von Hand eintragen");
     expect(p).toContain("quiet={abpfiff}");
+    // CI #387: Captains behalten ihr Formular mit sichtbaren Feldern (die E2E-Strecken fuellen sie); Abpfiff und Eingeklapptes nur fuer Veranstalter/Admin
+    expect(p).toContain('const abpfiff = Boolean(v?.canRecord) && match.kind === "tournament" && !v?.mySide && Boolean(v?.canManage);');
   });
 });
 
