@@ -87,7 +87,7 @@ describe("Freilose: Plan und Spielzeilen passen zusammen (2 bis 32 Teams)", () =
         [...new Set(rows.map((r) => r.stage))].map((stage) => ({ stage, games: rows.filter((r) => r.stage === stage).length })).sort((a, b) => Number(b.stage.slice(3)) - Number(a.stage.slice(3))),
         START,
         15,
-        5,
+        { gap: 5 },
       );
       expect(mapped.blocks.map((b) => b.games.map((g) => g.slot))).toEqual(raw.blocks.map((b) => b.games.map((g) => g.slot)));
     }
@@ -97,7 +97,7 @@ describe("Freilose: Plan und Spielzeilen passen zusammen (2 bis 32 Teams)", () =
     const rows = knockout(ids(6));
     const first = rows.filter((r) => r.stage === "ko:8").map((r) => r.slot);
     expect(first).toEqual([1, 3]);
-    const raw = planSchedule([{ stage: "ko:8", games: 2 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 15, 5);
+    const raw = planSchedule([{ stage: "ko:8", games: 2 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 15, { gap: 5 });
     expect(raw.blocks[0].games.map((g) => g.slot)).toEqual([0, 1]);
     const mapped = scheduleFromRows(rows, START, 15, 5)!;
     expect(mapped.blocks[0].games.map((g) => g.slot)).toEqual([1, 3]); // jetzt die echten Positionen
@@ -128,7 +128,7 @@ describe("Freilose: Plan und Spielzeilen passen zusammen (2 bis 32 Teams)", () =
     expect(mapped.slotMinutes).toBe(15); // Spielzeit, nicht mehr aus der Hallenzeit gerechnet
     expect(mapped.totalMinutes).toBe(3 * 15 + 2 * 5);
     // Rohplan des vollen 8er-Brackets (4 + 2 + 1 Spiele, mit Phantom-Spielen der Freilose): vier Blöcke, kürzere Slots
-    const phantom = planSchedule([{ stage: "ko:8", games: 4 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 15, 5);
+    const phantom = planSchedule([{ stage: "ko:8", games: 4 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 15, { gap: 5 });
     expect(phantom.blocks).toHaveLength(4);
     expect(phantom.totalMinutes).toBeGreaterThan(mapped.totalMinutes); // das Phantom-Bracket wäre länger (vier Blöcke statt drei)
   });

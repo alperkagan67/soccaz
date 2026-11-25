@@ -12,7 +12,7 @@ import { setTournamentVenue } from "./tournament-venue";
 import { triggerTournamentChargesInBackground } from "./payments/tournament-charge";
 import { isPlatformAdmin } from "@/lib/roles";
 import { releaseTournamentCover, takeOverTournamentShare } from "./tournament-card";
-import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, forfeitTournamentMatch, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
+import { cancelTournament, closeWithJoinedTeams, createTournament, decideShootout, decideTie, forfeitTournamentMatch, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "./tournaments";
 
 async function guarded(fn: () => Promise<void>): Promise<ActionState> {
   try {
@@ -141,4 +141,9 @@ export async function setOrganizerAction(userId: string, value: boolean): Promis
   const result = await guarded(() => setOrganizer(admin.id, userId, value));
   revalidatePath("/admin/nutzer");
   return result;
+}
+
+/** Veranstalter/Admin: Tie-Break bei Gleichstand im K.-o.-Spiel (Golden Goal oder Neunmeter, Sieger). */
+export async function decideTieAction(tournamentId: string, tournamentMatchId: string, kind: "gg" | "9m", winnerTeamId: string, counts?: { a: number; b: number } | null): Promise<ActionState> {
+  return touch(tournamentId, (uid) => decideTie(uid, tournamentId, tournamentMatchId, kind, winnerTeamId, counts));
 }

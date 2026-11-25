@@ -211,7 +211,7 @@ describe("Zeitplan auf zwei Plätzen", () => {
 
   it("8 Teams: 4 Blöcke, 15 Minuten Spielzeit, 5 Minuten Puffer: Slot 20, Plan 75 Minuten (unabhängig von der Hallenzeit)", () => {
     const start = new Date("2026-11-06T18:00:00Z");
-    const { slotMinutes, gapMinutes, blocks, totalMinutes, endsAt } = planSchedule(rounds8, start, 15, 5);
+    const { slotMinutes, gapMinutes, blocks, totalMinutes, endsAt } = planSchedule(rounds8, start, 15, { gap: 5 });
     expect(slotMinutes).toBe(15);
     expect(gapMinutes).toBe(5);
     expect(blocks).toHaveLength(4);
@@ -224,30 +224,39 @@ describe("Zeitplan auf zwei Plätzen", () => {
   });
 
   it("im Finale-Block bleibt ein Platz für das Spiel der Verlierer", () => {
-    const last = planSchedule(rounds8, new Date(), 15, 5).blocks[3];
+    const last = planSchedule(rounds8, new Date(), 15, { gap: 5 }).blocks[3];
     expect(last.games).toEqual([{ stage: "ko:2", slot: 0, court: 1, fun: false }, { stage: "ko:2", slot: -1, court: 2, fun: true }]);
   });
 
   it("Puffer ist einstellbar (0 bis 30): Slot = Spielzeit + Puffer; Standard 5; Puffer 0 und 30", () => {
     const s = new Date("2026-11-06T18:00:00Z");
     expect(planSchedule(rounds8, s, 15).gapMinutes).toBe(5); // Standard
-    const ohne = planSchedule(rounds8, s, 15, 0);
+    const ohne = planSchedule(rounds8, s, 15, { gap: 0 });
     expect(ohne.blocks.map((b) => (b.startsAt.getTime() - s.getTime()) / 60_000)).toEqual([0, 15, 30, 45]);
     expect(ohne.totalMinutes).toBe(60);
-    const lang = planSchedule(rounds8, s, 15, 30);
+    const lang = planSchedule(rounds8, s, 15, { gap: 30 });
     expect(lang.blocks.map((b) => (b.startsAt.getTime() - s.getTime()) / 60_000)).toEqual([0, 45, 90, 135]);
     expect(lang.totalMinutes).toBe(4 * 15 + 3 * 30);
   });
 
+  it("Puffer und Plätze sind benannte Optionen (nicht vertauschbar): courts 1 = ein Platz, kein Spaßspiel, je Spiel ein Block", () => {
+    const s = new Date("2026-11-06T18:00:00Z");
+    const ein = planSchedule(rounds8, s, 15, { gap: 5, courts: 1 });
+    expect(ein.blocks).toHaveLength(7); // 4 + 2 + 1 Spiele, je ein Block
+    expect(ein.blocks.flatMap((b) => b.games.filter((g) => g.fun))).toHaveLength(0);
+    expect(planSchedule(rounds8, s, 15, { courts: 1 }).gapMinutes).toBe(5); // Puffer bleibt der Standard
+    expect(planSchedule(rounds8, s, 15, { gap: 30 }).blocks).toHaveLength(4); // 2 Plätze (Standard) unverändert
+  });
+
   it("Hallenzeit ist nur ein Fenster: planFits meldet die Überschreitung, ändert den Plan nicht (Befund M2: früher 87 statt 15 Minuten)", () => {
     const s = new Date("2026-11-06T18:00:00Z");
-    const plan = planSchedule(rounds8, s, 15, 5); // 75 Minuten
+    const plan = planSchedule(rounds8, s, 15, { gap: 5 }); // 75 Minuten
     expect(planFits(plan, 120)).toEqual({ fits: true, overMinutes: 0 });
     expect(planFits(plan, 75)).toEqual({ fits: true, overMinutes: 0 });
     expect(planFits(plan, 60)).toEqual({ fits: false, overMinutes: 15 });
     // gleiche Eingaben, gleicher Plan: es gibt keinen Hallenzeit-Parameter mehr, der den Slot verändert
-    expect(planSchedule(rounds8, s, 15, 5).slotMinutes).toBe(15);
-    expect(planSchedule(rounds8, s, 15, 5).blocks.map((b) => b.startsAt.toISOString())).toEqual(plan.blocks.map((b) => b.startsAt.toISOString()));
+    expect(planSchedule(rounds8, s, 15, { gap: 5 }).slotMinutes).toBe(15);
+    expect(planSchedule(rounds8, s, 15, { gap: 5 }).blocks.map((b) => b.startsAt.toISOString())).toEqual(plan.blocks.map((b) => b.startsAt.toISOString()));
   });
 
   it("planMinutesForTeams: Hinweis im Formular (8 Teams 75, 4 Teams 2 Blöcke, ungültig null)", () => {
@@ -259,7 +268,17 @@ describe("Zeitplan auf zwei Plätzen", () => {
   });
 
   it("4 Teams: Halbfinale, dann Finale; 16 Teams: acht Blöcke", () => {
-    expect(planSchedule([{ stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], new Date(), 15, 5).blocks).toHaveLength(2);
-    expect(planSchedule([{ stage: "ko:16", games: 8 }, { stage: "ko:8", games: 4 }, ...rounds8.slice(1)], new Date(), 15, 5).blocks).toHaveLength(8);
+    expect(planSchedule([{ stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], new Date(), 15, { gap: 5 }).blocks).toHaveLength(2);
+    expect(planSchedule([{ stage: "ko:16", games: 8 }, { stage: "ko:8", games: 4 }, ...rounds8.slice(1)], new Date(), 15, { gap: 5 }).blocks).toHaveLength(8);
+  });
+});
+
+describe("koWinner mit decidedBy (Tie-Break PR 1a)", () => {
+  it("Golden Goal entscheidet über den Plan-Stand, Neunmeter über shootoutWinner; Gleichstand ohne Entscheidung bleibt offen", () => {
+    expect(koWinner({ a: "x", b: "y", scoreA: 3, scoreB: 2, decidedBy: "gg" })).toBe("x");
+    expect(koWinner({ a: "x", b: "y", scoreA: 2, scoreB: 2, shootoutWinner: "y", decidedBy: "9m" })).toBe("y");
+    expect(koWinner({ a: "x", b: "y", scoreA: 2, scoreB: 2, decidedBy: "9m" })).toBeNull(); // 9m ohne Sieger: ungültig
+    expect(koWinner({ a: "x", b: "y", scoreA: 2, scoreB: 2, decidedBy: "gg" })).toBeNull(); // gg ohne Tor: ungültig
+    expect(koWinner({ a: "x", b: "y", scoreA: 2, scoreB: 2 })).toBeNull();
   });
 });

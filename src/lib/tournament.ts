@@ -151,10 +151,14 @@ export function standings(teamIds: string[], results: Played[]): StandingRow[] {
   return [...rows.values()].sort((x, y) => y.points - x.points || y.gd - x.gd || y.gf - x.gf || order.get(x.teamId)! - order.get(y.teamId)!);
 }
 
-/** Sieger eines K.-o.-Spiels. Bei Unentschieden zählt das Siebenmeterschießen. null, wenn noch offen. */
-export function koWinner(m: { a: string; b: string; scoreA: number; scoreB: number; shootoutWinner?: string | null }): string | null {
+/**
+ * Sieger eines K.-o.-Spiels. Bei Unentschieden entscheidet der Tie-Break: Golden Goal (das Tor steht schon im Plan-Stand, `decidedBy = "gg"`) oder Neunmeter (`shootoutWinner`, `decidedBy = "9m"`).
+ * null, wenn noch offen. Ein Gleichstand mit `decidedBy = "gg"` (Tor fehlt) oder `"9m"` ohne Sieger ist ungültig und bleibt offen.
+ */
+export function koWinner(m: { a: string; b: string; scoreA: number; scoreB: number; shootoutWinner?: string | null; decidedBy?: "gg" | "9m" | null }): string | null {
   if (m.scoreA > m.scoreB) return m.a;
   if (m.scoreB > m.scoreA) return m.b;
+  if (m.decidedBy === "gg") return null;
   if (m.shootoutWinner === m.a || m.shootoutWinner === m.b) return m.shootoutWinner;
   return null;
 }
@@ -241,7 +245,9 @@ export type PlannedBlock = { index: number; label: string; startsAt: Date; endsA
  */
 export type PlannedSchedule = { slotMinutes: number; gapMinutes: number; blocks: PlannedBlock[]; totalMinutes: number; endsAt: Date };
 
-export function planSchedule(rounds: { stage: string; games: number }[], startsAt: Date, slotMinutes: number, gap = GAP_MIN, courts = COURTS): PlannedSchedule {
+export function planSchedule(rounds: { stage: string; games: number }[], startsAt: Date, slotMinutes: number, options: { gap?: number; courts?: number } = {}): PlannedSchedule {
+  const gap = options.gap ?? GAP_MIN; // Puffer in Minuten (Objektparameter: Puffer und Plätze sind beides Zahlen und ließen sich sonst still vertauschen)
+  const courts = options.courts ?? COURTS;
   const raw: { stage: string; games: { stage: string; slot: number; court: number; fun: boolean }[] }[] = [];
   rounds.forEach((r, ri) => {
     const isFinal = ri === rounds.length - 1;
@@ -279,7 +285,7 @@ export function scheduleFromRows(rows: { stage: string; slot: number }[], starts
   for (const r of rows) slots.set(r.stage, [...(slots.get(r.stage) ?? []), r.slot]);
   for (const list of slots.values()) list.sort((a, b) => a - b);
   const rounds = [...slots].map(([stage, list]) => ({ stage, games: list.length })).sort((a, b) => Number(b.stage.slice(3)) - Number(a.stage.slice(3)));
-  const plan = planSchedule(rounds, startsAt, slotMinutes, gap);
+  const plan = planSchedule(rounds, startsAt, slotMinutes, { gap });
   const semis = slots.get("ko:4")?.length ?? 0;
   const blocks = plan.blocks.map((b) => ({
     ...b,
