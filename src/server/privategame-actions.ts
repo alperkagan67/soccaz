@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/validation";
 import { parseBerlinLocal } from "@/lib/time";
-import { INVITE_FORBIDDEN, createPrivateGame, isUuid, parseRentInput, regenerateGameInvite, revokeGameInvite } from "./privategame";
+import { INVITE_FORBIDDEN, createPrivateGame, isUuid, parseRentFuerSchalter, regenerateGameInvite, revokeGameInvite } from "./privategame";
+import { zahlungenAus } from "./zahlungen-aus";
 import { requireUser } from "./session";
 import { DomainError } from "./teams";
 import { assertBereichOffen } from "./turnier-only";
@@ -19,7 +20,8 @@ export async function createPrivateGameAction(_prev: ActionState, f: FormData): 
   let id = "";
   try {
     // Miete ist Pflicht: ausdrücklich ein Betrag oder "kostenlos" (rentMode), nie ein leeres Feld
-    const rent = parseRentInput(str(f, "rentMode"), str(f, "rent"));
+    // Zahlungen AUS: immer kostenlos, die Formularangabe (auch ein manipulierter Betrag) wird ignoriert; bei AN wie bisher
+    const rent = parseRentFuerSchalter(await zahlungenAus(), str(f, "rentMode"), str(f, "rent"));
     const { match } = await createPrivateGame(user.id, {
       city: str(f, "city"),
       venueText: str(f, "venueText"),

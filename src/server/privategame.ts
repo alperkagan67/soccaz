@@ -41,6 +41,14 @@ export function parseRentInput(mode: string, text: string): number {
 const INVITE_DAYS_AFTER_START = 1;
 
 /**
+ * Miete aus der Formularwahl, MIT dem Schalter Zahlungen AUS: bei AUS ist ein Privatspiel immer kostenlos (0), die Formularwahl (auch ein manipulierter Betrag) wird ignoriert;
+ * bei AN gilt parseRentInput wie bisher. Eine Quelle für die Server-Aktion (Tiefenverteidigung, unabhängig von TURNIER_ONLY und von der Oberfläche).
+ */
+export function parseRentFuerSchalter(aus: boolean, mode: string, text: string): number {
+  return aus ? 0 : parseRentInput(mode, text);
+}
+
+/**
  * Eine Person legt ein Privatspiel für ihre Freundesgruppe an. Es gibt zwei unsichtbare Spiel-Teams (Rot und Blau), deren Admin der
  * Veranstalter ist, damit Lobby, Zahlung, Ergebnis und Übersicht genau wie beim Teamspiel laufen. Das Spiel ist nie öffentlich
  * sichtbar, nur über den Einladungslink erreichbar und zählt nicht für Elo oder Rangliste.
