@@ -30,5 +30,7 @@ Die Fragen stehen hier, weil die Antwort die Texte ändern kann; entschieden wir
 10. **Betreiber-Sicht:** Hallenbetreiber sehen keine Spielernamen; Veranstalter sehen Namen (Angemeldete-Sicht): eigene Veranstalter-Regel **NICHT GEREGELT**.
 11. **Server-Protokolle:** Webserver ohne konfiguriertes Zugriffsprotokoll; Netz- und Firewall-Protokolle beim Hoster: **zu prüfen**.
 
+**Hinweis zum Stand:** Zeilennummern (`Pfad:Zeile`) driften; beim PDF-Nachlauf werden `main`-Hash, Datum und Verweise auf den dann aktuellen Stand gebracht.
+
 ## Liste der Punkte „NICHT GEREGELT“ / „OFFEN“ / „zu prüfen“
 Sie stehen in `datenliste.md` und `dienstleister.md` in der jeweiligen Zeile und sind oben unter „Offene Fragen“ zusammengefasst.

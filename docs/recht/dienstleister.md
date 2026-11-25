@@ -2,7 +2,7 @@
 
 Stand: `main` `8f0f333` (2026-11-25) · Verfasser: worker-2 · **Fakten-Doku, keine Rechtsbewertung.** Grundlage: `package.json`, `src/lib/csp.ts`, `src/` (jede Fundstelle für externe Adressen), `Caddyfile*`, `docs/design/anbieter-vorlage.md` (Preisseiten Hetzner, Abruf 2026-11-24/25). **Auftragsverarbeitung / Vertrag: für jeden Dienstleister OFFEN (Nutzer/Anwalt).** Anbieter-Sitz und Serverstandort stehen nur dort, wo ich sie belegt habe (mit Quelle und Stand); sonst **zu prüfen**.
 
-**Verbindungsart** (Spalte „Wann“): **A** = Server zu Dienst im Betrieb; **B** = der Browser des Nutzers verbindet sich selbst, **automatisch** beim Seitenaufruf; **C** = erst nach **Nutzeraktion** (Klick, Anmeldung, Einschalten). Eine Analyse-, Werbe- oder Tracking-Verbindung gibt es im Code **nicht** (Suche in `src/`, `public/`; die erlaubten Fremdadressen in der CSP sind nur Stripe, Twitch, YouTube, Kick und die Google-Anmeldung, `csp.ts`).
+**Verbindungsart** (Spalte „Wann“): **A** = Server zu Dienst im Betrieb; **B** = der Browser des Nutzers verbindet sich selbst, **automatisch** beim Seitenaufruf; **C** = erst nach **Nutzeraktion** (Klick, Anmeldung, Einschalten). Eine Analyse-, Werbe- oder Tracking-Verbindung gibt es im Code **nicht** (Suche in `src/`, `public/`; Content-Security-Policy `csp.ts`: Skripte, Frames und Verbindungen nur zu Stripe, Twitch, YouTube, Kick; **Bilder: jede https-Quelle** (`img-src https:`); die Google-Anmeldung ist eine Weiterleitung, in der CSP nur als `form-action` erlaubt).
 
 | Dienstleister | Zweck | Welche Daten fließen | Wann | Standort / Sitz (nur Belegtes) | AV-Vertrag / Status |
 |---|---|---|---|---|---|
