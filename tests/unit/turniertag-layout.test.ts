@@ -16,7 +16,7 @@ describe("M1 Bracket", () => {
     expect(b).toContain('<span className="min-w-0 break-words">{name ??'); // lange Teamnamen brechen um statt mit Auslassungspunkten abgeschnitten zu werden
     expect(b).not.toContain('<span className="truncate">{name ??');
     expect(b).not.toMatch(/min-h-8/); // Siebenmeter-Sieger-Knöpfe 44 px
-    expect(b.match(/btn btn-primary !min-h-11 !px-2 text-xs/g)?.length).toBe(2);
+    expect(b).toContain("<TieBreakForm"); // PR 1b: die Siebenmeter-Sieger-Knöpfe sind durch das Entscheidungs-Formular ersetzt (44-px-Zeilen und Knopf dort, tests/e2e/turnier-tiebreak.spec.ts)
     expect(b).toContain("-right-4 top-1/2 h-px w-4");
   });
 });
