@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { blockBeendetUm } from "@/lib/board-clock";
 
-export type ClockGame = { court: number; fun: boolean; matchId: string | null; nameA: string | null; nameB: string | null };
+export type ClockGame = { court: number; fun: boolean; matchId: string | null; nameA: string | null; nameB: string | null; playedIso?: string | null };
 export type ClockBlock = { label: string; startIso: string; endIso: string; games: ClockGame[] };
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -46,6 +47,25 @@ export function BoardClock({ blocks, slotMinutes, gapMinutes }: { blocks: ClockB
   const live = t.find((b) => now >= b.start && now < b.end);
   const upcoming = t.find((b) => b.start > now);
 
+  // Alle Spiele des laufenden Blocks sind vor dem Plan-Ende beendet (Abpfiff): "Beendet um hh:mm" statt weiterlaufender Uhr; der nächste Block beginnt trotzdem zur geplanten Zeit
+  const fertigUm = live ? blockBeendetUm(live.games) : null;
+  if (live && fertigUm) {
+    const next = t.find((b) => b.start > now);
+    return (
+      <div className="w-full space-y-1.5 rounded-lg border border-line bg-panel p-3 text-center" data-testid="board-clock" data-state="done">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Beendet um {new Date(fertigUm).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr · {live.label}</p>
+        {next ? (
+          <>
+            <p className="font-heading text-3xl font-extrabold tabular-nums" role="timer" aria-label="Countdown">{mmss(next.start - now)}</p>
+            <p className="text-xs text-muted">Als Nächstes: {next.label}</p>
+          </>
+        ) : (
+          <p className="text-sm">Letzter Block beendet.</p>
+        )}
+        <Games games={live.games} />
+      </div>
+    );
+  }
   if (live) {
     const elapsed = now - live.start;
     const pct = Math.min(100, Math.round((elapsed / (slotMinutes * 60_000)) * 100));

@@ -1157,13 +1157,13 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
         startIso: b.startsAt.toISOString(),
         endIso: b.endsAt.toISOString(),
         games: b.games.flatMap((g) => {
-          if (g.fun) return [{ court: g.court, fun: true, matchId: null, nameA: losers[0] ? nameOf.get(losers[0]) ?? "?" : null, nameB: losers[1] ? nameOf.get(losers[1]) ?? "?" : null }];
+          if (g.fun) return [{ court: g.court, fun: true, matchId: null, playedIso: null as string | null, nameA: losers[0] ? nameOf.get(losers[0]) ?? "?" : null, nameB: losers[1] ? nameOf.get(losers[1]) ?? "?" : null }];
           const m = matchRows.find((x) => x.stage === g.stage && x.slot === g.slot);
           if (!m) {
             console.error("getTournament: Planpaarung ohne Spielzeile ausgelassen", { tournamentId: t.id, stage: g.stage, slot: g.slot }); // ohne Namen; sollte nie vorkommen (scheduleFromRows bildet auf echte Zeilen ab)
             return []; // defensiv: die Seite stürzt nie ab
           }
-          return [{ court: g.court, fun: false, matchId: m.matchId, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null }];
+          return [{ court: g.court, fun: false, matchId: m.matchId, playedIso: m.playedAt ? m.playedAt.toISOString() : null, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null }];
         }),
       })),
     },

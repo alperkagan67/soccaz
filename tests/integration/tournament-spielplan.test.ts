@@ -95,4 +95,17 @@ describe("Spielzeilen und Anzeige folgen Spielzeit + Puffer", () => {
     expect(v.schedule!.overMinutes).toBe(5);
     expect(v.schedule!.blocks).toHaveLength(2);
   });
+
+  it("Tafeluhr: beendete Spiele liefern playedIso, offene null; das Spaßspiel hat keins", async () => {
+    const { t } = await laufendes({ matchMinutes: 15, gapMinutes: 5, durationMin: 120 });
+    const vorher = (await getTournament(t.id, null))!;
+    const erstesGame = (v: typeof vorher) => v.schedule!.blocks[0].games.filter((g) => !g.fun);
+    expect(erstesGame(vorher).every((g) => g.playedIso === null)).toBe(true);
+    const gespielt = new Date("2026-12-12T13:07:00.000Z");
+    await db.update(tournamentMatches).set({ playedAt: gespielt }).where(eq(tournamentMatches.tournamentId, t.id));
+    const nachher = (await getTournament(t.id, null))!;
+    expect(erstesGame(nachher).every((g) => g.playedIso === gespielt.toISOString())).toBe(true);
+    const spass = nachher.schedule!.blocks.flatMap((b) => b.games).filter((g) => g.fun);
+    expect(spass.every((g) => g.playedIso === null)).toBe(true);
+  });
 });
