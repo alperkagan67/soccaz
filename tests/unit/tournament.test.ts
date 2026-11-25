@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { shareCents } from "@/lib/money";
-import { shuffle, bracketOrder, planSchedule, drawGroups, groupCount, groupFixtures, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, finalSharePerPlayer, shareRange, tournamentTotalCents } from "@/lib/tournament";
+import { shuffle, bracketOrder, planSchedule, planFits, planMinutesForTeams, drawGroups, groupCount, groupFixtures, knockout, koFromGroups, koWinner, roundRobin, splitEntryFees, standings, validateTeamCount, finalSharePerPlayer, shareRange, tournamentTotalCents } from "@/lib/tournament";
 
 const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i + 1}`);
 const pairKey = (a: string, b: string) => [a, b].sort().join("-");
@@ -209,25 +209,67 @@ describe("Hallenkosten geteilt durch alle Spieler", () => {
 describe("Zeitplan auf zwei Plätzen", () => {
   const rounds8 = [{ stage: "ko:8", games: 4 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }];
 
-  it("8 Teams in 120 Minuten: 4 Blöcke, 26 Minuten pro Spiel, 5 Minuten Pause", () => {
+  it("8 Teams: 4 Blöcke, 15 Minuten Spielzeit, 5 Minuten Puffer: Slot 20, Plan 75 Minuten (unabhängig von der Hallenzeit)", () => {
     const start = new Date("2026-11-06T18:00:00Z");
-    const { slotMinutes, blocks } = planSchedule(rounds8, start, 120);
-    expect(slotMinutes).toBe(26);
+    const { slotMinutes, gapMinutes, blocks, totalMinutes, endsAt } = planSchedule(rounds8, start, 15, { gap: 5 });
+    expect(slotMinutes).toBe(15);
+    expect(gapMinutes).toBe(5);
     expect(blocks).toHaveLength(4);
-    expect(blocks.map((b) => (b.startsAt.getTime() - start.getTime()) / 60_000)).toEqual([0, 31, 62, 93]);
-    expect(blocks[3].endsAt.getTime() - start.getTime()).toBeLessThanOrEqual(120 * 60_000);
+    expect(blocks.map((b) => (b.startsAt.getTime() - start.getTime()) / 60_000)).toEqual([0, 20, 40, 60]);
+    expect(blocks.map((b) => (b.endsAt.getTime() - b.startsAt.getTime()) / 60_000)).toEqual([15, 15, 15, 15]);
+    expect(totalMinutes).toBe(75);
+    expect(endsAt.getTime() - start.getTime()).toBe(75 * 60_000);
     expect(blocks[0].games.map((g) => [g.slot, g.court])).toEqual([[0, 1], [1, 2]]);
     expect(blocks[1].games.map((g) => [g.slot, g.court])).toEqual([[2, 1], [3, 2]]);
   });
 
   it("im Finale-Block bleibt ein Platz für das Spiel der Verlierer", () => {
-    const last = planSchedule(rounds8, new Date(), 120).blocks[3];
+    const last = planSchedule(rounds8, new Date(), 15, { gap: 5 }).blocks[3];
     expect(last.games).toEqual([{ stage: "ko:2", slot: 0, court: 1, fun: false }, { stage: "ko:2", slot: -1, court: 2, fun: true }]);
   });
 
+  it("Puffer ist einstellbar (0 bis 30): Slot = Spielzeit + Puffer; Standard 5; Puffer 0 und 30", () => {
+    const s = new Date("2026-11-06T18:00:00Z");
+    expect(planSchedule(rounds8, s, 15).gapMinutes).toBe(5); // Standard
+    const ohne = planSchedule(rounds8, s, 15, { gap: 0 });
+    expect(ohne.blocks.map((b) => (b.startsAt.getTime() - s.getTime()) / 60_000)).toEqual([0, 15, 30, 45]);
+    expect(ohne.totalMinutes).toBe(60);
+    const lang = planSchedule(rounds8, s, 15, { gap: 30 });
+    expect(lang.blocks.map((b) => (b.startsAt.getTime() - s.getTime()) / 60_000)).toEqual([0, 45, 90, 135]);
+    expect(lang.totalMinutes).toBe(4 * 15 + 3 * 30);
+  });
+
+  it("Puffer und Plätze sind benannte Optionen (nicht vertauschbar): courts 1 = ein Platz, kein Spaßspiel, je Spiel ein Block", () => {
+    const s = new Date("2026-11-06T18:00:00Z");
+    const ein = planSchedule(rounds8, s, 15, { gap: 5, courts: 1 });
+    expect(ein.blocks).toHaveLength(7); // 4 + 2 + 1 Spiele, je ein Block
+    expect(ein.blocks.flatMap((b) => b.games.filter((g) => g.fun))).toHaveLength(0);
+    expect(planSchedule(rounds8, s, 15, { courts: 1 }).gapMinutes).toBe(5); // Puffer bleibt der Standard
+    expect(planSchedule(rounds8, s, 15, { gap: 30 }).blocks).toHaveLength(4); // 2 Plätze (Standard) unverändert
+  });
+
+  it("Hallenzeit ist nur ein Fenster: planFits meldet die Überschreitung, ändert den Plan nicht (Befund M2: früher 87 statt 15 Minuten)", () => {
+    const s = new Date("2026-11-06T18:00:00Z");
+    const plan = planSchedule(rounds8, s, 15, { gap: 5 }); // 75 Minuten
+    expect(planFits(plan, 120)).toEqual({ fits: true, overMinutes: 0 });
+    expect(planFits(plan, 75)).toEqual({ fits: true, overMinutes: 0 });
+    expect(planFits(plan, 60)).toEqual({ fits: false, overMinutes: 15 });
+    // gleiche Eingaben, gleicher Plan: es gibt keinen Hallenzeit-Parameter mehr, der den Slot verändert
+    expect(planSchedule(rounds8, s, 15, { gap: 5 }).slotMinutes).toBe(15);
+    expect(planSchedule(rounds8, s, 15, { gap: 5 }).blocks.map((b) => b.startsAt.toISOString())).toEqual(plan.blocks.map((b) => b.startsAt.toISOString()));
+  });
+
+  it("planMinutesForTeams: Hinweis im Formular (8 Teams 75, 4 Teams 2 Blöcke, ungültig null)", () => {
+    expect(planMinutesForTeams(8, 15, 5)).toBe(75);
+    expect(planMinutesForTeams(4, 15, 5)).toBe(2 * 15 + 5);
+    expect(planMinutesForTeams(6, 15, 5)).toBe(3 * 15 + 2 * 5);
+    expect(planMinutesForTeams(1, 15, 5)).toBeNull();
+    expect(planMinutesForTeams(2.5, 15, 5)).toBeNull();
+  });
+
   it("4 Teams: Halbfinale, dann Finale; 16 Teams: acht Blöcke", () => {
-    expect(planSchedule([{ stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], new Date(), 60).blocks).toHaveLength(2);
-    expect(planSchedule([{ stage: "ko:16", games: 8 }, { stage: "ko:8", games: 4 }, ...rounds8.slice(1)], new Date(), 240).blocks).toHaveLength(8);
+    expect(planSchedule([{ stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], new Date(), 15, { gap: 5 }).blocks).toHaveLength(2);
+    expect(planSchedule([{ stage: "ko:16", games: 8 }, { stage: "ko:8", games: 4 }, ...rounds8.slice(1)], new Date(), 15, { gap: 5 }).blocks).toHaveLength(8);
   });
 });
 

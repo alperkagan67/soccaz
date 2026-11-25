@@ -1,4 +1,5 @@
 import { shareCents } from "@/lib/money";
+import { GAP_STANDARD_MINUTEN } from "@/lib/turnier-grenzen";
 // Turnierlogik als reine Funktionen: Spielpläne erzeugen, Tabellen berechnen, Sieger bestimmen.
 // Die Datenbank-Schicht (server/tournaments.ts) speichert nur, was hier herauskommt.
 
@@ -229,7 +230,7 @@ export function shareRange(totalCents: number, teamCount: number, minPerTeam: nu
 
 export const COURTS = 2;
 /** Pause zwischen zwei Spielblöcken: neues Team einwechseln. */
-export const GAP_MIN = 5;
+export const GAP_MIN = GAP_STANDARD_MINUTEN;
 
 export const roundTitle = (teamsInRound: number) => (teamsInRound === 2 ? "Finale" : teamsInRound === 4 ? "Halbfinale" : teamsInRound === 8 ? "Viertelfinale" : `Runde der letzten ${teamsInRound}`);
 
@@ -237,13 +238,16 @@ export type PlannedGame = { stage: string; slot: number; court: number; fun: boo
 export type PlannedBlock = { index: number; label: string; startsAt: Date; endsAt: Date; games: PlannedGame[] };
 
 /**
- * Verteilt die K.-o.-Runden auf die gebuchte Hallenzeit: Jede Runde wird in Blöcke zu je `courts` Spielen geteilt (zwei Plätze
- * laufen gleichzeitig). Zwischen den Blöcken liegt eine Pause von `gap` Minuten. Die Spielzeit ergibt sich aus der Buchung,
- * damit der letzte Block genau mit der Hallenzeit endet. Im Finale-Block bleibt Platz 2 frei: dort spielen die beiden
- * Halbfinal-Verlierer ein Spiel nur zum Spaß (`fun`).
+ * Verteilt die K.-o.-Runden auf zwei Plätze: Jede Runde wird in Blöcke zu je `courts` Spielen geteilt (zwei Plätze laufen gleichzeitig). Ein Block dauert die SPIELZEIT (`slotMinutes`, Standard 15), dazwischen liegt
+ * der PUFFER (`gap`, Standard 5: neues Team einwechseln; bei Gleichstand im K.-o. läuft darin das Golden Goal, danach Neunmeter). Ein Slot ist also Spielzeit + Puffer (Standard 20 Minuten). Die gebuchte Hallenzeit
+ * bestimmt die Spielzeit NICHT mehr; sie ist nur ein Fenster (siehe `planFits`). Im Finale-Block bleibt Platz 2 frei: dort spielen die beiden Halbfinal-Verlierer ein Spiel nur zum Spaß (`fun`, ohne Wertung).
  * `rounds` sind die Runden von der ersten bis zum Finale mit ihrer Spielzahl.
  */
-export function planSchedule(rounds: { stage: string; games: number }[], startsAt: Date, durationMin: number, courts = COURTS, gap = GAP_MIN): { slotMinutes: number; blocks: PlannedBlock[] } {
+export type PlannedSchedule = { slotMinutes: number; gapMinutes: number; blocks: PlannedBlock[]; totalMinutes: number; endsAt: Date };
+
+export function planSchedule(rounds: { stage: string; games: number }[], startsAt: Date, slotMinutes: number, options: { gap?: number; courts?: number } = {}): PlannedSchedule {
+  const gap = options.gap ?? GAP_MIN; // Puffer in Minuten (Objektparameter: Puffer und Plätze sind beides Zahlen und ließen sich sonst still vertauschen)
+  const courts = options.courts ?? COURTS;
   const raw: { stage: string; games: { stage: string; slot: number; court: number; fun: boolean }[] }[] = [];
   rounds.forEach((r, ri) => {
     const isFinal = ri === rounds.length - 1;
@@ -255,13 +259,19 @@ export function planSchedule(rounds: { stage: string; games: number }[], startsA
     }
   });
   const count = Math.max(raw.length, 1);
-  const slotMinutes = Math.max(Math.floor((durationMin - gap * (count - 1)) / count), 5);
   const blocks = raw.map((b, index) => {
     const start = new Date(startsAt.getTime() + index * (slotMinutes + gap) * 60_000);
     const n = Number(b.stage.slice(3));
     return { index, label: roundTitle(n), startsAt: start, endsAt: new Date(start.getTime() + slotMinutes * 60_000), games: b.games };
   });
-  return { slotMinutes, blocks };
+  const totalMinutes = count * slotMinutes + (count - 1) * gap;
+  return { slotMinutes, gapMinutes: gap, blocks, totalMinutes, endsAt: new Date(startsAt.getTime() + totalMinutes * 60_000) };
+}
+
+/** Passt der Plan in die gebuchte Hallenzeit? Nur eine Warnung (kein Abbruch): `overMinutes` ist die Überschreitung, 0 wenn es passt. */
+export function planFits(plan: { totalMinutes: number }, hallMinutes: number): { fits: boolean; overMinutes: number } {
+  const over = Math.max(0, plan.totalMinutes - hallMinutes);
+  return { fits: over === 0, overMinutes: over };
 }
 
 /**
@@ -269,13 +279,13 @@ export function planSchedule(rounds: { stage: string; games: number }[], startsA
  * als slot (Lücken, z. B. 1 und 3). planSchedule nummeriert 0..n-1: Plan-Slot i wird deshalb auf die i-te vorhandene Zeile der Runde abgebildet (sortiert nach slot); so passen Plan und Zeilen für alle
  * Verbraucher zusammen (Anzeige, Plätze und Zeiten, Anlegen der Spiele). Das Spaß-Spiel der Halbfinal-Verlierer gibt es nur mit zwei echten Halbfinal-Zeilen (bei einem Freilos im Halbfinale, z. B. 3 Teams, nicht).
  */
-export function scheduleFromRows(rows: { stage: string; slot: number }[], startsAt: Date, durationMin: number): { slotMinutes: number; blocks: PlannedBlock[] } | null {
+export function scheduleFromRows(rows: { stage: string; slot: number }[], startsAt: Date, slotMinutes: number, gap = GAP_MIN): PlannedSchedule | null {
   if (rows.length === 0 || rows.some((r) => !r.stage.startsWith("ko:"))) return null;
   const slots = new Map<string, number[]>();
   for (const r of rows) slots.set(r.stage, [...(slots.get(r.stage) ?? []), r.slot]);
   for (const list of slots.values()) list.sort((a, b) => a - b);
   const rounds = [...slots].map(([stage, list]) => ({ stage, games: list.length })).sort((a, b) => Number(b.stage.slice(3)) - Number(a.stage.slice(3)));
-  const plan = planSchedule(rounds, startsAt, durationMin);
+  const plan = planSchedule(rounds, startsAt, slotMinutes, { gap });
   const semis = slots.get("ko:4")?.length ?? 0;
   const blocks = plan.blocks.map((b) => ({
     ...b,
@@ -285,5 +295,12 @@ export function scheduleFromRows(rows: { stage: string; slot: number }[], starts
       return real === undefined ? [] : [{ ...g, slot: real }];
     }),
   }));
-  return { slotMinutes: plan.slotMinutes, blocks };
+  return { ...plan, blocks };
+}
+
+/** Dauer des Plans (Minuten) für ein Turnier mit höchstens `teams` Teams, für den Hinweis im Formular (obere Grenze: Freilose sparen nur Spiele). */
+export function planMinutesForTeams(teams: number, slotMinutes: number, gap = GAP_MIN): number | null {
+  if (!Number.isInteger(teams) || teams < 2 || teams > 64) return null;
+  const rows = knockout(Array.from({ length: teams }, (_, i) => `t${i}`));
+  return scheduleFromRows(rows, new Date(0), slotMinutes, gap)?.totalMinutes ?? null;
 }

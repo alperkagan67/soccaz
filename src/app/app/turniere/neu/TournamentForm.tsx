@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FieldError, SubmitButton } from "@/components/FormBits";
 import { anmeldeschlussVorschlag } from "@/lib/anmeldeschluss";
+import { planFits, planMinutesForTeams } from "@/lib/tournament";
+import { GAP_MAX_MINUTEN, GAP_MIN_MINUTEN, GAP_STANDARD_MINUTEN, tieBreakHinweis } from "@/lib/turnier-grenzen";
 import { useFormAction } from "@/components/useFormAction";
 import { CITIES } from "@/lib/validation";
 import { createTournamentAction } from "@/server/tournament-actions";
@@ -12,13 +14,36 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
   const { state, pending, onSubmit, formAction } = useFormAction(createTournamentAction);
   const fe = state?.fieldErrors ?? {};
   const deadlineRef = useRef<HTMLInputElement>(null);
+  // Live-Hinweis: wie lange der Plan höchstens dauert (Spielzeit + Puffer je Block) gegen die gebuchte Hallenzeit; nur ein Hinweis, kein Sperrgrund
+  const [plan, setPlan] = useState({ teams: 8, hours: 3, slot: 15, gap: GAP_STANDARD_MINUTEN });
+  const planText = (() => {
+    const dauer = planMinutesForTeams(plan.teams, plan.slot, plan.gap);
+    if (dauer === null || !(plan.hours > 0)) return null;
+    const halle = Math.round(plan.hours * 60);
+    const { overMinutes } = planFits({ totalMinutes: dauer }, halle);
+    const bloecke = Math.round((dauer + plan.gap) / (plan.slot + plan.gap));
+    return { dauer, halle, overMinutes, reine: bloecke * plan.slot };
+  })();
   const errorRef = useRef<HTMLParagraphElement>(null);
   // Fehler ohne Feldbezug (z. B. Anmeldeschluss nach dem Beginn) stehen unter dem Knopf: ins Bild holen, sonst sieht ihn der Veranstalter auf dem Handy nicht
   useEffect(() => {
     if (state?.error) errorRef.current?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   }, [state]);
   return (
-    <form action={formAction} onSubmit={onSubmit} className="card space-y-4">
+    <form
+      action={formAction}
+      onSubmit={onSubmit}
+      onChange={(e) => {
+        const el = e.currentTarget.elements;
+        const num = (n: string, d: number) => {
+          const v = Number(((el.namedItem(n) as HTMLInputElement | null)?.value ?? "").replace(",", "."));
+          return Number.isFinite(v) && v > 0 ? v : d;
+        };
+        const gap = Number((el.namedItem("gapMinutes") as HTMLInputElement | null)?.value);
+        setPlan({ teams: Math.round(num("maxTeams", 8)), hours: num("durationHours", 3), slot: Math.round(num("matchMinutes", 15)), gap: Number.isFinite(gap) && gap >= GAP_MIN_MINUTEN && gap <= GAP_MAX_MINUTEN ? gap : GAP_STANDARD_MINUTEN });
+      }}
+      className="card space-y-4"
+    >
       <div>
         <label className="label" htmlFor="name">Name des Turniers</label>
         <input id="name" name="name" className="field" required minLength={3} maxLength={80} placeholder="Ramadan-Cup" />
@@ -90,6 +115,16 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
         <div>
           <label className="label" htmlFor="matchMinutes">Spielzeit pro Spiel (Minuten)</label>
           <input id="matchMinutes" name="matchMinutes" type="number" min={5} max={90} defaultValue={15} className="field" />
+        </div>
+        <div className="col-span-2">
+          <label className="label" htmlFor="gapMinutes">Puffer zwischen den Spielen (Minuten)</label>
+          <input id="gapMinutes" name="gapMinutes" type="number" min={GAP_MIN_MINUTEN} max={GAP_MAX_MINUTEN} step={1} defaultValue={GAP_STANDARD_MINUTEN} className="field" required />
+          <p className="mt-1 text-xs text-muted" data-testid="gap-hint">Zeit zwischen zwei Spielen, um das nächste Team einzuwechseln. {tieBreakHinweis(plan.gap)}</p>
+          {planText && (
+            <p className="mt-1 text-xs text-muted" data-testid="plan-hint">
+              Der Spielplan dauert höchstens {planText.dauer} Minuten, gebucht sind {planText.halle} Minuten. Zeiten ohne Puffer: {planText.reine} Minuten.{planText.overMinutes > 0 ? ` Der Plan ist ${planText.overMinutes} Minuten länger als die Hallenzeit: bitte mehr Hallenzeit buchen oder Spielzeit und Puffer verkürzen.` : ""}
+            </p>
+          )}
         </div>
       </div>
       {free ? (

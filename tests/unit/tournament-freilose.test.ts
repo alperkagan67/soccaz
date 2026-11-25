@@ -53,7 +53,7 @@ describe("Freilose: Plan und Spielzeilen passen zusammen (2 bis 32 Teams)", () =
     it(`${n} Teams: jede Planpaarung hat genau eine Zeile, jede Zeile genau eine Paarung, kein Wurf`, () => {
       const rows = knockout(ids(n));
       expect(rows).toHaveLength(n - 1); // immer n-1 Spiele
-      const plan = scheduleFromRows(rows, START, 120)!;
+      const plan = scheduleFromRows(rows, START, 15, 5)!;
       expect(plan).not.toBeNull();
       const planned = plan.blocks.flatMap((b) => b.games.filter((g) => !g.fun));
       const key = (x: { stage: string; slot: number }) => `${x.stage}|${x.slot}`;
@@ -70,23 +70,24 @@ describe("Freilose: Plan und Spielzeilen passen zusammen (2 bis 32 Teams)", () =
         expect(new Set(courts).size, `Block ${b.index}`).toBe(courts.length);
         expect(b.endsAt.getTime() - b.startsAt.getTime()).toBe(plan.slotMinutes * 60_000);
       }
+      // Spielzeit + Puffer bestimmen den Plan, nicht die Hallenzeit: jeder Block 15 Minuten, 5 Minuten Puffer dazwischen, der Plan endet mit dem letzten Block
       const last = plan.blocks[plan.blocks.length - 1];
-      if (plan.slotMinutes > 5) {
-        // (ab etwa 25 Teams greift die Untergrenze von 5 Minuten je Spiel, die Hallenzeit reicht dann ohnehin nicht: vorbestehende Grenze des Plans)
-        expect(last.endsAt.getTime()).toBeLessThanOrEqual(START.getTime() + 120 * 60_000);
-        expect(last.endsAt.getTime()).toBeGreaterThan(START.getTime() + (120 - 5 - plan.blocks.length) * 60_000); // nutzt die Hallenzeit bis auf die Abrundung
-      }
+      expect(plan.slotMinutes).toBe(15);
+      expect(plan.totalMinutes).toBe(plan.blocks.length * 15 + (plan.blocks.length - 1) * 5);
+      expect(last.endsAt.getTime()).toBe(plan.endsAt.getTime());
+      plan.blocks.forEach((b, i) => expect(b.startsAt.getTime() - START.getTime(), `Block ${i}`).toBe(i * 20 * 60_000));
     });
   }
 
   it("Zweierpotenzen: unverändert (Plan-Slot = echter Slot)", () => {
     for (const n of [2, 4, 8, 16, 32]) {
       const rows = knockout(ids(n));
-      const mapped = scheduleFromRows(rows, START, 120)!;
+      const mapped = scheduleFromRows(rows, START, 15, 5)!;
       const raw = planSchedule(
         [...new Set(rows.map((r) => r.stage))].map((stage) => ({ stage, games: rows.filter((r) => r.stage === stage).length })).sort((a, b) => Number(b.stage.slice(3)) - Number(a.stage.slice(3))),
         START,
-        120,
+        15,
+        { gap: 5 },
       );
       expect(mapped.blocks.map((b) => b.games.map((g) => g.slot))).toEqual(raw.blocks.map((b) => b.games.map((g) => g.slot)));
     }
@@ -96,38 +97,39 @@ describe("Freilose: Plan und Spielzeilen passen zusammen (2 bis 32 Teams)", () =
     const rows = knockout(ids(6));
     const first = rows.filter((r) => r.stage === "ko:8").map((r) => r.slot);
     expect(first).toEqual([1, 3]);
-    const raw = planSchedule([{ stage: "ko:8", games: 2 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 120);
+    const raw = planSchedule([{ stage: "ko:8", games: 2 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 15, { gap: 5 });
     expect(raw.blocks[0].games.map((g) => g.slot)).toEqual([0, 1]);
-    const mapped = scheduleFromRows(rows, START, 120)!;
+    const mapped = scheduleFromRows(rows, START, 15, 5)!;
     expect(mapped.blocks[0].games.map((g) => g.slot)).toEqual([1, 3]); // jetzt die echten Positionen
   });
 
   it("ohne Startzeit, ohne Zeilen oder bei Gruppen-Stufen: kein Plan (null), kein Wurf", () => {
-    expect(scheduleFromRows([], START, 120)).toBeNull();
-    expect(scheduleFromRows([{ stage: "group:A", slot: 0 }], START, 120)).toBeNull();
+    expect(scheduleFromRows([], START, 15, 5)).toBeNull();
+    expect(scheduleFromRows([{ stage: "group:A", slot: 0 }], START, 15, 5)).toBeNull();
   });
 
-  it("Konkretes Beispiel (6 Teams): die beiden Spiele der ersten Runde liegen auf den ECHTEN Positionen 1 und 3, Plätze 1 und 2, im ersten Block; das Viertelfinale folgt 36 + 5 Minuten später", () => {
+  it("Konkretes Beispiel (6 Teams): die beiden Spiele der ersten Runde liegen auf den ECHTEN Positionen 1 und 3, Plätze 1 und 2, im ersten Block; das Viertelfinale folgt 15 + 5 Minuten später", () => {
     const rows = knockout(ids(6));
-    const plan = scheduleFromRows(rows, START, 120)!;
+    const plan = scheduleFromRows(rows, START, 15, 5)!;
     expect(plan.blocks[0].startsAt.toISOString()).toBe(START.toISOString());
     expect(plan.blocks[0].games.map((g) => ({ stage: g.stage, slot: g.slot, court: g.court }))).toEqual([
       { stage: "ko:8", slot: 1, court: 1 },
       { stage: "ko:8", slot: 3, court: 2 },
     ]);
-    expect(plan.blocks[1].startsAt.getTime() - START.getTime()).toBe(41 * 60_000);
+    expect(plan.blocks[1].startsAt.getTime() - START.getTime()).toBe(20 * 60_000);
     expect(plan.blocks[1].games.map((g) => ({ stage: g.stage, slot: g.slot }))).toEqual([{ stage: "ko:4", slot: 0 }, { stage: "ko:4", slot: 1 }]);
     // beide Zeilen der ersten Runde finden ihren Block über (stage, slot)
     for (const r of rows.filter((x) => x.stage === "ko:8")) expect(plan.blocks[0].games.some((g) => g.stage === r.stage && g.slot === r.slot)).toBe(true);
   });
 
   it("Zeiten (6 Teams): Blockzahl und Slotlänge kommen aus den echten Spielen, nicht aus dem vollen Bracket mit Phantom-Spielen", () => {
-    const mapped = scheduleFromRows(knockout(ids(6)), START, 120)!;
+    const mapped = scheduleFromRows(knockout(ids(6)), START, 15, 5)!;
     expect(mapped.blocks).toHaveLength(3); // ko:8 (2 Spiele), ko:4 (2 Spiele), Finale: je ein Block
-    expect(mapped.slotMinutes).toBe(36); // floor((120 - 2*5) / 3)
+    expect(mapped.slotMinutes).toBe(15); // Spielzeit, nicht mehr aus der Hallenzeit gerechnet
+    expect(mapped.totalMinutes).toBe(3 * 15 + 2 * 5);
     // Rohplan des vollen 8er-Brackets (4 + 2 + 1 Spiele, mit Phantom-Spielen der Freilose): vier Blöcke, kürzere Slots
-    const phantom = planSchedule([{ stage: "ko:8", games: 4 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 120);
+    const phantom = planSchedule([{ stage: "ko:8", games: 4 }, { stage: "ko:4", games: 2 }, { stage: "ko:2", games: 1 }], START, 15, { gap: 5 });
     expect(phantom.blocks).toHaveLength(4);
-    expect(phantom.slotMinutes).toBeLessThan(mapped.slotMinutes);
+    expect(phantom.totalMinutes).toBeGreaterThan(mapped.totalMinutes); // das Phantom-Bracket wäre länger (vier Blöcke statt drei)
   });
 });

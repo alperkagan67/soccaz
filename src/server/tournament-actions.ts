@@ -53,6 +53,7 @@ export async function createTournamentAction(_prev: ActionState, f: FormData): P
       hourlyCents: hourly ?? null,
       isPrivate: str(f, "public") !== "on",
       matchMinutes: Number(str(f, "matchMinutes") || 15),
+      gapMinutes: Number(str(f, "gapMinutes") || 5),
     });
     id = t.id;
   });
