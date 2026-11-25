@@ -272,3 +272,39 @@ h1, h2, h3 {
   .reveal-motion.is-animating .reveal-card { animation: reveal-fade var(--dur-reduced) linear both !important; will-change: opacity; }
   .reveal-motion[data-celebrate="true"] [data-testid="player-card-tier"] { animation: none !important; }
 }
+
+/*
+ * Druck (Turniertag-Papier-Fallback, t2q Option B): IMMER hell und schwarz auf Weiß (auch wenn das Gerät im Dunkelmodus ist), ohne Kopf, Menü, Fußzeile und Knöpfe, Inhalt über die volle Breite.
+ * Gilt für alle Seiten; die Spielplan-Druckseite /turniere/<id>/druck setzt zusätzlich @page Querformat. Muss am Dateiende stehen (überstimmt die Dunkel-Regeln gleicher Spezifität).
+ */
+@media print {
+  :root,
+  :root[data-theme="dark"],
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-2: #ffffff;
+    --line: #000000;
+    --control-line: #000000;
+    --ink: #000000;
+    --muted: #1f1f1f;
+    --rim: #000000;
+    --accent-fg: #000000;
+    --accent-text: #000000;
+    color-scheme: light;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  body > header,
+  body > footer,
+  body > nav,
+  .print-hide {
+    display: none !important;
+  }
+  body > main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}

@@ -192,6 +192,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <section className="card space-y-2" data-testid="organizer-box">
           <h2 className="font-semibold">Veranstalter</h2>
           <div className="flex flex-wrap gap-2">
+            <Link href={`/turniere/${t.id}/druck${tokenQuery}`} target="_blank" className="btn btn-ghost !min-h-11 !px-4 text-sm" data-testid="druck-link">Spielplan drucken</Link>
             {inRegistration && free && teams.filter((x) => x.ready).length >= 4 && (teams.length < t.maxTeams || teams.some((x) => !x.ready)) && (
               <ActionButton action={closeWithJoinedAction.bind(null, t.id)} label={`Anmeldung schließen und mit den ${teams.filter((x) => x.ready).length} bereiten Teams starten`} confirm="Die Anmeldung wird geschlossen. Teams, deren Kader nicht vollzählig ist, sind nicht dabei. Danach erscheint der Spielplan." className="btn btn-primary !min-h-11 !px-4 text-sm" />
             )}
