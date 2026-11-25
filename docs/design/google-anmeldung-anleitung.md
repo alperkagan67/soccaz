@@ -9,7 +9,7 @@ Stand: 2026-11-24 · Verfasser: worker-4 · Status: **Entwurf** · Quellen: `src
 - Die Oberfläche von Google ändert sich oft. Die Namen der Menüpunkte unten stimmen sinngemäß; wenn ein Wort leicht abweicht („Google Auth Platform“ statt „OAuth-Zustimmungsbildschirm“), suchen Sie das Gleichbedeutende.
 - Die Texte unter „Datenschutz“ und „Nutzungsbedingungen“ sind **Entwürfe** (Rechtsprüfung durch den Anwalt steht aus, `go-live-nutzerliste.md`). Google verlangt nur, dass die Adressen erreichbar sind.
 
-**Adressen und Reihenfolge (Entscheid des Nutzers, 2026-11-27):** Die Testumgebung (Staging) läuft unter **`https://staging.socaz.de`** und **bleibt bis nach dem 12.12. bestehen**; sie wird **zuerst** eingerichtet und getestet. Danach kommen **`https://socaz.de`** und **`https://www.socaz.de`** dazu. Die Domain `socaz.de` **bleibt bis nach dem 12.12. bei ALL-INKL** (die DNS-Einträge werden dort gepflegt); ein Umzug folgt erst danach (dann ändern sich nur die DNS-Einträge, die Adressen und damit alle Einträge in der Google-Konsole bleiben gleich). **Die Google-Konsole richtet der Betreiber selbst ein; kein Agent und keine Hilfskraft bekommt Zugang oder Zugangsdaten.**
+**Adressen und Reihenfolge (Entscheid des Nutzers, 2026-11-27):** Die Testumgebung (Staging) läuft unter **`https://staging.socaz.de`** und **bleibt bis nach dem 12.12. bestehen**; sie wird **zuerst** eingerichtet und getestet. Danach kommt **`https://socaz.de`** dazu. **`www.socaz.de` wird nicht bedient (kein DNS-Eintrag, der Server antwortet nur unter der Hauptadresse); deshalb steht `www` nirgends in der Google-Konsole.** Falls `www` später eingerichtet wird, kommen die Einträge dann gleichartig dazu. Die Domain `socaz.de` **bleibt bis nach dem 12.12. bei ALL-INKL** (die DNS-Einträge werden dort gepflegt); ein Umzug folgt erst danach (dann ändern sich nur die DNS-Einträge, die Adressen und damit alle Einträge in der Google-Konsole bleiben gleich). **Die Google-Konsole richtet der Betreiber selbst ein; kein Agent und keine Hilfskraft bekommt Zugang oder Zugangsdaten.**
 
 ## 1. Vorbereiten (10 Minuten)
 - Ein **Google-Konto**, das der Betreiber dauerhaft besitzt (nicht das einer Aushilfe), mit **Zwei-Faktor-Anmeldung** (Sicherheit).
@@ -30,7 +30,7 @@ Menü **„APIs & Dienste“ → „OAuth-Zustimmungsbildschirm“** (neu: **„
    - Datenschutzerklärung: `https://socaz.de/datenschutz`
    - Nutzungsbedingungen: `https://socaz.de/agb`
    Solange `socaz.de` noch nicht erreichbar ist (Staging zuerst), trägt man hier vorläufig `https://staging.socaz.de` und `https://staging.socaz.de/datenschutz` bzw. `/agb` ein und stellt es beim Go-live auf `socaz.de` um.
-4. **Autorisierte Domains:** `socaz.de` eintragen. Google verlangt, dass Sie die Domain **bestätigen** (Inhaberschaft): im Dienst „Google Search Console“ die Domain `socaz.de` hinzufügen, den angezeigten **TXT-Eintrag** bei Ihrem Domain-Anbieter (DNS) einfügen, dann „Bestätigen“ (dauert Minuten bis Stunden). `staging.socaz.de` liegt UNTER `socaz.de` und braucht deshalb **keine eigene** autorisierte Domain; die Bestätigung von `socaz.de` als Domain (TXT-Eintrag bei ALL-INKL) deckt Staging, `www` und die Hauptadresse ab. **Liegt die Adresse der Testumgebung NICHT unter `socaz.de`** (z. B. `staging.example.org`), muss **auch deren Domain** unter „Autorisierte Domains“ stehen und bestätigt sein, sonst lehnt Google die Weiterleitungs-URI der Testumgebung ab.
+4. **Autorisierte Domains:** `socaz.de` eintragen. Google verlangt, dass Sie die Domain **bestätigen** (Inhaberschaft): im Dienst „Google Search Console“ die Domain `socaz.de` hinzufügen, den angezeigten **TXT-Eintrag** bei Ihrem Domain-Anbieter (DNS) einfügen, dann „Bestätigen“ (dauert Minuten bis Stunden). `staging.socaz.de` liegt UNTER `socaz.de` und braucht deshalb **keine eigene** autorisierte Domain; die Bestätigung von `socaz.de` als Domain (TXT-Eintrag bei ALL-INKL) deckt Staging und die Hauptadresse ab. **Liegt die Adresse der Testumgebung NICHT unter `socaz.de`** (z. B. `staging.example.org`), muss **auch deren Domain** unter „Autorisierte Domains“ stehen und bestätigt sein, sonst lehnt Google die Weiterleitungs-URI der Testumgebung ab.
 5. **Kontakt-E-Mail des Entwicklers:** eine Adresse, die Sie lesen.
 6. Speichern und weiter.
 
@@ -50,11 +50,10 @@ Im Zustimmungsbildschirm steht der Status **„Test“** (Testing). Im Status �
 ## 6. OAuth-Client anlegen
 Menü **„APIs & Dienste“ → „Anmeldedaten“ → „Anmeldedaten erstellen“ → „OAuth-Client-ID“** (neu: „Google Auth Platform“ → „Clients“).
 1. **Anwendungstyp: „Webanwendung“**. Name: `Soccaz Web`.
-2. **Autorisierte JavaScript-Quellen** (freiwillig, schadet nicht), in dieser Reihenfolge: `https://staging.socaz.de` (zuerst), `https://socaz.de`, `https://www.socaz.de`.
+2. **Autorisierte JavaScript-Quellen** (freiwillig, schadet nicht), in dieser Reihenfolge: `https://staging.socaz.de` (zuerst), `https://socaz.de`.
 3. **Autorisierte Weiterleitungs-URIs** (das ist die Stelle, an der die meisten Fehler passieren: **exakt so, ohne Leerzeichen und ohne Schrägstrich am Ende**):
    1. **Staging (zuerst eintragen und testen):** `https://staging.socaz.de/api/auth/callback/google`
    2. **Produktion:** `https://socaz.de/api/auth/callback/google`
-   3. **Produktion mit `www`:** `https://www.socaz.de/api/auth/callback/google` (nur nötig, wenn die Seite auch unter `www` ohne Umleitung erreichbar ist; leitet `www` auf `socaz.de` um, genügt Nummer 2, der Eintrag schadet aber nicht)
    - (nur falls Sie lokal testen: `http://localhost:3100/api/auth/callback/google`)
 
    Der Pfad `/api/auth/callback/google` stammt aus der Anmelde-Bibliothek von Soccaz (Auth.js, Route `src/app/api/auth/[...nextauth]/route.ts`, Anbieter Google) und ist fest; die Adresse davor ist die der Seite (`APP_URL`).
@@ -98,7 +97,7 @@ In der Datei `.env` auf dem **jeweiligen** Server (Produktion bzw. Staging; `doc
 - [ ] Zustimmungsbildschirm: extern, Name, Support-E-Mail, Startseite, Datenschutz, Nutzungsbedingungen, **Autorisierte Domain `socaz.de` bestätigt**
 - [ ] Bereiche: nur `openid`, E-Mail, Profil
 - [ ] Status **„In Produktion“** (bzw. Testnutzer für die Generalprobe eingetragen)
-- [ ] OAuth-Client „Webanwendung“ mit den Weiterleitungs-URIs in dieser Reihenfolge: **`staging.socaz.de` zuerst**, dann `socaz.de`, dann `www.socaz.de`, Pfad `/api/auth/callback/google`; dieselben drei Adressen unter „Autorisierte JavaScript-Quellen“
+- [ ] OAuth-Client „Webanwendung“ mit den Weiterleitungs-URIs in dieser Reihenfolge: **`staging.socaz.de` zuerst**, dann `socaz.de`, Pfad `/api/auth/callback/google`; dieselben zwei Adressen unter „Autorisierte JavaScript-Quellen“
 - [ ] `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET`, `APP_URL` nur in der Server-`.env`
 - [ ] Anmeldung zuerst auf `https://staging.socaz.de`, dann auf Produktion getestet (Kontoauswahl, Rückkehr, `/willkommen`)
 - [ ] **Staging mit Zugangsschutz (Basic-Auth): Anmeldung in Chrome, Safari und Firefox** je einmal geprüft (die Annahme „Rückleitung von Google trägt die Zugangsdaten mit“ ist nur eine Annahme; sie gilt erst nach diesem Test, `pilot-staging-checkliste.md`, Schritt S7)
