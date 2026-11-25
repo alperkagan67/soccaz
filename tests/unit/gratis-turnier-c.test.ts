@@ -47,11 +47,12 @@ describe("Texte: kein Zahlungswort, Hinweis bei Unentschieden", () => {
     expect(zahlungsWorte(html.replace(/<[^>]+>/g, " "))).toEqual([]);
     expect(zahlungsWorte(src("src/app/turniere/[id]/BracketView.tsx").split("Kampflos werten")[1].slice(0, 700))).toEqual([]);
   });
-  it("Abpfiff bei Gleichstand: Hinweis Unentschieden / Siebenmeterschießen; bei Vorsprung nicht", async () => {
+  it("Abpfiff bei Gleichstand: Hinweis Unentschieden / Golden Goal oder Neunmeter, 0:0 mit Hinweis ohne Tore; bei Vorsprung nicht", async () => {
     const { EndMatchPanel } = await import("../../src/app/spiele/[id]/MatchClient");
     const gleich = renderToStaticMarkup(createElement(EndMatchPanel, { matchId: "m", home: "A", away: "B", homeScore: 0, awayScore: 0, final: true }));
     expect(gleich).toContain('data-testid="end-match-draw"');
-    expect(gleich).toMatch(/Siebenmeterschießen/);
+    expect(gleich).toMatch(/Golden Goal oder Neunmeter/);
+    expect(gleich).toContain("Keine Tore erfasst");
     expect(renderToStaticMarkup(createElement(EndMatchPanel, { matchId: "m", home: "A", away: "B", homeScore: 1, awayScore: 0, final: true }))).not.toContain("end-match-draw");
   });
 });

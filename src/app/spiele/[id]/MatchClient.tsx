@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useHydrated } from "@/components/useHydrated";
+import { TIEBREAK_ABPFIFF_HINWEIS, TIEBREAK_KEINE_TORE } from "@/lib/tiebreak-regeln";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   castMvpVoteAction,
@@ -308,7 +309,10 @@ export function EndMatchPanel({ matchId, home, away, homeScore, awayScore, final
       <h2 className="font-semibold">Abpfiff</h2>
       <p className="text-sm text-muted">{final ? "Beendet das Spiel mit dem aktuellen Spielstand. Das Ergebnis gilt sofort." : "Meldet das Spiel mit dem aktuellen Spielstand als beendet. Das andere Team bestätigt."}</p>
       {homeScore === awayScore && (
-        <p className="text-sm font-semibold" data-testid="end-match-draw">Unentschieden: In einem K.-o.-Spiel entscheidet danach das Siebenmeterschießen. Der Veranstalter trägt den Sieger ein; bis dahin rückt niemand weiter.</p>
+        <p className="text-sm font-semibold" data-testid="end-match-draw">{final ? TIEBREAK_ABPFIFF_HINWEIS : "Unentschieden: In einem K.-o.-Spiel trägt der Veranstalter danach Golden Goal oder Neunmeter ein; bis dahin rückt niemand weiter."}</p>
+      )}
+      {homeScore === 0 && awayScore === 0 && (
+        <p className="text-sm text-muted" data-testid="end-match-keine-tore">{TIEBREAK_KEINE_TORE}</p>
       )}
       <ConfirmDialog
         trigger={{ label: "Abpfiff", variant: "primary" }}
