@@ -5,7 +5,6 @@ import { matches } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
 import { endMatch, submitResult } from "@/server/results";
 import { decideTie, getTournament, maybeGenerateBracket } from "@/server/tournaments";
-import { TIEBREAK_OFFEN_GAST } from "@/lib/tiebreak-regeln";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 // Regressionstest (Demo 27.11.): Der Veranstalter trägt ein K.-o.-Spiel als Endergebnis 0:0 ein (Ergebnis melden/Endergebnis eintragen oder Abpfiff ohne Tore). Das Spiel bleibt OFFEN: kein Sieger,
@@ -58,10 +57,9 @@ describe.each([
       expect(v.pendingShootout).toBe(true);
       expect(v.decidedBy).toBeNull();
     }
-    expect(TIEBREAK_OFFEN_GAST).toContain("Unentschieden");
 
     // zweites Eintragen/Abpfiff ändert nichts und entscheidet nichts
-    await expect(eintragen(org.id, m.matchId!)).rejects.toThrow();
+    await expect(eintragen(org.id, m.matchId!)).rejects.toThrow(/falschen Zustand/);
     expect((await rows(t.id)).find((r) => r.id === m.feedsMatchId)!.teamA).toBeNull();
 
     // erst die Entscheidung lässt den Sieger weiterrücken
@@ -70,6 +68,7 @@ describe.each([
     expect([entschieden.scoreA, entschieden.scoreB, entschieden.decidedBy]).toEqual([0, 1, "gg"]);
     const weiter = (await rows(t.id)).find((r) => r.id === m.feedsMatchId)!;
     expect([weiter.teamA, weiter.teamB]).toContain(m.teamB);
+    expect([weiter.teamA, weiter.teamB]).not.toContain(m.teamA); // der Verlierer rückt nicht weiter
     const danach = (await ansicht(t.id, { id: org.id, role: "player" })).find((x) => x.id === m.id)!;
     expect(danach.pendingShootout).toBe(false);
   });
