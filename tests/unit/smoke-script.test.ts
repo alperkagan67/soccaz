@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLATZHALTER } from "@/lib/legal";
-import { ANDERE_PLATZHALTER, BETREIBER_PLATZHALTER, ENTWURF_MARKE, buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS, ZAHLUNGEN_AUS_TATSACHE as SMOKE_TATSACHE } from "../../scripts/smoke.mjs";
-import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGEN_AUS_TATSACHE, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
+import { ANDERE_PLATZHALTER, BETREIBER_PLATZHALTER, ENTWURF_MARKE, buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS, ZAHLUNGEN_AUS_TATSACHE as SMOKE_TATSACHE, ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT as SMOKE_PUNKT, ZAHLUNGEN_AUS_AGB_TEXT as SMOKE_AGB } from "../../scripts/smoke.mjs";
+import { ZAHLUNGEN_AUS_AGB_TEXT, ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT, ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGEN_AUS_TATSACHE, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Go-live-Runbook Schritt 5: Smoke-Skript ohne Secrets. Der Abruf wird mit einer Attrappe ersetzt, es gibt kein Netz im Test.
 
@@ -92,6 +92,9 @@ describe("scripts/smoke.mjs --zahlungen-aus (beide Zahlungsschalter AUS)", () =>
   it("Wortliste und Hinweissatz sind gleich der Quelle src/lib/zahlungen-aus.ts (die Kopie darf nicht abweichen)", () => {
     expect(SMOKE_HINWEIS).toBe(ZAHLUNGEN_AUS_HINWEIS);
     expect(SMOKE_TATSACHE).toBe(ZAHLUNGEN_AUS_TATSACHE);
+    expect(SMOKE_PUNKT).toBe(ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT);
+    expect(SMOKE_AGB).toBe(ZAHLUNGEN_AUS_AGB_TEXT);
+    expect(smokeWorte(`${SMOKE_PUNKT} ${SMOKE_AGB}`)).toEqual([]);
     expect(smokeWorte(SMOKE_TATSACHE)).toEqual([]); // die Tatsache zählt nicht als Zahlungswort, auch nicht in der Kopie
     expect(SMOKE_WORTE.map((re: RegExp) => re.source + re.flags)).toEqual(ZAHLUNGSWORTE.map((re) => re.source + re.flags));
     for (const text of ["Die Ampel wird grün", "Preis pro Spieler 10", "Jeder hinterlegt eine Karte", "Anteil übernehmen", "Alles gut, Bracket erscheint", ZAHLUNGEN_AUS_HINWEIS + " ok"]) expect(smokeWorte(text)).toEqual(zahlungsWorte(text));

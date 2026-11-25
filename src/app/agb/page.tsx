@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { LegalPage } from "@/components/LegalPage";
 import { Platzhalter } from "@/components/LegalPlatzhalter";
-import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
+import { ZAHLUNGEN_AUS_AGB_TEXT } from "@/lib/zahlungen-aus";
 import { zahlungenAus } from "@/server/zahlungen-aus";
 
 export const metadata: Metadata = { title: "AGB" };
@@ -24,9 +24,7 @@ export default async function AgbPage() {
         {aus ? (
           <>
             <h2>3. Teilnahmegebühr</h2>
-            <p>
-              <Platzhalter>[ENTWURF, vom Betreiber zu bestätigen: Die Nutzung von Soccaz ist kostenlos.]</Platzhalter> {ZAHLUNGEN_AUS_HINWEIS}
-            </p>
+            <p>{ZAHLUNGEN_AUS_AGB_TEXT}</p>
           </>
         ) : (
           <>

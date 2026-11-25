@@ -15,6 +15,8 @@ const TIMEOUT_MS = 15_000;
 // Kopie der Wortliste aus src/lib/zahlungen-aus.ts (dieses Skript läuft ohne Build, reines Node); tests/unit/smoke-script.test.ts hält beide Listen gleich.
 export const ZAHLUNGEN_AUS_HINWEIS = "Die Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.";
 export const ZAHLUNGEN_AUS_TATSACHE = "In Soccaz werden derzeit keine Zahlungen abgewickelt."; // Kopie aus src/lib/zahlungen-aus.ts (Test hält sie gleich)
+export const ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT = "Zahlungen: In Soccaz werden derzeit keine Zahlungen abgewickelt.";
+export const ZAHLUNGEN_AUS_AGB_TEXT = "Die Nutzung von Soccaz ist kostenlos. Eine Teilnahmegebühr für ein Turnier vereinbaren Veranstalter und Teams direkt miteinander, außerhalb von Soccaz. Soccaz ist an dieser Vereinbarung und Zahlung nicht beteiligt.";
 export const ZAHLUNGSWORTE = [/\bampel\b/i, /\bso läuft es ab\b/i, /preis pro spieler/i, /hallenkosten/i, /\bkarten?\b/i, /abbuchung|abgebucht|abbuch/i, /bezahl/i, /zahlungspflicht/i, /\bpreis\b/i, /zahlung(?!en aus)/i, /\d\s*(€|eur)/i, /treuhand/i, /\banteil übernehmen\b/i]; // gleich der Quelle src/lib/zahlungen-aus.ts (Test smoke-script.test.ts)
 const FUSSBALL_KARTEN = /\b(?:gelbe[nr]?|rote[nr]?)\s+karten?\b|\btore und karten\b/gi; // keine Zahlungskarten
 
@@ -37,7 +39,7 @@ export function sichtText(html) {
 
 /** Welche verbotenen Zahlungswörter stehen im Text? (Hinweissatz und Fußball-Karten zählen nicht.) */
 export function zahlungsWorte(text) {
-  const rein = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ").split(ZAHLUNGEN_AUS_TATSACHE).join(" ").replace(FUSSBALL_KARTEN, " ");
+  const rein = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ").split(ZAHLUNGEN_AUS_AGB_TEXT).join(" ").split(ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT).join(" ").split(ZAHLUNGEN_AUS_TATSACHE).join(" ").replace(FUSSBALL_KARTEN, " ");
   return ZAHLUNGSWORTE.filter((re) => re.test(rein)).map((re) => re.source);
 }
 

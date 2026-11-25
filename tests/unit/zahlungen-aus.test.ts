@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGEN_AUS_TATSACHE, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
+import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGEN_AUS_AGB_TEXT, ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT, ZAHLUNGEN_AUS_TATSACHE, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Modus "Zahlungen AUS" (Go-live-Paket): zentraler Hinweissatz und Wortliste für die Zustand-Matrix-Tests. Der Schalter selbst: tests/integration/zahlungen-aus.test.ts.
 describe("Hinweissatz", () => {
@@ -54,5 +54,17 @@ describe("Tatsache bei Zahlungen AUS", () => {
     expect(zahlungsWorte(ZAHLUNGEN_AUS_TATSACHE)).toEqual([]);
     expect(zahlungsWorte(`${ZAHLUNGEN_AUS_TATSACHE} Bezahlen mit Karte.`).length).toBeGreaterThan(0);
     expect(zahlungsWorte("Es werden Zahlungen abgewickelt.").length).toBeGreaterThan(0); // ohne den festen Satz bleibt "Zahlung" verboten
+  });
+});
+
+describe("Wortlaut der Nutzer-Freigabe (Datenschutz-Listenpunkt und AGB 3 bei Zahlungen AUS)", () => {
+  it("genau diese Sätze, ohne Marker; kein Zahlungswort, ein Wort daneben trifft weiterhin", () => {
+    expect(ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT).toBe("Zahlungen: In Soccaz werden derzeit keine Zahlungen abgewickelt.");
+    expect(ZAHLUNGEN_AUS_AGB_TEXT).toBe("Die Nutzung von Soccaz ist kostenlos. Eine Teilnahmegebühr für ein Turnier vereinbaren Veranstalter und Teams direkt miteinander, außerhalb von Soccaz. Soccaz ist an dieser Vereinbarung und Zahlung nicht beteiligt.");
+    for (const s of [ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT, ZAHLUNGEN_AUS_AGB_TEXT]) {
+      expect(s).not.toContain("[ENTWURF");
+      expect(zahlungsWorte(s), s).toEqual([]);
+      expect(zahlungsWorte(`${s} Bezahlen mit Karte.`).length).toBeGreaterThan(0);
+    }
   });
 });
