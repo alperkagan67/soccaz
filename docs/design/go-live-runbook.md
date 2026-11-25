@@ -9,7 +9,7 @@ Plan: Code-Freeze Fr 27.11., Generalprobe auf Staging 30.11. bis 2.12., Go-live 
 Jeder Schritt: **Befehl**, dann **Erwartet**. Stimmt es nicht: **stoppen und melden**, nicht weitermachen.
 
 ## 1. Server einrichten auf Hetzner Cloud (ca. 1,5 Std., Nutzer)
-**1a Konto und Server** (Hetzner Cloud Console): Projekt „soccaz“ anlegen, Server bestellen: **Standort Nürnberg (NBG1, Deutschland)**, Image **Ubuntu 24.04**, Typ **Staging: CX23** (2 vCPU, 4 GB) und **Produktion: CX33** (4 vCPU, 8 GB; Größen und Preise: Abschnitt 12.1). Ist ein Typ beim Bestellen „nicht verfügbar“, dann **CPX22** (Anbieter-Vorlage). Beim Bestellen: **SSH-Schlüssel hochladen** (den *öffentlichen* Teil; der private bleibt auf Ihrem Gerät), **Backups einschalten**, Namen `soccaz-staging` bzw. `soccaz-prod`.
+**1a Konto und Server** (Hetzner Cloud Console): Projekt „soccaz“ anlegen, Server bestellen: **Standort Nürnberg (NBG1, Deutschland)**, Image **Ubuntu 24.04**, Typ **Staging: CX23** (2 vCPU, 4 GB) und **Produktion: CX33** (4 vCPU, 8 GB; Größen und Preise: Abschnitt 12.1). Ist ein Typ beim Bestellen „nicht verfügbar“, dann **CPX22** (Anbieter-Vorlage). Beim Bestellen: **SSH-Schlüssel hochladen** (den *öffentlichen* Teil; erzeugt **mit Passphrase**; der private bleibt auf Ihrem Gerät), **Backups einschalten**, Namen `soccaz-staging` bzw. `soccaz-prod`.
 **1b Firewall** (Console, Firewalls, „soccaz-web“, dem Server zuweisen): **eingehend nur TCP 22, 80 und 443** (IPv4 und IPv6; 22 wenn möglich nur von Ihrer festen Adresse), alles andere gesperrt, **insbesondere 5432 (Postgres)**; ausgehend alles erlaubt. Die Firewall liegt **vor** dem Server und ist der Schutz: Docker veröffentlicht Ports am Server-Programm `ufw` vorbei.
 **1c Docker** (per SSH als `root`, einmalig):
 ```
@@ -25,6 +25,7 @@ usermod -aG sudo,docker deploy
 mkdir -p /home/deploy/.ssh && cp /root/.ssh/authorized_keys /home/deploy/.ssh/ && chown -R deploy:deploy /home/deploy/.ssh && chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys
 echo "deploy ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/deploy && chmod 440 /etc/sudoers.d/deploy
 ```
+**Wichtig:** `deploy` hat **sudo ohne Passwort** und ist in der Gruppe `docker` (das ist **root-gleich**). Der einzige Schutz ist Ihr **SSH-Schlüssel**: ihn **mit Passphrase** erzeugen (`ssh-keygen -t ed25519`, die Passphrase eingeben, nicht leer lassen) und den privaten Teil nie kopieren oder versenden.
 **1e SSH absichern** (nur mit Schlüssel, kein root): **erst in einem zweiten Fenster prüfen, dass `ssh deploy@<Server-IP>` funktioniert**, dann als `root`:
 ```
 sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/; s/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
@@ -32,7 +33,7 @@ sshd -t && systemctl restart ssh
 sshd -T | grep -E "^(passwordauthentication|permitrootlogin)"
 ```
 Erwartet: `passwordauthentication no` und `permitrootlogin no`. (Setzt eine Datei unter `/etc/ssh/sshd_config.d/` den Wert anders, ändern Sie dort denselben Eintrag.) Ab jetzt nur noch als `deploy`.
-**1f Protokolle begrenzen** (sonst füllen Docker-Logs irgendwann die Platte), als `deploy`:
+**1f Protokolle begrenzen** (sonst füllen Docker-Logs irgendwann die Platte), als `deploy`. **Nur auf einem frischen Server:** der Befehl **überschreibt** `/etc/docker/daemon.json`; gibt es die Datei schon (`cat /etc/docker/daemon.json`), die beiden Einträge dort **zusammenführen** statt zu überschreiben.
 ```
 echo '{"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"3"}}' | sudo tee /etc/docker/daemon.json
 sudo systemctl restart docker
@@ -267,22 +268,24 @@ set -eu
 SRC="/home/deploy/soccaz/backups/"
 DEST="uXXXXXX@uXXXXXX.your-storagebox.de:soccaz-backups/"
 KEY="/home/deploy/.ssh/storagebox_ed25519"
-# nie spiegeln, wenn lokal nichts liegt (sonst loescht --delete die Kopie auf der Box)
-[ "$(ls -1 "$SRC"socaz-*.sql.gz 2>/dev/null | wc -l)" -gt 0 ] || { echo "[offsite] keine lokalen Sicherungen: abgebrochen"; exit 1; }
+# nie spiegeln, wenn lokal nichts liegt oder die neueste Sicherung aelter als 26 Stunden ist (sonst loescht --delete die gute Kopie auf der Box und es wuerde ein stehender Dump gespiegelt)
+NEUESTE="$(ls -1t "$SRC"socaz-*.sql.gz 2>/dev/null | head -1)"
+[ -n "$NEUESTE" ] || { echo "[offsite] keine lokalen Sicherungen: abgebrochen"; exit 1; }
+[ -n "$(find "$NEUESTE" -mmin -1560)" ] || { echo "[offsite] neueste Sicherung ist aelter als 26 Stunden: abgebrochen"; exit 1; }
 rsync -a --delete -e "ssh -p 23 -i $KEY -o StrictHostKeyChecking=yes" "$SRC" "$DEST"
 echo "[offsite] ok $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 EOF
 sudo chmod 755 /usr/local/bin/soccaz-offsite.sh
-(crontab -l 2>/dev/null; echo '45 3 * * * /usr/local/bin/soccaz-offsite.sh >> /home/deploy/offsite.log 2>&1') | crontab -
+(crontab -l 2>/dev/null | grep -v soccaz-offsite.sh; echo '45 3 * * * /usr/local/bin/soccaz-offsite.sh >> /home/deploy/offsite.log 2>&1') | crontab -   # idempotent: ein zweiter Aufruf legt keinen doppelten Eintrag an
 /usr/local/bin/soccaz-offsite.sh
 ```
    Erwartet: `[offsite] ok <Zeit>`; in der Box liegen `soccaz-backups/socaz-…sql.gz` und `….manifest.json`. Der Auftrag läuft täglich um 03:45 UTC, **nach** dem Dump um 03:30. Die Box hält zusätzlich **Snapshots** (laut Hetzner-Seite bis zu 10 manuelle und 10 automatische Plätze bei BX11): einen **täglichen automatischen Snapshot** in der Console einschalten, damit eine versehentlich gelöschte Sicherung wiederkommt. Nach dem Einrichten **am nächsten Tag** prüfen: `tail -3 ~/offsite.log`.
 
 ### 12.4 Wiederherstellungsprobe (Skript)
-Auf **Ihrem Rechner mit Postgres** (nicht auf dem Server; die Probe rührt keine echte Datenbank an):
+Auf **Ihrem Rechner mit Postgres** (nicht auf dem Server; die Probe rührt keine echte Datenbank an). **Eigener Schlüssel für den Rechner** (der Server-Schlüssel `storagebox_ed25519` verlässt den Server nie): einmalig `ssh-keygen -t ed25519 -f ~/.ssh/storagebox_rechner_ed25519` (mit Passphrase) und den öffentlichen Teil **zusätzlich** bei der Storage Box hinterlegen (wie in 12.3); später lässt er sich einzeln wieder entfernen.
 ```
 mkdir -p ~/soccaz-restore
-rsync -a -e "ssh -p 23 -i ~/.ssh/storagebox_ed25519" uXXXXXX@uXXXXXX.your-storagebox.de:soccaz-backups/ ~/soccaz-restore/
+rsync -a -e "ssh -p 23 -i ~/.ssh/storagebox_rechner_ed25519" uXXXXXX@uXXXXXX.your-storagebox.de:soccaz-backups/ ~/soccaz-restore/
 ls -1 ~/soccaz-restore | tail -4
 RESTORE_ADMIN_URL=postgres://<konto>@127.0.0.1:5432/postgres node scripts/restore-test.mjs ~/soccaz-restore/socaz-<zeit>.sql.gz
 ```
