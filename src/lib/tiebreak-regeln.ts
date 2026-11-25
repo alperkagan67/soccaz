@@ -4,7 +4,7 @@ import { NEUNMETER_MAX_TREFFER } from "@/lib/turnier-grenzen";
 // Kein Zahlungswort (Wortscan tests/unit/tiebreak-regeln.test.ts).
 
 /** Regeltext im Kasten "Ablauf des Turniers" (kurz). */
-export const TIEBREAK_REGEL = "Endet ein K.-o.-Spiel unentschieden, entscheidet zuerst ein Golden Goal (2 Minuten), danach Neunmeter. Den Sieger trägt der Veranstalter ein.";
+export const TIEBREAK_REGEL = "Endet ein K.-o.-Spiel unentschieden, entscheidet ein Golden Goal oder Neunmeter (Dauer und Ablauf: siehe Spielplan). Den Sieger trägt der Veranstalter ein.";
 export const TIEBREAK_KEINE_TORE = "Keine Tore erfasst: Das Spiel endet 0:0.";
 export const TIEBREAK_ABPFIFF_HINWEIS = "Unentschieden: Nach dem Abpfiff trägst du direkt Golden Goal oder Neunmeter ein.";
 export const TIEBREAK_OFFEN_GAST = "Unentschieden: Der Veranstalter trägt Golden Goal oder Neunmeter ein.";

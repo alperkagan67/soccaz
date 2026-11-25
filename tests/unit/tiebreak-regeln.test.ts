@@ -12,8 +12,9 @@ describe("Texte", () => {
     for (const o of T.tieOptionen("Heim", "Gast")) expect(zahlungsWorte(o.label), o.key).toEqual([]);
     for (const o of T.tieOptionen("Heim", "Gast")) expect(zahlungsWorte(T.tieDialogText(o)), o.key).toEqual([]);
   });
-  it("Regeltext nennt Golden Goal (2 Minuten) vor Neunmeter", () => {
-    expect(T.TIEBREAK_REGEL).toMatch(/Golden Goal \(2 Minuten\), danach Neunmeter/);
+  it("Regeltext nennt Golden Goal oder Neunmeter ohne feste Minuten (die Dauer hängt vom Puffer ab: tieBreakHinweis im Spielplan)", () => {
+    expect(T.TIEBREAK_REGEL).toMatch(/Golden Goal oder Neunmeter/);
+    expect(T.TIEBREAK_REGEL).not.toMatch(/\d+ Minuten/);
   });
 });
 
