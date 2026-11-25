@@ -39,6 +39,7 @@ import { istGratis } from "@/lib/gratis";
 import { TournamentCard } from "./TournamentCard";
 import { ZP, tournamentReadyLabel } from "@/lib/zahlungspflicht-texte";
 import { zahlungenAus } from "@/server/zahlungen-aus";
+import { TIEBREAK_REGEL } from "@/lib/tiebreak-regeln";
 import { tieBreakHinweis } from "@/lib/turnier-grenzen";
 import { KontoHinweis, kontoSatz } from "@/components/KontoHinweis";
 
@@ -160,6 +161,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
             ))}
           </ol>
           <p className="text-xs text-muted">{ZP.tournamentFreeNote}</p>
+          <p className="text-xs text-muted" data-testid="tiebreak-regel">{TIEBREAK_REGEL}</p>
         </section>
       )}
 

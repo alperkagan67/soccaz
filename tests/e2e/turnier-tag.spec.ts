@@ -3,7 +3,7 @@ import { closeContexts, devLogin, onboard, run, seedUser } from "./helpers";
 import { callJob, query, seedAdmin, userIdByEmail } from "./helpers-db";
 import { login } from "./helpers-wertung";
 import {
-  addPlayer, seedFreeTournament, decideShootoutOnPage, expectCleanPhonePage, forfeitOnPage, goalsThenAbpfiff, loginPhone, nextOpen, phonePage, playToEnd, seedOrganizer, seedTeam, waitDecided,
+  addPlayer, seedFreeTournament, decideTieOnMatchPage, expectCleanPhonePage, forfeitOnPage, goalsThenAbpfiff, loginPhone, nextOpen, phonePage, playToEnd, seedOrganizer, seedTeam, waitDecided,
 } from "./turnier-tag-helpers";
 
 // Gratis-Turnier PR D: der Turniertag (12.12.) als ein durchgehender Ablauf mit 6 Teams (Freilose) auf dem Handy (390 px), Zahlungen AUS wie in Produktion.
@@ -14,7 +14,7 @@ test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
 });
 
-test("Turniertag mit 6 Teams: Anlegen, neuer Nutzer über Link, Bracket ohne Klick, Abpfiff, Siebenmeterschießen, Kampflos, Finale, Sieger", async ({ browser }) => {
+test("Turniertag mit 6 Teams: Anlegen, neuer Nutzer über Link, Bracket ohne Klick, Abpfiff, Golden Goal auf der Spielseite, Kampflos, Finale, Sieger", async ({ browser }) => {
   const org = await seedOrganizer("tg6o");
   const orgPage = await loginPhone(browser, org.email, org.name);
 
@@ -90,11 +90,11 @@ test("Turniertag mit 6 Teams: Anlegen, neuer Nutzer über Link, Bracket ohne Kli
   expect((await query<{ score_a: number; score_b: number }>("select score_a, score_b from tournament_matches where id = $1", [m1.id]))[0]).toEqual({ score_a: 2, score_b: 1 });
   expect((await query<{ status: string }>("select status from matches where id = $1", [m1.match_id]))[0].status).toBe("played"); // sofort endgültig, kein Bestätigen des Gegners
 
-  // Spiel 2: Unentschieden 0:0 -> Siebenmeterschießen, Sieger rückt erst danach weiter
+  // Spiel 2: Unentschieden 0:0 -> Golden Goal auf der Spielseite, Sieger rückt erst danach weiter
   const m2 = (await nextOpen(tid))!;
   await goalsThenAbpfiff(orgPage, m2, 0, 0);
   await expect.poll(async () => (await query<{ score_a: number | null }>("select score_a from tournament_matches where id = $1", [m2.id]))[0].score_a, { timeout: 30_000 }).toBe(0);
-  await decideShootoutOnPage(orgPage, tid, m2, m2.nb);
+  await decideTieOnMatchPage(orgPage, m2, m2.nb); // Spielseite nach dem Abpfiff: Golden Goal für das zweite Team (Plan 0:1, Sieger rückt weiter); Neunmeter am Bracket deckt turnier-tiebreak.spec ab
 
   // Captains melden: das nächste Spiel melden die beiden Captains selbst (melden, der Gegner bestätigt; Abpfiff gibt es für Captains nicht)
   const m3 = (await nextOpen(tid))!;

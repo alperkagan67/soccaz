@@ -315,7 +315,9 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
   await play(final.match_id!, 1, 1);
   await org.reload();
   await expect(org.getByTestId("shootout")).toBeVisible({ timeout: 20_000 });
-  await org.getByTestId("shootout").getByRole("button").first().click();
+  await org.getByTestId("shootout").getByLabel(/^Neunmeter, Sieger/).first().check(); // PR 1b: Pflichtauswahl, dann Rückfrage
+  await org.getByTestId("shootout").getByRole("button", { name: "Entscheidung eintragen" }).click();
+  await org.getByTestId("confirm-dialog").filter({ visible: true }).getByRole("button", { name: "Endgültig eintragen" }).click();
   await expect(org.getByTestId("winner")).toBeVisible({ timeout: 20_000 });
   await expect.poll(async () => (await query<{ status: string }>("select status from tournaments where id = $1", [tid]))[0].status).toBe("finished");
 });

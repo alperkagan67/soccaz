@@ -3,7 +3,9 @@ import Link from "next/link";
 import { ActionButton } from "@/components/ActionButton";
 import { roundTitle } from "@/lib/tournament";
 import { LiveBadge } from "./LiveBadge";
-import { decideShootoutAction, forfeitMatchAction } from "@/server/tournament-actions";
+import { forfeitMatchAction } from "@/server/tournament-actions";
+import { TIEBREAK_OFFEN_GAST, tieMarke } from "@/lib/tiebreak-regeln";
+import { TieBreakForm } from "./TieBreakForm";
 
 type Match = {
   id: string;
@@ -15,6 +17,9 @@ type Match = {
   scoreA: number | null;
   scoreB: number | null;
   shootoutWinner: string | null;
+  decidedBy?: "gg" | "9m" | null;
+  shootoutA?: number | null;
+  shootoutB?: number | null;
   matchId: string | null;
   court?: number | null;
   startIso?: string | null;
@@ -77,6 +82,9 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
                   {row(m.nameA, m.scoreA, winA, !done && m.teamA && m.teamB && m.startIso && m.endIso ? <LiveBadge startIso={m.startIso} endIso={m.endIso} /> : undefined)}
                   <div className="h-px bg-line" />
                   {row(m.nameB, m.scoreB, winB)}
+                  {tieMarke(m) && (
+                    <p className="border-t border-line px-3 py-1 text-center text-xs font-semibold" data-testid="tiebreak-marke">{tieMarke(m)}</p>
+                  )}
                   {m.court && m.startIso && (
                     <p className="border-t border-line px-3 py-1 text-center text-xs text-muted">Platz {m.court} · {new Date(m.startIso).toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit" })} Uhr</p>
                   )}
@@ -86,13 +94,12 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
                     </p>
                   )}
                   {m.pendingShootout && manage && m.teamA && m.teamB && (
-                    <div className="space-y-1 border-t border-line p-2 text-center text-xs" data-testid="shootout">
-                      <p className="text-muted">Unentschieden: Sieger im Siebenmeterschießen</p>
-                      <div className="flex flex-wrap justify-center gap-1">
-                        <ActionButton action={decideShootoutAction.bind(null, tournamentId, m.id, m.teamA)} label={m.nameA ?? ""} className="btn btn-primary !min-h-11 !px-2 text-xs" />
-                        <ActionButton action={decideShootoutAction.bind(null, tournamentId, m.id, m.teamB)} label={m.nameB ?? ""} className="btn btn-primary !min-h-11 !px-2 text-xs" />
+                    <details className="border-t border-line px-3 py-1 text-xs" data-testid="shootout" open>
+                      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Gleichstand: Entscheidung eintragen</summary>
+                      <div className="pb-2">
+                        <TieBreakForm tournamentId={tournamentId} tournamentMatchId={m.id} teamA={m.teamA} teamB={m.teamB} nameA={m.nameA ?? "Team A"} nameB={m.nameB ?? "Team B"} score={m.scoreA ?? 0} compact />
                       </div>
-                    </div>
+                    </details>
                   )}
                   {manage && !done && m.matchId && m.teamA && m.teamB && (
                     <details className="border-t border-line px-3 py-1 text-xs" data-testid="forfeit">
@@ -111,7 +118,7 @@ export function BracketView({ tournamentId, stages, manage, info }: { tournament
                       </div>
                     </details>
                   )}
-                  {m.pendingShootout && !manage && <p className="border-t border-line px-3 py-1 text-center text-xs text-muted">Unentschieden: Der Veranstalter trägt das Siebenmeterschießen ein.</p>}
+                  {m.pendingShootout && !manage && <p className="border-t border-line px-3 py-1 text-center text-xs text-muted" data-testid="tiebreak-offen">{TIEBREAK_OFFEN_GAST}</p>}
                 </div>
               </div>
             );
