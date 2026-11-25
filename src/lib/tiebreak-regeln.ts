@@ -12,6 +12,7 @@ export const TIEBREAK_FORM_TITEL = "Gleichstand: Entscheidung eintragen";
 export const TIEBREAK_PFLICHT = "Bitte wähle, wie das Spiel entschieden wurde.";
 export const TIEBREAK_ZAEHLER_HINWEIS = "Treffer (freiwillig, nur zur Anzeige)";
 export const TIEBREAK_ZAEHLER_FEHLER = `Bitte beide Trefferzahlen angeben oder beide leer lassen (ganze Zahlen von 0 bis ${NEUNMETER_MAX_TREFFER}).`;
+export const TIEBREAK_SIEGER_FEHLER = "Der Sieger muss mehr Treffer haben."; // gleicher Text wie der Server (decideTie)
 export const TIEBREAK_BESTAETIGEN = "Endgültig eintragen";
 export const TIEBREAK_FEHLER_ALLGEMEIN = "Das hat nicht geklappt. Lade die Seite neu und prüfe den Stand, bevor du es noch einmal versuchst.";
 
@@ -51,6 +52,12 @@ export function parseTreffer(a: string, b: string): { ok: true; counts?: { a: nu
   const nb = Number(tb);
   if (na > NEUNMETER_MAX_TREFFER || nb > NEUNMETER_MAX_TREFFER) return { ok: false, error: TIEBREAK_ZAEHLER_FEHLER };
   return { ok: true, counts: { a: na, b: nb } };
+}
+
+/** Prüfung wie im Server: bei angegebenen Trefferzahlen muss der Sieger mehr Treffer haben. Fehlertext oder null. */
+export function pruefeSiegerTreffer(counts: { a: number; b: number } | undefined, side: TieSide): string | null {
+  if (!counts) return null;
+  return (side === "a" ? counts.a <= counts.b : counts.b <= counts.a) ? TIEBREAK_SIEGER_FEHLER : null;
 }
 
 /** Kurzmarke im Bracket und auf der Spielkarte: "n. GG" bzw. "n. 9m" (mit Trefferzahl a:b, falls gesetzt); null ohne Tie-Break. */

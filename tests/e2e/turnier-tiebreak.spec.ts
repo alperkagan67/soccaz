@@ -75,17 +75,20 @@ test("Gast sieht nur den Hinweis; Veranstalter wählt Pflicht, Golden Goal und N
   const a2 = name(semis[1].team_a);
   const b2 = name(semis[1].team_b);
   await m2.getByLabel(`Neunmeter, Sieger ${b2}`, { exact: true }).check();
-  await m2.getByLabel(`Treffer ${a2}`).fill("4");
+  await m2.getByLabel(`Treffer ${a2}`).fill("4"); // Sieger ist B: A darf nicht mehr Treffer haben
   await expect(m2.getByTestId("tiebreak-zaehler-fehler")).toBeVisible();
   await expect(m2.getByRole("button", { name: "Entscheidung eintragen" })).toBeDisabled();
   await m2.getByLabel(`Treffer ${b2}`).fill("3");
+  await expect(m2.getByTestId("tiebreak-zaehler-fehler")).toContainText("Der Sieger muss mehr Treffer haben."); // 4:3 für A, aber B soll gewinnen
+  await m2.getByLabel(`Treffer ${a2}`).fill("3");
+  await m2.getByLabel(`Treffer ${b2}`).fill("4");
   await expect(m2.getByTestId("tiebreak-zaehler-fehler")).toHaveCount(0);
   await clickReady(m2.getByRole("button", { name: "Entscheidung eintragen" }));
   await expect(dialog(page).getByTestId("confirm-consequence")).toContainText(`${a2} 1 : 1 ${b2} → Neunmeter, Sieger ${b2}`);
   await dialog(page).getByRole("button", { name: "Endgültig eintragen" }).click();
-  await expect.poll(async () => (await query<{ d: string | null; w: string | null; a: number | null; b: number | null }>("select decided_by as d, shootout_winner as w, shootout_a as a, shootout_b as b from tournament_matches where id = $1", [semis[1].id]))[0], { timeout: 30_000 }).toEqual({ d: "9m", w: semis[1].team_b, a: 4, b: 3 });
+  await expect.poll(async () => (await query<{ d: string | null; w: string | null; a: number | null; b: number | null }>("select decided_by as d, shootout_winner as w, shootout_a as a, shootout_b as b from tournament_matches where id = $1", [semis[1].id]))[0], { timeout: 30_000 }).toEqual({ d: "9m", w: semis[1].team_b, a: 3, b: 4 });
   await page.reload();
-  await expect(page.getByTestId("tiebreak-marke").filter({ hasText: "n. 9m (4:3)" })).toHaveCount(1);
+  await expect(page.getByTestId("tiebreak-marke").filter({ hasText: "n. 9m (3:4)" })).toHaveCount(1);
   await expect(page.getByTestId("tiebreak-form")).toHaveCount(0); // nichts mehr offen
   await expectCleanPhonePage(page, "Turnierseite Veranstalter (nach der Entscheidung)");
   expect(run.length).toBeGreaterThan(0);

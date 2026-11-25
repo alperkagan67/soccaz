@@ -10,6 +10,7 @@ import {
   TIEBREAK_PFLICHT,
   TIEBREAK_ZAEHLER_HINWEIS,
   parseTreffer,
+  pruefeSiegerTreffer,
   tieDialogText,
   tieFolge,
   tieOptionen,
@@ -25,7 +26,9 @@ export function TieBreakForm({ tournamentId, tournamentMatchId, teamA, teamB, na
   const [a, setA] = useState("");
   const [b, setB] = useState("");
   const option = tieOptionen(nameA, nameB).find((o) => o.key === key);
-  const treffer: ReturnType<typeof parseTreffer> = option?.kind === "9m" ? parseTreffer(a, b) : { ok: true };
+  const parsed: ReturnType<typeof parseTreffer> = option?.kind === "9m" ? parseTreffer(a, b) : { ok: true };
+  const siegerFehler = option?.kind === "9m" && parsed.ok ? pruefeSiegerTreffer(parsed.counts, option.side) : null;
+  const treffer: ReturnType<typeof parseTreffer> = siegerFehler ? { ok: false, error: siegerFehler } : parsed;
 
   return (
     <div className="space-y-2 text-left" data-testid="tiebreak-form">

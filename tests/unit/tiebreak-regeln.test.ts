@@ -52,6 +52,16 @@ describe("parseTreffer (beide oder keine, ganze Zahlen 0 bis 50)", () => {
   });
 });
 
+describe("pruefeSiegerTreffer (wie der Server: Sieger hat mehr Treffer)", () => {
+  it("ohne Zahlen immer ok; mit Zahlen nur der Seite mit mehr Treffern", () => {
+    expect(T.pruefeSiegerTreffer(undefined, "a")).toBeNull();
+    expect(T.pruefeSiegerTreffer({ a: 4, b: 3 }, "a")).toBeNull();
+    expect(T.pruefeSiegerTreffer({ a: 3, b: 4 }, "b")).toBeNull();
+    expect(T.pruefeSiegerTreffer({ a: 4, b: 3 }, "b")).toBe(T.TIEBREAK_SIEGER_FEHLER);
+    expect(T.pruefeSiegerTreffer({ a: 3, b: 3 }, "a")).toBe(T.TIEBREAK_SIEGER_FEHLER);
+  });
+});
+
 describe("tieMarke und tieOffen", () => {
   it("'n. GG' / 'n. 9m' / 'n. 9m (4:3)' / null", () => {
     expect(T.tieMarke({ decidedBy: "gg" })).toBe("n. GG");
