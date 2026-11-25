@@ -206,7 +206,7 @@ describe("Turnier im Kartenmodell: Ergebnisse, kein Preisgeld, Provision aus dem
     await expect(decideShootout(squads[0].captain.id, t.id, semis[0].id, semis[0].teamB!)).rejects.toThrow(/Veranstalter/);
     await expect(decideShootout(o.id, t.id, semis[0].id, crypto.randomUUID())).rejects.toThrow(/spielt in diesem Spiel nicht/);
     await decideShootout(o.id, t.id, semis[0].id, semis[0].teamB!);
-    await expect(decideShootout(o.id, t.id, semis[0].id, semis[0].teamB!)).rejects.toThrow(/kein Siebenmeterschießen/);
+    await expect(decideShootout(o.id, t.id, semis[0].id, semis[0].teamB!)).rejects.toThrow(/kein Gleichstand/);
 
     await play(semis[1], 3, 1, captains);
     rows = await bracketRows(t.id);

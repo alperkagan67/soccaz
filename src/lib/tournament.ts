@@ -150,10 +150,14 @@ export function standings(teamIds: string[], results: Played[]): StandingRow[] {
   return [...rows.values()].sort((x, y) => y.points - x.points || y.gd - x.gd || y.gf - x.gf || order.get(x.teamId)! - order.get(y.teamId)!);
 }
 
-/** Sieger eines K.-o.-Spiels. Bei Unentschieden zählt das Siebenmeterschießen. null, wenn noch offen. */
-export function koWinner(m: { a: string; b: string; scoreA: number; scoreB: number; shootoutWinner?: string | null }): string | null {
+/**
+ * Sieger eines K.-o.-Spiels. Bei Unentschieden entscheidet der Tie-Break: Golden Goal (das Tor steht schon im Plan-Stand, `decidedBy = "gg"`) oder Neunmeter (`shootoutWinner`, `decidedBy = "9m"`).
+ * null, wenn noch offen. Ein Gleichstand mit `decidedBy = "gg"` (Tor fehlt) oder `"9m"` ohne Sieger ist ungültig und bleibt offen.
+ */
+export function koWinner(m: { a: string; b: string; scoreA: number; scoreB: number; shootoutWinner?: string | null; decidedBy?: "gg" | "9m" | null }): string | null {
   if (m.scoreA > m.scoreB) return m.a;
   if (m.scoreB > m.scoreA) return m.b;
+  if (m.decidedBy === "gg") return null;
   if (m.shootoutWinner === m.a || m.shootoutWinner === m.b) return m.shootoutWinner;
   return null;
 }
