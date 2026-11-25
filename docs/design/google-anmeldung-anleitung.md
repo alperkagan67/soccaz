@@ -13,7 +13,7 @@ Stand: 2026-11-24 · Verfasser: worker-4 · Status: **Entwurf** · Quellen: `src
 
 ## 1. Vorbereiten (10 Minuten)
 - Ein **Google-Konto**, das der Betreiber dauerhaft besitzt (nicht das einer Aushilfe), mit **Zwei-Faktor-Anmeldung** (Sicherheit).
-- Zugang zur **DNS-Verwaltung bei ALL-INKL** für `socaz.de` (für die Domain-Bestätigung, Schritt 3, und den Eintrag der Staging-Adresse `staging.socaz.de`, die DNS-Schritte bei ALL-INKL stehen in `docs/design/go-live-runbook.md`, Abschnitt 2 „Domain und HTTPS“).
+- Zugang zur **DNS-Verwaltung bei ALL-INKL** für `socaz.de` (für die Domain-Bestätigung, Schritt 3, und den Eintrag der Staging-Adresse `staging.socaz.de`, die DNS-Schritte bei ALL-INKL stehen in `docs/design/go-live-runbook.md`, Abschnitt 2 „Domain, DNS bei ALL-INKL und HTTPS (TLS)“).
 - Erreichbar müssen sein (zuerst auf Staging, dann in Produktion): `https://staging.socaz.de/datenschutz`, `/agb` und `/impressum`; später dieselben Seiten unter `https://socaz.de`.
 
 ## 2. Projekt anlegen
