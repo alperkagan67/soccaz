@@ -107,6 +107,7 @@ function urlFor(route: string, s: Seed): string {
     "/teams/[slug]/opengraph-image": `/teams/${i.homeSlug}/opengraph-image`,
     "/spieler/[id]": `/spieler/${i.z}`,
     "/turniere/[id]": `/turniere/${i.tournament}`,
+    "/turniere/[id]/druck": `/turniere/${i.tournament}/druck`,
     "/lobby/[id]": `/lobby/${i.lobby}`,
     "/lobby/offen/[entryId]": `/lobby/offen/${i.queue}`,
     "/einladung/[token]": `/einladung/${i.teamToken}`,
