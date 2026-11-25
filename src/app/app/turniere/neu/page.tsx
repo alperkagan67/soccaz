@@ -32,7 +32,7 @@ export default async function NewTournamentPage() {
         <div className="card space-y-2" data-testid="organizer-info">
           <p>Turniere dürfen nur freigeschaltete Veranstalter anlegen.</p>
           <p className="text-sm text-muted">
-            Du möchtest ein Turnier starten? Ruf den Socaz-Admin an oder schreib uns eine E-Mail, dann klären wir alles und schalten dich frei.
+            Du möchtest ein Turnier starten? {phone ? "Ruf den Socaz-Admin an oder schreib uns eine E-Mail" : "Schreib uns eine E-Mail"}, dann klären wir alles und schalten dich frei.
           </p>
           {phone && <a href={`tel:${phone.replace(/[^+0-9]/g, "")}`} className="btn btn-primary w-full">{phone} anrufen</a>}
           <Link href="/kontakt" className="btn btn-ghost w-full">E-Mail an den Admin (Kontaktseite)</Link>

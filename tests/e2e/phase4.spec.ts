@@ -136,7 +136,13 @@ test("Turnier: privat per Link, Captains, Karte pro Spieler, Bereit nur mit Kart
   await setPlatformSetting("payments_enabled", true); // Zahlungen AUS = kostenloses Turnier ohne Preisfeld (Gratis-Turnier PR A): dieser Test legt ein Turnier mit Hallenpreis an
   await org.goto("/app/turniere/neu");
   await expect(org.getByText(/nur freigeschaltete Veranstalter/)).toBeVisible();
-  await expect(org.getByTestId("organizer-info")).toContainText("Socaz-Admin an oder schreib uns eine E-Mail");
+  await expect(org.getByTestId("organizer-info")).toContainText("Schreib uns eine E-Mail"); // ohne emergency_phone (Standard): kein Anruf-Satz (Backlog 266)
+  await expect(org.getByTestId("organizer-info")).not.toContainText("Ruf den Socaz-Admin an");
+  await setPlatformSetting("emergency_phone", "+49 201 1234567"); // mit Nummer: Anruf-Satz UND tel:-Knopf, danach wieder leer
+  await org.reload();
+  await expect(org.getByTestId("organizer-info")).toContainText("Ruf den Socaz-Admin an oder schreib uns eine E-Mail");
+  await expect(org.getByTestId("organizer-info").locator('a[href^="tel:"]')).toHaveCount(1);
+  await setPlatformSetting("emergency_phone", "");
   await admin.goto(`/admin/nutzer?q=${encodeURIComponent(`tnorg-${run}`)}`);
   await admin.getByTestId(`user-tnorg-${run}@test.local`).getByRole("button", { name: "Als Turnier-Veranstalter freischalten" }).click();
   await expect.poll(async () => (await query<{ is_organizer: boolean }>("select is_organizer from users where id = $1", [orgId]))[0].is_organizer).toBe(true);
