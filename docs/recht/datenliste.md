@@ -1,6 +1,6 @@
 # Datenliste: welche Daten Soccaz speichert, wer sie sieht, wie lange, wo
 
-Stand: `main` `8f0f333` (2026-11-25) · Verfasser: worker-2 · **Fakten-Doku, keine Rechtsbewertung.** Gelesen aus dem Quelltext (`src/db/schema*.ts`, `src/server/*`, `src/app/*`) und den Betriebsunterlagen; **nichts davon wurde gegen eine laufende Instanz oder eine Datenbank geprüft.** Wo der Code keine Regel enthält, steht wörtlich **NICHT GEREGELT** (nichts erfunden). Wo ich etwas nicht belegen konnte, steht **zu prüfen**. Beleg-Kürzel: `Pfad:Zeile` aus dem Stand oben.
+Stand: `main` `b02fa92` (2026-11-25; Zeilenverweise gegen `b02fa92` geprüft: seit `8f0f333` änderten sich nur Datenschutz, AGB und `zahlungen-aus.ts`, ohne Zeilenverschiebung der zitierten Stellen) · Verfasser: worker-2 · **Fakten-Doku, keine Rechtsbewertung.** Gelesen aus dem Quelltext (`src/db/schema*.ts`, `src/server/*`, `src/app/*`) und den Betriebsunterlagen; **nichts davon wurde gegen eine laufende Instanz oder eine Datenbank geprüft.** Wo der Code keine Regel enthält, steht wörtlich **NICHT GEREGELT** (nichts erfunden). Wo ich etwas nicht belegen konnte, steht **zu prüfen**. Beleg-Kürzel: `Pfad:Zeile` aus dem Stand oben.
 
 **Geltungsstand 12.12. (geplant):** Zahlungen **AUS** (beide Schalter), `TURNIER_ONLY=1`, Anmeldung mit Google und Apple (Apple hinter `APPLE_LOGIN_ENABLED=1`). Zahlungsdaten fallen nur bei Zahlungen **AN** neu an; Altdaten aus Tests können vorhanden sein.
 
