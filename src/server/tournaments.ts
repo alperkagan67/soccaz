@@ -633,7 +633,7 @@ export async function decideTie(userId: string, tournamentId: string, tournament
       kind === "9m"
         ? { shootoutWinner: winnerTeamId, decidedBy: "9m" as const, ...(counts != null ? { shootoutA: counts.a, shootoutB: counts.b } : {}) }
         : { decidedBy: "gg" as const, ...(winnerTeamId === tm.teamA ? { scoreA: tm.scoreA + 1 } : { scoreB: (tm.scoreB ?? 0) + 1 }) };
-    await tx.update(tournamentMatches).set(set).where(eq(tournamentMatches.id, tm.id));
+    await tx.update(tournamentMatches).set({ ...set, playedAt: new Date() }).where(eq(tournamentMatches.id, tm.id)); // played_at = Ende des Tie-Breaks (die Tafeluhr zeigt "Beendet um" sonst die Zeit des Gleichstands)
     await audit(userId, "tournament.tiebreak", "tournament", tournamentId, { after: { matchId: tm.id, kind, winnerTeamId } }, tx);
     await completeKo(tx, t, tm, winnerTeamId);
   });
@@ -1163,7 +1163,7 @@ export async function getTournament(id: string, viewer: TournamentViewer = null,
             console.error("getTournament: Planpaarung ohne Spielzeile ausgelassen", { tournamentId: t.id, stage: g.stage, slot: g.slot }); // ohne Namen; sollte nie vorkommen (scheduleFromRows bildet auf echte Zeilen ab)
             return []; // defensiv: die Seite stürzt nie ab
           }
-          return [{ court: g.court, fun: false, matchId: m.matchId, playedIso: m.playedAt ? m.playedAt.toISOString() : null, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null }];
+          return [{ court: g.court, fun: false, matchId: m.matchId, playedIso: m.playedAt && !(m.scoreA !== null && m.scoreA === m.scoreB && !m.shootoutWinner && !m.decidedBy) ? m.playedAt.toISOString() : null, nameA: m.teamA ? nameOf.get(m.teamA) ?? "?" : null, nameB: m.teamB ? nameOf.get(m.teamB) ?? "?" : null }];
         }),
       })),
     },

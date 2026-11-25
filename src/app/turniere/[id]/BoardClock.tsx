@@ -60,7 +60,7 @@ export function BoardClock({ blocks, slotMinutes, gapMinutes }: { blocks: ClockB
             <p className="text-xs text-muted">Als Nächstes: {next.label}</p>
           </>
         ) : (
-          <p className="text-sm">Letzter Block beendet.</p>
+          <p className="text-sm">{live.games.some((g) => g.fun) ? "Finale beendet. Das Spaßspiel läuft ohne Wertung." : "Letzter Block beendet."}</p>
         )}
         <Games games={live.games} />
       </div>
