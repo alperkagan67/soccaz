@@ -138,7 +138,7 @@ describe("decideTie: Trefferzahlen und Überschreiben", () => {
     }
     const nochOffen = (await rows(t.id)).find((r) => r.id === m.id)!;
     expect([nochOffen.decidedBy, nochOffen.shootoutWinner, nochOffen.shootoutA]).toEqual([null, null, null]);
-    await decideTie(org.id, t.id, m.id, "9m", m.teamA!, { a: 0, b: 50 }); // Grenzen gelten
+    await decideTie(org.id, t.id, m.id, "9m", m.teamB!, { a: 0, b: 50 }); // Grenzen gelten (Sieger B mit 50)
     expect((await rows(t.id)).find((r) => r.id === m.id)!.shootoutB).toBe(50);
   });
   it("der 9m-Sieger wird beim zweiten Aufruf (anderer Sieger) NICHT überschrieben", async () => {
@@ -149,5 +149,30 @@ describe("decideTie: Trefferzahlen und Überschreiben", () => {
     await expect(decideTie(org.id, t.id, m.id, "gg", m.teamB!)).rejects.toThrow(/kein Gleichstand/);
     const after = (await rows(t.id)).find((r) => r.id === m.id)!;
     expect([after.shootoutWinner, after.decidedBy]).toEqual([m.teamA, "9m"]);
+  });
+});
+
+describe("decideTie: Konsistenz der Trefferzahlen und null", () => {
+  it("der Sieger muss mehr Treffer haben: a:2 b:4 mit Sieger A (und Gleichstand, und B mit weniger) wird abgewiesen, nichts gespeichert", async () => {
+    const { t, org } = await turnier();
+    const m = await unentschieden(t.id, org);
+    await expect(decideTie(org.id, t.id, m.id, "9m", m.teamA!, { a: 2, b: 4 })).rejects.toThrow(/Sieger muss mehr Treffer haben/);
+    await expect(decideTie(org.id, t.id, m.id, "9m", m.teamA!, { a: 3, b: 3 })).rejects.toThrow(/Sieger muss mehr Treffer haben/);
+    await expect(decideTie(org.id, t.id, m.id, "9m", m.teamB!, { a: 4, b: 2 })).rejects.toThrow(/Sieger muss mehr Treffer haben/);
+    const offen = (await rows(t.id)).find((r) => r.id === m.id)!;
+    expect([offen.decidedBy, offen.shootoutWinner, offen.shootoutA, offen.shootoutB]).toEqual([null, null, null, null]);
+    await decideTie(org.id, t.id, m.id, "9m", m.teamB!, { a: 2, b: 4 });
+    expect((await rows(t.id)).find((r) => r.id === m.id)!.shootoutWinner).toBe(m.teamB);
+  });
+  it("counts = null (JSON aus der Oberfläche) heißt: nicht angegeben, kein Fehler, keine Trefferzahlen; auch bei gg", async () => {
+    const { t, org } = await turnier();
+    const m = await unentschieden(t.id, org);
+    await decideTie(org.id, t.id, m.id, "9m", m.teamA!, null);
+    const a = (await rows(t.id)).find((r) => r.id === m.id)!;
+    expect([a.decidedBy, a.shootoutA, a.shootoutB]).toEqual(["9m", null, null]);
+    const o = await turnier();
+    const m2 = await unentschieden(o.t.id, o.org);
+    await decideTie(o.org.id, o.t.id, m2.id, "gg", m2.teamA!, null);
+    expect((await rows(o.t.id)).find((r) => r.id === m2.id)!.decidedBy).toBe("gg");
   });
 });

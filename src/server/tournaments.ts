@@ -606,13 +606,13 @@ export async function advanceFromMatch(tx: Tx, matchId: string): Promise<void> {
  * `gg` = Golden Goal (das Tor wird im Turnierplan dem Sieger gutgeschrieben, z. B. 2:2 -> 3:2; das Spiel selbst mit Elo und Statistik bleibt unverändert),
  * `9m` = Neunmeter (der Stand bleibt, der Sieger wird gesetzt). Nur K.-o.-Spiele, nur bei offenem Gleichstand; danach rückt der Sieger weiter bzw. das Finale beendet das Turnier.
  */
-export async function decideTie(userId: string, tournamentId: string, tournamentMatchId: string, kind: "gg" | "9m", winnerTeamId: string, counts?: { a: number; b: number }) {
+export async function decideTie(userId: string, tournamentId: string, tournamentMatchId: string, kind: "gg" | "9m", winnerTeamId: string, counts?: { a: number; b: number } | null) {
   if (kind !== "gg" && kind !== "9m") throw new DomainError("Unbekannte Art der Entscheidung.");
   // Neunmeter-Treffer (optional, nur Anzeige): nur bei 9m, beide gesetzt, ganze Zahlen 0 bis 50 (wie der CHECK der Datenbank)
-  if (counts !== undefined) {
+  if (counts != null) { // null (JSON aus der Oberfläche) und undefined heißen beide: nicht angegeben
     const ok = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= NEUNMETER_MAX_TREFFER;
     if (kind !== "9m") throw new DomainError("Trefferzahlen gibt es nur bei Neunmetern.");
-    if (!counts || !ok(counts.a) || !ok(counts.b)) throw new DomainError(`Die Treffer beider Teams müssen ganze Zahlen von 0 bis ${NEUNMETER_MAX_TREFFER} sein.`);
+    if (!ok(counts.a) || !ok(counts.b)) throw new DomainError(`Die Treffer beider Teams müssen ganze Zahlen von 0 bis ${NEUNMETER_MAX_TREFFER} sein.`);
   }
   await db.transaction(async (tx) => {
     const t = await lockTournament(tx, tournamentId);
@@ -622,9 +622,11 @@ export async function decideTie(userId: string, tournamentId: string, tournament
     if (!tm || tm.scoreA === null || tm.scoreA !== tm.scoreB || tm.shootoutWinner || tm.decidedBy) throw new DomainError("Hier ist kein Gleichstand offen.");
     if (!tm.stage.startsWith("ko:")) throw new DomainError("Golden Goal und Neunmeter gibt es nur in K.-o.-Spielen.");
     if (winnerTeamId !== tm.teamA && winnerTeamId !== tm.teamB) throw new DomainError("Das Team spielt in diesem Spiel nicht.");
+    // Konsistenz (der CHECK der Datenbank kann das nicht): der Sieger hat mehr Treffer
+    if (counts != null && (winnerTeamId === tm.teamA ? counts.a <= counts.b : counts.b <= counts.a)) throw new DomainError("Der Sieger muss mehr Treffer haben.");
     const set =
       kind === "9m"
-        ? { shootoutWinner: winnerTeamId, decidedBy: "9m" as const, ...(counts ? { shootoutA: counts.a, shootoutB: counts.b } : {}) }
+        ? { shootoutWinner: winnerTeamId, decidedBy: "9m" as const, ...(counts != null ? { shootoutA: counts.a, shootoutB: counts.b } : {}) }
         : { decidedBy: "gg" as const, ...(winnerTeamId === tm.teamA ? { scoreA: tm.scoreA + 1 } : { scoreB: (tm.scoreB ?? 0) + 1 }) };
     await tx.update(tournamentMatches).set(set).where(eq(tournamentMatches.id, tm.id));
     await audit(userId, "tournament.tiebreak", "tournament", tournamentId, { after: { matchId: tm.id, kind, winnerTeamId } }, tx);
