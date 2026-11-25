@@ -5,6 +5,17 @@ import { clickWhenReady } from "./flows";
 
 test.setTimeout(180_000);
 
+// Diese Specs legen Privatspiele MIT Miete an: bei Zahlungen AUS (Standard der Umgebung) gibt es nur kostenlose Privatspiele (siehe privatspiel-kostenlos-aus.spec.ts), deshalb hier Zahlungen AN.
+// Die Datei läuft seriell; der Schalter wird am Ende wieder auf AUS gestellt.
+test.describe.configure({ mode: "serial" });
+test.beforeAll(async () => {
+  await setPlatformSetting("payments_enabled", true);
+});
+test.afterAll(async () => {
+  await setPlatformSetting("payments_enabled", false);
+  await setPlatformSetting("card_payments_enabled", false);
+});
+
 test.afterEach(async ({ browser }) => {
   await closeContexts(browser);
 });

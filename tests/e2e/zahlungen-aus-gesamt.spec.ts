@@ -75,8 +75,8 @@ test("Zahlungen AUS, Gesamt: kein Zahlungswort auf allen öffentlichen und angem
     // sichtbarer Inhalt samt zugeklappter Teile, OHNE script/style (RSC-Nutzlast, Entwicklungspfade)
     const text = await page.locator("body").evaluate((el) => { const c = el.cloneNode(true) as HTMLElement; c.querySelectorAll("script,style,noscript").forEach((n) => n.remove()); return c.textContent ?? ""; });
     const attrs = await page.locator("body").evaluate((el) => [...el.querySelectorAll("[title],[aria-label],[alt],[placeholder]")].map((e) => [e.getAttribute("title"), e.getAttribute("aria-label"), e.getAttribute("alt"), e.getAttribute("placeholder")].join(" ")).join(" "));
-    // "Kostenlos (0 €)" ist die Beschriftung der Mietwahl im Privatspiel (Specs adressieren sie), kein Zahlungstext
-    const alles = `${text} ${attrs}`.replace(/\s+/g, " ").split("Kostenlos (0 €)").join("Kostenlos");
+    // keine Ausnahme mehr: bei Zahlungen AUS gibt es im Privatspiel keine Mietwahl ("Kostenlos (0 €)") mehr, nur den Satz "Das Spiel ist kostenlos."
+    const alles = `${text} ${attrs}`.replace(/\s+/g, " ");
     const worte = zahlungsWorte(alles);
     if (worte.length) {
       const ohne = alles.split(ZAHLUNGEN_AUS_HINWEIS).join(" ");
