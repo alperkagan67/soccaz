@@ -190,7 +190,7 @@ Erwartet: Smoke-Test (Schritt 5) wieder grün. **Datenbankänderungen gehen nur 
 ## 9. Update im Betrieb
 **Vorprüfung vor dem Deploy der Spielplan-Änderung (Spielzeit 15 + Puffer 5):** laufende Altturniere würden einen anderen Plan anzeigen als ihre Spielzeilen. Auf dem Server (zeigt nur eine Zahl):
 ```
-docker compose exec -T db psql -U socaz -d socaz -c "select count(*) from tournaments where bracket_generated_at is not null and status = 'running'"
+docker compose exec -T db psql -U socaz -d socaz -c "select count(*) from tournaments where bracket_generated_at is not null and status in ('running', 'payment')"
 ```
 Erwartet: `0`. Bei mehr: nicht deployen, melden (Turnier zu Ende spielen lassen oder auf Staging neu aufsetzen).
 
