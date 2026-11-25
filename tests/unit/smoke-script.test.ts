@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { PLATZHALTER } from "@/lib/legal";
-import { ANDERE_PLATZHALTER, BETREIBER_PLATZHALTER, ENTWURF_MARKE, buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS } from "../../scripts/smoke.mjs";
-import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
+import { ANDERE_PLATZHALTER, BETREIBER_PLATZHALTER, ENTWURF_MARKE, buildChecks, runSmoke, sichtText, zahlungsWorte as smokeWorte, ZAHLUNGSWORTE as SMOKE_WORTE, ZAHLUNGEN_AUS_HINWEIS as SMOKE_HINWEIS, ZAHLUNGEN_AUS_TATSACHE as SMOKE_TATSACHE, ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT as SMOKE_PUNKT, ZAHLUNGEN_AUS_AGB_TEXT as SMOKE_AGB } from "../../scripts/smoke.mjs";
+import { ZAHLUNGEN_AUS_AGB_TEXT, ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT, ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGEN_AUS_TATSACHE, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Go-live-Runbook Schritt 5: Smoke-Skript ohne Secrets. Der Abruf wird mit einer Attrappe ersetzt, es gibt kein Netz im Test.
 
@@ -91,6 +91,11 @@ describe("scripts/smoke.mjs --zahlungen-aus (beide Zahlungsschalter AUS)", () =>
   });
   it("Wortliste und Hinweissatz sind gleich der Quelle src/lib/zahlungen-aus.ts (die Kopie darf nicht abweichen)", () => {
     expect(SMOKE_HINWEIS).toBe(ZAHLUNGEN_AUS_HINWEIS);
+    expect(SMOKE_TATSACHE).toBe(ZAHLUNGEN_AUS_TATSACHE);
+    expect(SMOKE_PUNKT).toBe(ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT);
+    expect(SMOKE_AGB).toBe(ZAHLUNGEN_AUS_AGB_TEXT);
+    expect(smokeWorte(`${SMOKE_PUNKT} ${SMOKE_AGB}`)).toEqual([]);
+    expect(smokeWorte(SMOKE_TATSACHE)).toEqual([]); // die Tatsache zählt nicht als Zahlungswort, auch nicht in der Kopie
     expect(SMOKE_WORTE.map((re: RegExp) => re.source + re.flags)).toEqual(ZAHLUNGSWORTE.map((re) => re.source + re.flags));
     for (const text of ["Die Ampel wird grün", "Preis pro Spieler 10", "Jeder hinterlegt eine Karte", "Anteil übernehmen", "Alles gut, Bracket erscheint", ZAHLUNGEN_AUS_HINWEIS + " ok"]) expect(smokeWorte(text)).toEqual(zahlungsWorte(text));
   });
@@ -98,14 +103,21 @@ describe("scripts/smoke.mjs --zahlungen-aus (beide Zahlungsschalter AUS)", () =>
     expect(sichtText(html("&amp;quot; &amp;amp; &amp;lt;b&amp;gt;")).trim()).toBe("&quot; &amp; &lt;b&gt;");
     expect(sichtText(html("Gr&uuml;&szlig;e &quot;x&quot; a&nbsp;b")).trim()).toBe("Grüße \"x\" a b");
   });
-  it("sichtText: nur Hauptbereich, keine Skripte und Tags", () => {
+  it("sichtText: Inhalt aus nachgeladenen Blöcken NACH </main> wird gelesen (Streaming), Kopfzeile und Skripte nicht", () => {
+    const seite = '<html><body><header>KOPFZEILE Menü</header><main><template id="P:5"></template><!--$--><!--/$--></main><footer>Fußzeile</footer><div hidden id="S:0"><h1>Datenschutz</h1><p>In Soccaz werden derzeit keine Zahlungen abgewickelt.</p></div><script>self.__next_f.push([1,"Zahlungswort Bezahlen"])</script></body></html>';
+    const text = sichtText(seite);
+    expect(text).toContain("In Soccaz werden derzeit keine Zahlungen abgewickelt.");
+    expect(text).not.toContain("KOPFZEILE");
+    expect(text).not.toContain("Bezahlen");
+  });
+  it("sichtText: Hauptbereich, keine Skripte und Tags", () => {
     expect(sichtText(html("A &amp; B <b>fett</b>")).trim()).toBe("A & B fett");
   });
 });
 
 describe("scripts/smoke.mjs --go-live (Rechtstexte)", () => {
   const seite = (body: string) => ({ status: 200, body: `<main>${body}</main>` });
-  const goLive = (impressum: string, datenschutz: string) => runSmoke({ base: "https://x.de", goLive: true, fetchImpl: fake({ "/impressum": seite(impressum), "/datenschutz": seite(datenschutz), "/agb": seite("AGB Entwurf ohne Marke") }) });
+  const goLive = (impressum: string, datenschutz: string, mitTatsache = true) => runSmoke({ base: "https://x.de", goLive: true, fetchImpl: fake({ "/impressum": seite(impressum), "/datenschutz": seite(mitTatsache ? `${datenschutz} ${SMOKE_TATSACHE}` : datenschutz), "/agb": seite("AGB Entwurf ohne Marke") }) });
   it("Platzhalter für Name, Anschrift oder E-Mail = FEHLER (Betreiberangaben fehlen)", async () => {
     for (const platzhalter of ["[PLATZHALTER: Name oder Firma des Betreibers]", "[PLATZHALTER: Anschrift des Betreibers (Straße, Postleitzahl, Ort)]", "[PLATZHALTER: E-Mail-Adresse des Betreibers]"]) {
       const r = await goLive(`Impressum ${platzhalter}`, "Datenschutz ok");
@@ -118,6 +130,14 @@ describe("scripts/smoke.mjs --go-live (Rechtstexte)", () => {
     const r = await goLive("Muster GmbH [PLATZHALTER: Umsatzsteuer-Identifikationsnummer, falls vorhanden]", "Aufsicht [PLATZHALTER: zuständige Datenschutzaufsichtsbehörde]");
     expect(r.ok).toBe(true);
     expect(r.results.filter((x: { what: string }) => x.what.includes("HINWEIS")).length).toBe(2);
+  });
+  it("Zahlungen AUS erkennbar: die Datenschutzerklärung nennt die Tatsache; ohne sie = FEHLER (Seite läuft nicht im vorgesehenen Modus)", async () => {
+    const mit = await goLive("Muster GmbH", "Verantwortlich: Muster GmbH");
+    expect(mit.ok).toBe(true);
+    expect(mit.results.some((x: { what: string; ok: boolean }) => x.what.startsWith("Go-live: Zahlungen AUS erkennbar") && x.ok)).toBe(true);
+    const ohne = await goLive("Muster GmbH", "Verantwortlich: Muster GmbH, Zahlungen über Stripe", false);
+    expect(ohne.ok).toBe(false);
+    expect(ohne.results.some((x: { what: string; ok: boolean }) => x.what.startsWith("Go-live: Zahlungen AUS erkennbar") && !x.ok)).toBe(true);
   });
   it("ein [ENTWURF …]-Satz (unbestätigte Rechtsaussage) = FEHLER", async () => {
     const r = await goLive("Muster GmbH", "Teilnahmegebühr [ENTWURF, vom Betreiber zu bestätigen: Soccaz verarbeitet dazu keine Daten.]");

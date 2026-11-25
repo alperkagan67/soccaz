@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { closeContexts, devLogin, newUser, run } from "./helpers";
 import { setPlatformSetting } from "./helpers-db";
-import { zahlungsWorte } from "@/lib/zahlungen-aus";
+import { ZAHLUNGEN_AUS_AGB_TEXT, ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Zahlungen AUS PR B Teil 1 (Go-live, Pflicht vor Freeze): Seiten, die ein Turnier-Nutzer als Gast, im Onboarding und angemeldet sieht, enthalten KEIN Zahlungswort (Wortliste src/lib/zahlungen-aus.ts,
 // inkl. title/aria-label/alt). Lobby- und Teamspiel-Seiten sind nachrangig und nicht Teil dieser Liste (Turnier-Modus sperrt sie ohnehin). Die Zahlungswort-Liste der Turnierseiten prüft zahlungen-aus-matrix.spec.ts.
@@ -54,6 +54,19 @@ test("Zahlungen AUS: Gast-Seiten ohne Zahlungswort", async ({ browser }) => {
   const funde: string[] = [];
   await scan(page, GAST_SEITEN, funde);
   expect(funde, funde.join("\n")).toEqual([]);
+});
+
+test("Zahlungen AUS: Datenschutz und AGB 3 zeigen genau den Nutzer-Wortlaut (ohne Marker), nur AGB 4 bleibt Entwurf", async ({ browser }) => {
+  const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  const ds = await sichtbarerText(await page.goto("/datenschutz").then(() => page));
+  expect(ds).toContain(ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT);
+  expect(ds).not.toContain("[ENTWURF");
+  await page.goto("/agb");
+  const agb = await sichtbarerText(page);
+  expect(agb).toContain("3. Teilnahmegebühr");
+  expect(agb).toContain(ZAHLUNGEN_AUS_AGB_TEXT);
+  expect(agb.split("[ENTWURF").length - 1, "nur AGB 4 ist Entwurf").toBe(1);
+  expect(agb).toContain("Absage und Abmeldung");
 });
 
 test("Zahlungen AUS: Onboarding (/willkommen) und angemeldete Seiten ohne Zahlungswort", async ({ browser }) => {

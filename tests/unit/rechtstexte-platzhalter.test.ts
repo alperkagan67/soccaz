@@ -69,7 +69,16 @@ describe("Rechtsseiten: keine erfundenen Rechtsangaben im Quelltext", () => {
     const ds = readFileSync("src/app/datenschutz/page.tsx", "utf8");
     expect(ds).toContain("PLATZHALTER.aufsicht");
     expect(ds).toContain("zahlungenAus");
-    expect(ds).toContain("[ENTWURF, vom Betreiber zu bestätigen: Soccaz verarbeitet dazu keine Daten.]"); // Rechtsaussage bleibt sichtbar als Entwurf, bis der Nutzer sie bestätigt
-    expect(ds).toMatch(/aus \? [\s\S]*Teilnahmegebühr/);
+    expect(ds).toContain("ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT"); // Wortlaut der Nutzer-Freigabe, kein Marker an diesem Punkt
+    expect(ds).not.toContain("[ENTWURF");
+    expect(ds).not.toContain("Teilnahmegebühr");
+    expect(ds).toMatch(/\{aus \? \(\s*<li>\{ZAHLUNGEN_AUS_DATENSCHUTZ_PUNKT\}<\/li>/); // bei AUS genau diese Zeile, sonst die Zeile mit dem Zahlungsdienstleister
+  });
+  it("AGB 3 bei AUS: genau der Nutzer-Wortlaut aus der Quelle, kein Marker", () => {
+    const agb = readFileSync("src/app/agb/page.tsx", "utf8");
+    expect(agb).toContain("{ZAHLUNGEN_AUS_AGB_TEXT}");
+    expect(agb).toContain("<h2>3. Teilnahmegebühr</h2>");
+    expect(agb).not.toMatch(/Nutzung von Soccaz ist kostenlos/); // der Satz steht nur in der Quelle (zahlungen-aus.ts), nicht mehr als Entwurf im Seitentext
+    expect(agb.match(/\[ENTWURF/g)?.length).toBe(1); // nur AGB 4 bleibt Entwurf
   });
 });
