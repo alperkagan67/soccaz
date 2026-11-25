@@ -109,7 +109,7 @@ export async function goalsThenAbpfiff(page: Page, m: OpenMatch, a: number, b: n
   const panel = page.getByTestId("end-match");
   await expect(panel.getByRole("button", { name: "Abpfiff", exact: true })).toHaveCount(1);
   await expect(page.getByTestId("manual-result")).not.toHaveAttribute("open", ""); // AC-30: die Handeingabe liegt eingeklappt darunter
-  if (a === b) await expect(page.getByTestId("end-match-draw")).toContainText("Siebenmeterschießen");
+  if (a === b) await expect(page.getByTestId("end-match-draw")).toContainText("Golden Goal oder Neunmeter");
   else await expect(page.getByTestId("end-match-draw")).toHaveCount(0);
   await panel.getByRole("button", { name: "Abpfiff", exact: true }).click();
   const dialog = confirmDialog(page);
@@ -131,13 +131,15 @@ export async function goalsThenAbpfiff(page: Page, m: OpenMatch, a: number, b: n
   await expectCleanPhonePage(page, "Spielseite nach dem Abpfiff");
 }
 
-/** Unentschieden im K.-o.-Spiel: Sieger des Siebenmeterschießens auf der Turnierseite eintragen. */
+/** Unentschieden im K.-o.-Spiel: Neunmeter-Sieger auf der Turnierseite eintragen (PR 1b: Pflichtauswahl, dann Rückfrage "Endgültig eintragen"). */
 export async function decideShootoutOnPage(page: Page, tid: string, m: OpenMatch, winnerName: string) {
   await page.goto(`/turniere/${tid}`);
   await page.waitForLoadState("networkidle");
-  const box = page.getByTestId("shootout").filter({ hasText: "Siebenmeterschießen" }).first();
+  const box = page.getByTestId("shootout").filter({ hasText: "Entscheidung eintragen" }).first();
   await expect(box).toBeVisible({ timeout: 30_000 });
-  await box.getByRole("button", { name: winnerName, exact: true }).click();
+  await box.getByLabel(`Neunmeter, Sieger ${winnerName}`, { exact: true }).check();
+  await box.getByRole("button", { name: "Entscheidung eintragen" }).click();
+  await confirmDialog(page).getByRole("button", { name: "Endgültig eintragen" }).click();
   await expect.poll(async () => (await query<{ w: string | null }>("select shootout_winner as w from tournament_matches where id = $1", [m.id]))[0].w, { timeout: 30_000 }).not.toBeNull();
 }
 

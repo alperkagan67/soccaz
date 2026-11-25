@@ -26,6 +26,8 @@ import { ScoreDialog } from "@/app/lobby/[id]/uebersicht/ScoreDialog";
 import { MatchPhotos } from "./MatchPhotos";
 import { StreamEmbed } from "./StreamEmbed";
 import { StreamForm } from "./StreamForm";
+import { TieBreakForm } from "@/app/turniere/[id]/TieBreakForm";
+import { tieOffenFuerSpiel } from "@/server/tiebreak-view";
 import { ConfirmPanel, DecidePanel, EndMatchPanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
 export async function generateMetadata({ params }: PageProps<"/spiele/[id]">): Promise<Metadata> {
@@ -65,6 +67,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
 
   // Abpfiff im Turnierspiel NUR fuer Veranstalter/Admin (Schiedsrichter, Endergebnis sofort endgueltig). Captains behalten ihr Formular (Felder sichtbar, Ergebnis melden, der Gegner bestaetigt): sonst lagen ihre Felder
   // eingeklappt und die E2E-Strecken der Captains fanden sie nicht (CI #387). So bleibt es bei einer Hauptaktion je Rolle.
+  const tieOffen = match.kind === "tournament" && Boolean(v?.canDecide) ? await tieOffenFuerSpiel(match.id) : null; // offener Gleichstand im K.-o.-Spiel: Entscheidung direkt auf der Spielseite (Veranstalter/Admin)
   const abpfiff = Boolean(v?.canRecord) && match.kind === "tournament" && !v?.mySide && Boolean(v?.canManage);
   return (
     <div className="space-y-4">
@@ -124,6 +127,11 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
 
       {/* Abpfiff im Turnierspiel: Veranstalter/Admin */}
       {abpfiff && v && <EndMatchPanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={goalsFromEvents.home} awayScore={goalsFromEvents.away} final={!v.mySide && v.canManage} />}
+      {tieOffen && (
+        <section className="card space-y-2" aria-label="Gleichstand" data-testid="tiebreak-spielseite">
+          <TieBreakForm tournamentId={tieOffen.tournamentId} tournamentMatchId={tieOffen.tournamentMatchId} teamA={tieOffen.teamA} teamB={tieOffen.teamB} nameA={tieOffen.nameA} nameB={tieOffen.nameB} score={tieOffen.score} />
+        </section>
+      )}
 
       {/* AC-30: eine Hauptaktion je Ansicht. Im Turnierspiel mit Abpfiff ist "Abpfiff" die Hauptaktion; die Eingabe von Hand liegt ruhig und eingeklappt darunter */}
       {abpfiff ? (
