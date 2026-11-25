@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { matches, users } from "@/db/schema";
 import { tournamentMatches, tournamentPlayers, tournamentTeams, tournaments } from "@/db/schema-league";
-import { createTournament, getTournament, setRosterComplete } from "@/server/tournaments";
+import { createTournament, decideTie, getTournament, setRosterComplete } from "@/server/tournaments";
 import { cleanup, makeTeam, makeUser } from "./helpers";
 
 // Spielplan 15 + 5 (Entscheid t2q 2026-11-27, Befund M2): Spielzeit (Standard 15) + Puffer (Standard 5) bestimmen den Slot; die Hallenzeit ist nur ein Fenster (Warnung). Vorher wurde der Slot aus der Hallenzeit
@@ -94,5 +94,37 @@ describe("Spielzeilen und Anzeige folgen Spielzeit + Puffer", () => {
     expect(v.schedule!.totalMinutes).toBe(35);
     expect(v.schedule!.overMinutes).toBe(5);
     expect(v.schedule!.blocks).toHaveLength(2);
+  });
+
+  it("Tafeluhr: beendete Spiele liefern playedIso, offene null; das Spaßspiel hat keins", async () => {
+    const { t } = await laufendes({ matchMinutes: 15, gapMinutes: 5, durationMin: 120 });
+    const vorher = (await getTournament(t.id, null))!;
+    const erstesGame = (v: typeof vorher) => v.schedule!.blocks[0].games.filter((g) => !g.fun);
+    expect(erstesGame(vorher).every((g) => g.playedIso === null)).toBe(true);
+    const gespielt = new Date("2026-12-12T13:07:00.000Z");
+    await db.update(tournamentMatches).set({ playedAt: gespielt }).where(eq(tournamentMatches.tournamentId, t.id));
+    const nachher = (await getTournament(t.id, null))!;
+    expect(erstesGame(nachher).every((g) => g.playedIso === gespielt.toISOString())).toBe(true);
+    const spass = nachher.schedule!.blocks.flatMap((b) => b.games).filter((g) => g.fun);
+    expect(spass.every((g) => g.playedIso === null)).toBe(true);
+  });
+
+  it("offener Gleichstand im K.-o. zählt NICHT als beendet; nach dem Tie-Break ist es beendet und played_at ist das Ende des Tie-Breaks", async () => {
+    const { org, t } = await laufendes({ matchMinutes: 15, gapMinutes: 5, durationMin: 120 });
+    const semis = await db.select().from(tournamentMatches).where(eq(tournamentMatches.tournamentId, t.id));
+    const halb = semis.filter((r) => r.stage === "ko:4");
+    expect(halb).toHaveLength(2);
+    const fruehes = new Date("2020-01-01T13:07:00.000Z"); // deutlich vor "jetzt"
+    // beide Halbfinals enden 1:1 (Ergebnis liegt vor, noch keine Entscheidung)
+    await db.update(tournamentMatches).set({ scoreA: 1, scoreB: 1, playedAt: fruehes }).where(eq(tournamentMatches.tournamentId, t.id));
+    const offen = (await getTournament(t.id, null))!;
+    expect(offen.schedule!.blocks[0].games.filter((g) => !g.fun).every((g) => g.playedIso === null)).toBe(true); // Gleichstand ohne Entscheidung: nicht beendet
+    const vor = Date.now();
+    await decideTie(org.id, t.id, halb[0].id, "gg", halb[0].teamA!);
+    await decideTie(org.id, t.id, halb[1].id, "9m", halb[1].teamB!);
+    const fertig = (await getTournament(t.id, null))!;
+    const spiele = fertig.schedule!.blocks[0].games.filter((g) => !g.fun);
+    expect(spiele.every((g) => g.playedIso !== null)).toBe(true);
+    expect(spiele.every((g) => new Date(g.playedIso!).getTime() >= vor - 1000)).toBe(true); // Ende des Tie-Breaks, nicht die Zeit des 1:1
   });
 });

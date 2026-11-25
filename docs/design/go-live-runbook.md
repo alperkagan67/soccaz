@@ -4,22 +4,55 @@ Stand: 2026-11-24 · Verfasser: worker-2 · Status: **Entwurf**, wird bei der St
 
 Plan: Code-Freeze Fr 27.11., Generalprobe auf Staging 30.11. bis 2.12., Go-live Do 3.12./Fr 4.12. (Puffer 5.12.), Turnier Sa 12.12. Zahlungen sind in Produktion **aus**; Anmeldung mit **Google und Apple** (Apple hinter `APPLE_LOGIN_ENABLED=1`; ohne den Schalter nur Google).
 
+**Anbieter (Nutzerentscheid 2026-11-25): Hetzner Cloud, Standort Nürnberg (NBG1), App und Postgres in Docker Compose auf einem Server; Domain `socaz.de` bleibt vorerst bei ALL-INKL (DNS dort). Hetzner-spezifische Einzelheiten (Firewall, Backups, Restore, Updates, Logs, Kosten, Domain-Umzug) stehen in Abschnitt 12.** Kein Agent bekommt Zugang: Server, Firewall, DNS und Google-Konsole richtet der Nutzer selbst ein.
+
 Jeder Schritt: **Befehl**, dann **Erwartet**. Stimmt es nicht: **stoppen und melden**, nicht weitermachen.
 
-## 1. Server einrichten (ca. 1 Std.)
-Server bestellen (Anbieter siehe Anbieter-Vorlage), Ubuntu 24.04, SSH-Schlüssel hinterlegen. Dann per SSH:
+## 1. Server einrichten auf Hetzner Cloud (ca. 1,5 Std., Nutzer)
+**1a Konto und Server** (Hetzner Cloud Console): Projekt „soccaz“ anlegen, Server bestellen: **Standort Nürnberg (NBG1, Deutschland)**, Image **Ubuntu 24.04**, Typ **Staging: CX23** (2 vCPU, 4 GB) und **Produktion: CX33** (4 vCPU, 8 GB; Größen und Preise: Abschnitt 12.1). Ist ein Typ beim Bestellen „nicht verfügbar“, dann **CPX22** (Anbieter-Vorlage). Beim Bestellen: **SSH-Schlüssel hochladen** (den *öffentlichen* Teil; erzeugt **mit Passphrase**; der private bleibt auf Ihrem Gerät), **Backups einschalten**, Namen `soccaz-staging` bzw. `soccaz-prod`.
+**1b Firewall** (Console, Firewalls, „soccaz-web“, dem Server zuweisen): **eingehend nur TCP 22, 80 und 443** (IPv4 und IPv6; 22 wenn möglich nur von Ihrer festen Adresse), alles andere gesperrt, **insbesondere 5432 (Postgres)**; ausgehend alles erlaubt. Die Firewall liegt **vor** dem Server und ist der Schutz: Docker veröffentlicht Ports am Server-Programm `ufw` vorbei.
+**1c Docker** (per SSH als `root`, einmalig):
 ```
-sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2 git
+apt-get update && apt-get install -y docker.io docker-compose-v2 git unattended-upgrades
+systemctl enable --now docker
 docker compose version
 ```
-Erwartet: eine Versionszeile (Compose 2.x). Firewall: nur Ports 22, 80, 443 offen.
+Erwartet: eine Versionszeile (Compose 2.x).
+**1d Arbeitskonto statt root** (einmalig, als `root`):
+```
+adduser --disabled-password --gecos "" deploy
+usermod -aG sudo,docker deploy
+mkdir -p /home/deploy/.ssh && cp /root/.ssh/authorized_keys /home/deploy/.ssh/ && chown -R deploy:deploy /home/deploy/.ssh && chmod 700 /home/deploy/.ssh && chmod 600 /home/deploy/.ssh/authorized_keys
+echo "deploy ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/deploy && chmod 440 /etc/sudoers.d/deploy
+```
+**Wichtig:** `deploy` hat **sudo ohne Passwort** und ist in der Gruppe `docker` (das ist **root-gleich**). Der einzige Schutz ist Ihr **SSH-Schlüssel**: ihn **mit Passphrase** erzeugen (`ssh-keygen -t ed25519`, die Passphrase eingeben, nicht leer lassen) und den privaten Teil nie kopieren oder versenden.
+**1e SSH absichern** (nur mit Schlüssel, kein root): **erst in einem zweiten Fenster prüfen, dass `ssh deploy@<Server-IP>` funktioniert**, dann als `root`:
+```
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/; s/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+sshd -t && systemctl restart ssh
+sshd -T | grep -E "^(passwordauthentication|permitrootlogin)"
+```
+Erwartet: `passwordauthentication no` und `permitrootlogin no`. (Setzt eine Datei unter `/etc/ssh/sshd_config.d/` den Wert anders, ändern Sie dort denselben Eintrag.) Ab jetzt nur noch als `deploy`.
+**1f Protokolle begrenzen** (sonst füllen Docker-Logs irgendwann die Platte), als `deploy`. **Nur auf einem frischen Server:** der Befehl **überschreibt** `/etc/docker/daemon.json`; gibt es die Datei schon (`cat /etc/docker/daemon.json`), die beiden Einträge dort **zusammenführen** statt zu überschreiben.
+```
+echo '{"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"3"}}' | sudo tee /etc/docker/daemon.json
+sudo systemctl restart docker
+```
+(gilt für **neu angelegte** Container: der Start in Schritt 4 legt sie an; wer schon gestartet hat, ergänzt `docker compose up -d --force-recreate`.)
+**1g Sicherheitsupdates:** `systemctl is-enabled unattended-upgrades` muss `enabled` zeigen; **kein automatischer Neustart** (Kernel-Updates werden bei einem geplanten Neustart wirksam, Abschnitt 12.5).
 
-## 2. Domain und HTTPS (TLS)
-Bei Ihrem Domain-Anbieter einen **A-Eintrag** `socaz.de` (und `www`, falls gewünscht) auf die Server-IP setzen; Staging bekommt eine eigene Adresse (z. B. `staging.socaz.de`). Caddy holt das HTTPS-Zertifikat **selbst**, sobald die Domain auf den Server zeigt.
+## 2. Domain, DNS bei ALL-INKL und HTTPS (TLS)
+Die Domain `socaz.de` bleibt **vorerst bei ALL-INKL**; die A-Einträge setzen Sie dort in den **DNS-Einstellungen der Domain** (Kundenmenü „KAS“; die Menünamen können abweichen). **Reihenfolge: `staging.socaz.de` ZUERST, `socaz.de` erst nach dem Go/No-Go (Mi 2.12.).**
+1. **Staging:** A-Eintrag `staging` auf die **IPv4-Adresse des Staging-Servers**.
+2. **Produktion (erst nach Go/No-Go):** A-Eintrag `socaz.de` (der „Hauptname“, in KAS oft leer oder `@`) auf die IPv4-Adresse des Produktionsservers. **`www` nicht anlegen:** Caddy bedient nur die Adresse aus `SITE_ADDRESS` (kein `www`, kein Zertifikat dafür); eine Weiterleitung steht im Backlog.
+3. **TTL auf 300 Sekunden senken, mindestens 24 Stunden VOR dem Go-live** (der alte, längere Wert gilt sonst noch so lange in den Zwischenspeichern); nach ruhigem Betrieb (nach dem 12.12.) wieder auf 3600 oder mehr.
+4. **E-Mail nicht anfassen:** A-Einträge berühren `MX`, `SPF`, `DKIM` nicht; **diese Einträge nie ändern oder löschen**. **Ausnahme-Hinweis Google-Domain-Bestätigung:** die Search Console verlangt einen **zusätzlichen** `TXT`-Eintrag (Google-Bestätigungswert) an der Hauptdomain: als **neuen** Eintrag anlegen, den vorhandenen `SPF`-`TXT`-Eintrag **nie überschreiben oder zusammenführen**. Nach jeder DNS-Änderung eine Testmail an eine Adresse der Domain schicken und von dort antworten.
+5. **Kein AAAA-Eintrag** (IPv6) vorerst: weniger Fehlerquellen; Hetzner vergibt zwar eine IPv6-Adresse, Caddy und die Firewall würden sie aber ebenfalls bedienen müssen.
+Caddy holt das HTTPS-Zertifikat **selbst**, sobald die Adresse auf den Server zeigt **und** die Ports 80 und 443 in der Firewall offen sind (Schritt 1b).
 ```
-nslookup socaz.de
+nslookup staging.socaz.de
 ```
-Erwartet: die Server-IP. (Warten Sie bei Abweichung, DNS braucht Minuten bis Stunden; zu früh starten erzeugt nur Zertifikatsfehler, kein Schaden.)
+Erwartet: die Server-IP. (Warten Sie bei Abweichung, DNS braucht Minuten bis Stunden; zu früh starten erzeugt nur Zertifikatsfehler, kein Schaden.) Für Staging gilt `SITE_ADDRESS=staging.socaz.de` und `APP_URL=https://staging.socaz.de` (Schritt 3).
 **Reihenfolge Rechtstexte (Pflicht): Schritt 3 UND 4 (git clone, `.env` mit `OPERATOR_*`, Start) vor dem A-Eintrag, Schritt 5 Prüfpunkt 1 (Staging-Probe mit denselben `OPERATOR_*`-Werten) davor, Prüfpunkt 2 danach.** So ist die Seite nie mit Platzhalter-Impressum unter der echten Adresse erreichbar. Nach dem A-Eintrag folgt Prüfpunkt 2 (Schritt 5) **vor** der Bekanntgabe der Adresse.
 
 ## 3. Code holen und Einstellungen anlegen
@@ -146,7 +179,7 @@ Das **Apple-Client-Secret läuft ab** (Apple erlaubt höchstens 6 Monate). **Ern
 ## 7. Sicherung (Backup) und Wiederherstellungsprobe
 - Läuft automatisch: täglich 03:30 UTC, 14 Tage in `./backups`. Sofort: `docker compose exec backup sh /backup-loop.sh once`; Erwartet: neue Datei `backups/socaz-…sql.gz`.
 - **Vor dem Go-live einmal** die Wiederherstellung testen: `sh scripts/restore-test.sh`; Erwartet: Zahlen für Tabellen und Nutzer, kein Fehler.
-- Zusätzlich Sicherungen **außerhalb** des Servers ablegen und die Server-Backups des Anbieters einschalten.
+- **Zweites Ziel (Hetzner Storage Box), Server-Backup und Wiederherstellungsprobe mit Skript: Abschnitt 12.3 und 12.4.**
 
 ## 8. Rollback (zurück auf den vorigen Stand)
 ```
@@ -158,7 +191,7 @@ Erwartet: Smoke-Test (Schritt 5) wieder grün. **Datenbankänderungen gehen nur 
 ## 9. Update im Betrieb
 **Vorprüfung vor dem Deploy der Spielplan-Änderung (Spielzeit 15 + Puffer 5):** laufende Altturniere würden einen anderen Plan anzeigen als ihre Spielzeilen. Auf dem Server (zeigt nur eine Zahl):
 ```
-docker compose exec -T db psql -U socaz -d socaz -c "select count(*) from tournaments where bracket_generated_at is not null and status = 'running'"
+docker compose exec -T db psql -U socaz -d socaz -c "select count(*) from tournaments where bracket_generated_at is not null and status in ('running', 'payment')"
 ```
 Erwartet: `0`. Bei mehr: nicht deployen, melden (Turnier zu Ende spielen lassen oder auf Staging neu aufsetzen).
 
@@ -196,3 +229,75 @@ Erwartet: je Team eine Zeile „… 5 Konten, im Turnier angemeldet und bereit�
 ### 11.3 Team zieht zurück
 - **Vor dem Start des Brackets** (Gratis-Turnier): das Team wird **entfernt** (Captain: „Team abmelden“ in der Turnierseite, oder der **Veranstalter** nimmt es heraus; nach dem **Anmeldeschluss** kann der Veranstalter keine Teams mehr ersetzen, dann **„Anmeldung schließen“**, damit mit den angemeldeten Teams, mindestens 4, gespielt wird). Erwartet: das Team steht nicht mehr in der Liste, die übrigen Teams sehen es; im Audit „tournament.withdraw“.
 - **Nach dem Start des Brackets** gibt es **keine Abmeldung mehr** („Nach dem Start ist keine Abmeldung mehr möglich“). Zieht ein Team dann zurück: für **kommende** Spiele **Kampflos werten** (11.2); bereits gespielte Spiele bleiben stehen.
+
+## 12. Betrieb auf Hetzner Cloud (Nutzerentscheid 2026-11-25)
+Alle Preise **netto** aus den öffentlichen Hetzner-Seiten, Abruf 2026-11-24/25; sie ändern sich, vor der Bestellung auf der Seite prüfen. Angaben, die ich nicht belegen konnte, sind als „vor der Bestellung prüfen“ markiert.
+
+### 12.1 Server und Kosten
+| Posten | Staging (`soccaz-staging`) | Produktion (`soccaz-prod`) | Quelle |
+|---|---|---|---|
+| Typ | **CX23**: 2 vCPU, 4 GB, 40 GB NVMe, **5,99 €/Monat** | **CX33**: 4 vCPU, 8 GB, 80 GB NVMe, **8,99 €/Monat** (Größe laut `groesse-turnier-12-12.md`: 4 vCPU/8 GB für den Turnierzeitraum) | hetzner.com/cloud/cost-optimized |
+| Standort | NBG1 (Nürnberg) | NBG1 (Nürnberg) | gleiche Seite: CX23/CX33 in NBG1 und HEL1 gelistet |
+| Ausweichtyp | CPX22 (2 vCPU, 4 GB, 80 GB): 19,99 € (NBG1) | CPX22 | hetzner.com/cloud/regular-performance |
+| Server-Backup (täglich, 7 Plätze) | ab 1,098 €/Monat | ab 1,098 €/Monat | wie oben („Backups, ab“; Prozentsatz nicht angegeben) |
+| Snapshot (manuell) | 0,0143 €/GB/Monat | 0,0143 €/GB/Monat | wie oben |
+| Storage Box **BX11** (1 TB, zweites Ziel der Datenbank-Sicherung) | 3,20 €/Monat netto, keine Mindestlaufzeit, Standort Deutschland wählbar | (eine Box für beide Server genügt) | hetzner.com/storage/storage-box |
+| Öffentliche IPv4 | laut Hetzner-Doku 0,50 €/Monat netto: **vor der Bestellung prüfen**, ob im Serverpreis enthalten | dto. | docs.hetzner.com |
+**Rechnung (Mindestsumme, netto, ohne IPv4 und Snapshots):** 5,99 + 8,99 + 2 × 1,10 + 3,20 ≈ **20,40 €/Monat**. Die Typen CX23/CAX11/CX33 zeigten auf der Seite „currently unavailable“ (Stand 2026-11-24): bei der Bestellung prüfen, sonst CPX22. Größe ändern geht (kurzer Neustart): nur für die Turniertage größer, danach zurück.
+
+### 12.2 Netz: nur 22, 80, 443; Postgres nie öffentlich
+Prüfung auf dem Server (zeigt nur Zeilen zu den Ports):
+```
+docker compose ps
+sudo ss -ltnp | grep -E ':(5432|3000)\b' || echo "kein Postgres/App-Port am Server offen"
+```
+Erwartet: im `docker compose ps` hat `db` **keine** veröffentlichte Adresse (`5432/tcp` ohne `0.0.0.0`), `app` ebenfalls nicht (nur `caddy` zeigt 80/443); die zweite Zeile meldet „kein Postgres/App-Port am Server offen“. **Von außen** (von Ihrem Rechner): `nc -vz <Server-IP> 5432` muss **abbrechen/timeout**, `nc -vz <Server-IP> 443` verbunden. Uptime Kuma (optional) lauscht nur auf `127.0.0.1:3001`.
+
+### 12.3 Sicherungen: drei Ebenen
+1. **Hetzner-Server-Backup** (täglich, 7 Plätze): in der Console beim Server „Backups“ einschalten. Das ist eine Kopie der ganzen Platte (absturzkonsistent), kein Ersatz für 2.
+2. **Täglicher `pg_dump`** (Compose-Dienst `backup`, 03:30 UTC, 14 Tage in `~/soccaz/backups`, mit Manifest): Schritt 7.
+3. **Zweites Ziel: Hetzner Storage Box** (unabhängig vom Server). Einrichtung (Nutzer, einmalig):
+   - In der Hetzner-Konsole eine **Storage Box BX11** bestellen, **Standort Deutschland**, in den Einstellungen **„SSH Support“ einschalten** (aktiviert den Zugang auf **Port 23**; Port 22 kann nur SFTP/SCP; rsync läuft über SSH auf Port 23, laut Hetzner-Doku, bei der Einrichtung prüfen).
+   - Auf dem Server einen **eigenen Schlüssel** nur dafür: `ssh-keygen -t ed25519 -f ~/.ssh/storagebox_ed25519 -N ""`; den öffentlichen Teil bei der Storage Box hinterlegen (Hetzner-Doku „Storage Box: SSH-Schlüssel“, Port 23, Befehl `install-ssh-key`). Einmal von Hand verbinden, um den Server-Fingerabdruck zu bestätigen: `ssh -p 23 -i ~/.ssh/storagebox_ed25519 uXXXXXX@uXXXXXX.your-storagebox.de ls` (**`uXXXXXX` ist ein Platzhalter für Ihren Benutzernamen**; nie in Chat oder Repository).
+   - Das Skript (auf dem Server, nicht im Repository):
+```
+sudo tee /usr/local/bin/soccaz-offsite.sh >/dev/null <<'EOF'
+#!/bin/sh
+# Spiegelt die Sicherungen auf die Hetzner Storage Box (zweites Ziel). Nur Zielname und Schluesseldatei stehen hier, keine Passwoerter.
+set -eu
+SRC="/home/deploy/soccaz/backups/"
+DEST="uXXXXXX@uXXXXXX.your-storagebox.de:soccaz-backups/"
+KEY="/home/deploy/.ssh/storagebox_ed25519"
+# nie spiegeln, wenn lokal nichts liegt oder die neueste Sicherung aelter als 26 Stunden ist (sonst loescht --delete die gute Kopie auf der Box und es wuerde ein stehender Dump gespiegelt)
+NEUESTE="$(ls -1t "$SRC"socaz-*.sql.gz 2>/dev/null | head -1)"
+[ -n "$NEUESTE" ] || { echo "[offsite] keine lokalen Sicherungen: abgebrochen"; exit 1; }
+[ -n "$(find "$NEUESTE" -mmin -1560)" ] || { echo "[offsite] neueste Sicherung ist aelter als 26 Stunden: abgebrochen"; exit 1; }
+rsync -a --delete -e "ssh -p 23 -i $KEY -o StrictHostKeyChecking=yes" "$SRC" "$DEST"
+echo "[offsite] ok $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+EOF
+sudo chmod 755 /usr/local/bin/soccaz-offsite.sh
+(crontab -l 2>/dev/null | grep -v soccaz-offsite.sh; echo '45 3 * * * /usr/local/bin/soccaz-offsite.sh >> /home/deploy/offsite.log 2>&1') | crontab -   # idempotent: ein zweiter Aufruf legt keinen doppelten Eintrag an
+/usr/local/bin/soccaz-offsite.sh
+```
+   Erwartet: `[offsite] ok <Zeit>`; in der Box liegen `soccaz-backups/socaz-…sql.gz` und `….manifest.json`. Der Auftrag läuft täglich um 03:45 UTC, **nach** dem Dump um 03:30. Die Box hält zusätzlich **Snapshots** (laut Hetzner-Seite bis zu 10 manuelle und 10 automatische Plätze bei BX11): einen **täglichen automatischen Snapshot** in der Console einschalten, damit eine versehentlich gelöschte Sicherung wiederkommt. Nach dem Einrichten **am nächsten Tag** prüfen: `tail -3 ~/offsite.log`.
+
+### 12.4 Wiederherstellungsprobe (Skript)
+Auf **Ihrem Rechner mit Postgres** (nicht auf dem Server; die Probe rührt keine echte Datenbank an). **Eigener Schlüssel für den Rechner** (der Server-Schlüssel `storagebox_ed25519` verlässt den Server nie): einmalig `ssh-keygen -t ed25519 -f ~/.ssh/storagebox_rechner_ed25519` (mit Passphrase) und den öffentlichen Teil **zusätzlich** bei der Storage Box hinterlegen (wie in 12.3); später lässt er sich einzeln wieder entfernen.
+```
+mkdir -p ~/soccaz-restore
+rsync -a -e "ssh -p 23 -i ~/.ssh/storagebox_rechner_ed25519" uXXXXXX@uXXXXXX.your-storagebox.de:soccaz-backups/ ~/soccaz-restore/
+ls -1 ~/soccaz-restore | tail -4
+RESTORE_ADMIN_URL=postgres://<konto>@127.0.0.1:5432/postgres node scripts/restore-test.mjs ~/soccaz-restore/socaz-<zeit>.sql.gz
+```
+Erwartet: die neueste Datei ist **jünger als 26 Stunden**; das Skript meldet die Prüfungen (Einspielen, Tabellen gegen das Manifest, Summe der Buchungen, Beweiskette) mit `PASS` (Einzelheiten und Optionen: `BETRIEB.md`, „Restore-Probe“). **Vor dem Go-live einmal, danach monatlich.** Im Ernstfall: neuen Server aus dem **Hetzner-Backup** oder einem Snapshot erstellen (Console, Server, Backups, „Server aus Backup erstellen“) **oder** frischen Server nach Schritt 1 bis 4 aufbauen und die Sicherung einspielen (`BETRIEB.md`, „Wiederherstellen in die echte Datenbank“).
+
+### 12.5 Updates, Neustart, Protokolle
+- **Neustart-Verhalten:** Alle Dienste laufen mit `restart: unless-stopped`, Docker startet beim Hochfahren selbst. **Probe einmal vor dem Go-live** (Generalprobe Di 1.12. abends): `sudo reboot`, nach 2 Minuten `docker compose ps` (alle `running`, `migrate` beendet), Smoke-Test (Schritt 5). Erwartet: alles grün ohne Eingriff.
+- **System-Updates:** Sicherheitsupdates laufen automatisch (`unattended-upgrades`), ein Neustart nie von selbst. **Kernel-Updates** werden mit einem **geplanten Neustart** wirksam: den letzten Neustart **Mo 7.12.** einplanen, in der Turnierwoche (7. bis 13.12.) **keine Neustarts außer bei Störung**.
+- **App-Update:** Abschnitt 9; vorher Server-Snapshot (Console) und eine Sicherung (`docker compose exec backup sh /backup-loop.sh once`).
+- **Protokolle:** `docker compose logs --tail 200 app`; live `docker compose logs -f --since 10m app`. Die Größe ist begrenzt (Schritt 1f: je 3 Dateien à 10 MB). **Platte prüfen:** `df -h /` (Warnung ab 80 %), `docker system df`. Fehler und Erreichbarkeit: `SENTRY_DSN` und optional Uptime Kuma (`BETRIEB.md`, Überwachung).
+
+### 12.6 Domain-Umzug (Empfehlung: erst nach dem 12.12.)
+- **Kein Domain-Umzug** (AuthInfo-Code, Wechsel zu einem anderen Anbieter) **vor dem 12.12.**: ein Umzug kann DNS und E-Mail kurz stören, genau in der heißen Phase. Bis dahin bleibt `socaz.de` bei ALL-INKL, nur die A-Einträge zeigen auf Hetzner.
+- **Danach:** erst den Umzug durchführen, dann **E-Mail prüfen** (Postfächer, Weiterleitungen, `MX`/`SPF`/`DKIM` unverändert, Testmail hin und zurück), und **erst dann ALL-INKL kündigen**. Vor der Kündigung alle Postfächer und Weiterleitungen exportieren oder dokumentieren.
+- **TTL:** vor dem Go-live auf 300 Sekunden (Schritt 2), nach ruhigem Betrieb zurück.
