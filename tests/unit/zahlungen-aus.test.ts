@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
+import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGEN_AUS_TATSACHE, ZAHLUNGSWORTE, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Modus "Zahlungen AUS" (Go-live-Paket): zentraler Hinweissatz und Wortliste für die Zustand-Matrix-Tests. Der Schalter selbst: tests/integration/zahlungen-aus.test.ts.
 describe("Hinweissatz", () => {
@@ -45,5 +45,14 @@ describe("zahlungsWorte: verbotene Wörter im Modus Zahlungen AUS", () => {
   for (const text of ERLAUBT) it(`trifft NICHT: ${text}`, () => expect(zahlungsWorte(text)).toEqual([]));
   it("der Hinweissatz wird herausgerechnet, ein verbotenes Wort daneben trifft weiterhin", () => {
     expect(zahlungsWorte(`${ZAHLUNGEN_AUS_HINWEIS} Die Ampel wird grün.`)).toEqual([ZAHLUNGSWORTE[0].source]);
+  });
+});
+
+describe("Tatsache bei Zahlungen AUS", () => {
+  it("lautet genau so, zählt selbst nicht als Zahlungswort, ein Zahlungswort daneben trifft weiterhin", () => {
+    expect(ZAHLUNGEN_AUS_TATSACHE).toBe("In Soccaz werden derzeit keine Zahlungen abgewickelt.");
+    expect(zahlungsWorte(ZAHLUNGEN_AUS_TATSACHE)).toEqual([]);
+    expect(zahlungsWorte(`${ZAHLUNGEN_AUS_TATSACHE} Bezahlen mit Karte.`).length).toBeGreaterThan(0);
+    expect(zahlungsWorte("Es werden Zahlungen abgewickelt.").length).toBeGreaterThan(0); // ohne den festen Satz bleibt "Zahlung" verboten
   });
 });

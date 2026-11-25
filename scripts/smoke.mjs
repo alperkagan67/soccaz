@@ -14,6 +14,7 @@ const TIMEOUT_MS = 15_000;
 
 // Kopie der Wortliste aus src/lib/zahlungen-aus.ts (dieses Skript läuft ohne Build, reines Node); tests/unit/smoke-script.test.ts hält beide Listen gleich.
 export const ZAHLUNGEN_AUS_HINWEIS = "Die Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.";
+export const ZAHLUNGEN_AUS_TATSACHE = "In Soccaz werden derzeit keine Zahlungen abgewickelt."; // Kopie aus src/lib/zahlungen-aus.ts (Test hält sie gleich)
 export const ZAHLUNGSWORTE = [/\bampel\b/i, /\bso läuft es ab\b/i, /preis pro spieler/i, /hallenkosten/i, /\bkarten?\b/i, /abbuchung|abgebucht|abbuch/i, /bezahl/i, /zahlungspflicht/i, /\bpreis\b/i, /zahlung(?!en aus)/i, /\d\s*(€|eur)/i, /treuhand/i, /\banteil übernehmen\b/i]; // gleich der Quelle src/lib/zahlungen-aus.ts (Test smoke-script.test.ts)
 const FUSSBALL_KARTEN = /\b(?:gelbe[nr]?|rote[nr]?)\s+karten?\b|\btore und karten\b/gi; // keine Zahlungskarten
 
@@ -21,11 +22,14 @@ const FUSSBALL_KARTEN = /\b(?:gelbe[nr]?|rote[nr]?)\s+karten?\b|\btore und karte
 const ENTITAET_ZEICHEN = { amp: "&", auml: "ä", ouml: "ö", uuml: "ü", Auml: "Ä", Ouml: "Ö", Uuml: "Ü", szlig: "ß", quot: "\"", "#x27": "'", "#39": "'", nbsp: " ", lt: "<", gt: ">" };
 const ENTITAETEN = /&(amp|auml|ouml|uuml|Auml|Ouml|Uuml|szlig|quot|#x27|#39|nbsp|lt|gt);/g;
 
-/** Sichtbarer Text einer HTML-Seite (Hauptbereich, ohne Skripte, Stile, Tags). */
+/**
+ * Sichtbarer Text einer HTML-Seite: ab dem Hauptbereich bis zum Ende (ohne Kopfzeile, ohne Skripte, Stile, Vorlagen, Tags). WICHTIG: Seiten mit nachgeladenem Inhalt (Streaming, "Partial Prerender") liefern im
+ * <main> nur eine leere Hülle (<template>); der eigentliche Text steht in versteckten Blöcken NACH </main> (<div hidden id="S:n">). Nur <main> zu lesen war ein falsches Grün (Befund Datenschutz, Produktions-Build).
+ */
 export function sichtText(html) {
-  const main = /<main[\s>][\s\S]*?<\/main>/i.exec(html);
-  return (main ? main[0] : html)
-    .replace(/<(script|style|noscript)[\s\S]*?<\/\1\s*>/gi, " ")
+  const ab = html.search(/<main[\s>]/i);
+  return (ab >= 0 ? html.slice(ab) : html)
+    .replace(/<(script|style|noscript|template)[\s\S]*?<\/\1\s*>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(ENTITAETEN, (_m, name) => ENTITAET_ZEICHEN[name] ?? " ")
     .replace(/\s+/g, " ");
@@ -33,7 +37,7 @@ export function sichtText(html) {
 
 /** Welche verbotenen Zahlungswörter stehen im Text? (Hinweissatz und Fußball-Karten zählen nicht.) */
 export function zahlungsWorte(text) {
-  const rein = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ").replace(FUSSBALL_KARTEN, " ");
+  const rein = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ").split(ZAHLUNGEN_AUS_TATSACHE).join(" ").replace(FUSSBALL_KARTEN, " ");
   return ZAHLUNGSWORTE.filter((re) => re.test(rein)).map((re) => re.source);
 }
 
@@ -107,6 +111,8 @@ export async function runSmoke({ base, turnierOnly = false, apple = false, zahlu
       try {
         const res = await fetchImpl(root + pfad, { headers, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS) });
         const text = sichtText(await res.text());
+        // Zahlungen AUS erkennbar: die Datenschutzerklärung nennt die Tatsache nur im Modus AUS (beide Schalter aus); ohne sie läuft die Seite nicht im vorgesehenen Modus
+        if (pfad === "/datenschutz") results.push({ path: pfad, what: "Go-live: Zahlungen AUS erkennbar (Datenschutz: keine Zahlungen werden abgewickelt)", ok: res.status === 200 && text.includes(ZAHLUNGEN_AUS_TATSACHE), detail: "die Datenschutzerklärung nennt die Tatsache nicht (Zahlungen nicht AUS, oder Text fehlt)" });
         if (res.status !== 200) results.push({ path: pfad, what: "Go-live: Rechtstext erreichbar", ok: false, detail: `Status ${res.status} statt 200` });
         else if (ENTWURF_MARKE.test(text)) results.push({ path: pfad, what: "Go-live: Rechtsaussagen bestätigt", ok: false, detail: "enthält noch einen [ENTWURF …]-Satz (Bestätigung durch den Nutzer fehlt)" });
         else if (BETREIBER_PLATZHALTER.test(text)) results.push({ path: pfad, what: "Go-live: Betreiberangaben eingetragen", ok: false, detail: "enthält noch [PLATZHALTER …] für Name, Anschrift oder E-Mail (OPERATOR_NAME, OPERATOR_ADDRESS, OPERATOR_EMAIL setzen)" });

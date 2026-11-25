@@ -4,6 +4,8 @@
 
 /** Hinweis statt jeder Zahlungsinformation (ENTWURF, keine Rechtsaussage; Wortlaut nach Rechtsprüfung). */
 export const ZAHLUNGEN_AUS_HINWEIS = "Die Teilnahmegebühr regelt der Veranstalter außerhalb von Soccaz.";
+/** Prüfbare Tatsache bei Zahlungen AUS (beide Schalter aus): steht in der Datenschutzerklärung; der Smoke (--go-live) erkennt daran, dass die Produktion im Modus AUS läuft. Zählt nicht als Zahlungswort. */
+export const ZAHLUNGEN_AUS_TATSACHE = "In Soccaz werden derzeit keine Zahlungen abgewickelt.";
 
 /**
  * Wörter, die im Modus "Zahlungen AUS" in sichtbaren Texten der Turnier-Nutzer NICHT vorkommen dürfen (Wortscan der Matrix-Tests). Bewusst Wortstämme, groß-/kleinschreibungsunabhängig.
@@ -30,6 +32,6 @@ const FUSSBALL_KARTEN = /\b(?:gelbe[nr]?|rote[nr]?)\s+karten?\b|\btore und karte
 
 /** Welche verbotenen Zahlungswörter stehen im Text? (Leere Liste = sauber; der Hinweissatz und Fußball-Karten zählen nicht.) */
 export function zahlungsWorte(text: string): string[] {
-  const ohneHinweis = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ").replace(FUSSBALL_KARTEN, " ");
+  const ohneHinweis = text.split(ZAHLUNGEN_AUS_HINWEIS).join(" ").split(ZAHLUNGEN_AUS_TATSACHE).join(" ").replace(FUSSBALL_KARTEN, " ");
   return ZAHLUNGSWORTE.filter((re) => re.test(ohneHinweis)).map((re) => re.source);
 }

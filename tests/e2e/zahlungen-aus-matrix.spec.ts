@@ -1,7 +1,7 @@
 import { expect, test, type Browser } from "@playwright/test";
 import { closeContexts, devLogin, run, seedUser } from "./helpers";
 import { query, setPlatformSetting } from "./helpers-db";
-import { ZAHLUNGEN_AUS_HINWEIS, zahlungsWorte } from "@/lib/zahlungen-aus";
+import { ZAHLUNGEN_AUS_HINWEIS, ZAHLUNGEN_AUS_TATSACHE, zahlungsWorte } from "@/lib/zahlungen-aus";
 
 // Zustand-Matrix Zahlungen AUS/AN × Preis 0/>0 (Go-live-Paket a, Entscheid t2q 2026-11-24): Im Modus AUS steht auf den Seiten der Turnier-Nutzer KEIN Zahlungswort (Wortscan über die gerenderte Seite:
 // Ampel, "So läuft es ab", Preis pro Spieler, Hallenkosten, Karte, Abbuchung, bezahl…, Treuhand), im Modus AN bleibt alles wie bisher (Gegenprobe gegen eine zu weit gehende Unterdrückung).
@@ -75,7 +75,7 @@ for (const preis of [0, 8000]) {
     expect(zahlungsWorte(s.datenschutz), "Datenschutz").toEqual([]);
     expect(zahlungsWorte(s.impressum), "Impressum").toEqual([]);
     expect(s.datenschutz).not.toContain("Stripe");
-    expect(s.datenschutz).toContain(ZAHLUNGEN_AUS_HINWEIS);
+    expect(s.datenschutz).toContain(ZAHLUNGEN_AUS_TATSACHE); // Datenschutz nennt nur die prüfbare Tatsache (der Gebühren-Satz ist zurückgestellt)
     expect(s.impressum).toContain("Angaben gemäß § 5 DDG");
     expect(s.hilfe).toContain(ZAHLUNGEN_AUS_HINWEIS);
     expect(s.liste).toContain(ZAHLUNGEN_AUS_HINWEIS);

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { LegalPage } from "@/components/LegalPage";
 import { Feld, Platzhalter } from "@/components/LegalPlatzhalter";
 import { appleLoginAktiv, operatorFelder, PLATZHALTER } from "@/lib/legal";
-import { ZAHLUNGEN_AUS_HINWEIS } from "@/lib/zahlungen-aus";
+import { ZAHLUNGEN_AUS_TATSACHE } from "@/lib/zahlungen-aus";
 import { zahlungenAus } from "@/server/zahlungen-aus";
 
 export const metadata: Metadata = { title: "Datenschutz" };
@@ -32,7 +32,7 @@ export default async function DatenschutzPage() {
           </li>
           <li>Spielbetrieb: Teams, Mitgliedschaften, Lobbys, Ergebnisse, Tore, gelbe und rote Karten, Statistiken, Abzeichen und Bewertungen.</li>
           {aus ? (
-            <li>Teilnahmegebühr: {ZAHLUNGEN_AUS_HINWEIS} <Platzhalter>[ENTWURF, vom Betreiber zu bestätigen: Soccaz verarbeitet dazu keine Daten.]</Platzhalter></li>
+            <li>{ZAHLUNGEN_AUS_TATSACHE}</li>
           ) : (
             <li>Zahlungen: Buchungen, Belege. Zahlungsdaten (z. B. Kartennummern) verarbeitet ausschließlich der Zahlungsdienstleister Stripe, nicht wir.</li>
           )}
