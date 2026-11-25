@@ -94,6 +94,15 @@ test("Turniertag mit 6 Teams: Anlegen, neuer Nutzer über Link, Bracket ohne Kli
   const m2 = (await nextOpen(tid))!;
   await goalsThenAbpfiff(orgPage, m2, 0, 0);
   await expect.poll(async () => (await query<{ score_a: number | null }>("select score_a from tournament_matches where id = $1", [m2.id]))[0].score_a, { timeout: 30_000 }).toBe(0);
+  // Regression Demo 27.11.: das 0:0 bleibt OFFEN, niemand rückt weiter, der Gast sieht den Hinweis, das Turnier läuft weiter
+  const [tmOffen] = await query<{ feeds_match_id: string | null; decided_by: string | null }>("select feeds_match_id, decided_by from tournament_matches where id = $1", [m2.id]);
+  expect(tmOffen.decided_by).toBeNull();
+  const [folge] = await query<{ team_a: string | null; team_b: string | null }>("select team_a, team_b from tournament_matches where id = $1", [tmOffen.feeds_match_id]);
+  expect(folge.team_a === m2.team_a || folge.team_b === m2.team_a || folge.team_a === m2.team_b || folge.team_b === m2.team_b).toBe(false);
+  expect((await query<{ status: string }>("select status from tournaments where id = $1", [tid]))[0].status).toBe("running");
+  const gastOffen = await phonePage(browser);
+  await gastOffen.goto(`/turniere/${tid}?t=${token}`); // das Turnier ist privat (Formular): Gast mit Einladungslink
+  await expect(gastOffen.getByTestId("tiebreak-offen").first()).toContainText("Unentschieden", { timeout: 30_000 });
   await decideTieOnMatchPage(orgPage, m2, m2.nb); // Spielseite nach dem Abpfiff: Golden Goal für das zweite Team (Plan 0:1, Sieger rückt weiter); Neunmeter am Bracket deckt turnier-tiebreak.spec ab
 
   // Captains melden: das nächste Spiel melden die beiden Captains selbst (melden, der Gegner bestätigt; Abpfiff gibt es für Captains nicht)
