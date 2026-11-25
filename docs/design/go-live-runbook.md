@@ -45,7 +45,7 @@ Die Domain `socaz.de` bleibt **vorerst bei ALL-INKL**; die A-Einträge setzen Si
 1. **Staging:** A-Eintrag `staging` auf die **IPv4-Adresse des Staging-Servers**.
 2. **Produktion (erst nach Go/No-Go):** A-Eintrag `socaz.de` (der „Hauptname“, in KAS oft leer oder `@`) auf die IPv4-Adresse des Produktionsservers. **`www` nicht anlegen:** Caddy bedient nur die Adresse aus `SITE_ADDRESS` (kein `www`, kein Zertifikat dafür); eine Weiterleitung steht im Backlog.
 3. **TTL auf 300 Sekunden senken, mindestens 24 Stunden VOR dem Go-live** (der alte, längere Wert gilt sonst noch so lange in den Zwischenspeichern); nach ruhigem Betrieb (nach dem 12.12.) wieder auf 3600 oder mehr.
-4. **E-Mail nicht anfassen:** A-Einträge berühren `MX`, `SPF`, `DKIM` nicht; **diese Einträge nie ändern oder löschen**. Nach jeder DNS-Änderung eine Testmail an eine Adresse der Domain schicken und von dort antworten.
+4. **E-Mail nicht anfassen:** A-Einträge berühren `MX`, `SPF`, `DKIM` nicht; **diese Einträge nie ändern oder löschen**. **Ausnahme-Hinweis Google-Domain-Bestätigung:** die Search Console verlangt einen **zusätzlichen** `TXT`-Eintrag (Google-Bestätigungswert) an der Hauptdomain: als **neuen** Eintrag anlegen, den vorhandenen `SPF`-`TXT`-Eintrag **nie überschreiben oder zusammenführen**. Nach jeder DNS-Änderung eine Testmail an eine Adresse der Domain schicken und von dort antworten.
 5. **Kein AAAA-Eintrag** (IPv6) vorerst: weniger Fehlerquellen; Hetzner vergibt zwar eine IPv6-Adresse, Caddy und die Firewall würden sie aber ebenfalls bedienen müssen.
 Caddy holt das HTTPS-Zertifikat **selbst**, sobald die Adresse auf den Server zeigt **und** die Ports 80 und 443 in der Firewall offen sind (Schritt 1b).
 ```
