@@ -110,7 +110,17 @@ export default async function TournamentPage({ params, searchParams }: PageProps
       {t.status === "cancelled" && (
         <p className="card text-sm" data-testid="cancelled-note">Dieses Turnier wurde abgesagt.</p>
       )}
-      {!user && (inRegistration || inPayment) && (
+      {inRegistration && data.deadlinePassed && (
+        <div className="card space-y-1 text-sm" data-testid="anmeldung-geschlossen">
+          <p className="font-semibold">{manage ? "Der Anmeldeschluss ist vorbei. Du kannst jetzt starten oder das Turnier absagen." : "Die Anmeldung ist geschlossen."}</p>
+          {!user && (
+            <p className="text-muted">
+              Du bist schon mit deinem Team im Turnier? <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${tokenQuery}`)}`} className="inline-flex min-h-11 items-center text-accent-fg underline">Anmelden und zu deinem Team</Link>
+            </p>
+          )}
+        </div>
+      )}
+      {!user && (inRegistration || inPayment) && !(inRegistration && data.deadlinePassed) && (
         <Link href={`/anmelden?next=${encodeURIComponent(`/turniere/${t.id}${tokenQuery}`)}`} className="btn btn-primary w-full">Anmelden und mitmachen</Link>
       )}
       {!user && <KontoHinweis />}
@@ -132,7 +142,7 @@ export default async function TournamentPage({ params, searchParams }: PageProps
         <p className="card text-sm" data-testid="venue-declined-team">Die Halle kann das Turnier nicht ausrichten. Der Veranstalter wählt eine andere Halle oder sagt das Turnier ab.</p>
       )}
       {venueOptions && <TournamentVenuePick tournamentId={t.id} options={venueOptions} declinedCode={declined && declinedCode ? DECLINE_LABELS[declinedCode] : null} />}
-      {v && v.registerableTeams.length > 0 && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} aus={aus && noMoney} noMoney={noMoney} token={t.isPrivate && data.tokenOk ? token : null} />}
+      {v && v.registerableTeams.length > 0 && !data.deadlinePassed && <RegisterForm tournamentId={t.id} teams={v.registerableTeams} aus={aus && noMoney} noMoney={noMoney} token={t.isPrivate && data.tokenOk ? token : null} />}
       {v && data.registrationOpen && !v.isOrganizer && !v.captainTeamId && !v.myTeamId && v.registerableTeams.length === 0 && v.joinableTeamIds.length === 0 && (
         <section className="card space-y-2" data-testid="no-team-hint">
           <p className="text-sm">Du hast kein Team, das sich anmelden kann. Gründe ein Team, danach kommst du direkt hierher zurück und meldest es an.</p>

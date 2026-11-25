@@ -68,7 +68,8 @@ describe("TURNIER_ONLY=1: Gast und Spieler gesperrt, Plattform-Admin darf alles"
     const org = await makeUser("torg");
     const admin = await makeUser("tadm2", "admin");
     await setOrganizer(admin.id, org.id, true);
-    const t = await createTournament(org.id, { name: "Gate-Cup", city: "Essen", startsAt: new Date(Date.now() + 5 * 86_400_000), registrationDeadline: new Date(Date.now() + 3 * 86_400_000), maxTeams: 4, durationMin: 120, hourlyCents: 8000 } as Parameters<typeof createTournament>[1]);
+    const jetzt = Date.now(); // EINE Uhr und kein Randwert: Start minus Anmeldeschluss = 3 Tage, nicht genau 48 Stunden (zwei Date.now() liegen Millisekunden auseinander)
+    const t = await createTournament(org.id, { name: "Gate-Cup", city: "Essen", startsAt: new Date(jetzt + 6 * 86_400_000), registrationDeadline: new Date(jetzt + 3 * 86_400_000), maxTeams: 4, durationMin: 120, hourlyCents: 8000 } as Parameters<typeof createTournament>[1]);
     await db.insert(tournamentMatches).values([
       { tournamentId: t.id, stage: "ko:2", round: 1, slot: 0, matchId: turnier.match.id },
       { tournamentId: t.id, stage: "ko:2", round: 2, slot: 0, matchId: nurLink.match.id },
