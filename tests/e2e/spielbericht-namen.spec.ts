@@ -62,7 +62,8 @@ test("Spielbericht je Rolle: Torschütze und Spieler des Spiels als Initialen f�
   await expect(gast.getByTestId("mvp-winner").getByRole("link")).toHaveCount(0);
   await expect(gast.locator("ol").getByTestId("person-name")).toHaveText(["ZV", "ZV"]); // Spielverlauf: je Torschütze Initialen, ohne Link
   await expect(gast.locator("ol").getByRole("link")).toHaveCount(0);
-  await expect(gast.locator("ol")).toContainText("Unbekannt");
+  await expect(gast.locator("ol")).not.toContainText("Unbekannt"); // Tor ohne Schütze heißt nur "Tor" (Sichtung N4)
+  await expect(gast.locator("ol")).toContainText("Tor");
   const g = await rohdaten(gast, url);
   expect(g.html, "die Initialen stehen im Gast-HTML (sonst ist die Prüfung leer)").toContain(">ZV<");
   expect(g.rsc, "die RSC-Nutzlast enthält die Seite").toContain("Spielverlauf");

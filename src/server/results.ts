@@ -127,6 +127,7 @@ export async function getMatchPage(matchId: string, viewer?: Viewer | null) {
           id: viewer.id,
           platformAdmin,
           canManage,
+          tournamentOrganizer,
           mySide,
           membership,
           canUploadPhoto: started && match.status !== "cancelled" && participants.some((p) => p.userId === viewer.id),

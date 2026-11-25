@@ -18,7 +18,7 @@ import {
   setRosterComplete,
   withdrawTeam,
 } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 afterAll(cleanup);
 
@@ -61,7 +61,7 @@ type Squad = Awaited<ReturnType<typeof squad>>;
 async function squad(tid: string, size = 4, complete = false) {
   const captain = await makeUser("cap");
   const team = await makeTeam(captain.id, "Turnier");
-  await registerTeam(captain.id, tid, team.id);
+  await registerTeam(captain.id, tid, team.id, await tokenOf(tid));
   const players = [captain];
   for (let i = 1; i < size; i++) {
     const p = await makeUser("pl");
@@ -96,17 +96,16 @@ describe("Turnier anlegen", () => {
     expect((await createTournament(admin.id, base)).organizerId).toBe(admin.id); // Plattform-Admins dürfen immer
   });
 
-  it("Bracket sehen alle, Kader, Zahlungen und Einladungslink privater Turniere nur Eingeweihte", async () => {
+  it("Privates Turnier: nur Veranstalter, Admin, Mitglieder angemeldeter Teams und wer den Token hat sehen es; öffentliche Turniere alle", async () => {
     const o = await organizer();
     const t = await newTournament(o);
     const stranger = await makeUser("fremd");
     const sq0 = await squad(t.id, 4);
     for (const viewer of [null, { id: stranger.id, role: "player" as const }]) {
-      const v = await getTournament(t.id, viewer, "falscher-token");
-      expect(v).not.toBeNull(); // Zuschauer
-      expect(v?.tournament.inviteToken).toBeNull();
-      expect(v?.teams.every((x) => x.players.length === 0)).toBe(true);
-      expect(v?.viewer?.registerableTeams ?? []).toEqual([]);
+      // kein Zuschauer-Modus mehr (PR 3): fehlender oder falscher Token = NICHTS, genau wie bei einem unbekannten Turnier
+      expect(await getTournament(t.id, viewer, "falscher-token")).toBeNull();
+      expect(await getTournament(t.id, viewer)).toBeNull();
+      expect(await getTournament(t.id, viewer, "")).toBeNull();
     }
     expect((await getTournament(t.id, { id: sq0.players[1].id, role: "player" }))?.teams.some((x) => x.players.length > 0)).toBe(true);
     expect(await getTournament(t.id, { id: stranger.id, role: "player" }, t.inviteToken)).not.toBeNull();
@@ -126,11 +125,11 @@ describe("Beitritt: ein Captain pro Team, Spieler über die Teamlogik", () => {
     const cap = await makeUser("cap");
     const team = await makeTeam(cap.id, "Regel");
     const outsider = await makeUser("out");
-    await expect(registerTeam(outsider.id, t.id, team.id)).rejects.toThrow(/Team-Admins/);
-    await registerTeam(cap.id, t.id, team.id);
-    await expect(registerTeam(cap.id, t.id, team.id)).rejects.toThrow(/schon angemeldet/);
+    await expect(registerTeam(outsider.id, t.id, team.id, await tokenOf(t.id))).rejects.toThrow(/Team-Admins/);
+    await registerTeam(cap.id, t.id, team.id, await tokenOf(t.id));
+    await expect(registerTeam(cap.id, t.id, team.id, await tokenOf(t.id))).rejects.toThrow(/schon angemeldet/);
     const second = await makeTeam(cap.id, "Zweites");
-    await expect(registerTeam(cap.id, t.id, second.id)).rejects.toThrow(/schon in einem anderen Team/); // ein Captain, ein Team
+    await expect(registerTeam(cap.id, t.id, second.id, await tokenOf(t.id))).rejects.toThrow(/schon in einem anderen Team/); // ein Captain, ein Team
 
     await expect(joinAsPlayer(outsider.id, t.id, team.id)).rejects.toThrow(/Mitglieder des Teams/);
     const p = await makeUser("pl");
@@ -151,7 +150,7 @@ describe("Beitritt: ein Captain pro Team, Spieler über die Teamlogik", () => {
     await squad(t.id, 4);
     const late = await makeUser("late");
     const lateTeam = await makeTeam(late.id, "Zuspät");
-    await expect(registerTeam(late.id, t.id, lateTeam.id)).rejects.toThrow(/voll/);
+    await expect(registerTeam(late.id, t.id, lateTeam.id, await tokenOf(t.id))).rejects.toThrow(/voll/);
   });
 
   it("nach dem Anmeldeschluss geht keine Anmeldung mehr", async () => {
@@ -160,7 +159,7 @@ describe("Beitritt: ein Captain pro Team, Spieler über die Teamlogik", () => {
     await db.update(tournaments).set({ registrationDeadline: new Date(Date.now() - 1000) }).where(eq(tournaments.id, t.id));
     const cap = await makeUser("cap");
     const team = await makeTeam(cap.id, "Spät");
-    await expect(registerTeam(cap.id, t.id, team.id)).rejects.toThrow(/Anmeldeschluss/);
+    await expect(registerTeam(cap.id, t.id, team.id, await tokenOf(t.id))).rejects.toThrow(/Anmeldeschluss/);
   });
 });
 

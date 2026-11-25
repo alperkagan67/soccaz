@@ -16,7 +16,7 @@ import { confirmResult, decideResult, disputeResult, submitResult } from "@/serv
 import { setSetting } from "@/server/settings";
 import { cancelTournament, closeTournamentsAtDeadline, closeWithJoinedTeams, createTournament, decideShootout, getTournament, joinAsPlayer, leavePlayer, registerTeam, reopenRosters, setDrawRandom, setOrganizer, setPaidReady, setRosterComplete, withdrawTeam } from "@/server/tournaments";
 import { takeOverTournamentShare } from "@/server/tournament-card";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // 012 M6b b2-i Teil 2, Paket 1: Karten-Gegenstücke zu den Guthaben-Tests von tournament.test.ts (Bracket, Ergebnisse, Ansicht). Der Altpfad (payEntry, Auszahlung) wird in b2-ii gelöscht;
 // hier steht, was bleibt: das Bracket entsteht genau einmal NACH der Abbuchung aller Spieler und dem Bereit aller Teams, die Ergebnisse führen weiter, der Veranstalter bekommt KEIN Preisgeld
@@ -56,7 +56,7 @@ type Squad = Awaited<ReturnType<typeof squad>>;
 async function squad(tid: string, size = 4, complete = true) {
   const captain = await makeUser("cap");
   const team = await makeTeam(captain.id, "Turnier");
-  await registerTeam(captain.id, tid, team.id);
+  await registerTeam(captain.id, tid, team.id, await tokenOf(tid));
   const players = [captain];
   for (let i = 1; i < size; i++) {
     const p = await makeUser("pl");
@@ -343,11 +343,8 @@ describe("Turnier im Kartenmodell: Kader und Bereit", () => {
     await setPaidReady(a.captain.id, t.id);
     const stranger = await makeUser("fremd");
     for (const viewer of [null, { id: stranger.id, role: "player" as const }]) {
-      const v = await getTournament(t.id, viewer, "falscher-token");
-      for (const team of v!.teams) {
-        expect(team.paidReady).toBe(false);
-        expect(JSON.stringify(team)).not.toContain("paidReadyAt");
-      }
+      expect(await getTournament(t.id, viewer, "falscher-token")).toBeNull(); // privates Turnier: Fremde sehen nichts (PR 3)
+      expect(await getTournament(t.id, viewer)).toBeNull(); // der frühere Zuschauer-Modus (ohne Zahlungsstand) entfällt: ohne Zugang gibt es gar keine Sicht
     }
     const member = await getTournament(t.id, { id: a.players[1].id, role: "player" });
     expect(member!.teams.find((x) => x.teamId === a.team.id)!.paidReady).toBe(true);

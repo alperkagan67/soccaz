@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { matches, matchResults } from "@/db/schema";
 import { tournamentMatches, tournamentTeams, tournaments } from "@/db/schema-league";
 import { advanceFromMatch, getTournament, maybeGenerateBracket } from "@/server/tournaments";
-import { cleanup, makeTeam, makeUser } from "./helpers";
+import { cleanup, makeTeam, makeUser, tokenOf } from "./helpers";
 
 // Turnierseite bei Freilosen (Teamzahl keine Zweierpotenz): kein Absturz, Plan und Zeilen passen zusammen, jede Paarung mit beiden Teams hat ein Spiel mit Startzeit aus dem Plan.
 // Durch den Server-Pfad: maybeGenerateBracket (knockout, insertFixtures, createGames) und getTournament (Gast und Veranstalter).
@@ -47,7 +47,7 @@ describe("Turnierseite mit Freilosen", () => {
         }
       }
       // jede Paarung mit beiden Teams ist ein echtes Spiel mit der Startzeit des Plan-Blocks
-      const view = (await getTournament(t.id, null))!;
+      const view = (await getTournament(t.id, null, await tokenOf(t.id)))!;
       const blockStarts = new Set(view.schedule!.blocks.map((b) => b.startIso));
       const ready = rows.filter((r) => r.teamA && r.teamB);
       expect(ready.length).toBeGreaterThan(0);
@@ -78,7 +78,7 @@ describe("Freilos-Weitergabe bis zum Finale", () => {
       expect(after.winnerTeamId, "genau ein Sieger").not.toBeNull();
       const final = rows.find((r) => r.stage === "ko:2")!;
       expect(after.winnerTeamId).toBe(final.scoreA! > final.scoreB! ? final.teamA : final.teamB);
-      expect((await getTournament(t.id, null))!.winner).not.toBeNull();
+      expect((await getTournament(t.id, null, await tokenOf(t.id)))!.winner).not.toBeNull();
     });
   }
 });

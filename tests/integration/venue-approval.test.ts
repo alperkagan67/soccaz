@@ -273,7 +273,8 @@ describe("Fehlzustand: angefragte Halle ist aktiv (CHECK entfernt), jeder Leser 
       const org = await makeUser("vorg");
       const admin = await makeUser("vadm", "admin");
       await setOrganizer(admin.id, org.id, true);
-      const base = { name: "Freigabe-Cup", city: CITY, startsAt: new Date(Date.now() + 5 * 86_400_000), registrationDeadline: new Date(Date.now() + 3 * 86_400_000), maxTeams: 4, durationMin: 120, hourlyCents: 8000 };
+      const jetzt = Date.now(); // EINE Uhr und kein Randwert: Start minus Anmeldeschluss = 3 Tage, nicht genau 48 Stunden (zwei Date.now() liegen Millisekunden auseinander)
+      const base = { name: "Freigabe-Cup", city: CITY, startsAt: new Date(jetzt + 6 * 86_400_000), registrationDeadline: new Date(jetzt + 3 * 86_400_000), maxTeams: 4, durationMin: 120, hourlyCents: 8000 };
       const asUnknown = await createTournament(org.id, { ...base, venueId: UNKNOWN }).then(() => "ok", (e: Error) => e.message);
       const asRequested = await createTournament(org.id, { ...base, venueId: v.id }).then(() => "ok", (e: Error) => e.message);
       expect(asRequested).not.toBe("ok");

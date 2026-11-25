@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import type { ActionState } from "@/lib/validation";
 
 /** Einzelner Knopf für eine Server-Aktion ohne Formularfelder, optional mit Rückfrage. */
-export function ActionButton({ action, label, className = "btn btn-ghost !min-h-9 !px-3 text-xs", confirm, thenGo }: { action: () => Promise<ActionState>; label: string; className?: string; confirm?: string; thenGo?: string }) {
+export function ActionButton({ action, label, className = "btn btn-ghost !min-h-11 !px-3 text-xs", confirm, thenGo }: { action: () => Promise<ActionState>; label: string; className?: string; confirm?: string; thenGo?: string }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
   return (

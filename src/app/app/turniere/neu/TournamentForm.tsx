@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FieldError, SubmitButton } from "@/components/FormBits";
 import { anmeldeschlussVorschlag } from "@/lib/anmeldeschluss";
 import { planFits, planMinutesForTeams } from "@/lib/tournament";
@@ -24,6 +24,11 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
     const bloecke = Math.round((dauer + plan.gap) / (plan.slot + plan.gap));
     return { dauer, halle, overMinutes, reine: bloecke * plan.slot };
   })();
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  // Fehler ohne Feldbezug (z. B. Anmeldeschluss nach dem Beginn) stehen unter dem Knopf: ins Bild holen, sonst sieht ihn der Veranstalter auf dem Handy nicht
+  useEffect(() => {
+    if (state?.error) errorRef.current?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, [state]);
   return (
     <form
       action={formAction}
@@ -76,7 +81,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
         <label className="label" htmlFor="venueText">Spielort</label>
         <input id="venueText" name="venueText" className="field" maxLength={120} placeholder="Halle und Adresse" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="startsAt">Termin (Beginn)</label>
           <input
@@ -111,7 +116,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
           <label className="label" htmlFor="matchMinutes">Spielzeit pro Spiel (Minuten)</label>
           <input id="matchMinutes" name="matchMinutes" type="number" min={5} max={90} defaultValue={15} className="field" />
         </div>
-        <div>
+        <div className="col-span-2">
           <label className="label" htmlFor="gapMinutes">Puffer zwischen den Spielen (Minuten)</label>
           <input id="gapMinutes" name="gapMinutes" type="number" min={GAP_MIN_MINUTEN} max={GAP_MAX_MINUTEN} step={1} defaultValue={GAP_STANDARD_MINUTEN} className="field" required />
           <p className="mt-1 text-xs text-muted" data-testid="gap-hint">Zeit zwischen zwei Spielen, um das nächste Team einzuwechseln. {tieBreakHinweis(plan.gap)}</p>
@@ -141,7 +146,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
         </div>
         </>
       )}
-      <label className="flex items-start gap-3 text-sm">
+      <label className="flex min-h-11 items-start gap-3 text-sm">
         <input type="checkbox" name="public" className="mt-1 size-5 accent-accent" />
         <span>
           <span className="block font-semibold">Öffentlich in der Turnierliste zeigen</span>
@@ -150,7 +155,7 @@ export function TournamentForm({ min, defaultCity, standardHourly, commission, p
       </label>
       <SubmitButton pending={pending}>Turnier anlegen</SubmitButton>
       {!free && <p className="text-xs text-muted" data-testid="organizer-hint">{ZP.hintOrganizer}</p>}
-      {state?.error && !Object.keys(fe).length && <p className="error" role="alert">{state.error}</p>}
+      {state?.error && !Object.keys(fe).length && <p ref={errorRef} className="error" role="alert" tabIndex={-1}>{state.error}</p>}
     </form>
   );
 }

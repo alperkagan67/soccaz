@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { matchParticipants, matches, teamMembers, teams } from "@/db/schema";
 import { matchmakingQueue } from "@/db/schema-matchmaking";
 import { effectiveColorKey } from "@/lib/team-color";
+import { zahlungenAus } from "./zahlungen-aus";
 
 export type MyGame = {
   kind: "game";
@@ -46,6 +47,7 @@ export async function myCurrent(userId: string): Promise<{ games: MyGame[]; open
   const adminOf = new Set(
     (await db.select({ teamId: teamMembers.teamId }).from(teamMembers).where(and(eq(teamMembers.userId, userId), eq(teamMembers.role, "admin")))).map((r) => r.teamId),
   );
+  const aus = await zahlungenAus();
   const games: MyGame[] = rows.map((m) => {
     const captain = adminOf.has(m.homeId) || adminOf.has(m.awayId);
     const phase =
@@ -57,7 +59,7 @@ export async function myCurrent(userId: string): Promise<{ games: MyGame[]; open
             ? "Die Hallen werden angefragt"
             : m.vetoStatus === "running"
               ? captain ? "Hallen-Veto läuft: Der Captain bannt" : "Hallen-Veto läuft"
-              : m.status === "confirmed" ? "Spiel ist angesetzt, Halle wird gebucht" : "Bereit machen und bezahlen";
+              : m.status === "confirmed" ? "Spiel ist angesetzt, Halle wird gebucht" : aus ? "Bereit machen" : "Bereit machen und bezahlen"; // Zahlungen AUS: kein Bezahl-Text (Gesamt-Wortscan)
     return { kind: "game", id: m.id, number: m.number, home: m.homeName, away: m.awayName, homeColor: m.homeKind === "team" ? effectiveColorKey(m.homeColor, m.homeSlug) : null, awayColor: m.awayKind === "team" ? effectiveColorKey(m.awayColor, m.awaySlug) : null, startsAt: m.startsAt, timeOpen: m.schedulingOpen, phase, captain, confirmed: m.status === "confirmed" };
   });
   const open = await db

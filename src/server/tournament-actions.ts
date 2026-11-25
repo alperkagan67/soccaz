@@ -79,7 +79,7 @@ export async function forfeitMatchAction(tournamentId: string, tournamentMatchId
 }
 
 export async function registerTeamAction(tournamentId: string, _prev: ActionState, f: FormData): Promise<ActionState> {
-  return touch(tournamentId, (uid) => registerTeam(uid, tournamentId, str(f, "teamId")));
+  return touch(tournamentId, (uid) => registerTeam(uid, tournamentId, str(f, "teamId"), str(f, "token") || null));
 }
 export async function joinAsPlayerAction(tournamentId: string, teamId: string): Promise<ActionState> {
   return touch(tournamentId, (uid) => joinAsPlayer(uid, tournamentId, teamId));

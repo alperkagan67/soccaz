@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ActionButton } from "@/components/ActionButton";
 import { PlayerLight } from "@/components/PlayerLight";
 import { MIN_READY_PER_TEAM } from "@/lib/lobby-rules";
+import { zahlungenAus } from "@/server/zahlungen-aus";
 import { formatDateTime } from "@/lib/time";
 import { InviteBox } from "@/app/teams/[slug]/InviteBox";
 import { leaveQueueAction, openLobbyJoinAction } from "@/server/matchmaking-actions";
@@ -18,6 +19,7 @@ export const metadata: Metadata = { title: "Offene Lobby", robots: { index: fals
 
 /** Übersicht der eigenen offenen Lobby: Das Team mit allen Plätzen, wer schon beigetreten ist, Einladungslink und Warten auf einen Gegner. */
 export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/[entryId]">) {
+  const aus = await zahlungenAus();
   const { entryId } = await params;
   const user = await getCurrentUser();
   const lobby = await getOpenLobby(entryId, user?.id ?? null);
@@ -89,7 +91,7 @@ export default async function OpenLobbyPage({ params }: PageProps<"/lobby/offen/
           </div>
         )}
         {isMember && (
-          <p className="text-xs text-muted">Bezahlen und Bereitmachen geht, sobald ein Gegner da ist und Uhrzeit und Halle feststehen. Nur wenn alle bezahlt haben, können alle auf Bereit drücken. Mindestens {MIN_READY_PER_TEAM} Spieler brauchst du für ein Spiel.</p>
+          <p className="text-xs text-muted">{aus ? "Bereitmachen geht, sobald ein Gegner da ist und Uhrzeit und Halle feststehen." : "Bezahlen und Bereitmachen geht, sobald ein Gegner da ist und Uhrzeit und Halle feststehen. Nur wenn alle bezahlt haben, können alle auf Bereit drücken."} Mindestens {MIN_READY_PER_TEAM} Spieler brauchst du für ein Spiel.</p>
         )}
       </section>
 

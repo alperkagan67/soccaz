@@ -12,6 +12,9 @@ import { listMatchPhotos } from "@/server/media";
 import { matchPhotosEnabled } from "@/lib/media-flags";
 import { RatingReveal } from "@/components/RatingReveal";
 import { getRatingReveal } from "@/server/rating-reveal";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { matches } from "@/db/schema";
 import { canViewMatch, getMatchPage } from "@/server/results";
 import { KommtBald } from "@/components/KommtBald";
 import { spielGesperrt } from "@/server/turnier-only";
@@ -25,7 +28,12 @@ import { StreamEmbed } from "./StreamEmbed";
 import { StreamForm } from "./StreamForm";
 import { ConfirmPanel, DecidePanel, EndMatchPanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
-export const metadata: Metadata = { title: "Spiel" };
+export async function generateMetadata({ params }: PageProps<"/spiele/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  // Spiele, die nicht öffentlich sind (alle Turnierspiele, auch die privater Turniere), werden von Suchmaschinen nicht aufgenommen; der Link bleibt teilbar. Kein Spiel bekannt: Standard.
+  const [m] = /^[0-9a-f-]{36}$/i.test(id) ? await db.select({ visibility: matches.visibility }).from(matches).where(eq(matches.id, id)) : [];
+  return m && m.visibility !== "public" ? { title: "Spiel", robots: { index: false, follow: false } } : { title: "Spiel" };
+}
 
 const EVENT_LABEL = { goal: "Tor", yellow_card: "Gelbe Karte", red_card: "Rote Karte" } as const;
 const EVENT_TONE = { goal: "bg-accent", yellow_card: "bg-card-yellow", red_card: "bg-card-red" } as const;
@@ -60,6 +68,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
   const abpfiff = Boolean(v?.canRecord) && match.kind === "tournament" && !v?.mySide && Boolean(v?.canManage);
   return (
     <div className="space-y-4">
+      <h1 className="sr-only">{match.homeName} gegen {match.awayName}</h1>
       <header className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted">{formatDateTime(match.startsAt)} Uhr · {match.durationMin} Min{match.venueText ? ` · ${match.venueText}` : ""}</p>
@@ -159,7 +168,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
       )}
 
       {v?.canDecide && (
-        <DecidePanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} disputeReason={result?.disputeReason} />
+        <DecidePanel matchId={match.id} home={match.homeName} away={match.awayName} homeScore={result?.homeScore ?? goalsFromEvents.home} awayScore={result?.awayScore ?? goalsFromEvents.away} disputeReason={result?.disputeReason} organizer={Boolean(v?.tournamentOrganizer)} />
       )}
 
       {page.mvp && (
@@ -196,7 +205,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
                 <span className="w-9 text-right tabular-nums text-muted">{e.minute !== null && e.minute !== undefined ? `${e.minute}'` : ""}</span>
                 <span className={`size-2.5 rounded-full ${EVENT_TONE[e.type]}`} aria-hidden />
                 <span>
-                  <strong>{EVENT_LABEL[e.type]}</strong> {e.userId && e.scorer ? <PersonName person={personRef(sicht, e.userId, e.scorer, i)} /> : (e.scorer ? autorLabel(e.scorer, sicht) : "Unbekannt")} <span className="text-muted">({teamName(e.teamId)})</span>
+                  <strong>{EVENT_LABEL[e.type]}</strong> {e.userId && e.scorer ? <PersonName person={personRef(sicht, e.userId, e.scorer, i)} /> : (e.scorer ? autorLabel(e.scorer, sicht) : null)} <span className="text-muted">({teamName(e.teamId)})</span>
                 </span>
               </li>
             ))}

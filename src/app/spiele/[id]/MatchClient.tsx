@@ -199,7 +199,7 @@ export function ConfirmPanel({ matchId, summary, deadlineText }: { matchId: stri
   );
 }
 
-export function DecidePanel({ matchId, home, away, homeScore, awayScore, disputeReason }: { matchId: string; home: string; away: string; homeScore: number; awayScore: number; disputeReason?: string | null }) {
+export function DecidePanel({ matchId, home, away, homeScore, awayScore, disputeReason, organizer = false }: { matchId: string; home: string; away: string; homeScore: number; awayScore: number; disputeReason?: string | null; organizer?: boolean }) {
   const { error, pending, run } = useRun();
   const hydrated = useHydrated(); // Klick vor der Hydration wäre ein GET mit Torständen und Begründung in der Adresse
   const [h, setH] = useState(String(homeScore));
@@ -216,7 +216,7 @@ export function DecidePanel({ matchId, home, away, homeScore, awayScore, dispute
         run(() => decideResultAction(matchId, Number(h), Number(a), reason));
       }}
     >
-      <h2 className="font-semibold text-ink">Plattform-Entscheidung</h2>
+      <h2 className="font-semibold text-ink">{organizer ? "Veranstalter-Entscheidung" : "Plattform-Entscheidung"}</h2>
       {disputeReason && <p className="text-sm text-muted">Widerspruch: „{disputeReason}“</p>}
       <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
         <div>
@@ -281,13 +281,13 @@ export function NoShowList({ matchId, players, selfId }: { matchId: string; play
   const { error, pending, run } = useRun();
   return (
     <details className="card space-y-2">
-      <summary className="cursor-pointer font-semibold">Nicht erschienen markieren</summary>
+      <summary className="flex min-h-11 cursor-pointer items-center font-semibold">Nicht erschienen markieren</summary>
       <p className="mt-2 text-xs text-muted">Nur sichtbar für Team-Admins. Das fließt in die private Zuverlässigkeit ein und lässt sich innerhalb von 7 Tagen zurücknehmen.</p>
       <ul className="space-y-2">
         {players.filter((p) => p.userId !== selfId).map((p) => (
           <li key={p.userId} className="flex items-center justify-between gap-2 text-sm">
             <span className={p.noShow ? "text-ink line-through" : ""}>{p.name}</span>
-            <button className="btn btn-ghost !min-h-9 !px-3 text-xs" disabled={pending} onClick={() => run(() => markNoShowAction(matchId, p.userId, !p.noShow))}>
+            <button className="btn btn-ghost !min-h-11 !px-3 text-xs" disabled={pending} onClick={() => run(() => markNoShowAction(matchId, p.userId, !p.noShow))}>
               {p.noShow ? "Doch da" : "Nicht erschienen"}
             </button>
           </li>
