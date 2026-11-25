@@ -17,7 +17,7 @@ Stand: 2026-11-24 · Verfasser: worker-2 · Status: **Entwurf**, Auftrag t2q/t2s
 ## 2. Zeitplan
 | Tag | Wer | Was |
 |---|---|---|
-| **vor Mo 30.11. (bis So 29.11.)** | [N] | **Anbieter bestellen** (Anbieter-Vorlage), Server + Domain/Staging-Adresse, Google-Projekt begonnen (Wartezeit!), **Apple Developer Program beantragt** (1 bis 2 Tage Prüfung), Google-/Apple-Testkonten bereit |
+| **vor Mo 30.11. (bis So 29.11.)** | [N] | **Hetzner-Konto und Staging-Server** (CX23, Nürnberg, Runbook 1) bestellen und einrichten, **`staging.socaz.de`** bei ALL-INKL auf die IPv4-Adresse legen (Runbook 2; die Produktions-Adresse `socaz.de` erst nach dem Go/No-Go), TTL beobachten, Google-Projekt begonnen (Wartezeit!), **Apple Developer Program beantragt** (1 bis 2 Tage Prüfung), Google-/Apple-Testkonten bereit |
 | **Mo 30.11. vormittags** | [N] mit [A] | Server einrichten nach Runbook 1 bis 4 (Compose, `.env`, Migration, **beide Zahlungsschalter AUS**, `TURNIER_ONLY=1`, Zugangsschutz), `sh scripts/staging-compose.sh up -d --build`; [A] begleitet per Chat (nie Werte nennen) |
 | **Mo 30.11. mittags** | [A] | Smoke `node scripts/smoke.mjs https://<staging> --turnier-only` (mit `SMOKE_BASIC_AUTH`), Startwarnung/Schalter prüfen (Runbook 4, 4a), Befund ins Protokoll |
 | **Mo 30.11. nachmittags** | [N] | Google-OAuth-Client fertig, Redirect-URI Staging eintragen, **erster Staging-Login** (Annahme belegen: Zugangsschutz + Google-Rückleitung, **Chrome, Safari, Firefox, iPhone/Android je einmal**), Admin 1 festlegen (Runbook 6) |
@@ -77,5 +77,5 @@ Eine Datei (nicht im Repository, keine Personendaten, keine Schlüssel): je Zeil
 ## 9. Offene Fragen an den Nutzer/t2q
 1. **Q1 ENTSCHIEDEN (t2q):** Teams 1 und 2 echte Konten (Google und Apple), Teams 3 bis 6 per Staging-Seed mit eigener harter Sperre (Umgebungsmarke, nicht Produktion, ausdrückliche Bestätigung); `seed-guard`/`db-guard` bleiben unberührt. Die Ausnahme vom Grundsatz „keine SQL-Schreibzugriffe“ gilt nur für dieses Skript auf Staging.
 2. **Q2 Partner:** Wer ist die zweite Person, die Handy und Captain-Rolle übernimmt (Zeit Mo bis Mi)?
-3. **Q3 Server:** Zwei Server (Produktion und Staging) oder Staging nach der Probe wieder löschen (Anbieter-Vorlage)?
+3. **Q3 Server: entschieden (Nutzer 2026-11-25):** Anbieter **Hetzner Cloud**; der Staging-Server `staging.socaz.de` **bleibt bis nach dem 12.12.**; die Produktion bekommt einen **eigenen zweiten Server** (CX33), bestellt vor dem Go-live. Kein Agent bekommt Zugang: Server, Firewall, DNS und Google-Konsole richtet der Nutzer selbst ein (Runbook 1, 2, 12).
 4. **Q4 Lasttest-Skript: erledigt** (`scripts/last-light.mjs` gebaut und gemergt, #388; Abschnitt 4).

@@ -1,5 +1,7 @@
 # Anbieter-Entscheidungsvorlage: Server und Postgres für Go-live (3./4.12.) und Turnier (12.12.)
 
+> **ENTSCHIEDEN (Nutzer, 2026-11-25): Hetzner Cloud** (Option A, Standort Nürnberg, App und Postgres in Docker Compose). Die Umsetzung (Firewall, Backups mit zweitem Ziel, Restore, Updates, Logs, Kosten, DNS bei ALL-INKL) steht in `docs/design/go-live-runbook.md` Abschnitt 1, 2 und 12. Diese Vorlage bleibt als Begründung stehen.
+
 Stand: 2026-11-24 · Verfasser: worker-2 · Auftrag: t2s (Plan Turnier 12.12.) · **Der Nutzer entscheidet.** · Preise: nur öffentliche Preisseiten, Abrufdatum **2026-11-24**; Preise ändern sich, vor der Bestellung auf der Seite prüfen. Was ich nicht belegen konnte, steht als „nicht gefunden“. Eigene Rechnungen sind als **Rechnung** gekennzeichnet.
 
 ## 1. Ausgangslage (aus dem Repo)
