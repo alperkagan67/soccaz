@@ -27,7 +27,7 @@ import { MatchPhotos } from "./MatchPhotos";
 import { StreamEmbed } from "./StreamEmbed";
 import { StreamForm } from "./StreamForm";
 import { TieBreakForm } from "@/app/turniere/[id]/TieBreakForm";
-import { tieOffenFuerSpiel } from "@/server/tiebreak-view";
+import { tieStandFuerSpiel } from "@/server/tiebreak-view";
 import { ConfirmPanel, DecidePanel, EndMatchPanel, MvpPanel, NoShowList, Recorder, SubmitResultForm } from "./MatchClient";
 
 export async function generateMetadata({ params }: PageProps<"/spiele/[id]">): Promise<Metadata> {
@@ -67,7 +67,8 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
 
   // Abpfiff im Turnierspiel NUR fuer Veranstalter/Admin (Schiedsrichter, Endergebnis sofort endgueltig). Captains behalten ihr Formular (Felder sichtbar, Ergebnis melden, der Gegner bestaetigt): sonst lagen ihre Felder
   // eingeklappt und die E2E-Strecken der Captains fanden sie nicht (CI #387). So bleibt es bei einer Hauptaktion je Rolle.
-  const tieOffen = match.kind === "tournament" && Boolean(v?.canDecide) ? await tieOffenFuerSpiel(match.id) : null; // offener Gleichstand im K.-o.-Spiel: Entscheidung direkt auf der Spielseite (Veranstalter/Admin)
+  const tie = match.kind === "tournament" ? await tieStandFuerSpiel(match.id, match.status) : null; // nur bei beendetem Turnierspiel eine Abfrage
+  const tieOffen = tie && v?.canDecide ? tie.offen : null; // offener Gleichstand im K.-o.-Spiel: Entscheidung direkt auf der Spielseite (Veranstalter/Admin)
   const abpfiff = Boolean(v?.canRecord) && match.kind === "tournament" && !v?.mySide && Boolean(v?.canManage);
   return (
     <div className="space-y-4">
@@ -86,6 +87,7 @@ export default async function MatchPage({ params }: PageProps<"/spiele/[id]">) {
             {shown.home} : {shown.away}
           </p>
           <Link href={`/teams/${match.awaySlug}`} className="font-semibold hover:text-accent-fg">{match.awayName}</Link>
+          {tie?.marke && <p className="col-span-3 text-sm font-semibold text-muted" data-testid="tiebreak-marke-spiel">{tie.marke}</p>}
         </div>
         <p className={`text-center text-sm font-semibold ${phase === "live" ? "text-accent-fg" : phase === "disputed" || phase === "cancelled" ? "text-ink" : "text-muted"}`}>
           {PHASE_LABEL[phase]}
